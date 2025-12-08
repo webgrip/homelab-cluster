@@ -257,6 +257,21 @@ By default Flux will periodically check your git repository for changes. In-orde
 
 3. Navigate to the settings of your repository on Github, under "Settings/Webhooks" press the "Add webhook" button. Fill in the webhook URL and your token from `github-push-token.txt`, Content type: `application/json`, Events: Choose Just the push event, and save.
 
+### 🖥️ Flux UI
+
+- A read-only Flux dashboard is available at `https://gitops.${SECRET_DOMAIN}` once your internal DNS points to the `envoy-internal` gateway. To publish it on the internet, change the `parentRefs` in `kubernetes/apps/flux-system/flux-ui/app/httproute.yaml` to `envoy-external`.
+- Default credentials ship as `wego-admin` / `fluxadmin` and are stored in the encrypted secret at `kubernetes/apps/flux-system/flux-ui/app/secret.sops.yaml`. **Rotate them immediately** by running `sops kubernetes/apps/flux-system/flux-ui/app/secret.sops.yaml` and replacing the bcrypt hash.
+- Generate a new bcrypt hash with the `gitops` CLI (`echo -n $PASSWORD | gitops get bcrypt-hash`) or with the repo Python env:
+
+    ```sh
+    /home/ryan/projects/webgrip/homelab-cluster/.venv/bin/python - <<'PY'
+    import bcrypt
+    print(bcrypt.hashpw(b"your-new-password", bcrypt.gensalt()).decode())
+    PY
+    ```
+
+- Save the updated secret, commit, and let Flux reconcile. The UI will accept the new password as soon as the `weave-gitops` pod reloads the secret (usually within 1 minute).
+
 ## 💥 Reset
 
 > [!CAUTION]
