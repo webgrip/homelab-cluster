@@ -1,0 +1,32 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: network-gateways
+  namespace: homelab
+  title: Gateway + DNS Stack
+  description: Envoy gateways, Cloudflare tunnel, and k8s-gateway manifests under `kubernetes/apps/network/`.
+  annotations:
+    github.com/project-slug: webgrip/homelab-cluster
+    backstage.io/source-location: url:https://github.com/webgrip/homelab-cluster/tree/main/kubernetes/apps/network
+    backstage.io/managed-by-location: url:https://github.com/webgrip/homelab-cluster/blob/main/catalog/components/network-gateways.yaml
+    backstage.io/techdocs-ref: dir:../../docs/techdocs
+    backstage.io/kubernetes-namespace: network
+    simpleicons.org/icon-slug: cloudflare
+    webgrip.io/split-dns-notes: |
+      gitops.${SECRET_DOMAIN} stays private by:
+        1. Routing the Flux UI HTTPRoute (`kubernetes/apps/flux-system/flux-ui/app/httproute.yaml`) to `envoy-internal` only with `external-dns.alpha.kubernetes.io/exclude: "true"`.
+        2. Serving Gateway API hostnames from `kubernetes/apps/network/k8s-gateway` on LoadBalancer IP `10.0.0.26`.
+        3. Forwarding `*.grippeling.net` queries from OPNSense/Unbound to 10.0.0.26.
+        4. Terminating private traffic on `envoy-internal` (10.0.0.27) while Cloudflare + `envoy-external` (10.0.0.28) handle public hosts.
+  tags:
+    - networking
+    - gateway-api
+  links:
+    - url: https://github.com/webgrip/homelab-cluster/tree/main/kubernetes/apps/network
+      title: Network Manifests
+      icon: github
+spec:
+  type: service
+  owner: group:homelab/platform-team
+  lifecycle: production
+  system: homelab/talos-cluster

@@ -10,6 +10,9 @@ At its core, this project leverages [makejinja](https://github.com/mirkolenz/mak
 
 With this approach, you'll gain a solid foundation to build and manage your Kubernetes cluster efficiently.
 
+> [!NOTE]
+> Talos-specific runbooks from the upstream homelab repo now live under `docs/techdocs`. Preview them locally with `mkdocs serve -f docs/techdocs/mkdocs.yml` or surface them through Backstage TechDocs.
+
 ## ✨ Features
 
 A Kubernetes cluster deployed with [Talos Linux](https://github.com/siderolabs/talos) and an opinionated implementation of [Flux](https://github.com/fluxcd/flux2) using [GitHub](https://github.com/) as the Git provider, [sops](https://github.com/getsops/sops) to manage secrets and [cloudflared](https://github.com/cloudflare/cloudflared) to access applications external to your local network.
