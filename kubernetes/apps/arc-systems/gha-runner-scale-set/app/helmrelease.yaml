@@ -11,113 +11,88 @@ spec:
     - name: actions-runner-controller
       namespace: arc-systems
   interval: 1h
+  valuesFrom:
+    - kind: Secret
+      name: gha-runner-scale-set-secrets
+      valuesKey: github_config_url
+      targetPath: githubConfigUrl
   values:
-    gha-runner-scale-set:
-      githubConfigSecret: gha-runner-scale-set-secrets
-      githubConfigUrl: ${GITHUB_CONFIG_URL}
-      minRunners: 2
-      maxRunners: 10
-      runnerGroup: Default
-      runnerScaleSetName: arc-runner-set
-      template:
-        metadata:
-          annotations:
-            prometheus.io/scrape: "true"
-            prometheus.io/path: "/metrics"
-            prometheus.io/port: "8080"
-        spec:
-          tolerations:
-            - key: dedicated
-              operator: Equal
-              value: cpu
-              effect: NoSchedule
-          affinity:
-            nodeAffinity:
-              requiredDuringSchedulingIgnoredDuringExecution:
-                nodeSelectorTerms:
-                  - matchExpressions:
-                      - key: dedicated
-                        operator: In
-                        values:
-                          - cpu
-          initContainers:
-            - name: init-dind-externals
-              image: webgrip/github-runner:6fc4147d1caaee8dcaaac7a19d90488372dadfdc
-              command:
-                [
-                  "cp",
-                  "-r",
-                  "-v",
-                  "/home/runner/externals/.",
-                  "/home/runner/tmpDir/",
-                ]
-              volumeMounts:
-                - name: dind-externals
-                  mountPath: /home/runner/tmpDir
-          containers:
-            - name: runner
-              image: webgrip/github-runner:6fc4147d1caaee8dcaaac7a19d90488372dadfdc
-              resources:
-                requests:
-                  cpu: 250m
-                  memory: 512Mi
-                limits:
-                  cpu: 1
-                  memory: 2Gi
-              command: ["/home/runner/run.sh"]
-              env:
-                - name: DOCKER_HOST
-                  value: unix:///var/run/docker.sock
-              volumeMounts:
-                - name: work
-                  mountPath: /home/runner/_work
-                - name: dind-sock
-                  mountPath: /var/run
-            - name: dind
-              image: docker:dind
-              args:
-                - dockerd
-                - --host=unix:///var/run/docker.sock
-                - --group=$(DOCKER_GROUP_GID)
-              env:
-                - name: DOCKER_GROUP_GID
-                  value: "123"
-              securityContext:
-                privileged: true
-              volumeMounts:
-                - name: work
-                  mountPath: /home/runner/_work
-                - name: dind-sock
-                  mountPath: /var/run
-                - name: dind-externals
-                  mountPath: /home/runner/externals
-          volumes:
-            - name: work
-              emptyDir: {}
-            - name: dind-sock
-              emptyDir: {}
-            - name: dind-externals
-              emptyDir: {}
-      listenerTemplate:
-        metadata:
-          annotations:
-            prometheus.io/scrape: "true"
-            prometheus.io/path: "/metrics"
-            prometheus.io/port: "8080"
-        spec:
-          containers:
-            - name: listener
-          tolerations:
-            - key: dedicated
-              operator: Equal
-              value: cpu
-              effect: NoSchedule
-          affinity:
-            nodeAffinity:
-              requiredDuringSchedulingIgnoredDuringExecution:
-                nodeSelectorTerms:
-                  - matchExpressions:
-                      - key: dedicated
-                        operator: In
-                        values:
-                          - cpu
+    githubConfigSecret: gha-runner-scale-set-secrets
+    minRunners: 2
+    maxRunners: 10
+    runnerGroup: Default
+    runnerScaleSetName: arc-runner-set
+    template:
+      metadata:
+        annotations:
+          prometheus.io/scrape: "true"
+          prometheus.io/path: "/metrics"
+          prometheus.io/port: "8080"
+      spec:
+        initContainers:
+          - name: init-dind-externals
+            image: webgrip/github-runner:6fc4147d1caaee8dcaaac7a19d90488372dadfdc
+            command:
+              [
+                "cp",
+                "-r",
+                "-v",
+                "/home/runner/externals/.",
+                "/home/runner/tmpDir/",
+              ]
+            volumeMounts:
+              - name: dind-externals
+                mountPath: /home/runner/tmpDir
+        containers:
+          - name: runner
+            image: webgrip/github-runner:6fc4147d1caaee8dcaaac7a19d90488372dadfdc
+            resources:
+              requests:
+                cpu: 250m
+                memory: 512Mi
+              limits:
+                cpu: 1
+                memory: 2Gi
+            command: ["/home/runner/run.sh"]
+            env:
+              - name: DOCKER_HOST
+                value: unix:///var/run/docker.sock
+            volumeMounts:
+              - name: work
+                mountPath: /home/runner/_work
+              - name: dind-sock
+                mountPath: /var/run
+          - name: dind
+            image: docker:dind
+            args:
+              - dockerd
+              - --host=unix:///var/run/docker.sock
+              - --group=$(DOCKER_GROUP_GID)
+            env:
+              - name: DOCKER_GROUP_GID
+                value: "123"
+            securityContext:
+              privileged: true
+            volumeMounts:
+              - name: work
+                mountPath: /home/runner/_work
+              - name: dind-sock
+                mountPath: /var/run
+              - name: dind-externals
+                mountPath: /home/runner/externals
+        volumes:
+          - name: work
+            emptyDir: {}
+          - name: dind-sock
+            emptyDir: {}
+          - name: dind-externals
+            emptyDir: {}
+    listenerTemplate:
+      metadata:
+        annotations:
+          prometheus.io/scrape: "true"
+          prometheus.io/path: "/metrics"
+          prometheus.io/port: "8080"
+      spec:
+        containers:
+          - name: listener
