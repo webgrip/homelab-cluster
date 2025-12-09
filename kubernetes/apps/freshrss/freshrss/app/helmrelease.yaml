@@ -1,199 +1,62 @@
 ---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: freshrss
 spec:
-  interval: 1h
   chartRef:
     kind: OCIRepository
     name: freshrss
-  install:
-    remediation:
-      retries: 3
-  upgrade:
-    remediation:
-      retries: 3
+  interval: 30m
   values:
-    defaultPodOptions:
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 1000
     controllers:
       freshrss:
-        strategy: RollingUpdate
+        annotations:
+          reloader.stakater.com/auto: "true"
+        pod:
+          hostUsers: false
         containers:
           app:
             image:
-              repository: ghcr.io/linuxserver/freshrss
-              tag: latest
+              repository: freshrss/freshrss
+              tag: 1.27.1-alpine
             env:
-              PUID: "1000"
-              PGID: "1000"
-              TZ: Europe/Amsterdam
-              CRON_MIN: "1,11,21,31,41,51"
-            envFrom:
-              - secretRef:
-                  name: freshrss-secrets
-              - secretRef:
-                  name: cluster-secrets
-            securityContext:
-              runAsUser: 0
-              runAsGroup: 0
-              runAsNonRoot: false
-              allowPrivilegeEscalation: false
-              readOnlyRootFilesystem: false
-              capabilities:
-                drop: ["ALL"]
+              CRON_MIN: "*"
+              DOMAIN: freshrss.${SECRET_DOMAIN}
+              LISTEN: &port 8080
             probes:
-              liveness: &probes
+              liveness:
                 enabled: true
-                custom: true
-                spec:
-                  httpGet:
-                    path: /health?c=about&a=about
-                    port: 80
-                  initialDelaySeconds: 30
-                  periodSeconds: 15
-                  timeoutSeconds: 5
-                  failureThreshold: 3
-              readiness: *probes
+              readiness:
+                enabled: true
             resources:
               requests:
-                cpu: 50m
-                memory: 256Mi
+                cpu: 12m
+                memory: 128M
               limits:
-                cpu: 150m
-                memory: 512Mi
-        initContainers:
-          bootstrap:
-            image:
-              repository: ghcr.io/linuxserver/freshrss
-              tag: latest
-            env:
-              PUID: "1000"
-              PGID: "1000"
-            envFrom:
-              - secretRef:
-                  name: freshrss-secrets
-              - secretRef:
-                  name: cluster-secrets
-            securityContext:
-              runAsUser: 0
-              runAsGroup: 0
-              allowPrivilegeEscalation: false
-              runAsNonRoot: false
-            command:
-              - /bin/sh
-              - -c
-              - |-
-                set -euo pipefail
-
-                apk add --no-cache curl tar gettext >/dev/null
-
-                CONFIG_ROOT=/config/www/freshrss
-                DATA_DIR="$CONFIG_ROOT/data"
-                EXT_DIR="$CONFIG_ROOT/extensions"
-                TEMPLATE_DIR=/bootstrap/config
-
-                mkdir -p "$CONFIG_ROOT" "$DATA_DIR" "$EXT_DIR" /extensions-src
-
-                if [ -d "$TEMPLATE_DIR" ]; then
-                  if [ -f "$TEMPLATE_DIR/config.custom.php.tmpl" ] && [ ! -f "$DATA_DIR/config.custom.php" ]; then
-                    envsubst < "$TEMPLATE_DIR/config.custom.php.tmpl" > "$DATA_DIR/config.custom.php"
-                  fi
-                  if [ -f "$TEMPLATE_DIR/config-user.custom.php" ] && [ ! -f "$DATA_DIR/config-user.custom.php" ]; then
-                    cp "$TEMPLATE_DIR/config-user.custom.php" "$DATA_DIR/config-user.custom.php"
-                  fi
-                fi
-
-                EXT_ARCHIVE_URL="$(printenv FRESHRSS_EXTENSIONS_ARCHIVE_URL || true)"
-                EXT_VERSION="$(printenv FRESHRSS_EXTENSIONS_VERSION || true)"
-                if [ -n "$EXT_ARCHIVE_URL" ] && [ -n "$EXT_VERSION" ]; then
-                  CURRENT_VERSION="$(cat "$EXT_DIR/.version" 2>/dev/null || true)"
-                  if [ "$CURRENT_VERSION" != "$EXT_VERSION" ]; then
-                    rm -rf /extensions-src/*
-                    curl -fsSL "$EXT_ARCHIVE_URL" -o /extensions-src/src.tar.gz
-                    tar -xzf /extensions-src/src.tar.gz -C /extensions-src
-                    rm -f /extensions-src/src.tar.gz
-                    SRC_DIR="$(find /extensions-src -maxdepth 1 -type d -name 'freshrss-*' | head -n1)"
-                    if [ -n "$SRC_DIR" ] && [ -d "$SRC_DIR/ops/docker/application/extensions" ]; then
-                      rm -rf "$EXT_DIR"/*
-                      cp -R "$SRC_DIR/ops/docker/application/extensions/." "$EXT_DIR/"
-                      echo "$EXT_VERSION" > "$EXT_DIR/.version"
-                    else
-                      echo "Unable to locate extensions from archive" >&2
-                    fi
-                  fi
-                fi
-
-                if [ ! -f "$DATA_DIR/config.php" ]; then
-                  php /app/www/cli/do-install.php \
-                    --default-user "$FRESHRSS_DEFAULT_USER" \
-                    --environment production \
-                    --base-url "$FRESHRSS_BASE_URL" \
-                    --language en \
-                    --title "FreshRSS" \
-                    --api-enabled \
-                    --disable-update \
-                    --db-type pgsql \
-                    --db-host "$POSTGRES_HOST" \
-                    --db-user "$POSTGRES_USER" \
-                    --db-password "$POSTGRES_PASSWORD" \
-                    --db-base "$POSTGRES_DB" \
-                    --db-prefix freshrss_
-                fi
-
-                USER_DIR="$DATA_DIR/users/$FRESHRSS_DEFAULT_USER"
-                if [ ! -f "$USER_DIR/config.php" ]; then
-                  php /app/www/cli/create-user.php \
-                    --user "$FRESHRSS_DEFAULT_USER" \
-                    --password "$FRESHRSS_ADMIN_PASSWORD" \
-                    --api-password "$FRESHRSS_ADMIN_PASSWORD" \
-                    --email "$FRESHRSS_ADMIN_EMAIL" \
-                    --language en \
-                    --no-default-feeds
-                fi
-
-                PUID_VALUE="$(printenv PUID || true)"
-                PGID_VALUE="$(printenv PGID || true)"
-                if [ -z "$PUID_VALUE" ]; then PUID_VALUE=1000; fi
-                if [ -z "$PGID_VALUE" ]; then PGID_VALUE=1000; fi
-                chown -R "$PUID_VALUE:$PGID_VALUE" /config
-    persistence:
-      config:
-        enabled: true
-        type: emptyDir
-        globalMounts:
-          - path: /config
-      config-templates:
-        enabled: true
-        type: configMap
-        name: freshrss-config
-        defaultMode: 0444
-        globalMounts:
-          - path: /bootstrap/config
-            readOnly: true
-      extensions-cache:
-        enabled: true
-        type: emptyDir
-        globalMounts:
-          - path: /extensions-src
+                memory: 512M
     service:
       app:
-        controller: freshrss
         ports:
           http:
-            port: 80
+            port: *port
+    persistence:
+      data:
+        existingClaim: freshrss
+        advancedMounts:
+          freshrss:
+            app:
+              - path: /var/www/FreshRSS/data
+                subPath: data
+                readOnly: false
+              - path: /var/www/FreshRSS/extensions
+                subPath: extensions
+                readOnly: false
     route:
       app:
-        hostnames: ["rss.${SECRET_DOMAIN}"]
+        hostnames:
+          - freshrss.${SECRET_DOMAIN}
         parentRefs:
-          - name: envoy-external
+          - name: envoy-internal
             namespace: network
-            sectionName: https
-        rules:
-          - backendRefs:
-              - identifier: app
-                port: 80
