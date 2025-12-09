@@ -40,42 +40,33 @@ data:
     psql_base="psql -v ON_ERROR_STOP=1"
 
     echo "Ensuring role ${POSTGRES_USER}"
-    $psql_base -v role="${POSTGRES_USER}" -v role_password="${POSTGRES_PASSWORD}" <<'SQL'
-    DO
-    $$
+    $psql_base --command "DO \$\$
     BEGIN
-      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'role') THEN
-        EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', :'role', :'role_password');
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${POSTGRES_USER}') THEN
+        EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', '${POSTGRES_USER}', '${POSTGRES_PASSWORD}');
       ELSE
-        EXECUTE format('ALTER ROLE %I LOGIN PASSWORD %L', :'role', :'role_password');
+        EXECUTE format('ALTER ROLE %I LOGIN PASSWORD %L', '${POSTGRES_USER}', '${POSTGRES_PASSWORD}');
       END IF;
     END
-    $$ LANGUAGE plpgsql;
-    SQL
+    \$\$ LANGUAGE plpgsql;"
 
     echo "Ensuring database ${POSTGRES_DB}"
-    $psql_base -v role="${POSTGRES_USER}" -v db="${POSTGRES_DB}" <<'SQL'
-    DO
-    $$
+    $psql_base --command "DO \$\$
     BEGIN
-      IF NOT EXISTS (SELECT FROM pg_database WHERE datname = :'db') THEN
-        EXECUTE format('CREATE DATABASE %I OWNER %I', :'db', :'role');
+      IF NOT EXISTS (SELECT FROM pg_database WHERE datname = '${POSTGRES_DB}') THEN
+        EXECUTE format('CREATE DATABASE %I OWNER %I', '${POSTGRES_DB}', '${POSTGRES_USER}');
       ELSE
-        EXECUTE format('ALTER DATABASE %I OWNER TO %I', :'db', :'role');
+        EXECUTE format('ALTER DATABASE %I OWNER TO %I', '${POSTGRES_DB}', '${POSTGRES_USER}');
       END IF;
     END
-    $$ LANGUAGE plpgsql;
-    SQL
+    \$\$ LANGUAGE plpgsql;"
 
     echo "Applying database privileges"
-    $psql_base -v role="${POSTGRES_USER}" -v db="${POSTGRES_DB}" <<'SQL'
-    DO
-    $$
+    $psql_base --command "DO \$\$
     BEGIN
-      EXECUTE format('REVOKE ALL ON DATABASE %I FROM PUBLIC', :'db');
-      EXECUTE format('GRANT ALL PRIVILEGES ON DATABASE %I TO %I', :'db', :'role');
+      EXECUTE format('REVOKE ALL ON DATABASE %I FROM PUBLIC', '${POSTGRES_DB}');
+      EXECUTE format('GRANT ALL PRIVILEGES ON DATABASE %I TO %I', '${POSTGRES_DB}', '${POSTGRES_USER}');
     END
-    $$ LANGUAGE plpgsql;
-    SQL
+    \$\$ LANGUAGE plpgsql;"
 
     echo "FreshRSS database bootstrap complete"
