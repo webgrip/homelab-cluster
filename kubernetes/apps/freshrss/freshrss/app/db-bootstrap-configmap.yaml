@@ -40,24 +40,17 @@ data:
     psql_base="psql -v ON_ERROR_STOP=1"
 
     echo "Ensuring role ${POSTGRES_USER}"
-    cat <<SQL | env role="${POSTGRES_USER}" role_password="${POSTGRES_PASSWORD}" ${psql_base}
-    DO
-    $$
+    ${psql_base} --command "DO \$\$
     BEGIN
-      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'role') THEN
-        EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', :'role', :'role_password');
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${POSTGRES_USER}') THEN
+        EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', '${POSTGRES_USER}', '${POSTGRES_PASSWORD}');
       ELSE
-        EXECUTE format('ALTER ROLE %I LOGIN PASSWORD %L', :'role', :'role_password');
+        EXECUTE format('ALTER ROLE %I LOGIN PASSWORD %L', '${POSTGRES_USER}', '${POSTGRES_PASSWORD}');
       END IF;
     END
-    $$ LANGUAGE plpgsql;
-    SQL
+    \$\$ LANGUAGE plpgsql;"
 
     echo "Ensuring database ${POSTGRES_DB}"
-    cat <<SQL | env db="${POSTGRES_DB}" role="${POSTGRES_USER}" ${psql_base}
-    SELECT 'create-db' AS action
-    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'db');
-    SQL
     if [ "$(${psql_base} -tAc "SELECT 1 FROM pg_database WHERE datname='${POSTGRES_DB}'")" != "1" ]; then
       echo "Creating database ${POSTGRES_DB}"
       ${psql_base} --command "CREATE DATABASE \"${POSTGRES_DB}\" OWNER \"${POSTGRES_USER}\";"
