@@ -1,0 +1,22 @@
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: gha-runner-scale-set
+spec:
+  dependsOn:
+    - name: actions-runner-controller
+      namespace: arc-systems
+  interval: 1h
+  path: ./kubernetes/apps/arc-systems/gha-runner-scale-set/app
+  postBuild:
+    substituteFrom:
+      - name: cluster-secrets
+        kind: Secret
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: arc-systems
+  wait: false

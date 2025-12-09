@@ -18,7 +18,7 @@ With this approach, you'll gain a solid foundation to build and manage your Kube
 A Kubernetes cluster deployed with [Talos Linux](https://github.com/siderolabs/talos) and an opinionated implementation of [Flux](https://github.com/fluxcd/flux2) using [GitHub](https://github.com/) as the Git provider, [sops](https://github.com/getsops/sops) to manage secrets and [cloudflared](https://github.com/cloudflare/cloudflared) to access applications external to your local network.
 
 - **Required:** Some knowledge of [Containers](https://opencontainers.org/), [YAML](https://noyaml.com/), [Git](https://git-scm.com/), and a **Cloudflare account** with a **domain**.
-- **Included components:** [flux](https://github.com/fluxcd/flux2), [cilium](https://github.com/cilium/cilium), [cert-manager](https://github.com/cert-manager/cert-manager), [spegel](https://github.com/spegel-org/spegel), [reloader](https://github.com/stakater/Reloader), [envoy-gateway](https://github.com/envoyproxy/gateway), [external-dns](https://github.com/kubernetes-sigs/external-dns) and [cloudflared](https://github.com/cloudflare/cloudflared).
+- **Included components:** [flux](https://github.com/fluxcd/flux2), [cilium](https://github.com/cilium/cilium), [cert-manager](https://github.com/cert-manager/cert-manager), [spegel](https://github.com/spegel-org/spegel), [reloader](https://github.com/stakater/Reloader), [envoy-gateway](https://github.com/envoyproxy/gateway), [external-dns](https://github.com/kubernetes-sigs/external-dns), [cloudflared](https://github.com/cloudflare/cloudflared), and [actions-runner-controller](https://github.com/actions/actions-runner-controller).
 
 **Other features include:**
 
@@ -274,6 +274,36 @@ By default Flux will periodically check your git repository for changes. In-orde
     ```
 
 - Save the updated secret, commit, and let Flux reconcile. The UI will accept the new password as soon as the `weave-gitops` pod reloads the secret (usually within 1 minute).
+
+### 🤖 GitHub Actions Runners
+
+`kubernetes/apps/arc-systems/` deploys the GitHub Actions Runner Controller (ARC) plus a Docker-in-Docker runner scale set so CI jobs can burst into your homelab. The controller pods and scale-set listeners already expose Prometheus-compatible PodMonitors, tolerate the `dedicated=cpu` taint, and expect nodes labeled with `dedicated=cpu` (`kubectl label nodes <node> dedicated=cpu --overwrite`).
+
+To finish the wiring you need a GitHub App and a few SOPS-backed secrets:
+
+1. [Create a GitHub App for ARC](https://github.com/actions/actions-runner-controller/blob/master/docs/ghes/arc-ghes-app.md) in the account or organization that owns your repositories. Grant it the "Actions" and "Administration" read/write permissions plus access to the repositories that should use the runners. Record the **App ID**, **Installation ID**, and download the **private key** file.
+2. Base64-encode the raw values, keeping the output on a single line. Examples (GNU coreutils):
+
+    ```sh
+    printf '123456' | base64 -w0             # App ID / installation ID
+    base64 -w0 < ~/Downloads/your-app.pem   # Private key
+    ```
+
+    On macOS replace `base64 -w0` with `base64 | tr -d '\n'`.
+3. Run `sops kubernetes/components/sops/cluster-secrets.sops.yaml` and add the following keys under `stringData`. Keep `GITHUB_CONFIG_URL` as plain text; the `*_B64` entries take the base64 output from step 2:
+
+    ```yaml
+    GITHUB_CONFIG_URL: https://github.com/your-org-or-user
+    GITHUB_APP_ID_B64: <base64 app id>
+    GITHUB_APP_INSTALLATION_ID_B64: <base64 installation id>
+    GITHUB_APP_PRIVATE_KEY_B64: <base64 private key>
+    ```
+
+    Only the `_B64` fields should contain base64 text.
+
+4. Commit the encrypted secret, run `task reconcile`, and verify the rollout with `kubectl -n arc-systems get pods`. A healthy deployment shows the `actions-runner-controller`, `gha-runner-scale-set`, and `gha-runner-scale-set-listener` pods Ready.
+
+The `gha-runner-scale-set` HelmRelease defaults to the `webgrip/github-runner` image and Docker group GID `123`. Adjust those values or the taints/affinity in `kubernetes/apps/arc-systems/gha-runner-scale-set/app/helmrelease.yaml` if your hardware layout differs.
 
 ## 💥 Reset
 

@@ -37,3 +37,8 @@ These live under `kubernetes/apps/kube-system/` and `kubernetes/apps/cert-manage
 - `kubernetes/components/sops/` ensures SOPS secrets stay in sync with Flux.
 - `scripts/bootstrap-apps.sh` and `Taskfile.yaml` expose the bootstrap flow for Talos plus Flux.
 - TechDocs live in `docs/techdocs/` and are referenced from Backstage via `backstage.io/techdocs-ref: dir:docs/techdocs` in `catalog-info.yaml`.
+
+## CI Runners
+
+- `kubernetes/apps/arc-systems/actions-runner-controller/` installs the GitHub Actions Runner Controller with Prometheus PodMonitors and the same SOPS substitution flow used elsewhere in the repo.
+- `kubernetes/apps/arc-systems/gha-runner-scale-set/` provisions a Docker-in-Docker scale set. Populate `GITHUB_CONFIG_URL`, `GITHUB_APP_ID_B64`, `GITHUB_APP_INSTALLATION_ID_B64`, and `GITHUB_APP_PRIVATE_KEY_B64` in `kubernetes/components/sops/cluster-secrets.sops.yaml` so Flux can inject the GitHub App credentials.
