@@ -90,12 +90,17 @@ spec:
 
                 apk add --no-cache curl tar gettext >/dev/null
 
-                CONFIG_ROOT=/config/www/freshrss
+                : "${CONFIG_ROOT:=/config/www/freshrss}"
+                if [ -z "${CONFIG_ROOT}" ]; then
+                  echo "CONFIG_ROOT is not set" >&2
+                  exit 1
+                fi
+                CONFIG_ROOT="${CONFIG_ROOT%/}"
                 DATA_DIR="${CONFIG_ROOT}/data"
                 EXT_DIR="${CONFIG_ROOT}/extensions"
                 TEMPLATE_DIR=/bootstrap/config
 
-                mkdir -p "${DATA_DIR}" "${EXT_DIR}" /extensions-src
+                mkdir -p "${CONFIG_ROOT}" "${DATA_DIR}" "${EXT_DIR}" /extensions-src
 
                 if [ -d "${TEMPLATE_DIR}" ]; then
                   if [ -f "${TEMPLATE_DIR}/config.custom.php.tmpl" ] && [ ! -f "${DATA_DIR}/config.custom.php" ]; then
@@ -152,6 +157,8 @@ spec:
                     --no-default-feeds
                 fi
 
+                PUID="${PUID:-1000}"
+                PGID="${PGID:-1000}"
                 chown -R "${PUID}:${PGID}" /config
     persistence:
       config:
