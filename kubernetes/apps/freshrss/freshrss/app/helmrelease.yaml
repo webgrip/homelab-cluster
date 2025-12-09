@@ -1,0 +1,201 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: freshrss
+spec:
+  interval: 1h
+  timeout: 10m
+  chartRef:
+    kind: OCIRepository
+    name: freshrss
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+    controllers:
+      freshrss:
+        strategy: RollingUpdate
+        containers:
+          app:
+            image:
+              repository: ghcr.io/linuxserver/freshrss
+              tag: latest
+            env:
+              PUID: "1000"
+              PGID: "1000"
+              TZ: Europe/Amsterdam
+              CRON_MIN: "1,11,21,31,41,51"
+            envFrom:
+              - secretRef:
+                  name: freshrss-secrets
+              - secretRef:
+                  name: cluster-secrets
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
+            probes:
+              liveness: &probes
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /health?c=about&a=about
+                    port: 80
+                  initialDelaySeconds: 30
+                  periodSeconds: 15
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+              readiness: *probes
+            resources:
+              requests:
+                cpu: 50m
+                memory: 256Mi
+              limits:
+                cpu: 150m
+                memory: 512Mi
+        initContainers:
+          bootstrap:
+            image:
+              repository: ghcr.io/linuxserver/freshrss
+              tag: latest
+            env:
+              PUID: "1000"
+              PGID: "1000"
+            envFrom:
+              - secretRef:
+                  name: freshrss-secrets
+              - secretRef:
+                  name: cluster-secrets
+            securityContext:
+              runAsUser: 0
+              runAsGroup: 0
+              allowPrivilegeEscalation: false
+            command:
+              - /bin/sh
+              - -c
+              - |-
+                set -euo pipefail
+
+                apk add --no-cache curl tar gettext >/dev/null
+
+                CONFIG_ROOT=/config/www/freshrss
+                DATA_DIR="${CONFIG_ROOT}/data"
+                EXT_DIR="${CONFIG_ROOT}/extensions"
+                TEMPLATE_DIR=/bootstrap/config
+
+                mkdir -p "${DATA_DIR}" "${EXT_DIR}" /extensions-src
+
+                if [ -d "${TEMPLATE_DIR}" ]; then
+                  if [ -f "${TEMPLATE_DIR}/config.custom.php.tmpl" ] && [ ! -f "${DATA_DIR}/config.custom.php" ]; then
+                    envsubst < "${TEMPLATE_DIR}/config.custom.php.tmpl" > "${DATA_DIR}/config.custom.php"
+                  fi
+                  if [ -f "${TEMPLATE_DIR}/config-user.custom.php" ] && [ ! -f "${DATA_DIR}/config-user.custom.php" ]; then
+                    cp "${TEMPLATE_DIR}/config-user.custom.php" "${DATA_DIR}/config-user.custom.php"
+                  fi
+                fi
+
+                if [ -n "${FRESHRSS_EXTENSIONS_ARCHIVE_URL:-}" ] && [ -n "${FRESHRSS_EXTENSIONS_VERSION:-}" ]; then
+                  CURRENT_VERSION="$(cat "${EXT_DIR}/.version" 2>/dev/null || true)"
+                  if [ "${CURRENT_VERSION}" != "${FRESHRSS_EXTENSIONS_VERSION}" ]; then
+                    rm -rf /extensions-src/*
+                    curl -fsSL "${FRESHRSS_EXTENSIONS_ARCHIVE_URL}" -o /extensions-src/src.tar.gz
+                    tar -xzf /extensions-src/src.tar.gz -C /extensions-src
+                    rm -f /extensions-src/src.tar.gz
+                    SRC_DIR="$(find /extensions-src -maxdepth 1 -type d -name 'freshrss-*' | head -n1)"
+                    if [ -n "${SRC_DIR}" ] && [ -d "${SRC_DIR}/ops/docker/application/extensions" ]; then
+                      rm -rf "${EXT_DIR}"/*
+                      cp -R "${SRC_DIR}/ops/docker/application/extensions/." "${EXT_DIR}/"
+                      echo "${FRESHRSS_EXTENSIONS_VERSION}" > "${EXT_DIR}/.version"
+                    else
+                      echo "Unable to locate extensions from archive" >&2
+                    fi
+                  fi
+                fi
+
+                if [ ! -f "${DATA_DIR}/config.php" ]; then
+                  php /app/www/cli/do-install.php \
+                    --default-user "${FRESHRSS_DEFAULT_USER}" \
+                    --environment production \
+                    --base-url "${FRESHRSS_BASE_URL}" \
+                    --language en \
+                    --title "FreshRSS" \
+                    --api-enabled \
+                    --disable-update \
+                    --db-type pgsql \
+                    --db-host "${POSTGRES_HOST}" \
+                    --db-user "${POSTGRES_USER}" \
+                    --db-password "${POSTGRES_PASSWORD}" \
+                    --db-base "${POSTGRES_DB}" \
+                    --db-prefix freshrss_
+                fi
+
+                USER_DIR="${DATA_DIR}/users/${FRESHRSS_DEFAULT_USER}"
+                if [ ! -f "${USER_DIR}/config.php" ]; then
+                  php /app/www/cli/create-user.php \
+                    --user "${FRESHRSS_DEFAULT_USER}" \
+                    --password "${FRESHRSS_ADMIN_PASSWORD}" \
+                    --api-password "${FRESHRSS_ADMIN_PASSWORD}" \
+                    --email "${FRESHRSS_ADMIN_EMAIL}" \
+                    --language en \
+                    --no-default-feeds
+                fi
+
+                chown -R "${PUID}:${PGID}" /config
+            volumeMounts:
+              - name: config
+                mountPath: /config
+              - name: config-templates
+                mountPath: /bootstrap/config
+                readOnly: true
+              - name: extensions-cache
+                mountPath: /extensions-src
+    persistence:
+      config:
+        enabled: true
+        type: pvc
+        retain: true
+        accessMode: ReadWriteOnce
+        size: 10Gi
+        globalMounts:
+          - path: /config
+      config-templates:
+        enabled: true
+        type: configMap
+        name: freshrss-config
+        defaultMode: 0444
+        globalMounts:
+          - path: /bootstrap/config
+            readOnly: true
+      extensions-cache:
+        enabled: true
+        type: emptyDir
+        globalMounts:
+          - path: /extensions-src
+    service:
+      app:
+        controller: freshrss
+        ports:
+          http:
+            port: 80
+    route:
+      app:
+        hostnames: ["rss.${SECRET_DOMAIN}"]
+        parentRefs:
+          - name: envoy-external
+            namespace: network
+            sectionName: https
+        rules:
+          - backendRefs:
+              - identifier: app
+                port: 80

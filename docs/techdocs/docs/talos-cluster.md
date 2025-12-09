@@ -119,4 +119,28 @@ Values from `cluster.yaml`:
 | External Envoy / Cloudflare tunnel | `cloudflare_gateway_addr` | `10.0.0.28` |
 
 Update the table whenever the load-balancer IPs shift so downstream split-DNS instructions stay correct.
+
+## Hardware + Wiring
+
+- Three SOYO Mini PC M4 (Intel N150, 12 GB DDR5, 512 GB NVMe) act as Talos controllers/workers. Wi-Fi/Bluetooth radios remain disabled in firmware.
+- Protectli V1410 running OPNsense terminates Odido fiber, WireGuard, and split-horizon DNS at `10.0.0.1`.
+- Switching path mirrors the README diagram: TP-Link TL-SG108PE (`10.0.0.2`) uplinks the Protectli and Zyxel VMG8825-T50 AP, while a downstream Q-Link switch fans out to the SOYO nodes, NAS, Proxmox, and Home Assistant.
+
+**Port map (summarized):**
+
+- TP-Link TL-SG108PE
+   - Port 1 → Protectli/ONT uplink
+   - Port 2 → Zyxel AP
+   - Port 3 → Q-Link downstream switch
+- Q-Link switch
+   - Port 8 ← uplink from TP-Link switch
+   - Ports 7/6/5 → `soyo-1`/`soyo-2`/`soyo-3`
+   - Port 2 → NAS
+   - Port 1 → Proxmox host
+- Zyxel VMG8825-T50
+   - Port 4 ← uplink from TP-Link switch
+   - Port 1 → Philips Hue bridge
+   - Port 2 → Raspberry Pi Home Assistant
+
+Replicate these assignments any time hardware is replaced so the TechDocs, README, and wiring closet labels stay synchronized.
 *** End Patch

@@ -1,0 +1,79 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: freshrss-db-bootstrap
+  labels:
+    app.kubernetes.io/name: freshrss-db-bootstrap
+    app.kubernetes.io/component: database-bootstrap
+    app.kubernetes.io/part-of: freshrss
+  annotations:
+    kustomize.toolkit.fluxcd.io/substitute: disabled
+data:
+  bootstrap.sh: |-
+    #!/bin/bash
+    set -euo pipefail
+
+    export PATH="/opt/bitnami/postgresql/bin:${PATH}"
+
+    required_env="POSTGRES_HOST POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD POSTGRES_SUPERUSER_PASSWORD"
+    for var in $required_env; do
+      if [ -z "${!var:-}" ]; then
+        echo "Missing required environment variable: $var" >&2
+        exit 1
+      fi
+    done
+
+    SUPERUSER="${POSTGRES_SUPERUSER_USER:-postgres}"
+    PORT="${POSTGRES_PORT:-5432}"
+    SSLMODE="${POSTGRES_SSLMODE:-prefer}"
+
+    export PGHOST="${POSTGRES_HOST}"
+    export PGPORT="${PORT}"
+    export PGUSER="${SUPERUSER}"
+    export PGDATABASE="postgres"
+    export PGPASSWORD="${POSTGRES_SUPERUSER_PASSWORD}"
+    export PGSSLMODE="${SSLMODE}"
+
+    psql_base="psql -v ON_ERROR_STOP=1"
+
+    echo "Ensuring role ${POSTGRES_USER}"
+    $psql_base -v role="${POSTGRES_USER}" -v role_password="${POSTGRES_PASSWORD}" <<'SQL'
+    DO
+    $$
+    BEGIN
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'role') THEN
+        EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', :'role', :'role_password');
+      ELSE
+        EXECUTE format('ALTER ROLE %I LOGIN PASSWORD %L', :'role', :'role_password');
+      END IF;
+    END
+    $$ LANGUAGE plpgsql;
+    SQL
+
+    echo "Ensuring database ${POSTGRES_DB}"
+    $psql_base -v role="${POSTGRES_USER}" -v db="${POSTGRES_DB}" <<'SQL'
+    DO
+    $$
+    BEGIN
+      IF NOT EXISTS (SELECT FROM pg_database WHERE datname = :'db') THEN
+        EXECUTE format('CREATE DATABASE %I OWNER %I', :'db', :'role');
+      ELSE
+        EXECUTE format('ALTER DATABASE %I OWNER TO %I', :'db', :'role');
+      END IF;
+    END
+    $$ LANGUAGE plpgsql;
+    SQL
+
+    echo "Applying database privileges"
+    $psql_base -v role="${POSTGRES_USER}" -v db="${POSTGRES_DB}" <<'SQL'
+    DO
+    $$
+    BEGIN
+      EXECUTE format('REVOKE ALL ON DATABASE %I FROM PUBLIC', :'db');
+      EXECUTE format('GRANT ALL PRIVILEGES ON DATABASE %I TO %I', :'db', :'role');
+    END
+    $$ LANGUAGE plpgsql;
+    SQL
+
+    echo "FreshRSS database bootstrap complete"

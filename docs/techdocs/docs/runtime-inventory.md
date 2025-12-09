@@ -2,6 +2,13 @@
 
 _Last updated: 2025-12-08 @ 15:51 UTC using `kubectl get pods -A -o wide` and `kubectl get svc -A`._
 
+## Snapshot Summary
+
+- Flux + kube-system components account for the bulk of pods (controllers, Cilium, CoreDNS, metrics-server, Spegel, Reloader).
+- Networking namespace hosts Envoy internal/external pairs, Cloudflare DNS/tunnel, and the `k8s-gateway` split-DNS responder that matches the README diagram.
+- `arc-systems` entries (ARC + gha-runner-scale-set) scale dynamically, so capture their pods when documenting CI bursts.
+- Application namespaces (`default`, `freshrss`, others) should be listed below as you add workloads; FreshRSS relies on Bitnami's bootstrap job to reach external Postgres.
+
 ## Pods by Namespace
 
 | Namespace | Pod Count | Highlights |
@@ -94,3 +101,10 @@ network        k8s-gateway               LoadBalancer   10.43.180.240   10.0.0.2
 ```
 
 > Repeat these commands whenever diagnosing runtime issues so Backstage TechDocs stays synchronized with the actual Talos cluster state.
+
+## Verification Steps
+
+1. `kubectl get pods -A -o wide` to capture scheduling, IPs, and node placement (mirrors the pod table above).
+2. `kubectl get svc -A` to verify LoadBalancer VIPs (`10.0.0.26-28`), ClusterIPs, and node ports match the networking + DNS diagrams on the index page.
+3. Cross-check `network` namespace services with the Protectli port map to ensure Envoy/K8s Gateway VIPs are reachable on the flat LAN.
+4. If anything drifts, update manifests in `kubernetes/apps/*` first, let Flux reconcile, then re-run these commands and refresh this document.
