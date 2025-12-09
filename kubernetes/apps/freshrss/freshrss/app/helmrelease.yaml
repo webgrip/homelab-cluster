@@ -90,70 +90,74 @@ spec:
                 apk add --no-cache curl tar gettext >/dev/null
 
                 CONFIG_ROOT=/config/www/freshrss
-                DATA_DIR="${CONFIG_ROOT}/data"
-                EXT_DIR="${CONFIG_ROOT}/extensions"
+                DATA_DIR="$CONFIG_ROOT/data"
+                EXT_DIR="$CONFIG_ROOT/extensions"
                 TEMPLATE_DIR=/bootstrap/config
 
-                mkdir -p "${CONFIG_ROOT}" "${DATA_DIR}" "${EXT_DIR}" /extensions-src
+                mkdir -p "$CONFIG_ROOT" "$DATA_DIR" "$EXT_DIR" /extensions-src
 
-                if [ -d "${TEMPLATE_DIR}" ]; then
-                  if [ -f "${TEMPLATE_DIR}/config.custom.php.tmpl" ] && [ ! -f "${DATA_DIR}/config.custom.php" ]; then
-                    envsubst < "${TEMPLATE_DIR}/config.custom.php.tmpl" > "${DATA_DIR}/config.custom.php"
+                if [ -d "$TEMPLATE_DIR" ]; then
+                  if [ -f "$TEMPLATE_DIR/config.custom.php.tmpl" ] && [ ! -f "$DATA_DIR/config.custom.php" ]; then
+                    envsubst < "$TEMPLATE_DIR/config.custom.php.tmpl" > "$DATA_DIR/config.custom.php"
                   fi
-                  if [ -f "${TEMPLATE_DIR}/config-user.custom.php" ] && [ ! -f "${DATA_DIR}/config-user.custom.php" ]; then
-                    cp "${TEMPLATE_DIR}/config-user.custom.php" "${DATA_DIR}/config-user.custom.php"
+                  if [ -f "$TEMPLATE_DIR/config-user.custom.php" ] && [ ! -f "$DATA_DIR/config-user.custom.php" ]; then
+                    cp "$TEMPLATE_DIR/config-user.custom.php" "$DATA_DIR/config-user.custom.php"
                   fi
                 fi
 
-                if [ -n "${FRESHRSS_EXTENSIONS_ARCHIVE_URL:-}" ] && [ -n "${FRESHRSS_EXTENSIONS_VERSION:-}" ]; then
-                  CURRENT_VERSION="$(cat "${EXT_DIR}/.version" 2>/dev/null || true)"
-                  if [ "${CURRENT_VERSION}" != "${FRESHRSS_EXTENSIONS_VERSION}" ]; then
+                EXT_ARCHIVE_URL="$(printenv FRESHRSS_EXTENSIONS_ARCHIVE_URL || true)"
+                EXT_VERSION="$(printenv FRESHRSS_EXTENSIONS_VERSION || true)"
+                if [ -n "$EXT_ARCHIVE_URL" ] && [ -n "$EXT_VERSION" ]; then
+                  CURRENT_VERSION="$(cat "$EXT_DIR/.version" 2>/dev/null || true)"
+                  if [ "$CURRENT_VERSION" != "$EXT_VERSION" ]; then
                     rm -rf /extensions-src/*
-                    curl -fsSL "${FRESHRSS_EXTENSIONS_ARCHIVE_URL}" -o /extensions-src/src.tar.gz
+                    curl -fsSL "$EXT_ARCHIVE_URL" -o /extensions-src/src.tar.gz
                     tar -xzf /extensions-src/src.tar.gz -C /extensions-src
                     rm -f /extensions-src/src.tar.gz
                     SRC_DIR="$(find /extensions-src -maxdepth 1 -type d -name 'freshrss-*' | head -n1)"
-                    if [ -n "${SRC_DIR}" ] && [ -d "${SRC_DIR}/ops/docker/application/extensions" ]; then
-                      rm -rf "${EXT_DIR}"/*
-                      cp -R "${SRC_DIR}/ops/docker/application/extensions/." "${EXT_DIR}/"
-                      echo "${FRESHRSS_EXTENSIONS_VERSION}" > "${EXT_DIR}/.version"
+                    if [ -n "$SRC_DIR" ] && [ -d "$SRC_DIR/ops/docker/application/extensions" ]; then
+                      rm -rf "$EXT_DIR"/*
+                      cp -R "$SRC_DIR/ops/docker/application/extensions/." "$EXT_DIR/"
+                      echo "$EXT_VERSION" > "$EXT_DIR/.version"
                     else
                       echo "Unable to locate extensions from archive" >&2
                     fi
                   fi
                 fi
 
-                if [ ! -f "${DATA_DIR}/config.php" ]; then
+                if [ ! -f "$DATA_DIR/config.php" ]; then
                   php /app/www/cli/do-install.php \
-                    --default-user "${FRESHRSS_DEFAULT_USER}" \
+                    --default-user "$FRESHRSS_DEFAULT_USER" \
                     --environment production \
-                    --base-url "${FRESHRSS_BASE_URL}" \
+                    --base-url "$FRESHRSS_BASE_URL" \
                     --language en \
                     --title "FreshRSS" \
                     --api-enabled \
                     --disable-update \
                     --db-type pgsql \
-                    --db-host "${POSTGRES_HOST}" \
-                    --db-user "${POSTGRES_USER}" \
-                    --db-password "${POSTGRES_PASSWORD}" \
-                    --db-base "${POSTGRES_DB}" \
+                    --db-host "$POSTGRES_HOST" \
+                    --db-user "$POSTGRES_USER" \
+                    --db-password "$POSTGRES_PASSWORD" \
+                    --db-base "$POSTGRES_DB" \
                     --db-prefix freshrss_
                 fi
 
-                USER_DIR="${DATA_DIR}/users/${FRESHRSS_DEFAULT_USER}"
-                if [ ! -f "${USER_DIR}/config.php" ]; then
+                USER_DIR="$DATA_DIR/users/$FRESHRSS_DEFAULT_USER"
+                if [ ! -f "$USER_DIR/config.php" ]; then
                   php /app/www/cli/create-user.php \
-                    --user "${FRESHRSS_DEFAULT_USER}" \
-                    --password "${FRESHRSS_ADMIN_PASSWORD}" \
-                    --api-password "${FRESHRSS_ADMIN_PASSWORD}" \
-                    --email "${FRESHRSS_ADMIN_EMAIL}" \
+                    --user "$FRESHRSS_DEFAULT_USER" \
+                    --password "$FRESHRSS_ADMIN_PASSWORD" \
+                    --api-password "$FRESHRSS_ADMIN_PASSWORD" \
+                    --email "$FRESHRSS_ADMIN_EMAIL" \
                     --language en \
                     --no-default-feeds
                 fi
 
-                PUID="${PUID:-1000}"
-                PGID="${PGID:-1000}"
-                chown -R "${PUID}:${PGID}" /config
+                PUID_VALUE="$(printenv PUID || true)"
+                PGID_VALUE="$(printenv PGID || true)"
+                if [ -z "$PUID_VALUE" ]; then PUID_VALUE=1000; fi
+                if [ -z "$PGID_VALUE" ]; then PGID_VALUE=1000; fi
+                chown -R "$PUID_VALUE:$PGID_VALUE" /config
     persistence:
       config:
         enabled: true
