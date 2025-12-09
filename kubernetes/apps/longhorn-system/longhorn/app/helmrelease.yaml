@@ -1,0 +1,44 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: longhorn
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: longhorn
+      version: 1.6.2
+      sourceRef:
+        kind: HelmRepository
+        name: longhorn
+        namespace: longhorn-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+  values:
+    persistence:
+      defaultDataLocality: best-effort
+    defaultSettings:
+      defaultDataPath: /var/mnt/longhorn
+      replicaDiskSoftAntiAffinity: false
+      createDefaultDiskLabeledNodes: true
+      defaultDataLocality: best-effort
+      defaultLonghornStaticStorageClass: longhorn
+      defaultReplicaCount: "3"
+      guaranteedEngineManagerCPU: "20"
+      guaranteedReplicaManagerCPU: "20"
+      nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
+      orphanAutoDeletion: true
+      replicaAutoBalance: best-effort
+      storageMinimalAvailablePercentage: "1"
+      storageReservedPercentageForDefaultDisk: "10"
+    ingress:
+      enabled: false
+    metrics:
+      serviceMonitor:
+        enabled: true

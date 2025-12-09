@@ -1,0 +1,32 @@
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: longhorn
+spec:
+  interval: 1h
+  path: ./kubernetes/apps/longhorn-system/longhorn/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: longhorn-system
+  wait: false
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: longhorn-storageclasses
+spec:
+  dependsOn:
+    - name: longhorn
+  interval: 1h
+  path: ./kubernetes/apps/longhorn-system/longhorn/storageclass
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: longhorn-system
+  wait: false
