@@ -45,17 +45,15 @@ spec:
                   /var/www/app/storage/framework/sessions \
                   /var/www/app/storage/framework/views \
                   /var/www/app/storage/logs \
-                  /var/www/app/public/logo \
-                  /var/www/app/docker-backup-storage
+                  /var/www/app/public/logo
 
                 # Basic log file
                 touch /var/www/app/storage/logs/laravel.log
 
-                # Ensure everything is owned by the app group/user we use for storage
+                # Ownership for storage/logo so non-root would work too
                 chown -R 33:33 \
                   /var/www/app/storage \
-                  /var/www/app/public/logo \
-                  /var/www/app/docker-backup-storage
+                  /var/www/app/public/logo
 
                 # Permissions: dirs 775, files 664
                 find /var/www/app/storage -type d -exec chmod 775 {} \;
@@ -121,7 +119,6 @@ spec:
             securityContext:
               runAsUser: 0
               runAsGroup: 0
-              # allowPrivilegeEscalation defaults to true for root, can be omitted
           scheduler:
             image:
               repository: invoiceninja/invoiceninja
@@ -194,10 +191,6 @@ spec:
             subPath: storage
           - path: /var/www/app/public/logo
             subPath: logo
-      docker-backup-storage:
-        type: emptyDir
-        globalMounts:
-          - path: /var/www/app/docker-backup-storage
       nginx-conf:
         type: configMap
         name: invoiceninja-nginx
