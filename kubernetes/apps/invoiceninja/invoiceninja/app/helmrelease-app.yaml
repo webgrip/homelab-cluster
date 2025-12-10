@@ -22,6 +22,7 @@ spec:
         pod:
           terminationGracePeriodSeconds: 60
           securityContext:
+            # Let the image use its own user (UID 1500), just ensure volumes are group-writable
             fsGroup: 1500
             fsGroupChangePolicy: "OnRootMismatch"
         initContainers:
@@ -38,7 +39,7 @@ spec:
               - |
                 set -euo pipefail
 
-                # Create required directories on the PVC
+                # Ensure required directories exist on the PVC
                 mkdir -p \
                   /var/www/app/storage/framework/cache \
                   /var/www/app/storage/framework/sessions \
@@ -49,19 +50,14 @@ spec:
                 # Ensure log file exists
                 touch /var/www/app/storage/logs/laravel.log
 
-                # OWNERSHIP:
-                # The Invoice Ninja image runs as UID 1500 inside the container.
+                # OWNERSHIP: match Invoice Ninja container user (UID/GID 1500)
                 chown -R 1500:1500 \
                   /var/www/app/storage \
                   /var/www/app/public/logo
 
-                # PERMISSIONS:
-                # Directories: rwx for owner & group, rx for others (775)
+                # PERMISSIONS: dirs 775, files 664
                 find /var/www/app/storage -type d -exec chmod 775 {} \;
-
-                # Files: rw for owner & group, r for others (664)
                 find /var/www/app/storage -type f -exec chmod 664 {} \;
-
                 chmod 664 /var/www/app/storage/logs/laravel.log
         containers:
           app:
@@ -73,8 +69,21 @@ spec:
               APP_DEBUG: "false"
               APP_URL: https://invoiceninja.${SECRET_DOMAIN}
               APP_TIMEZONE: Europe/Amsterdam
+
+              # Must be a valid Laravel key; stored in the same secret as DB password
+              APP_KEY:
+                valueFrom:
+                  secretKeyRef:
+                    name: invoiceninja-secrets
+                    key: APP_KEY
+
+              # Docker-specific Invoice Ninja flags
+              IS_DOCKER: "true"
+              NINJA_ENVIRONMENT: selfhost
+
               BROADCAST_DRIVER: log
               CACHE_DRIVER: file
+
               DB_CONNECTION: mysql
               DB_DATABASE: ninja
               DB_HOST: invoiceninja-mariadb
@@ -85,6 +94,7 @@ spec:
                   secretKeyRef:
                     name: invoiceninja-secrets
                     key: DB_PASSWORD
+
               FILESYSTEM_DISK: public
               LOG_CHANNEL: errorlog
               PDF_GENERATOR: snappdf
@@ -121,6 +131,7 @@ spec:
                   periodSeconds: 10
                   failureThreshold: 3
             securityContext:
+              # Use the image's default UID (1500); do NOT override runAsUser here
               allowPrivilegeEscalation: false
           scheduler:
             image:
