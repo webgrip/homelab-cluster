@@ -1,0 +1,87 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: searxng
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: searxng
+  interval: 30m
+  values:
+    controllers:
+      searxng:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        strategy: RollingUpdate
+        pod:
+          terminationGracePeriodSeconds: 60
+          securityContext:
+            runAsNonRoot: true
+        containers:
+          app:
+            image:
+              repository: ghcr.io/searxng/searxng
+              tag: 2025.8.1
+            env:
+              SEARXNG_BASE_URL: https://searxng.${SECRET_DOMAIN}
+              SEARXNG_PUBLIC_INSTANCE: "false"
+              SEARXNG_IMAGE_PROXY: "false"
+              SEARXNG_SERVER__METHOD: "GET"
+            envFrom:
+              - secretRef:
+                  name: searxng-secrets
+            ports:
+              - name: http
+                containerPort: 8080
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /api/v1/health
+                    port: http
+                  initialDelaySeconds: 10
+                  periodSeconds: 20
+                  timeoutSeconds: 2
+                  failureThreshold: 3
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /api/v1/health
+                    port: http
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+                  timeoutSeconds: 2
+                  failureThreshold: 3
+            securityContext:
+              runAsUser: 1000
+              runAsGroup: 1000
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+            resources:
+              requests:
+                cpu: 40m
+                memory: 256Mi
+              limits:
+                cpu: 200m
+                memory: 512Mi
+    service:
+      app:
+        ports:
+          http:
+            port: 80
+            targetPort: http
+    persistence:
+      data:
+        existingClaim: searxng
+        advancedMounts:
+          searxng:
+            app:
+              - path: /var/cache/searxng
+                subPath: cache
+                readOnly: false

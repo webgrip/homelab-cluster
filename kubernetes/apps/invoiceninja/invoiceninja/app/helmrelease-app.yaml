@@ -22,9 +22,8 @@ spec:
         pod:
           terminationGracePeriodSeconds: 60
           securityContext:
-            fsGroup: 33
-            supplementalGroups:
-              - 33
+            fsGroup: 1500
+            fsGroupChangePolicy: "OnRootMismatch"
         initContainers:
           storage-bootstrap:
             image:
@@ -39,7 +38,7 @@ spec:
               - |
                 set -euo pipefail
 
-                # Ensure required directories exist
+                # Create required directories on the PVC
                 mkdir -p \
                   /var/www/app/storage/framework/cache \
                   /var/www/app/storage/framework/sessions \
@@ -47,17 +46,22 @@ spec:
                   /var/www/app/storage/logs \
                   /var/www/app/public/logo
 
-                # Basic log file
+                # Ensure log file exists
                 touch /var/www/app/storage/logs/laravel.log
 
-                # Ownership for storage/logo so non-root would work too
-                chown -R 33:33 \
+                # OWNERSHIP:
+                # The Invoice Ninja image runs as UID 1500 inside the container.
+                chown -R 1500:1500 \
                   /var/www/app/storage \
                   /var/www/app/public/logo
 
-                # Permissions: dirs 775, files 664
+                # PERMISSIONS:
+                # Directories: rwx for owner & group, rx for others (775)
                 find /var/www/app/storage -type d -exec chmod 775 {} \;
+
+                # Files: rw for owner & group, r for others (664)
                 find /var/www/app/storage -type f -exec chmod 664 {} \;
+
                 chmod 664 /var/www/app/storage/logs/laravel.log
         containers:
           app:
@@ -117,8 +121,7 @@ spec:
                   periodSeconds: 10
                   failureThreshold: 3
             securityContext:
-              runAsUser: 0
-              runAsGroup: 0
+              allowPrivilegeEscalation: false
           scheduler:
             image:
               repository: invoiceninja/invoiceninja
@@ -130,8 +133,7 @@ spec:
             env: *envCommon
             envFrom: *secretEnv
             securityContext:
-              runAsUser: 0
-              runAsGroup: 0
+              allowPrivilegeEscalation: false
             resources:
               requests:
                 cpu: 40m
@@ -176,6 +178,7 @@ spec:
               limits:
                 cpu: 300m
                 memory: 256Mi
+
     service:
       app:
         controller: invoiceninja
@@ -183,6 +186,7 @@ spec:
           http:
             port: 80
             targetPort: http
+
     persistence:
       data:
         existingClaim: invoiceninja
