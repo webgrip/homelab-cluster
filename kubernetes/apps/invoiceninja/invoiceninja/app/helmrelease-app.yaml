@@ -22,8 +22,6 @@ spec:
         pod:
           terminationGracePeriodSeconds: 60
           securityContext:
-            runAsUser: 0
-            runAsGroup: 0
             fsGroup: 33
             supplementalGroups:
               - 33
@@ -40,6 +38,7 @@ spec:
               - -c
               - |
                 set -euo pipefail
+                rm -rf /var/www/app/docker-backup-storage
                 mkdir -p \
                   /var/www/app/storage/framework/cache \
                   /var/www/app/storage/framework/sessions \
@@ -113,7 +112,7 @@ spec:
                   periodSeconds: 10
                   failureThreshold: 3
             securityContext:
-              runAsUser: 82
+              runAsUser: 33
               runAsGroup: 33
               allowPrivilegeEscalation: false
           scheduler:
@@ -127,7 +126,7 @@ spec:
             env: *envCommon
             envFrom: *secretEnv
             securityContext:
-              runAsUser: 82
+              runAsUser: 33
               runAsGroup: 33
               allowPrivilegeEscalation: false
             resources:
