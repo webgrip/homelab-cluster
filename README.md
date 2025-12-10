@@ -69,7 +69,7 @@ Flux watches the `kubernetes/apps` tree, reconciling each top-level `kustomizati
 | Networking & ingress | `network` | Envoy internal/external gateways, Cloudflare DNS + Tunnel, and `k8s-gateway` for split-horizon DNS.
 | PKI & security | `cert-manager`, `components/sops` | ACME HTTP-01 + DNS-01 issuers for wildcard certs; shared secrets rendered into namespaces through the SOPS component.
 | CI infrastructure | `arc-systems` | Actions Runner Controller plus a Docker-in-Docker runner scale set so GitHub repos can burst jobs onto the homelab.
-| Applications | `default`, `freshrss` | Echo sample service, FreshRSS HelmRelease with an external Postgres bootstrap Job, and room for future workloads.
+| Applications | `default`, `freshrss`, `invoiceninja` | Echo sample service, FreshRSS HelmRelease with Bitnami bootstrap job, and Invoice Ninja 5.12.39 paired with an app-template-managed MariaDB 11.8.5 StatefulSet on Longhorn storage.
 
 TechDocs tracks all of these via Backstage catalog entries under `catalog/`, so you can pivot from docs to manifests without leaving the repo.
 

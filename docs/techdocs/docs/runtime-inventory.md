@@ -8,6 +8,7 @@ _Last updated: 2025-12-08 @ 15:51 UTC using `kubectl get pods -A -o wide` and `k
 - Networking namespace hosts Envoy internal/external pairs, Cloudflare DNS/tunnel, and the `k8s-gateway` split-DNS responder that matches the README diagram.
 - `arc-systems` entries (ARC + gha-runner-scale-set) scale dynamically, so capture their pods when documenting CI bursts.
 - Application namespaces (`default`, `freshrss`, others) should be listed below as you add workloads; FreshRSS relies on Bitnami's bootstrap job to reach external Postgres.
+- `invoiceninja` adds the Invoice Ninja 5.12.39 deployment (with scheduler sidecar) plus an app-template MariaDB 11.8.5 StatefulSet on Longhorn—include these pods/services the next time you refresh the tables below.
 
 ## Pods by Namespace
 

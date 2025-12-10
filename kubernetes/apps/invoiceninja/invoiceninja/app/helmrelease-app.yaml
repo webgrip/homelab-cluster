@@ -1,0 +1,108 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: invoiceninja
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: invoiceninja
+  dependsOn:
+    - name: invoiceninja-mariadb
+      namespace: invoiceninja
+  interval: 30m
+  values:
+    controllers:
+      invoiceninja:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        replicas: 1
+        strategy: RollingUpdate
+        pod:
+          terminationGracePeriodSeconds: 60
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+            fsGroupChangePolicy: OnRootMismatch
+        containers:
+          app:
+            image:
+              repository: invoiceninja/invoiceninja
+              tag: 5.12.39
+            env: &envCommon
+              APP_ENV: production
+              APP_DEBUG: "false"
+              APP_URL: https://invoiceninja.${SECRET_DOMAIN}
+              BROADCAST_DRIVER: log
+              CACHE_DRIVER: file
+              DB_CONNECTION: mysql
+              DB_DATABASE: ninja
+              DB_HOST: invoiceninja-mariadb
+              DB_PORT: "3306"
+              DB_USERNAME: ninja
+              DB_PASSWORD:
+                valueFrom:
+                  secretKeyRef:
+                    name: invoiceninja-secrets
+                    key: DB_PASSWORD
+              FILESYSTEM_DISK: public
+              LOG_CHANNEL: stack
+              PDF_GENERATOR: snappdf
+              PHANTOMJS_PDF_GENERATION: "false"
+              QUEUE_CONNECTION: database
+              REQUIRE_HTTPS: "true"
+              SESSION_DRIVER: file
+              TRUSTED_PROXIES: "*"
+            envFrom: &secretEnv
+              - secretRef:
+                  name: invoiceninja-secrets
+            resources:
+              requests:
+                cpu: 75m
+                memory: 512Mi
+              limits:
+                memory: 2Gi
+            probes:
+              liveness:
+                enabled: true
+              readiness:
+                enabled: true
+          scheduler:
+            image:
+              repository: invoiceninja/invoiceninja
+              tag: 5.12.39
+            command:
+              - /bin/sh
+              - -c
+              - php artisan schedule:work
+            env: *envCommon
+            envFrom: *secretEnv
+            resources:
+              requests:
+                cpu: 40m
+                memory: 256Mi
+              limits:
+                memory: 1Gi
+    service:
+      app:
+        controller: invoiceninja
+        ports:
+          http:
+            port: 9000
+    persistence:
+      data:
+        existingClaim: invoiceninja
+        advancedMounts:
+          invoiceninja:
+            app:
+              - path: /var/www/app/storage
+                subPath: storage
+              - path: /var/www/app/public/logo
+                subPath: logo
+            scheduler:
+              - path: /var/www/app/storage
+                subPath: storage
+              - path: /var/www/app/public/logo
+                subPath: logo

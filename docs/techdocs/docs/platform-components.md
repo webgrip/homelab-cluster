@@ -17,7 +17,7 @@ This page stays synchronized with the README so Backstage catalog entries descri
 | Networking & ingress | `kubernetes/apps/network` | Envoy internal/external Gateway API stacks, `k8s-gateway`, Cloudflare DNS + Tunnel. |
 | PKI & security | `kubernetes/apps/cert-manager`, `kubernetes/components/sops` | ACME HTTP-01/DNS-01 issuers, wildcard certs, encrypted secret distribution. |
 | CI infrastructure | `kubernetes/apps/arc-systems` | actions-runner-controller with gha-runner-scale-set for GitHub burst compute. |
-| Applications | `kubernetes/apps/default`, `kubernetes/apps/freshrss` | Echo sample service and FreshRSS HelmRelease wired to an external Postgres via Bitnami bootstrap job.
+| Applications | `kubernetes/apps/default`, `kubernetes/apps/freshrss`, `kubernetes/apps/invoiceninja` | Echo sample service, FreshRSS HelmRelease wired to Bitnami bootstrap job, and Invoice Ninja 5.12.39 backed by an app-template MariaDB 11.8.5 StatefulSet on Longhorn.
 
 Use this table when linking Backstage components (catalog entries live under `catalog/components/*.yaml`).
 
