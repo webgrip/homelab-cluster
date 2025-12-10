@@ -1,0 +1,52 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: invoiceninja-nginx
+  namespace: invoiceninja
+data:
+  default.conf: |
+    map $http_x_forwarded_proto $fastcgi_https { default off; https on; }
+
+    server {
+      listen 8080;
+      server_name _;
+      root /var/www/app/public;
+      index index.php index.html;
+
+      location = /health { return 200 'ok'; add_header Content-Type text/plain; }
+
+      location ~* \.(?:css|js|mjs|map|png|jpg|jpeg|gif|ico|svg|json|webmanifest|woff|woff2|ttf|eot)$ {
+        try_files $uri =404;
+        access_log off;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+      }
+
+      location ^~ /storage/ {
+        alias /var/www/app/storage/app/public/;
+        try_files $uri =404;
+      }
+
+      location / {
+        try_files $uri $uri/ /index.php?$query_string;
+      }
+
+      location = /index.php {
+        include fastcgi_params;
+        fastcgi_pass 127.0.0.1:9000;
+        fastcgi_param SCRIPT_FILENAME           $document_root$fastcgi_script_name;
+        fastcgi_param HTTP_HOST                 $host;
+        fastcgi_param SERVER_NAME               $host;
+        fastcgi_param SERVER_PORT               $server_port;
+        fastcgi_param HTTPS                     $fastcgi_https;
+        fastcgi_param HTTP_X_FORWARDED_PROTO    $http_x_forwarded_proto;
+        fastcgi_param HTTP_X_FORWARDED_HOST     $http_x_forwarded_host;
+        fastcgi_param HTTP_X_FORWARDED_FOR      $proxy_add_x_forwarded_for;
+        fastcgi_read_timeout 600;
+        fastcgi_send_timeout 600;
+        fastcgi_connect_timeout 60;
+      }
+
+      location ~ \.php$ { return 403; }
+    }
