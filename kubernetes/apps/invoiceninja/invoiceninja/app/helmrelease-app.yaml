@@ -38,7 +38,8 @@ spec:
               - -c
               - |
                 set -euo pipefail
-                rm -rf /var/www/app/docker-backup-storage
+
+                # Make sure directories exist
                 mkdir -p \
                   /var/www/app/storage/framework/cache \
                   /var/www/app/storage/framework/sessions \
@@ -46,11 +47,17 @@ spec:
                   /var/www/app/storage/logs \
                   /var/www/app/public/logo \
                   /var/www/app/docker-backup-storage
+
+                # Basic log file
                 touch /var/www/app/storage/logs/laravel.log
+
+                # Ensure everything is owned by the app user/group
                 chown -R 33:33 \
                   /var/www/app/storage \
                   /var/www/app/public/logo \
                   /var/www/app/docker-backup-storage
+
+                # Permissions: dirs 775, files 664
                 find /var/www/app/storage -type d -exec chmod 775 {} \;
                 find /var/www/app/storage -type f -exec chmod 664 {} \;
                 chmod 664 /var/www/app/storage/logs/laravel.log
@@ -188,6 +195,10 @@ spec:
             subPath: storage
           - path: /var/www/app/public/logo
             subPath: logo
+      docker-backup-storage:
+        type: emptyDir
+        globalMounts:
+          - path: /var/www/app/docker-backup-storage
       nginx-conf:
         type: configMap
         name: invoiceninja-nginx
