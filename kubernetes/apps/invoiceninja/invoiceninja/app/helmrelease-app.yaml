@@ -26,6 +26,27 @@ spec:
             runAsGroup: 1000
             fsGroup: 1000
             fsGroupChangePolicy: OnRootMismatch
+        initContainers:
+          storage-bootstrap:
+            image:
+              repository: busybox
+              tag: 1.36.1
+            command:
+              - /bin/sh
+              - -c
+              - |
+                set -euo pipefail
+                mkdir -p \
+                  /var/www/app/storage/framework/cache \
+                  /var/www/app/storage/framework/sessions \
+                  /var/www/app/storage/framework/views \
+                  /var/www/app/storage/logs \
+                  /var/www/app/public/logo \
+                  /var/www/app/docker-backup-storage
+                chown -R 1000:1000 \
+                  /var/www/app/storage \
+                  /var/www/app/public/logo \
+                  /var/www/app/docker-backup-storage
         containers:
           app:
             image:
@@ -96,23 +117,12 @@ spec:
     persistence:
       data:
         existingClaim: invoiceninja
-        advancedMounts:
-          invoiceninja:
-            app:
-              - path: /var/www/app/storage
-                subPath: storage
-              - path: /var/www/app/public/logo
-                subPath: logo
-            scheduler:
-              - path: /var/www/app/storage
-                subPath: storage
-              - path: /var/www/app/public/logo
-                subPath: logo
+        globalMounts:
+          - path: /var/www/app/storage
+            subPath: storage
+          - path: /var/www/app/public/logo
+            subPath: logo
       backup:
         type: emptyDir
-        advancedMounts:
-          invoiceninja:
-            app:
-              - path: /var/www/app/docker-backup-storage
-            scheduler:
-              - path: /var/www/app/docker-backup-storage
+        globalMounts:
+          - path: /var/www/app/docker-backup-storage
