@@ -39,7 +39,7 @@ spec:
               - |
                 set -euo pipefail
 
-                # Make sure directories exist
+                # Ensure required directories exist
                 mkdir -p \
                   /var/www/app/storage/framework/cache \
                   /var/www/app/storage/framework/sessions \
@@ -51,7 +51,7 @@ spec:
                 # Basic log file
                 touch /var/www/app/storage/logs/laravel.log
 
-                # Ensure everything is owned by the app user/group
+                # Ensure everything is owned by the app group/user we use for storage
                 chown -R 33:33 \
                   /var/www/app/storage \
                   /var/www/app/public/logo \
@@ -119,9 +119,9 @@ spec:
                   periodSeconds: 10
                   failureThreshold: 3
             securityContext:
-              runAsUser: 33
-              runAsGroup: 33
-              allowPrivilegeEscalation: false
+              runAsUser: 0
+              runAsGroup: 0
+              # allowPrivilegeEscalation defaults to true for root, can be omitted
           scheduler:
             image:
               repository: invoiceninja/invoiceninja
@@ -133,9 +133,8 @@ spec:
             env: *envCommon
             envFrom: *secretEnv
             securityContext:
-              runAsUser: 33
-              runAsGroup: 33
-              allowPrivilegeEscalation: false
+              runAsUser: 0
+              runAsGroup: 0
             resources:
               requests:
                 cpu: 40m
