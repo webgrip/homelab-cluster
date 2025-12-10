@@ -14,8 +14,18 @@ data:
       root /var/www/app/public;
       index index.php index.html;
 
-      location = /health { return 200 'ok'; add_header Content-Type text/plain; }
+      # Healthcheck
+      location = /health {
+        return 200 'ok';
+        add_header Content-Type text/plain;
+      }
 
+      # NEW: explicit rule for "/" so we never hit directory index logic
+      location = / {
+        return 302 /index.php;
+      }
+
+      # Static assets
       location ~* \.(?:css|js|mjs|map|png|jpg|jpeg|gif|ico|svg|json|webmanifest|woff|woff2|ttf|eot)$ {
         try_files $uri =404;
         access_log off;
@@ -23,19 +33,23 @@ data:
         add_header Cache-Control "public, immutable";
       }
 
+      # Public storage
       location ^~ /storage/ {
         alias /var/www/app/storage/app/public/;
         try_files $uri =404;
       }
 
+      # All other routes go through Laravel front controller
       location / {
-        try_files $uri $uri/ /index.php?$query_string;
+        try_files $uri /index.php?$query_string;
       }
 
+      # Allow access to index.php (front controller)
       location = /index.php {
         include fastcgi_params;
         fastcgi_pass 127.0.0.1:9000;
-        fastcgi_param SCRIPT_FILENAME           $document_root$fastcgi_script_name;
+
+        fastcgi_param SCRIPT_FILENAME           /var/www/app/public/index.php;
         fastcgi_param HTTP_HOST                 $host;
         fastcgi_param SERVER_NAME               $host;
         fastcgi_param SERVER_PORT               $server_port;
@@ -43,10 +57,14 @@ data:
         fastcgi_param HTTP_X_FORWARDED_PROTO    $http_x_forwarded_proto;
         fastcgi_param HTTP_X_FORWARDED_HOST     $http_x_forwarded_host;
         fastcgi_param HTTP_X_FORWARDED_FOR      $proxy_add_x_forwarded_for;
+
         fastcgi_read_timeout 600;
         fastcgi_send_timeout 600;
         fastcgi_connect_timeout 60;
       }
 
-      location ~ \.php$ { return 403; }
+      # Block any other .php directly
+      location ~ \.php$ {
+        return 403;
+      }
     }
