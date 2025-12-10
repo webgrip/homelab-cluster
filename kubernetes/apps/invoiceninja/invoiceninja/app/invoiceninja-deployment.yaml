@@ -1,0 +1,150 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: invoiceninja
+  namespace: invoiceninja
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: invoiceninja
+  template:
+    metadata:
+      labels:
+        app: invoiceninja
+    spec:
+      volumes:
+        - name: app-data
+          emptyDir: {}
+        - name: nginx-conf
+          configMap:
+            name: invoiceninja-nginx
+            items:
+              - key: default.conf
+                path: default.conf
+      initContainers:
+        - name: copy-app
+          image: invoiceninja/invoiceninja:5.12.39
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - >
+              set -eu;
+              cp -a /var/www/app/. /mnt/app;
+              chown -R 1500:1500 /mnt/app;
+          volumeMounts:
+            - name: app-data
+              mountPath: /mnt/app
+      containers:
+        - name: app
+          image: invoiceninja/invoiceninja:5.12.39
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: invoiceninja-secrets
+          env:
+            - name: APP_ENV
+              value: production
+            - name: APP_DEBUG
+              value: "false"
+            - name: APP_URL
+              value: https://invoiceninja.webgrip.dev
+            - name: APP_TIMEZONE
+              value: Europe/Amsterdam
+            - name: REQUIRE_HTTPS
+              value: "false"
+            - name: TRUSTED_PROXIES
+              value: "**"
+            - name: DB_CONNECTION
+              value: mysql
+            - name: DB_HOST
+              value: invoiceninja-mariadb
+            - name: DB_PORT
+              value: "3306"
+            - name: DB_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: invoiceninja-secrets
+                  key: MARIADB_DATABASE
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: invoiceninja-secrets
+                  key: MARIADB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: invoiceninja-secrets
+                  key: DB_PASSWORD
+            - name: FILESYSTEM_DISK
+              value: public
+            - name: LOG_CHANNEL
+              value: stderr
+            - name: SESSION_DRIVER
+              value: file
+            - name: CACHE_DRIVER
+              value: file
+            - name: QUEUE_CONNECTION
+              value: database
+            - name: PDF_GENERATOR
+              value: snappdf
+            - name: PHANTOMJS_PDF_GENERATION
+              value: "false"
+            - name: IN_USER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: invoiceninja-secrets
+                  key: IN_USER_EMAIL
+            - name: IN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: invoiceninja-secrets
+                  key: IN_USER_PASSWORD
+          ports:
+            - name: fpm
+              containerPort: 9000
+          volumeMounts:
+            - name: app-data
+              mountPath: /var/www/app
+          resources:
+            requests:
+              cpu: 75m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+
+        - name: web
+          image: nginxinc/nginx-unprivileged:1.29.1-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: app-data
+              mountPath: /var/www/app
+              readOnly: true
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi

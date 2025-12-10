@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: invoiceninja-mariadb
+  namespace: invoiceninja
+spec:
+  selector:
+    app: invoiceninja-mariadb
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: invoiceninja-mariadb
+  namespace: invoiceninja
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: invoiceninja-mariadb
+  template:
+    metadata:
+      labels:
+        app: invoiceninja-mariadb
+    spec:
+      containers:
+        - name: mariadb
+          image: mariadb:11.4
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MARIADB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: invoiceninja-secrets
+                  key: MARIADB_ROOT_PASSWORD
+            - name: MARIADB_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: invoiceninja-secrets
+                  key: MARIADB_DATABASE
+            - name: MARIADB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: invoiceninja-secrets
+                  key: MARIADB_USER
+            - name: MARIADB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: invoiceninja-secrets
+                  key: MARIADB_PASSWORD
+          ports:
+            - name: mysql
+              containerPort: 3306
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi
+      volumes:
+        - name: data
+          emptyDir: {}
