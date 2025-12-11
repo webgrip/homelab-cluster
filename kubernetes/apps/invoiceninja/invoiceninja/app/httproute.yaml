@@ -72,3 +72,19 @@ spec:
               type: ReplaceFullPath
               replaceFullPath: /client
             statusCode: 302
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set:
+              - name: X-Forwarded-Port
+                value: "443"
+              - name: X-Forwarded-Proto
+                value: https
+      backendRefs:
+        - name: invoiceninja
+          namespace: invoiceninja
+          port: 80
