@@ -56,7 +56,11 @@ spec:
             - >
               set -eu;
               cp -a /var/www/app/. /mnt/app;
+              if [ ! -f /mnt/app/.env ]; then
+                cp /mnt/app/.env.example /mnt/app/.env;
+              fi;
               chown -R 33:33 /mnt/app;
+              chmod 660 /mnt/app/.env;
           volumeMounts:
             - name: app-data
               mountPath: /mnt/app
