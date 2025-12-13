@@ -39,8 +39,16 @@ spec:
             - sh
             - -c
             - |
-              mkdir -p /storage/storage/app/public /storage/logo;
-              chown -R 33:33 /storage;
+              mkdir -p \
+                /storage/storage/app/public \
+                /storage/logo \
+                /storage/docker-backup-storage/app/public \
+                /storage/docker-backup-storage/framework/cache \
+                /storage/docker-backup-storage/framework/sessions \
+                /storage/docker-backup-storage/framework/testing \
+                /storage/docker-backup-storage/framework/views \
+                /storage/docker-backup-storage/logs;
+              chown -R 1500:1500 /storage;
           volumeMounts:
             - name: storage
               mountPath: /storage
@@ -59,7 +67,7 @@ spec:
               if [ ! -f /mnt/app/.env ]; then
                 cp /mnt/app/.env.example /mnt/app/.env;
               fi;
-              chown -R 33:33 /mnt/app;
+              chown -R 1500:1500 /mnt/app;
               chmod 660 /mnt/app/.env;
           volumeMounts:
             - name: app-data
@@ -110,6 +118,9 @@ spec:
             - name: storage
               mountPath: /var/www/app/storage
               subPath: storage
+            - name: storage
+              mountPath: /var/www/app/docker-backup-storage
+              subPath: docker-backup-storage
             - name: storage
               mountPath: /var/www/app/public/logo
               subPath: logo
@@ -168,6 +179,9 @@ spec:
             - name: storage
               mountPath: /var/www/app/storage
               subPath: storage
+            - name: storage
+              mountPath: /var/www/app/docker-backup-storage
+              subPath: docker-backup-storage
           resources:
             requests:
               cpu: 40m
