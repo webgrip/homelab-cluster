@@ -48,6 +48,11 @@ spec:
                   httpGet:
                     path: /api/v1/health
                     port: http
+                    httpHeaders:
+                      - name: X-Forwarded-For
+                        value: 127.0.0.1
+                      - name: X-Real-IP
+                        value: 127.0.0.1
                   initialDelaySeconds: 10
                   periodSeconds: 20
                   timeoutSeconds: 2
@@ -59,6 +64,11 @@ spec:
                   httpGet:
                     path: /api/v1/health
                     port: http
+                    httpHeaders:
+                      - name: X-Forwarded-For
+                        value: 127.0.0.1
+                      - name: X-Real-IP
+                        value: 127.0.0.1
                   initialDelaySeconds: 5
                   periodSeconds: 10
                   timeoutSeconds: 2
@@ -81,7 +91,66 @@ spec:
           http:
             port: 80
             targetPort: http
+    configMaps:
+      searxng-config:
+        data:
+          settings.yml: |-
+            use_default_settings: true
+
+            server:
+              base_url: https://searxng.${SECRET_DOMAIN}
+              limiter: false
+              public_instance: false
+              trusted_proxies:
+                - 10.0.0.0/8
+                - 172.16.0.0/12
+                - 192.168.0.0/16
+                - fd00::/8
+                - 127.0.0.0/8
+                - ::1/128
+
+            general:
+              debug: true
+
+            search:
+              formats:
+                - html
+                - json
+
+            ui:
+              static_use_hash: true
+
+            engines:
+              - name: ahmia
+                disabled: true
+              - name: torch
+                disabled: true
+          limiter.toml: |-
+            trusted_proxies = [
+              '10.0.0.0/8',
+              '172.16.0.0/12',
+              '192.168.0.0/16',
+              'fd00::/8',
+              '127.0.0.0/8',
+              '::1/128'
+            ]
+
+            ipv4_prefix = 32
+            ipv6_prefix = 48
+
+            [botdetection.ip_limit]
+            filter_link_local = false
     persistence:
+      config:
+        type: configMap
+        identifier: searxng-config
+        advancedMounts:
+          searxng:
+            app:
+              - path: /etc/searxng/settings.yml
+                subPath: settings.yml
+              - path: /etc/searxng/limiter.toml
+                subPath: limiter.toml
       data:
         existingClaim: searxng
         advancedMounts:
