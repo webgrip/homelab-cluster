@@ -31,10 +31,11 @@ spec:
             env:
               SEARXNG_BASE_URL: https://searxng.${SECRET_DOMAIN}
               SEARXNG_PUBLIC_INSTANCE: "false"
-              SEARXNG_IMAGE_PROXY: "false"
+              SEARXNG_IMAGE_PROXY: "true"
               SEARXNG_SERVER__METHOD: "GET"
               SEARXNG_SERVER__LIMITER: "false"
-              SEARXNG_SEARCH_FORMATS: html,json
+              SEARXNG_SEARCH_FORMATS: html,json,rss
+              SEARXNG_VALKEY__URL: redis://searxng-valkey.searxng.svc.cluster.local:6379/0
             envFrom:
               - secretRef:
                   name: searxng-secrets
@@ -81,11 +82,11 @@ spec:
               readOnlyRootFilesystem: false
             resources:
               requests:
-                cpu: 40m
-                memory: 256Mi
-              limits:
-                cpu: 200m
+                cpu: 100m
                 memory: 512Mi
+              limits:
+                cpu: 500m
+                memory: 768Mi
     service:
       app:
         ports:
@@ -100,8 +101,11 @@ spec:
 
             server:
               base_url: https://searxng.${SECRET_DOMAIN}
+              method: GET
+              image_proxy: true
               limiter: false
               public_instance: false
+              result_proxy: true
               trusted_proxies:
                 - 10.0.0.0/8
                 - 172.16.0.0/12
@@ -109,22 +113,107 @@ spec:
                 - fd00::/8
                 - 127.0.0.0/8
                 - ::1/128
+              default_http_headers:
+                X-Content-Type-Options: nosniff
+                X-Frame-Options: DENY
+                X-Robots-Tag: noindex, nofollow
+                Referrer-Policy: no-referrer
+                Permissions-Policy: interest-cohort=()
 
             general:
-              debug: true
+              debug: false
+              instance_name: Homelab SearXNG
+              privacypolicy_url: about:blank
+
+            outgoing:
+              request_timeout: 4.0
+              max_request_timeout: 9.0
+              pool_connections: 200
+              pool_maxsize: 50
+              keepalive_expiry: 15.0
+              enable_http2: true
+              retries: 3
+              extra_proxy_timeout: 3.0
+              useragent_suffix: ""
+              source_ips:
+                - 0.0.0.0
+                - ::
+              max_redirects: 8
+              using_tor_proxy: false
+
+            valkey:
+              url: redis://searxng-valkey.searxng.svc.cluster.local:6379/0
+              connection_timeout: 0.5
+              health_check_interval: 10
 
             search:
+              safe_search: 1
+              autocomplete: ""
+              default_lang: ""
+              languages:
+                - all
+                - en
+              max_page: 5
+              ban_time_on_fail: 30
+              max_ban_time_on_fail: 900
+              suspended_times:
+                SearxEngineAccessDenied: 3600
+                SearxEngineCaptcha: 7200
+                SearxEngineTooManyRequests: 900
+                cf_SearxEngineCaptcha: 172800
+                cf_SearxEngineAccessDenied: 7200
+                recaptcha_SearxEngineCaptcha: 604800
               formats:
                 - html
                 - json
+                - rss
 
             ui:
               static_use_hash: true
+              default_theme: simple
+
+            plugins:
+              searx.plugins.calculator.SXNGPlugin:
+                active: true
+              searx.plugins.hash_plugin.SXNGPlugin:
+                active: true
+              searx.plugins.unit_converter.SXNGPlugin:
+                active: true
+              searx.plugins.tracker_url_remover.SXNGPlugin:
+                active: true
+              searx.plugins.ahmia_filter.SXNGPlugin:
+                active: true
+              searx.plugins.hostnames.SXNGPlugin:
+                active: true
+              searx.plugins.tor_check.SXNGPlugin:
+                active: true
+              searx.plugins.self_info.SXNGPlugin:
+                active: true
 
             engines:
+              - name: duckduckgo
+                disabled: false
+                timeout: 4.0
+              - name: qwant
+                disabled: false
+                timeout: 4.0
               - name: ahmia
                 disabled: true
               - name: torch
+                disabled: true
+              - name: google
+                disabled: false
+              - name: google images
+                disabled: false
+              - name: google news
+                disabled: true
+              - name: bing
+                disabled: true
+              - name: yahoo
+                disabled: true
+              - name: startpage
+                disabled: true
+              - name: yandex
                 disabled: true
           limiter.toml: |-
             [botdetection]
