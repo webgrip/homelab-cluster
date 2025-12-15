@@ -32,6 +32,12 @@ spec:
         - name: storage
           persistentVolumeClaim:
             claimName: invoiceninja-storage
+        - name: supervisor-conf
+          configMap:
+            name: invoiceninja-supervisor
+            items:
+              - key: supervisord.conf
+                path: supervisord.conf
       initContainers:
         - name: prepare-storage
           image: busybox:1.36.1
@@ -113,6 +119,10 @@ spec:
             - name: storage
               mountPath: /var/www/app/public/logo
               subPath: logo
+            - name: supervisor-conf
+              mountPath: /etc/supervisord.conf
+              subPath: supervisord.conf
+              readOnly: true
           resources:
             requests:
               cpu: 75m
