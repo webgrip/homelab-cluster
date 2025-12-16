@@ -55,4 +55,5 @@ Physical wiring (Protectli → TP-Link TL-SG108PE → Q-Link → Zyxel) is docum
 
 - `kubernetes/apps/arc-systems/actions-runner-controller/` is the control plane for GitHub Actions scale sets. It uses the shared SOPS secret for the GitHub App.
 - `kubernetes/apps/arc-systems/gha-runner-scale-set/` provisions Docker-in-Docker runners that register against the App URL stored in `cluster-secrets.sops.yaml`.
+- `talos/patches/global/machine-kernel.yaml` keeps the `binfmt_misc` kernel module loaded on every Talos node so QEMU binfmt handlers can be registered inside runner jobs for multi-arch Docker builds.
 - Renovate + GitHub Actions automation resides under `.github/workflows/` and is referenced from `catalog/components/flux-gitops.yaml` so Backstage shows build status next to the manifests.
