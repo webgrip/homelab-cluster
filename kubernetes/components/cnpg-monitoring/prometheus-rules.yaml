@@ -1,0 +1,56 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cnpg-backup-rules
+  namespace: cnpg-system
+  labels:
+    prometheus: k8s
+    role: alert-rules
+spec:
+  groups:
+    - name: cnpg-backup.rules
+      rules:
+        - alert: CNPGOperatorDown
+          expr: absent(up{job="cloudnative-pg-operator"} == 1)
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "CloudNativePG operator is down or unresponsive"
+            description: "No healthy CloudNativePG operator instance detected for at least 10m. Check pods in namespace cnpg-system."
+
+        - alert: CNPGBackupFailed
+          expr: rate(postgresql_backup_errors_total[5m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "CNPG backups are failing"
+            description: "One or more CNPG backup operations have recorded errors in the last 5 minutes. Investigate cluster backups and S3 connectivity."
+
+        - alert: CNPGNoRecentBackup
+          expr: time() - max_over_time(postgresql_last_backup_timestamp_seconds[30d]) > 86400
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "No recent CNPG backups"
+            description: "No successful CNPG backup observed for the cluster in the last 24h. Verify ScheduledBackup and operator connectivity to the object store."
+
+        - alert: CNPGWALArchivingFailed
+          expr: rate(postgresql_wal_archive_errors_total[10m]) > 0
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Postgres WAL archiving errors detected"
+            description: "WAL archive errors have been seen in the last 10 minutes. This may prevent PITR. Check object store access and CNPG operator logs."
+
+        - alert: CNPGRestoreFailed
+          expr: rate(postgresql_restore_errors_total[1h]) > 0
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "CNPG restore failures"
+            description: "One or more restore attempts failed in the last hour. Review operator and restore logs."

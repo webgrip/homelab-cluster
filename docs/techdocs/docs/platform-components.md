@@ -44,6 +44,12 @@ Physical wiring (Protectli → TP-Link TL-SG108PE → Q-Link → Zyxel) is docum
 - `kubernetes/apps/kube-system/coredns/` keeps in-cluster DNS consistent with split-horizon rules.
 - `kubernetes/apps/kube-system/metrics-server/`, `reloader/`, and `spegel/` power autoscaling metrics, deployment reloads, and an OCI image cache respectively.
 - `kubernetes/apps/cert-manager/` issues TLS for both Envoy gateways and any workload referencing cluster issuers.
+- `kubernetes/apps/cnpg-system/` installs the CloudNativePG operator for in-cluster PostgreSQL clusters.
+
+CloudNativePG details:
+
+- Operator is installed cluster-wide in `cnpg-system` via a HelmRelease that exposes Prometheus metrics with a PodMonitor and publishes a Grafana dashboard ConfigMap labelled `grafana_dashboard=1` so your existing Grafana sidecar/operator can auto-import it.
+- Backup credentials for S3-compatible object storage live in a reusable component at `kubernetes/components/cnpg-backup/`; include this component in any namespace that hosts CNPG `Cluster` resources to inject a `cnpg-backup-s3` Secret and then reference it from `spec.backup.barmanObjectStore.s3Credentials`.
 
 ## Security + Secrets
 
