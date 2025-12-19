@@ -6,7 +6,7 @@ metadata:
   name: backstage
 spec:
   interval: 1h
-  path: ./kubernetes/apps/backstage/backstage/app/overlays/with-backup
+  path: ./kubernetes/apps/backstage/backstage/app
   postBuild:
     substituteFrom:
       - kind: Secret
@@ -18,8 +18,8 @@ spec:
     namespace: flux-system
   targetNamespace: backstage
   wait: false
-  dependsOn:
-    - name: cloudnative-pg
-      kind: Kustomization
-      group: kustomize.toolkit.fluxcd.io
-      namespace: cnpg-system
+  # Note: the backup overlay (`overlays/with-backup`) is intentionally not
+  # applied here to avoid creating CloudNativePG `ScheduledBackup` CRs before
+  # the operator CRDs are installed. When CNPG is installed and healthy,
+  # apply the overlay manually or create a separate Kustomization that
+  # depends on the `cloudnative-pg` Kustomization in `cnpg-system`.
