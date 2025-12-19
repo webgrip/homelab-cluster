@@ -28,9 +28,25 @@ spec:
                 name: backstage-config
             - secretRef:
                 name: backstage-secrets
+            - secretRef:
+                name: backstage-db-secret
           env:
             - name: NODE_ENV
               value: production
+            - name: POSTGRES_HOST
+              value: "backstage-db.backstage.svc.cluster.local"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: backstage-db-secret
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: backstage-db-secret
+                  key: password
           readinessProbe:
             httpGet:
               path: /healthcheck
