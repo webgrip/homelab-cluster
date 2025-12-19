@@ -1,0 +1,39 @@
+apiVersion: kustomize.config.k8s.io/v1
+kind: Kustomization
+resources:
+  - ../../base
+  - scheduled-backup.yaml
+
+patches:
+  - target:
+      kind: Cluster
+      name: backstage-db
+    patch: |-
+      apiVersion: postgresql.cnpg.io/v1
+      kind: Cluster
+      metadata:
+        name: backstage-db
+        namespace: backstage
+      spec:
+        backup:
+          barmanObjectStore:
+            destinationPath: "s3://cnpg-backups/backstage/backstage-db"
+            s3Credentials:
+              accessKeyId:
+                name: cnpg-backup-s3
+                key: S3_ACCESS_KEY_ID
+              secretAccessKey:
+                name: cnpg-backup-s3
+                key: S3_SECRET_ACCESS_KEY
+              region:
+                name: cnpg-backup-s3
+                key: S3_REGION
+              endpointURL:
+                name: cnpg-backup-s3
+                key: S3_ENDPOINT
+            s3Compatible:
+              forcePathStyle: true
+          wal:
+            compression: gzip
+          data:
+            compression: gzip
