@@ -26,8 +26,10 @@ Wait for Flux to reconcile and create pods in both namespaces:
 
 Port-forward the unseal Vault service:
 
-- `kubectl -n vault-unseal port-forward svc/vault-unseal 8201:8200`
-- `export VAULT_ADDR=http://127.0.0.1:8201`
+- `kubectl -n vault-unseal port-forward svc/vault-unseal 8200:8200`
+- `export VAULT_ADDR=http://127.0.0.1:8200`
+
+If `8200` is already in use on your workstation, use a different local port (example: `8201:8200`) and set `VAULT_ADDR` accordingly.
 
 Initialize Vault (save the output somewhere safe):
 
@@ -36,6 +38,25 @@ Initialize Vault (save the output somewhere safe):
 Unseal (repeat until it reports unsealed):
 
 - `vault operator unseal`
+
+Sanity check (example output):
+
+```sh
+vault status
+```
+
+```
+Key             Value
+---             -----
+Seal Type       shamir
+Initialized     true
+Sealed          false
+Total Shares    5
+Threshold       3
+Version         1.20.4
+Storage Type    file
+HA Enabled      false
+```
 
 ### 3) Enable Transit + create a key
 
@@ -55,20 +76,47 @@ Create the seal key (idempotent):
 
 Write a policy that can only encrypt/decrypt using that key:
 
-- `vault policy write vault-unseal - <<'HCL'
-path "transit/encrypt/vault-unseal" { capabilities = ["update"] }
-path "transit/decrypt/vault-unseal" { capabilities = ["update"] }
-HCL`
+```sh
+printf '%s\n' \
+	'path "transit/encrypt/vault-unseal" { capabilities = ["update"] }' \
+	'path "transit/decrypt/vault-unseal" { capabilities = ["update"] }' \
+	| vault policy write vault-unseal -
+```
+
+Expected output:
+
+```
+Success! Uploaded policy: vault-unseal
+```
 
 ### 5) Create a token for the main Vault
 
 Create a token with that policy.
 
-Recommended for homelab: a periodic token so you can renew it (instead of a fixed TTL). Example:
+Recommended for homelab: an **orphan periodic** token so you can renew it (instead of a fixed TTL) and so it doesn't depend on a parent token.
 
-- `vault token create -policy=vault-unseal -period=24h`
+Example (human-readable table output; look for the `token` row):
 
-Copy the `token` value.
+- `vault token create -orphan -policy=vault-unseal -period=24h`
+
+Expected output (example):
+
+```
+Key                  Value
+---                  -----
+token                hvs.<REDACTED>
+token_accessor       <REDACTED>
+token_duration       24h
+token_renewable      true
+token_policies       ["default" "vault-unseal"]
+```
+
+If you want a copy/paste-friendly command that prints *only* the token:
+
+```sh
+vault token create -orphan -policy=vault-unseal -period=24h -format=json \
+  | sed -n 's/.*"client_token":"\([^"]*\)".*/\1/p'
+```
 
 ### 6) Store the token in Git (SOPS)
 
