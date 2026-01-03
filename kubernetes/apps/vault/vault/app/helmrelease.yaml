@@ -18,6 +18,21 @@ spec:
     ui:
       enabled: true
     server:
+      extraEnvironmentVars:
+        VAULT_SEAL_TYPE: transit
+      extraSecretEnvironmentVars:
+        - envName: VAULT_ADDR
+          secretName: vault-transit-seal
+          secretKey: VAULT_SEAL_TRANSIT_ADDR
+        - envName: VAULT_TOKEN
+          secretName: vault-transit-seal
+          secretKey: VAULT_SEAL_TRANSIT_TOKEN
+        - envName: VAULT_TRANSIT_SEAL_MOUNT_PATH
+          secretName: vault-transit-seal
+          secretKey: VAULT_SEAL_TRANSIT_MOUNT_PATH
+        - envName: VAULT_TRANSIT_SEAL_KEY_NAME
+          secretName: vault-transit-seal
+          secretKey: VAULT_SEAL_TRANSIT_KEY_NAME
       standalone:
         enabled: true
         config: |-
@@ -31,13 +46,6 @@ spec:
 
           storage "file" {
             path = "/vault/data"
-          }
-
-          seal "transit" {
-            address    = "${VAULT_SEAL_TRANSIT_ADDR}"
-            token      = "${VAULT_SEAL_TRANSIT_TOKEN}"
-            mount_path = "${VAULT_SEAL_TRANSIT_MOUNT_PATH}"
-            key_name   = "${VAULT_SEAL_TRANSIT_KEY_NAME}"
           }
       dataStorage:
         enabled: true
