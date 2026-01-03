@@ -18,21 +18,6 @@ spec:
     ui:
       enabled: true
     server:
-      extraEnvironmentVars:
-        VAULT_SEAL_TYPE: transit
-      extraSecretEnvironmentVars:
-        - envName: VAULT_ADDR
-          secretName: vault-transit-seal
-          secretKey: VAULT_SEAL_TRANSIT_ADDR
-        - envName: VAULT_TOKEN
-          secretName: vault-transit-seal
-          secretKey: VAULT_SEAL_TRANSIT_TOKEN
-        - envName: VAULT_TRANSIT_SEAL_MOUNT_PATH
-          secretName: vault-transit-seal
-          secretKey: VAULT_SEAL_TRANSIT_MOUNT_PATH
-        - envName: VAULT_TRANSIT_SEAL_KEY_NAME
-          secretName: vault-transit-seal
-          secretKey: VAULT_SEAL_TRANSIT_KEY_NAME
       standalone:
         enabled: true
         config: |-
@@ -47,9 +32,23 @@ spec:
           storage "file" {
             path = "/vault/data"
           }
+
+          seal "transit" {
+            address    = "http://vault-unseal.vault-unseal.svc:8200"
+            mount_path = "transit/"
+            key_name   = "vault-unseal"
+
+            # Read token from an environment variable at runtime.
+            token = "env://VAULT_SEAL_TRANSIT_TOKEN"
+          }
       dataStorage:
         enabled: true
         size: 10Gi
         storageClass: longhorn
       auditStorage:
         enabled: false
+
+      extraSecretEnvironmentVars:
+        - envName: VAULT_SEAL_TRANSIT_TOKEN
+          secretName: vault-transit-seal
+          secretKey: VAULT_SEAL_TRANSIT_TOKEN
