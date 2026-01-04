@@ -5,9 +5,20 @@ kind: Kustomization
 metadata:
   name: backstage
 spec:
+  dependsOn:
+    - name: cloudnative-pg
+      namespace: cnpg-system
+    - name: external-secrets
+      namespace: external-secrets
+    - name: external-secrets-stores
+      namespace: external-secrets
   interval: 1h
   path: ./kubernetes/apps/backstage/backstage/app
   postBuild:
+    substitute:
+      VAULT_ORG: webgrip
+      VAULT_ENV: prod
+      VAULT_CLUSTER: soyo
     substituteFrom:
       - kind: Secret
         name: cluster-secrets
