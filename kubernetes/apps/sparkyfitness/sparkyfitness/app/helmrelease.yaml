@@ -16,7 +16,7 @@ spec:
           app:
             image:
               repository: docker.io/codewithcj/sparkyfitness
-              digest: sha256:7a03c914bd5e1b1e7d91d9fcc15da50795ed4ebda1bf55384046c0b5f18ea648
+              tag: v0.16.3.2
             ports:
               - name: http
                 containerPort: 80
@@ -34,14 +34,16 @@ spec:
         containers:
           app:
             image:
-              repository: docker.io/codewithcj/sparkyfitness_server
-              digest: sha256:955039e8357bb24cd170d8fbbc280f1ff0121a190cb91f7b23061b072e1dce06
+              repository: codewithcj/sparkyfitness_server
+              tag: v0.16.3.2
             ports:
               - name: http
                 containerPort: 3010
             envFrom:
               - secretRef:
                   name: sparkyfitness-secrets
+              - secretRef:
+                  name: sparkyfitness-db-secret
             env:
               TZ: ${TIMEZONE}
               NODE_ENV: production
@@ -49,27 +51,14 @@ spec:
               SPARKY_FITNESS_DB_HOST: sparkyfitness-db-rw.sparkyfitness.svc.cluster.local
               SPARKY_FITNESS_DB_PORT: "5432"
               SPARKY_FITNESS_DB_NAME: sparkyfitness_db
-              SPARKY_FITNESS_DB_USER:
-                valueFrom:
-                  secretKeyRef:
-                    name: sparkyfitness-db-secret
-                    key: username
-              SPARKY_FITNESS_DB_PASSWORD:
-                valueFrom:
-                  secretKeyRef:
-                    name: sparkyfitness-db-secret
-                    key: password
+              # DB credentials are loaded from `sparkyfitness-db-secret` via envFrom above
             resources:
               requests:
                 cpu: 100m
                 memory: 512Mi
               limits:
                 memory: 2Gi
-            volumeMounts:
-              - name: backup
-                mountPath: /app/SparkyFitnessServer/backup
-              - name: uploads
-                mountPath: /app/SparkyFitnessServer/uploads
+            # volume mounts are provided by the chart via `persistence` settings
     persistence:
       backup:
         type: emptyDir
