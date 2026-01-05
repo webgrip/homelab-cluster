@@ -45,13 +45,30 @@ spec:
               - secretRef:
                   name: sparkyfitness-db-secret
             env:
-              TZ: ${TIMEZONE}
-              NODE_ENV: production
-              SPARKY_FITNESS_LOG_LEVEL: ERROR
-              SPARKY_FITNESS_DB_HOST: sparkyfitness-db-rw.sparkyfitness.svc.cluster.local
-              SPARKY_FITNESS_DB_PORT: "5432"
-              SPARKY_FITNESS_DB_NAME: sparkyfitness_db
-              # DB credentials are loaded from `sparkyfitness-db-secret` via envFrom above
+              - name: TZ
+                value: ${TIMEZONE}
+              - name: NODE_ENV
+                value: production
+              - name: SPARKY_FITNESS_LOG_LEVEL
+                value: ERROR
+              - name: SPARKY_FITNESS_DB_HOST
+                value: sparkyfitness-db-rw.sparkyfitness.svc.cluster.local
+              - name: SPARKY_FITNESS_DB_PORT
+                value: "5432"
+              - name: SPARKY_FITNESS_DB_NAME
+                value: sparkyfitness_db
+              - name: SPARKY_FITNESS_DB_USER
+                valueFrom:
+                  secretKeyRef:
+                    name: sparkyfitness-db-secret
+                    key: username
+              - name: SPARKY_FITNESS_DB_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: sparkyfitness-db-secret
+                    key: password
+              - name: SPARKY_FITNESS_FRONTEND_URL
+                value: "http://{{ .Release.Name }}.${SECRET_DOMAIN}"
             resources:
               requests:
                 cpu: 100m
