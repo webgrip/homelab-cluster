@@ -220,22 +220,6 @@ When you later introduce real application databases, you can copy this pattern i
 
 ---
 
-## External Secrets / central secret management
-
-For production workflows we recommend keeping the S3 credentials out of application namespace manifests and instead provisioning them from a central secret store (Vault, AWS Secrets Manager, etc.) and syncing them into the namespaces that need them.
-
-Common options:
-- **ExternalSecrets (external-secrets.io)** — pulls secrets from Vault/SecretsManager and creates namespaced Kubernetes Secrets.
-- **External Secrets Operator** — similar functionality with CRD-based mappings.
-- **Secret Sync controllers** — replicate a secret from a central namespace into target namespaces.
-
-Usage pattern:
-1. Store the RGW/MinIO credentials centrally (Vault or your cloud secrets manager).
-2. Create an ExternalSecret in each app namespace that maps the central secret to the local `cnpg-backup-s3` Secret name/fields.
-3. Use RBAC on the external secret controller so only permitted namespaces can access the backup credentials.
-
-This provides centralized rotation and auditability while keeping each application able to reference a namespaced `cnpg-backup-s3` Secret as CNPG expects.
-
 ## Automated DR verification (optional)
 
 For teams that want ongoing validation of backups and restores, there is an optional `cnpg-dr` component in the repo that deploys a CronJob to run a lightweight DR check on a schedule.
