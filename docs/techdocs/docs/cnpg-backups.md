@@ -26,18 +26,22 @@ This page documents how PostgreSQL is provided as a **platform service** via Clo
   - Prometheus `PodMonitor` for CNPG metrics.
   - A Grafana dashboard is published as a `ConfigMap` labeled `grafana_dashboard=1` so existing Grafana sidecars/operators can auto‑import it.
 
-At this stage **no application is wired to CNPG**; it is a platform‑level capability ready to host PostgreSQL clusters when you choose to add them.
+CNPG is used for application-scoped PostgreSQL clusters (for example, FreshRSS). Backups are currently disabled until an S3-compatible backend is available.
 
 ---
 
 ## Backup Credentials Component (`cnpg-backup-s3`)
 
+This repository includes an example component you can use when you're ready to enable backups:
+
+- `kubernetes/components/cnpg-backup-example/`
+
 Backups are configured via CNPG's `backup.barmanObjectStore` and a reusable Secret component.
 
 **Location**
 
-- `kubernetes/components/cnpg-backup/kustomization.yaml`
-- `kubernetes/components/cnpg-backup/backup-credentials.sops.yaml`
+- `kubernetes/components/cnpg-backup-example/kustomization.yaml`
+- `kubernetes/components/cnpg-backup-example/backup-credentials.sops.yaml`
 
 **Secret schema**
 
@@ -70,7 +74,7 @@ These keys are **not** AWS‑branded; they are plain S3‑style names that will 
 
    ```bash
    cd /home/ryan/projects/webgrip/homelab-cluster
-   sops -e -i kubernetes/components/cnpg-backup/backup-credentials.sops.yaml
+  sops -e -i kubernetes/components/cnpg-backup-example/backup-credentials.sops.yaml
    ```
 
 **How to include in a namespace**
@@ -84,7 +88,7 @@ kind: Kustomization
 namespace: my-app-namespace
 components:
   - ../../components/sops
-  - ../../components/cnpg-backup   # adds cnpg-backup-s3 Secret to this namespace
+  - ../../components/cnpg-backup-example   # adds cnpg-backup-s3 Secret to this namespace
 resources:
   - namespace.yaml
   - my-app/ks.yaml
