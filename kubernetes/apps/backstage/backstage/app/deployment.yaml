@@ -16,6 +16,7 @@ spec:
       annotations:
         reloader.stakater.com/auto: "true"
     spec:
+      serviceAccountName: backstage-kubernetes
       containers:
         - name: backstage
           image: webgrip/backstage-application:1.0.4
@@ -33,6 +34,11 @@ spec:
           env:
             - name: NODE_ENV
               value: production
+            - name: K8S_SERVICE_ACCOUNT_TOKEN_BACKSTAGE
+              valueFrom:
+                secretKeyRef:
+                  name: backstage-kubernetes-token
+                  key: token
             - name: POSTGRES_HOST
               value: "backstage-db-rw.backstage.svc.cluster.local"
             - name: POSTGRES_PORT
