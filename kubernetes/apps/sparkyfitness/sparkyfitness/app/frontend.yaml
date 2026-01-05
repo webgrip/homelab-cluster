@@ -1,0 +1,51 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sparkyfitness
+  namespace: sparkyfitness
+  labels:
+    app: sparkyfitness
+spec:
+  selector:
+    app: sparkyfitness
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sparkyfitness
+  namespace: sparkyfitness
+  labels:
+    app: sparkyfitness
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sparkyfitness
+  template:
+    metadata:
+      labels:
+        app: sparkyfitness
+    spec:
+      containers:
+        - name: frontend
+          image: docker.io/codewithcj/sparkyfitness:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+          env:
+            - name: SPARKY_FITNESS_SERVER_HOST
+              value: sparkyfitness-server
+            - name: SPARKY_FITNESS_SERVER_PORT
+              value: "3010"
+          resources:
+            requests:
+              cpu: 25m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
