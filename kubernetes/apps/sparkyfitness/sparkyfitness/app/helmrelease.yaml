@@ -67,9 +67,19 @@ spec:
             # volume mounts are provided by the chart via `persistence` settings
     persistence:
       backup:
-        type: emptyDir
+        existingClaim: sparkyfitness-backup
+        advancedMounts:
+          server:
+            app:
+              - path: /backup
+                readOnly: false
       uploads:
-        type: emptyDir
+        existingClaim: sparkyfitness-uploads
+        advancedMounts:
+          server:
+            app:
+              - path: /uploads
+                readOnly: false
     service:
       frontend:
         controller: frontend
@@ -89,13 +99,6 @@ spec:
             namespace: network
             sectionName: https
         rules:
-          - matches:
-              - path:
-                  type: PathPrefix
-                  value: /api
-            backendRefs:
-              - identifier: server
-                port: 3010
           - backendRefs:
               - identifier: frontend
                 port: 80
