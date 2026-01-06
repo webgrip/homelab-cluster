@@ -12,6 +12,8 @@ spec:
   values:
     controllers:
       frontend:
+        annotations:
+          reloader.stakater.com/auto: "true"
         containers:
           app:
             image:
@@ -20,10 +22,9 @@ spec:
             ports:
               - name: http
                 containerPort: 80
-            env:
-              TZ: ${TIMEZONE}
-              SPARKY_FITNESS_SERVER_HOST: "{{ .Release.Name }}-server"
-              SPARKY_FITNESS_SERVER_PORT: "3010"
+            envFrom:
+              - configMapRef:
+                  name: sparkyfitness-frontend-config
             resources:
               requests:
                 cpu: 25m
@@ -31,6 +32,8 @@ spec:
               limits:
                 memory: 512Mi
       server:
+        annotations:
+          reloader.stakater.com/auto: "true"
         containers:
           app:
             image:
@@ -41,7 +44,7 @@ spec:
                 containerPort: 3010
             envFrom:
               - configMapRef:
-                  name: sparkyfitness-config
+                name: sparkyfitness-server-config
               - secretRef:
                   name: sparkyfitness-secrets
               - secretRef:
