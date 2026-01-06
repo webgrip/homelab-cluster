@@ -19,7 +19,7 @@ Commit refreshed TechDocs whenever the physical wiring, workloads, or Talos fact
 | Networking & ingress | `network` | Envoy internal/external gateways, Cloudflare DNS + Tunnel, `k8s-gateway` split DNS. |
 | PKI & security | `cert-manager`, `components/sops` | ACME HTTP-01 + DNS-01 issuers, SOPS secrets rendered into namespaces. |
 | CI infrastructure | `arc-systems` | Actions Runner Controller with gha-runner-scale-set for GitHub burst capacity. |
-| Applications | `default`, `freshrss`, `invoiceninja` | Echo sample service, FreshRSS HelmRelease with Bitnami bootstrap job, and Invoice Ninja 5.12.39 riding on an app-template-managed MariaDB 11.8.5 StatefulSet backed by Longhorn PVCs. |
+| Applications | `default`, `freshrss`, `invoiceninja` | Echo sample service, FreshRSS backed by a namespace-local CNPG PostgreSQL cluster, and Invoice Ninja 5.12.39 riding on an app-template-managed MariaDB 11.8.5 StatefulSet backed by Longhorn PVCs. |
 
 TechDocs sources live under `docs/techdocs/` and are referenced in `catalog/catalog-info.yaml` so every catalog entity links back here.
 

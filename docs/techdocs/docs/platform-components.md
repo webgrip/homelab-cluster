@@ -17,7 +17,7 @@ This page stays synchronized with the README so Backstage catalog entries descri
 | Networking & ingress | `kubernetes/apps/network` | Envoy internal/external Gateway API stacks, `k8s-gateway`, Cloudflare DNS + Tunnel. |
 | PKI & security | `kubernetes/apps/cert-manager`, `kubernetes/components/sops` | ACME HTTP-01/DNS-01 issuers, wildcard certs, encrypted secret distribution. |
 | CI infrastructure | `kubernetes/apps/arc-systems` | actions-runner-controller with gha-runner-scale-set for GitHub burst compute. |
-| Applications | `kubernetes/apps/default`, `kubernetes/apps/freshrss`, `kubernetes/apps/invoiceninja` | Echo sample service, FreshRSS HelmRelease wired to Bitnami bootstrap job, and Invoice Ninja 5.12.39 backed by an app-template MariaDB 11.8.5 StatefulSet on Longhorn.
+| Applications | `kubernetes/apps/default`, `kubernetes/apps/freshrss`, `kubernetes/apps/invoiceninja` | Echo sample service, FreshRSS backed by a namespace-local CNPG PostgreSQL cluster, and Invoice Ninja 5.12.39 backed by an app-template MariaDB 11.8.5 StatefulSet on Longhorn.
 
 Use this table when linking Backstage components (catalog entries live under `catalog/components/*.yaml`).
 
@@ -49,13 +49,13 @@ Physical wiring (Protectli → TP-Link TL-SG108PE → Q-Link → Zyxel) is docum
 CloudNativePG details:
 
 - Operator is installed cluster-wide in `cnpg-system` via a HelmRelease that exposes Prometheus metrics with a PodMonitor and publishes a Grafana dashboard ConfigMap labelled `grafana_dashboard=1` so your existing Grafana sidecar/operator can auto-import it.
-- Backup credentials for S3-compatible object storage live in a reusable component at `kubernetes/components/cnpg-backup/`; include this component in any namespace that hosts CNPG `Cluster` resources to inject a `cnpg-backup-s3` Secret and then reference it from `spec.backup.barmanObjectStore.s3Credentials`.
+- When you're ready to enable CNPG backups, use the example component at `kubernetes/components/cnpg-backup-example/` as a starting point.
 
 ## Security + Secrets
 
 - Age keys live under `bootstrap/` and are distributed via Taskfile targets.
 - `kubernetes/components/sops/` renders secret values into namespaces. Renovate ignores these paths via `makejinja.toml` filters to avoid leaking diffs.
-- FreshRSS pulls database credentials from the same component; Bitnami's bootstrap Job is purposefully constrained with read-only file systems and non-root UIDs, matching the security stance called out in the README.
+- FreshRSS pulls database credentials from SOPS secrets in-namespace and connects to the CNPG `*-db-rw` service.
 
 ## CI Runners & Automation
 
