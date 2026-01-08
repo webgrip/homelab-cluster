@@ -91,7 +91,7 @@ Everything is 1 GbE from the Protectli firewall through the TP-Link fan-out and 
 	- Port 1 → Philips Hue bridge
 	- Port 2 → Raspberry Pi Home Assistant
 
-Static infrastructure keeps IPs below `.50`, reserved in OPNsense Terraform so DHCP drift cannot move critical nodes.
+Static infrastructure keeps IPs below `.50`, reserved in OPNsense so DHCP drift cannot move critical nodes.
 
 ### Home DNS
 

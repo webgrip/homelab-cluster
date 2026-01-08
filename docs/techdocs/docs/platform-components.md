@@ -1,10 +1,10 @@
 # Platform Components
 
-This page stays synchronized with the README so Backstage catalog entries describe the same GitOps flow, networking gateways, and hardware wiring depicted there.
+This page documents the platform building blocks that applications rely on: GitOps, networking, DNS, storage, databases, secrets, and CI.
 
 ## GitOps + Talos Integration
 
-- `kubernetes/apps/flux-system/` installs Flux controllers (`flux-instance`, `flux-operator`) and the Weave GitOps UI. Reconciliation tracks `main` by default.
+- `kubernetes/apps/flux-system/` installs Flux controllers (`flux-instance`, `flux-operator`) and the Weave GitOps UI.
 - Talos machine configs under `talos/clusterconfig/` plus patches in `talos/patches/` match the hardware + wiring section. Apply changes with `talosctl apply-config` after committing updates.
 - Bootstrap artifacts live in `bootstrap/` (Helmfile, SOPS age keys, GitHub deploy keys). `scripts/bootstrap-apps.sh` + `Taskfile.yaml` automate the same steps described in the README overview.
 - Secrets flow through Age-encrypted SOPS files (`kubernetes/components/sops/cluster-secrets.sops.yaml` etc.). Flux decrypts them inside the cluster so no plaintext lands in Git.
@@ -32,9 +32,10 @@ Use this table when linking Backstage components (catalog entries live under `ca
 
 Supporting controllers:
 
-- `kubernetes/apps/network/k8s-gateway/` answers split DNS the same way the README mermaid diagram shows (OPNsense → k8s-gateway → Envoy).
-- `kubernetes/apps/network/cloudflare-dns/` and `cloudflare-tunnel/` reconcile Cloudflare records, tunnels, and Zero Trust access.
-- `kubernetes/apps/network/envoy-gateway/` defines the Gateway API classes (`envoy-internal`, `envoy-external`) and listener resources consumed by workloads.
+- `kubernetes/apps/network/k8s-gateway/` answers split DNS for `${SECRET_DOMAIN}` inside the LAN and watches `HTTPRoute` + `Service` resources.
+- `kubernetes/apps/network/envoy-gateway/` installs Envoy Gateway and defines the `envoy-internal` and `envoy-external` `Gateway` resources.
+- `kubernetes/apps/network/cloudflare-tunnel/` runs `cloudflared` and forwards `*.${SECRET_DOMAIN}` traffic from Cloudflare to the in-cluster `envoy-external` service.
+- `kubernetes/apps/network/cloudflare-dns/` runs ExternalDNS against Cloudflare and can publish records from Gateway API `HTTPRoute` (and `DNSEndpoint` CRs).
 
 Physical wiring (Protectli → TP-Link TL-SG108PE → Q-Link → Zyxel) is documented in `docs/techdocs/docs/talos-cluster.md` and should be mirrored whenever networking manifests change.
 
@@ -46,16 +47,33 @@ Physical wiring (Protectli → TP-Link TL-SG108PE → Q-Link → Zyxel) is docum
 - `kubernetes/apps/cert-manager/` issues TLS for both Envoy gateways and any workload referencing cluster issuers.
 - `kubernetes/apps/cnpg-system/` installs the CloudNativePG operator for in-cluster PostgreSQL clusters.
 
+## Storage
+
+- `kubernetes/apps/longhorn-system/` installs Longhorn and defines StorageClasses under `kubernetes/apps/longhorn-system/longhorn/storageclass/`.
+- Application PVCs typically use `longhorn-general`.
+- CNPG clusters in this repo use the `longhorn` storageClass (see `*/app/database/cluster.yaml`).
+
 CloudNativePG details:
 
 - Operator is installed cluster-wide in `cnpg-system` via a HelmRelease that exposes Prometheus metrics with a PodMonitor and publishes a Grafana dashboard ConfigMap labelled `grafana_dashboard=1` so your existing Grafana sidecar/operator can auto-import it.
-- When you're ready to enable CNPG backups, use the example component at `kubernetes/components/cnpg-backup-example/` as a starting point.
+- When you're ready to enable CNPG backups, include the component at `kubernetes/components/cnpg-backup/` in the namespace Kustomization.
 
 ## Security + Secrets
 
 - Age keys live under `bootstrap/` and are distributed via Taskfile targets.
-- `kubernetes/components/sops/` renders secret values into namespaces. Renovate ignores these paths via `makejinja.toml` filters to avoid leaking diffs.
+- `kubernetes/components/sops/` renders secret values into namespaces. Renovate is configured to ignore `**/*.sops.*` via `.renovaterc.json5`.
 - FreshRSS pulls database credentials from SOPS secrets in-namespace and connects to the CNPG `*-db-rw` service.
+
+## Platform options (what you can choose)
+
+When adding apps, you generally choose between:
+
+- Deployment style: HelmRelease (recommended) vs raw YAML + Kustomize.
+- Ingress exposure: `envoy-internal` (LAN-only) vs `envoy-external` (public via Cloudflare).
+- Data services: CNPG Postgres vs app-managed DB (e.g. MariaDB in `invoiceninja`).
+- Persistence: Longhorn StorageClasses (`longhorn-general` for typical RWO; `longhorn-rwx` only when needed).
+
+See [docs/techdocs/docs/adding-applications.md](adding-applications.md) for the step-by-step.
 
 ## CI Runners & Automation
 
