@@ -57,6 +57,9 @@ CloudNativePG details:
 
 - Operator is installed cluster-wide in `cnpg-system` via a HelmRelease that exposes Prometheus metrics with a PodMonitor and publishes a Grafana dashboard ConfigMap labelled `grafana_dashboard=1` so your existing Grafana sidecar/operator can auto-import it.
 - When you're ready to enable CNPG backups, include the component at `kubernetes/components/cnpg-backup/` in the namespace Kustomization.
+- This repo also supports:
+	- Automated restore drills (`kubernetes/components/cnpg-restore-test/`) to prove backups can actually be restored.
+	- An always-on warm standby (`kubernetes/components/cnpg-disaster-recovery/`) for faster recovery with continuous WAL replay.
 
 ## Security + Secrets
 

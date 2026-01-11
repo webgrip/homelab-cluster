@@ -5,6 +5,8 @@ This page documents how PostgreSQL is provided as a platform service via CloudNa
 - CNPG operator is installed cluster-wide in the `cnpg-system` namespace via Helm + Flux.
 - Application databases are created as namespace-scoped CNPG `Cluster` resources (one cluster per app).
 - Backup credentials (if/when enabled) are provided via a reusable Secret named `cnpg-backup-s3` (S3-compatible, not provider-specific).
+- Backups are validated continuously via an in-cluster restore drill (`cnpg-restore-test`).
+- For a warm-standby option, each app namespace can also run an always-on disaster recovery cluster (`cnpg-disaster-recovery`).
 
 ---
 
@@ -164,3 +166,151 @@ When you introduce or update application databases, copy this pattern into their
 ## Restore & PITR
 
 See [docs/techdocs/docs/cnpg-restore-playbook.md](cnpg-restore-playbook.md) for a practical restore/PITR playbook.
+
+---
+
+## Restore drills (`cnpg-restore-test`)
+
+This repo includes a reusable restore drill component:
+
+- `kubernetes/components/cnpg-restore-test/`
+
+It creates a `CronJob` named `cnpg-restore-test` inside the application namespace.
+
+### What it does
+
+- Polls for a newly *completed* CNPG Backup object for the source cluster.
+- When a new completed backup appears, it creates a temporary restore cluster (for example `backstage-db-restore`) using `bootstrap.recovery` + `externalClusters.barmanObjectStore`.
+- Waits for it to become Ready, then runs a validation query.
+- Optionally verifies an expected database and role exist.
+- Deletes the temporary restore cluster.
+- Records the last tested backup name in a namespace ConfigMap `cnpg-restore-test-state` so it runs once per new backup.
+
+### How it is configured per app
+
+Each app database kustomization includes the component and patches it (example layout):
+
+- `kubernetes/apps/<app>/<app>/app/database/backup/restore-test/cronjob-patch.yaml`
+
+The patch sets:
+
+- `SOURCE_CLUSTER` (the production CNPG Cluster name)
+- `RESTORE_CLUSTER` (the temporary restore cluster name)
+- `DESTINATION_PREFIX` (usually `homelab-cluster`)
+- `EXPECTED_DATABASE` (optional)
+- `EXPECTED_ROLE` (optional)
+
+### Operational notes
+
+- This is intentionally backup-driven (not “run at 02:45 and hope the backup finished”). The CronJob can run frequently and will no-op unless it sees a new completed backup.
+- To force a rerun for the most recent backup, delete the state ConfigMap in that namespace:
+
+```bash
+kubectl -n <ns> delete configmap cnpg-restore-test-state
+```
+
+---
+
+## Always-on disaster recovery (`cnpg-disaster-recovery`)
+
+This repo includes a reusable always-on DR component:
+
+- `kubernetes/components/cnpg-disaster-recovery/`
+
+It creates a CNPG `Cluster` named `cnpg-disaster-recovery` in the app namespace.
+
+### What it does
+
+- Bootstraps from the object-store backup + WAL path for the source cluster.
+- Stays in recovery mode and continuously replays WAL (warm standby).
+- Exposes metrics using CNPG’s built-in exporter plus custom queries.
+
+### How it is configured per app
+
+Each app patches the externalClusters destinationPath so the DR cluster follows the correct production cluster backup path:
+
+- `kubernetes/apps/<app>/<app>/app/database/backup/disaster-recovery/cluster-patch.yaml`
+
+Optionally, each app also patches the DR “synthetic check” CronJob schedule and lag threshold:
+
+- `kubernetes/apps/<app>/<app>/app/database/backup/disaster-recovery/check-patch.yaml`
+
+### Operational notes
+
+- Because this repo uses one namespace per app, `cnpg-disaster-recovery` can be the same name in every namespace without collisions.
+- DR does not replace restore drills: DR proves “we can stay close to current,” restore drills prove “we can rebuild from backups.”
+
+---
+
+## Alerting
+
+The CNPG monitoring rules in this repo include three groups:
+
+- `cnpg-backup.rules`: operator down, backup/WAL archiving errors, no recent backup.
+- `cnpg-disaster-recovery.rules`: DR metrics missing, promoted DR (not in recovery), WAL receiver down, replay lag high.
+- `cnpg-restore-test.rules`: restore drill failed recently, restore drill stale (no recent successful run).
+
+The restore-drill alerts depend on kube-state-metrics exporting CronJob/Job series (for example `kube_cronjob_status_last_successful_time` and `kube_job_status_failed`). If your kube-state-metrics version uses different series or labels, adjust the expressions accordingly.
+
+---
+
+## Day-2 checks (operator routine)
+
+Use this checklist after upgrades, storage/network changes, or periodically to confirm backups + recovery are actually working.
+
+### 1) Backups are being produced
+
+In the app namespace:
+
+```bash
+kubectl -n <ns> get scheduledbackup
+kubectl -n <ns> get backups.postgresql.cnpg.io -l cnpg.io/cluster=<cluster> --sort-by=.metadata.creationTimestamp
+```
+
+What “good” looks like:
+
+- Backups exist and recent ones show `status.phase=completed`.
+
+### 2) Restore drill is succeeding (and not stale)
+
+```bash
+kubectl -n <ns> get cronjob cnpg-restore-test
+kubectl -n <ns> get jobs --sort-by=.metadata.creationTimestamp | tail -n 20
+kubectl -n <ns> get configmap cnpg-restore-test-state -o yaml
+```
+
+If you need to see the last run:
+
+```bash
+kubectl -n <ns> logs -l job-name=<job-name> -c restore-test --tail=200
+```
+
+What “good” looks like:
+
+- CronJob has a recent `LAST SCHEDULE`.
+- Recent Jobs complete successfully.
+- `cnpg-restore-test-state` contains the most recent tested backup name.
+
+### 3) Disaster recovery cluster is healthy (warm standby)
+
+```bash
+kubectl -n <ns> get cluster cnpg-disaster-recovery
+kubectl -n <ns> get pods -l cnpg.io/cluster=cnpg-disaster-recovery
+```
+
+What “good” looks like:
+
+- Cluster reports Ready.
+- Pods are Running/Ready.
+- DR metrics are present in Prometheus (see `cnpg-disaster-recovery.rules`).
+
+### 4) Alerts are quiet for the right reason
+
+In Prometheus/Alertmanager, validate these are not firing:
+
+- `CNPGNoRecentBackup`
+- `CNPGWALArchivingFailed`
+- `CNPGRestoreTestFailed`
+- `CNPGRestoreTestStale`
+- `CNPGDisasterRecoveryNotInRecovery`
+- `CNPGDisasterRecoveryReplayLagHigh`

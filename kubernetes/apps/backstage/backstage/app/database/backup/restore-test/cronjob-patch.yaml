@@ -1,0 +1,25 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cnpg-restore-test
+spec:
+  # Poll for a newly completed backup and run once per new backup.
+  schedule: "*/10 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: restore-test
+              env:
+                - name: SOURCE_CLUSTER
+                  value: backstage-db
+                - name: RESTORE_CLUSTER
+                  value: backstage-db-restore
+                - name: EXPECTED_DATABASE
+                  value: backstage
+                - name: EXPECTED_ROLE
+                  value: backstage
+                - name: DESTINATION_PREFIX
+                  value: homelab-cluster

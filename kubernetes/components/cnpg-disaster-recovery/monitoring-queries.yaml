@@ -1,0 +1,32 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cnpg-disaster-recovery-monitoring
+  labels:
+    cnpg.io/reload: ""
+data:
+  custom-queries: |
+    cnpg_disaster_recovery:
+      query: |
+        SELECT
+          CASE WHEN pg_is_in_recovery() THEN 1 ELSE 0 END AS in_recovery,
+          CASE WHEN NOT pg_is_in_recovery()
+            THEN 0
+            ELSE GREATEST(0, COALESCE(EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp())), 0))
+          END::double precision AS replay_lag_seconds,
+          EXISTS (TABLE pg_stat_wal_receiver) AS wal_receiver_up,
+          (SELECT count(*) FROM pg_stat_replication) AS streaming_replicas;
+      metrics:
+        - in_recovery:
+            usage: "GAUGE"
+            description: "1 if the disaster recovery cluster is in recovery (standby), else 0"
+        - replay_lag_seconds:
+            usage: "GAUGE"
+            description: "Replication lag behind the primary in seconds (0 when not in recovery)"
+        - wal_receiver_up:
+            usage: "GAUGE"
+            description: "1 if wal_receiver is running on this instance"
+        - streaming_replicas:
+            usage: "GAUGE"
+            description: "Number of streaming replicas connected to this instance"

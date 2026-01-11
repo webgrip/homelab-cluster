@@ -54,3 +54,69 @@ spec:
           annotations:
             summary: "CNPG restore failures"
             description: "One or more restore attempts failed in the last hour. Review operator and restore logs."
+
+    - name: cnpg-disaster-recovery.rules
+      rules:
+        - alert: CNPGDisasterRecoveryMetricsMissing
+          expr: absent(cnpg_disaster_recovery_in_recovery)
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "CNPG disaster recovery metrics missing"
+            description: "Prometheus is not scraping cnpg-disaster-recovery custom metrics. Verify PodMonitor is enabled for the DR cluster and Prometheus is discovering the postgres pods."
+
+        - alert: CNPGDisasterRecoveryNotInRecovery
+          expr: max(cnpg_disaster_recovery_in_recovery) < 1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "CNPG disaster recovery cluster not in recovery"
+            description: "The disaster recovery cluster reports pg_is_in_recovery=false. This usually means it was promoted or is running as a primary. Investigate immediately."
+
+        - alert: CNPGDisasterRecoveryWalReceiverDown
+          expr: max(cnpg_disaster_recovery_wal_receiver_up) < 1
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "CNPG disaster recovery WAL receiver is down"
+            description: "The DR cluster's wal_receiver is not running. This usually indicates it is no longer following the source or cannot fetch WAL."
+
+        - alert: CNPGDisasterRecoveryReplayLagHigh
+          expr: max(cnpg_disaster_recovery_replay_lag_seconds) > 900
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "CNPG disaster recovery replay lag is high"
+            description: "The DR cluster is falling behind (replay lag > 900s). Check S3/WAL archiving, object store connectivity, and DR pod health."
+
+    - name: cnpg-restore-test.rules
+      rules:
+        - alert: CNPGRestoreTestFailed
+          expr: |
+            max by (namespace) (
+              kube_job_status_failed{job_name=~"cnpg-restore-test-.*"} == 1
+              and on (namespace, job_name)
+              (time() - kube_job_created{job_name=~"cnpg-restore-test-.*"} < 86400)
+            ) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "CNPG restore test failed ({{$labels.namespace}})"
+            description: "A cnpg-restore-test Job failed in the last 24h in namespace {{$labels.namespace}}. Inspect the Job logs for the restore-test container."
+
+        - alert: CNPGRestoreTestStale
+          expr: |
+            (kube_cronjob_status_last_successful_time{cronjob="cnpg-restore-test"} == 0)
+            or
+            (time() - kube_cronjob_status_last_successful_time{cronjob="cnpg-restore-test"} > 93600)
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "CNPG restore test has not succeeded recently ({{$labels.namespace}})"
+            description: "The cnpg-restore-test CronJob has no successful runs, or last success is older than 26h, in namespace {{$labels.namespace}}."
