@@ -23,29 +23,18 @@ spec:
     storageClass: longhorn
 
   monitoring:
-    enablePodMonitor: true
     customQueriesConfigMap:
       - name: cnpg-disaster-recovery-monitoring
         key: custom-queries
 
   externalClusters:
     - name: cnpg-disaster-recovery-source
-      barmanObjectStore:
-        # Patch this per app/cluster:
-        # s3://<bucket>/<prefix>/<source-cluster>/
-        destinationPath: s3://cnpg-backups-bucket/homelab-cluster/example-db/
-        # Must match the CNPG source cluster name (Backup.status.serverName)
-        serverName: example-db
-        endpointURL: http://10.0.0.110:3900
-        s3Credentials:
-          accessKeyId:
-            name: cnpg-backup-s3
-            key: S3_ACCESS_KEY_ID
-          secretAccessKey:
-            name: cnpg-backup-s3
-            key: S3_SECRET_ACCESS_KEY
-          region:
-            name: cnpg-backup-s3
-            key: S3_REGION
-        wal:
-          maxParallel: 8
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          # Patch this per app/cluster:
+          # Must reference an ObjectStore in the same namespace
+          barmanObjectName: example-db-store
+          # Must match the backup server name for the source cluster
+          # (typically the source CNPG cluster name)
+          serverName: example-db

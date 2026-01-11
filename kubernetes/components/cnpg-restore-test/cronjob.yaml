@@ -49,20 +49,10 @@ spec:
                 # Optional: assert a role exists after restore.
                 - name: EXPECTED_ROLE
                   value: ""
-                # Prefix under the bucket where per-cluster backup directories live.
-                # In this repo, it is typically: homelab-cluster/<cluster-name>/
-                - name: DESTINATION_PREFIX
-                  value: homelab-cluster
-                - name: S3_BUCKET
-                  valueFrom:
-                    secretKeyRef:
-                      name: cnpg-backup-s3
-                      key: S3_BUCKET
-                - name: S3_ENDPOINT
-                  valueFrom:
-                    secretKeyRef:
-                      name: cnpg-backup-s3
-                      key: S3_ENDPOINT
+                # Name of the ObjectStore resource to use for recovery.
+                # If empty, defaults to "$SOURCE_CLUSTER-store".
+                - name: BARMAN_OBJECT_NAME
+                  value: ""
               command:
                 - /bin/sh
                 - -ceu
@@ -103,7 +93,10 @@ spec:
                   }
                   trap cleanup EXIT
 
-                  destinationPath="s3://$S3_BUCKET/$DESTINATION_PREFIX/$SOURCE_CLUSTER/"
+                  barman_object_name="$BARMAN_OBJECT_NAME"
+                  if [ -z "$barman_object_name" ]; then
+                    barman_object_name="$SOURCE_CLUSTER-store"
+                  fi
 
                   # Ensure previous test cluster is gone
                   kubectl -n "$NAMESPACE" delete cluster.postgresql.cnpg.io "$RESTORE_CLUSTER" --ignore-not-found=true
@@ -119,27 +112,16 @@ spec:
                     storage:
                       size: 10Gi
                       storageClass: longhorn
-                    monitoring:
-                      enablePodMonitor: true
                     bootstrap:
                       recovery:
                         source: clusterBackup
                     externalClusters:
                       - name: clusterBackup
-                        barmanObjectStore:
-                          destinationPath: $destinationPath
-                          serverName: $SOURCE_CLUSTER
-                          endpointURL: $S3_ENDPOINT
-                          s3Credentials:
-                            accessKeyId:
-                              name: cnpg-backup-s3
-                              key: S3_ACCESS_KEY_ID
-                            secretAccessKey:
-                              name: cnpg-backup-s3
-                              key: S3_SECRET_ACCESS_KEY
-                            region:
-                              name: cnpg-backup-s3
-                              key: S3_REGION
+                        plugin:
+                          name: barman-cloud.cloudnative-pg.io
+                          parameters:
+                            barmanObjectName: $barman_object_name
+                            serverName: $SOURCE_CLUSTER
                   EOF
 
                   echo "[cnpg-restore-test] waiting for CNPG Cluster Ready"
