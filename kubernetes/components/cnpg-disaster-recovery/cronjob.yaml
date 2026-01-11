@@ -24,7 +24,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: dr-check
-              image: registry.k8s.io/kubectl:v1.30.0
+              image: rancher/kubectl:v1.30.0
               imagePullPolicy: IfNotPresent
               securityContext:
                 allowPrivilegeEscalation: false
@@ -45,13 +45,13 @@ spec:
                 - |
                   echo "[cnpg-disaster-recovery-check] starting"
 
-                  kubectl -n "$NAMESPACE" wait --for=condition=Ready "cluster.postgresql.cnpg.io/${TARGET_CLUSTER}" --timeout=15m
+                  kubectl -n "$NAMESPACE" wait --for=condition=Ready "cluster.postgresql.cnpg.io/$TARGET_CLUSTER" --timeout=15m
 
-                  pod=$(kubectl -n "$NAMESPACE" get pods -l "cnpg.io/cluster=${TARGET_CLUSTER},cnpg.io/instanceRole=primary" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+                  pod=$(kubectl -n "$NAMESPACE" get pods -l "cnpg.io/cluster=$TARGET_CLUSTER,cnpg.io/instanceRole=primary" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
                   if [ -z "$pod" ]; then
-                    pod=$(kubectl -n "$NAMESPACE" get pods -l "cnpg.io/cluster=${TARGET_CLUSTER}" -o jsonpath='{.items[0].metadata.name}')
+                    pod=$(kubectl -n "$NAMESPACE" get pods -l "cnpg.io/cluster=$TARGET_CLUSTER" -o jsonpath='{.items[0].metadata.name}')
                   fi
-                  kubectl -n "$NAMESPACE" wait --for=condition=Ready "pod/${pod}" --timeout=10m
+                  kubectl -n "$NAMESPACE" wait --for=condition=Ready "pod/$pod" --timeout=10m
 
                   out=$(kubectl -n "$NAMESPACE" exec "$pod" -- /bin/sh -ceu \
                     "psql -U postgres -d postgres -v ON_ERROR_STOP=1 -Atc \"\
@@ -65,21 +65,21 @@ spec:
                   lag_seconds=$(printf "%s\n" "$out" | sed -n '2p')
 
                   if [ "$is_recovery" != "t" ]; then
-                    echo "[cnpg-disaster-recovery-check] FAIL: not in recovery (pg_is_in_recovery=${is_recovery})"
+                    echo "[cnpg-disaster-recovery-check] FAIL: not in recovery (pg_is_in_recovery=$is_recovery)"
                     exit 1
                   fi
 
                   case "$lag_seconds" in
                     ''|*[!0-9]*)
-                      echo "[cnpg-disaster-recovery-check] FAIL: replay lag not an integer: '${lag_seconds}'"
+                      echo "[cnpg-disaster-recovery-check] FAIL: replay lag not an integer: '$lag_seconds'"
                       exit 1
                       ;;
                   esac
 
                   if [ "$lag_seconds" -gt "$MAX_REPLAY_LAG_SECONDS" ]; then
-                    echo "[cnpg-disaster-recovery-check] FAIL: replay lag ${lag_seconds}s exceeds ${MAX_REPLAY_LAG_SECONDS}s"
+                    echo "[cnpg-disaster-recovery-check] FAIL: replay lag $lag_seconds""s exceeds $MAX_REPLAY_LAG_SECONDS""s"
                     exit 1
                   fi
 
-                  echo "[cnpg-disaster-recovery-check] OK: replay_lag_seconds=${lag_seconds}"
+                  echo "[cnpg-disaster-recovery-check] OK: replay_lag_seconds=$lag_seconds"
                   echo "[cnpg-disaster-recovery-check] done"

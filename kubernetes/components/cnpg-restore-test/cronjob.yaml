@@ -26,7 +26,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: restore-test
-              image: registry.k8s.io/kubectl:v1.30.0
+              image: rancher/kubectl:v1.30.0
               imagePullPolicy: IfNotPresent
               securityContext:
                 allowPrivilegeEscalation: false
@@ -74,24 +74,28 @@ spec:
 
                   latest_completed_backup=$(
                     kubectl -n "$NAMESPACE" get backups.postgresql.cnpg.io \
-                      -l "cnpg.io/cluster=${SOURCE_CLUSTER}" \
+                      -l "cnpg.io/cluster=$SOURCE_CLUSTER" \
                       --sort-by=.metadata.creationTimestamp \
                       -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.phase}{"\n"}{end}' \
                     | awk 'BEGIN{IGNORECASE=1} $2=="completed"{name=$1} END{print name}'
                   )
 
                   if [ -z "$latest_completed_backup" ]; then
-                    echo "[cnpg-restore-test] no completed backups found for ${SOURCE_CLUSTER}; skipping"
+                    echo "[cnpg-restore-test] no completed backups found for $SOURCE_CLUSTER; skipping"
                     exit 0
                   fi
 
                   last_processed_backup=$(kubectl -n "$NAMESPACE" get configmap "$state_cm" -o jsonpath='{.data.lastBackupName}' 2>/dev/null || true)
                   if [ "$last_processed_backup" = "$latest_completed_backup" ]; then
-                    echo "[cnpg-restore-test] latest completed backup already tested (${latest_completed_backup}); skipping"
+                    echo "[cnpg-restore-test] latest completed backup already tested ($latest_completed_backup); skipping"
                     exit 0
                   fi
 
-                  echo "[cnpg-restore-test] new completed backup detected: ${latest_completed_backup} (previous: ${last_processed_backup:-none})"
+                  previous_backup="$last_processed_backup"
+                  if [ -z "$previous_backup" ]; then
+                    previous_backup=none
+                  fi
+                  echo "[cnpg-restore-test] new completed backup detected: $latest_completed_backup (previous: $previous_backup)"
 
                   cleanup() {
                     # Best-effort cleanup. Avoid failing the job because deletion is slow.
@@ -99,7 +103,7 @@ spec:
                   }
                   trap cleanup EXIT
 
-                  destinationPath="s3://${S3_BUCKET}/${DESTINATION_PREFIX}/${SOURCE_CLUSTER}/"
+                  destinationPath="s3://$S3_BUCKET/$DESTINATION_PREFIX/$SOURCE_CLUSTER/"
 
                   # Ensure previous test cluster is gone
                   kubectl -n "$NAMESPACE" delete cluster.postgresql.cnpg.io "$RESTORE_CLUSTER" --ignore-not-found=true
@@ -108,8 +112,8 @@ spec:
                   apiVersion: postgresql.cnpg.io/v1
                   kind: Cluster
                   metadata:
-                    name: ${RESTORE_CLUSTER}
-                    namespace: ${NAMESPACE}
+                    name: $RESTORE_CLUSTER
+                    namespace: $NAMESPACE
                   spec:
                     instances: 1
                     storage:
@@ -123,9 +127,9 @@ spec:
                     externalClusters:
                       - name: clusterBackup
                         barmanObjectStore:
-                          destinationPath: ${destinationPath}
-                          serverName: ${SOURCE_CLUSTER}
-                          endpointURL: ${S3_ENDPOINT}
+                          destinationPath: $destinationPath
+                          serverName: $SOURCE_CLUSTER
+                          endpointURL: $S3_ENDPOINT
                           s3Credentials:
                             accessKeyId:
                               name: cnpg-backup-s3
@@ -139,43 +143,43 @@ spec:
                   EOF
 
                   echo "[cnpg-restore-test] waiting for CNPG Cluster Ready"
-                  kubectl -n "$NAMESPACE" wait --for=condition=Ready "cluster.postgresql.cnpg.io/${RESTORE_CLUSTER}" --timeout=45m
+                  kubectl -n "$NAMESPACE" wait --for=condition=Ready "cluster.postgresql.cnpg.io/$RESTORE_CLUSTER" --timeout=45m
 
                   echo "[cnpg-restore-test] waiting for primary pod"
                   # CNPG labels vary slightly by version; fall back to first pod in cluster.
-                  primary_pod=$(kubectl -n "$NAMESPACE" get pods -l "cnpg.io/cluster=${RESTORE_CLUSTER},cnpg.io/instanceRole=primary" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+                  primary_pod=$(kubectl -n "$NAMESPACE" get pods -l "cnpg.io/cluster=$RESTORE_CLUSTER,cnpg.io/instanceRole=primary" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
                   if [ -z "$primary_pod" ]; then
-                    primary_pod=$(kubectl -n "$NAMESPACE" get pods -l "cnpg.io/cluster=${RESTORE_CLUSTER}" -o jsonpath='{.items[0].metadata.name}')
+                    primary_pod=$(kubectl -n "$NAMESPACE" get pods -l "cnpg.io/cluster=$RESTORE_CLUSTER" -o jsonpath='{.items[0].metadata.name}')
                   fi
-                  kubectl -n "$NAMESPACE" wait --for=condition=Ready "pod/${primary_pod}" --timeout=15m
+                  kubectl -n "$NAMESPACE" wait --for=condition=Ready "pod/$primary_pod" --timeout=15m
 
                   echo "[cnpg-restore-test] running restore validation"
 
                   run_psql() {
                     query="$1"
                     kubectl -n "$NAMESPACE" exec "$primary_pod" -- /bin/sh -ceu \
-                      "psql -U postgres -d postgres -v ON_ERROR_STOP=1 -Atc \"${query}\""
+                      "psql -U postgres -d postgres -v ON_ERROR_STOP=1 -Atc \"$query\""
                   }
 
                   # Basic connectivity
                   out=$(run_psql "SELECT 1;")
                   if [ "$out" != "1" ]; then
-                    echo "[cnpg-restore-test] FAIL: expected SELECT 1 => 1, got: '${out}'"
+                    echo "[cnpg-restore-test] FAIL: expected SELECT 1 => 1, got: '$out'"
                     exit 1
                   fi
 
-                  if [ -n "${EXPECTED_DATABASE:-}" ]; then
-                    out=$(run_psql "SELECT 1 FROM pg_database WHERE datname='${EXPECTED_DATABASE}';")
+                  if [ -n "$EXPECTED_DATABASE" ]; then
+                    out=$(run_psql "SELECT 1 FROM pg_database WHERE datname='$EXPECTED_DATABASE';")
                     if [ "$out" != "1" ]; then
-                      echo "[cnpg-restore-test] FAIL: expected database missing: ${EXPECTED_DATABASE}"
+                      echo "[cnpg-restore-test] FAIL: expected database missing: $EXPECTED_DATABASE"
                       exit 1
                     fi
                   fi
 
-                  if [ -n "${EXPECTED_ROLE:-}" ]; then
-                    out=$(run_psql "SELECT 1 FROM pg_roles WHERE rolname='${EXPECTED_ROLE}';")
+                  if [ -n "$EXPECTED_ROLE" ]; then
+                    out=$(run_psql "SELECT 1 FROM pg_roles WHERE rolname='$EXPECTED_ROLE';")
                     if [ "$out" != "1" ]; then
-                      echo "[cnpg-restore-test] FAIL: expected role missing: ${EXPECTED_ROLE}"
+                      echo "[cnpg-restore-test] FAIL: expected role missing: $EXPECTED_ROLE"
                       exit 1
                     fi
                   fi
@@ -183,7 +187,7 @@ spec:
                   echo "[cnpg-restore-test] success; cleaning up restore cluster"
                   kubectl -n "$NAMESPACE" delete cluster.postgresql.cnpg.io "$RESTORE_CLUSTER" --wait=true
 
-                  echo "[cnpg-restore-test] recording tested backup: ${latest_completed_backup}"
+                  echo "[cnpg-restore-test] recording tested backup: $latest_completed_backup"
                   kubectl -n "$NAMESPACE" create configmap "$state_cm" \
                     --from-literal=lastBackupName="$latest_completed_backup" \
                     --dry-run=client -o yaml \
