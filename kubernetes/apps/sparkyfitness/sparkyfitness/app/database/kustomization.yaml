@@ -1,5 +1,14 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+namespace: sparkyfitness
+components:
+  - ../../../../../components/cnpg-restore-test
+  - ../../../../../components/cnpg-disaster-recovery
 resources:
   - cluster.yaml
   - scheduled-backup.yaml
+  - ./objectstore.yaml
+patches:
+  - path: ./backup/restore-test/cronjob-patch.yaml
+  - path: ./backup/disaster-recovery/cluster-patch.yaml
+  - path: ./backup/disaster-recovery/check-patch.yaml

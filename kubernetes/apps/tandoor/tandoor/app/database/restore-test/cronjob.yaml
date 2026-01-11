@@ -1,0 +1,95 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tandoor-db-restore-test
+  namespace: tandoor
+spec:
+  # Run after the scheduled backup (tandoor-db-daily at 02:15).
+  # Note: Kubernetes CronJobs use 5-field cron (no seconds).
+  schedule: "45 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          serviceAccountName: tandoor-restore-test
+          restartPolicy: Never
+          containers:
+            - name: restore-test
+              image: rancher/kubectl:v1.30.0
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                - name: RESTORE_CLUSTER
+                  value: tandoor-db-restore
+                - name: SOURCE_CLUSTER
+                  value: tandoor-db
+                - name: BARMAN_OBJECT_NAME
+                  value: tandoor-db-store
+              command:
+                - /bin/sh
+                - -ceu
+                - |
+                  echo "[restore-test] starting"
+
+                  cleanup() {
+                    # Best-effort cleanup. Avoid failing the job because deletion is slow.
+                    kubectl -n "$NAMESPACE" delete cluster.postgresql.cnpg.io "$RESTORE_CLUSTER" --ignore-not-found=true --wait=false || true
+                  }
+                  trap cleanup EXIT
+
+                  # Ensure previous test cluster is gone
+                  kubectl -n "$NAMESPACE" delete cluster.postgresql.cnpg.io "$RESTORE_CLUSTER" --ignore-not-found=true
+
+                  cat <<EOF | kubectl apply -f -
+                  apiVersion: postgresql.cnpg.io/v1
+                  kind: Cluster
+                  metadata:
+                    name: $RESTORE_CLUSTER
+                    namespace: $NAMESPACE
+                  spec:
+                    instances: 1
+                    storage:
+                      size: 10Gi
+                      storageClass: longhorn
+                    bootstrap:
+                      recovery:
+                        source: clusterBackup
+                    externalClusters:
+                      - name: clusterBackup
+                        plugin:
+                          name: barman-cloud.cloudnative-pg.io
+                          parameters:
+                            barmanObjectName: $BARMAN_OBJECT_NAME
+                            serverName: $SOURCE_CLUSTER
+                  EOF
+
+                  echo "[restore-test] waiting for CNPG Cluster Ready"
+                    kubectl -n "$NAMESPACE" wait --for=condition=Ready "cluster.postgresql.cnpg.io/$RESTORE_CLUSTER" --timeout=45m
+
+                  echo "[restore-test] waiting for primary pod"
+                  # CNPG labels vary slightly by version; fall back to first pod in cluster.
+                    primary_pod=$(kubectl -n "$NAMESPACE" get pods -l "cnpg.io/cluster=$RESTORE_CLUSTER,cnpg.io/instanceRole=primary" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+                  if [ -z "$primary_pod" ]; then
+                      primary_pod=$(kubectl -n "$NAMESPACE" get pods -l "cnpg.io/cluster=$RESTORE_CLUSTER" -o jsonpath='{.items[0].metadata.name}')
+                  fi
+                    kubectl -n "$NAMESPACE" wait --for=condition=Ready "pod/$primary_pod" --timeout=15m
+
+                  echo "[restore-test] running smoke query"
+                  # Use the generated CNPG superuser secret for the restore cluster.
+                    pg_password=$(kubectl -n "$NAMESPACE" get secret "$RESTORE_CLUSTER-superuser" -o jsonpath='{.data.password}' | base64 -d)
+
+                  kubectl -n "$NAMESPACE" exec "$primary_pod" -- /bin/sh -ceu \
+                      "PGPASSWORD='$pg_password' psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'SELECT 1;'"
+
+                  echo "[restore-test] success; cleaning up restore cluster"
+                  kubectl -n "$NAMESPACE" delete cluster.postgresql.cnpg.io "$RESTORE_CLUSTER" --wait=true
+
+                  echo "[restore-test] done"

@@ -1,0 +1,18 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cnpg-disaster-recovery-check
+spec:
+  schedule: "*/10 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: dr-check
+              env:
+                - name: TARGET_CLUSTER
+                  value: cnpg-disaster-recovery
+                - name: MAX_REPLAY_LAG_SECONDS
+                  value: "900"

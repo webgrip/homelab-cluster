@@ -6,36 +6,21 @@ metadata:
   namespace: freshrss
 spec:
   instances: 1
+  inheritedMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
   storage:
     size: 10Gi
     storageClass: longhorn
-  monitoring:
-    enablePodMonitor: true
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: freshrss-db-store
+        serverName: freshrss-db
   bootstrap:
     initdb:
       database: freshrss
       owner: freshrss
       secret:
         name: freshrss-db-secret
-
-  backup:
-    retentionPolicy: 30d
-    barmanObjectStore:
-      # NOTE: endpointURL is a plain string in CNPG (not a SecretKeySelector).
-      # Adjust to your in-cluster Garage S3 endpoint.
-      endpointURL: http://10.0.0.110:3900
-      destinationPath: s3://cnpg-backups-bucket/homelab-cluster/freshrss-db/
-      s3Credentials:
-        accessKeyId:
-          name: cnpg-backup-s3
-          key: S3_ACCESS_KEY_ID
-        secretAccessKey:
-          name: cnpg-backup-s3
-          key: S3_SECRET_ACCESS_KEY
-        region:
-          name: cnpg-backup-s3
-          key: S3_REGION
-      wal:
-        compression: gzip
-      data:
-        compression: gzip
