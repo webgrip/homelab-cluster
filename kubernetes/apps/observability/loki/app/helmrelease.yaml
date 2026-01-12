@@ -14,17 +14,26 @@ spec:
         name: grafana-charts-loki
         namespace: observability
   values:
-    deploymentMode: SimpleScalable
+    deploymentMode: SingleBinary
+
+    # Defaults are far too large for small clusters; caches can be re-enabled later.
+    chunksCache:
+      enabled: false
+
+    resultsCache:
+      enabled: false
 
     global:
       extraArgs:
         - -config.expand-env=true
       extraEnvFrom:
         - secretRef:
-            name: cnpg-backup-s3
+            name: observability-s3
 
     loki:
       auth_enabled: false
+      commonConfig:
+        replication_factor: 1
       schemaConfig:
         configs:
           - from: "2024-04-01"
@@ -47,3 +56,22 @@ spec:
           secretAccessKey: ${S3_SECRET_ACCESS_KEY}
           s3ForcePathStyle: true
           insecure: true
+
+    gateway:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+
+    singleBinary:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 200m
+          memory: 1Gi
+        limits:
+          cpu: "2"
+          memory: 2Gi
