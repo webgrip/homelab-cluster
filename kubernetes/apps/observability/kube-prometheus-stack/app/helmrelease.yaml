@@ -32,6 +32,9 @@ spec:
     prometheus:
       prometheusSpec:
         retention: 15d
+        podMetadata:
+          annotations:
+            reloader.stakater.com/auto: "true"
         # Tempo metrics-generator is disabled; no need to accept remote_write directly.
         enableRemoteWriteReceiver: false
         # Remote write to Grafana Mimir for long-term, horizontally scalable metrics storage.
@@ -64,6 +67,8 @@ spec:
             memory: 4Gi
 
     prometheusOperator:
+      podAnnotations:
+        reloader.stakater.com/auto: "true"
       resources:
         requests:
           cpu: 100m
@@ -73,6 +78,8 @@ spec:
           memory: 512Mi
 
     kube-state-metrics:
+      podAnnotations:
+        reloader.stakater.com/auto: "true"
       resources:
         requests:
           cpu: 50m
@@ -90,8 +97,15 @@ spec:
           cpu: 50m
           memory: 128Mi
 
+    prometheus-node-exporter:
+      podAnnotations:
+        reloader.stakater.com/auto: "true"
+
     alertmanager:
       alertmanagerSpec:
+        podMetadata:
+          annotations:
+            reloader.stakater.com/auto: "true"
         resources:
           requests:
             cpu: 50m
