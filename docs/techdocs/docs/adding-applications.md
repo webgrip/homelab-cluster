@@ -121,3 +121,12 @@ Rules of thumb:
 - Ingress is defined (either `HTTPRoute` or `route:` values) and points at the correct gateway.
 - PVCs specify the intended StorageClass.
 - Secrets are SOPS-encrypted and referenced via `envFrom` / `secretKeyRef`.
+
+## Observability checklist
+
+For details, see [docs/techdocs/docs/observability.md](observability.md).
+
+- Logs: app writes to stdout/stderr (structured logs preferred)
+- Traces: set OTLP exporter to `alloy-gateway.observability.svc.cluster.local` (4317/4318)
+- Metrics: expose `/metrics` and add a `ServiceMonitor`
+- Alerts (optional): add `PrometheusRule` + route via Alertmanager

@@ -1,0 +1,92 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: mimir-distributed
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: mimir-distributed
+      version: 6.0.5
+      sourceRef:
+        kind: HelmRepository
+        name: grafana-charts-mimir
+        namespace: observability
+  values:
+    # Use the existing cluster S3 credentials (Garage) via env injection.
+    global:
+      extraEnvFrom:
+        - secretRef:
+            name: cnpg-backup-s3
+
+    # Run the built-in nginx gateway so clients can talk to a single endpoint.
+    gateway:
+      enabled: true
+      service:
+        type: ClusterIP
+
+    # Keep MinIO disabled; this cluster already has an S3-compatible object store.
+    minio:
+      enabled: false
+
+    mimir:
+      structuredConfig:
+        # Use the same bucket for all Mimir storage types.
+        common:
+          storage:
+            backend: s3
+            s3:
+              bucket_name: ${S3_BUCKET}
+              endpoint: ${S3_ENDPOINT}
+              access_key_id: ${S3_ACCESS_KEY_ID}
+              secret_access_key: ${S3_SECRET_ACCESS_KEY}
+              http:
+                insecure_skip_verify: true
+
+        # Explicitly set key backends to S3 as well.
+        blocks_storage:
+          backend: s3
+          s3:
+            bucket_name: ${S3_BUCKET}
+            endpoint: ${S3_ENDPOINT}
+            access_key_id: ${S3_ACCESS_KEY_ID}
+            secret_access_key: ${S3_SECRET_ACCESS_KEY}
+            http:
+              insecure_skip_verify: true
+
+        ruler_storage:
+          backend: s3
+          s3:
+            bucket_name: ${S3_BUCKET}
+            endpoint: ${S3_ENDPOINT}
+            access_key_id: ${S3_ACCESS_KEY_ID}
+            secret_access_key: ${S3_SECRET_ACCESS_KEY}
+            http:
+              insecure_skip_verify: true
+
+        alertmanager_storage:
+          backend: s3
+          s3:
+            bucket_name: ${S3_BUCKET}
+            endpoint: ${S3_ENDPOINT}
+            access_key_id: ${S3_ACCESS_KEY_ID}
+            secret_access_key: ${S3_SECRET_ACCESS_KEY}
+            http:
+              insecure_skip_verify: true
+
+    # Ensure ingesters use Longhorn for WAL/data.
+    ingester:
+      persistentVolume:
+        storageClass: longhorn
+        size: 10Gi
+
+    store_gateway:
+      persistentVolume:
+        storageClass: longhorn
+        size: 10Gi
+
+    compactor:
+      persistentVolume:
+        storageClass: longhorn
+        size: 10Gi

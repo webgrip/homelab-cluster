@@ -1,0 +1,97 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: alloy-agent
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: alloy
+      version: 1.5.1
+      sourceRef:
+        kind: HelmRepository
+        name: grafana-charts-alloy
+        namespace: observability
+  values:
+    controller:
+      type: daemonset
+
+    alloy:
+      extraEnv:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+      mounts:
+        varlog: true
+        dockercontainers: false
+      configMap:
+        create: true
+        content: |
+          discovery.kubernetes "pod" {
+            role = "pod"
+            selectors {
+              role  = "pod"
+              field = "spec.nodeName=" + sys.env("NODE_NAME")
+            }
+          }
+
+          discovery.relabel "pod_logs" {
+            targets = discovery.kubernetes.pod.targets
+
+            rule {
+              source_labels = ["__meta_kubernetes_namespace"]
+              action        = "replace"
+              target_label  = "namespace"
+            }
+
+            rule {
+              source_labels = ["__meta_kubernetes_pod_name"]
+              action        = "replace"
+              target_label  = "pod"
+            }
+
+            rule {
+              source_labels = ["__meta_kubernetes_pod_container_name"]
+              action        = "replace"
+              target_label  = "container"
+            }
+
+            rule {
+              source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_container_name"]
+              action        = "replace"
+              target_label  = "job"
+              separator     = "/"
+              replacement   = "$1"
+            }
+
+            rule {
+              source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+              action        = "replace"
+              target_label  = "__path__"
+              separator     = "/"
+              replacement   = "/var/log/pods/*$1/*.log"
+            }
+          }
+
+          loki.source.kubernetes "pod_logs" {
+            targets    = discovery.relabel.pod_logs.output
+            forward_to = [loki.process.pod_logs.receiver]
+          }
+
+          loki.process "pod_logs" {
+            stage.static_labels {
+              values = {
+                cluster = "homelab-cluster",
+              }
+            }
+
+            forward_to = [loki.write.local.receiver]
+          }
+
+          loki.write "local" {
+            endpoint {
+              url = "http://loki-gateway.observability.svc.cluster.local/loki/api/v1/push"
+            }
+          }
