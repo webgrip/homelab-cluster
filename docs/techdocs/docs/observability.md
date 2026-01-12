@@ -257,6 +257,8 @@ All application traces should be exported to the in-cluster Alloy gateway:
 - OTLP gRPC: `alloy-gateway.observability.svc.cluster.local:4317`
 - OTLP HTTP: `http://alloy-gateway.observability.svc.cluster.local:4318`
 
+Tempo also runs the built-in metrics-generator (span-metrics + service-graphs) and remote-writes the generated metrics to Prometheus.
+
 **Kubernetes env var recipe (works for most OTel SDKs)**
 
 Add these to your Deployment/StatefulSet container:
@@ -277,6 +279,14 @@ Notes:
 
 - Some SDKs want signal-specific endpoints. For traces, `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is typically `http://alloy-gateway.observability.svc.cluster.local:4318/v1/traces`.
 - Keep `OTEL_SERVICE_NAME` stable; use attributes for instance/environment detail.
+
+### Frontend (Faro)
+
+The Alloy gateway exposes a Faro receiver for browser telemetry:
+
+- Faro receiver: `http://alloy-gateway.observability.svc.cluster.local:12347/api/faro/receiver`
+
+In the Grafana Faro Web SDK, set the collector URL to the above endpoint.
 
 ### Profiles (Pyroscope)
 

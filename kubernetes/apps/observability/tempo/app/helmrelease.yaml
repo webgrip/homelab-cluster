@@ -18,6 +18,18 @@ spec:
       extraEnvFrom:
         - secretRef:
             name: cnpg-backup-s3
+
+      metricsGenerator:
+        enabled: true
+        # Push generated metrics into Prometheus; Prometheus then forwards to Mimir.
+        remoteWriteUrl: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090/api/v1/write
+
+      overrides:
+        defaults:
+          metrics_generator:
+            processors:
+              - service-graphs
+              - span-metrics
       # Store traces in S3-compatible object storage.
       storage:
         trace:

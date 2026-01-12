@@ -22,6 +22,23 @@ spec:
       configMap:
         create: true
         content: |
+          faro.receiver "main" {
+            server {
+              listen_address = "0.0.0.0:12347"
+            }
+
+            output {
+              logs   = [loki.write.main.receiver]
+              traces = [otelcol.processor.batch.main.input]
+            }
+          }
+
+          loki.write "main" {
+            endpoint {
+              url = "http://loki-gateway.observability.svc.cluster.local/loki/api/v1/push"
+            }
+          }
+
           otelcol.receiver.otlp "main" {
             grpc {
               endpoint = "0.0.0.0:4317"
@@ -33,7 +50,30 @@ spec:
 
             output {
               traces = [otelcol.processor.batch.main.input]
+              logs   = [otelcol.processor.attributes.loki_labels.input]
             }
+          }
+
+          otelcol.processor.attributes "loki_labels" {
+            action {
+              key = "loki.resource.labels"
+              action = "insert"
+              value = "service.name, service.namespace, deployment.environment"
+            }
+
+            action {
+              key = "loki.attribute.labels"
+              action = "insert"
+              value = "event.domain, event.name"
+            }
+
+            output {
+              logs = [otelcol.exporter.loki.main.input]
+            }
+          }
+
+          otelcol.exporter.loki "main" {
+            forward_to = [loki.write.main.receiver]
           }
 
           otelcol.processor.batch "main" {
@@ -59,4 +99,8 @@ spec:
         - name: otlp-http
           port: 4318
           targetPort: 4318
+          protocol: TCP
+        - name: faro
+          port: 12347
+          targetPort: 12347
           protocol: TCP
