@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-tempo-service-graphs
+  namespace: observability
+  labels:
+    grafana_dashboard: "1"
+data:
+  tempo-service-graphs.json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Tempo / Service Graphs & Span Metrics",
+      "uid": "tempo-service-graphs",
+      "timezone": "browser",
+      "tags": ["tempo", "tracing"],
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "30s",
+      "time": {"from": "now-6h", "to": "now"},
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Service graph requests (top 10 edges)",
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(10, sum by (client, server) (rate(traces_service_graph_request_total[5m])))",
+              "legendFormat": "{{client}} → {{server}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "Span metrics latency (p95 by service)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.95, sum by (le, service) (rate(traces_spanmetrics_latency_bucket[5m])))",
+              "legendFormat": "{{service}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "Span metrics rate (top 10 services)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(10, sum by (service) (rate(traces_spanmetrics_calls_total[5m])))",
+              "legendFormat": "{{service}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        }
+      ]
+    }

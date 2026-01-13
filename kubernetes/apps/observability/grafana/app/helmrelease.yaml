@@ -5,6 +5,12 @@ metadata:
   name: grafana
 spec:
   interval: 1h
+  install:
+    timeout: 15m
+  upgrade:
+    timeout: 15m
+  rollback:
+    timeout: 15m
   chart:
     spec:
       chart: grafana
@@ -16,6 +22,35 @@ spec:
   values:
     podAnnotations:
       reloader.stakater.com/auto: "true"
+
+    grafana.ini:
+      rendering:
+        server_url: http://grafana-image-renderer.observability.svc.cluster.local:8081/render
+        callback_url: http://grafana.observability.svc.cluster.local/
+
+    plugins:
+      - grafana-pyroscope-app
+      - grafana-clock-panel
+      - grafana-piechart-panel
+      - grafana-polystat-panel
+      - grafana-image-renderer
+      - yesoreyeram-infinity-datasource
+      - simpod-json-datasource
+      - yesoreyeram-boomtable-panel
+      - vonage-status-panel
+      - marcusolsson-dynamictext-panel
+
+    imageRenderer:
+      enabled: true
+      serverURL: http://grafana-image-renderer.observability.svc.cluster.local:8081/render
+      renderingCallbackURL: http://grafana.observability.svc.cluster.local/
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 200m
+          memory: 512Mi
 
     admin:
       existingSecret: grafana-admin
@@ -45,31 +80,78 @@ spec:
         datasources:
           - name: Prometheus
             type: prometheus
+            uid: prometheus
             access: proxy
             url: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090
             isDefault: true
+            jsonData:
+              exemplarTraceIdDestinations:
+                - datasourceUid: tempo
+                  name: trace_id
+                - datasourceUid: tempo
+                  name: traceID
           - name: Mimir
             type: prometheus
+            uid: mimir
             access: proxy
             url: http://mimir-distributed-gateway.observability.svc.cluster.local/prometheus
             jsonData:
               httpHeaderName1: X-Scope-OrgID
+              exemplarTraceIdDestinations:
+                - datasourceUid: tempo
+                  name: trace_id
+                - datasourceUid: tempo
+                  name: traceID
             secureJsonData:
               httpHeaderValue1: homelab
           - name: Loki
             type: loki
+            uid: loki
             access: proxy
             url: http://loki-gateway.observability.svc.cluster.local
+            jsonData:
+              derivedFields:
+                - name: TraceID
+                  matcherRegex: '"trace_id"\\s*:\\s*"([0-9a-fA-F]{32})"'
+                  datasourceUid: tempo
+                  url: '$${__value.raw}'
           - name: Tempo
             type: tempo
+            uid: tempo
             access: proxy
             url: http://tempo.observability.svc.cluster.local:3200
+            jsonData:
+              tracesToLogsV2:
+                datasourceUid: loki
+                spanStartTimeShift: '-1h'
+                spanEndTimeShift: '1h'
+                tags: ['job', 'namespace', 'pod', 'service.name', 'service.namespace']
+                filterByTraceID: true
+                filterBySpanID: false
+                customQuery: false
+              nodeGraph:
+                enabled: true
+              tracesToMetrics:
+                datasourceUid: prometheus
+                tags: ['job', 'namespace', 'pod', 'service.name', 'service.namespace']
+                queries:
+                  - name: Span metrics
+                    query: 'sum(rate(traces_spanmetrics_latency_bucket{$$__tags}[5m]))'
+              serviceMap:
+                datasourceUid: prometheus
+              tracesToProfiles:
+                datasourceUid: pyroscope
+                tags: ['namespace', 'pod', 'service.name', 'service.namespace']
+                profileTypeId: 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'
+                customQuery: false
           - name: Pyroscope
             type: pyroscope
+            uid: pyroscope
             access: proxy
             url: http://pyroscope.observability.svc.cluster.local:4040
           - name: Alertmanager
             type: alertmanager
+            uid: alertmanager
             access: proxy
             url: http://kube-prometheus-stack-alertmanager.observability.svc.cluster.local:9093
             jsonData:

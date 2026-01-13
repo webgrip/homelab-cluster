@@ -67,7 +67,7 @@ Tenant:
 
 Storage:
 
-- Object storage: S3-compatible backend via `cnpg-backup-s3` env vars
+- Object storage: S3-compatible backend via `observability-s3` env vars
 - Local persistence: Longhorn PVCs for ingester/store-gateway/compactor
 
 ### Grafana
@@ -75,6 +75,15 @@ Storage:
 - HelmRelease: [kubernetes/apps/observability/grafana/app/helmrelease.yaml](../../kubernetes/apps/observability/grafana/app/helmrelease.yaml)
 - Admin secret (SOPS): [kubernetes/apps/observability/grafana/app/admin-secret.sops.yaml](../../kubernetes/apps/observability/grafana/app/admin-secret.sops.yaml)
 - Persistence: Longhorn PVC
+
+Plugins:
+
+- `grafana-pyroscope-app` (profiles integration)
+- `grafana-clock-panel`, `grafana-piechart-panel`, `grafana-polystat-panel` (useful dashboard panels)
+
+Rendering:
+
+- Grafana is configured with a **remote image renderer** (chart-managed `grafana-image-renderer` deployment) for reliable panel rendering in alerts/reports.
 
 Provisioned datasources:
 
@@ -87,13 +96,14 @@ Provisioned datasources:
 
 Dashboards:
 
-- Grafana sidecar watches for ConfigMaps/Secrets labelled `grafana_dashboard=1` across namespaces. Some apps (e.g. CNPG) already ship dashboards in that format.
+- Grafana sidecar watches for ConfigMaps/Secrets labelled `grafana_dashboard=1` across namespaces.
+- This repo also ships a small starter pack in [kubernetes/apps/observability/grafana/app/dashboards](../../kubernetes/apps/observability/grafana/app/dashboards).
 
 ### Loki
 
 - HelmRelease: [kubernetes/apps/observability/loki/app/helmrelease.yaml](../../kubernetes/apps/observability/loki/app/helmrelease.yaml)
 
-This deploys Loki in **SimpleScalable** mode with S3-compatible object storage.
+This deploys Loki in **SingleBinary** mode with S3-compatible object storage.
 
 Bucket requirements (create these in your S3 backend):
 
@@ -103,7 +113,7 @@ Bucket requirements (create these in your S3 backend):
 
 S3 credentials:
 
-- Sourced from the existing SOPS-managed secret `cnpg-backup-s3` (injected via `extraEnvFrom`).
+- Sourced from the existing SOPS-managed secret `observability-s3` (injected via `extraEnvFrom`).
 
 ### Tempo
 
@@ -119,6 +129,16 @@ Tempo receivers:
 
 - OTLP gRPC `4317`
 - OTLP HTTP `4318`
+
+Note:
+
+- `metricsGenerator` is enabled and remote-writes generated metrics to Prometheus.
+- This unlocks Grafana Tempo UI features like **service map** and **traces → metrics** (span metrics).
+
+Related settings:
+
+- Tempo Helm values: `tempo.metricsGenerator.enabled=true`
+- Prometheus Helm values: `prometheus.prometheusSpec.enableRemoteWriteReceiver=true`
 
 ### Pyroscope
 
@@ -143,9 +163,9 @@ There are **two** Alloy installations:
 
 ## Secrets + SOPS
 
-This repo uses Age-encrypted SOPS secrets. Observability reuses the existing `cnpg-backup` component to render a namespace-local `cnpg-backup-s3` secret.
+This repo uses Age-encrypted SOPS secrets. Observability uses a dedicated `observability-s3` secret for S3-compatible credentials/endpoints.
 
-- Component: [kubernetes/components/cnpg-backup](../../kubernetes/components/cnpg-backup)
+- Secret: [kubernetes/components/observability-s3/observability-s3.sops.yaml](../../kubernetes/components/observability-s3/observability-s3.sops.yaml)
 
 Grafana admin credentials are stored in:
 
@@ -178,7 +198,7 @@ Prometheus scraping is driven by Prometheus Operator CRDs (installed by kube-pro
 
 Because Prometheus is configured to discover monitors cluster-wide, you can create these in the same namespace as the app.
 
-**Example: Service + ServiceMonitor**
+#### Example: Service + ServiceMonitor
 
 Expose metrics from your workload on a stable `Service`:
 
@@ -257,9 +277,9 @@ All application traces should be exported to the in-cluster Alloy gateway:
 - OTLP gRPC: `alloy-gateway.observability.svc.cluster.local:4317`
 - OTLP HTTP: `http://alloy-gateway.observability.svc.cluster.local:4318`
 
-Tempo also runs the built-in metrics-generator (span-metrics + service-graphs) and remote-writes the generated metrics to Prometheus.
+Tempo metrics generation (span-metrics + service-graphs) is enabled and remote-writes generated metrics to Prometheus.
 
-**Kubernetes env var recipe (works for most OTel SDKs)**
+#### Kubernetes env var recipe (works for most OTel SDKs)
 
 Add these to your Deployment/StatefulSet container:
 
@@ -302,7 +322,7 @@ If you tell me the language/runtime for a specific app (Go/Java/.NET/Python/Node
 
 Alerting is driven by `PrometheusRule` objects and routed by Alertmanager.
 
-**Example: a simple alert rule**
+#### Example: a simple alert rule
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1

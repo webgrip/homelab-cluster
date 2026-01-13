@@ -1,0 +1,46 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: observability-stack-rules
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: observability.stack.rules
+      rules:
+        - alert: ObservabilityPodsNotReady
+          expr: |
+            sum(
+              kube_pod_status_ready{namespace="observability", condition="true"}
+            )
+            <
+            sum(
+              kube_pod_status_ready{namespace="observability", condition="false"}
+            )
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Some observability pods are not Ready"
+            description: "At least one pod in namespace observability has been not-ready for 10m. Check pod status/events in the observability namespace."
+
+        - alert: ObservabilityHighRestartRate
+          expr: |
+            sum(increase(kube_pod_container_status_restarts_total{namespace="observability"}[15m])) > 10
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High restart rate in observability namespace"
+            description: "Containers in namespace observability restarted frequently over the last 15m. Check CrashLoopBackOff/OOMKilled and recent logs."
+
+        - alert: ObservabilityOOMKills
+          expr: |
+            sum(kube_pod_container_status_last_terminated_reason{namespace="observability", reason="OOMKilled"}) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "OOMKills detected in observability namespace"
+            description: "At least one container in namespace observability was last terminated due to OOMKilled. Consider increasing limits or reducing workload."

@@ -32,15 +32,34 @@ spec:
 
       # Disabled for small clusters; re-enable later if you want service graphs/span-metrics.
       metricsGenerator:
-        enabled: false
+        enabled: true
+        # Prometheus remote_write receiver (enabled in kube-prometheus-stack HelmRelease).
+        remoteWriteUrl: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090/api/v1/write
+        processor:
+          service_graphs:
+            wait: 10s
+            max_items: 2000
+          span_metrics:
+            enable_target_info: true
+        storage:
+          path: /tmp/tempo
+        traces_storage:
+          path: /tmp/traces
+
+      overrides:
+        defaults:
+          metrics_generator:
+            processors:
+              - service-graphs
+              - span-metrics
 
       resources:
         requests:
           cpu: 100m
-          memory: 512Mi
+          memory: 768Mi
         limits:
           cpu: "1"
-          memory: 1Gi
+          memory: 1500Mi
       # Store traces in S3-compatible object storage.
       storage:
         trace:
