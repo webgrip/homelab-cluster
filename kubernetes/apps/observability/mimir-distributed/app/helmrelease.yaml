@@ -45,6 +45,15 @@ spec:
       persistence:
         storageClassName: longhorn
         size: 20Gi
+      extraEnv:
+        # Cap on-disk log size (in bytes) to prevent filling the PVC.
+        # 10Gi leaves headroom on a 20Gi volume for metadata/overhead.
+        - name: KAFKA_LOG_RETENTION_BYTES
+          value: "10737418240"
+        - name: KAFKA_LOG_SEGMENT_BYTES
+          value: "1073741824"
+        - name: KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS
+          value: "300000"
 
     mimir:
       structuredConfig:
