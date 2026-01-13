@@ -1,0 +1,193 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-kubernetes-cluster-health
+  namespace: observability
+  labels:
+    grafana_dashboard: "1"
+data:
+  kubernetes-cluster-health.json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Kubernetes / Cluster Health",
+      "uid": "k8s-cluster-health",
+      "timezone": "browser",
+      "tags": ["kubernetes"],
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "30s",
+      "time": {"from": "now-6h", "to": "now"},
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "namespace",
+            "type": "query",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "query": {"query": "label_values(kube_pod_info, namespace)", "refId": "A"},
+            "refresh": 1,
+            "includeAll": true,
+            "multi": true,
+            "current": {"selected": true, "text": "All", "value": "$__all"}
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "Nodes Ready",
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(kube_node_status_condition{condition=\"Ready\",status=\"true\"} == 1)",
+              "legendFormat": "ready"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Nodes Not Ready",
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(kube_node_status_condition{condition=\"Ready\",status!=\"true\"} == 1)",
+              "legendFormat": "not_ready"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Pods Pending/Failed/Unknown",
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(kube_pod_status_phase{namespace=~\"$namespace\",phase=~\"Pending|Failed|Unknown\"} == 1)",
+              "legendFormat": "bad_phases"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Containers Restarting (30m)",
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\"}[30m]))",
+              "legendFormat": "restarts"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Cluster CPU utilization",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(node_cpu_seconds_total{mode!=\"idle\"}[5m])) / sum(rate(node_cpu_seconds_total[5m]))",
+              "legendFormat": "cpu"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Cluster memory utilization",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "1 - (sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes))",
+              "legendFormat": "memory"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "Top pod restarts (30m)",
+          "gridPos": {"h": 9, "w": 12, "x": 0, "y": 12},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(10, sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\"}[30m])))",
+              "legendFormat": "{{namespace}}/{{pod}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 8,
+          "type": "timeseries",
+          "title": "API server 5xx rate",
+          "gridPos": {"h": 9, "w": 12, "x": 12, "y": 12},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(apiserver_request_total{code=~\"5..\"}[5m]))",
+              "legendFormat": "5xx"
+            }
+          ],
+          "fieldConfig": {"defaults": {}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 9,
+          "type": "timeseries",
+          "title": "API server request latency (p99)",
+          "gridPos": {"h": 9, "w": 24, "x": 0, "y": 21},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.99, sum by (le) (rate(apiserver_request_duration_seconds_bucket[5m])))",
+              "legendFormat": "p99"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        }
+      ]
+    }

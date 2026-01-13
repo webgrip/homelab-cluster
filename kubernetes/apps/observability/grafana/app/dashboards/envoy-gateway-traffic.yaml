@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-envoy-gateway-traffic
+  namespace: observability
+  labels:
+    grafana_dashboard: "1"
+data:
+  envoy-gateway-traffic.json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Networking / Envoy Gateway",
+      "uid": "net-envoy-gateway",
+      "timezone": "browser",
+      "tags": ["networking", "envoy"],
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "30s",
+      "time": {"from": "now-6h", "to": "now"},
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Downstream RPS (total)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(envoy_http_downstream_rq_total{namespace=\"network\"}[1m])) or sum(rate(envoy_http_downstream_rq_total[1m]))",
+              "legendFormat": "rps"
+            }
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {}, "overrides": []}
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "Downstream 5xx RPS",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(envoy_http_downstream_rq_xx{namespace=\"network\", envoy_response_code_class=\"5\"}[5m])) or sum(rate(envoy_http_downstream_rq_xx{namespace=\"network\", response_code_class=\"5\"}[5m])) or on() vector(0)",
+              "legendFormat": "5xx"
+            }
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {}, "overrides": []}
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "Downstream latency p95",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(envoy_http_downstream_rq_time_bucket{namespace=\"network\"}[5m])))",
+              "legendFormat": "p95"
+            }
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "Active downstream connections",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(envoy_http_downstream_cx_active{namespace=\"network\"}) or sum(envoy_http_downstream_cx_active) or on() vector(0)",
+              "legendFormat": "active"
+            }
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        }
+      ]
+    }

@@ -1,0 +1,137 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-apps-backstage
+  namespace: observability
+  labels:
+    grafana_dashboard: "1"
+data:
+  apps-backstage.json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Apps / Backstage",
+      "uid": "apps-backstage",
+      "timezone": "browser",
+      "tags": ["apps", "backstage"],
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "30s",
+      "time": {"from": "now-6h", "to": "now"},
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "Up targets (backstage)",
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(up{namespace=\"backstage\"} == 1)", "legendFormat": "up"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Pods not Running",
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(kube_pod_status_phase{namespace=\"backstage\", phase=~\"Pending|Failed|Unknown\"} == 1)",
+              "legendFormat": "not_running"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Deployment replicas missing",
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "clamp_min(sum(kube_deployment_spec_replicas{namespace=\"backstage\"}) - sum(kube_deployment_status_replicas_available{namespace=\"backstage\"}), 0)",
+              "legendFormat": "missing"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "Pod restarts (top 10, 30m)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(10, sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"backstage\"}[30m])))",
+              "legendFormat": "{{pod}}"
+            }
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {}, "overrides": []}
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "CPU usage (cores)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"backstage\", image!=\"\"}[5m]))",
+              "legendFormat": "cpu"
+            }
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"unit": "cores"}, "overrides": []}
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Memory working set",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(container_memory_working_set_bytes{namespace=\"backstage\", image!=\"\"})", "legendFormat": "mem"}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []}
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "PVC usage % (top 10)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(10, (kubelet_volume_stats_used_bytes{namespace=\"backstage\"} / kubelet_volume_stats_capacity_bytes{namespace=\"backstage\"}) * 100)",
+              "legendFormat": "{{persistentvolumeclaim}}"
+            }
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 1}, "overrides": []}
+        }
+      ]
+    }

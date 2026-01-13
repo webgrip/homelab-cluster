@@ -1,0 +1,20 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-cilium-rules
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: platform.cilium
+      rules:
+        - alert: CiliumAgentDown
+          expr: |
+            up{namespace="kube-system", pod=~"cilium.*"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Cilium agent target down ({{$labels.pod}})"
+            description: "Prometheus cannot scrape a cilium agent target for 5m. Networking may be degraded."

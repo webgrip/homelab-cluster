@@ -1,0 +1,104 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: apps-rules
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: apps.namespace.baseline
+      rules:
+        - alert: AppDeploymentReplicasMismatch
+          expr: |
+            kube_deployment_spec_replicas{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"}
+            >
+            kube_deployment_status_replicas_available{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"}
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Deployment replicas unavailable ({{$labels.namespace}}/{{$labels.deployment}})"
+            description: "Available replicas are below spec for 10m in {{$labels.namespace}} (deployment {{$labels.deployment}})."
+
+        - alert: AppDeploymentDown
+          expr: |
+            kube_deployment_spec_replicas{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"} > 0
+            and
+            kube_deployment_status_replicas_available{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"} == 0
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Deployment is down ({{$labels.namespace}}/{{$labels.deployment}})"
+            description: "No available replicas for 10m in {{$labels.namespace}} (deployment {{$labels.deployment}})."
+
+        - alert: AppStatefulSetReplicasMismatch
+          expr: |
+            kube_statefulset_status_replicas{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"}
+            >
+            kube_statefulset_status_replicas_ready{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"}
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "StatefulSet replicas unavailable ({{$labels.namespace}}/{{$labels.statefulset}})"
+            description: "Ready replicas are below desired for 10m in {{$labels.namespace}} (statefulset {{$labels.statefulset}})."
+
+        - alert: AppCrashLoopBackOff
+          expr: |
+            max by (namespace, pod, container) (
+              kube_pod_container_status_waiting_reason{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor", reason="CrashLoopBackOff"}
+            ) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "CrashLoopBackOff ({{$labels.namespace}}/{{$labels.pod}}/{{$labels.container}})"
+            description: "Container has been in CrashLoopBackOff for 15m in {{$labels.namespace}}."
+
+        - alert: AppPersistentVolumeLowFree
+          expr: |
+            (
+              kubelet_volume_stats_available_bytes{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"}
+              /
+              kubelet_volume_stats_capacity_bytes{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"}
+            ) < 0.15
+            and
+            kubelet_volume_stats_capacity_bytes{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"} > 0
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "PVC low free space (<15%) ({{$labels.namespace}}/{{$labels.persistentvolumeclaim}})"
+            description: "PVC {{$labels.persistentvolumeclaim}} in {{$labels.namespace}} has had <15% free space for 30m."
+
+        - alert: AppPersistentVolumeCriticallyLowFree
+          expr: |
+            (
+              kubelet_volume_stats_available_bytes{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"}
+              /
+              kubelet_volume_stats_capacity_bytes{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"}
+            ) < 0.05
+            and
+            kubelet_volume_stats_capacity_bytes{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"} > 0
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            summary: "PVC critically low free space (<5%) ({{$labels.namespace}}/{{$labels.persistentvolumeclaim}})"
+            description: "PVC {{$labels.persistentvolumeclaim}} in {{$labels.namespace}} has had <5% free space for 15m."
+
+    - name: apps.arc-systems
+      rules:
+        - alert: ArcSystemsControllerDown
+          expr: |
+            kube_deployment_spec_replicas{namespace="arc-systems"} > 0
+            and
+            kube_deployment_status_replicas_available{namespace="arc-systems"} == 0
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "ARC deployment is down ({{$labels.deployment}})"
+            description: "No available replicas for 10m in arc-systems (deployment {{$labels.deployment}})."

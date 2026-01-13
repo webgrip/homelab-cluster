@@ -1,0 +1,44 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-cert-manager-rules
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: platform.cert-manager
+      rules:
+        - alert: CertManagerCertificateExpiringSoon
+          expr: |
+            (certmanager_certificate_expiration_timestamp_seconds - time()) < 7*24*3600
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Certificate expiring in <7d ({{$labels.namespace}}/{{$labels.name}})"
+            description: "Certificate {{$labels.namespace}}/{{$labels.name}} expires soon. Investigate renewal/issuer health."
+
+        - alert: CertManagerCertificateExpiringVerySoon
+          expr: |
+            (certmanager_certificate_expiration_timestamp_seconds - time()) < 24*3600
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Certificate expiring in <24h ({{$labels.namespace}}/{{$labels.name}})"
+            description: "Certificate {{$labels.namespace}}/{{$labels.name}} expires within 24h."
+
+        - alert: CertManagerHighErrorRate
+          expr: |
+            (
+              sum(rate(certmanager_controller_sync_call_count{result="error"}[5m]))
+              or
+              sum(rate(certmanager_controller_sync_call_count{status="error"}[5m]))
+            ) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "cert-manager controller errors"
+            description: "cert-manager is reporting controller sync errors for 10m."

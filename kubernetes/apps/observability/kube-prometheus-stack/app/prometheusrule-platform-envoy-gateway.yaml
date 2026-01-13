@@ -1,0 +1,20 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-envoy-gateway-rules
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: platform.envoy-gateway
+      rules:
+        - alert: EnvoyProxyDown
+          expr: |
+            up{namespace="network", pod=~".*envoy.*"} == 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Envoy proxy target down ({{$labels.pod}})"
+            description: "Prometheus cannot scrape an Envoy proxy pod for 5m in the network namespace."

@@ -1,0 +1,139 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-cnpg-backups-dr
+  namespace: observability
+  labels:
+    grafana_dashboard: "1"
+data:
+  cnpg-backups-dr.json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Databases / CNPG Backups & DR",
+      "uid": "db-cnpg-backups-dr",
+      "timezone": "browser",
+      "tags": ["databases", "cnpg"],
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "30s",
+      "time": {"from": "now-30d", "to": "now"},
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "CNPG operator up",
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(up{job=\"cloudnative-pg-operator\"} == 1)", "legendFormat": "up"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Backup errors/s",
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(rate(postgresql_backup_errors_total[5m])) or on() vector(0)", "legendFormat": "errors/s"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 3}, "overrides": []}
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "WAL archive errors/s",
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(rate(postgresql_wal_archive_errors_total[10m])) or on() vector(0)", "legendFormat": "errors/s"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 3}, "overrides": []}
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "Backup age (seconds since last backup)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "time() - max_over_time(postgresql_last_backup_timestamp_seconds[30d])",
+              "legendFormat": "age"
+            }
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Restore errors/s",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(rate(postgresql_restore_errors_total[1h])) or on() vector(0)", "legendFormat": "restore errors/s"}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {}, "overrides": []}
+        },
+        {
+          "id": 6,
+          "type": "stat",
+          "title": "DR: in recovery",
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 12},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "max(cnpg_disaster_recovery_in_recovery) or on() vector(0)", "legendFormat": "in_recovery"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 7,
+          "type": "stat",
+          "title": "DR: wal receiver up",
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 12},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "max(cnpg_disaster_recovery_wal_receiver_up) or on() vector(0)", "legendFormat": "wal_receiver"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 8,
+          "type": "timeseries",
+          "title": "DR: replay lag (seconds)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "max(cnpg_disaster_recovery_replay_lag_seconds) or on() vector(0)", "legendFormat": "replay lag"}],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+        },
+        {
+          "id": 9,
+          "type": "timeseries",
+          "title": "Restore test failures (last 24h)",
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 20},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (namespace) (kube_job_status_failed{job_name=~\"cnpg-restore-test-.*\"} == 1 and on (namespace, job_name) (time() - kube_job_created{job_name=~\"cnpg-restore-test-.*\"} < 86400)) or on() vector(0)",
+              "legendFormat": "{{namespace}}"
+            }
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        }
+      ]
+    }

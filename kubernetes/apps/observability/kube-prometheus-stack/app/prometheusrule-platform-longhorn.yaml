@@ -1,0 +1,37 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-longhorn-rules
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: platform.longhorn
+      rules:
+        - alert: LonghornVolumeDegraded
+          expr: longhorn_volume_robustness == 2
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Longhorn volume degraded ({{$labels.volume}})"
+            description: "Longhorn volume {{$labels.volume}} is degraded for 10m."
+
+        - alert: LonghornVolumeFault
+          expr: longhorn_volume_robustness == 3
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Longhorn volume fault ({{$labels.volume}})"
+            description: "Longhorn volume {{$labels.volume}} is in fault state."
+
+        - alert: LonghornNodeNotReady
+          expr: longhorn_node_status{condition="ready"} == 0
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Longhorn node not ready ({{$labels.node}})"
+            description: "Longhorn reports node {{$labels.node}} not ready for 10m."

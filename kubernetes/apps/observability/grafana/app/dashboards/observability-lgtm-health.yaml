@@ -1,0 +1,167 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-observability-lgtm-health
+  namespace: observability
+  labels:
+    grafana_dashboard: "1"
+data:
+  observability-lgtm-health.json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Observability / LGTM+P Health",
+      "uid": "obs-lgtmp-health",
+      "timezone": "browser",
+      "tags": ["observability"],
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "30s",
+      "time": {"from": "now-6h", "to": "now"},
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "Prometheus head series",
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "prometheus_tsdb_head_series", "legendFormat": "series"}
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Prometheus scrape samples/s",
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(rate(scrape_samples_post_metric_relabeling[5m]))", "legendFormat": "samples"}
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Loki ingesters up",
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(up{job=~\"loki.*\"} == 1)", "legendFormat": "up"}
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Tempo up",
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(up{job=~\"tempo.*\"} == 1)", "legendFormat": "up"}
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Prometheus scrape health (failed scrapes)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(rate(scrape_samples_scraped[5m])) - sum(rate(scrape_samples_post_metric_relabeling[5m]))", "legendFormat": "dropped_or_failed"}
+          ],
+          "fieldConfig": {"defaults": {}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Mimir received samples/s (if enabled)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(mimir_distributor_received_samples_total[5m])) or sum(rate(cortex_distributor_received_samples_total[5m]))",
+              "legendFormat": "samples"
+            }
+          ],
+          "fieldConfig": {"defaults": {}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "Loki ingestion bytes/s (if exposed)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(loki_distributor_bytes_received_total[5m]))",
+              "legendFormat": "bytes"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "Bps"}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 8,
+          "type": "timeseries",
+          "title": "Tempo spans received/s (if exposed)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(tempo_distributor_spans_received_total[5m])) or sum(rate(tempo_receiver_accepted_spans_total[5m]))",
+              "legendFormat": "spans"
+            }
+          ],
+          "fieldConfig": {"defaults": {}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 9,
+          "type": "timeseries",
+          "title": "Span-metrics calls/s (derived metrics)",
+          "gridPos": {"h": 9, "w": 12, "x": 0, "y": 20},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(rate(traces_spanmetrics_calls_total[5m]))", "legendFormat": "calls"}
+          ],
+          "fieldConfig": {"defaults": {}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 10,
+          "type": "timeseries",
+          "title": "Service-graph requests/s (derived metrics)",
+          "gridPos": {"h": 9, "w": 12, "x": 12, "y": 20},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(rate(traces_service_graph_request_total[5m]))", "legendFormat": "requests"}
+          ],
+          "fieldConfig": {"defaults": {}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        }
+      ]
+    }
