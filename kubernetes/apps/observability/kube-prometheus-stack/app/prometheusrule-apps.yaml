@@ -11,9 +11,9 @@ spec:
       rules:
         - alert: AppDeploymentReplicasMismatch
           expr: |
-            kube_deployment_spec_replicas{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"}
+            kube_deployment_spec_replicas{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}
             >
-            kube_deployment_status_replicas_available{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"}
+            kube_deployment_status_replicas_available{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}
           for: 10m
           labels:
             severity: warning
@@ -23,9 +23,9 @@ spec:
 
         - alert: AppDeploymentDown
           expr: |
-            kube_deployment_spec_replicas{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"} > 0
+            kube_deployment_spec_replicas{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"} > 0
             and
-            kube_deployment_status_replicas_available{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"} == 0
+            kube_deployment_status_replicas_available{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"} == 0
           for: 10m
           labels:
             severity: critical
@@ -35,9 +35,9 @@ spec:
 
         - alert: AppStatefulSetReplicasMismatch
           expr: |
-            kube_statefulset_status_replicas{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"}
+            kube_statefulset_status_replicas{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}
             >
-            kube_statefulset_status_replicas_ready{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"}
+            kube_statefulset_status_replicas_ready{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}
           for: 10m
           labels:
             severity: warning
@@ -48,7 +48,7 @@ spec:
         - alert: AppCrashLoopBackOff
           expr: |
             max by (namespace, pod, container) (
-              kube_pod_container_status_waiting_reason{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor", reason="CrashLoopBackOff"}
+              kube_pod_container_status_waiting_reason{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)", reason="CrashLoopBackOff"}
             ) > 0
           for: 15m
           labels:
@@ -60,12 +60,12 @@ spec:
         - alert: AppPersistentVolumeLowFree
           expr: |
             (
-              kubelet_volume_stats_available_bytes{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"}
+              kubelet_volume_stats_available_bytes{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}
               /
-              kubelet_volume_stats_capacity_bytes{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"}
+              kubelet_volume_stats_capacity_bytes{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}
             ) < 0.15
             and
-            kubelet_volume_stats_capacity_bytes{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"} > 0
+            kubelet_volume_stats_capacity_bytes{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"} > 0
           for: 30m
           labels:
             severity: warning
@@ -76,12 +76,12 @@ spec:
         - alert: AppPersistentVolumeCriticallyLowFree
           expr: |
             (
-              kubelet_volume_stats_available_bytes{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"}
+              kubelet_volume_stats_available_bytes{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}
               /
-              kubelet_volume_stats_capacity_bytes{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"}
+              kubelet_volume_stats_capacity_bytes{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}
             ) < 0.05
             and
-            kubelet_volume_stats_capacity_bytes{namespace=~"backstage|freshrss|invoiceninja|searxng|sparkyfitness|tandoor"} > 0
+            kubelet_volume_stats_capacity_bytes{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"} > 0
           for: 15m
           labels:
             severity: critical
