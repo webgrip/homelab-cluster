@@ -30,7 +30,6 @@ spec:
       extraArgs:
         config.expand-env: true
 
-      # Disabled for small clusters; re-enable later if you want service graphs/span-metrics.
       metricsGenerator:
         enabled: true
         # Prometheus remote_write receiver (enabled in kube-prometheus-stack HelmRelease).
@@ -39,8 +38,25 @@ spec:
           service_graphs:
             wait: 10s
             max_items: 2000
+            # Keep service graphs low-cardinality: only client/server edges.
+            # Adding dimensions multiplies the number of time series per edge.
+            dimensions: []
           span_metrics:
-            enable_target_info: true
+            # Keep span-metrics cardinality sane for small clusters.
+            # Avoid high-cardinality dimensions like http.target/url, k8s.pod.name, user ids, etc.
+            dimensions:
+              - http.method
+              - http.status_code
+              - rpc.system
+              - rpc.service
+              - rpc.method
+            intrinsic_dimensions:
+              service: true
+              span_name: false
+              span_kind: true
+              status_code: true
+              status_message: false
+            enable_target_info: false
         storage:
           path: /tmp/tempo
         traces_storage:

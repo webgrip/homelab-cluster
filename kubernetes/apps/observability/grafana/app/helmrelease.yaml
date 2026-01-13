@@ -114,7 +114,7 @@ spec:
                 - name: TraceID
                   matcherRegex: '"trace_id"\\s*:\\s*"([0-9a-fA-F]{32})"'
                   datasourceUid: tempo
-                  url: '$${__value.raw}'
+                  url: "$${__value.raw}"
           - name: Tempo
             type: tempo
             uid: tempo
@@ -123,9 +123,16 @@ spec:
             jsonData:
               tracesToLogsV2:
                 datasourceUid: loki
-                spanStartTimeShift: '-1h'
-                spanEndTimeShift: '1h'
-                tags: ['job', 'namespace', 'pod', 'service.name', 'service.namespace']
+                spanStartTimeShift: "-1h"
+                spanEndTimeShift: "1h"
+                tags:
+                  [
+                    "job",
+                    "namespace",
+                    "pod",
+                    "service.name",
+                    "service.namespace",
+                  ]
                 filterByTraceID: true
                 filterBySpanID: false
                 customQuery: false
@@ -133,16 +140,30 @@ spec:
                 enabled: true
               tracesToMetrics:
                 datasourceUid: prometheus
-                tags: ['job', 'namespace', 'pod', 'service.name', 'service.namespace']
+                # Tags must exist on the span/resource, but the resulting labels must match
+                # the Prometheus label names produced by Tempo span-metrics (dots become underscores).
+                tags:
+                  - key: service.name
+                    value: service
+                  - key: http.method
+                    value: http_method
+                  - key: http.status_code
+                    value: http_status_code
+                  - key: rpc.system
+                    value: rpc_system
+                  - key: rpc.service
+                    value: rpc_service
+                  - key: rpc.method
+                    value: rpc_method
                 queries:
                   - name: Span metrics
-                    query: 'sum(rate(traces_spanmetrics_latency_bucket{$$__tags}[5m]))'
+                    query: "sum(rate(traces_spanmetrics_latency_bucket{$$__tags}[5m]))"
               serviceMap:
                 datasourceUid: prometheus
               tracesToProfiles:
                 datasourceUid: pyroscope
-                tags: ['namespace', 'pod', 'service.name', 'service.namespace']
-                profileTypeId: 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'
+                tags: ["namespace", "pod", "service.name", "service.namespace"]
+                profileTypeId: "process_cpu:cpu:nanoseconds:cpu:nanoseconds"
                 customQuery: false
           - name: Pyroscope
             type: pyroscope
