@@ -37,6 +37,15 @@ spec:
     resultsCache:
       enabled: false
 
+    monitoring:
+      dashboards:
+        enabled: true
+      rules:
+        enabled: true
+        alerting: true
+      serviceMonitor:
+        enabled: true
+
     # NOTE: In this chart, `global.*` env/args apply to read/write/backend/etc.
     # In SingleBinary mode, you must configure env/args under `singleBinary`.
 
@@ -44,6 +53,11 @@ spec:
       auth_enabled: false
       commonConfig:
         replication_factor: 1
+      compactor:
+        retention_enabled: true
+        delete_request_store: s3
+      limits_config:
+        retention_period: 720h
       schemaConfig:
         configs:
           - from: "2024-04-01"
@@ -83,6 +97,10 @@ spec:
       extraEnvFrom:
         - secretRef:
             name: observability-s3
+      persistence:
+        enabled: true
+        storageClass: longhorn
+        size: 10Gi
       resources:
         requests:
           cpu: 200m

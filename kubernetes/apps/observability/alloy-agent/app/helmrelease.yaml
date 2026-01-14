@@ -90,10 +90,25 @@ spec:
             forward_to = [loki.process.pod_logs.receiver]
           }
 
+          loki.source.kubernetes_events "events" {
+            forward_to = [loki.process.kubernetes_events.receiver]
+          }
+
           loki.process "pod_logs" {
             stage.static_labels {
               values = {
                 cluster = "homelab-cluster",
+              }
+            }
+
+            forward_to = [loki.write.local.receiver]
+          }
+
+          loki.process "kubernetes_events" {
+            stage.static_labels {
+              values = {
+                cluster = "homelab-cluster",
+                job     = "kubernetes/events",
               }
             }
 

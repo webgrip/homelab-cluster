@@ -61,6 +61,20 @@ spec:
             output {
               traces = [otelcol.processor.batch.main.input]
               logs   = [otelcol.processor.attributes.loki_labels.input]
+              metrics = [otelcol.processor.batch.metrics.input]
+            }
+          }
+
+          otelcol.processor.batch "metrics" {
+            output {
+              metrics = [otelcol.exporter.prometheusremotewrite.mimir.input]
+            }
+          }
+
+          otelcol.exporter.prometheusremotewrite "mimir" {
+            endpoint = "http://mimir-distributed-gateway.observability.svc.cluster.local/api/v1/push"
+            headers = {
+              "X-Scope-OrgID" = "homelab",
             }
           }
 

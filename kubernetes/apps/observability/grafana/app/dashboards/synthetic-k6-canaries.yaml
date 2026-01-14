@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-synthetic-k6-canaries
+  namespace: observability
+  labels:
+    grafana_dashboard: "1"
+data:
+  synthetic-k6-canaries.json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Synthetic / k6 Canaries",
+      "uid": "synthetic-k6-canaries",
+      "timezone": "browser",
+      "tags": ["synthetic", "k6"],
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "30s",
+      "time": {"from": "now-6h", "to": "now"},
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Request rate (by endpoint)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (endpoint) (rate({__name__=~\"k6_http_reqs(_total)?|http_reqs(_total)?\"}[5m]))",
+              "legendFormat": "{{endpoint}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "Failed request rate (by endpoint)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (endpoint) (rate({__name__=~\"k6_http_req_failed(_total)?|http_req_failed(_total)?\"}[5m]))",
+              "legendFormat": "{{endpoint}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "p95 duration (seconds, by endpoint)",
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.95, sum by (le, endpoint) (rate({__name__=~\"k6_http_req_duration(_seconds)?_bucket|http_req_duration(_seconds)?_bucket\"}[5m])))",
+              "legendFormat": "{{endpoint}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Any failures (last 5m)",
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 16},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(increase({__name__=~\"k6_http_req_failed(_total)?|http_req_failed(_total)?\"}[5m]))",
+              "legendFormat": "failures"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        }
+      ]
+    }

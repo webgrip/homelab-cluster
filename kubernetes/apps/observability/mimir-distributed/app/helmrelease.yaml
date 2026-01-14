@@ -17,6 +17,17 @@ spec:
     podAnnotations:
       reloader.stakater.com/auto: "true"
 
+    metaMonitoring:
+      dashboards:
+        enabled: true
+      serviceMonitor:
+        enabled: true
+        clusterLabel: homelab-cluster
+      prometheusRule:
+        enabled: true
+        mimirAlerts: true
+        mimirRules: true
+
     # Use the existing cluster S3 credentials (Garage) via env injection.
     global:
       extraEnvFrom:
@@ -70,6 +81,10 @@ spec:
               bucket_lookup_type: path
               http:
                 insecure_skip_verify: true
+
+        # Enforce long-term retention via the compactor.
+        limits:
+          compactor_blocks_retention_period: 90d
 
         # Explicitly set key backends to S3 as well.
         blocks_storage:
