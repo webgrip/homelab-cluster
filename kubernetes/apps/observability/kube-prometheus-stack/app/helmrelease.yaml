@@ -32,6 +32,8 @@ spec:
     prometheus:
       prometheusSpec:
         retention: 15d
+        externalLabels:
+          cluster: homelab-cluster
         podMetadata:
           annotations:
             reloader.stakater.com/auto: "true"
@@ -42,6 +44,11 @@ spec:
           - url: http://mimir-distributed-gateway.observability.svc.cluster.local/api/v1/push
             headers:
               X-Scope-OrgID: homelab
+            writeRelabelConfigs:
+              # Keep long-term metrics useful while avoiding obvious cardinality traps.
+              # (These labels are high-churn and rarely needed for long-term trends.)
+              - action: labeldrop
+                regex: "pod_uid|container_id|image_id"
         serviceMonitorSelectorNilUsesHelmValues: false
         podMonitorSelectorNilUsesHelmValues: false
         probeSelectorNilUsesHelmValues: false

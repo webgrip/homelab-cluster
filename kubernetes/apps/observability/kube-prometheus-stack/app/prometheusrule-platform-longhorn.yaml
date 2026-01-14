@@ -17,6 +17,7 @@ spec:
           annotations:
             summary: "Longhorn volume degraded ({{$labels.volume}})"
             description: "Longhorn volume {{$labels.volume}} is degraded for 10m."
+            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#platform-longhorn"
 
         - alert: LonghornVolumeFault
           expr: longhorn_volume_robustness == 3
@@ -26,6 +27,7 @@ spec:
           annotations:
             summary: "Longhorn volume fault ({{$labels.volume}})"
             description: "Longhorn volume {{$labels.volume}} is in fault state."
+            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#platform-longhorn"
 
         - alert: LonghornNodeNotReady
           expr: longhorn_node_status{condition="ready"} == 0
@@ -35,3 +37,26 @@ spec:
           annotations:
             summary: "Longhorn node not ready ({{$labels.node}})"
             description: "Longhorn reports node {{$labels.node}} not ready for 10m."
+            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#platform-longhorn"
+
+        - alert: PVCVolumeAlmostFull
+          expr: |
+            (kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes) < 0.10
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "PVC almost full ({{$labels.namespace}}/{{$labels.persistentvolumeclaim}})"
+            description: "PVC {{$labels.namespace}}/{{$labels.persistentvolumeclaim}} has <10% free space for 15m."
+            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#platform-longhorn"
+
+        - alert: PVCVolumeFillingFast
+          expr: |
+            predict_linear(kubelet_volume_stats_available_bytes[6h], 24 * 3600) < 0
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "PVC filling fast ({{$labels.namespace}}/{{$labels.persistentvolumeclaim}})"
+            description: "PVC {{$labels.namespace}}/{{$labels.persistentvolumeclaim}} is predicted to run out of space within 24h."
+            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#platform-longhorn"

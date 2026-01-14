@@ -1,0 +1,23 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: blackbox-synthetic
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: blackbox.synthetic
+      rules:
+        - alert: SyntheticEndpointSlow
+          expr: |
+            probe_duration_seconds{namespace="observability", endpoint=~"grafana|prometheus|alertmanager"} > 2
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Synthetic probe slow ({{ $labels.endpoint }})"
+            description: "Blackbox probe duration >2s for 10m for {{ $labels.endpoint }} ({{ $labels.instance }})."
+            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#synthetic-probes-blackbox"

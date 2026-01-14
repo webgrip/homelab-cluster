@@ -1,0 +1,105 @@
+---
+apiVersion: sloth.slok.dev/v1
+kind: PrometheusServiceLevel
+metadata:
+  name: synthetics-availability
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: sloth
+spec:
+  service: "synthetics"
+  labels:
+    owner: platform
+  slos:
+    - name: grafana-availability
+      objective: 99.9
+      description: "Availability SLO based on blackbox probe_success for Grafana ingress."
+      timeWindow: 30d
+      sli:
+        events:
+          errorQuery: |
+            sum(
+              count_over_time(probe_success{namespace="observability", endpoint="grafana"}[{{.window}}])
+              -
+              sum_over_time(probe_success{namespace="observability", endpoint="grafana"}[{{.window}}])
+            )
+          totalQuery: |
+            sum(
+              count_over_time(probe_success{namespace="observability", endpoint="grafana"}[{{.window}}])
+            )
+      alerting:
+        name: SyntheticGrafanaAvailability
+        labels:
+          category: slo
+        annotations:
+          summary: "Grafana synthetic availability SLO burn rate"
+          description: "Fast burn indicates the Grafana ingress endpoint is failing synthetic probes."
+          runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#synthetic-probes-blackbox"
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning
+
+    - name: prometheus-availability
+      objective: 99.9
+      description: "Availability SLO based on blackbox probe_success for Prometheus ingress."
+      timeWindow: 30d
+      sli:
+        events:
+          errorQuery: |
+            sum(
+              count_over_time(probe_success{namespace="observability", endpoint="prometheus"}[{{.window}}])
+              -
+              sum_over_time(probe_success{namespace="observability", endpoint="prometheus"}[{{.window}}])
+            )
+          totalQuery: |
+            sum(
+              count_over_time(probe_success{namespace="observability", endpoint="prometheus"}[{{.window}}])
+            )
+      alerting:
+        name: SyntheticPrometheusAvailability
+        labels:
+          category: slo
+        annotations:
+          summary: "Prometheus synthetic availability SLO burn rate"
+          description: "Fast burn indicates the Prometheus ingress endpoint is failing synthetic probes."
+          runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#synthetic-probes-blackbox"
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning
+
+    - name: alertmanager-availability
+      objective: 99.9
+      description: "Availability SLO based on blackbox probe_success for Alertmanager ingress."
+      timeWindow: 30d
+      sli:
+        events:
+          errorQuery: |
+            sum(
+              count_over_time(probe_success{namespace="observability", endpoint="alertmanager"}[{{.window}}])
+              -
+              sum_over_time(probe_success{namespace="observability", endpoint="alertmanager"}[{{.window}}])
+            )
+          totalQuery: |
+            sum(
+              count_over_time(probe_success{namespace="observability", endpoint="alertmanager"}[{{.window}}])
+            )
+      alerting:
+        name: SyntheticAlertmanagerAvailability
+        labels:
+          category: slo
+        annotations:
+          summary: "Alertmanager synthetic availability SLO burn rate"
+          description: "Fast burn indicates the Alertmanager ingress endpoint is failing synthetic probes."
+          runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#synthetic-probes-blackbox"
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning

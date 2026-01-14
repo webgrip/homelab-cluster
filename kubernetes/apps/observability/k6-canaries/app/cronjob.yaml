@@ -1,0 +1,55 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: k6-ingress-canary
+  namespace: observability
+spec:
+  schedule: "*/30 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: k6-canary
+          restartPolicy: Never
+          containers:
+            - name: create-testrun
+              image: bitnami/kubectl:1.30
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: SECRET_DOMAIN
+                  value: ${SECRET_DOMAIN}
+              command:
+                - /bin/sh
+                - -ceu
+                - |
+                  ts="$(date +%s)"
+                  name="k6-ingress-canary-${ts}"
+
+                  cat <<EOF | kubectl apply -f -
+                  apiVersion: k6.io/v1alpha1
+                  kind: TestRun
+                  metadata:
+                    name: ${name}
+                    namespace: observability
+                    labels:
+                      app.kubernetes.io/name: k6-ingress-canary
+                  spec:
+                    parallelism: 1
+                    cleanup: post
+                    paused: "false"
+                    arguments: "--out experimental-prometheus-rw"
+                    script:
+                      configMap:
+                        name: k6-canary-script
+                        file: script.js
+                    runner:
+                      env:
+                        - name: SECRET_DOMAIN
+                          value: "${SECRET_DOMAIN}"
+                        - name: K6_PROMETHEUS_RW_SERVER_URL
+                          value: "http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090/api/v1/write"
+                  EOF

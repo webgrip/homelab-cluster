@@ -7,64 +7,6 @@ spec:
   groups:
     - name: apps.traffic.traces
       rules:
-        - alert: AppHttp5xxErrorRateHigh
-          expr: |
-            (
-              sum by (k8s_namespace_name) (
-                rate(traces_spanmetrics_calls_total{span_kind="SPAN_KIND_SERVER", k8s_namespace_name!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}[5m])
-              )
-            ) > 0
-            and on (k8s_namespace_name)
-            (
-              (
-                sum by (k8s_namespace_name) (
-                  rate(traces_spanmetrics_calls_total{span_kind="SPAN_KIND_SERVER", http_status_code=~"5..", k8s_namespace_name!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}[5m])
-                )
-              )
-              /
-              clamp_min(
-                sum by (k8s_namespace_name) (
-                  rate(traces_spanmetrics_calls_total{span_kind="SPAN_KIND_SERVER", k8s_namespace_name!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}[5m])
-                ),
-                0.01
-              )
-            ) > 0.05
-          for: 10m
-          labels:
-            severity: warning
-          annotations:
-            summary: "High HTTP 5xx rate ({{ $labels.k8s_namespace_name }})"
-            description: "HTTP 5xx error rate >5% for 10m (derived from Tempo span-metrics via Beyla/OTel)."
-
-        - alert: AppHttp5xxErrorRateCritical
-          expr: |
-            (
-              sum by (k8s_namespace_name) (
-                rate(traces_spanmetrics_calls_total{span_kind="SPAN_KIND_SERVER", k8s_namespace_name!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}[5m])
-              )
-            ) > 0
-            and on (k8s_namespace_name)
-            (
-              (
-                sum by (k8s_namespace_name) (
-                  rate(traces_spanmetrics_calls_total{span_kind="SPAN_KIND_SERVER", http_status_code=~"5..", k8s_namespace_name!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}[5m])
-                )
-              )
-              /
-              clamp_min(
-                sum by (k8s_namespace_name) (
-                  rate(traces_spanmetrics_calls_total{span_kind="SPAN_KIND_SERVER", k8s_namespace_name!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}[5m])
-                ),
-                0.01
-              )
-            ) > 0.10
-          for: 10m
-          labels:
-            severity: critical
-          annotations:
-            summary: "Critical HTTP 5xx rate ({{ $labels.k8s_namespace_name }})"
-            description: "HTTP 5xx error rate >10% for 10m (derived from Tempo span-metrics via Beyla/OTel)."
-
         - alert: AppHttpP95LatencyHigh
           expr: |
             (
@@ -87,6 +29,7 @@ spec:
           annotations:
             summary: "High p95 latency ({{ $labels.k8s_namespace_name }})"
             description: "p95 latency >1.5s for 15m (Tempo span-metrics)."
+            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
 
         - alert: AppHttpP95LatencyCritical
           expr: |
@@ -110,3 +53,4 @@ spec:
           annotations:
             summary: "Critical p95 latency ({{ $labels.k8s_namespace_name }})"
             description: "p95 latency >3s for 15m (Tempo span-metrics)."
+            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#apps-baseline"

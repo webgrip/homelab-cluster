@@ -1,0 +1,40 @@
+---
+apiVersion: sloth.slok.dev/v1
+kind: PrometheusServiceLevel
+metadata:
+  name: apps-availability
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: sloth
+spec:
+  service: "apps"
+  labels:
+    owner: platform
+  slos:
+    - name: availability
+      objective: 99
+      description: "Availability SLO based on server span-metrics (Tempo metrics-generator)."
+      timeWindow: 30d
+      sli:
+        events:
+          errorQuery: |
+            sum(
+              rate(traces_spanmetrics_calls_total{span_kind="SPAN_KIND_SERVER", http_status_code=~"5..", k8s_namespace_name!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}[{{.window}}])
+            )
+          totalQuery: |
+            sum(
+              rate(traces_spanmetrics_calls_total{span_kind="SPAN_KIND_SERVER", k8s_namespace_name!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}[{{.window}}])
+            )
+      alerting:
+        name: AppsAvailability
+        labels:
+          category: slo
+        annotations:
+          summary: "Apps SLO burn rate"
+          description: "Fast burn indicates user-visible errors across app namespaces."
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning

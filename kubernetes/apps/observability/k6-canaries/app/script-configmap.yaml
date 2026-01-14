@@ -1,0 +1,35 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k6-canary-script
+  namespace: observability
+data:
+  script.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+
+    export const options = {
+      vus: 1,
+      duration: '30s',
+      thresholds: {
+        http_req_failed: ['rate<0.01'],
+        http_req_duration: ['p(95)<1000'],
+      },
+    };
+
+    const endpoints = [
+      { name: 'grafana', url: `https://grafana.${__ENV.SECRET_DOMAIN}/api/health` },
+      { name: 'prometheus', url: `https://prometheus.${__ENV.SECRET_DOMAIN}/-/ready` },
+      { name: 'alertmanager', url: `https://alertmanager.${__ENV.SECRET_DOMAIN}/-/ready` },
+    ];
+
+    export default function () {
+      for (const endpoint of endpoints) {
+        const res = http.get(endpoint.url, { tags: { endpoint: endpoint.name } });
+        check(res, {
+          'status is OK/redirect': (r) => r.status >= 200 && r.status < 400,
+        });
+      }
+      sleep(1);
+    }

@@ -1,0 +1,56 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: synthetic-k6-canaries
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: synthetic.k6.canaries
+      rules:
+        - alert: K6CanaryP95LatencyHigh
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (le, endpoint) (
+                rate({__name__=~"k6_http_req_duration(_seconds)?_bucket|http_req_duration(_seconds)?_bucket", endpoint=~"grafana|prometheus|alertmanager"}[5m])
+              )
+            ) > 1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "k6 canary p95 latency high ({{ $labels.endpoint }})"
+            description: "k6 canary p95 duration > 1s for 10m for {{ $labels.endpoint }}."
+            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#k6-canaries"
+
+        - alert: K6CanaryP95LatencyCritical
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (le, endpoint) (
+                rate({__name__=~"k6_http_req_duration(_seconds)?_bucket|http_req_duration(_seconds)?_bucket", endpoint=~"grafana|prometheus|alertmanager"}[5m])
+              )
+            ) > 2
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "k6 canary p95 latency critical ({{ $labels.endpoint }})"
+            description: "k6 canary p95 duration > 2s for 10m for {{ $labels.endpoint }}."
+            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#k6-canaries"
+
+        - alert: K6CanaryMetricsMissing
+          expr: |
+            absent({__name__=~"k6_http_reqs(_total)?|http_reqs(_total)?", endpoint="grafana"})
+            or absent({__name__=~"k6_http_reqs(_total)?|http_reqs(_total)?", endpoint="prometheus"})
+            or absent({__name__=~"k6_http_reqs(_total)?|http_reqs(_total)?", endpoint="alertmanager"})
+          for: 2h
+          labels:
+            severity: warning
+          annotations:
+            summary: "k6 canary metrics missing"
+            description: "No k6 canary request metrics observed for one or more endpoints for 2h. The canary CronJob/TestRuns may not be running or remote_write may be failing."
+            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#k6-canaries"

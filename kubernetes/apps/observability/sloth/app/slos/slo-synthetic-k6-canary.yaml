@@ -1,0 +1,108 @@
+---
+apiVersion: sloth.slok.dev/v1
+kind: PrometheusServiceLevel
+metadata:
+  name: synthetics-k6-canary
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: sloth
+spec:
+  service: "k6-ingress-canary"
+  labels:
+    owner: platform
+  slos:
+    - name: grafana-success-rate
+      objective: 99
+      description: "Success-rate SLO based on k6 canary http_req_failed for the Grafana health endpoint."
+      timeWindow: 30d
+      sli:
+        raw:
+          errorRatioQuery: |
+            (
+              sum(rate({__name__=~"k6_http_req_failed_total|http_req_failed_total", endpoint="grafana"}[{{.window}}]))
+              /
+              clamp_min(
+                sum(rate({__name__=~"k6_http_reqs_total|http_reqs_total", endpoint="grafana"}[{{.window}}])),
+                0.001
+              )
+            )
+            or
+            avg(avg_over_time({__name__=~"k6_http_req_failed|http_req_failed", endpoint="grafana"}[{{.window}}]))
+      alerting:
+        name: K6GrafanaSuccessRate
+        labels:
+          category: slo
+        annotations:
+          summary: "k6 canary success-rate SLO burn"
+          description: "Fast burn indicates the Grafana canary endpoint is erroring (k6 http_req_failed)."
+          runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#k6-canaries"
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning
+
+    - name: prometheus-success-rate
+      objective: 99
+      description: "Success-rate SLO based on k6 canary http_req_failed for the Prometheus readiness endpoint."
+      timeWindow: 30d
+      sli:
+        raw:
+          errorRatioQuery: |
+            (
+              sum(rate({__name__=~"k6_http_req_failed_total|http_req_failed_total", endpoint="prometheus"}[{{.window}}]))
+              /
+              clamp_min(
+                sum(rate({__name__=~"k6_http_reqs_total|http_reqs_total", endpoint="prometheus"}[{{.window}}])),
+                0.001
+              )
+            )
+            or
+            avg(avg_over_time({__name__=~"k6_http_req_failed|http_req_failed", endpoint="prometheus"}[{{.window}}]))
+      alerting:
+        name: K6PrometheusSuccessRate
+        labels:
+          category: slo
+        annotations:
+          summary: "k6 canary success-rate SLO burn"
+          description: "Fast burn indicates the Prometheus canary endpoint is erroring (k6 http_req_failed)."
+          runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#k6-canaries"
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning
+
+    - name: alertmanager-success-rate
+      objective: 99
+      description: "Success-rate SLO based on k6 canary http_req_failed for the Alertmanager readiness endpoint."
+      timeWindow: 30d
+      sli:
+        raw:
+          errorRatioQuery: |
+            (
+              sum(rate({__name__=~"k6_http_req_failed_total|http_req_failed_total", endpoint="alertmanager"}[{{.window}}]))
+              /
+              clamp_min(
+                sum(rate({__name__=~"k6_http_reqs_total|http_reqs_total", endpoint="alertmanager"}[{{.window}}])),
+                0.001
+              )
+            )
+            or
+            avg(avg_over_time({__name__=~"k6_http_req_failed|http_req_failed", endpoint="alertmanager"}[{{.window}}]))
+      alerting:
+        name: K6AlertmanagerSuccessRate
+        labels:
+          category: slo
+        annotations:
+          summary: "k6 canary success-rate SLO burn"
+          description: "Fast burn indicates the Alertmanager canary endpoint is erroring (k6 http_req_failed)."
+          runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#k6-canaries"
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning

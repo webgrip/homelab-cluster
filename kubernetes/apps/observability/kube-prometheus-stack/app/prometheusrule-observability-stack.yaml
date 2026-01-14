@@ -24,6 +24,7 @@ spec:
           annotations:
             summary: "Some observability pods are not Ready"
             description: "At least one pod in namespace observability has been not-ready for 10m. Check pod status/events in the observability namespace."
+            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#observability-stack"
 
         - alert: ObservabilityHighRestartRate
           expr: |
@@ -34,6 +35,7 @@ spec:
           annotations:
             summary: "High restart rate in observability namespace"
             description: "Containers in namespace observability restarted frequently over the last 15m. Check CrashLoopBackOff/OOMKilled and recent logs."
+            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#observability-stack"
 
         - alert: ObservabilityOOMKills
           expr: |
@@ -44,3 +46,26 @@ spec:
           annotations:
             summary: "OOMKills detected in observability namespace"
             description: "At least one container in namespace observability was last terminated due to OOMKilled. Consider increasing limits or reducing workload."
+            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#observability-stack"
+
+        - alert: PrometheusRemoteWriteBacklog
+          expr: |
+            prometheus_remote_storage_samples_pending > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Prometheus remote_write backlog"
+            description: "Prometheus has had pending samples for remote_write for 15m. This can indicate Mimir/gateway slowness or network issues."
+            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#observability-stack"
+
+        - alert: PrometheusSeriesCreationHigh
+          expr: |
+            rate(prometheus_tsdb_head_series_created_total[1h]) > 50000
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High Prometheus series creation rate"
+            description: "Prometheus is creating >50k new series/hour for 30m. This often indicates a cardinality regression (new labels/targets)."
+            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#observability-stack"

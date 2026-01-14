@@ -51,6 +51,8 @@ Key decisions:
 - `kubeProxy.enabled=false` because this cluster is kube-proxy-free (Cilium).
 - Control-plane scrapes are disabled by default (`kubeEtcd`, `kubeControllerManager`, `kubeScheduler`) to avoid noisy failures in environments where endpoints are not exposed.
 - Prometheus is configured to **discover ServiceMonitors/PodMonitors/Rules cluster-wide** (selectors empty + `*SelectorNilUsesHelmValues=false`).
+- Prometheus sets `externalLabels.cluster=homelab-cluster` to make multi-cluster / remote storage queries unambiguous.
+- Prometheus `remote_write` includes a small set of write-time relabeling guardrails to reduce high-churn label cardinality.
 
 ### Mimir (long-term metrics)
 
@@ -70,6 +72,14 @@ Storage:
 - Object storage: S3-compatible backend via `observability-s3` env vars
 - Local persistence: Longhorn PVCs for ingester/store-gateway/compactor
 
+Retention:
+
+- Configured for 90 days in Mimir (block retention via compactor limits).
+
+Meta-monitoring:
+
+- Chart-provided dashboards, ServiceMonitor, and PrometheusRules are enabled so Mimir can be monitored like any other app.
+
 ### Grafana
 
 - HelmRelease: [kubernetes/apps/observability/grafana/app/helmrelease.yaml](../../kubernetes/apps/observability/grafana/app/helmrelease.yaml)
@@ -84,6 +94,43 @@ Plugins:
 Rendering:
 
 - Grafana is configured with a **remote image renderer** (chart-managed `grafana-image-renderer` deployment) for reliable panel rendering in alerts/reports.
+
+GitHub login:
+
+- Grafana is configured for GitHub OAuth login (often casually called “GitHub OIDC”, but this is GitHub OAuth2 for user login; GitHub Actions OIDC is a different feature).
+- Callback URL: `https://grafana.<SECRET_DOMAIN>/login/github`
+
+To enable it, a human must create a SOPS-encrypted Secret containing the GitHub OAuth client credentials.
+
+Secret details:
+
+- Namespace: `observability`
+- Name: `grafana-github-oauth`
+- Keys: `GF_AUTH_GITHUB_CLIENT_ID`, `GF_AUTH_GITHUB_CLIENT_SECRET`
+
+Template (encrypt with SOPS before committing):
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+   name: grafana-github-oauth
+   namespace: observability
+type: Opaque
+stringData:
+   GF_AUTH_GITHUB_CLIENT_ID: "<github oauth client id>"
+   GF_AUTH_GITHUB_CLIENT_SECRET: "<github oauth client secret>"
+```
+
+Note:
+
+- If you commit this Secret to Git, add it to [kubernetes/apps/observability/grafana/app/kustomization.yaml](../../kubernetes/apps/observability/grafana/app/kustomization.yaml) so Flux applies it.
+- Alternatively, create it out-of-band with `kubectl` (but then it’s no longer fully GitOps-managed).
+
+GitHub OAuth app settings (GitHub org/user → Settings → Developer settings → OAuth Apps):
+
+- Homepage URL: `https://grafana.<SECRET_DOMAIN>/`
+- Authorization callback URL: `https://grafana.<SECRET_DOMAIN>/login/github`
 
 Provisioned datasources:
 
@@ -105,6 +152,19 @@ Dashboards:
 
 This deploys Loki in **SingleBinary** mode with S3-compatible object storage.
 
+Notes on local storage:
+
+- Even with S3 for chunks/index, Loki still needs **local disk** for things like WAL/TSDB scratch data, compaction/retention work, and temporary files.
+- This repo explicitly enables a Longhorn-backed PVC for the SingleBinary pod so Loki can restart safely without losing local state.
+
+Retention:
+
+- Configured for ~30 days (`720h`) via `compactor` + `limits_config.retention_period`.
+
+Meta-monitoring:
+
+- ServiceMonitor + built-in dashboards/rules are enabled via the Loki Helm chart.
+
 Bucket requirements (create these in your S3 backend):
 
 - `loki-chunks`
@@ -120,6 +180,10 @@ S3 credentials:
 - HelmRelease: [kubernetes/apps/observability/tempo/app/helmrelease.yaml](../../kubernetes/apps/observability/tempo/app/helmrelease.yaml)
 
 Tempo is deployed in single-binary mode and configured for S3-compatible trace storage.
+
+Retention:
+
+- Configured for 14 days (`336h`).
 
 Bucket requirement:
 
@@ -293,6 +357,28 @@ env:
       value: http/protobuf
    - name: OTEL_RESOURCE_ATTRIBUTES
       value: service.namespace=myapp,k8s.cluster.name=homelab-cluster
+
+### Metrics (OpenTelemetry → Alloy gateway → Mimir)
+
+The Alloy gateway also accepts **OTLP metrics** and forwards them to Mimir via Prometheus remote_write.
+
+- OTLP gRPC: `alloy-gateway.observability.svc.cluster.local:4317`
+- OTLP HTTP: `http://alloy-gateway.observability.svc.cluster.local:4318`
+
+Most OpenTelemetry SDKs will export metrics automatically when configured with the standard OTLP env vars.
+
+Suggested baseline:
+
+```yaml
+env:
+   - name: OTEL_SERVICE_NAME
+      value: myapp
+   - name: OTEL_EXPORTER_OTLP_ENDPOINT
+      value: http://alloy-gateway.observability.svc.cluster.local:4318
+   - name: OTEL_EXPORTER_OTLP_PROTOCOL
+      value: http/protobuf
+   - name: OTEL_RESOURCE_ATTRIBUTES
+      value: service.namespace=myapp,k8s.cluster.name=homelab-cluster
 ```
 
 Notes:
@@ -377,4 +463,53 @@ If you want to push this from “excellent” to “elite”:
 - Add a dedicated **metrics long-term store** (Mimir) + Prometheus remote_write
 - Add **Tempo metrics-generator** (service graphs + span metrics)
 - Enforce **multi-tenancy** in Loki/Tempo when you’re ready
+
+---
+
+## SLOs (Sloth)
+
+This cluster includes **Sloth** to define SLOs as code and generate Prometheus recording + burn-rate alert rules.
+
+- Sloth install: [kubernetes/apps/observability/sloth](../../kubernetes/apps/observability/sloth)
+
+SLO CRs:
+
+- [kubernetes/apps/observability/sloth/app/slos/slo-app-availability.yaml](../../kubernetes/apps/observability/sloth/app/slos/slo-app-availability.yaml)
+- [kubernetes/apps/observability/sloth/app/slos/slo-synthetic-availability.yaml](../../kubernetes/apps/observability/sloth/app/slos/slo-synthetic-availability.yaml)
+- [kubernetes/apps/observability/sloth/app/slos/slo-synthetic-k6-canary.yaml](../../kubernetes/apps/observability/sloth/app/slos/slo-synthetic-k6-canary.yaml)
+
+Workflow:
+
+1. Add a `PrometheusServiceLevel` for your service.
+2. Sloth generates `PrometheusRule` resources.
+3. Prometheus evaluates them and Alertmanager routes them.
+
+---
+
+## Synthetic monitoring (blackbox)
+
+This cluster runs a Prometheus Operator **blackbox exporter + Probe CRs** for ingress-level uptime checks.
+
+- Blackbox exporter: [kubernetes/apps/observability/blackbox-exporter](../../kubernetes/apps/observability/blackbox-exporter)
+- Probes: [kubernetes/apps/observability/blackbox-exporter/app](../../kubernetes/apps/observability/blackbox-exporter/app)
+
+Current probes target:
+
+- `https://grafana.${SECRET_DOMAIN}`
+- `https://prometheus.${SECRET_DOMAIN}`
+- `https://alertmanager.${SECRET_DOMAIN}`
+
+---
+
+## Synthetic traffic (k6)
+
+The cluster runs scheduled **k6 canary** tests to generate a small amount of real traffic and export results to Prometheus.
+
+- Manifests: [kubernetes/apps/observability/k6-canaries](../../kubernetes/apps/observability/k6-canaries)
+- Script: [kubernetes/apps/observability/k6-canaries/app/script-configmap.yaml](../../kubernetes/apps/observability/k6-canaries/app/script-configmap.yaml)
+
+Implementation notes:
+
+- A CronJob creates a `k6.io/v1alpha1` `TestRun` every 30 minutes.
+- k6 remote-writes metrics to Prometheus (`/api/v1/write`) via the `experimental-prometheus-rw` output.
 
