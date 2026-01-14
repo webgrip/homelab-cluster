@@ -141,38 +141,25 @@ spec:
                 title: "[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }} ({{ .CommonLabels.namespace }})"
                 title_link: "{{ .ExternalURL }}/#/alerts?receiver={{ .Receiver }}"
                 text: |-
-                  {{- if .CommonLabels.cluster -}}
-                  *Cluster:* {{ .CommonLabels.cluster }}
-                  {{- end -}}
-                  *Severity:* {{ .CommonLabels.severity }}
-                  {{- if .CommonLabels.owner -}}
-                  *Owner:* {{ .CommonLabels.owner }}
-                  {{- end -}}
-                  {{- if .CommonLabels.service -}}
-                  *Service:* {{ .CommonLabels.service }}
-                  {{- end -}}
-                  {{- if .CommonLabels.remote_name -}}
-                  *Remote:* {{ .CommonLabels.remote_name }}
-                  {{- end -}}
+                  Cluster: {{ .CommonLabels.cluster }}
+                  Namespace: {{ .CommonLabels.namespace }}
+                  Severity: {{ .CommonLabels.severity }}
+                  {{ if .CommonLabels.owner }}Owner: {{ .CommonLabels.owner }}{{ end }}
+                  {{ if .CommonLabels.service }}Service: {{ .CommonLabels.service }}{{ end }}
+                  {{ if .CommonLabels.instance }}Instance: {{ .CommonLabels.instance }}{{ end }}
+                  {{ if .CommonLabels.remote_name }}Remote: {{ .CommonLabels.remote_name }}{{ end }}
 
-                  {{- range .Alerts }}
-                  *{{ .Annotations.summary }}*
+                  {{ range .Alerts }}
+                  ---
+                  {{ .Annotations.summary }}
                   {{ .Annotations.description }}
-                  {{- if .Annotations.runbook_url }}
-                  Runbook: {{ .Annotations.runbook_url }}
-                  {{- end }}
-                  {{- if .Annotations.dashboard_url }}
-                  Dashboard: {{ .Annotations.dashboard_url }}
-                  {{- end }}
-                  {{- if .GeneratorURL }}
-                  Query: {{ .GeneratorURL }}
-                  {{- end }}
-                  {{- end }}
+                  {{ if .Annotations.runbook_url }}Runbook: {{ .Annotations.runbook_url }}{{ end }}
+                  {{ if .Annotations.dashboard_url }}Dashboard: {{ .Annotations.dashboard_url }}{{ end }}
+                  {{ if .GeneratorURL }}Query: {{ .GeneratorURL }}{{ end }}
+                  {{ end }}
 
                   Alertmanager: {{ .ExternalURL }}
-                  {{- if .CommonLabels.alertname }}
-                  Silence: {{ .ExternalURL }}/#/silences/new?filter=%7Balertname%3D%22{{ .CommonLabels.alertname }}%22{{- if .CommonLabels.namespace -}}%2Cnamespace%3D%22{{ .CommonLabels.namespace }}%22{{- end -}}{{- if .CommonLabels.service -}}%2Cservice%3D%22{{ .CommonLabels.service }}%22{{- end -}}{{- if .CommonLabels.owner -}}%2Cowner%3D%22{{ .CommonLabels.owner }}%22{{- end -}}%7D
-                  {{- end }}
+                  {{ if .CommonLabels.alertname }}Silence: {{ .ExternalURL }}/#/silences/new?filter=%7Balertname%3D%22{{ .CommonLabels.alertname }}%22{{ if .CommonLabels.namespace }}%2Cnamespace%3D%22{{ .CommonLabels.namespace }}%22{{ end }}{{ if .CommonLabels.service }}%2Cservice%3D%22{{ .CommonLabels.service }}%22{{ end }}{{ if .CommonLabels.owner }}%2Cowner%3D%22{{ .CommonLabels.owner }}%22{{ end }}%7D{{ end }}
 
         inhibit_rules:
           - source_matchers:

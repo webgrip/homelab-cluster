@@ -12,7 +12,12 @@ spec:
     - name: cnpg-backup.rules
       rules:
         - alert: CNPGOperatorDown
-          expr: absent(up{job="cloudnative-pg-operator"} == 1)
+          expr: |
+            sum(
+              kube_pod_status_ready{namespace="cnpg-system", condition="true"}
+              * on (namespace, pod) group_left()
+                kube_pod_labels{namespace="cnpg-system", label_app_kubernetes_io_name="cloudnative-pg"}
+            ) < 1
           for: 10m
           labels:
             severity: critical

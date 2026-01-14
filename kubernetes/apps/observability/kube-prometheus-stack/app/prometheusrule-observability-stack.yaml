@@ -75,7 +75,11 @@ spec:
 
         - alert: ObservabilityOOMKills
           expr: |
-            sum(kube_pod_container_status_last_terminated_reason{namespace="observability", reason="OOMKilled"}) > 0
+            sum(
+              increase(kube_pod_container_status_restarts_total{namespace="observability"}[10m])
+              and on (namespace, pod, container)
+              (kube_pod_container_status_last_terminated_reason{namespace="observability", reason="OOMKilled"} == 1)
+            ) > 0
           for: 5m
           labels:
             severity: warning
@@ -105,7 +109,6 @@ spec:
         - alert: PrometheusRemoteWriteBacklog
           expr: |
             (
-              # Prefer measuring backlog as time-lag between received and sent samples.
               (
                 prometheus_remote_storage_queue_highest_received_timestamp_seconds
                 -
@@ -114,7 +117,6 @@ spec:
             )
             or
             (
-              # Fallback for environments that don't expose the timestamp metrics.
               prometheus_remote_storage_samples_pending > 0
               and
               rate(prometheus_remote_storage_samples_failed_total[5m]) > 0
