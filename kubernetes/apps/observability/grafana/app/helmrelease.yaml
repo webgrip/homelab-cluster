@@ -49,7 +49,9 @@ spec:
         # Promote members of the GitHub team to Grafana server admin.
         # Team reference format: "@<org>/<team>" (nested teams use "@<org>/<parent>/<child>").
         skip_org_role_sync: false
-        role_attribute_path: "contains(groups[*], '@webgrip/infrastructure/grafana') && 'GrafanaAdmin' || 'Viewer'"
+        # GitHub typically exposes the team slug as "@org/<team>"; some setups may include parent team path.
+        # Keep a login-based fallback so you can recover access if group sync isn't working yet.
+        role_attribute_path: "[login=='ryangr0'][0] && 'GrafanaAdmin' || contains(groups[*], '@webgrip/grafana') && 'GrafanaAdmin' || contains(groups[*], '@webgrip/infrastructure/grafana') && 'GrafanaAdmin' || 'Viewer'"
 
       rendering:
         server_url: http://grafana-image-renderer.observability.svc.cluster.local:8081/render
