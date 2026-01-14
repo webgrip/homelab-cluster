@@ -39,7 +39,7 @@ Treat incidents as a dependency chain and debug from “control plane / GitOps�
 1) Confirm Flux is applying what you think it is
 
 - Check Flux reconciliation first: Kustomization/HelmRelease Ready states, recent errors.
-- If the manifests aren’t being applied, everything else is downstream noise.
+- If the manifests aren't being applied, everything else is downstream noise.
 
 1) Confirm the Kubernetes primitives are healthy
 

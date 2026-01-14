@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/monitoring.coreos.com/prometheusrule_v1.json
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -15,83 +16,206 @@ spec:
           for: 10m
           labels:
             severity: critical
+            owner: platform
+            service: cnpg
           annotations:
-            summary: "CloudNativePG operator is down or unresponsive"
-            description: "No healthy CloudNativePG operator instance detected for at least 10m. Check pods in namespace cnpg-system."
+            summary: "CNPG operator down (cnpg-system)"
+            description: |
+              What's happening:
+              - No healthy CloudNativePG operator instance detected for at least 10m.
+
+              Impact/risk:
+              - Cluster operations (failover, backups, reconciliation) may not occur.
+
+              Likely causes:
+              - Operator pod crashlooping or unschedulable
+              - RBAC/API connectivity issues
+              - Node/resource pressure
+
+              First actions:
+              - Check operator Deployment/pods and events in namespace cnpg-system
+              - Review operator logs for errors
+              - Verify the Kubernetes API is healthy and reachable
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/cnpg-backups"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"
 
         - alert: CNPGBackupFailed
           expr: rate(postgresql_backup_errors_total[5m]) > 0
           for: 5m
           labels:
             severity: warning
+            owner: platform
+            service: cnpg
           annotations:
-            summary: "CNPG backups are failing"
-            description: "One or more CNPG backup operations have recorded errors in the last 5 minutes. Investigate cluster backups and S3 connectivity."
+            summary: "CNPG backups failing (cnpg-system)"
+            description: |
+              What's happening:
+              - One or more CNPG backup operations have recorded errors in the last 5 minutes.
+
+              Impact/risk:
+              - Backup/restore reliability is degraded; increases data loss risk.
+
+              Likely causes:
+              - Object store/S3 connectivity or auth issues
+              - Repository throttling or errors
+              - Operator/backup job failures
+
+              First actions:
+              - Inspect recent Backup/ScheduledBackup resources and events
+              - Check backup job/pod logs for S3/repo errors
+              - Verify object store DNS/connectivity and credentials
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/cnpg-backups"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"
 
         - alert: CNPGNoRecentBackup
           expr: time() - max_over_time(postgresql_last_backup_timestamp_seconds[30d]) > 86400
           for: 10m
           labels:
             severity: warning
+            owner: platform
+            service: cnpg
           annotations:
-            summary: "No recent CNPG backups"
-            description: "No successful CNPG backup observed for the cluster in the last 24h. Verify ScheduledBackup and operator connectivity to the object store."
+            summary: "CNPG backups stale (cnpg-system)"
+            description: |
+              What's happening:
+              - No successful CNPG backup observed for the cluster in the last 24h.
+
+              Impact/risk:
+              - RPO may be violated; increases data loss risk.
+
+              Likely causes:
+              - ScheduledBackup not configured or not running
+              - Backup jobs failing (S3/repo connectivity/auth)
+              - Operator issues preventing backup scheduling
+
+              First actions:
+              - Verify ScheduledBackup configuration and status
+              - Check recent backup job/pod logs and events
+              - Confirm object store connectivity and credentials
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/cnpg-backups"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"
 
         - alert: CNPGWALArchivingFailed
           expr: rate(postgresql_wal_archive_errors_total[10m]) > 0
           for: 10m
           labels:
             severity: critical
+            owner: platform
+            service: cnpg
           annotations:
-            summary: "Postgres WAL archiving errors detected"
-            description: "WAL archive errors have been seen in the last 10 minutes. This may prevent PITR. Check object store access and CNPG operator logs."
+            summary: "CNPG WAL archiving errors (cnpg-system)"
+            description: |
+              What's happening:
+              - WAL archive errors have been seen in the last 10 minutes.
+
+              Impact/risk:
+              - PITR may be compromised; DR/backups may be incomplete.
+
+              Likely causes:
+              - Object store connectivity/auth issues
+              - Repository throttling/errors
+              - Operator/backup configuration errors
+
+              First actions:
+              - Check CNPG cluster status for archiving errors
+              - Inspect logs for archive command failures
+              - Verify object store DNS/connectivity and credentials
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/cnpg-backups"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"
 
         - alert: CNPGRestoreFailed
           expr: rate(postgresql_restore_errors_total[1h]) > 0
           for: 30m
           labels:
             severity: warning
+            owner: platform
+            service: cnpg
           annotations:
-            summary: "CNPG restore failures"
-            description: "One or more restore attempts failed in the last hour. Review operator and restore logs."
+            summary: "CNPG restore failures (cnpg-system)"
+            description: |
+              What's happening:
+              - One or more restore attempts failed in the last hour.
+
+              Impact/risk:
+              - Restores may be unreliable when needed; DR readiness reduced.
+
+              Likely causes:
+              - Object store/repository connectivity/auth issues
+              - Missing/corrupt backups or WAL segments
+              - Misconfigured recovery/restore settings
+
+              First actions:
+              - Review restore job/pod logs for the failing reason
+              - Verify the referenced backup and required WAL segments exist
+              - Validate credentials and network path to the repository
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/cnpg-restore-playbook"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"
 
     - name: cnpg-disaster-recovery.rules
       rules:
-        - alert: CNPGDisasterRecoveryMetricsMissing
-          expr: absent(cnpg_disaster_recovery_in_recovery)
-          for: 15m
-          labels:
-            severity: warning
-          annotations:
-            summary: "CNPG disaster recovery metrics missing"
-            description: "Prometheus is not scraping cnpg-disaster-recovery custom metrics. Verify PodMonitor is enabled for the DR cluster and Prometheus is discovering the postgres pods."
-
-        - alert: CNPGDisasterRecoveryNotInRecovery
-          expr: max(cnpg_disaster_recovery_in_recovery) < 1
-          for: 5m
-          labels:
-            severity: critical
-          annotations:
-            summary: "CNPG disaster recovery cluster not in recovery"
-            description: "The disaster recovery cluster reports pg_is_in_recovery=false. This usually means it was promoted or is running as a primary. Investigate immediately."
-
-        - alert: CNPGDisasterRecoveryWalReceiverDown
-          expr: max(cnpg_disaster_recovery_wal_receiver_up) < 1
+        - alert: CNPGDisasterRecoveryRefreshFailed
+          expr: |
+            max by (namespace) (
+              kube_job_status_failed{namespace="cnpg-dr", job_name=~"cnpg-disaster-recovery-refresh-.*"} == 1
+              and on (namespace, job_name)
+              (time() - kube_job_created{namespace="cnpg-dr", job_name=~"cnpg-disaster-recovery-refresh-.*"} < 86400)
+            ) > 0
           for: 10m
           labels:
-            severity: critical
+            severity: warning
+            owner: platform
+            service: cnpg
           annotations:
-            summary: "CNPG disaster recovery WAL receiver is down"
-            description: "The DR cluster's wal_receiver is not running. This usually indicates it is no longer following the source or cannot fetch WAL."
+            summary: "CNPG DR refresh failed (cnpg-dr)"
+            description: |
+              What's happening:
+              - A cnpg-disaster-recovery-refresh Job failed in the last 24h in namespace cnpg-dr.
 
-        - alert: CNPGDisasterRecoveryReplayLagHigh
-          expr: max(cnpg_disaster_recovery_replay_lag_seconds) > 900
-          for: 15m
+              Impact/risk:
+              - DR replica may be stale; failover readiness reduced.
+
+              Likely causes:
+              - Repository connectivity/auth issues
+              - Job configuration or dependency failure
+              - Operator/controller issues
+
+              First actions:
+              - Inspect the Job logs for the refresh container
+              - Check recent events in namespace cnpg-dr
+              - Verify connectivity/credentials to the backup repository
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/cnpg-backups"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"
+
+        - alert: CNPGDisasterRecoveryRefreshStale
+          expr: |
+            (kube_cronjob_status_last_successful_time{namespace="cnpg-dr", cronjob="cnpg-disaster-recovery-refresh"} == 0)
+            or
+            (time() - kube_cronjob_status_last_successful_time{namespace="cnpg-dr", cronjob="cnpg-disaster-recovery-refresh"} > 93600)
+          for: 30m
           labels:
             severity: warning
+            owner: platform
+            service: cnpg
           annotations:
-            summary: "CNPG disaster recovery replay lag is high"
-            description: "The DR cluster is falling behind (replay lag > 900s). Check S3/WAL archiving, object store connectivity, and DR pod health."
+            summary: "CNPG DR refresh stale (cnpg-dr)"
+            description: |
+              What's happening:
+              - The cnpg-disaster-recovery-refresh CronJob has no successful runs, or last success is older than 26h.
+
+              Impact/risk:
+              - DR refresh is stale; replica may drift behind primary.
+
+              Likely causes:
+              - CronJob not running/scheduled
+              - Job failures due to repo connectivity/auth
+              - Namespace/resource constraints
+
+              First actions:
+              - Check CronJob schedule and recent Jobs in cnpg-dr
+              - Inspect failed Job logs/events
+              - Verify repository connectivity and credentials
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/cnpg-backups"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"
 
     - name: cnpg-restore-test.rules
       rules:
@@ -105,9 +229,28 @@ spec:
           for: 10m
           labels:
             severity: warning
+            owner: platform
+            service: cnpg
           annotations:
             summary: "CNPG restore test failed ({{$labels.namespace}})"
-            description: "A cnpg-restore-test Job failed in the last 24h in namespace {{$labels.namespace}}. Inspect the Job logs for the restore-test container."
+            description: |
+              What's happening:
+              - A cnpg-restore-test Job failed in the last 24h in namespace {{$labels.namespace}}.
+
+              Impact/risk:
+              - Restore readiness is reduced; backups may not be usable.
+
+              Likely causes:
+              - Repository connectivity/auth issues
+              - Missing/corrupt backup artifacts
+              - Job/config regression
+
+              First actions:
+              - Inspect the Job logs for the restore-test container
+              - Check events in namespace {{$labels.namespace}}
+              - Validate repository access and backup integrity
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/cnpg-backups"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"
 
         - alert: CNPGRestoreTestStale
           expr: |
@@ -117,6 +260,25 @@ spec:
           for: 30m
           labels:
             severity: warning
+            owner: platform
+            service: cnpg
           annotations:
             summary: "CNPG restore test has not succeeded recently ({{$labels.namespace}})"
-            description: "The cnpg-restore-test CronJob has no successful runs, or last success is older than 26h, in namespace {{$labels.namespace}}."
+            description: |
+              What's happening:
+              - The cnpg-restore-test CronJob has no successful runs, or last success is older than 26h.
+
+              Impact/risk:
+              - Restore readiness is unverified; backups may not be usable.
+
+              Likely causes:
+              - CronJob not running/scheduled
+              - Job failures due to repo connectivity/auth
+              - Resource constraints in {{$labels.namespace}}
+
+              First actions:
+              - Check CronJob and Jobs for cnpg-restore-test
+              - Inspect failed Job logs/events
+              - Verify repository connectivity and credentials
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/cnpg-backups"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"

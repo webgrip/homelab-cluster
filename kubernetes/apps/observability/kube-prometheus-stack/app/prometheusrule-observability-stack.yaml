@@ -21,10 +21,28 @@ spec:
           for: 10m
           labels:
             severity: warning
+            owner: platform
+            service: observability
           annotations:
-            summary: "Some observability pods are not Ready"
-            description: "At least one pod in namespace observability has been not-ready for 10m. Check pod status/events in the observability namespace."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#observability-stack"
+            summary: "Observability pods not Ready (observability)"
+            description: |
+              What's happening:
+              - One or more pods in namespace observability have been not Ready for 10m.
+
+              Impact/risk:
+              - Metrics/logs/traces collection and alerting may be degraded.
+
+              Likely causes:
+              - Pod crashlooping or failing readiness
+              - Resource pressure (CPU/memory) or scheduling issues
+              - Storage/network dependency issues (PVC, DNS)
+
+              First actions:
+              - Check pod status and recent events in namespace observability
+              - Inspect failing pod logs and readiness probe failures
+              - Verify node health and PVC status for observability workloads
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#observability-stack"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/obs-stack-overview/observability-stack-overview"
 
         - alert: ObservabilityHighRestartRate
           expr: |
@@ -32,10 +50,28 @@ spec:
           for: 10m
           labels:
             severity: warning
+            owner: platform
+            service: observability
           annotations:
-            summary: "High restart rate in observability namespace"
-            description: "Containers in namespace observability restarted frequently over the last 15m. Check CrashLoopBackOff/OOMKilled and recent logs."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#observability-stack"
+            summary: "High restart rate (observability)"
+            description: |
+              What's happening:
+              - Containers in namespace observability restarted frequently over the last 15m.
+
+              Impact/risk:
+              - Observability components may be unstable; data loss gaps are possible.
+
+              Likely causes:
+              - CrashLoopBackOff due to config or dependency failures
+              - OOMKills (limits too low / memory leak)
+              - Node pressure or storage issues
+
+              First actions:
+              - Identify the restarting pods/containers and check their events
+              - Review previous container logs for crash reason
+              - Check for OOMKilled and resource pressure on nodes
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#observability-stack"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/obs-stack-overview/observability-stack-overview"
 
         - alert: ObservabilityOOMKills
           expr: |
@@ -43,21 +79,100 @@ spec:
           for: 5m
           labels:
             severity: warning
+            owner: platform
+            service: observability
           annotations:
-            summary: "OOMKills detected in observability namespace"
-            description: "At least one container in namespace observability was last terminated due to OOMKilled. Consider increasing limits or reducing workload."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#observability-stack"
+            summary: "OOMKills detected (observability)"
+            description: |
+              What's happening:
+              - At least one container in namespace observability was last terminated due to OOMKilled.
+
+              Impact/risk:
+              - Components may crash repeatedly; metrics/logs/traces can be incomplete.
+
+              Likely causes:
+              - Memory limits too low or memory leak
+              - Sudden load spike increasing memory usage
+              - Mis-sized resources after a deploy
+
+              First actions:
+              - Identify which container was OOMKilled and check its memory usage
+              - Review logs around termination and recent changes
+              - Adjust requests/limits or scale the workload if needed
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#observability-stack"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/obs-stack-overview/observability-stack-overview"
 
         - alert: PrometheusRemoteWriteBacklog
           expr: |
-            prometheus_remote_storage_samples_pending > 0
+            (
+              # Prefer measuring backlog as time-lag between received and sent samples.
+              (
+                prometheus_remote_storage_queue_highest_received_timestamp_seconds
+                -
+                prometheus_remote_storage_queue_highest_sent_timestamp_seconds
+              ) > 300
+            )
+            or
+            (
+              # Fallback for environments that don't expose the timestamp metrics.
+              prometheus_remote_storage_samples_pending > 0
+              and
+              rate(prometheus_remote_storage_samples_failed_total[5m]) > 0
+            )
           for: 15m
           labels:
             severity: warning
+            owner: platform
+            service: mimir
           annotations:
-            summary: "Prometheus remote_write backlog"
-            description: "Prometheus has had pending samples for remote_write for 15m. This can indicate Mimir/gateway slowness or network issues."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#observability-stack"
+            summary: "Prometheus remote_write backlog{{ if $labels.remote_name }} ({{ $labels.remote_name }}){{ else }} (mimir){{ end }}"
+            description: |
+              What's happening:
+              - Prometheus has had pending samples for remote_write for 15m.
+
+              Impact/risk:
+              - Increased risk of remote_write drops; long-term metrics may lag.
+
+              Likely causes:
+              - Mimir gateway slow/unhealthy or returning 429/5xx
+              - DNS/network path issues from Prometheus to the remote_write endpoint
+              - Remote write throughput insufficient or Prometheus under-resourced
+
+              First actions:
+              - Check pending/failed/dropped sample counters and remote write latencies
+              - Check Prometheus logs for remote write errors and HTTP status codes
+              - Check Mimir gateway health and ingestion rate
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#prometheus-remote-write"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/obs-lgtmp-health/observability-lgtmp-health"
+
+        - alert: PrometheusRemoteWriteDroppingSamples
+          expr: |
+            increase(prometheus_remote_storage_samples_dropped_total[5m]) > 0
+          for: 10m
+          labels:
+            severity: critical
+            owner: platform
+            service: mimir
+          annotations:
+            summary: "Prometheus remote_write dropping samples{{ if $labels.remote_name }} ({{ $labels.remote_name }}){{ else }} (mimir){{ end }}"
+            description: |
+              What's happening:
+              - Prometheus is dropping samples for remote_write.
+
+              Impact/risk:
+              - Long-term metrics in Mimir will be incomplete.
+
+              Likely causes:
+              - Mimir gateway overloaded or erroring (429/5xx)
+              - Network/DNS failures to the remote_write endpoint
+              - Prometheus under-resourced for current ingest/remote_write load
+
+              First actions:
+              - Check Mimir gateway errors/latency and ingestion capacity
+              - Check Prometheus remote_write logs and queue settings
+              - Scale/resize Prometheus and/or Mimir to restore throughput
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#prometheus-remote-write"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/obs-lgtmp-health/observability-lgtmp-health"
 
         - alert: PrometheusSeriesCreationHigh
           expr: |
@@ -65,7 +180,25 @@ spec:
           for: 30m
           labels:
             severity: warning
+            owner: platform
+            service: prometheus
           annotations:
-            summary: "High Prometheus series creation rate"
-            description: "Prometheus is creating >50k new series/hour for 30m. This often indicates a cardinality regression (new labels/targets)."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#observability-stack"
+            summary: "High Prometheus series creation rate (prometheus)"
+            description: |
+              What's happening:
+              - Prometheus is creating >50k new series/hour for 30m.
+
+              Impact/risk:
+              - Cardinality regression can increase memory/CPU and destabilize scraping/alerting.
+
+              Likely causes:
+              - New high-cardinality labels (pod IDs, request IDs, dynamic labels)
+              - New scrape targets exporting unstable label sets
+              - Recording/alert rule change increasing series churn
+
+              First actions:
+              - Identify the top churn sources (targets/metrics) in Prometheus/Grafana
+              - Roll back or fix the change that introduced new labels
+              - Apply relabeling/metric drop rules to reduce cardinality
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#observability-stack"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/obs-lgtmp-health/observability-lgtmp-health"

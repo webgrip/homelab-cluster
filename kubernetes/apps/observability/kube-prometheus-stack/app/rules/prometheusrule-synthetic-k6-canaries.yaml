@@ -21,10 +21,28 @@ spec:
           for: 10m
           labels:
             severity: warning
+            owner: platform
+            service: k6-ingress-canary
           annotations:
             summary: "k6 canary p95 latency high ({{ $labels.endpoint }})"
-            description: "k6 canary p95 duration > 1s for 10m for {{ $labels.endpoint }}."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#k6-canaries"
+            description: |
+              What's happening:
+              - k6 canary p95 duration >1s for 10m for endpoint {{ $labels.endpoint }}.
+
+              Impact/risk:
+              - Users may experience slow responses; can indicate degradation before 5xx.
+
+              Likely causes:
+              - Backend latency (DB/cache/upstream API)
+              - Ingress/proxy saturation
+              - Network/DNS issues along the path
+
+              First actions:
+              - Check the synthetic k6 dashboard for the slow endpoint
+              - Compare with blackbox latency and app traces
+              - Check recent changes/deploys impacting the endpoint
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#k6-canaries"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/synthetic-k6-canaries/synthetic-k6-canaries"
 
         - alert: K6CanaryP95LatencyCritical
           expr: |
@@ -37,10 +55,28 @@ spec:
           for: 10m
           labels:
             severity: critical
+            owner: platform
+            service: k6-ingress-canary
           annotations:
             summary: "k6 canary p95 latency critical ({{ $labels.endpoint }})"
-            description: "k6 canary p95 duration > 2s for 10m for {{ $labels.endpoint }}."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#k6-canaries"
+            description: |
+              What's happening:
+              - k6 canary p95 duration >2s for 10m for endpoint {{ $labels.endpoint }}.
+
+              Impact/risk:
+              - Severe user impact likely (timeouts/unavailability).
+
+              Likely causes:
+              - Critical backend dependency outage/latency
+              - Ingress/proxy saturation or errors
+              - Network/DNS issues along the path
+
+              First actions:
+              - Check the synthetic k6 dashboard for the endpoint and errors
+              - Validate service health via traces and logs
+              - Roll back recent changes if correlated with a deploy
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#k6-canaries"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/synthetic-k6-canaries/synthetic-k6-canaries"
 
         - alert: K6CanaryMetricsMissing
           expr: |
@@ -50,7 +86,25 @@ spec:
           for: 2h
           labels:
             severity: warning
+            owner: platform
+            service: k6-ingress-canary
           annotations:
-            summary: "k6 canary metrics missing"
-            description: "No k6 canary request metrics observed for one or more endpoints for 2h. The canary CronJob/TestRuns may not be running or remote_write may be failing."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#k6-canaries"
+            summary: "k6 canary metrics missing (synthetics)"
+            description: |
+              What's happening:
+              - No k6 canary request metrics observed for one or more endpoints for 2h.
+
+              Impact/risk:
+              - Synthetic coverage is incomplete; outages may go undetected.
+
+              Likely causes:
+              - Canary CronJob/TestRuns not running or failing
+              - remote_write issues preventing metrics from arriving
+              - Metrics pipeline disruption (Prometheus/Mimir)
+
+              First actions:
+              - Check the k6 canary CronJobs/TestRuns and their logs
+              - Verify Prometheus remote_write health and ingestion
+              - Confirm the endpoints are still configured and reachable
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#k6-canaries"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/synthetic-k6-canaries/synthetic-k6-canaries"

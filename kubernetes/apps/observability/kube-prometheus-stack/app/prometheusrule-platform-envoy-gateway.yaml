@@ -15,7 +15,25 @@ spec:
           for: 5m
           labels:
             severity: warning
+            owner: platform
+            service: envoy-gateway
           annotations:
-            summary: "Envoy proxy target down ({{$labels.pod}})"
-            description: "Prometheus cannot scrape an Envoy proxy pod for 5m in the network namespace."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#platform-envoy-gateway"
+            summary: "Envoy proxy target down (network)"
+            description: |
+              What's happening:
+              - Prometheus cannot scrape Envoy proxy {{$labels.pod}} for 5m in namespace network.
+
+              Impact/risk:
+              - Ingress/egress traffic metrics may be missing; proxy availability may be degraded.
+
+              Likely causes:
+              - Envoy proxy pod crashlooping or unschedulable
+              - Node/network issues preventing scrape connectivity
+              - Prometheus scrape/connectivity issue
+
+              First actions:
+              - Check Envoy Gateway pods/services in namespace network
+              - Review pod events/logs for {{$labels.pod}}
+              - Verify Prometheus can connect to the scrape endpoint
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-envoy-gateway"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/net-envoy-gateway/envoy-gateway-traffic"

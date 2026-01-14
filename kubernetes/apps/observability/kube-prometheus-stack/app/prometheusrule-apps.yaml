@@ -17,10 +17,28 @@ spec:
           for: 10m
           labels:
             severity: warning
+            owner: platform
+            service: apps
           annotations:
             summary: "Deployment replicas unavailable ({{$labels.namespace}}/{{$labels.deployment}})"
-            description: "Available replicas are below spec for 10m in {{$labels.namespace}} (deployment {{$labels.deployment}})."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+            description: |
+              What's happening:
+              - Available replicas are below spec for 10m for {{$labels.namespace}}/{{$labels.deployment}}.
+
+              Impact/risk:
+              - Reduced capacity; requests may be slower or error if load increases.
+
+              Likely causes:
+              - Pod crashlooping or failing readiness
+              - Scheduling issues (insufficient resources, node pressure, affinity)
+              - Rollout stalled (bad image/config)
+
+              First actions:
+              - Check Deployment status and recent events for {{$labels.namespace}}/{{$labels.deployment}}
+              - Check pods for CrashLoopBackOff/ImagePullBackOff/NotReady
+              - Verify cluster capacity (CPU/memory) and node readiness
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/k8s-workloads-capacity/kubernetes-workloads-capacity"
 
         - alert: AppDeploymentDown
           expr: |
@@ -30,10 +48,28 @@ spec:
           for: 10m
           labels:
             severity: critical
+            owner: platform
+            service: apps
           annotations:
             summary: "Deployment is down ({{$labels.namespace}}/{{$labels.deployment}})"
-            description: "No available replicas for 10m in {{$labels.namespace}} (deployment {{$labels.deployment}})."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+            description: |
+              What's happening:
+              - No available replicas for 10m for {{$labels.namespace}}/{{$labels.deployment}}.
+
+              Impact/risk:
+              - Service is likely unavailable or severely degraded.
+
+              Likely causes:
+              - Bad rollout/config causing all pods to fail
+              - Scheduling failure (no nodes/resources/taints/affinity)
+              - Image pull failures or missing secrets/configmaps
+
+              First actions:
+              - Check Deployment status/events and ReplicaSet history
+              - Inspect pods for failure reasons and read recent logs
+              - Roll back the last change if a recent deploy caused the outage
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/k8s-workloads-capacity/kubernetes-workloads-capacity"
 
         - alert: AppStatefulSetReplicasMismatch
           expr: |
@@ -43,10 +79,28 @@ spec:
           for: 10m
           labels:
             severity: warning
+            owner: platform
+            service: apps
           annotations:
             summary: "StatefulSet replicas unavailable ({{$labels.namespace}}/{{$labels.statefulset}})"
-            description: "Ready replicas are below desired for 10m in {{$labels.namespace}} (statefulset {{$labels.statefulset}})."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+            description: |
+              What's happening:
+              - Ready replicas are below desired for 10m for {{$labels.namespace}}/{{$labels.statefulset}}.
+
+              Impact/risk:
+              - Reduced capacity; stateful services may be degraded.
+
+              Likely causes:
+              - Pod crashlooping or failing readiness
+              - PVC not bound / volume attach problems
+              - Scheduling constraints preventing pods from starting
+
+              First actions:
+              - Check StatefulSet status and pod events
+              - Verify PVCs are Bound and volumes are healthy
+              - Inspect failing pod logs and readiness probes
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/k8s-workloads-capacity/kubernetes-workloads-capacity"
 
         - alert: AppCrashLoopBackOff
           expr: |
@@ -56,10 +110,28 @@ spec:
           for: 15m
           labels:
             severity: warning
+            owner: platform
+            service: apps
           annotations:
-            summary: "CrashLoopBackOff ({{$labels.namespace}}/{{$labels.pod}}/{{$labels.container}})"
-            description: "Container has been in CrashLoopBackOff for 15m in {{$labels.namespace}}."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+            summary: "CrashLoopBackOff ({{$labels.namespace}})"
+            description: |
+              What's happening:
+              - Container {{$labels.container}} in pod {{$labels.pod}} has been in CrashLoopBackOff for 15m.
+
+              Impact/risk:
+              - The workload may be partially unavailable or failing requests.
+
+              Likely causes:
+              - App crash due to config/secret/env mismatch
+              - OOMKilled or resource limits too low
+              - Dependency unavailable (DB/API/DNS) or failing startup checks
+
+              First actions:
+              - Check pod events and last termination reason for {{$labels.pod}}
+              - Review previous container logs for {{$labels.container}}
+              - Verify recent deploy/config changes and dependent services
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/k8s-cluster-health/kubernetes-cluster-health"
 
         - alert: AppPersistentVolumeLowFree
           expr: |
@@ -73,10 +145,28 @@ spec:
           for: 30m
           labels:
             severity: warning
+            owner: platform
+            service: apps
           annotations:
             summary: "PVC low free space (<15%) ({{$labels.namespace}}/{{$labels.persistentvolumeclaim}})"
-            description: "PVC {{$labels.persistentvolumeclaim}} in {{$labels.namespace}} has had <15% free space for 30m."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+            description: |
+              What's happening:
+              - PVC {{$labels.namespace}}/{{$labels.persistentvolumeclaim}} has had <15% free space for 30m.
+
+              Impact/risk:
+              - Writes may fail; pods may crash or become unhealthy.
+
+              Likely causes:
+              - Data/log growth (retention too high)
+              - Cleanup/compaction not running
+              - PVC under-sized for current workload
+
+              First actions:
+              - Identify what is writing to the volume and top disk consumers
+              - Expand the PVC/volume to restore headroom
+              - Reduce retention/cleanup old data to stabilize
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-pvc-usage/storage-pvc-longhorn"
 
         - alert: AppPersistentVolumeCriticallyLowFree
           expr: |
@@ -90,10 +180,28 @@ spec:
           for: 15m
           labels:
             severity: critical
+            owner: platform
+            service: apps
           annotations:
             summary: "PVC critically low free space (<5%) ({{$labels.namespace}}/{{$labels.persistentvolumeclaim}})"
-            description: "PVC {{$labels.persistentvolumeclaim}} in {{$labels.namespace}} has had <5% free space for 15m."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+            description: |
+              What's happening:
+              - PVC {{$labels.namespace}}/{{$labels.persistentvolumeclaim}} has had <5% free space for 15m.
+
+              Impact/risk:
+              - Imminent write failures and service disruption.
+
+              Likely causes:
+              - Rapid data/log growth
+              - Cleanup/retention failure
+              - PVC severely under-provisioned
+
+              First actions:
+              - Expand the PVC/volume immediately to avoid outages
+              - Identify and stop the growth source (logs/data retention)
+              - Confirm the workload recovers once space is available
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-pvc-usage/storage-pvc-longhorn"
 
     - name: apps.arc-systems
       rules:
@@ -105,7 +213,25 @@ spec:
           for: 10m
           labels:
             severity: critical
+            owner: platform
+            service: arc-systems
           annotations:
-            summary: "ARC deployment is down ({{$labels.deployment}})"
-            description: "No available replicas for 10m in arc-systems (deployment {{$labels.deployment}})."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+            summary: "ARC deployment down (arc-systems/{{$labels.deployment}})"
+            description: |
+              What's happening:
+              - No available replicas for 10m in arc-systems for deployment {{$labels.deployment}}.
+
+              Impact/risk:
+              - Actions Runner Controller components may not function; runners may not reconcile.
+
+              Likely causes:
+              - Bad rollout/config causing pods to fail
+              - Scheduling/image pull issues
+              - Missing secrets/configmaps or dependency failures
+
+              First actions:
+              - Check Deployment status/events and failing pods in arc-systems
+              - Review recent changes and pod logs for the controller
+              - Roll back if the last change introduced the outage
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/k8s-workloads-capacity/kubernetes-workloads-capacity"

@@ -32,6 +32,7 @@ spec:
     prometheus:
       prometheusSpec:
         retention: 15d
+        externalUrl: https://prometheus.${SECRET_DOMAIN}
         externalLabels:
           cluster: homelab-cluster
         podMetadata:
@@ -115,7 +116,7 @@ spec:
 
         route:
           receiver: "null"
-          group_by: [alertname, namespace, severity]
+          group_by: [alertname, namespace, severity, service, owner]
           group_wait: 30s
           group_interval: 5m
           repeat_interval: 12h
@@ -138,7 +139,40 @@ spec:
               - api_url_file: "/etc/alertmanager/secrets/alertmanager-discord/webhook_url"
                 send_resolved: true
                 title: "[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }} ({{ .CommonLabels.namespace }})"
-                text: "{{ range .Alerts }}*{{ .Annotations.summary }}*\n{{ .Annotations.description }}\n{{ end }}"
+                title_link: "{{ .ExternalURL }}/#/alerts?receiver={{ .Receiver }}"
+                text: |-
+                  {{- if .CommonLabels.cluster -}}
+                  *Cluster:* {{ .CommonLabels.cluster }}
+                  {{- end -}}
+                  *Severity:* {{ .CommonLabels.severity }}
+                  {{- if .CommonLabels.owner -}}
+                  *Owner:* {{ .CommonLabels.owner }}
+                  {{- end -}}
+                  {{- if .CommonLabels.service -}}
+                  *Service:* {{ .CommonLabels.service }}
+                  {{- end -}}
+                  {{- if .CommonLabels.remote_name -}}
+                  *Remote:* {{ .CommonLabels.remote_name }}
+                  {{- end -}}
+
+                  {{- range .Alerts }}
+                  *{{ .Annotations.summary }}*
+                  {{ .Annotations.description }}
+                  {{- if .Annotations.runbook_url }}
+                  Runbook: {{ .Annotations.runbook_url }}
+                  {{- end }}
+                  {{- if .Annotations.dashboard_url }}
+                  Dashboard: {{ .Annotations.dashboard_url }}
+                  {{- end }}
+                  {{- if .GeneratorURL }}
+                  Query: {{ .GeneratorURL }}
+                  {{- end }}
+                  {{- end }}
+
+                  Alertmanager: {{ .ExternalURL }}
+                  {{- if .CommonLabels.alertname }}
+                  Silence: {{ .ExternalURL }}/#/silences/new?filter=%7Balertname%3D%22{{ .CommonLabels.alertname }}%22{{- if .CommonLabels.namespace -}}%2Cnamespace%3D%22{{ .CommonLabels.namespace }}%22{{- end -}}{{- if .CommonLabels.service -}}%2Cservice%3D%22{{ .CommonLabels.service }}%22{{- end -}}{{- if .CommonLabels.owner -}}%2Cowner%3D%22{{ .CommonLabels.owner }}%22{{- end -}}%7D
+                  {{- end }}
 
         inhibit_rules:
           - source_matchers:
@@ -148,6 +182,7 @@ spec:
             equal: [namespace, alertname]
 
       alertmanagerSpec:
+        externalUrl: https://alertmanager.${SECRET_DOMAIN}
         podMetadata:
           annotations:
             reloader.stakater.com/auto: "true"

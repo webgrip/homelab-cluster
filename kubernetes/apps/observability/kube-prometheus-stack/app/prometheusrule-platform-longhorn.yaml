@@ -14,30 +14,84 @@ spec:
           for: 10m
           labels:
             severity: warning
+            owner: platform
+            service: longhorn
           annotations:
             summary: "Longhorn volume degraded ({{$labels.volume}})"
-            description: "Longhorn volume {{$labels.volume}} is degraded for 10m."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#platform-longhorn"
+            description: |
+              What's happening:
+              - Longhorn volume {{$labels.volume}} is degraded for 10m.
+
+              Impact/risk:
+              - Reduced redundancy; higher risk of data loss if another replica fails.
+
+              Likely causes:
+              - Replica failed or stuck rebuilding
+              - Node/disk pressure or network issues between replicas
+              - Engine/image manager issues
+
+              First actions:
+              - Inspect the volume state/replicas in Longhorn UI
+              - Check Longhorn manager logs and node/disk health
+              - Verify underlying PVC workload health and node readiness
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-longhorn"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-longhorn-health/longhorn-storage-health"
 
         - alert: LonghornVolumeFault
           expr: longhorn_volume_robustness == 3
           for: 5m
           labels:
             severity: critical
+            owner: platform
+            service: longhorn
           annotations:
             summary: "Longhorn volume fault ({{$labels.volume}})"
-            description: "Longhorn volume {{$labels.volume}} is in fault state."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#platform-longhorn"
+            description: |
+              What's happening:
+              - Longhorn volume {{$labels.volume}} is in fault state.
+
+              Impact/risk:
+              - High risk of data unavailability or data loss; affected workloads may be down.
+
+              Likely causes:
+              - Multiple replica failures or unrecoverable rebuild
+              - Node/disk failure impacting replicas
+              - Longhorn engine failure
+
+              First actions:
+              - Check the volume details and replica states in Longhorn UI
+              - Inspect Longhorn events/logs for the volume and impacted nodes
+              - Stabilize storage/nodes before attempting recovery actions
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-longhorn"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-longhorn-health/longhorn-storage-health"
 
         - alert: LonghornNodeNotReady
           expr: longhorn_node_status{condition="ready"} == 0
           for: 10m
           labels:
             severity: critical
+            owner: platform
+            service: longhorn
           annotations:
             summary: "Longhorn node not ready ({{$labels.node}})"
-            description: "Longhorn reports node {{$labels.node}} not ready for 10m."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#platform-longhorn"
+            description: |
+              What's happening:
+              - Longhorn reports node {{$labels.node}} not ready for 10m.
+
+              Impact/risk:
+              - Replicas on this node may be unavailable; storage resiliency reduced.
+
+              Likely causes:
+              - Node NotReady / kubelet issues
+              - Disk pressure or Longhorn daemon issues
+              - Network partition to the node
+
+              First actions:
+              - Check node status/conditions and recent events
+              - Check Longhorn manager/instance-manager pods on the node
+              - Verify disk mounts/capacity and node connectivity
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-longhorn"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-longhorn-health/longhorn-storage-health"
 
         - alert: PVCVolumeAlmostFull
           expr: |
@@ -45,10 +99,28 @@ spec:
           for: 15m
           labels:
             severity: warning
+            owner: platform
+            service: longhorn
           annotations:
             summary: "PVC almost full ({{$labels.namespace}}/{{$labels.persistentvolumeclaim}})"
-            description: "PVC {{$labels.namespace}}/{{$labels.persistentvolumeclaim}} has <10% free space for 15m."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#platform-longhorn"
+            description: |
+              What's happening:
+              - PVC {{$labels.namespace}}/{{$labels.persistentvolumeclaim}} has <10% free space for 15m.
+
+              Impact/risk:
+              - Writes may fail soon; pods may crash or become unhealthy.
+
+              Likely causes:
+              - Log/data growth (unexpected retention)
+              - Stuck compaction/cleanup or backups writing locally
+              - Under-provisioned PVC size
+
+              First actions:
+              - Identify top disk consumers in the workload/pod using the PVC
+              - Consider expanding the PVC/Longhorn volume
+              - Reduce retention/cleanup data to restore headroom
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-longhorn"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-pvc-usage/storage-pvc-longhorn"
 
         - alert: PVCVolumeFillingFast
           expr: |
@@ -56,7 +128,25 @@ spec:
           for: 30m
           labels:
             severity: warning
+            owner: platform
+            service: longhorn
           annotations:
             summary: "PVC filling fast ({{$labels.namespace}}/{{$labels.persistentvolumeclaim}})"
-            description: "PVC {{$labels.namespace}}/{{$labels.persistentvolumeclaim}} is predicted to run out of space within 24h."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#platform-longhorn"
+            description: |
+              What's happening:
+              - PVC {{$labels.namespace}}/{{$labels.persistentvolumeclaim}} is predicted to run out of space within 24h.
+
+              Impact/risk:
+              - Imminent write failures and workload disruption if growth continues.
+
+              Likely causes:
+              - Sudden data/log growth
+              - Missing/failed cleanup or retention policy change
+              - Under-sized PVC for current workload
+
+              First actions:
+              - Confirm growth rate and identify What's writing to the volume
+              - Expand the PVC/Longhorn volume to buy time
+              - Mitigate growth (retention/cleanup) to stabilize
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-longhorn"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-pvc-usage/storage-pvc-longhorn"

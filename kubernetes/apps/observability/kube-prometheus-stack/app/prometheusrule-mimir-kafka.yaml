@@ -22,20 +22,28 @@ spec:
           for: 10m
           labels:
             severity: critical
+            owner: platform
+            service: mimir
           annotations:
-            summary: "Mimir Kafka is crashlooping ({{ $labels.pod }})"
+            summary: "Mimir Kafka crashlooping ({{ $labels.pod }})"
             description: |
-              The Kafka container for Mimir has been in CrashLoopBackOff for 10m.
+              What's happening:
+              - The Kafka container for Mimir has been in CrashLoopBackOff for 10m.
 
-              Common causes:
+              Impact/risk:
+              - Mimir ingestion/backpressure may increase; metrics remote_write may be degraded.
+
+              Likely causes:
               - PVC full (check kubelet_volume_stats_* for the PVC)
               - Read-only filesystem / permissions
               - Corrupt log dir
 
-              Quick checks:
+              First actions:
               - kubectl -n observability describe pod {{ $labels.pod }}
               - kubectl -n observability logs {{ $labels.pod }} -c kafka --previous --tail=200
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#mimir-kafka"
+              - Check PVC usage for the Kafka data volume and expand if needed
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#mimir-kafka"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/obs-lgtmp-health/observability-lgtmp-health"
 
         - alert: MimirKafkaPVCUsageHigh
           expr: |
@@ -53,16 +61,28 @@ spec:
           for: 15m
           labels:
             severity: warning
+            owner: platform
+            service: mimir
           annotations:
             summary: "Mimir Kafka PVC usage > 80% ({{ $labels.persistentvolumeclaim }})"
             description: |
-              The Kafka data PVC for Mimir is above 80% for 15m.
+              What's happening:
+              - The Kafka data PVC for Mimir is above 80% for 15m.
 
-              Recommended actions:
+              Impact/risk:
+              - Risk of Kafka running out of space leading to crashloops and ingestion backlog.
+
+              Likely causes:
+              - Retention too high for current ingest rate
+              - Backlog/consumer lag increasing log volume
+              - PVC under-sized for current workload
+
+              First actions:
               - Increase kafka.persistence.size in the HelmRelease
               - Expand the PVC if supported (Longhorn typically supports this)
               - Ensure Kafka retention caps are set (kafka.extraEnv: KAFKA_LOG_RETENTION_BYTES)
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#mimir-kafka"
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#mimir-kafka"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-pvc-usage/storage-pvc-longhorn"
 
         - alert: MimirKafkaPVCUsageCritical
           expr: |
@@ -80,15 +100,28 @@ spec:
           for: 10m
           labels:
             severity: critical
+            owner: platform
+            service: mimir
           annotations:
             summary: "Mimir Kafka PVC usage > 90% ({{ $labels.persistentvolumeclaim }})"
             description: |
-              The Kafka data PVC for Mimir is above 90% for 10m. Kafka may crashloop with "No space left on device".
+              What's happening:
+              - The Kafka data PVC for Mimir is above 90% for 10m.
 
-              Immediate mitigation:
+              Impact/risk:
+              - Kafka may crashloop with "No space left on device"; ingestion/backlog will worsen.
+
+              Likely causes:
+              - Rapid log growth (retention too high)
+              - Consumer lag/backpressure
+              - PVC too small for current workload
+
+              First actions:
               - Expand the PVC (kubectl patch pvc ... storage: <bigger>)
               - Delete the kafka pod to restart after resize (StatefulSet will recreate)
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#mimir-kafka"
+              - Reduce Kafka retention if acceptable to stop growth
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#mimir-kafka"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-pvc-usage/storage-pvc-longhorn"
 
         - alert: MimirKafkaPVCFillingUpSoon
           expr: |
@@ -116,13 +149,25 @@ spec:
           for: 30m
           labels:
             severity: warning
+            owner: platform
+            service: mimir
           annotations:
             summary: "Mimir Kafka PVC will fill within ~12h ({{ $labels.persistentvolumeclaim }})"
             description: |
-              Based on the last 6h growth, the Kafka PVC is predicted to run out of free space within ~12 hours.
+              What's happening:
+              - Based on the last 6h growth, the Kafka PVC is predicted to run out of free space within ~12 hours.
 
-              Mitigation:
-              - Increase Kafka PVC size
+              Impact/risk:
+              - High risk of Kafka out-of-space leading to crashloops and ingestion disruption.
+
+              Likely causes:
+              - Backlog/consumer lag increasing log volume
+              - Retention too high for current ingest rate
+              - PVC under-sized
+
+              First actions:
+              - Increase Kafka PVC size (HelmRelease/PVC expansion)
               - Lower Kafka retention (bytes/time) if acceptable
               - Investigate why backlog is growing (mimir components down / consumer lag)
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#mimir-kafka"
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#mimir-kafka"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-pvc-usage/storage-pvc-longhorn"

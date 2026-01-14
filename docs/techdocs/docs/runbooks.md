@@ -1,6 +1,6 @@
 # Runbooks
 
-This page is linked from alert annotations (`runbook_url`). It’s optimized for quickly answering: “what do I do now?”
+This page is linked from alert annotations (`runbook_url`). It's optimized for quickly answering: “what do I do now?”
 
 ## Synthetic probes (blackbox)
 
@@ -19,7 +19,7 @@ Checks:
 - Confirm blackbox exporter is up:
   - `kubectl -n observability get deploy,svc blackbox-exporter`
 
-Where it’s configured:
+Where it's configured:
 
 - [kubernetes/apps/observability/blackbox-exporter](../../kubernetes/apps/observability/blackbox-exporter)
 
@@ -60,6 +60,59 @@ Checks:
 - `kubectl -n observability get pods -o wide`
 - `kubectl -n observability describe pod <pod>`
 - Loki/Tempo/Mimir usually fail first on storage or object store connectivity.
+
+## Prometheus remote_write
+
+Symptoms:
+
+- `PrometheusRemoteWriteBacklog` firing.
+- Downstream symptoms can include missing long-term metrics (Grafana/Mimir queries look stale) or increasing `prometheus_remote_storage_*_dropped_total`.
+
+What this means:
+
+- Prometheus is unable to ship samples to the configured remote_write endpoint fast enough, so the queue is backing up.
+- If the queue starts dropping samples, you're losing long-term metrics (in-cluster Prometheus may still look fine).
+
+Fast checks (start here):
+
+- Confirm which remote is impacted: the alert should include `remote_name`.
+- Check if samples are failing/dropping:
+  - `prometheus_remote_storage_samples_failed_total`
+  - `prometheus_remote_storage_samples_dropped_total`
+  - `prometheus_remote_storage_samples_pending`
+- Check the remote write path from Prometheus:
+  - `kubectl -n observability get pods -l app.kubernetes.io/name=prometheus`
+  - `kubectl -n observability logs -l app.kubernetes.io/name=prometheus -c prometheus --tail=200 | egrep -i 'remote write|remote_storage|429|5..|timeout|context deadline|dns|no such host'`
+
+Check Mimir ingestion (most common root cause here):
+
+- Gateway health:
+  - `kubectl -n observability get pods -l app.kubernetes.io/name=mimir-distributed -o wide`
+  - `kubectl -n observability get pods | grep mimir-distributed-gateway`
+- Look for overload signals:
+  - HTTP 429s (rate limits / too many samples)
+  - 5xx (gateway/backend unhealthy)
+  - elevated request latency
+- If Mimir is unhealthy, fix that first (it's downstream of Prometheus).
+
+Network/DNS checks:
+
+- From inside the cluster, validate DNS + connectivity to the gateway:
+  - `kubectl -n observability run -it --rm netshoot --image=nicolaka/netshoot -- sh`
+  - `nslookup mimir-distributed-gateway.observability.svc.cluster.local`
+  - `curl -sS -o /dev/null -w '%{http_code}\n' http://mimir-distributed-gateway.observability.svc.cluster.local/ready`
+
+Capacity / tuning checks:
+
+- If Mimir is healthy but backlog persists:
+  - Ensure Prometheus has enough CPU/memory (remote_write is CPU-heavy under load)
+  - Consider tuning remote_write queue settings (shards/batch) in the kube-prometheus-stack HelmRelease.
+
+Mitigations (prefer safe + reversible):
+
+- Scale up/out Mimir gateway (and any overloaded ingesters) if it's the bottleneck.
+- Temporarily reduce scrape load / cardinality regressions if the cluster just had a metrics explosion.
+- Only as a last resort: disable remote_write briefly to stabilize Prometheus, but accept loss of long-term continuity.
 
 ## Platform: Cilium
 
@@ -135,6 +188,6 @@ Checks:
 - Recent TestRuns:
   - `kubectl -n observability get testruns.k6.io --sort-by=.metadata.creationTimestamp | tail`
 
-Where it’s configured:
+Where it's configured:
 
 - [kubernetes/apps/observability/k6-canaries](../../kubernetes/apps/observability/k6-canaries)

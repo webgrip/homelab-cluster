@@ -15,10 +15,28 @@ spec:
           for: 1h
           labels:
             severity: warning
+            owner: platform
+            service: cert-manager
           annotations:
             summary: "Certificate expiring in <7d ({{$labels.namespace}}/{{$labels.name}})"
-            description: "Certificate {{$labels.namespace}}/{{$labels.name}} expires soon. Investigate renewal/issuer health."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#platform-cert-manager"
+            description: |
+              What's happening:
+              - A certificate will expire in <7 days: {{$labels.namespace}}/{{$labels.name}}.
+
+              Impact/risk:
+              - Risk of service outage if renewal fails (TLS handshake failures).
+
+              Likely causes:
+              - ACME/issuer errors (rate limits, DNS/HTTP challenges failing)
+              - cert-manager controller errors or webhook issues
+              - Misconfigured Certificate/Issuer/ClusterIssuer
+
+              First actions:
+              - Check Certificate/Order/Challenge status for {{$labels.namespace}}/{{$labels.name}}
+              - Verify Issuer/ClusterIssuer Ready
+              - Review cert-manager controller logs for renewal errors
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-cert-manager"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/security-cert-manager/cert-manager-certificates"
 
         - alert: CertManagerCertificateExpiringVerySoon
           expr: |
@@ -26,10 +44,28 @@ spec:
           for: 15m
           labels:
             severity: critical
+            owner: platform
+            service: cert-manager
           annotations:
             summary: "Certificate expiring in <24h ({{$labels.namespace}}/{{$labels.name}})"
-            description: "Certificate {{$labels.namespace}}/{{$labels.name}} expires within 24h."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#platform-cert-manager"
+            description: |
+              What's happening:
+              - A certificate will expire in <24h: {{$labels.namespace}}/{{$labels.name}}.
+
+              Impact/risk:
+              - High risk of imminent service outage due to expiring TLS.
+
+              Likely causes:
+              - Renewal is failing (ACME/DNS/HTTP challenge issues)
+              - cert-manager controller/webhook problems
+              - Issuer/ClusterIssuer misconfigured or not Ready
+
+              First actions:
+              - Check Certificate/Order/Challenge for {{$labels.namespace}}/{{$labels.name}}
+              - Verify Issuer/ClusterIssuer Ready and recent events
+              - If needed, re-issue and/or fix challenge routing/DNS
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-cert-manager"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/security-cert-manager/cert-manager-certificates"
 
         - alert: CertManagerHighErrorRate
           expr: |
@@ -41,7 +77,25 @@ spec:
           for: 10m
           labels:
             severity: warning
+            owner: platform
+            service: cert-manager
           annotations:
-            summary: "cert-manager controller errors"
-            description: "cert-manager is reporting controller sync errors for 10m."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#platform-cert-manager"
+            summary: "cert-manager controller errors (cert-manager)"
+            description: |
+              What's happening:
+              - cert-manager is reporting controller sync errors for 10m.
+
+              Impact/risk:
+              - Certificate issuance/renewal may be degraded or failing.
+
+              Likely causes:
+              - Webhook/API failures (timeouts, RBAC, API server issues)
+              - ACME/issuer provider errors
+              - Misconfigured Issuer/ClusterIssuer resources
+
+              First actions:
+              - Review cert-manager pod logs/events in cert-manager namespace
+              - Check Issuer/ClusterIssuer Ready status and recent errors
+              - Inspect failing resources (Certificate/Order/Challenge)
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-cert-manager"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/security-cert-manager/cert-manager-certificates"

@@ -17,7 +17,25 @@ spec:
           for: 10m
           labels:
             severity: warning
+            owner: platform
+            service: synthetics
           annotations:
             summary: "Synthetic probe slow ({{ $labels.endpoint }})"
-            description: "Blackbox probe duration >2s for 10m for {{ $labels.endpoint }} ({{ $labels.instance }})."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#synthetic-probes-blackbox"
+            description: |
+              What's happening:
+              - Blackbox probe duration >2s for 10m for endpoint {{ $labels.endpoint }}.
+
+              Impact/risk:
+              - Users may see slow access to the endpoint; may be early signal of degradation.
+
+              Likely causes:
+              - Endpoint is slow/unhealthy (upstream latency)
+              - Network/DNS issues from the prober
+              - Prober resource pressure
+
+              First actions:
+              - Check endpoint latency and error rate in Grafana
+              - Verify DNS/connectivity from within the cluster
+              - Check blackbox-exporter pods for restarts/resource pressure
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#synthetic-probes-blackbox"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/synthetic-blackbox/synthetic-blackbox"

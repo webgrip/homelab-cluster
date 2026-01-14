@@ -15,7 +15,25 @@ spec:
           for: 5m
           labels:
             severity: critical
+            owner: platform
+            service: cilium
           annotations:
-            summary: "Cilium agent target down ({{$labels.pod}})"
-            description: "Prometheus cannot scrape a cilium agent target for 5m. Networking may be degraded."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#platform-cilium"
+            summary: "Cilium agent target down (kube-system)"
+            description: |
+              What's happening:
+              - Prometheus cannot scrape cilium agent {{$labels.pod}} for 5m.
+
+              Impact/risk:
+              - Cluster networking and policy enforcement may be degraded.
+
+              Likely causes:
+              - Cilium agent pod crashlooping or not scheduled
+              - Node networking issue (CNI/ebpf) or kubelet/metrics endpoint issues
+              - Prometheus scrape config/connectivity problems
+
+              First actions:
+              - Check cilium pods in kube-system (Ready/CrashLoopBackOff)
+              - Check node health and recent Cilium events/logs
+              - Verify Prometheus can reach the target endpoint
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-cilium"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/net-cilium/cilium-networking"

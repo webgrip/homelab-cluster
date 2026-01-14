@@ -17,10 +17,28 @@ spec:
           for: 15m
           labels:
             severity: warning
+            owner: platform
+            service: flux
           annotations:
             summary: "Flux Kustomization not Ready ({{$labels.namespace}}/{{$labels.name}})"
-            description: "Flux reports Kustomization status=False for 15m. Check `flux get kustomizations` and controller logs."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#flux"
+            description: |
+              What's happening:
+              - Flux reports Kustomization status=False for 15m.
+
+              Impact/risk:
+              - Cluster state may drift because GitOps changes are not applying.
+
+              Likely causes:
+              - Invalid manifest (Kustomize build/apply error)
+              - Missing dependency (CRDs/namespaces/secrets) or ordering issue
+              - Source/OCI/Git auth or connectivity issue
+
+              First actions:
+              - Run: flux get kustomizations -A
+              - Inspect: flux logs -n flux-system --all-namespaces
+              - Check events for the affected Kustomization namespace
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#flux"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/gitops-flux-health/flux-gitops-health"
 
         - alert: FluxHelmReleaseNotReady
           expr: |
@@ -30,7 +48,25 @@ spec:
           for: 15m
           labels:
             severity: warning
+            owner: platform
+            service: flux
           annotations:
             summary: "Flux HelmRelease not Ready ({{$labels.namespace}}/{{$labels.name}})"
-            description: "Flux reports HelmRelease status=False for 15m. Check `flux get helmreleases` and controller logs."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#flux"
+            description: |
+              What's happening:
+              - Flux reports HelmRelease status=False for 15m.
+
+              Impact/risk:
+              - Helm-managed workloads may be degraded or stuck mid-upgrade.
+
+              Likely causes:
+              - Chart render/apply failure (values/schema/template error)
+              - Dependency missing (CRDs/namespaces/secrets/PVCs)
+              - Image pulls or workload rollout failing after apply
+
+              First actions:
+              - Run: flux get helmreleases -A
+              - Inspect: flux logs -n flux-system --all-namespaces
+              - Check the HelmRelease events/status for the failing reason
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#flux"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/gitops-flux-health/flux-gitops-health"

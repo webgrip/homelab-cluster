@@ -3,6 +3,9 @@ apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   name: app-traffic
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
 spec:
   groups:
     - name: apps.traffic.traces
@@ -26,10 +29,28 @@ spec:
           for: 15m
           labels:
             severity: warning
+            owner: platform
+            service: apps
           annotations:
-            summary: "High p95 latency ({{ $labels.k8s_namespace_name }})"
-            description: "p95 latency >1.5s for 15m (Tempo span-metrics)."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+            summary: "HTTP p95 latency high ({{ $labels.k8s_namespace_name }})"
+            description: |
+              What's happening:
+              - p95 server latency >1.5s for 15m in namespace {{ $labels.k8s_namespace_name }} (Tempo span-metrics).
+
+              Impact/risk:
+              - Users may see slow page loads and timeouts.
+
+              Likely causes:
+              - Downstream dependency latency (DB/cache/external API)
+              - Resource pressure (CPU throttling, GC, saturation)
+              - Increased error retries or traffic spike
+
+              First actions:
+              - Use the service graphs/traces to find the slowest edges
+              - Check workload CPU/memory and request rate in the namespace
+              - Check recent deploys/config changes in the namespace
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/tempo-service-graphs/tempo-service-graphs"
 
         - alert: AppHttpP95LatencyCritical
           expr: |
@@ -50,7 +71,25 @@ spec:
           for: 15m
           labels:
             severity: critical
+            owner: platform
+            service: apps
           annotations:
-            summary: "Critical p95 latency ({{ $labels.k8s_namespace_name }})"
-            description: "p95 latency >3s for 15m (Tempo span-metrics)."
-            runbook_url: "https://backstage.local/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+            summary: "HTTP p95 latency critical ({{ $labels.k8s_namespace_name }})"
+            description: |
+              What's happening:
+              - p95 server latency >3s for 15m in namespace {{ $labels.k8s_namespace_name }} (Tempo span-metrics).
+
+              Impact/risk:
+              - Severe user impact likely (timeouts/unavailability).
+
+              Likely causes:
+              - Critical dependency outage or extreme latency
+              - Saturation (CPU/memory/IO) causing queuing
+              - Misbehaving deployment or config regression
+
+              First actions:
+              - Identify the slowest service path in traces/service graphs
+              - Check errors and saturation for the top offender services
+              - Roll back recent changes if the spike coincides with a deploy
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/tempo-service-graphs/tempo-service-graphs"

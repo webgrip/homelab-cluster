@@ -125,7 +125,7 @@ stringData:
 Note:
 
 - If you commit this Secret to Git, add it to [kubernetes/apps/observability/grafana/app/kustomization.yaml](../../kubernetes/apps/observability/grafana/app/kustomization.yaml) so Flux applies it.
-- Alternatively, create it out-of-band with `kubectl` (but then it’s no longer fully GitOps-managed).
+- Alternatively, create it out-of-band with `kubectl` (but then it's no longer fully GitOps-managed).
 
 GitHub OAuth app settings (GitHub org/user → Settings → Developer settings → OAuth Apps):
 
@@ -305,7 +305,7 @@ spec:
 
 Tips:
 
-- If the ServiceMonitor doesn’t appear in Prometheus targets, check selector/labels and whether the operator expects a specific label.
+- If the ServiceMonitor doesn't appear in Prometheus targets, check selector/labels and whether the operator expects a specific label.
 - If your metrics endpoint needs auth/TLS, use `endpoints[].bearerTokenSecret`, `basicAuth`, `tlsConfig`, etc.
 
 ### Long-term metrics (Mimir)
@@ -324,7 +324,7 @@ Logs are collected automatically from Kubernetes pod log files (`/var/log/pods/.
 That means:
 
 - If your container writes to stdout/stderr, logs will show up in Loki automatically.
-- You don’t need per-app log agents.
+- You don't need per-app log agents.
 
 Best practices:
 
@@ -436,7 +436,7 @@ spec:
                   description: MyApp 5xx rate has been >2% for 10 minutes.
 ```
 
-Routing policy (who gets paged, inhibition rules, etc.) can be expressed as code with `AlertmanagerConfig` when you’re ready.
+Routing policy (who gets paged, inhibition rules, etc.) can be expressed as code with `AlertmanagerConfig` when you're ready.
 
 ---
 
@@ -462,7 +462,7 @@ If you want to push this from “excellent” to “elite”:
 - Add **AlertmanagerConfig** resources (routing, inhibition, silences)
 - Add a dedicated **metrics long-term store** (Mimir) + Prometheus remote_write
 - Add **Tempo metrics-generator** (service graphs + span metrics)
-- Enforce **multi-tenancy** in Loki/Tempo when you’re ready
+- Enforce **multi-tenancy** in Loki/Tempo when you're ready
 
 ---
 

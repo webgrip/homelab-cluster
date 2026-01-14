@@ -30,8 +30,25 @@ spec:
         labels:
           category: slo
         annotations:
-          summary: "Apps SLO burn rate"
-          description: "Fast burn indicates user-visible errors across app namespaces."
+          summary: "Apps availability SLO burn rate (apps)"
+          description: |
+            What's happening:
+            - Fast burn indicates user-visible errors across app namespaces.
+
+            Impact/risk:
+            - Users are likely seeing increased 5xx and failures.
+
+            Likely causes:
+            - A major backend dependency outage
+            - A bad deployment/config rollout
+            - Cluster saturation (CPU/memory/IO)
+
+            First actions:
+            - Use traces/service graphs to locate the failing service path
+            - Check error rates and recent deploys in the top offender namespace
+            - Roll back recent changes if correlated with the start time
+          runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+          dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/tempo-service-graphs/tempo-service-graphs"
         pageAlert:
           labels:
             severity: critical

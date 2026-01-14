@@ -76,7 +76,7 @@ route:
 
 ## Option B: Raw manifests + Kustomize
 
-If an app doesn’t fit a Helm chart cleanly, keep it as plain YAML under `.../app/` and include it via a `kustomization.yaml`.
+If an app doesn't fit a Helm chart cleanly, keep it as plain YAML under `.../app/` and include it via a `kustomization.yaml`.
 
 Example: Invoice Ninja is assembled from Deployments/Services/ConfigMaps + PVCs under `kubernetes/apps/invoiceninja/invoiceninja/app/`.
 
@@ -85,7 +85,7 @@ Example: Invoice Ninja is assembled from Deployments/Services/ConfigMaps + PVCs 
 If an app needs Postgres:
 
 1. Ensure CNPG is installed (`kubernetes/apps/cnpg-system/cloudnative-pg`).
-2. Add a `postgresql.cnpg.io/v1` `Cluster` resource in your app’s namespace.
+2. Add a `postgresql.cnpg.io/v1` `Cluster` resource in your app's namespace.
 3. Reference the generated `*-app`/`*-rw` services from your application.
 
 Examples of CNPG clusters in this repo:
