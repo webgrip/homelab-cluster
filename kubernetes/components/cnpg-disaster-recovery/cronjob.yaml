@@ -11,6 +11,7 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 0
+      ttlSecondsAfterFinished: 21600
       template:
         spec:
           serviceAccountName: cnpg-disaster-recovery-check
@@ -35,6 +36,11 @@ spec:
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.namespace
+                # Optional: name of the source CNPG cluster to compare WAL LSNs against.
+                # If set, the check avoids false failures when the standby is fully caught up
+                # but pg_last_xact_replay_timestamp() is old due to no recent transactions.
+                - name: SOURCE_CLUSTER
+                  value: ""
                 - name: TARGET_CLUSTER
                   value: cnpg-disaster-recovery
                 - name: MAX_REPLAY_LAG_SECONDS
@@ -45,29 +51,61 @@ spec:
                 - |
                   echo "[cnpg-disaster-recovery-check] starting"
 
+                  get_cluster_pod() {
+                    cluster_name="$1"
+                    pod_name=$(kubectl -n "$NAMESPACE" get pods -l "cnpg.io/cluster=$cluster_name,cnpg.io/instanceRole=primary" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+                    if [ -z "$pod_name" ]; then
+                      pod_name=$(kubectl -n "$NAMESPACE" get pods -l "cnpg.io/cluster=$cluster_name" -o jsonpath='{.items[0].metadata.name}')
+                    fi
+                    printf "%s" "$pod_name"
+                  }
+
+                  run_psql() {
+                    pod_name="$1"
+                    query="$2"
+                    kubectl -n "$NAMESPACE" exec "$pod_name" -- psql -U postgres -d postgres -v ON_ERROR_STOP=1 -Atc "$query"
+                  }
+
                   kubectl -n "$NAMESPACE" wait --for=condition=Ready "cluster.postgresql.cnpg.io/$TARGET_CLUSTER" --timeout=15m
 
-                  pod=$(kubectl -n "$NAMESPACE" get pods -l "cnpg.io/cluster=$TARGET_CLUSTER,cnpg.io/instanceRole=primary" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-                  if [ -z "$pod" ]; then
-                    pod=$(kubectl -n "$NAMESPACE" get pods -l "cnpg.io/cluster=$TARGET_CLUSTER" -o jsonpath='{.items[0].metadata.name}')
-                  fi
-                  kubectl -n "$NAMESPACE" wait --for=condition=Ready "pod/$pod" --timeout=10m
+                  target_pod=$(get_cluster_pod "$TARGET_CLUSTER")
+                  kubectl -n "$NAMESPACE" wait --for=condition=Ready "pod/$target_pod" --timeout=10m
 
-                  out=$(kubectl -n "$NAMESPACE" exec "$pod" -- /bin/sh -ceu \
-                    "psql -U postgres -d postgres -v ON_ERROR_STOP=1 -Atc \"\
-                      SELECT pg_is_in_recovery();\
-                      SELECT COALESCE(EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp())), 0)::int;\
-                      SELECT 1;\
-                    \""
-                  )
-
-                  is_recovery=$(printf "%s\n" "$out" | sed -n '1p')
-                  lag_seconds=$(printf "%s\n" "$out" | sed -n '2p')
+                  is_recovery=$(run_psql "$target_pod" "SELECT pg_is_in_recovery();")
 
                   if [ "$is_recovery" != "t" ]; then
                     echo "[cnpg-disaster-recovery-check] FAIL: not in recovery (pg_is_in_recovery=$is_recovery)"
                     exit 1
                   fi
+
+                  # Prefer an LSN-based check against the source cluster when configured.
+                  # This avoids false positives when there are no recent transactions to update
+                  # pg_last_xact_replay_timestamp(), but the standby has actually caught up.
+                  if [ -n "$SOURCE_CLUSTER" ]; then
+                    kubectl -n "$NAMESPACE" wait --for=condition=Ready "cluster.postgresql.cnpg.io/$SOURCE_CLUSTER" --timeout=15m
+                    source_pod=$(get_cluster_pod "$SOURCE_CLUSTER")
+                    kubectl -n "$NAMESPACE" wait --for=condition=Ready "pod/$source_pod" --timeout=10m
+
+                    standby_lsn=$(run_psql "$target_pod" "SELECT pg_last_wal_replay_lsn();")
+                    source_lsn=$(run_psql "$source_pod" "SELECT pg_current_wal_lsn();")
+                    wal_diff_bytes=$(run_psql "$source_pod" "SELECT pg_wal_lsn_diff('$source_lsn', '$standby_lsn')::bigint;")
+
+                    case "$wal_diff_bytes" in
+                      ''|*[!0-9-]*)
+                        echo "[cnpg-disaster-recovery-check] WARN: wal diff not an integer: '$wal_diff_bytes' (source_lsn=$source_lsn standby_lsn=$standby_lsn)"
+                        ;;
+                      *)
+                        if [ "$wal_diff_bytes" -le 0 ]; then
+                          echo "[cnpg-disaster-recovery-check] OK: standby caught up (wal_diff_bytes=$wal_diff_bytes)"
+                          echo "[cnpg-disaster-recovery-check] done"
+                          exit 0
+                        fi
+                        echo "[cnpg-disaster-recovery-check] INFO: wal_diff_bytes=$wal_diff_bytes (source_lsn=$source_lsn standby_lsn=$standby_lsn)"
+                        ;;
+                    esac
+                  fi
+
+                  lag_seconds=$(run_psql "$target_pod" "SELECT COALESCE(EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp())), 0)::int;")
 
                   case "$lag_seconds" in
                     ''|*[!0-9]*)
