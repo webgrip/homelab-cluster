@@ -55,15 +55,17 @@ spec:
     kafka:
       persistence:
         storageClassName: longhorn
-        size: 20Gi
+        size: 40Gi
       extraEnv:
         # Cap on-disk log retention to prevent filling the PVC.
         # NOTE: retention.bytes applies per-partition; total disk usage can exceed this if there are many partitions.
         # We also force segment roll by time so retention can kick in even under low traffic.
         - name: KAFKA_LOG_RETENTION_BYTES
           value: "2147483648" # 2Gi
-        - name: KAFKA_LOG_RETENTION_HOURS
-          value: "8"
+        # The chart hard-codes KAFKA_LOG_RETENTION_HOURS=24; avoid duplicating that env var.
+        # Kafka gives `log.retention.ms` precedence over hours/minutes.
+        - name: KAFKA_LOG_RETENTION_MS
+          value: "28800000" # 8h
         - name: KAFKA_LOG_SEGMENT_BYTES
           value: "268435456" # 256Mi
         - name: KAFKA_LOG_SEGMENT_MS
@@ -72,6 +74,14 @@ spec:
           value: "300000"
         - name: KAFKA_OFFSETS_RETENTION_MINUTES
           value: "1440" # 1d
+
+      # Kafka runs with a read-only root filesystem; mount a writable logs directory.
+      extraVolumes:
+        - name: kafka-logs
+          emptyDir: {}
+      extraVolumeMounts:
+        - name: kafka-logs
+          mountPath: /opt/kafka/logs
 
     mimir:
       structuredConfig:
