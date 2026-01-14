@@ -57,12 +57,17 @@ spec:
         storageClassName: longhorn
         size: 20Gi
       extraEnv:
-        # Cap on-disk log size (in bytes) to prevent filling the PVC.
-        # 10Gi leaves headroom on a 20Gi volume for metadata/overhead.
+        # Cap on-disk log retention to prevent filling the PVC.
+        # NOTE: retention.bytes applies per-partition; total disk usage can exceed this if there are many partitions.
+        # We also force segment roll by time so retention can kick in even under low traffic.
         - name: KAFKA_LOG_RETENTION_BYTES
-          value: "10737418240"
+          value: "2147483648" # 2Gi
+        - name: KAFKA_LOG_RETENTION_HOURS
+          value: "24"
         - name: KAFKA_LOG_SEGMENT_BYTES
-          value: "1073741824"
+          value: "268435456" # 256Mi
+        - name: KAFKA_LOG_SEGMENT_MS
+          value: "3600000" # 1h
         - name: KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS
           value: "300000"
 
