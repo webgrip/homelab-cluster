@@ -13,6 +13,30 @@ spec:
         kind: HelmRepository
         name: grafana-charts-mimir
         namespace: observability
+
+  # Patch rendered resources without forking the upstream chart.
+  # Kafka PVC growth is dominated by broker log retention; the chart defaults to 24h.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              group: apps
+              version: v1
+              kind: StatefulSet
+              name: mimir-distributed-kafka
+            patch: |-
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: mimir-distributed-kafka
+              spec:
+                template:
+                  spec:
+                    containers:
+                      - name: kafka
+                        env:
+                          - name: KAFKA_LOG_RETENTION_HOURS
+                            value: "2"
   values:
     podAnnotations:
       reloader.stakater.com/auto: "true"
@@ -61,15 +85,15 @@ spec:
         # NOTE: retention.bytes applies per-partition; total disk usage can exceed this if there are many partitions.
         # We also force segment roll by time so retention can kick in even under low traffic.
         - name: KAFKA_LOG_RETENTION_BYTES
-          value: "2147483648" # 2Gi
+          value: "268435456" # 256Mi
         # The chart hard-codes KAFKA_LOG_RETENTION_HOURS=24; avoid duplicating that env var.
         # Kafka gives `log.retention.ms` precedence over hours/minutes.
         - name: KAFKA_LOG_RETENTION_MS
-          value: "28800000" # 8h
+          value: "7200000" # 2h
         - name: KAFKA_LOG_SEGMENT_BYTES
-          value: "268435456" # 256Mi
+          value: "134217728" # 128Mi
         - name: KAFKA_LOG_SEGMENT_MS
-          value: "3600000" # 1h
+          value: "900000" # 15m
         - name: KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS
           value: "300000"
         - name: KAFKA_OFFSETS_RETENTION_MINUTES
