@@ -92,7 +92,10 @@ spec:
     kafka:
       persistence:
         storageClassName: longhorn
-        size: 40Gi
+        # StatefulSet volumeClaimTemplates are immutable.
+        # The live cluster PVC was expanded separately; keep this at the chart/default size
+        # so Helm upgrades can apply (retention/env changes roll the pod template).
+        size: 5Gi
       resources:
         requests:
           cpu: 500m
