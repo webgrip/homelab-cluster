@@ -35,8 +35,21 @@ spec:
                     containers:
                       - name: kafka
                         env:
-                          - name: KAFKA_LOG_RETENTION_HOURS
-                            value: "2"
+                          # IMPORTANT: the embedded Kafka defaults to 24h retention.
+                          # Enforce retention & segment rollover here so it actually reaches the broker.
+                          # (values.kafka.extraEnv is chart-dependent and may not be wired for this container.)
+                          - name: KAFKA_LOG_RETENTION_MS
+                            value: "7200000" # 2h
+                          - name: KAFKA_LOG_RETENTION_BYTES
+                            value: "33554432" # 32Mi (per-partition)
+                          - name: KAFKA_LOG_SEGMENT_MS
+                            value: "900000" # 15m
+                          - name: KAFKA_LOG_SEGMENT_BYTES
+                            value: "134217728" # 128Mi
+                          - name: KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS
+                            value: "300000"
+                          - name: KAFKA_OFFSETS_RETENTION_MINUTES
+                            value: "1440" # 1d
   values:
     podAnnotations:
       reloader.stakater.com/auto: "true"
@@ -92,7 +105,7 @@ spec:
         # NOTE: retention.bytes applies per-partition; total disk usage can exceed this if there are many partitions.
         # We also force segment roll by time so retention can kick in even under low traffic.
         - name: KAFKA_LOG_RETENTION_BYTES
-          value: "268435456" # 256Mi
+          value: "33554432" # 32Mi
         # The chart hard-codes KAFKA_LOG_RETENTION_HOURS=24; avoid duplicating that env var.
         # Kafka gives `log.retention.ms` precedence over hours/minutes.
         - name: KAFKA_LOG_RETENTION_MS
@@ -173,6 +186,13 @@ spec:
             bucket_lookup_type: path
             http:
               insecure_skip_verify: true
+
+        # Ingest storage uses Kafka topics; keep partition count sane.
+        # Partition count MUST be >= max ingester replicas.
+        ingest_storage:
+          kafka:
+            auto_create_topic_enabled: true
+            auto_create_topic_default_partitions: 12
 
     # Ensure ingesters use Longhorn for WAL/data.
     ingester:
