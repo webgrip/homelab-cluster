@@ -34,10 +34,19 @@ data:
             "datasource": {"type": "loki", "uid": "loki"},
             "enable": true,
             "hide": false,
-            "iconColor": "rgba(255, 96, 96, 1)",
-            "name": "Flux reconciliation (logs)",
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Flux reconcile start (logs)",
             "type": "tags",
-            "expr": "{namespace=\"flux-system\"} |~ \"(?i)reconciliation (finished|failed)\""
+            "expr": "{namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation started\""
+          },
+          {
+            "datasource": {"type": "loki", "uid": "loki"},
+            "enable": true,
+            "hide": false,
+            "iconColor": "rgba(255, 96, 96, 1)",
+            "name": "Flux reconcile finish/fail (logs)",
+            "type": "tags",
+            "expr": "{namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation (finished|failed)\""
           }
         ]
       },
@@ -179,12 +188,36 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate({namespace=\"flux-system\"} |~ \"(?i)reconciliation (finished|failed)\"[5m]))",
-              "legendFormat": "reconcile logs/s"
+              "expr": "sum(rate({namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation started\"[5m]))",
+              "legendFormat": "start logs/s"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(rate({namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation (finished|failed)\"[5m]))",
+              "legendFormat": "finish/fail logs/s"
             }
           ],
           "options": {"legend": {"displayMode": "list", "placement": "right"}},
           "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
+        },
+        {
+          "id": 10,
+          "type": "logs",
+          "title": "Flux reconciliation events (what changed)",
+          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 36},
+          "datasource": {"type": "loki", "uid": "loki"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "{namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation (started|finished|failed)\""
+            }
+          ],
+          "options": {
+            "showLabels": true,
+            "showTime": true,
+            "wrapLogMessage": true,
+            "sortOrder": "Descending"
+          }
         }
       ]
     }
