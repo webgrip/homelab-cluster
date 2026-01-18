@@ -50,6 +50,12 @@ spec:
                             value: "300000"
                           - name: KAFKA_OFFSETS_RETENTION_MINUTES
                             value: "1440" # 1d
+                          # Ensure Mimir can create/use its ingest topic on a single-broker embedded Kafka.
+                          # Without this, producers/consumers can hit UNKNOWN_TOPIC_OR_PARTITION if the topic never gets created.
+                          - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+                            value: "true"
+                          - name: KAFKA_DEFAULT_REPLICATION_FACTOR
+                            value: "1"
   values:
     podAnnotations:
       reloader.stakater.com/auto: "true"
