@@ -29,6 +29,15 @@ data:
             "iconColor": "rgba(0, 211, 255, 1)",
             "name": "Annotations & Alerts",
             "type": "dashboard"
+          },
+          {
+            "datasource": {"type": "loki", "uid": "loki"},
+            "enable": true,
+            "hide": false,
+            "iconColor": "rgba(255, 96, 96, 1)",
+            "name": "Flux reconciliation (logs)",
+            "type": "tags",
+            "expr": "{namespace=\"flux-system\"} |~ \"(?i)reconciliation (finished|failed)\""
           }
         ]
       },
@@ -160,6 +169,22 @@ data:
           ],
           "options": {"legend": {"displayMode": "list", "placement": "right"}},
           "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 9,
+          "type": "timeseries",
+          "title": "Flux reconcile log spikes (Loki)",
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 28},
+          "datasource": {"type": "loki", "uid": "loki"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate({namespace=\"flux-system\"} |~ \"(?i)reconciliation (finished|failed)\"[5m]))",
+              "legendFormat": "reconcile logs/s"
+            }
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
         }
       ]
     }
