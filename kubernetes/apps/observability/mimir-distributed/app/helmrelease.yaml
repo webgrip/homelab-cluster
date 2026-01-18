@@ -91,11 +91,10 @@ spec:
 
     kafka:
       persistence:
-        storageClassName: longhorn
         # StatefulSet volumeClaimTemplates are immutable.
-        # The live cluster PVC was expanded separately; keep this at the chart/default size
-        # so Helm upgrades can apply (retention/env changes roll the pod template).
-        size: 5Gi
+        # NOTE: shrinking an existing PVC is not supported by Kubernetes.
+        # To go from 40Gi -> 10Gi you must delete/recreate the PVC (and Kafka StatefulSet).
+        size: 10Gi
       resources:
         requests:
           cpu: 500m
