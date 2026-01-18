@@ -3,6 +3,8 @@ kind: ConfigMap
 metadata:
   name: grafana-dashboard-observability-stack-overview
   namespace: observability
+  annotations:
+    grafana_folder: Observability
   labels:
     grafana_dashboard: "1"
 data:
@@ -126,6 +128,38 @@ data:
           ],
           "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
           "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "Flux reconciles/s (GitOps activity)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (kind) (rate(gotk_reconcile_duration_seconds_count{kind=~\"Kustomization|HelmRelease\"}[5m]))",
+              "legendFormat": "{{kind}}"
+            }
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
+        },
+        {
+          "id": 8,
+          "type": "timeseries",
+          "title": "Flux reconcile failures (status=False)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (kind) (max_over_time(gotk_reconcile_condition{kind=~\"Kustomization|HelmRelease\", status=\"False\"}[5m]))",
+              "legendFormat": "{{kind}}"
+            }
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
         }
       ]
     }
