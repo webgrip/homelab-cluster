@@ -174,6 +174,30 @@ Checks:
 - `kubectl -n observability logs -c kafka <pod> --previous --tail=200`
 - Verify PVC usage and expand if needed (Longhorn usually supports online expansion).
 
+### Shrink Kafka PVC (delete/recreate)
+
+Kubernetes does **not** support shrinking an existing PVC. To go from (for example) 40Gi -> 10Gi you must delete the PVC and let it be recreated.
+
+This is disruptive and will wipe the embedded Kafka data.
+
+Workflow (GitOps-first):
+
+- Update the HelmRelease values in Git so `values.kafka.persistence.size` is the new desired size.
+- Temporarily suspend reconciliation so Flux/Helm does not race your manual deletes:
+  - `flux suspend helmrelease mimir-distributed -n observability`
+  - (kubectl alternative) `kubectl -n observability patch helmrelease mimir-distributed --type=merge -p '{"spec":{"suspend":true}}'`
+- Delete Kafka and its claim:
+  - `kubectl -n observability delete statefulset mimir-distributed-kafka --wait=true`
+  - `kubectl -n observability delete pvc kafka-data-mimir-distributed-kafka-0`
+- Resume and force a reconcile to recreate with the new size:
+  - `flux resume helmrelease mimir-distributed -n observability`
+  - `flux reconcile helmrelease mimir-distributed -n observability --with-source`
+  - (kubectl alternative) `kubectl -n observability patch helmrelease mimir-distributed --type=merge -p '{"spec":{"suspend":false}}'`
+  - (kubectl alternative) `kubectl -n observability annotate helmrelease mimir-distributed reconcile.fluxcd.io/requestedAt="$(date -Iseconds)" --overwrite`
+- Verify:
+  - `kubectl -n observability get pvc kafka-data-mimir-distributed-kafka-0 -o wide`
+  - `kubectl -n observability get pods -l app.kubernetes.io/name=kafka -o wide`
+
 ## k6 canaries
 
 Symptoms:

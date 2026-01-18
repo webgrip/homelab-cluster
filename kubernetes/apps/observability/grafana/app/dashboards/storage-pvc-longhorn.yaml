@@ -12,11 +12,25 @@ data:
       "title": "Storage / PVC Usage",
       "uid": "storage-pvc-usage",
       "timezone": "browser",
-      "tags": ["storage", "kubernetes"],
+      "tags": ["storage", "kubernetes", "pvc"],
       "editable": false,
       "graphTooltip": 0,
       "refresh": "30s",
       "time": {"from": "now-6h", "to": "now"},
+      "links": [
+        {
+          "title": "Storage / Longhorn Health",
+          "type": "link",
+          "url": "/d/storage-longhorn-health/storage-longhorn-health",
+          "targetBlank": false
+        },
+        {
+          "title": "Observability / Mimir Kafka",
+          "type": "link",
+          "url": "/d/observability-mimir-kafka/observability-mimir-kafka",
+          "targetBlank": false
+        }
+      ],
       "annotations": {
         "list": [
           {
@@ -41,52 +55,153 @@ data:
             "includeAll": true,
             "multi": true,
             "current": {"selected": true, "text": "All", "value": "$__all"}
+          },
+          {
+            "name": "pvc",
+            "type": "query",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "query": {
+              "query": "label_values(kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\"}, persistentvolumeclaim)",
+              "refId": "A"
+            },
+            "refresh": 2,
+            "includeAll": true,
+            "multi": true,
+            "current": {"selected": true, "text": "All", "value": "$__all"}
+          },
+          {
+            "name": "node",
+            "type": "query",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "query": {
+              "query": "label_values(kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\"}, node)",
+              "refId": "A"
+            },
+            "refresh": 2,
+            "includeAll": true,
+            "multi": true,
+            "current": {"selected": true, "text": "All", "value": "$__all"}
+          },
+          {
+            "name": "topk",
+            "type": "custom",
+            "query": "10,20,50",
+            "current": {"selected": true, "text": "20", "value": "20"}
           }
         ]
       },
       "panels": [
         {
           "id": 1,
-          "type": "timeseries",
-          "title": "Top PVC usage (percent)",
-          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 0},
+          "type": "stat",
+          "title": "Total PVC usage %",
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "topk(20, kubelet_volume_stats_used_bytes{namespace=~\"$namespace\"} / kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\"})",
-              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
+              "expr": "sum(kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"}) / sum(kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"})"
             }
           ],
-          "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
-          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "max": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "orange", "value": 0.8},
+                  {"color": "red", "value": 0.9}
+                ]
+              }
+            },
+            "overrides": []
+          }
         },
         {
           "id": 2,
-          "type": "timeseries",
-          "title": "PVC used bytes (top 20)",
-          "gridPos": {"h": 9, "w": 12, "x": 0, "y": 10},
+          "type": "stat",
+          "title": "Total used (GiB)",
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "topk(20, kubelet_volume_stats_used_bytes{namespace=~\"$namespace\"})",
-              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
+              "expr": "sum(kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"})"
             }
           ],
-          "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
-          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+          "fieldConfig": {"defaults": {"unit": "bytes", "decimals": 1}, "overrides": []}
         },
         {
           "id": 3,
-          "type": "timeseries",
-          "title": "PVC available bytes (top 20)",
-          "gridPos": {"h": 9, "w": 12, "x": 12, "y": 10},
+          "type": "stat",
+          "title": "PVCs > 80% full",
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "topk(20, kubelet_volume_stats_available_bytes{namespace=~\"$namespace\"})",
+              "expr": "count((kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"} / kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"}) > 0.8)"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+          "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}, {"color": "red", "value": 3}]}}, "overrides": []}
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "PVC count",
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"})"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+
+        {
+          "id": 10,
+          "type": "timeseries",
+          "title": "Top PVC usage %",
+          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk($topk, (kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"} / kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"}) * 100)",
+              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "decimals": 1,
+              "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 80}, {"color": "red", "value": 90}]}
+            },
+            "overrides": []
+          },
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 11,
+          "type": "timeseries",
+          "title": "PVC used (bytes) – top",
+          "gridPos": {"h": 9, "w": 12, "x": 0, "y": 14},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk($topk, kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"})",
               "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
             }
           ],
@@ -94,19 +209,296 @@ data:
           "options": {"legend": {"displayMode": "list", "placement": "right"}}
         },
         {
-          "id": 4,
+          "id": 12,
           "type": "timeseries",
-          "title": "PVC usage by namespace (percent)",
-          "gridPos": {"h": 9, "w": 24, "x": 0, "y": 19},
+          "title": "PVC free (bytes) – top",
+          "gridPos": {"h": 9, "w": 12, "x": 12, "y": 14},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (namespace) (kubelet_volume_stats_used_bytes{namespace=~\"$namespace\"}) / sum by (namespace) (kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\"})",
+              "expr": "topk($topk, kubelet_volume_stats_available_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"})",
+              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+
+        {
+          "id": 13,
+          "type": "timeseries",
+          "title": "Fastest-growing PVCs (bytes/sec)",
+          "gridPos": {"h": 9, "w": 12, "x": 0, "y": 23},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk($topk, rate(kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"}[30m]))",
+              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "Bps", "decimals": 2}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 14,
+          "type": "timeseries",
+          "title": "Predicted usage % in 24h (linear, last 6h)",
+          "gridPos": {"h": 9, "w": 12, "x": 12, "y": 23},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk($topk, (predict_linear(kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"}[6h], 24*3600) / kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"}) * 100)",
+              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 150,
+              "decimals": 1,
+              "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 80}, {"color": "red", "value": 100}]}
+            },
+            "overrides": []
+          },
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+
+        {
+          "id": 15,
+          "type": "timeseries",
+          "title": "PVC inode usage % (top)",
+          "gridPos": {"h": 9, "w": 12, "x": 0, "y": 32},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk($topk, (kubelet_volume_stats_inodes_used{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"} / kubelet_volume_stats_inodes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"}) * 100)",
+              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "decimals": 1}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 16,
+          "type": "timeseries",
+          "title": "Requested size vs capacity (ratio)",
+          "gridPos": {"h": 9, "w": 12, "x": 12, "y": 32},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk($topk, kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\"} / on(namespace, persistentvolumeclaim) kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"})",
+              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "none", "min": 0, "decimals": 2}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+
+        {
+          "id": 17,
+          "type": "timeseries",
+          "title": "Time to full (hours, based on 6h trend)",
+          "gridPos": {"h": 9, "w": 24, "x": 0, "y": 41},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "bottomk($topk, kubelet_volume_stats_available_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"} / clamp_min(rate(kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"}[6h]), 1) / 3600)",
+              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "h",
+              "min": 0,
+              "decimals": 1,
+              "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 24}, {"color": "red", "value": 12}]}
+            },
+            "overrides": []
+          },
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+
+        {
+          "id": 20,
+          "type": "table",
+          "title": "Top PVCs right now (usage %, used, free)",
+          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 50},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(50, (kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", node=~\"$node\"} / kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", node=~\"$node\"}) * 100)",
+              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}",
+              "instant": true
+            },
+            {
+              "refId": "B",
+              "expr": "topk(50, kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", node=~\"$node\"})",
+              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}",
+              "instant": true
+            },
+            {
+              "refId": "C",
+              "expr": "topk(50, kubelet_volume_stats_available_bytes{namespace=~\"$namespace\", node=~\"$node\"})",
+              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}",
+              "instant": true
+            }
+          ],
+          "options": {"showHeader": true},
+          "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": []}
+        },
+
+        {
+          "id": 21,
+          "type": "table",
+          "title": "Pods mounting selected PVC(s)",
+          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 60},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count by (namespace, persistentvolumeclaim, pod) (kube_pod_spec_volumes_persistentvolumeclaim_info{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\"})",
+              "instant": true
+            }
+          ],
+          "options": {"showHeader": true},
+          "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": []}
+        },
+
+        {
+          "id": 30,
+          "type": "timeseries",
+          "title": "PVC usage by namespace %",
+          "gridPos": {"h": 9, "w": 24, "x": 0, "y": 70},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(sum by (namespace) (kubelet_volume_stats_used_bytes{namespace=~\"$namespace\"}) / sum by (namespace) (kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\"})) * 100",
               "legendFormat": "{{namespace}}"
             }
           ],
-          "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
+          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "decimals": 1}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+
+        {
+          "id": 40,
+          "type": "timeseries",
+          "title": "Longhorn backend: node storage usage %",
+          "gridPos": {"h": 9, "w": 12, "x": 0, "y": 79},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(longhorn_node_storage_usage_bytes / longhorn_node_storage_capacity_bytes) * 100 or on() vector(0)",
+              "legendFormat": "{{node}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "decimals": 1}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 41,
+          "type": "timeseries",
+          "title": "Longhorn backend: top volume usage %",
+          "gridPos": {"h": 9, "w": 12, "x": 12, "y": 79},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(10, (longhorn_volume_actual_size_bytes / longhorn_volume_capacity_bytes) * 100) or on() vector(0)",
+              "legendFormat": "{{volume}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "decimals": 1}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+
+        {
+          "id": 42,
+          "type": "stat",
+          "title": "Longhorn volumes degraded",
+          "gridPos": {"h": 4, "w": 8, "x": 0, "y": 88},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(longhorn_volume_robustness == 2) or on() vector(0)"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}, {"color": "red", "value": 3}]}}, "overrides": []}
+        },
+        {
+          "id": 43,
+          "type": "stat",
+          "title": "Longhorn volumes fault",
+          "gridPos": {"h": 4, "w": 8, "x": 8, "y": 88},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(longhorn_volume_robustness == 3) or on() vector(0)"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []}
+        },
+        {
+          "id": 44,
+          "type": "stat",
+          "title": "Longhorn volumes healthy",
+          "gridPos": {"h": 4, "w": 8, "x": 16, "y": 88},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(longhorn_volume_robustness == 1) or on() vector(0)"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+
+        {
+          "id": 45,
+          "type": "table",
+          "title": "PVCs not Bound (kube-state-metrics)",
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 92},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (namespace, persistentvolumeclaim, phase) (kube_persistentvolumeclaim_status_phase{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", phase!=\"Bound\"} == 1)",
+              "instant": true
+            }
+          ],
+          "options": {"showHeader": true},
+          "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": []}
+        },
+        {
+          "id": 46,
+          "type": "timeseries",
+          "title": "Used vs requested % (top)",
+          "gridPos": {"h": 9, "w": 12, "x": 0, "y": 100},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk($topk, (kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"} / on(namespace, persistentvolumeclaim) group_left kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\"}) * 100)",
+              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 200, "decimals": 1}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 47,
+          "type": "timeseries",
+          "title": "Requested size (bytes) – top",
+          "gridPos": {"h": 9, "w": 12, "x": 12, "y": 100},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk($topk, kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\"})",
+              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "bytes", "decimals": 1}, "overrides": []},
           "options": {"legend": {"displayMode": "list", "placement": "right"}}
         }
       ]
