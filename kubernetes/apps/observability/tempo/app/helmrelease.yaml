@@ -17,6 +17,28 @@ spec:
     podAnnotations:
       reloader.stakater.com/auto: "true"
 
+    # Tempo can temporarily stall /ready (eg, during heavy compaction/WAL activity).
+    # The chart defaults (timeout=5s, failureThreshold=3) cause frequent kubelet restarts.
+    livenessProbe:
+      httpGet:
+        path: /ready
+        port: 3200
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 15
+      failureThreshold: 6
+      successThreshold: 1
+
+    readinessProbe:
+      httpGet:
+        path: /ready
+        port: 3200
+      initialDelaySeconds: 20
+      periodSeconds: 10
+      timeoutSeconds: 15
+      failureThreshold: 6
+      successThreshold: 1
+
     serviceMonitor:
       enabled: true
 
