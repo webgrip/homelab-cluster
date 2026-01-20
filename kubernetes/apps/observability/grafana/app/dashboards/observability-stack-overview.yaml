@@ -92,7 +92,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(count_over_time(({namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation failed\")[15m]))"
+              "expr": "sum(count_over_time(({namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation failed\")[15m])) or vector(0)"
             }
           ],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
@@ -119,7 +119,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(count_over_time(({namespace=\"flux-system\", pod=~\"(source-controller|kustomize-controller|helm-controller).*\"} |~ \"(?i)(fetched revision|stored artifact|artifact.*stored|new artifact|applied revision|helm upgrade succeeded|upgrade succeeded|release.*upgraded|chart.*upgraded)\")[1h]))"
+              "expr": "sum(count_over_time(({namespace=\"flux-system\", pod=~\"(source-controller|kustomize-controller|helm-controller).*\"} |~ \"(?i)(fetched revision|stored artifact|artifact.*stored|new artifact|applied revision|helm upgrade succeeded|upgrade succeeded|release.*upgraded|chart.*upgraded)\")[1h])) or vector(0)"
             }
           ],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
@@ -198,17 +198,17 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(({namespace=\"flux-system\", pod=~\"source-controller.*\"} |~ \"(?i)(fetched revision|stored artifact|artifact.*stored|new artifact)\")[5m]))",
+              "expr": "(sum(rate(({namespace=\"flux-system\", pod=~\"source-controller.*\"} |~ \"(?i)(fetched revision|stored artifact|artifact.*stored|new artifact)\")[5m])) or vector(0))",
               "legendFormat": "source-controller (new revision/artifact)"
             },
             {
               "refId": "B",
-              "expr": "sum(rate(({namespace=\"flux-system\", pod=~\"kustomize-controller.*\"} |~ \"(?i)applied revision\")[5m]))",
+              "expr": "(sum(rate(({namespace=\"flux-system\", pod=~\"kustomize-controller.*\"} |~ \"(?i)applied revision\")[5m])) or vector(0))",
               "legendFormat": "kustomize-controller (applied)"
             },
             {
               "refId": "C",
-              "expr": "sum(rate(({namespace=\"flux-system\", pod=~\"helm-controller.*\"} |~ \"(?i)(helm upgrade succeeded|upgrade succeeded|release.*upgraded|chart.*upgraded)\")[5m]))",
+              "expr": "(sum(rate(({namespace=\"flux-system\", pod=~\"helm-controller.*\"} |~ \"(?i)(helm upgrade succeeded|upgrade succeeded|release.*upgraded|chart.*upgraded)\")[5m])) or vector(0))",
               "legendFormat": "helm-controller (upgraded)"
             }
           ],
@@ -224,7 +224,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(({namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation failed\")[5m]))",
+              "expr": "(sum(rate(({namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation failed\")[5m])) or vector(0))",
               "legendFormat": "failures"
             }
           ],
@@ -240,12 +240,12 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(({namespace=\"flux-system\", pod=~\"(source-controller|kustomize-controller|helm-controller).*\"} |~ \"(?i)(fetched revision|stored artifact|artifact.*stored|new artifact|applied revision|helm upgrade succeeded|upgrade succeeded|release.*upgraded|chart.*upgraded)\")[5m]))",
+              "expr": "(sum(rate(({namespace=\"flux-system\", pod=~\"(source-controller|kustomize-controller|helm-controller).*\"} |~ \"(?i)(fetched revision|stored artifact|artifact.*stored|new artifact|applied revision|helm upgrade succeeded|upgrade succeeded|release.*upgraded|chart.*upgraded)\")[5m])) or vector(0))",
               "legendFormat": "applied changes / new revision logs/s"
             },
             {
               "refId": "B",
-              "expr": "sum(rate(({namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation failed\")[5m]))",
+              "expr": "(sum(rate(({namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation failed\")[5m])) or vector(0))",
               "legendFormat": "fail logs/s"
             }
           ],
