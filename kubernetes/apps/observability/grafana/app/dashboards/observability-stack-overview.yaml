@@ -15,10 +15,35 @@ data:
       "uid": "obs-stack-overview",
       "timezone": "browser",
       "tags": ["observability"],
+      "description": "At-a-glance health for the observability namespace, with Flux change/error markers via Grafana annotations (toggle in the top-left).",
       "editable": false,
-      "graphTooltip": 0,
+      "graphTooltip": 1,
       "refresh": "1m",
-      "time": {"from": "now-3h", "to": "now"},
+      "time": {"from": "now-6h", "to": "now"},
+      "timepicker": {
+        "refresh_intervals": ["10s", "30s", "1m", "5m", "15m", "30m", "1h"],
+        "time_options": ["5m", "15m", "30m", "1h", "3h", "6h", "12h", "24h", "2d", "7d"]
+      },
+      "templating": {
+        "list": [
+          {
+            "type": "constant",
+            "name": "ns",
+            "label": "Namespace",
+            "query": "observability",
+            "current": {"text": "observability", "value": "observability"},
+            "hide": 2
+          },
+          {
+            "type": "constant",
+            "name": "topk",
+            "label": "Top K",
+            "query": "10",
+            "current": {"text": "10", "value": "10"},
+            "hide": 2
+          }
+        ]
+      },
       "annotations": {
         "list": [
           {
@@ -56,14 +81,15 @@ data:
         {
           "id": 1,
           "type": "stat",
-          "title": "Up targets (observability)",
-          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+          "title": "Targets (total)",
+          "description": "Total scraped targets in $ns.",
+          "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(up{namespace=\"observability\"} == 1)",
-              "legendFormat": "up"
+              "expr": "count(up{namespace=\"$ns\"}) or vector(0)",
+              "legendFormat": "total"
             }
           ],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
@@ -72,24 +98,83 @@ data:
         {
           "id": 2,
           "type": "stat",
-          "title": "Not-up targets (observability)",
-          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+          "title": "Targets up",
+          "description": "Targets with up==1 in $ns.",
+          "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(up{namespace=\"observability\"} == 0)",
-              "legendFormat": "down"
+              "expr": "sum(up{namespace=\"$ns\"} == 1) or vector(0)",
+              "legendFormat": "up"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "red", "value": 1}
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Targets down",
+          "description": "Computed as total targets minus targets up (prevents misleading 'No data' when nothing is down).",
+          "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(count(up{namespace=\"$ns\"}) - sum(up{namespace=\"$ns\"} == 1)) or vector(0)"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "orange", "value": 1},
+                  {"color": "red", "value": 3}
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 11,
+          "type": "stat",
+          "title": "Flux ready reconcilers",
+          "description": "Number of Kustomizations + HelmReleases reporting Ready=True.",
+          "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(max by (namespace, name, kind) (gotk_reconcile_condition{kind=~\"Kustomization|HelmRelease\", status=\"True\"})) or vector(0)"
             }
           ],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
           "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
         },
         {
-          "id": 11,
+          "id": 12,
           "type": "stat",
           "title": "Flux failing reconcilers",
-          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+          "description": "Number of Kustomizations + HelmReleases reporting Ready=False.",
+          "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -113,157 +198,178 @@ data:
           }
         },
         {
-          "id": 12,
+          "id": 13,
           "type": "stat",
-          "title": "Flux ready reconcilers",
-          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+          "title": "Restarts (last 30m)",
+          "description": "Total container restarts in $ns over the last 30 minutes.",
+          "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "count(max by (namespace, name, kind) (gotk_reconcile_condition{kind=~\"Kustomization|HelmRelease\", status=\"True\"})) or vector(0)"
+              "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"$ns\"}[30m])) or vector(0)"
             }
           ],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
-          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "orange", "value": 1},
+                  {"color": "red", "value": 5}
+                ]
+              }
+            },
+            "overrides": []
+          }
         },
         {
-          "id": 3,
+          "id": 20,
           "type": "timeseries",
-          "title": "Pod restarts (observability)",
+          "title": "Pod restarts (top $topk, 30m)",
+          "description": "Helps spot crash loops quickly. Markers: Flux changes/errors via annotations.",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "topk(10, sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"observability\"}[30m])))",
+              "expr": "topk($topk, sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"$ns\"}[30m])))",
               "legendFormat": "{{pod}}"
             }
           ],
-          "fieldConfig": {"defaults": {}, "overrides": []},
-          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+          "fieldConfig": {"defaults": {"decimals": 0, "min": 0}, "overrides": []},
+          "options": {
+            "legend": {"displayMode": "list", "placement": "right"},
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          }
         },
         {
-          "id": 4,
+          "id": 21,
           "type": "timeseries",
-          "title": "CPU usage (observability)",
+          "title": "CPU usage (top $topk)",
+          "description": "CPU cores per pod (rate over 5m).",
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "topk(10, sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"observability\", container!=\"\"}[5m])))",
+              "expr": "topk($topk, sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"$ns\", container!=\"\"}[5m])))",
               "legendFormat": "{{pod}}"
             }
           ],
           "fieldConfig": {"defaults": {"unit": "cores"}, "overrides": []},
-          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+          "options": {
+            "legend": {"displayMode": "list", "placement": "right"},
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          }
         },
         {
-          "id": 5,
+          "id": 22,
           "type": "timeseries",
-          "title": "Memory usage (observability)",
+          "title": "Memory usage (top $topk)",
+          "description": "Working set bytes per pod.",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "topk(10, sum by (pod) (container_memory_working_set_bytes{namespace=\"observability\", container!=\"\"}))",
+              "expr": "topk($topk, sum by (pod) (container_memory_working_set_bytes{namespace=\"$ns\", container!=\"\"}))",
               "legendFormat": "{{pod}}"
             }
           ],
           "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
-          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+          "options": {
+            "legend": {"displayMode": "list", "placement": "right"},
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          }
         },
         {
-          "id": 6,
+          "id": 23,
           "type": "timeseries",
-          "title": "PVC usage (observability)",
+          "title": "PVC usage (top $topk)",
+          "description": "Used / capacity by PVC; values are 0..1.",
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "topk(10, (kubelet_volume_stats_used_bytes{namespace=\"observability\"} / kubelet_volume_stats_capacity_bytes{namespace=\"observability\"}))",
+              "expr": "topk($topk, (kubelet_volume_stats_used_bytes{namespace=\"$ns\"} / kubelet_volume_stats_capacity_bytes{namespace=\"$ns\"}))",
               "legendFormat": "{{persistentvolumeclaim}}"
             }
           ],
           "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
-          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+          "options": {
+            "legend": {"displayMode": "list", "placement": "right"},
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          }
         },
         {
-          "id": 7,
+          "id": 30,
           "type": "timeseries",
-          "title": "Flux applied changes/s (Loki)",
+          "title": "Flux failing reconcilers (over time)",
+          "description": "Counts Ready=False by kind. Use the annotations toggles to correlate failures with actual changes.",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
-          "datasource": {"type": "loki", "uid": "loki"},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "(sum(rate(({namespace=\"flux-system\", pod=~\"source-controller.*\"} |~ \"(?i)(fetched revision|stored artifact|artifact.*stored|new artifact)\")[5m])) or vector(0))",
-              "legendFormat": "source-controller (new revision/artifact)"
+              "expr": "count(max by (namespace, name) (gotk_reconcile_condition{kind=\"Kustomization\", status=\"False\"})) or vector(0)",
+              "legendFormat": "Kustomization"
             },
             {
               "refId": "B",
-              "expr": "(sum(rate(({namespace=\"flux-system\", pod=~\"kustomize-controller.*\"} |~ \"(?i)applied revision\")[5m])) or vector(0))",
-              "legendFormat": "kustomize-controller (applied)"
-            },
-            {
-              "refId": "C",
-              "expr": "(sum(rate(({namespace=\"flux-system\", pod=~\"helm-controller.*\"} |~ \"(?i)(helm upgrade succeeded|upgrade succeeded|release.*upgraded|chart.*upgraded)\")[5m])) or vector(0))",
-              "legendFormat": "helm-controller (upgraded)"
+              "expr": "count(max by (namespace, name) (gotk_reconcile_condition{kind=\"HelmRelease\", status=\"False\"})) or vector(0)",
+              "legendFormat": "HelmRelease"
             }
           ],
-          "options": {"legend": {"displayMode": "list", "placement": "right"}},
-          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
+          "fieldConfig": {"defaults": {"decimals": 0, "min": 0}, "overrides": []},
+          "options": {
+            "legend": {"displayMode": "list", "placement": "right"},
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          }
         },
         {
-          "id": 8,
-          "type": "timeseries",
-          "title": "Flux reconciliation failures/s (Loki)",
+          "id": 31,
+          "type": "table",
+          "title": "Failing reconcilers (current)",
+          "description": "List of Kustomizations/HelmReleases currently reporting Ready=False.",
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
-          "datasource": {"type": "loki", "uid": "loki"},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "(sum(rate(({namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation failed\")[5m])) or vector(0))",
-              "legendFormat": "failures"
+              "expr": "max by (namespace, kind, name) (gotk_reconcile_condition{kind=~\"Kustomization|HelmRelease\", status=\"False\"})"
             }
           ],
-          "options": {"legend": {"displayMode": "list", "placement": "right"}},
-          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
-        },
-        {
-          "id": 9,
-          "type": "timeseries",
-          "title": "Flux reconcile log spikes (Loki)",
-          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 28},
-          "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [
+          "transformations": [
+            {"id": "labelsToFields", "options": {}},
             {
-              "refId": "A",
-              "expr": "(sum(rate(({namespace=\"flux-system\", pod=~\"(source-controller|kustomize-controller|helm-controller).*\"} |~ \"(?i)(fetched revision|stored artifact|artifact.*stored|new artifact|applied revision|helm upgrade succeeded|upgrade succeeded|release.*upgraded|chart.*upgraded)\")[5m])) or vector(0))",
-              "legendFormat": "applied changes / new revision logs/s"
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true},
+                "indexByName": {"namespace": 0, "kind": 1, "name": 2, "Value": 3},
+                "renameByName": {"Value": "failing"}
+              }
             },
-            {
-              "refId": "B",
-              "expr": "(sum(rate(({namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation failed\")[5m])) or vector(0))",
-              "legendFormat": "fail logs/s"
-            }
+            {"id": "sortBy", "options": {"sort": [{"field": "namespace", "desc": false}, {"field": "kind", "desc": false}, {"field": "name", "desc": false}]}}
           ],
-          "options": {"legend": {"displayMode": "list", "placement": "right"}},
-          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []},
+          "options": {"showHeader": true}
         },
         {
-          "id": 10,
+          "id": 40,
           "type": "logs",
-          "title": "Flux changes & failures",
-          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 36},
+          "title": "Flux logs (changes & failures)",
+          "description": "Raw controller logs for quick context. Prefer the annotation markers for change detection; use this panel for details.",
+          "gridPos": {"h": 12, "w": 24, "x": 0, "y": 28},
           "datasource": {"type": "loki", "uid": "loki"},
           "targets": [
             {
               "refId": "A",
-              "expr": "{namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} | json | msg=~\"(?i)(applied revision|helm upgrade succeeded|upgrade succeeded|release.*upgraded|chart.*upgraded|reconciliation failed)\""
+              "expr": "{namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} | json | msg=~\"(?i)(configured|created|deleted|applied revision|reconciliation failed|helm (upgrade|install|rollback) succeeded|upgrade succeeded|release.*upgraded|chart.*upgraded)\""
             }
           ],
           "options": {
