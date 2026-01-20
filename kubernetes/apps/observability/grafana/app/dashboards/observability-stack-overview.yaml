@@ -27,20 +27,38 @@ data:
       "templating": {
         "list": [
           {
-            "type": "constant",
-            "name": "ns",
+            "type": "query",
+            "name": "namespace",
             "label": "Namespace",
-            "query": "observability",
-            "current": {"text": "observability", "value": "observability"},
-            "hide": 2
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "query": {"query": "label_values(up, namespace)", "refId": "PromQuery"},
+            "sort": 1,
+            "refresh": 1,
+            "multi": false,
+            "includeAll": false,
+            "current": {"text": "observability", "value": "observability"}
           },
           {
-            "type": "constant",
+            "type": "query",
+            "name": "pod",
+            "label": "Pod",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "query": {"query": "label_values(kube_pod_container_status_restarts_total{namespace=\"$namespace\"}, pod)", "refId": "PromQuery"},
+            "sort": 1,
+            "refresh": 1,
+            "multi": true,
+            "includeAll": true,
+            "allValue": ".*",
+            "current": {"text": "All", "value": "$__all"}
+          },
+          {
+            "type": "custom",
             "name": "topk",
             "label": "Top K",
-            "query": "10",
-            "current": {"text": "10", "value": "10"},
-            "hide": 2
+            "query": "5,10,20",
+            "multi": false,
+            "includeAll": false,
+            "current": {"text": "10", "value": "10"}
           }
         ]
       },
@@ -79,16 +97,24 @@ data:
       },
       "panels": [
         {
+          "id": 90,
+          "type": "row",
+          "title": "Overview",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+          "collapsed": false,
+          "panels": []
+        },
+        {
           "id": 1,
           "type": "stat",
           "title": "Targets (total)",
           "description": "Total scraped targets in $ns.",
-          "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
+          "gridPos": {"h": 4, "w": 4, "x": 0, "y": 1},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "count(up{namespace=\"$ns\"}) or vector(0)",
+              "expr": "count(up{namespace=\"$namespace\"}) or vector(0)",
               "legendFormat": "total"
             }
           ],
@@ -100,12 +126,12 @@ data:
           "type": "stat",
           "title": "Targets up",
           "description": "Targets with up==1 in $ns.",
-          "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
+          "gridPos": {"h": 4, "w": 4, "x": 4, "y": 1},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(up{namespace=\"$ns\"} == 1) or vector(0)",
+              "expr": "sum(up{namespace=\"$namespace\"} == 1) or vector(0)",
               "legendFormat": "up"
             }
           ],
@@ -129,12 +155,12 @@ data:
           "type": "stat",
           "title": "Targets down",
           "description": "Computed as total targets minus targets up (prevents misleading 'No data' when nothing is down).",
-          "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
+          "gridPos": {"h": 4, "w": 4, "x": 8, "y": 1},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "(count(up{namespace=\"$ns\"}) - sum(up{namespace=\"$ns\"} == 1)) or vector(0)"
+              "expr": "(count(up{namespace=\"$namespace\"}) - sum(up{namespace=\"$namespace\"} == 1)) or vector(0)"
             }
           ],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
@@ -158,7 +184,7 @@ data:
           "type": "stat",
           "title": "Flux ready reconcilers",
           "description": "Number of Kustomizations + HelmReleases reporting Ready=True.",
-          "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0},
+          "gridPos": {"h": 4, "w": 4, "x": 12, "y": 1},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -174,7 +200,7 @@ data:
           "type": "stat",
           "title": "Flux failing reconcilers",
           "description": "Number of Kustomizations + HelmReleases reporting Ready=False.",
-          "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0},
+          "gridPos": {"h": 4, "w": 4, "x": 16, "y": 1},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -202,12 +228,12 @@ data:
           "type": "stat",
           "title": "Restarts (last 30m)",
           "description": "Total container restarts in $ns over the last 30 minutes.",
-          "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0},
+          "gridPos": {"h": 4, "w": 4, "x": 20, "y": 1},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"$ns\"}[30m])) or vector(0)"
+              "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"$namespace\"}[30m])) or vector(0)"
             }
           ],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
@@ -227,16 +253,24 @@ data:
           }
         },
         {
+          "id": 91,
+          "type": "row",
+          "title": "Workloads ($namespace)",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5},
+          "collapsed": false,
+          "panels": []
+        },
+        {
           "id": 20,
           "type": "timeseries",
           "title": "Pod restarts (top $topk, 30m)",
           "description": "Helps spot crash loops quickly. Markers: Flux changes/errors via annotations.",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"$ns\"}[30m])))",
+              "expr": "topk($topk, sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"$namespace\", pod=~\"$pod\"}[30m])))",
               "legendFormat": "{{pod}}"
             }
           ],
@@ -251,12 +285,12 @@ data:
           "type": "timeseries",
           "title": "CPU usage (top $topk)",
           "description": "CPU cores per pod (rate over 5m).",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"$ns\", container!=\"\"}[5m])))",
+              "expr": "topk($topk, sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$pod\", container!=\"\"}[5m])))",
               "legendFormat": "{{pod}}"
             }
           ],
@@ -271,12 +305,12 @@ data:
           "type": "timeseries",
           "title": "Memory usage (top $topk)",
           "description": "Working set bytes per pod.",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, sum by (pod) (container_memory_working_set_bytes{namespace=\"$ns\", container!=\"\"}))",
+              "expr": "topk($topk, sum by (pod) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$pod\", container!=\"\"}))",
               "legendFormat": "{{pod}}"
             }
           ],
@@ -291,12 +325,12 @@ data:
           "type": "timeseries",
           "title": "PVC usage (top $topk)",
           "description": "Used / capacity by PVC; values are 0..1.",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, (kubelet_volume_stats_used_bytes{namespace=\"$ns\"} / kubelet_volume_stats_capacity_bytes{namespace=\"$ns\"}))",
+              "expr": "topk($topk, (kubelet_volume_stats_used_bytes{namespace=\"$namespace\"} / kubelet_volume_stats_capacity_bytes{namespace=\"$namespace\"}))",
               "legendFormat": "{{persistentvolumeclaim}}"
             }
           ],
@@ -307,11 +341,19 @@ data:
           }
         },
         {
+          "id": 92,
+          "type": "row",
+          "title": "Flux",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 22},
+          "collapsed": false,
+          "panels": []
+        },
+        {
           "id": 30,
           "type": "timeseries",
           "title": "Flux failing reconcilers (over time)",
           "description": "Counts Ready=False by kind. Use the annotations toggles to correlate failures with actual changes.",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 23},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -336,7 +378,7 @@ data:
           "type": "table",
           "title": "Failing reconcilers (current)",
           "description": "List of Kustomizations/HelmReleases currently reporting Ready=False.",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 23},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -360,11 +402,19 @@ data:
           "options": {"showHeader": true}
         },
         {
+          "id": 93,
+          "type": "row",
+          "title": "Logs",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 31},
+          "collapsed": true,
+          "panels": []
+        },
+        {
           "id": 40,
           "type": "logs",
           "title": "Flux logs (changes & failures)",
           "description": "Raw controller logs for quick context. Prefer the annotation markers for change detection; use this panel for details.",
-          "gridPos": {"h": 12, "w": 24, "x": 0, "y": 28},
+          "gridPos": {"h": 12, "w": 24, "x": 0, "y": 32},
           "datasource": {"type": "loki", "uid": "loki"},
           "targets": [
             {
