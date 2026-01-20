@@ -19,8 +19,6 @@ spec:
   providerRef:
     name: grafana-annotations
   eventSeverity: info
-  eventMetadata:
-    flux_event: source-change
   eventSources:
     - kind: GitRepository
       name: "*"
@@ -41,14 +39,29 @@ spec:
 apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
+  name: grafana-annotations-reconciles
+  namespace: flux-system
+spec:
+  providerRef:
+    name: grafana-annotations
+  eventSeverity: info
+  eventSources:
+    - kind: Kustomization
+      name: "*"
+      namespace: "*"
+    - kind: HelmRelease
+      name: "*"
+      namespace: "*"
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
   name: grafana-annotations-errors
   namespace: flux-system
 spec:
   providerRef:
     name: grafana-annotations
   eventSeverity: error
-  eventMetadata:
-    flux_event: reconcile-error
   eventSources:
     - kind: Kustomization
       name: "*"

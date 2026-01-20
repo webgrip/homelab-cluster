@@ -35,20 +35,10 @@ data:
             "enable": true,
             "hide": false,
             "iconColor": "rgba(170, 170, 170, 1)",
-            "name": "Flux source changes",
+            "name": "Flux events",
             "type": "tags",
-            "tags": ["flux", "flux_event: source-change"],
-            "matchAny": false
-          },
-          {
-            "datasource": {"type": "grafana", "uid": "-- Grafana --"},
-            "enable": true,
-            "hide": false,
-            "iconColor": "rgba(255, 96, 96, 1)",
-            "name": "Flux reconcile errors",
-            "type": "tags",
-            "tags": ["flux", "flux_event: reconcile-error"],
-            "matchAny": false
+            "tags": ["flux"],
+            "matchAny": true
           }
         ]
       },
@@ -94,7 +84,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "count(max by (namespace, name, kind) (gotk_reconcile_condition{kind=~\"Kustomization|HelmRelease\", status=\"False\"}))"
+              "expr": "count(max by (namespace, name, kind) (gotk_reconcile_condition{kind=~\"Kustomization|HelmRelease\", status=\"False\"})) or vector(0)"
             }
           ],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
@@ -121,7 +111,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "count(max by (namespace, name, kind) (gotk_reconcile_condition{kind=~\"Kustomization|HelmRelease\", status=\"True\"}))"
+              "expr": "count(max by (namespace, name, kind) (gotk_reconcile_condition{kind=~\"Kustomization|HelmRelease\", status=\"True\"})) or vector(0)"
             }
           ],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
