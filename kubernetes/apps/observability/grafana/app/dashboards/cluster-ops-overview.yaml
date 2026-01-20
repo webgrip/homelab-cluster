@@ -31,19 +31,20 @@ data:
             "name": "namespace",
             "label": "Workload namespace",
             "datasource": {"type": "prometheus", "uid": "prometheus"},
-            "query": {"query": "label_values(up, namespace)", "refId": "PromQuery"},
+            "query": {"query": "label_values(kube_namespace_labels, namespace)", "refId": "PromQuery"},
             "sort": 1,
             "refresh": 1,
-            "multi": false,
-            "includeAll": false,
-            "current": {"text": "observability", "value": "observability"}
+            "multi": true,
+            "includeAll": true,
+            "allValue": ".*",
+            "current": {"text": "All", "value": "$__all"}
           },
           {
             "type": "query",
             "name": "flux_namespace",
             "label": "Flux namespace",
             "datasource": {"type": "prometheus", "uid": "prometheus"},
-            "query": {"query": "label_values(up, namespace)", "refId": "PromQuery"},
+            "query": {"query": "label_values(kube_namespace_labels, namespace)", "refId": "PromQuery"},
             "sort": 1,
             "refresh": 1,
             "multi": false,
@@ -51,11 +52,21 @@ data:
             "current": {"text": "observability", "value": "observability"}
           },
           {
+            "type": "custom",
+            "name": "flux_controller",
+            "label": "Flux controller",
+            "query": "kustomize-controller,helm-controller,source-controller,notification-controller",
+            "multi": true,
+            "includeAll": true,
+            "allValue": ".*",
+            "current": {"text": "All", "value": "$__all"}
+          },
+          {
             "type": "query",
             "name": "pod",
             "label": "Pod",
             "datasource": {"type": "prometheus", "uid": "prometheus"},
-            "query": {"query": "label_values(kube_pod_container_status_restarts_total{namespace=\"$namespace\"}, pod)", "refId": "PromQuery"},
+            "query": {"query": "label_values(kube_pod_container_status_restarts_total{namespace=~\"$namespace\"}, pod)", "refId": "PromQuery"},
             "sort": 1,
             "refresh": 1,
             "multi": true,
@@ -111,7 +122,7 @@ data:
         {
           "id": 90,
           "type": "row",
-          "title": "Overview",
+          "title": "Scope & Scoreboard",
           "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
           "collapsed": false,
           "panels": []
@@ -119,43 +130,61 @@ data:
         {
           "id": 1,
           "type": "stat",
-          "title": "Targets (total)",
-          "description": "Total scraped targets in $namespace.",
+          "title": "Nodes Ready (%)",
+          "description": "Percent of nodes reporting Ready=True.",
           "gridPos": {"h": 4, "w": 4, "x": 0, "y": 1},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "count(up{namespace=\"$namespace\"}) or vector(0)",
-              "legendFormat": "total"
-            }
-          ],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
-          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
-        },
-        {
-          "id": 2,
-          "type": "stat",
-          "title": "Targets up",
-          "description": "Targets with up==1 in $namespace.",
-          "gridPos": {"h": 4, "w": 4, "x": 4, "y": 1},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum(up{namespace=\"$namespace\"} == 1) or vector(0)",
-              "legendFormat": "up"
+              "expr": "100 * sum(kube_node_status_condition{condition=\"Ready\", status=\"true\"}) / clamp_min(count(kube_node_info), 1)"
             }
           ],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
           "fieldConfig": {
             "defaults": {
+              "unit": "percent",
               "decimals": 0,
+              "min": 0,
+              "max": 100,
               "thresholds": {
                 "mode": "absolute",
                 "steps": [
-                  {"color": "green", "value": null},
-                  {"color": "red", "value": 1}
+                  {"color": "red", "value": null},
+                  {"color": "orange", "value": 90},
+                  {"color": "green", "value": 99}
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Pods Ready (%)",
+          "description": "Percent of pods Ready=True in selected workload namespaces.",
+          "gridPos": {"h": 4, "w": 4, "x": 4, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "100 * (sum(max by (namespace, pod) (kube_pod_status_ready{namespace=~\"$namespace\", condition=\"true\"})) / clamp_min(sum(max by (namespace, pod) (kube_pod_status_ready{namespace=~\"$namespace\", condition=~\"true|false\"})), 1))"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 0,
+              "min": 0,
+              "max": 100,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "red", "value": null},
+                  {"color": "orange", "value": 90},
+                  {"color": "green", "value": 99}
                 ]
               }
             },
@@ -165,14 +194,14 @@ data:
         {
           "id": 3,
           "type": "stat",
-          "title": "Targets down",
-          "description": "Computed as total targets minus targets up (prevents misleading 'No data' when nothing is down).",
+          "title": "Workloads not Ready",
+          "description": "Count of Deployments/StatefulSets/DaemonSets that are not at desired replicas.",
           "gridPos": {"h": 4, "w": 4, "x": 8, "y": 1},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "(count(up{namespace=\"$namespace\"}) - sum(up{namespace=\"$namespace\"} == 1)) or vector(0)"
+              "expr": "(count((kube_deployment_spec_replicas{namespace=~\"$namespace\"} - kube_deployment_status_replicas_available{namespace=~\"$namespace\"}) > 0) + count((kube_statefulset_replicas{namespace=~\"$namespace\"} - kube_statefulset_status_replicas_ready{namespace=~\"$namespace\"}) > 0) + count((kube_daemonset_status_desired_number_scheduled{namespace=~\"$namespace\"} - kube_daemonset_status_number_ready{namespace=~\"$namespace\"}) > 0)) or vector(0)"
             }
           ],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
@@ -194,58 +223,14 @@ data:
         {
           "id": 11,
           "type": "stat",
-          "title": "Flux ready reconcilers",
-          "description": "Number of Kustomizations + HelmReleases reporting Ready=True.",
+          "title": "Alerts firing",
+          "description": "Total Prometheus alerts firing right now (all namespaces).",
           "gridPos": {"h": 4, "w": 4, "x": 12, "y": 1},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "count(max by (namespace, name, kind) (gotk_reconcile_condition{namespace=\"$flux_namespace\", kind=~\"Kustomization|HelmRelease\", status=\"True\"})) or vector(0)"
-            }
-          ],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
-          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
-        },
-        {
-          "id": 12,
-          "type": "stat",
-          "title": "Flux failing reconcilers",
-          "description": "Number of Kustomizations + HelmReleases reporting Ready=False.",
-          "gridPos": {"h": 4, "w": 4, "x": 16, "y": 1},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "count(max by (namespace, name, kind) (gotk_reconcile_condition{namespace=\"$flux_namespace\", kind=~\"Kustomization|HelmRelease\", status=\"False\"})) or vector(0)"
-            }
-          ],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
-          "fieldConfig": {
-            "defaults": {
-              "decimals": 0,
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {"color": "green", "value": null},
-                  {"color": "red", "value": 1}
-                ]
-              }
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 13,
-          "type": "stat",
-          "title": "Restarts (last 30m)",
-          "description": "Total container restarts in $namespace over the last 30 minutes.",
-          "gridPos": {"h": 4, "w": 4, "x": 20, "y": 1},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"$namespace\"}[30m])) or vector(0)"
+              "expr": "count(ALERTS{alertstate=\"firing\"}) or vector(0)"
             }
           ],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
@@ -265,12 +250,198 @@ data:
           }
         },
         {
-          "id": 91,
+          "id": 12,
+          "type": "stat",
+          "title": "PVCs Pending",
+          "description": "Pending PVCs in selected workload namespaces.",
+          "gridPos": {"h": 4, "w": 4, "x": 16, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(kube_persistentvolumeclaim_status_phase{namespace=~\"$namespace\", phase=\"Pending\"}) or vector(0)"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "orange", "value": 1},
+                  {"color": "red", "value": 3}
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 13,
+          "type": "stat",
+          "title": "Restarts (last 30m)",
+          "description": "Total container restarts in $namespace over the last 30 minutes.",
+          "gridPos": {"h": 4, "w": 4, "x": 20, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\"}[30m])) or vector(0)"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "orange", "value": 1},
+                  {"color": "red", "value": 5}
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 94,
           "type": "row",
-          "title": "Workloads ($namespace)",
+          "title": "Cluster",
           "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5},
           "collapsed": false,
           "panels": []
+        },
+        {
+          "id": 50,
+          "type": "timeseries",
+          "title": "API server 5xx rate",
+          "description": "Requests/s returning 5xx (cluster-wide).",
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 6},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(apiserver_request_total{code=~\"5..\"}[5m])) or vector(0)",
+              "legendFormat": "5xx/s"
+            }
+          ],
+          "options": {"legend": {"displayMode": "hidden"}, "tooltip": {"mode": "single"}},
+          "fieldConfig": {"defaults": {"unit": "reqps", "decimals": 3}, "overrides": []}
+        },
+        {
+          "id": 51,
+          "type": "timeseries",
+          "title": "CoreDNS errors rate",
+          "description": "SERVFAIL/NXDOMAIN responses/s (cluster-wide).",
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 6},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(coredns_dns_responses_total{rcode=~\"SERVFAIL|NXDOMAIN\"}[5m])) or vector(0)",
+              "legendFormat": "errors/s"
+            }
+          ],
+          "options": {"legend": {"displayMode": "hidden"}, "tooltip": {"mode": "single"}},
+          "fieldConfig": {"defaults": {"unit": "ops", "decimals": 3}, "overrides": []}
+        },
+        {
+          "id": 91,
+          "type": "row",
+          "title": "Workloads ($namespace)",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 13},
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 24,
+          "type": "timeseries",
+          "title": "CPU usage vs requests (namespace)",
+          "description": "Usage (cores) compared to requested CPU for selected workload namespaces.",
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 14},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\", image!=\"\"}[5m])) or vector(0)",
+              "legendFormat": "usage"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) or vector(0)",
+              "legendFormat": "requests"
+            }
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"unit": "cores"}, "overrides": []}
+        },
+        {
+          "id": 25,
+          "type": "timeseries",
+          "title": "Memory usage vs requests (namespace)",
+          "description": "Working set compared to requested memory for selected workload namespaces.",
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 14},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\", image!=\"\"}) or vector(0)",
+              "legendFormat": "usage"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) or vector(0)",
+              "legendFormat": "requests"
+            }
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []}
+        },
+        {
+          "id": 26,
+          "type": "table",
+          "title": "Workloads missing replicas (current)",
+          "description": "Deployments with missing replicas (desired - available).",
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 21},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (namespace, deployment) (kube_deployment_spec_replicas{namespace=~\"$namespace\"} - kube_deployment_status_replicas_available{namespace=~\"$namespace\"})"
+            }
+          ],
+          "transformations": [
+            {"id": "labelsToFields", "options": {}},
+            {"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true}, "indexByName": {"namespace": 0, "deployment": 1, "Value": 2}, "renameByName": {"Value": "missing"}}},
+            {"id": "sortBy", "options": {"sort": [{"field": "missing", "desc": true}]}}
+          ],
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []},
+          "options": {"showHeader": true}
+        },
+        {
+          "id": 27,
+          "type": "table",
+          "title": "OOMKilled (last 6h)",
+          "description": "Pods that were last terminated due to OOMKilled (selected workload namespaces).",
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 21},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (namespace, pod) (max_over_time(kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", reason=\"OOMKilled\"}[6h]))"
+            }
+          ],
+          "transformations": [
+            {"id": "labelsToFields", "options": {}},
+            {"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true}, "indexByName": {"namespace": 0, "pod": 1, "Value": 2}, "renameByName": {"Value": "oom"}}},
+            {"id": "sortBy", "options": {"sort": [{"field": "oom", "desc": true}]}}
+          ],
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []},
+          "options": {"showHeader": true}
         },
         {
           "id": 20,
@@ -282,7 +453,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"$namespace\", pod=~\"$pod\"}[30m])))",
+              "expr": "topk($topk, sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", pod=~\"$pod\"}[30m])))",
               "legendFormat": "{{pod}}"
             }
           ],
@@ -302,7 +473,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$pod\", container!=\"\"}[5m])))",
+              "expr": "topk($topk, sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", pod=~\"$pod\", container!=\"\"}[5m])))",
               "legendFormat": "{{pod}}"
             }
           ],
@@ -322,7 +493,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, sum by (pod) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$pod\", container!=\"\"}))",
+              "expr": "topk($topk, sum by (pod) (container_memory_working_set_bytes{namespace=~\"$namespace\", pod=~\"$pod\", container!=\"\"}))",
               "legendFormat": "{{pod}}"
             }
           ],
@@ -342,7 +513,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, (kubelet_volume_stats_used_bytes{namespace=\"$namespace\"} / kubelet_volume_stats_capacity_bytes{namespace=\"$namespace\"}))",
+              "expr": "topk($topk, (kubelet_volume_stats_used_bytes{namespace=~\"$namespace\"} / kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\"}))",
               "legendFormat": "{{persistentvolumeclaim}}"
             }
           ],
@@ -361,6 +532,41 @@ data:
           "panels": []
         },
         {
+          "id": 32,
+          "type": "timeseries",
+          "title": "Reconcile duration p95 (by kind)",
+          "description": "p95 reconcile latency by kind (scoped by Flux namespace when available).",
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 23},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.95, sum by (le, kind) (rate(gotk_reconcile_duration_seconds_bucket{namespace=~\"$flux_namespace\"}[5m])))",
+              "legendFormat": "{{kind}}"
+            }
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+        },
+        {
+          "id": 33,
+          "type": "table",
+          "title": "Flux events (annotations)",
+          "description": "Recent Flux change/error annotations for the selected Flux namespace.",
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 23},
+          "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+          "targets": [
+            {
+              "refId": "A",
+              "type": "annotations",
+              "limit": 50,
+              "tags": ["flux", "namespace:$flux_namespace"],
+              "matchAny": false
+            }
+          ],
+          "options": {"showHeader": true}
+        },
+        {
           "id": 30,
           "type": "timeseries",
           "title": "Flux failing reconcilers (over time)",
@@ -370,12 +576,12 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "count(max by (namespace, name) (gotk_reconcile_condition{namespace=\"$flux_namespace\", kind=\"Kustomization\", status=\"False\"})) or vector(0)",
+              "expr": "count(max by (namespace, name) (gotk_reconcile_condition{namespace=~\"$flux_namespace\", kind=\"Kustomization\", status=\"False\"})) or vector(0)",
               "legendFormat": "Kustomization"
             },
             {
               "refId": "B",
-              "expr": "count(max by (namespace, name) (gotk_reconcile_condition{namespace=\"$flux_namespace\", kind=\"HelmRelease\", status=\"False\"})) or vector(0)",
+              "expr": "count(max by (namespace, name) (gotk_reconcile_condition{namespace=~\"$flux_namespace\", kind=\"HelmRelease\", status=\"False\"})) or vector(0)",
               "legendFormat": "HelmRelease"
             }
           ],
@@ -395,7 +601,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "max by (namespace, kind, name) (gotk_reconcile_condition{namespace=\"$flux_namespace\", kind=~\"Kustomization|HelmRelease\", status=\"False\"})"
+              "expr": "max by (namespace, kind, name) (gotk_reconcile_condition{namespace=~\"$flux_namespace\", kind=~\"Kustomization|HelmRelease\", status=\"False\"})"
             }
           ],
           "transformations": [
@@ -431,7 +637,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "{namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} | json | msg=~\"(?i)(configured|created|deleted|applied revision|reconciliation failed|helm (upgrade|install|rollback) succeeded|upgrade succeeded|release.*upgraded|chart.*upgraded)\""
+              "expr": "{namespace=\"flux-system\", pod=~\"($flux_controller).*\"} |~ \"(?i)(configured|created|deleted|applied revision|reconciliation failed|helm (upgrade|install|rollback) succeeded|upgrade succeeded|release.*upgraded|chart.*upgraded)\""
             }
           ],
           "options": {
