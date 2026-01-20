@@ -21,13 +21,16 @@ spec:
   eventSeverity: info
   eventMetadata:
     flux_event: change
-  # Match messages that strongly indicate a meaningful change (new revision applied,
-  # resources applied, Helm upgrade succeeded, etc.).
-  inclusionList:
-    - '(?i).*\\b(applied revision|applied.*revision)\\b.*'
-    - '(?i).*\\b(configured|created|deleted)\\b.*'
-    - '(?i).*\\b(fetched revision|stored artifact|artifact.*stored|new artifact)\\b.*'
-    - '(?i).*\\b(helm (upgrade|install|rollback) succeeded|upgrade succeeded|release.*upgraded|chart.*upgraded)\\b.*'
+  # Treat info events as "change" by default (so you get an annotation whenever Flux
+  # actually does something), but suppress the high-frequency noise that does NOT
+  # represent a change.
+  exclusionList:
+    # Periodic controller tick (no-op)
+    - '(?i)^Reconciliation finished in .* next run in .*$'
+    - '(?i)^Reconciliation finished in .*$'
+    # Source-controller no-op wording (note the upstream typo)
+    - '(?i)^no changes since last reconcilation:.*$'
+    - '(?i)^no changes since last reconciliation:.*$'
   eventSources:
     - kind: Kustomization
       name: "*"
