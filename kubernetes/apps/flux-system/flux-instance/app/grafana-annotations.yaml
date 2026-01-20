@@ -1,0 +1,73 @@
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: grafana-annotations
+  namespace: flux-system
+spec:
+  type: grafana
+  address: http://grafana.observability.svc.cluster.local/api/annotations
+  secretRef:
+    name: grafana-annotations-token
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: grafana-annotations-sources
+  namespace: flux-system
+spec:
+  providerRef:
+    name: grafana-annotations
+  eventSeverity: info
+  eventMetadata:
+    flux_event: source-change
+  eventSources:
+    - kind: GitRepository
+      name: "*"
+      namespace: "*"
+    - kind: OCIRepository
+      name: "*"
+      namespace: "*"
+    - kind: HelmRepository
+      name: "*"
+      namespace: "*"
+    - kind: Bucket
+      name: "*"
+      namespace: "*"
+    - kind: HelmChart
+      name: "*"
+      namespace: "*"
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: grafana-annotations-errors
+  namespace: flux-system
+spec:
+  providerRef:
+    name: grafana-annotations
+  eventSeverity: error
+  eventMetadata:
+    flux_event: reconcile-error
+  eventSources:
+    - kind: Kustomization
+      name: "*"
+      namespace: "*"
+    - kind: HelmRelease
+      name: "*"
+      namespace: "*"
+    - kind: GitRepository
+      name: "*"
+      namespace: "*"
+    - kind: OCIRepository
+      name: "*"
+      namespace: "*"
+    - kind: HelmRepository
+      name: "*"
+      namespace: "*"
+    - kind: Bucket
+      name: "*"
+      namespace: "*"
+    - kind: HelmChart
+      name: "*"
+      namespace: "*"
