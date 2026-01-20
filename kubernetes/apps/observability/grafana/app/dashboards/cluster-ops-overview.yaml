@@ -82,6 +82,36 @@ data:
             "multi": false,
             "includeAll": false,
             "current": {"text": "10", "value": "10"}
+          },
+          {
+            "type": "custom",
+            "name": "container_selector",
+            "label": "(internal) container selector",
+            "query": "container!=\"\",container!=\"POD\"",
+            "hide": 2,
+            "multi": false,
+            "includeAll": false,
+            "current": {"text": "container!=\"\",container!=\"POD\"", "value": "container!=\"\",container!=\"POD\""}
+          },
+          {
+            "type": "custom",
+            "name": "cpu_resource_selector",
+            "label": "(internal) cpu resource selector",
+            "query": "resource=\"cpu\",unit=\"core\"",
+            "hide": 2,
+            "multi": false,
+            "includeAll": false,
+            "current": {"text": "resource=\"cpu\",unit=\"core\"", "value": "resource=\"cpu\",unit=\"core\""}
+          },
+          {
+            "type": "custom",
+            "name": "memory_resource_selector",
+            "label": "(internal) memory resource selector",
+            "query": "resource=\"memory\",unit=\"byte\"",
+            "hide": 2,
+            "multi": false,
+            "includeAll": false,
+            "current": {"text": "resource=\"memory\",unit=\"byte\"", "value": "resource=\"memory\",unit=\"byte\""}
           }
         ]
       },
@@ -367,22 +397,22 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])) or vector(0)",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", $container_selector}[5m])) or vector(0)",
               "legendFormat": "usage"
             },
             {
               "refId": "B",
-              "expr": "sum(kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) or vector(0)",
+              "expr": "sum(kube_pod_container_resource_requests{namespace=~\"$namespace\", $cpu_resource_selector}) or vector(0)",
               "legendFormat": "requests"
             },
             {
               "refId": "C",
-              "expr": "sum(kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) or vector(0)",
+              "expr": "sum(kube_pod_container_resource_limits{namespace=~\"$namespace\", $cpu_resource_selector}) or vector(0)",
               "legendFormat": "limits"
             },
             {
               "refId": "D",
-              "expr": "sum(kube_node_status_allocatable{resource=\"cpu\", unit=\"core\"})",
+              "expr": "sum(kube_node_status_allocatable{$cpu_resource_selector})",
               "legendFormat": "allocatable"
             }
           ],
@@ -417,22 +447,22 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}) or vector(0)",
+              "expr": "sum(container_memory_working_set_bytes{namespace=~\"$namespace\", $container_selector}) or vector(0)",
               "legendFormat": "usage"
             },
             {
               "refId": "B",
-              "expr": "sum(kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) or vector(0)",
+              "expr": "sum(kube_pod_container_resource_requests{namespace=~\"$namespace\", $memory_resource_selector}) or vector(0)",
               "legendFormat": "requests"
             },
             {
               "refId": "C",
-              "expr": "sum(kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) or vector(0)",
+              "expr": "sum(kube_pod_container_resource_limits{namespace=~\"$namespace\", $memory_resource_selector}) or vector(0)",
               "legendFormat": "limits"
             },
             {
               "refId": "D",
-              "expr": "sum(kube_node_status_allocatable{resource=\"memory\", unit=\"byte\"})",
+              "expr": "sum(kube_node_status_allocatable{$memory_resource_selector})",
               "legendFormat": "allocatable"
             }
           ],
@@ -509,7 +539,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])))"
+              "expr": "topk($topk, sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", $container_selector}[5m])))"
             }
           ],
           "transformations": [
@@ -537,7 +567,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, sum by (namespace, pod, container) (container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}))"
+              "expr": "topk($topk, sum by (namespace, pod, container) (container_memory_working_set_bytes{namespace=~\"$namespace\", $container_selector}))"
             }
           ],
           "transformations": [
@@ -585,7 +615,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", pod=~\"$pod\", container!=\"\", container!=\"POD\"}[5m])))",
+              "expr": "topk($topk, sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", pod=~\"$pod\", $container_selector}[5m])))",
               "legendFormat": "{{namespace}}/{{pod}}"
             }
           ],
@@ -605,7 +635,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, sum by (namespace, pod) (container_memory_working_set_bytes{namespace=~\"$namespace\", pod=~\"$pod\", container!=\"\", container!=\"POD\"}))",
+              "expr": "topk($topk, sum by (namespace, pod) (container_memory_working_set_bytes{namespace=~\"$namespace\", pod=~\"$pod\", $container_selector}))",
               "legendFormat": "{{namespace}}/{{pod}}"
             }
           ],
@@ -645,7 +675,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "100 * sum(rate(container_cpu_cfs_throttled_periods_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])) / clamp_min(sum(rate(container_cpu_cfs_periods_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])), 1)",
+              "expr": "100 * sum(rate(container_cpu_cfs_throttled_periods_total{namespace=~\"$namespace\", $container_selector}[5m])) / clamp_min(sum(rate(container_cpu_cfs_periods_total{namespace=~\"$namespace\", $container_selector}[5m])), 1)",
               "legendFormat": "throttling%"
             }
           ],
@@ -720,7 +750,9 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, label_replace(clamp_min(max by (namespace, pod, container) (kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) - max_over_time((sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])) )[$__range:]), 0), \"bound\", \"requests\", \"namespace\", \".*\")) or topk($topk, label_replace(clamp_min(max by (namespace, pod, container) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) - max_over_time((sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])) )[$__range:]), 0), \"bound\", \"limits\", \"namespace\", \".*\"))"
+              "expr": "topk($topk, label_replace(clamp_min(max by (namespace, pod, container) (kube_pod_container_resource_requests{namespace=~\"$namespace\", $cpu_resource_selector}) - max_over_time((sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", $container_selector}[5m])) )[$__range:]), 0), \"bound\", \"requests\", \"namespace\", \".*\")) or topk($topk, label_replace(clamp_min(max by (namespace, pod, container) (kube_pod_container_resource_limits{namespace=~\"$namespace\", $cpu_resource_selector}) - max_over_time((sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", $container_selector}[5m])) )[$__range:]), 0), \"bound\", \"limits\", \"namespace\", \".*\"))",
+              "instant": true,
+              "range": false
             }
           ],
           "transformations": [
@@ -748,7 +780,9 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, label_replace(clamp_min(max by (namespace, pod, container) (kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) - max_over_time((sum by (namespace, pod, container) (container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}))[$__range:]), 0), \"bound\", \"requests\", \"namespace\", \".*\")) or topk($topk, label_replace(clamp_min(max by (namespace, pod, container) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) - max_over_time((sum by (namespace, pod, container) (container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}))[$__range:]), 0), \"bound\", \"limits\", \"namespace\", \".*\"))"
+              "expr": "topk($topk, label_replace(clamp_min(max by (namespace, pod, container) (kube_pod_container_resource_requests{namespace=~\"$namespace\", $memory_resource_selector}) - max_over_time((sum by (namespace, pod, container) (container_memory_working_set_bytes{namespace=~\"$namespace\", $container_selector}))[$__range:]), 0), \"bound\", \"requests\", \"namespace\", \".*\")) or topk($topk, label_replace(clamp_min(max by (namespace, pod, container) (kube_pod_container_resource_limits{namespace=~\"$namespace\", $memory_resource_selector}) - max_over_time((sum by (namespace, pod, container) (container_memory_working_set_bytes{namespace=~\"$namespace\", $container_selector}))[$__range:]), 0), \"bound\", \"limits\", \"namespace\", \".*\"))",
+              "instant": true,
+              "range": false
             }
           ],
           "transformations": [
@@ -776,14 +810,14 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, 100 * sum by (namespace) (kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) / clamp_min(sum(kube_node_status_allocatable{resource=\"cpu\", unit=\"core\"}), 1))",
+              "expr": "topk($topk, 100 * sum by (namespace) (kube_pod_container_resource_requests{namespace=~\"$namespace\", $cpu_resource_selector}) / clamp_min(sum(kube_node_status_allocatable{$cpu_resource_selector}), 1))",
               "legendFormat": "{{namespace}} requests",
               "instant": true,
               "range": false
             },
             {
               "refId": "B",
-              "expr": "topk($topk, 100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) / clamp_min(sum(kube_node_status_allocatable{resource=\"cpu\", unit=\"core\"}), 1))",
+              "expr": "topk($topk, 100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", $cpu_resource_selector}) / clamp_min(sum(kube_node_status_allocatable{$cpu_resource_selector}), 1))",
               "legendFormat": "{{namespace}} limits",
               "instant": true,
               "range": false
@@ -823,14 +857,14 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, 100 * sum by (namespace) (kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) / clamp_min(sum(kube_node_status_allocatable{resource=\"memory\", unit=\"byte\"}), 1))",
+              "expr": "topk($topk, 100 * sum by (namespace) (kube_pod_container_resource_requests{namespace=~\"$namespace\", $memory_resource_selector}) / clamp_min(sum(kube_node_status_allocatable{$memory_resource_selector}), 1))",
               "legendFormat": "{{namespace}} requests",
               "instant": true,
               "range": false
             },
             {
               "refId": "B",
-              "expr": "topk($topk, 100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) / clamp_min(sum(kube_node_status_allocatable{resource=\"memory\", unit=\"byte\"}), 1))",
+              "expr": "topk($topk, 100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", $memory_resource_selector}) / clamp_min(sum(kube_node_status_allocatable{$memory_resource_selector}), 1))",
               "legendFormat": "{{namespace}} limits",
               "instant": true,
               "range": false
@@ -870,7 +904,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "count((100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) / clamp_min(sum(kube_node_status_allocatable{resource=\"cpu\", unit=\"core\"}), 1)) > 100) or vector(0)"
+              "expr": "count((100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", $cpu_resource_selector}) / clamp_min(sum(kube_node_status_allocatable{$cpu_resource_selector}), 1)) > 100) or vector(0)"
             }
           ],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "value"},
@@ -893,7 +927,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "count((100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) / clamp_min(sum(kube_node_status_allocatable{resource=\"memory\", unit=\"byte\"}), 1)) > 100) or vector(0)"
+              "expr": "count((100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", $memory_resource_selector}) / clamp_min(sum(kube_node_status_allocatable{$memory_resource_selector}), 1)) > 100) or vector(0)"
             }
           ],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "value"},
@@ -916,7 +950,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "(100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) / clamp_min(sum(kube_node_status_allocatable{resource=\"cpu\", unit=\"core\"}), 1)) and on (namespace) ((100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) / clamp_min(sum(kube_node_status_allocatable{resource=\"cpu\", unit=\"core\"}), 1)) > 100)"
+              "expr": "(100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", $cpu_resource_selector}) / clamp_min(sum(kube_node_status_allocatable{$cpu_resource_selector}), 1)) and on (namespace) ((100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", $cpu_resource_selector}) / clamp_min(sum(kube_node_status_allocatable{$cpu_resource_selector}), 1)) > 100)"
             }
           ],
           "transformations": [
@@ -951,7 +985,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "(100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) / clamp_min(sum(kube_node_status_allocatable{resource=\"memory\", unit=\"byte\"}), 1)) and on (namespace) ((100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) / clamp_min(sum(kube_node_status_allocatable{resource=\"memory\", unit=\"byte\"}), 1)) > 100)"
+              "expr": "(100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", $memory_resource_selector}) / clamp_min(sum(kube_node_status_allocatable{$memory_resource_selector}), 1)) and on (namespace) ((100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", $memory_resource_selector}) / clamp_min(sum(kube_node_status_allocatable{$memory_resource_selector}), 1)) > 100)"
             }
           ],
           "transformations": [
@@ -986,7 +1020,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, 100 * sum by (namespace, pod, container) (rate(container_cpu_cfs_throttled_periods_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])) / clamp_min(sum by (namespace, pod, container) (rate(container_cpu_cfs_periods_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])), 1))"
+              "expr": "topk($topk, 100 * sum by (namespace, pod, container) (rate(container_cpu_cfs_throttled_periods_total{namespace=~\"$namespace\", $container_selector}[5m])) / clamp_min(sum by (namespace, pod, container) (rate(container_cpu_cfs_periods_total{namespace=~\"$namespace\", $container_selector}[5m])), 1))"
             }
           ],
           "transformations": [
