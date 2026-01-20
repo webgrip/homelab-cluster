@@ -25,7 +25,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: dr-check
-              image: alpine:3.20
+              image: alpine/k8s:1.34.3
               imagePullPolicy: IfNotPresent
               securityContext:
                 allowPrivilegeEscalation: false
@@ -49,13 +49,6 @@ spec:
                 - /bin/sh
                 - -ceu
                 - |
-                  apk add --no-cache ca-certificates curl
-
-                  # Install a pinned kubectl matching the cluster version.
-                  KUBECTL_VERSION="v1.34.2"
-                  curl -fsSLo /usr/local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
-                  chmod +x /usr/local/bin/kubectl
-
                   echo "[cnpg-disaster-recovery-check] starting"
 
                   get_cluster_pod() {

@@ -37,7 +37,7 @@ data:
             "iconColor": "rgba(0, 211, 255, 1)",
             "name": "Flux reconcile start (logs)",
             "type": "tags",
-            "expr": "{namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation started\""
+            "expr": "{namespace=\"flux-system\", pod=~\"source-controller.*\"} |~ \"(?i)(fetched revision|stored artifact|artifact.*stored|new artifact)\""
           },
           {
             "datasource": {"type": "loki", "uid": "loki"},
@@ -46,7 +46,7 @@ data:
             "iconColor": "rgba(255, 96, 96, 1)",
             "name": "Flux reconcile finish/fail (logs)",
             "type": "tags",
-            "expr": "{namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation (finished|failed)\""
+            "expr": "{namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation failed\""
           }
         ]
       },
@@ -188,13 +188,13 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate({namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation started\"[5m]))",
-              "legendFormat": "start logs/s"
+              "expr": "sum(rate({namespace=\"flux-system\", pod=~\"source-controller.*\"} |~ \"(?i)(fetched revision|stored artifact|artifact.*stored|new artifact)\"[5m]))",
+              "legendFormat": "new revision/artifact logs/s"
             },
             {
               "refId": "B",
-              "expr": "sum(rate({namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation (finished|failed)\"[5m]))",
-              "legendFormat": "finish/fail logs/s"
+              "expr": "sum(rate({namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation failed\"[5m]))",
+              "legendFormat": "fail logs/s"
             }
           ],
           "options": {"legend": {"displayMode": "list", "placement": "right"}},
@@ -209,7 +209,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "{namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation (started|finished|failed)\""
+              "expr": "{namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)(fetched revision|stored artifact|artifact.*stored|new artifact|reconciliation failed)\""
             }
           ],
           "options": {
