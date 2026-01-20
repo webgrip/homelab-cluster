@@ -703,10 +703,140 @@ data:
           }
         },
         {
+          "id": 37,
+          "type": "table",
+          "title": "CPU requests/limits (% of allocatable)",
+          "description": "Per-namespace CPU requests/limits as a percent of cluster allocatable CPU. Great for spotting overcommit before it bites.",
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 58},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(100 * sum by (namespace, bound) (label_replace(kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}, \"bound\", \"requests\", \"resource\", \".*\")) / clamp_min(sum(kube_node_status_allocatable{resource=\"cpu\", unit=\"core\"}), 1)) or (100 * sum by (namespace, bound) (label_replace(kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}, \"bound\", \"limits\", \"resource\", \".*\")) / clamp_min(sum(kube_node_status_allocatable{resource=\"cpu\", unit=\"core\"}), 1))"
+            }
+          ],
+          "transformations": [
+            {"id": "labelsToFields", "options": {}},
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true},
+                "indexByName": {"namespace": 0, "bound": 1, "Value": 2},
+                "renameByName": {"Value": "percent"}
+              }
+            },
+            {"id": "sortBy", "options": {"sort": [{"field": "percent", "desc": true}]}}
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 1,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "orange", "value": 60},
+                  {"color": "red", "value": 90}
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {"showHeader": true}
+        },
+        {
+          "id": 38,
+          "type": "table",
+          "title": "Memory requests/limits (% of allocatable)",
+          "description": "Per-namespace memory requests/limits as a percent of cluster allocatable memory.",
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 58},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(100 * sum by (namespace, bound) (label_replace(kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}, \"bound\", \"requests\", \"resource\", \".*\")) / clamp_min(sum(kube_node_status_allocatable{resource=\"memory\", unit=\"byte\"}), 1)) or (100 * sum by (namespace, bound) (label_replace(kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}, \"bound\", \"limits\", \"resource\", \".*\")) / clamp_min(sum(kube_node_status_allocatable{resource=\"memory\", unit=\"byte\"}), 1))"
+            }
+          ],
+          "transformations": [
+            {"id": "labelsToFields", "options": {}},
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true},
+                "indexByName": {"namespace": 0, "bound": 1, "Value": 2},
+                "renameByName": {"Value": "percent"}
+              }
+            },
+            {"id": "sortBy", "options": {"sort": [{"field": "percent", "desc": true}]}}
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 1,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "orange", "value": 60},
+                  {"color": "red", "value": 90}
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {"showHeader": true}
+        },
+        {
+          "id": 39,
+          "type": "table",
+          "title": "Top CPU throttled containers (%)",
+          "description": "Top containers by CPU throttling ratio (throttled periods / total periods over 5m). High values often mean CPU limits are too tight.",
+          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 65},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk($topk, 100 * sum by (namespace, pod, container) (rate(container_cpu_cfs_throttled_periods_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])) / clamp_min(sum by (namespace, pod, container) (rate(container_cpu_cfs_periods_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])), 1))"
+            }
+          ],
+          "transformations": [
+            {"id": "labelsToFields", "options": {}},
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true},
+                "indexByName": {"namespace": 0, "pod": 1, "container": 2, "Value": 3},
+                "renameByName": {"Value": "throttling_percent"}
+              }
+            },
+            {"id": "sortBy", "options": {"sort": [{"field": "throttling_percent", "desc": true}]}}
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 1,
+              "min": 0,
+              "max": 100,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "orange", "value": 10},
+                  {"color": "red", "value": 25}
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {"showHeader": true}
+        },
+        {
           "id": 92,
           "type": "row",
           "title": "Flux",
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 58},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 72},
           "collapsed": false,
           "panels": []
         },
@@ -715,7 +845,7 @@ data:
           "type": "timeseries",
           "title": "Reconcile duration p95 (by kind)",
           "description": "p95 reconcile latency by kind.",
-          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 59},
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 73},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -732,7 +862,7 @@ data:
           "type": "table",
           "title": "Flux events (annotations)",
           "description": "Recent Flux change/error annotations for the selected event namespace.",
-          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 59},
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 73},
           "datasource": {"type": "grafana", "uid": "-- Grafana --"},
           "targets": [
             {
@@ -750,7 +880,7 @@ data:
           "type": "table",
           "title": "Flux events (global)",
           "description": "Recent Flux change/error annotations across all namespaces (namespace tag not required).",
-          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 66},
+          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 80},
           "datasource": {"type": "grafana", "uid": "-- Grafana --"},
           "targets": [
             {
@@ -768,7 +898,7 @@ data:
           "type": "timeseries",
           "title": "Flux failing reconcilers (over time)",
           "description": "Counts Ready=False by kind. Use the annotations toggles to correlate failures with actual changes.",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 73},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 87},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -788,7 +918,7 @@ data:
           "type": "table",
           "title": "Failing reconcilers (current)",
           "description": "List of Kustomizations/HelmReleases currently reporting Ready=False.",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 73},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 87},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -815,7 +945,7 @@ data:
           "id": 93,
           "type": "row",
           "title": "Logs",
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 81},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 95},
           "collapsed": true,
           "panels": []
         },
@@ -824,7 +954,7 @@ data:
           "type": "logs",
           "title": "Flux logs (changes & failures)",
           "description": "Raw controller logs for quick context. Prefer the annotation markers for change detection; use this panel for details.",
-          "gridPos": {"h": 12, "w": 24, "x": 0, "y": 82},
+          "gridPos": {"h": 12, "w": 24, "x": 0, "y": 96},
           "datasource": {"type": "loki", "uid": "loki"},
           "targets": [
             {
