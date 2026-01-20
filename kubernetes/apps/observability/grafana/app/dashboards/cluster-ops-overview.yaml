@@ -462,7 +462,7 @@ data:
           "type": "table",
           "title": "Workloads missing replicas (current)",
           "description": "Deployments with missing replicas (desired - available).",
-          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 21},
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 29},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -483,7 +483,7 @@ data:
           "type": "table",
           "title": "OOMKilled (last termination time)",
           "description": "Containers whose last termination reason was OOMKilled, showing the last terminated finished timestamp (requires kube-state-metrics finished_time metric).",
-          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 21},
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 29},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -504,7 +504,7 @@ data:
           "type": "table",
           "title": "Top CPU (namespace/pod/container)",
           "description": "Top CPU consumers by container (rate over 5m). Use this to explain sustained high CPU in a namespace.",
-          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 28},
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 36},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -532,7 +532,7 @@ data:
           "type": "table",
           "title": "Top memory (namespace/pod/container)",
           "description": "Top memory consumers by container (working set). Use this to explain OOMs and sustained memory pressure.",
-          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 28},
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 36},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -560,7 +560,7 @@ data:
           "type": "timeseries",
           "title": "Pod restarts (top $topk, 30m)",
           "description": "Helps spot crash loops quickly. Markers: Flux changes/errors via annotations.",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 35},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 43},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -580,7 +580,7 @@ data:
           "type": "timeseries",
           "title": "CPU usage (top $topk)",
           "description": "CPU cores per pod (rate over 5m).",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 35},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 43},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -600,7 +600,7 @@ data:
           "type": "timeseries",
           "title": "Memory usage (top $topk)",
           "description": "Working set bytes per pod.",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 43},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 51},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -620,7 +620,7 @@ data:
           "type": "timeseries",
           "title": "PVC usage (top $topk)",
           "description": "Used / capacity by PVC; values are 0..1.",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 43},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 51},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -640,7 +640,7 @@ data:
           "type": "timeseries",
           "title": "CPU throttling ratio (%)",
           "description": "Throttled periods / total periods (container CPU CFS). High values indicate CPU limits contention.",
-          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 51},
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 59},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -673,7 +673,7 @@ data:
           "type": "timeseries",
           "title": "Node pressure (count)",
           "description": "Number of nodes reporting pressure conditions (should be 0).",
-          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 51},
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 59},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -706,21 +706,21 @@ data:
           "id": 95,
           "type": "row",
           "title": "Right-sizing ($namespace)",
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 58},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 21},
           "collapsed": false,
           "panels": []
         },
         {
           "id": 45,
           "type": "table",
-          "title": "CPU request headroom (requests - usage, top $topk)",
-          "description": "Largest CPU request headroom by container. High values indicate over-requested CPU you can likely lower.",
-          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 59},
+          "title": "CPU headroom vs peak usage (requests/limits - peak, top $topk)",
+          "description": "Shows request/limit headroom per container against peak CPU usage over the dashboard time range. High headroom suggests you can lower requests/limits.",
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 22},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, clamp_min(sum by (namespace, pod, container) (kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) - sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])), 0))"
+              "expr": "topk($topk, label_replace(clamp_min(max by (namespace, pod, container) (kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) - max_over_time((sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])) )[$__range:]), 0), \"bound\", \"requests\", \"namespace\", \".*\")) or topk($topk, label_replace(clamp_min(max by (namespace, pod, container) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) - max_over_time((sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])) )[$__range:]), 0), \"bound\", \"limits\", \"namespace\", \".*\"))"
             }
           ],
           "transformations": [
@@ -729,11 +729,11 @@ data:
               "id": "organize",
               "options": {
                 "excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true},
-                "indexByName": {"namespace": 0, "pod": 1, "container": 2, "Value": 3},
-                "renameByName": {"Value": "cpu_headroom_cores"}
+                "indexByName": {"namespace": 0, "pod": 1, "container": 2, "bound": 3, "Value": 4},
+                "renameByName": {"Value": "headroom_cores"}
               }
             },
-            {"id": "sortBy", "options": {"sort": [{"field": "cpu_headroom_cores", "desc": true}]}}
+            {"id": "sortBy", "options": {"sort": [{"field": "headroom_cores", "desc": true}]}}
           ],
           "fieldConfig": {"defaults": {"unit": "cores", "decimals": 3}, "overrides": []},
           "options": {"showHeader": true}
@@ -741,14 +741,14 @@ data:
         {
           "id": 46,
           "type": "table",
-          "title": "CPU limit headroom (limits - usage, top $topk)",
-          "description": "Largest CPU limit headroom by container. High values indicate limits that can often be lowered without impact.",
-          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 59},
+          "title": "Memory headroom vs peak usage (requests/limits - peak, top $topk)",
+          "description": "Shows request/limit headroom per container against peak working set over the dashboard time range.",
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 22},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, clamp_min(sum by (namespace, pod, container) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) - sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])), 0))"
+              "expr": "topk($topk, label_replace(clamp_min(max by (namespace, pod, container) (kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) - max_over_time((sum by (namespace, pod, container) (container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}))[$__range:]), 0), \"bound\", \"requests\", \"namespace\", \".*\")) or topk($topk, label_replace(clamp_min(max by (namespace, pod, container) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) - max_over_time((sum by (namespace, pod, container) (container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}))[$__range:]), 0), \"bound\", \"limits\", \"namespace\", \".*\"))"
             }
           ],
           "transformations": [
@@ -757,67 +757,11 @@ data:
               "id": "organize",
               "options": {
                 "excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true},
-                "indexByName": {"namespace": 0, "pod": 1, "container": 2, "Value": 3},
-                "renameByName": {"Value": "cpu_limit_headroom_cores"}
+                "indexByName": {"namespace": 0, "pod": 1, "container": 2, "bound": 3, "Value": 4},
+                "renameByName": {"Value": "headroom_bytes"}
               }
             },
-            {"id": "sortBy", "options": {"sort": [{"field": "cpu_limit_headroom_cores", "desc": true}]}}
-          ],
-          "fieldConfig": {"defaults": {"unit": "cores", "decimals": 3}, "overrides": []},
-          "options": {"showHeader": true}
-        },
-        {
-          "id": 47,
-          "type": "table",
-          "title": "Memory request headroom (requests - usage, top $topk)",
-          "description": "Largest memory request headroom by container (working set). High values indicate over-requested memory.",
-          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 66},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "topk($topk, clamp_min(sum by (namespace, pod, container) (kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) - sum by (namespace, pod, container) (container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}), 0))"
-            }
-          ],
-          "transformations": [
-            {"id": "labelsToFields", "options": {}},
-            {
-              "id": "organize",
-              "options": {
-                "excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true},
-                "indexByName": {"namespace": 0, "pod": 1, "container": 2, "Value": 3},
-                "renameByName": {"Value": "memory_headroom_bytes"}
-              }
-            },
-            {"id": "sortBy", "options": {"sort": [{"field": "memory_headroom_bytes", "desc": true}]}}
-          ],
-          "fieldConfig": {"defaults": {"unit": "bytes", "decimals": 0}, "overrides": []},
-          "options": {"showHeader": true}
-        },
-        {
-          "id": 48,
-          "type": "table",
-          "title": "Memory limit headroom (limits - usage, top $topk)",
-          "description": "Largest memory limit headroom by container (working set). Useful for finding overly generous memory limits.",
-          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 66},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "topk($topk, clamp_min(sum by (namespace, pod, container) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) - sum by (namespace, pod, container) (container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}), 0))"
-            }
-          ],
-          "transformations": [
-            {"id": "labelsToFields", "options": {}},
-            {
-              "id": "organize",
-              "options": {
-                "excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true},
-                "indexByName": {"namespace": 0, "pod": 1, "container": 2, "Value": 3},
-                "renameByName": {"Value": "memory_limit_headroom_bytes"}
-              }
-            },
-            {"id": "sortBy", "options": {"sort": [{"field": "memory_limit_headroom_bytes", "desc": true}]}}
+            {"id": "sortBy", "options": {"sort": [{"field": "headroom_bytes", "desc": true}]}}
           ],
           "fieldConfig": {"defaults": {"unit": "bytes", "decimals": 0}, "overrides": []},
           "options": {"showHeader": true}
@@ -827,7 +771,7 @@ data:
           "type": "bargauge",
           "title": "CPU requests/limits (% of allocatable)",
           "description": "Per-namespace CPU requests/limits as a percent of cluster allocatable CPU. Great for spotting overcommit before it bites.",
-          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 73},
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 66},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -874,7 +818,7 @@ data:
           "type": "bargauge",
           "title": "Memory requests/limits (% of allocatable)",
           "description": "Per-namespace memory requests/limits as a percent of cluster allocatable memory.",
-          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 73},
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 66},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -921,7 +865,7 @@ data:
           "type": "stat",
           "title": "CPU limits overcommit namespaces",
           "description": "How many selected namespaces have CPU limits > 100% of cluster allocatable.",
-          "gridPos": {"h": 3, "w": 12, "x": 0, "y": 80},
+          "gridPos": {"h": 3, "w": 12, "x": 0, "y": 73},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -944,7 +888,7 @@ data:
           "type": "stat",
           "title": "Memory limits overcommit namespaces",
           "description": "How many selected namespaces have memory limits > 100% of cluster allocatable.",
-          "gridPos": {"h": 3, "w": 12, "x": 12, "y": 80},
+          "gridPos": {"h": 3, "w": 12, "x": 12, "y": 73},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -967,7 +911,7 @@ data:
           "type": "table",
           "title": "CPU limits overcommit (>100% allocatable)",
           "description": "Namespaces where summed CPU limits exceed cluster allocatable CPU.",
-          "gridPos": {"h": 5, "w": 12, "x": 0, "y": 83},
+          "gridPos": {"h": 5, "w": 12, "x": 0, "y": 76},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -1002,7 +946,7 @@ data:
           "type": "table",
           "title": "Memory limits overcommit (>100% allocatable)",
           "description": "Namespaces where summed memory limits exceed cluster allocatable memory.",
-          "gridPos": {"h": 5, "w": 12, "x": 12, "y": 83},
+          "gridPos": {"h": 5, "w": 12, "x": 12, "y": 76},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -1037,7 +981,7 @@ data:
           "type": "table",
           "title": "Top CPU throttled containers (%)",
           "description": "Top containers by CPU throttling ratio (throttled periods / total periods over 5m). High values often mean CPU limits are too tight.",
-          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 88},
+          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 81},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -1080,7 +1024,7 @@ data:
           "id": 92,
           "type": "row",
           "title": "Flux",
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 95},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 89},
           "collapsed": false,
           "panels": []
         },
@@ -1089,7 +1033,7 @@ data:
           "type": "timeseries",
           "title": "Reconcile duration p95 (by kind)",
           "description": "p95 reconcile latency by kind.",
-          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 96},
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 90},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -1106,7 +1050,7 @@ data:
           "type": "table",
           "title": "Flux events (annotations)",
           "description": "Recent Flux change/error annotations for the selected event namespace.",
-          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 96},
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 90},
           "datasource": {"type": "grafana", "uid": "-- Grafana --"},
           "targets": [
             {
@@ -1124,7 +1068,7 @@ data:
           "type": "table",
           "title": "Flux events (global)",
           "description": "Recent Flux change/error annotations across all namespaces (namespace tag not required).",
-          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 103},
+          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 97},
           "datasource": {"type": "grafana", "uid": "-- Grafana --"},
           "targets": [
             {
@@ -1142,7 +1086,7 @@ data:
           "type": "timeseries",
           "title": "Flux failing reconcilers (over time)",
           "description": "Counts Ready=False by kind. Use the annotations toggles to correlate failures with actual changes.",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 110},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 104},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -1162,7 +1106,7 @@ data:
           "type": "table",
           "title": "Failing reconcilers (current)",
           "description": "List of Kustomizations/HelmReleases currently reporting Ready=False.",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 110},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 104},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -1189,7 +1133,7 @@ data:
           "id": 93,
           "type": "row",
           "title": "Logs",
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 118},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 112},
           "collapsed": true,
           "panels": []
         },
@@ -1198,7 +1142,7 @@ data:
           "type": "logs",
           "title": "Flux logs (changes & failures)",
           "description": "Raw controller logs for quick context. Prefer the annotation markers for change detection; use this panel for details.",
-          "gridPos": {"h": 12, "w": 24, "x": 0, "y": 119},
+          "gridPos": {"h": 12, "w": 24, "x": 0, "y": 113},
           "datasource": {"type": "loki", "uid": "loki"},
           "targets": [
             {
