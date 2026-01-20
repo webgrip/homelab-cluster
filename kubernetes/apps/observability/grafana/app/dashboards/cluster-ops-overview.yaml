@@ -703,22 +703,146 @@ data:
           }
         },
         {
-          "id": 37,
-          "type": "bargauge",
-          "title": "CPU requests/limits (% of allocatable)",
-          "description": "Per-namespace CPU requests/limits as a percent of cluster allocatable CPU. Great for spotting overcommit before it bites.",
-          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 58},
+          "id": 95,
+          "type": "row",
+          "title": "Right-sizing ($namespace)",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 58},
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 45,
+          "type": "table",
+          "title": "CPU request headroom (requests - usage, top $topk)",
+          "description": "Largest CPU request headroom by container. High values indicate over-requested CPU you can likely lower.",
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 59},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "100 * sum by (namespace) (kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) / clamp_min(sum(kube_node_status_allocatable{resource=\"cpu\", unit=\"core\"}), 1)",
-              "legendFormat": "{{namespace}} requests"
+              "expr": "topk($topk, clamp_min(sum by (namespace, pod, container) (kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) - sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])), 0))"
+            }
+          ],
+          "transformations": [
+            {"id": "labelsToFields", "options": {}},
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true},
+                "indexByName": {"namespace": 0, "pod": 1, "container": 2, "Value": 3},
+                "renameByName": {"Value": "cpu_headroom_cores"}
+              }
+            },
+            {"id": "sortBy", "options": {"sort": [{"field": "cpu_headroom_cores", "desc": true}]}}
+          ],
+          "fieldConfig": {"defaults": {"unit": "cores", "decimals": 3}, "overrides": []},
+          "options": {"showHeader": true}
+        },
+        {
+          "id": 46,
+          "type": "table",
+          "title": "CPU limit headroom (limits - usage, top $topk)",
+          "description": "Largest CPU limit headroom by container. High values indicate limits that can often be lowered without impact.",
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 59},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk($topk, clamp_min(sum by (namespace, pod, container) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) - sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])), 0))"
+            }
+          ],
+          "transformations": [
+            {"id": "labelsToFields", "options": {}},
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true},
+                "indexByName": {"namespace": 0, "pod": 1, "container": 2, "Value": 3},
+                "renameByName": {"Value": "cpu_limit_headroom_cores"}
+              }
+            },
+            {"id": "sortBy", "options": {"sort": [{"field": "cpu_limit_headroom_cores", "desc": true}]}}
+          ],
+          "fieldConfig": {"defaults": {"unit": "cores", "decimals": 3}, "overrides": []},
+          "options": {"showHeader": true}
+        },
+        {
+          "id": 47,
+          "type": "table",
+          "title": "Memory request headroom (requests - usage, top $topk)",
+          "description": "Largest memory request headroom by container (working set). High values indicate over-requested memory.",
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 66},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk($topk, clamp_min(sum by (namespace, pod, container) (kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) - sum by (namespace, pod, container) (container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}), 0))"
+            }
+          ],
+          "transformations": [
+            {"id": "labelsToFields", "options": {}},
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true},
+                "indexByName": {"namespace": 0, "pod": 1, "container": 2, "Value": 3},
+                "renameByName": {"Value": "memory_headroom_bytes"}
+              }
+            },
+            {"id": "sortBy", "options": {"sort": [{"field": "memory_headroom_bytes", "desc": true}]}}
+          ],
+          "fieldConfig": {"defaults": {"unit": "bytes", "decimals": 0}, "overrides": []},
+          "options": {"showHeader": true}
+        },
+        {
+          "id": 48,
+          "type": "table",
+          "title": "Memory limit headroom (limits - usage, top $topk)",
+          "description": "Largest memory limit headroom by container (working set). Useful for finding overly generous memory limits.",
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 66},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk($topk, clamp_min(sum by (namespace, pod, container) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) - sum by (namespace, pod, container) (container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}), 0))"
+            }
+          ],
+          "transformations": [
+            {"id": "labelsToFields", "options": {}},
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true},
+                "indexByName": {"namespace": 0, "pod": 1, "container": 2, "Value": 3},
+                "renameByName": {"Value": "memory_limit_headroom_bytes"}
+              }
+            },
+            {"id": "sortBy", "options": {"sort": [{"field": "memory_limit_headroom_bytes", "desc": true}]}}
+          ],
+          "fieldConfig": {"defaults": {"unit": "bytes", "decimals": 0}, "overrides": []},
+          "options": {"showHeader": true}
+        },
+        {
+          "id": 37,
+          "type": "bargauge",
+          "title": "CPU requests/limits (% of allocatable)",
+          "description": "Per-namespace CPU requests/limits as a percent of cluster allocatable CPU. Great for spotting overcommit before it bites.",
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 73},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk($topk, 100 * sum by (namespace) (kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) / clamp_min(sum(kube_node_status_allocatable{resource=\"cpu\", unit=\"core\"}), 1))",
+              "legendFormat": "{{namespace}} requests",
+              "instant": true,
+              "range": false
             },
             {
               "refId": "B",
-              "expr": "100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) / clamp_min(sum(kube_node_status_allocatable{resource=\"cpu\", unit=\"core\"}), 1)",
-              "legendFormat": "{{namespace}} limits"
+              "expr": "topk($topk, 100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) / clamp_min(sum(kube_node_status_allocatable{resource=\"cpu\", unit=\"core\"}), 1))",
+              "legendFormat": "{{namespace}} limits",
+              "instant": true,
+              "range": false
             }
           ],
           "fieldConfig": {
@@ -750,18 +874,22 @@ data:
           "type": "bargauge",
           "title": "Memory requests/limits (% of allocatable)",
           "description": "Per-namespace memory requests/limits as a percent of cluster allocatable memory.",
-          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 58},
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 73},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "100 * sum by (namespace) (kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) / clamp_min(sum(kube_node_status_allocatable{resource=\"memory\", unit=\"byte\"}), 1)",
-              "legendFormat": "{{namespace}} requests"
+              "expr": "topk($topk, 100 * sum by (namespace) (kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) / clamp_min(sum(kube_node_status_allocatable{resource=\"memory\", unit=\"byte\"}), 1))",
+              "legendFormat": "{{namespace}} requests",
+              "instant": true,
+              "range": false
             },
             {
               "refId": "B",
-              "expr": "100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) / clamp_min(sum(kube_node_status_allocatable{resource=\"memory\", unit=\"byte\"}), 1)",
-              "legendFormat": "{{namespace}} limits"
+              "expr": "topk($topk, 100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) / clamp_min(sum(kube_node_status_allocatable{resource=\"memory\", unit=\"byte\"}), 1))",
+              "legendFormat": "{{namespace}} limits",
+              "instant": true,
+              "range": false
             }
           ],
           "fieldConfig": {
@@ -789,11 +917,57 @@ data:
           }
         },
         {
+          "id": 43,
+          "type": "stat",
+          "title": "CPU limits overcommit namespaces",
+          "description": "How many selected namespaces have CPU limits > 100% of cluster allocatable.",
+          "gridPos": {"h": 3, "w": 12, "x": 0, "y": 80},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count((100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) / clamp_min(sum(kube_node_status_allocatable{resource=\"cpu\", unit=\"core\"}), 1)) > 100) or vector(0)"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "value"},
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "min": 0,
+              "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}, {"color": "red", "value": 3}]}
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 44,
+          "type": "stat",
+          "title": "Memory limits overcommit namespaces",
+          "description": "How many selected namespaces have memory limits > 100% of cluster allocatable.",
+          "gridPos": {"h": 3, "w": 12, "x": 12, "y": 80},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count((100 * sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) / clamp_min(sum(kube_node_status_allocatable{resource=\"memory\", unit=\"byte\"}), 1)) > 100) or vector(0)"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "value"},
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "min": 0,
+              "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}, {"color": "red", "value": 3}]}
+            },
+            "overrides": []
+          }
+        },
+        {
           "id": 41,
           "type": "table",
           "title": "CPU limits overcommit (>100% allocatable)",
           "description": "Namespaces where summed CPU limits exceed cluster allocatable CPU.",
-          "gridPos": {"h": 6, "w": 12, "x": 0, "y": 65},
+          "gridPos": {"h": 5, "w": 12, "x": 0, "y": 83},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -828,7 +1002,7 @@ data:
           "type": "table",
           "title": "Memory limits overcommit (>100% allocatable)",
           "description": "Namespaces where summed memory limits exceed cluster allocatable memory.",
-          "gridPos": {"h": 6, "w": 12, "x": 12, "y": 65},
+          "gridPos": {"h": 5, "w": 12, "x": 12, "y": 83},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -863,7 +1037,7 @@ data:
           "type": "table",
           "title": "Top CPU throttled containers (%)",
           "description": "Top containers by CPU throttling ratio (throttled periods / total periods over 5m). High values often mean CPU limits are too tight.",
-          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 71},
+          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 88},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -906,7 +1080,7 @@ data:
           "id": 92,
           "type": "row",
           "title": "Flux",
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 78},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 95},
           "collapsed": false,
           "panels": []
         },
@@ -915,7 +1089,7 @@ data:
           "type": "timeseries",
           "title": "Reconcile duration p95 (by kind)",
           "description": "p95 reconcile latency by kind.",
-          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 79},
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 96},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -932,7 +1106,7 @@ data:
           "type": "table",
           "title": "Flux events (annotations)",
           "description": "Recent Flux change/error annotations for the selected event namespace.",
-          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 79},
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 96},
           "datasource": {"type": "grafana", "uid": "-- Grafana --"},
           "targets": [
             {
@@ -950,7 +1124,7 @@ data:
           "type": "table",
           "title": "Flux events (global)",
           "description": "Recent Flux change/error annotations across all namespaces (namespace tag not required).",
-          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 86},
+          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 103},
           "datasource": {"type": "grafana", "uid": "-- Grafana --"},
           "targets": [
             {
@@ -968,7 +1142,7 @@ data:
           "type": "timeseries",
           "title": "Flux failing reconcilers (over time)",
           "description": "Counts Ready=False by kind. Use the annotations toggles to correlate failures with actual changes.",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 93},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 110},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -988,7 +1162,7 @@ data:
           "type": "table",
           "title": "Failing reconcilers (current)",
           "description": "List of Kustomizations/HelmReleases currently reporting Ready=False.",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 93},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 110},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -1015,7 +1189,7 @@ data:
           "id": 93,
           "type": "row",
           "title": "Logs",
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 101},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 118},
           "collapsed": true,
           "panels": []
         },
@@ -1024,7 +1198,7 @@ data:
           "type": "logs",
           "title": "Flux logs (changes & failures)",
           "description": "Raw controller logs for quick context. Prefer the annotation markers for change detection; use this panel for details.",
-          "gridPos": {"h": 12, "w": 24, "x": 0, "y": 102},
+          "gridPos": {"h": 12, "w": 24, "x": 0, "y": 119},
           "datasource": {"type": "loki", "uid": "loki"},
           "targets": [
             {
