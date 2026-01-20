@@ -15,7 +15,7 @@ data:
       "uid": "obs-stack-overview",
       "timezone": "browser",
       "tags": ["cluster", "ops", "gitops", "flux"],
-      "description": "At-a-glance cluster ops view: workload health plus Flux change/error markers via Grafana annotations (toggle in the top-left).",
+      "description": "At-a-glance cluster ops view: workload health plus Flux change/error markers via Grafana annotations. Use 'Event namespace' to scope which namespace-tagged change/error markers you see.",
       "editable": false,
       "graphTooltip": 1,
       "refresh": "1m",
@@ -41,10 +41,10 @@ data:
           },
           {
             "type": "query",
-            "name": "flux_namespace",
-            "label": "Flux namespace",
+            "name": "event_namespace",
+            "label": "Event namespace",
             "datasource": {"type": "prometheus", "uid": "prometheus"},
-            "query": {"query": "label_values(gotk_reconcile_condition, namespace)", "refId": "PromQuery"},
+            "query": {"query": "label_values(kube_pod_info, namespace)", "refId": "PromQuery"},
             "sort": 1,
             "refresh": 1,
             "multi": false,
@@ -103,7 +103,7 @@ data:
             "iconColor": "rgba(170, 170, 170, 1)",
             "name": "Flux changes",
             "type": "tags",
-            "tags": ["flux", "flux_event:change", "namespace:$flux_namespace"],
+            "tags": ["flux", "flux_event:change", "namespace:$event_namespace"],
             "matchAny": false
           },
           {
@@ -113,7 +113,7 @@ data:
             "iconColor": "rgba(255, 85, 85, 1)",
             "name": "Flux errors",
             "type": "tags",
-            "tags": ["flux", "flux_event:error", "namespace:$flux_namespace"],
+            "tags": ["flux", "flux_event:error", "namespace:$event_namespace"],
             "matchAny": false
           }
         ]
@@ -374,10 +374,38 @@ data:
               "refId": "B",
               "expr": "sum(kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) or vector(0)",
               "legendFormat": "requests"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"cpu\", unit=\"core\"}) or vector(0)",
+              "legendFormat": "limits"
+            },
+            {
+              "refId": "D",
+              "expr": "sum(kube_node_status_allocatable{resource=\"cpu\", unit=\"core\"})",
+              "legendFormat": "allocatable"
             }
           ],
           "options": {"legend": {"displayMode": "list", "placement": "right"}},
-          "fieldConfig": {"defaults": {"unit": "cores"}, "overrides": []}
+          "fieldConfig": {
+            "defaults": {"unit": "cores"},
+            "overrides": [
+              {
+                "matcher": {"id": "byName", "options": "limits"},
+                "properties": [
+                  {"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}},
+                  {"id": "custom.lineWidth", "value": 2}
+                ]
+              },
+              {
+                "matcher": {"id": "byName", "options": "allocatable"},
+                "properties": [
+                  {"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}},
+                  {"id": "custom.lineWidth", "value": 2}
+                ]
+              }
+            ]
+          }
         },
         {
           "id": 25,
@@ -396,10 +424,38 @@ data:
               "refId": "B",
               "expr": "sum(kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) or vector(0)",
               "legendFormat": "requests"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"memory\", unit=\"byte\"}) or vector(0)",
+              "legendFormat": "limits"
+            },
+            {
+              "refId": "D",
+              "expr": "sum(kube_node_status_allocatable{resource=\"memory\", unit=\"byte\"})",
+              "legendFormat": "allocatable"
             }
           ],
           "options": {"legend": {"displayMode": "list", "placement": "right"}},
-          "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []}
+          "fieldConfig": {
+            "defaults": {"unit": "bytes"},
+            "overrides": [
+              {
+                "matcher": {"id": "byName", "options": "limits"},
+                "properties": [
+                  {"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}},
+                  {"id": "custom.lineWidth", "value": 2}
+                ]
+              },
+              {
+                "matcher": {"id": "byName", "options": "allocatable"},
+                "properties": [
+                  {"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}},
+                  {"id": "custom.lineWidth", "value": 2}
+                ]
+              }
+            ]
+          }
         },
         {
           "id": 26,
@@ -411,7 +467,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "max by (namespace, deployment) (kube_deployment_spec_replicas{namespace=~\"$namespace\"} - kube_deployment_status_replicas_available{namespace=~\"$namespace\"})"
+              "expr": "max by (namespace, deployment) (kube_deployment_spec_replicas{namespace=~\"$namespace\"} - kube_deployment_status_replicas_available{namespace=~\"$namespace\"}) > 0"
             }
           ],
           "transformations": [
@@ -425,22 +481,78 @@ data:
         {
           "id": 27,
           "type": "table",
-          "title": "OOMKilled (last 6h)",
-          "description": "Pods that were last terminated due to OOMKilled (selected workload namespaces).",
+          "title": "OOMKilled (last termination time)",
+          "description": "Containers whose last termination reason was OOMKilled, showing the last terminated finished timestamp (requires kube-state-metrics finished_time metric).",
           "gridPos": {"h": 7, "w": 12, "x": 12, "y": 21},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (namespace, pod) (max_over_time(kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", reason=\"OOMKilled\"}[6h]))"
+              "expr": "max by (namespace, pod, container) (kube_pod_container_status_last_terminated_finished_time{namespace=~\"$namespace\"}) and on (namespace, pod, container) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", reason=\"OOMKilled\"} == 1)"
             }
           ],
           "transformations": [
             {"id": "labelsToFields", "options": {}},
-            {"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true}, "indexByName": {"namespace": 0, "pod": 1, "Value": 2}, "renameByName": {"Value": "oom"}}},
-            {"id": "sortBy", "options": {"sort": [{"field": "oom", "desc": true}]}}
+            {"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true}, "indexByName": {"namespace": 0, "pod": 1, "container": 2, "Value": 3}, "renameByName": {"Value": "oomkilled_at"}}},
+            {"id": "sortBy", "options": {"sort": [{"field": "oomkilled_at", "desc": true}]}}
           ],
-          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []},
+          "fieldConfig": {"defaults": {"unit": "dateTimeFromEpoch", "decimals": 0}, "overrides": []},
+          "options": {"showHeader": true}
+        },
+        {
+          "id": 28,
+          "type": "table",
+          "title": "Top CPU (namespace/pod/container)",
+          "description": "Top CPU consumers by container (rate over 5m). Use this to explain sustained high CPU in a namespace.",
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 28},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk($topk, sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])))"
+            }
+          ],
+          "transformations": [
+            {"id": "labelsToFields", "options": {}},
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true},
+                "indexByName": {"namespace": 0, "pod": 1, "container": 2, "Value": 3},
+                "renameByName": {"Value": "cpu_cores"}
+              }
+            },
+            {"id": "sortBy", "options": {"sort": [{"field": "cpu_cores", "desc": true}]}}
+          ],
+          "fieldConfig": {"defaults": {"unit": "cores"}, "overrides": []},
+          "options": {"showHeader": true}
+        },
+        {
+          "id": 29,
+          "type": "table",
+          "title": "Top memory (namespace/pod/container)",
+          "description": "Top memory consumers by container (working set). Use this to explain OOMs and sustained memory pressure.",
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 28},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk($topk, sum by (namespace, pod, container) (container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}))"
+            }
+          ],
+          "transformations": [
+            {"id": "labelsToFields", "options": {}},
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true},
+                "indexByName": {"namespace": 0, "pod": 1, "container": 2, "Value": 3},
+                "renameByName": {"Value": "memory_bytes"}
+              }
+            },
+            {"id": "sortBy", "options": {"sort": [{"field": "memory_bytes", "desc": true}]}}
+          ],
+          "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
           "options": {"showHeader": true}
         },
         {
@@ -448,7 +560,7 @@ data:
           "type": "timeseries",
           "title": "Pod restarts (top $topk, 30m)",
           "description": "Helps spot crash loops quickly. Markers: Flux changes/errors via annotations.",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 35},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -468,7 +580,7 @@ data:
           "type": "timeseries",
           "title": "CPU usage (top $topk)",
           "description": "CPU cores per pod (rate over 5m).",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 35},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -488,7 +600,7 @@ data:
           "type": "timeseries",
           "title": "Memory usage (top $topk)",
           "description": "Working set bytes per pod.",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 36},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 43},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -508,7 +620,7 @@ data:
           "type": "timeseries",
           "title": "PVC usage (top $topk)",
           "description": "Used / capacity by PVC; values are 0..1.",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 36},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 43},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -524,10 +636,77 @@ data:
           }
         },
         {
+          "id": 34,
+          "type": "timeseries",
+          "title": "CPU throttling ratio (%)",
+          "description": "Throttled periods / total periods (container CPU CFS). High values indicate CPU limits contention.",
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 51},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "100 * sum(rate(container_cpu_cfs_throttled_periods_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])) / clamp_min(sum(rate(container_cpu_cfs_periods_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])), 1)",
+              "legendFormat": "throttling%"
+            }
+          ],
+          "options": {"legend": {"displayMode": "hidden"}, "tooltip": {"mode": "single"}},
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 1,
+              "min": 0,
+              "max": 100,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "orange", "value": 10},
+                  {"color": "red", "value": 25}
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 35,
+          "type": "timeseries",
+          "title": "Node pressure (count)",
+          "description": "Number of nodes reporting pressure conditions (should be 0).",
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 51},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(kube_node_status_condition{condition=\"MemoryPressure\", status=\"true\"})",
+              "legendFormat": "MemoryPressure"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(kube_node_status_condition{condition=\"DiskPressure\", status=\"true\"})",
+              "legendFormat": "DiskPressure"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(kube_node_status_condition{condition=\"PIDPressure\", status=\"true\"})",
+              "legendFormat": "PIDPressure"
+            }
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}, "tooltip": {"mode": "multi"}},
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "min": 0,
+              "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}
+            },
+            "overrides": []
+          }
+        },
+        {
           "id": 92,
           "type": "row",
           "title": "Flux",
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 44},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 58},
           "collapsed": false,
           "panels": []
         },
@@ -535,13 +714,13 @@ data:
           "id": 32,
           "type": "timeseries",
           "title": "Reconcile duration p95 (by kind)",
-          "description": "p95 reconcile latency by kind (scoped by Flux namespace when available).",
-          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 45},
+          "description": "p95 reconcile latency by kind.",
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 59},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "histogram_quantile(0.95, sum by (le, kind) (rate(gotk_reconcile_duration_seconds_bucket{namespace=~\"$flux_namespace\"}[5m])))",
+              "expr": "histogram_quantile(0.95, sum by (le, kind) (rate(gotk_reconcile_duration_seconds_bucket[5m])))",
               "legendFormat": "{{kind}}"
             }
           ],
@@ -552,15 +731,33 @@ data:
           "id": 33,
           "type": "table",
           "title": "Flux events (annotations)",
-          "description": "Recent Flux change/error annotations for the selected Flux namespace.",
-          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 45},
+          "description": "Recent Flux change/error annotations for the selected event namespace.",
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 59},
           "datasource": {"type": "grafana", "uid": "-- Grafana --"},
           "targets": [
             {
               "refId": "A",
               "type": "annotations",
               "limit": 50,
-              "tags": ["flux", "namespace:$flux_namespace"],
+              "tags": ["flux", "namespace:$event_namespace"],
+              "matchAny": false
+            }
+          ],
+          "options": {"showHeader": true}
+        },
+        {
+          "id": 36,
+          "type": "table",
+          "title": "Flux events (global)",
+          "description": "Recent Flux change/error annotations across all namespaces (namespace tag not required).",
+          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 66},
+          "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+          "targets": [
+            {
+              "refId": "A",
+              "type": "annotations",
+              "limit": 50,
+              "tags": ["flux"],
               "matchAny": false
             }
           ],
@@ -571,18 +768,13 @@ data:
           "type": "timeseries",
           "title": "Flux failing reconcilers (over time)",
           "description": "Counts Ready=False by kind. Use the annotations toggles to correlate failures with actual changes.",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 52},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 73},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "count(max by (namespace, name) (gotk_reconcile_condition{namespace=~\"$flux_namespace\", kind=\"Kustomization\", status=\"False\"})) or vector(0)",
-              "legendFormat": "Kustomization"
-            },
-            {
-              "refId": "B",
-              "expr": "count(max by (namespace, name) (gotk_reconcile_condition{namespace=~\"$flux_namespace\", kind=\"HelmRelease\", status=\"False\"})) or vector(0)",
-              "legendFormat": "HelmRelease"
+              "expr": "sum by (kind) (max_over_time(gotk_reconcile_condition{status=\"False\"}[5m]))",
+              "legendFormat": "{{kind}}"
             }
           ],
           "fieldConfig": {"defaults": {"decimals": 0, "min": 0}, "overrides": []},
@@ -596,12 +788,12 @@ data:
           "type": "table",
           "title": "Failing reconcilers (current)",
           "description": "List of Kustomizations/HelmReleases currently reporting Ready=False.",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 52},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 73},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "max by (namespace, kind, name) (gotk_reconcile_condition{namespace=~\"$flux_namespace\", kind=~\"Kustomization|HelmRelease\", status=\"False\"})"
+              "expr": "max by (namespace, kind, name) (gotk_reconcile_condition{kind=~\"Kustomization|HelmRelease\", status=\"False\"})"
             }
           ],
           "transformations": [
@@ -623,7 +815,7 @@ data:
           "id": 93,
           "type": "row",
           "title": "Logs",
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 60},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 81},
           "collapsed": true,
           "panels": []
         },
@@ -632,7 +824,7 @@ data:
           "type": "logs",
           "title": "Flux logs (changes & failures)",
           "description": "Raw controller logs for quick context. Prefer the annotation markers for change detection; use this panel for details.",
-          "gridPos": {"h": 12, "w": 24, "x": 0, "y": 61},
+          "gridPos": {"h": 12, "w": 24, "x": 0, "y": 82},
           "datasource": {"type": "loki", "uid": "loki"},
           "targets": [
             {
