@@ -17,8 +17,8 @@ data:
       "tags": ["observability"],
       "editable": false,
       "graphTooltip": 0,
-      "refresh": "30s",
-      "time": {"from": "now-6h", "to": "now"},
+      "refresh": "1m",
+      "time": {"from": "now-3h", "to": "now"},
       "annotations": {
         "list": [
           {
@@ -33,20 +33,20 @@ data:
           {
             "datasource": {"type": "loki", "uid": "loki"},
             "enable": true,
-            "hide": false,
-            "iconColor": "rgba(0, 211, 255, 1)",
-            "name": "Flux reconcile start (logs)",
+            "hide": true,
+            "iconColor": "rgba(170, 170, 170, 1)",
+            "name": "Flux applied changes (logs)",
             "type": "tags",
-            "expr": "{namespace=\"flux-system\", pod=~\"source-controller.*\"} |~ \"(?i)(fetched revision|stored artifact|artifact.*stored|new artifact)\""
+            "expr": "{namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller).*\"} | json | msg=~\"(?i)(applied revision|helm upgrade succeeded|upgrade succeeded|release.*upgraded|chart.*upgraded)\""
           },
           {
             "datasource": {"type": "loki", "uid": "loki"},
             "enable": true,
             "hide": false,
             "iconColor": "rgba(255, 96, 96, 1)",
-            "name": "Flux reconcile finish/fail (logs)",
+            "name": "Flux reconcile failures (logs)",
             "type": "tags",
-            "expr": "{namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation failed\""
+            "expr": "{namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} | json | msg=~\"(?i)reconciliation failed\""
           }
         ]
       },
@@ -78,6 +78,48 @@ data:
               "refId": "A",
               "expr": "sum(up{namespace=\"observability\"} == 0)",
               "legendFormat": "down"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 11,
+          "type": "stat",
+          "title": "Flux failures (15m)",
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+          "datasource": {"type": "loki", "uid": "loki"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(count_over_time({namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} | json | msg=~\"(?i)reconciliation failed\"[15m]))"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "red", "value": 1}
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 12,
+          "type": "stat",
+          "title": "Flux applied changes (1h)",
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+          "datasource": {"type": "loki", "uid": "loki"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(count_over_time({namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller).*\"} | json | msg=~\"(?i)(applied revision|helm upgrade succeeded|upgrade succeeded|release.*upgraded|chart.*upgraded)\"[1h]))"
             }
           ],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
@@ -150,14 +192,19 @@ data:
         {
           "id": 7,
           "type": "timeseries",
-          "title": "Flux reconciles/s (GitOps activity)",
+          "title": "Flux applied changes/s (Loki)",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "datasource": {"type": "loki", "uid": "loki"},
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (kind) (rate(gotk_reconcile_duration_seconds_count{kind=~\"Kustomization|HelmRelease\"}[5m]))",
-              "legendFormat": "{{kind}}"
+              "expr": "sum(rate({namespace=\"flux-system\", pod=~\"kustomize-controller.*\"} | json | msg=~\"(?i)applied revision\"[5m]))",
+              "legendFormat": "kustomize-controller (applied)"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(rate({namespace=\"flux-system\", pod=~\"helm-controller.*\"} | json | msg=~\"(?i)(helm upgrade succeeded|upgrade succeeded|release.*upgraded|chart.*upgraded)\"[5m]))",
+              "legendFormat": "helm-controller (upgraded)"
             }
           ],
           "options": {"legend": {"displayMode": "list", "placement": "right"}},
@@ -166,14 +213,14 @@ data:
         {
           "id": 8,
           "type": "timeseries",
-          "title": "Flux reconcile failures (status=False)",
+          "title": "Flux reconciliation failures/s (Loki)",
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "datasource": {"type": "loki", "uid": "loki"},
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (kind) (max_over_time(gotk_reconcile_condition{kind=~\"Kustomization|HelmRelease\", status=\"False\"}[5m]))",
-              "legendFormat": "{{kind}}"
+              "expr": "sum(rate({namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} | json | msg=~\"(?i)reconciliation failed\"[5m]))",
+              "legendFormat": "failures"
             }
           ],
           "options": {"legend": {"displayMode": "list", "placement": "right"}},
@@ -188,12 +235,12 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate({namespace=\"flux-system\", pod=~\"source-controller.*\"} |~ \"(?i)(fetched revision|stored artifact|artifact.*stored|new artifact)\"[5m]))",
-              "legendFormat": "new revision/artifact logs/s"
+              "expr": "sum(rate({namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller).*\"} | json | msg=~\"(?i)(applied revision|helm upgrade succeeded|upgrade succeeded|release.*upgraded|chart.*upgraded)\"[5m]))",
+              "legendFormat": "applied changes logs/s"
             },
             {
               "refId": "B",
-              "expr": "sum(rate({namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)reconciliation failed\"[5m]))",
+              "expr": "sum(rate({namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} | json | msg=~\"(?i)reconciliation failed\"[5m]))",
               "legendFormat": "fail logs/s"
             }
           ],
@@ -203,17 +250,17 @@ data:
         {
           "id": 10,
           "type": "logs",
-          "title": "Flux reconciliation events (what changed)",
+          "title": "Flux changes & failures",
           "gridPos": {"h": 10, "w": 24, "x": 0, "y": 36},
           "datasource": {"type": "loki", "uid": "loki"},
           "targets": [
             {
               "refId": "A",
-              "expr": "{namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} |~ \"(?i)(fetched revision|stored artifact|artifact.*stored|new artifact|reconciliation failed)\""
+              "expr": "{namespace=\"flux-system\", pod=~\"(kustomize-controller|helm-controller|source-controller|notification-controller).*\"} | json | msg=~\"(?i)(applied revision|helm upgrade succeeded|upgrade succeeded|release.*upgraded|chart.*upgraded|reconciliation failed)\""
             }
           ],
           "options": {
-            "showLabels": true,
+            "showLabels": false,
             "showTime": true,
             "wrapLogMessage": true,
             "sortOrder": "Descending"
