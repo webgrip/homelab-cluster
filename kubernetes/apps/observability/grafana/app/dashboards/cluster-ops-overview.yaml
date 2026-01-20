@@ -31,7 +31,7 @@ data:
             "name": "namespace",
             "label": "Workload namespace",
             "datasource": {"type": "prometheus", "uid": "prometheus"},
-            "query": {"query": "label_values(kube_namespace_labels, namespace)", "refId": "PromQuery"},
+            "query": {"query": "label_values(kube_pod_info, namespace)", "refId": "PromQuery"},
             "sort": 1,
             "refresh": 1,
             "multi": true,
@@ -44,12 +44,12 @@ data:
             "name": "flux_namespace",
             "label": "Flux namespace",
             "datasource": {"type": "prometheus", "uid": "prometheus"},
-            "query": {"query": "label_values(kube_namespace_labels, namespace)", "refId": "PromQuery"},
+            "query": {"query": "label_values(gotk_reconcile_condition, namespace)", "refId": "PromQuery"},
             "sort": 1,
             "refresh": 1,
             "multi": false,
             "includeAll": false,
-            "current": {"text": "observability", "value": "observability"}
+            "current": {"text": "flux-system", "value": "flux-system"}
           },
           {
             "type": "custom",
@@ -367,7 +367,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\", image!=\"\"}[5m])) or vector(0)",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])) or vector(0)",
               "legendFormat": "usage"
             },
             {
@@ -389,7 +389,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\", image!=\"\"}) or vector(0)",
+              "expr": "sum(container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}) or vector(0)",
               "legendFormat": "usage"
             },
             {
@@ -448,13 +448,13 @@ data:
           "type": "timeseries",
           "title": "Pod restarts (top $topk, 30m)",
           "description": "Helps spot crash loops quickly. Markers: Flux changes/errors via annotations.",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", pod=~\"$pod\"}[30m])))",
-              "legendFormat": "{{pod}}"
+              "expr": "topk($topk, sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", pod=~\"$pod\"}[30m])))",
+              "legendFormat": "{{namespace}}/{{pod}}"
             }
           ],
           "fieldConfig": {"defaults": {"decimals": 0, "min": 0}, "overrides": []},
@@ -468,13 +468,13 @@ data:
           "type": "timeseries",
           "title": "CPU usage (top $topk)",
           "description": "CPU cores per pod (rate over 5m).",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", pod=~\"$pod\", container!=\"\"}[5m])))",
-              "legendFormat": "{{pod}}"
+              "expr": "topk($topk, sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", pod=~\"$pod\", container!=\"\", container!=\"POD\"}[5m])))",
+              "legendFormat": "{{namespace}}/{{pod}}"
             }
           ],
           "fieldConfig": {"defaults": {"unit": "cores"}, "overrides": []},
@@ -488,13 +488,13 @@ data:
           "type": "timeseries",
           "title": "Memory usage (top $topk)",
           "description": "Working set bytes per pod.",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 36},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, sum by (pod) (container_memory_working_set_bytes{namespace=~\"$namespace\", pod=~\"$pod\", container!=\"\"}))",
-              "legendFormat": "{{pod}}"
+              "expr": "topk($topk, sum by (namespace, pod) (container_memory_working_set_bytes{namespace=~\"$namespace\", pod=~\"$pod\", container!=\"\", container!=\"POD\"}))",
+              "legendFormat": "{{namespace}}/{{pod}}"
             }
           ],
           "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
@@ -508,7 +508,7 @@ data:
           "type": "timeseries",
           "title": "PVC usage (top $topk)",
           "description": "Used / capacity by PVC; values are 0..1.",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 36},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -527,7 +527,7 @@ data:
           "id": 92,
           "type": "row",
           "title": "Flux",
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 22},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 44},
           "collapsed": false,
           "panels": []
         },
@@ -536,7 +536,7 @@ data:
           "type": "timeseries",
           "title": "Reconcile duration p95 (by kind)",
           "description": "p95 reconcile latency by kind (scoped by Flux namespace when available).",
-          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 23},
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 45},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -553,7 +553,7 @@ data:
           "type": "table",
           "title": "Flux events (annotations)",
           "description": "Recent Flux change/error annotations for the selected Flux namespace.",
-          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 23},
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 45},
           "datasource": {"type": "grafana", "uid": "-- Grafana --"},
           "targets": [
             {
@@ -571,7 +571,7 @@ data:
           "type": "timeseries",
           "title": "Flux failing reconcilers (over time)",
           "description": "Counts Ready=False by kind. Use the annotations toggles to correlate failures with actual changes.",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 23},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 52},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -596,7 +596,7 @@ data:
           "type": "table",
           "title": "Failing reconcilers (current)",
           "description": "List of Kustomizations/HelmReleases currently reporting Ready=False.",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 23},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 52},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
@@ -623,7 +623,7 @@ data:
           "id": 93,
           "type": "row",
           "title": "Logs",
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 31},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 60},
           "collapsed": true,
           "panels": []
         },
@@ -632,7 +632,7 @@ data:
           "type": "logs",
           "title": "Flux logs (changes & failures)",
           "description": "Raw controller logs for quick context. Prefer the annotation markers for change detection; use this panel for details.",
-          "gridPos": {"h": 12, "w": 24, "x": 0, "y": 32},
+          "gridPos": {"h": 12, "w": 24, "x": 0, "y": 61},
           "datasource": {"type": "loki", "uid": "loki"},
           "targets": [
             {
