@@ -45,6 +45,11 @@ spec:
                   value: cnpg-disaster-recovery
                 - name: MAX_REPLAY_LAG_SECONDS
                   value: "900"
+                # When SOURCE_CLUSTER is set, prefer LSN-based lag checks.
+                # Consider the standby healthy if WAL lag is within this byte threshold,
+                # even if pg_last_xact_replay_timestamp() is old due to low/no traffic.
+                - name: MAX_WAL_LAG_BYTES
+                  value: "1048576" # 1MiB
               command:
                 - /bin/sh
                 - -ceu
@@ -95,8 +100,13 @@ spec:
                         echo "[cnpg-disaster-recovery-check] WARN: wal diff not an integer: '$wal_diff_bytes' (source_lsn=$source_lsn standby_lsn=$standby_lsn)"
                         ;;
                       *)
-                        if [ "$wal_diff_bytes" -le 0 ]; then
-                          echo "[cnpg-disaster-recovery-check] OK: standby caught up (wal_diff_bytes=$wal_diff_bytes)"
+                        max_wal_lag_bytes="$MAX_WAL_LAG_BYTES"
+                        if [ -z "$max_wal_lag_bytes" ]; then
+                          max_wal_lag_bytes=0
+                        fi
+
+                        if [ "$wal_diff_bytes" -le "$max_wal_lag_bytes" ]; then
+                          echo "[cnpg-disaster-recovery-check] OK: standby lag within threshold (wal_diff_bytes=$wal_diff_bytes max=$max_wal_lag_bytes)"
                           echo "[cnpg-disaster-recovery-check] done"
                           exit 0
                         fi
