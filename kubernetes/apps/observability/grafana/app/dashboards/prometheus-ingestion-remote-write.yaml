@@ -374,10 +374,194 @@ data:
           "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []}
         },
         {
+          "id": 80,
+          "type": "row",
+          "title": "Noise (cardinality / churn)",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 78},
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 81,
+          "type": "timeseries",
+          "title": "Top jobs by active series (post-relabel)",
+          "description": "High series counts drive memory and churn. This is a good first stop when Prometheus/Mimir gets noisy.",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 79},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(15, sum by (job) (max_over_time(scrape_series_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))",
+              "legendFormat": "{{job}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 82,
+          "type": "timeseries",
+          "title": "Top pods by active series (post-relabel)",
+          "description": "Pod names include hashes; use the deployment panel above for stable grouping.",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 79},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(20, sum by (namespace,pod) (max_over_time(scrape_series_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))",
+              "legendFormat": "{{namespace}}/{{pod}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 83,
+          "type": "timeseries",
+          "title": "Series churn (top jobs, series added per scrape)",
+          "description": "High churn is often worse than high steady-state series (WAL + compactions + remote_write load).",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 87},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(15, sum by (job) (max_over_time(scrape_series_added{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))",
+              "legendFormat": "{{job}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 84,
+          "type": "timeseries",
+          "title": "TSDB head series created (series/sec)",
+          "description": "If this spikes, you likely have a cardinality regression. Use the panels above to find which job/pods.",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 87},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(prometheus_tsdb_head_series_created_total{instance=~\"$prom_instance\"}[5m]))"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
+        },
+        {
+          "id": 85,
+          "type": "table",
+          "title": "Noisiest jobs (action list)",
+          "description": "Single panel view of the usual suspects. Sort by Value and look for repeat offenders across signals.",
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 95},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "label_replace(topk(10, sum by (job) (max_over_time(scrape_series_post_metric_relabeling{namespace=~\\\"$namespace\\\",job=~\\\"$job\\\",pod=~\\\"$pod\\\"}[5m]))), \\\"signal\\\", \\\"active_series\\\", \\\"job\\\", \\\".*\\\") or label_replace(topk(10, sum by (job) (max_over_time(scrape_series_added{namespace=~\\\"$namespace\\\",job=~\\\"$job\\\",pod=~\\\"$pod\\\"}[5m]))), \\\"signal\\\", \\\"series_added_per_scrape\\\", \\\"job\\\", \\\".*\\\") or label_replace(topk(10, sum by (job) (avg_over_time(scrape_samples_post_metric_relabeling{namespace=~\\\"$namespace\\\",job=~\\\"$job\\\",pod=~\\\"$pod\\\"}[5m]))), \\\"signal\\\", \\\"samples_per_scrape\\\", \\\"job\\\", \\\".*\\\")"
+            }
+          ],
+          "transformations": [
+            {"id": "labelsToFields", "options": {}},
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true, "__name__": true, "instance": true, "namespace": true, "pod": true},
+                "indexByName": {"job": 0, "signal": 1, "Value": 2},
+                "renameByName": {"Value": "value"}
+              }
+            },
+            {"id": "sortBy", "options": {"sort": [{"field": "value", "desc": true}]}}
+          ],
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []},
+          "options": {"showHeader": true}
+        },
+        {
+          "id": 86,
+          "type": "timeseries",
+          "title": "Top namespaces by active series (post-relabel)",
+          "description": "Namespace-level view of steady-state cardinality (post-relabel).",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 103},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(15, sum by (namespace) (max_over_time(scrape_series_post_metric_relabeling{namespace=~\\\"$namespace\\\",job=~\\\"$job\\\",pod=~\\\"$pod\\\"}[5m])))",
+              "legendFormat": "{{namespace}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 87,
+          "type": "timeseries",
+          "title": "Remote write errors by remote (samples/sec)",
+          "description": "If one remote_name is erroring, you’ll see it immediately. Look for 429/5xx in Prometheus logs and scale the receiver.",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 103},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (remote_name) (rate(prometheus_remote_storage_samples_failed_total{remote_name=~\\\"$remote\\\",instance=~\\\"$prom_instance\\\"}[5m]))",
+              "legendFormat": "failed {{remote_name}}"
+            },
+            {
+              "refId": "B",
+              "expr": "sum by (remote_name) (rate(prometheus_remote_storage_samples_retried_total{remote_name=~\\\"$remote\\\",instance=~\\\"$prom_instance\\\"}[5m]))",
+              "legendFormat": "retried {{remote_name}}"
+            },
+            {
+              "refId": "C",
+              "expr": "sum by (remote_name) (rate(prometheus_remote_storage_samples_dropped_total{remote_name=~\\\"$remote\\\",instance=~\\\"$prom_instance\\\"}[5m]))",
+              "legendFormat": "dropped {{remote_name}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}, "tooltip": {"mode": "multi", "sort": "desc"}}
+        },
+        {
+          "id": 88,
+          "type": "timeseries",
+          "title": "Top namespaces by churn (series added per scrape)",
+          "description": "High churn is a frequent root cause of remote_write backlogs (WAL pressure + more samples/metadata churn).",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 111},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(15, sum by (namespace) (max_over_time(scrape_series_added{namespace=~\\\"$namespace\\\",job=~\\\"$job\\\",pod=~\\\"$pod\\\"}[5m])))",
+              "legendFormat": "{{namespace}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 89,
+          "type": "timeseries",
+          "title": "Prometheus latency p95 (rules + queries)",
+          "description": "If this spikes, Prometheus is struggling (CPU/IO/GC) and remote_write will often lag as a symptom.",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 111},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(prometheus_rule_evaluation_duration_seconds_bucket{instance=~\\\"$prom_instance\\\"}[5m])))",
+              "legendFormat": "rule eval p95"
+            },
+            {
+              "refId": "B",
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(prometheus_engine_query_duration_seconds_bucket{instance=~\\\"$prom_instance\\\"}[5m])))",
+              "legendFormat": "query p95"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
           "id": 90,
           "type": "row",
           "title": "Flux",
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 78},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 119},
           "collapsed": false,
           "panels": []
         },
@@ -386,7 +570,7 @@ data:
           "type": "table",
           "title": "Flux events (annotations)",
           "description": "Recent Flux change/error annotations for the selected event namespace.",
-          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 79},
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 120},
           "datasource": {"type": "grafana", "uid": "-- Grafana --"},
           "targets": [
             {
@@ -404,7 +588,7 @@ data:
           "type": "table",
           "title": "Flux events (global)",
           "description": "Recent Flux change/error annotations across all namespaces (namespace tag not required).",
-          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 79},
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 120},
           "datasource": {"type": "grafana", "uid": "-- Grafana --"},
           "targets": [
             {
