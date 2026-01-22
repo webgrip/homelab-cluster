@@ -77,7 +77,7 @@ data:
             "includeAll": true,
             "allValue": ".*",
             "multi": true,
-            "query": {"query": "label_values(prometheus_build_info, instance)", "refId": "prom_instance"},
+            "query": {"query": "label_values(prometheus_remote_storage_samples_pending, instance)", "refId": "prom_instance"},
             "current": {"selected": true, "text": "All", "value": "$__all"}
           }
         ]
@@ -89,7 +89,12 @@ data:
           "title": "Total ingestion (samples/sec)",
           "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "sum(rate(scrape_samples_post_metric_relabeling[5m]))"}],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m]))"
+            }
+          ],
           "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "horizontal"}
         },
@@ -99,7 +104,12 @@ data:
           "title": "Remote write pending samples (sum)",
           "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "sum(prometheus_remote_storage_samples_pending{remote_name=~\"$remote\"})"}],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(prometheus_remote_storage_samples_pending{remote_name=~\"$remote\",instance=~\"$prom_instance\"})"
+            }
+          ],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "horizontal"}
         },
         {
@@ -120,7 +130,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "max(time() - prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"})"
+              "expr": "max((time() - prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}) and on(remote_name,instance) (rate(prometheus_remote_storage_samples_in_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]) > 0))"
             }
           ],
           "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
@@ -132,7 +142,13 @@ data:
           "title": "Top namespaces by ingestion (samples/sec)",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "topk(15, sum by (namespace) (rate(scrape_samples_post_metric_relabeling{job=~\"$job\"}[5m])))"}],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(15, sum by (namespace) (rate(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))",
+              "legendFormat": "{{namespace}}"
+            }
+          ],
           "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
         },
         {
@@ -141,7 +157,7 @@ data:
           "title": "Top jobs by ingestion (samples/sec)",
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "topk(15, sum by (job) (rate(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\"}[5m])))"}],
+          "targets": [{"refId": "A", "expr": "topk(15, sum by (job) (rate(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",pod=~\"$pod\"}[5m])))", "legendFormat": "{{job}}"}],
           "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
         },
         {
@@ -150,7 +166,7 @@ data:
           "title": "Top pods by ingestion (samples/sec)",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "topk(20, sum by (namespace,pod) (rate(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))"}],
+          "targets": [{"refId": "A", "expr": "topk(20, sum by (namespace,pod) (rate(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))", "legendFormat": "{{namespace}}/{{pod}}"}],
           "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
         },
         {
@@ -162,7 +178,8 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk(15, quantile_over_time(0.95, scrape_duration_seconds{namespace=~\"$namespace\",job=~\"$job\"}[5m]))"
+              "expr": "topk(15, quantile(0.95, max_over_time(scrape_duration_seconds{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])) by (job))",
+              "legendFormat": "{{job}}"
             }
           ],
           "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
@@ -173,7 +190,7 @@ data:
           "title": "Series churn (max series added per scrape, top pods)",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "topk(20, sum by (namespace,pod) (max_over_time(scrape_series_added{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))"}]
+          "targets": [{"refId": "A", "expr": "topk(20, sum by (namespace,pod) (max_over_time(scrape_series_added{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))", "legendFormat": "{{namespace}}/{{pod}}"}]
         },
         {
           "id": 12,
@@ -184,7 +201,8 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk(15, sum by (job) (rate(scrape_samples_dropped{namespace=~\"$namespace\",job=~\"$job\"}[5m])))"
+              "expr": "topk(15, sum by (job) (rate(scrape_samples_dropped{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))",
+              "legendFormat": "{{job}}"
             }
           ],
           "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
@@ -210,9 +228,9 @@ data:
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
-            {"refId": "A", "expr": "sum(rate(prometheus_remote_storage_samples_failed_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))"},
-            {"refId": "B", "expr": "sum(rate(prometheus_remote_storage_samples_retried_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))"},
-            {"refId": "C", "expr": "sum(rate(prometheus_remote_storage_samples_dropped_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))"}
+            {"refId": "A", "expr": "sum(rate(prometheus_remote_storage_samples_failed_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))", "legendFormat": "failed"},
+            {"refId": "B", "expr": "sum(rate(prometheus_remote_storage_samples_retried_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))", "legendFormat": "retried"},
+            {"refId": "C", "expr": "sum(rate(prometheus_remote_storage_samples_dropped_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))", "legendFormat": "dropped"}
           ],
           "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
         },
@@ -223,8 +241,8 @@ data:
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 36},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
-            {"refId": "A", "expr": "sum by (remote_name) (rate(prometheus_remote_storage_samples_in_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))"},
-            {"refId": "B", "expr": "sum by (remote_name) (rate(prometheus_remote_storage_bytes_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))"}
+            {"refId": "A", "expr": "sum by (remote_name) (rate(prometheus_remote_storage_samples_in_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))", "legendFormat": "samples {{remote_name}}"},
+            {"refId": "B", "expr": "sum by (remote_name) (rate(prometheus_remote_storage_bytes_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))", "legendFormat": "bytes {{remote_name}}"}
           ]
         },
         {
@@ -234,9 +252,9 @@ data:
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 36},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
-            {"refId": "A", "expr": "sum by (remote_name) (prometheus_remote_storage_shards{remote_name=~\"$remote\",instance=~\"$prom_instance\"})"},
-            {"refId": "B", "expr": "sum by (remote_name) (prometheus_remote_storage_shards_desired{remote_name=~\"$remote\",instance=~\"$prom_instance\"})"},
-            {"refId": "C", "expr": "sum by (remote_name) (prometheus_remote_storage_shards_max{remote_name=~\"$remote\",instance=~\"$prom_instance\"})"}
+            {"refId": "A", "expr": "sum by (remote_name) (prometheus_remote_storage_shards{remote_name=~\"$remote\",instance=~\"$prom_instance\"})", "legendFormat": "shards {{remote_name}}"},
+            {"refId": "B", "expr": "sum by (remote_name) (prometheus_remote_storage_shards_desired{remote_name=~\"$remote\",instance=~\"$prom_instance\"})", "legendFormat": "desired {{remote_name}}"},
+            {"refId": "C", "expr": "sum by (remote_name) (prometheus_remote_storage_shards_max{remote_name=~\"$remote\",instance=~\"$prom_instance\"})", "legendFormat": "max {{remote_name}}"}
           ]
         },
         {
@@ -259,7 +277,7 @@ data:
           "title": "Remote write pending samples (by remote)",
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 44},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "sum by (remote_name) (prometheus_remote_storage_samples_pending{remote_name=~\"$remote\",instance=~\"$prom_instance\"})"}]
+          "targets": [{"refId": "A", "expr": "sum by (remote_name) (prometheus_remote_storage_samples_pending{remote_name=~\"$remote\",instance=~\"$prom_instance\"})", "legendFormat": "{{remote_name}}"}]
         },
         {
           "id": 17,
@@ -270,7 +288,8 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "max by (remote_name) (time() - prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"})"
+              "expr": "max by (remote_name) (((time() - prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}) and on(remote_name,instance) (rate(prometheus_remote_storage_samples_in_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]) > 0)))",
+              "legendFormat": "{{remote_name}}"
             }
           ],
           "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
