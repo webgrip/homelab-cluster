@@ -95,7 +95,11 @@ spec:
 
         - alert: PVCVolumeAlmostFull
           expr: |
-            (kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes) < 0.10
+            (
+              (kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes) < 0.10
+            )
+            and on (namespace, persistentvolumeclaim)
+            (kube_persistentvolumeclaim_info == 1)
           for: 15m
           labels:
             severity: warning
@@ -124,7 +128,11 @@ spec:
 
         - alert: PVCVolumeFillingFast
           expr: |
-            predict_linear(kubelet_volume_stats_available_bytes[6h], 24 * 3600) < 0
+            (
+              predict_linear(kubelet_volume_stats_available_bytes[6h], 24 * 3600) < 0
+            )
+            and on (namespace, persistentvolumeclaim)
+            (kube_persistentvolumeclaim_info == 1)
           for: 30m
           labels:
             severity: warning
