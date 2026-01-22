@@ -1,0 +1,279 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-prometheus-ingestion-remote-write
+  namespace: observability
+  annotations:
+    grafana_folder: Observability
+  labels:
+    grafana_dashboard: "1"
+data:
+  prometheus-ingestion-remote-write.json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Prometheus / Ingestion + Remote Write",
+      "uid": "prom-ingest-rw",
+      "timezone": "browser",
+      "tags": ["prometheus", "remote_write", "ingestion"],
+      "editable": false,
+      "refresh": "30s",
+      "time": {"from": "now-6h", "to": "now"},
+      "templating": {
+        "list": [
+          {
+            "name": "remote",
+            "type": "query",
+            "label": "remote",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "refresh": 2,
+            "includeAll": true,
+            "allValue": ".*",
+            "multi": true,
+            "query": {"query": "label_values(prometheus_remote_storage_samples_pending, remote_name)", "refId": "remote"},
+            "current": {"selected": true, "text": "All", "value": "$__all"}
+          },
+          {
+            "name": "namespace",
+            "type": "query",
+            "label": "namespace",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "refresh": 2,
+            "includeAll": true,
+            "allValue": ".*",
+            "multi": true,
+            "query": {"query": "label_values(scrape_samples_post_metric_relabeling, namespace)", "refId": "namespace"},
+            "current": {"selected": true, "text": "All", "value": "$__all"}
+          },
+          {
+            "name": "job",
+            "type": "query",
+            "label": "job",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "refresh": 2,
+            "includeAll": true,
+            "allValue": ".*",
+            "multi": true,
+            "query": {"query": "label_values(scrape_samples_post_metric_relabeling, job)", "refId": "job"},
+            "current": {"selected": true, "text": "All", "value": "$__all"}
+          },
+          {
+            "name": "pod",
+            "type": "query",
+            "label": "pod",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "refresh": 2,
+            "includeAll": true,
+            "allValue": ".*",
+            "multi": true,
+            "query": {"query": "label_values(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\"}, pod)", "refId": "pod"},
+            "current": {"selected": true, "text": "All", "value": "$__all"}
+          },
+          {
+            "name": "prom_instance",
+            "type": "query",
+            "label": "prometheus",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "refresh": 2,
+            "includeAll": true,
+            "allValue": ".*",
+            "multi": true,
+            "query": {"query": "label_values(prometheus_build_info, instance)", "refId": "prom_instance"},
+            "current": {"selected": true, "text": "All", "value": "$__all"}
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "Total ingestion (samples/sec)",
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(rate(scrape_samples_post_metric_relabeling[5m]))"}],
+          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "horizontal"}
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Remote write pending samples (sum)",
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(prometheus_remote_storage_samples_pending{remote_name=~\"$remote\"})"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "horizontal"}
+        },
+        {
+          "id": 8,
+          "type": "stat",
+          "title": "TSDB head series",
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(prometheus_tsdb_head_series{instance=~\"$prom_instance\"})"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "horizontal"}
+        },
+        {
+          "id": 9,
+          "type": "stat",
+          "title": "Remote write lag (max, seconds)",
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max(time() - prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"})"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "horizontal"}
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "Top namespaces by ingestion (samples/sec)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "topk(15, sum by (namespace) (rate(scrape_samples_post_metric_relabeling{job=~\"$job\"}[5m])))"}],
+          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
+        },
+        {
+          "id": 10,
+          "type": "timeseries",
+          "title": "Top jobs by ingestion (samples/sec)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "topk(15, sum by (job) (rate(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\"}[5m])))"}],
+          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "Top pods by ingestion (samples/sec)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "topk(20, sum by (namespace,pod) (rate(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))"}],
+          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
+        },
+        {
+          "id": 11,
+          "type": "timeseries",
+          "title": "Scrape duration (p95 by job)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(15, quantile_over_time(0.95, scrape_duration_seconds{namespace=~\"$namespace\",job=~\"$job\"}[5m]))"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Series churn (max series added per scrape, top pods)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "topk(20, sum by (namespace,pod) (max_over_time(scrape_series_added{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))"}]
+        },
+        {
+          "id": 12,
+          "type": "timeseries",
+          "title": "Dropped samples (scrape + relabel, top jobs)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(15, sum by (job) (rate(scrape_samples_dropped{namespace=~\"$namespace\",job=~\"$job\"}[5m])))"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
+        },
+        {
+          "id": 13,
+          "type": "timeseries",
+          "title": "TSDB write pressure (WAL fsync p95)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(prometheus_tsdb_wal_fsync_duration_seconds_bucket{instance=~\"$prom_instance\"}[5m])))"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Remote write health (failed/retried/dropped samples/sec)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(rate(prometheus_remote_storage_samples_failed_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))"},
+            {"refId": "B", "expr": "sum(rate(prometheus_remote_storage_samples_retried_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))"},
+            {"refId": "C", "expr": "sum(rate(prometheus_remote_storage_samples_dropped_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
+        },
+        {
+          "id": 14,
+          "type": "timeseries",
+          "title": "Remote write throughput (samples/sec, bytes/sec)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 36},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum by (remote_name) (rate(prometheus_remote_storage_samples_in_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))"},
+            {"refId": "B", "expr": "sum by (remote_name) (rate(prometheus_remote_storage_bytes_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))"}
+          ]
+        },
+        {
+          "id": 15,
+          "type": "timeseries",
+          "title": "Remote write shards (current/desired/max)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 36},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum by (remote_name) (prometheus_remote_storage_shards{remote_name=~\"$remote\",instance=~\"$prom_instance\"})"},
+            {"refId": "B", "expr": "sum by (remote_name) (prometheus_remote_storage_shards_desired{remote_name=~\"$remote\",instance=~\"$prom_instance\"})"},
+            {"refId": "C", "expr": "sum by (remote_name) (prometheus_remote_storage_shards_max{remote_name=~\"$remote\",instance=~\"$prom_instance\"})"}
+          ]
+        },
+        {
+          "id": 16,
+          "type": "timeseries",
+          "title": "Remote write send latency (p95)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 44},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.95, sum by (le, remote_name) (rate(prometheus_remote_storage_sent_batch_duration_seconds_bucket{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m])))"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "Remote write pending samples (by remote)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 44},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum by (remote_name) (prometheus_remote_storage_samples_pending{remote_name=~\"$remote\",instance=~\"$prom_instance\"})"}]
+        },
+        {
+          "id": 17,
+          "type": "timeseries",
+          "title": "Remote write lag (seconds, by remote)",
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 52},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (remote_name) (time() - prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"})"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+        }
+      ]
+    }
