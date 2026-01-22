@@ -291,8 +291,16 @@ data:
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 36},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
-            {"refId": "A", "expr": "sum by (remote_name) (rate(prometheus_remote_storage_samples_in_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))", "legendFormat": "samples {{remote_name}}"},
-            {"refId": "B", "expr": "sum by (remote_name) (rate(prometheus_remote_storage_bytes_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))", "legendFormat": "bytes {{remote_name}}"}
+            {
+              "refId": "A",
+              "expr": "sum by (remote_alias) (label_replace(label_replace(rate(prometheus_remote_storage_samples_in_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]), \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\"))",
+              "legendFormat": "samples {{remote_alias}}"
+            },
+            {
+              "refId": "B",
+              "expr": "sum by (remote_alias) (label_replace(label_replace(rate(prometheus_remote_storage_bytes_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]), \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\"))",
+              "legendFormat": "bytes {{remote_alias}}"
+            }
           ]
         },
         {
@@ -302,9 +310,21 @@ data:
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 36},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
-            {"refId": "A", "expr": "sum by (remote_name) (prometheus_remote_storage_shards{remote_name=~\"$remote\",instance=~\"$prom_instance\"})", "legendFormat": "shards {{remote_name}}"},
-            {"refId": "B", "expr": "sum by (remote_name) (prometheus_remote_storage_shards_desired{remote_name=~\"$remote\",instance=~\"$prom_instance\"})", "legendFormat": "desired {{remote_name}}"},
-            {"refId": "C", "expr": "sum by (remote_name) (prometheus_remote_storage_shards_max{remote_name=~\"$remote\",instance=~\"$prom_instance\"})", "legendFormat": "max {{remote_name}}"}
+            {
+              "refId": "A",
+              "expr": "sum by (remote_alias) (label_replace(label_replace(prometheus_remote_storage_shards{remote_name=~\"$remote\",instance=~\"$prom_instance\"}, \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\"))",
+              "legendFormat": "shards {{remote_alias}}"
+            },
+            {
+              "refId": "B",
+              "expr": "sum by (remote_alias) (label_replace(label_replace(prometheus_remote_storage_shards_desired{remote_name=~\"$remote\",instance=~\"$prom_instance\"}, \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\"))",
+              "legendFormat": "desired {{remote_alias}}"
+            },
+            {
+              "refId": "C",
+              "expr": "sum by (remote_alias) (label_replace(label_replace(prometheus_remote_storage_shards_max{remote_name=~\"$remote\",instance=~\"$prom_instance\"}, \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\"))",
+              "legendFormat": "max {{remote_alias}}"
+            }
           ]
         },
         {
@@ -316,7 +336,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "histogram_quantile(0.95, sum by (le, remote_name) (rate(prometheus_remote_storage_sent_batch_duration_seconds_bucket{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m])))"
+              "expr": "histogram_quantile(0.95, sum by (le, remote_alias) (label_replace(label_replace(rate(prometheus_remote_storage_sent_batch_duration_seconds_bucket{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]), \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\")))"
             }
           ],
           "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
@@ -327,7 +347,13 @@ data:
           "title": "Remote write pending samples (by remote)",
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 44},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "sum by (remote_name) (prometheus_remote_storage_samples_pending{remote_name=~\"$remote\",instance=~\"$prom_instance\"})", "legendFormat": "{{remote_name}}"}]
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (remote_alias) (label_replace(label_replace(prometheus_remote_storage_samples_pending{remote_name=~\"$remote\",instance=~\"$prom_instance\"}, \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\"))",
+              "legendFormat": "{{remote_alias}}"
+            }
+          ]
         },
         {
           "id": 17,
@@ -338,13 +364,13 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "max by (remote_name) (time() - prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"})",
-              "legendFormat": "sent {{remote_name}}"
+              "expr": "max by (remote_alias) (time() - label_replace(label_replace(prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}, \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\"))",
+              "legendFormat": "sent {{remote_alias}}"
             },
             {
               "refId": "B",
-              "expr": "max by (remote_name) (time() - prometheus_remote_storage_queue_highest_received_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"})",
-              "legendFormat": "recv {{remote_name}}"
+              "expr": "max by (remote_alias) (time() - label_replace(label_replace(prometheus_remote_storage_queue_highest_received_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}, \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\"))",
+              "legendFormat": "recv {{remote_alias}}"
             }
           ],
           "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
@@ -358,8 +384,8 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "max by (remote_name) (prometheus_remote_storage_queue_highest_received_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"} - prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"})",
-              "legendFormat": "{{remote_name}}"
+              "expr": "max by (remote_alias) (label_replace(label_replace(prometheus_remote_storage_queue_highest_received_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}, \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\") - label_replace(label_replace(prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}, \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\"))",
+              "legendFormat": "{{remote_alias}}"
             }
           ],
           "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
@@ -507,18 +533,18 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (remote_name) (rate(prometheus_remote_storage_samples_failed_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))",
-              "legendFormat": "failed {{remote_name}}"
+              "expr": "sum by (remote_alias) (label_replace(label_replace(rate(prometheus_remote_storage_samples_failed_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]), \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\"))",
+              "legendFormat": "failed {{remote_alias}}"
             },
             {
               "refId": "B",
-              "expr": "sum by (remote_name) (rate(prometheus_remote_storage_samples_retried_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))",
-              "legendFormat": "retried {{remote_name}}"
+              "expr": "sum by (remote_alias) (label_replace(label_replace(rate(prometheus_remote_storage_samples_retried_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]), \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\"))",
+              "legendFormat": "retried {{remote_alias}}"
             },
             {
               "refId": "C",
-              "expr": "sum by (remote_name) (rate(prometheus_remote_storage_samples_dropped_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))",
-              "legendFormat": "dropped {{remote_name}}"
+              "expr": "sum by (remote_alias) (label_replace(label_replace(rate(prometheus_remote_storage_samples_dropped_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]), \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\"))",
+              "legendFormat": "dropped {{remote_alias}}"
             }
           ],
           "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
