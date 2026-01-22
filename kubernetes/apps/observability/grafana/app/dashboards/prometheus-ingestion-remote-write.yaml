@@ -18,6 +18,39 @@ data:
       "editable": false,
       "refresh": "30s",
       "time": {"from": "now-6h", "to": "now"},
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          },
+          {
+            "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+            "enable": true,
+            "hide": false,
+            "iconColor": "rgba(170, 170, 170, 1)",
+            "name": "Flux changes",
+            "type": "tags",
+            "tags": ["flux", "flux_event:change", "namespace:$event_namespace"],
+            "matchAny": false
+          },
+          {
+            "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+            "enable": true,
+            "hide": false,
+            "iconColor": "rgba(255, 85, 85, 1)",
+            "name": "Flux errors",
+            "type": "tags",
+            "tags": ["flux", "flux_event:error", "namespace:$event_namespace"],
+            "matchAny": false
+          }
+        ]
+      },
       "templating": {
         "list": [
           {
@@ -43,6 +76,17 @@ data:
             "multi": true,
             "query": {"query": "label_values(scrape_samples_post_metric_relabeling, namespace)", "refId": "namespace"},
             "current": {"selected": true, "text": "All", "value": "$__all"}
+          },
+          {
+            "name": "event_namespace",
+            "type": "query",
+            "label": "event namespace",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "refresh": 2,
+            "includeAll": false,
+            "multi": false,
+            "query": {"query": "label_values(kube_pod_info, namespace)", "refId": "event_namespace"},
+            "current": {"selected": true, "text": "flux-system", "value": "flux-system"}
           },
           {
             "name": "job",
@@ -86,16 +130,16 @@ data:
         {
           "id": 1,
           "type": "stat",
-          "title": "Total ingestion (samples/sec)",
+          "title": "Total scrape samples (avg per scrape)",
           "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m]))"
+              "expr": "sum(avg_over_time(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m]))"
             }
           ],
-          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []},
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "horizontal"}
         },
         {
@@ -124,13 +168,13 @@ data:
         {
           "id": 9,
           "type": "stat",
-          "title": "Remote write lag (max, seconds)",
+          "title": "Remote write backlog age (max)",
           "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "max((time() - prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}) and on(remote_name,instance) (rate(prometheus_remote_storage_samples_in_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]) > 0))"
+              "expr": "max(prometheus_remote_storage_queue_highest_received_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"} - prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"})"
             }
           ],
           "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
@@ -139,35 +183,35 @@ data:
         {
           "id": 3,
           "type": "timeseries",
-          "title": "Top namespaces by ingestion (samples/sec)",
+          "title": "Top namespaces by scrape samples (avg per scrape)",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "topk(15, sum by (namespace) (rate(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))",
+              "expr": "topk(15, sum by (namespace) (avg_over_time(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))",
               "legendFormat": "{{namespace}}"
             }
           ],
-          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []}
         },
         {
           "id": 10,
           "type": "timeseries",
-          "title": "Top jobs by ingestion (samples/sec)",
+          "title": "Top jobs by scrape samples (avg per scrape)",
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "topk(15, sum by (job) (rate(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",pod=~\"$pod\"}[5m])))", "legendFormat": "{{job}}"}],
-          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
+          "targets": [{"refId": "A", "expr": "topk(15, sum by (job) (avg_over_time(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",pod=~\"$pod\"}[5m])))", "legendFormat": "{{job}}"}],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []}
         },
         {
           "id": 4,
           "type": "timeseries",
-          "title": "Top pods by ingestion (samples/sec)",
+          "title": "Top pods by scrape samples (avg per scrape)",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "topk(20, sum by (namespace,pod) (rate(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))", "legendFormat": "{{namespace}}/{{pod}}"}],
-          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
+          "targets": [{"refId": "A", "expr": "topk(20, sum by (namespace,pod) (avg_over_time(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))", "legendFormat": "{{namespace}}/{{pod}}"}],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []}
         },
         {
           "id": 11,
@@ -178,7 +222,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk(15, quantile(0.95, max_over_time(scrape_duration_seconds{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])) by (job))",
+              "expr": "topk(15, quantile by (job) (0.95, max_over_time(scrape_duration_seconds{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))",
               "legendFormat": "{{job}}"
             }
           ],
@@ -201,11 +245,11 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk(15, sum by (job) (rate(scrape_samples_dropped{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))",
+              "expr": "topk(15, sum by (job) (avg_over_time(scrape_samples_dropped{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))",
               "legendFormat": "{{job}}"
             }
           ],
-          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []}
         },
         {
           "id": 13,
@@ -282,17 +326,96 @@ data:
         {
           "id": 17,
           "type": "timeseries",
-          "title": "Remote write lag (seconds, by remote)",
+          "title": "Remote write send age (seconds, by remote)",
           "gridPos": {"h": 8, "w": 24, "x": 0, "y": 52},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "max by (remote_name) (((time() - prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}) and on(remote_name,instance) (rate(prometheus_remote_storage_samples_in_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]) > 0)))",
+              "expr": "max by (remote_name) (time() - prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"})",
+              "legendFormat": "sent {{remote_name}}"
+            },
+            {
+              "refId": "B",
+              "expr": "max by (remote_name) (time() - prometheus_remote_storage_queue_highest_received_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"})",
+              "legendFormat": "recv {{remote_name}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+        },
+        {
+          "id": 18,
+          "type": "timeseries",
+          "title": "Remote write backlog age (seconds, by remote)",
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 60},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (remote_name) (prometheus_remote_storage_queue_highest_received_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"} - prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"})",
               "legendFormat": "{{remote_name}}"
             }
           ],
           "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+        },
+        {
+          "id": 19,
+          "type": "timeseries",
+          "title": "Top deployments by scrape samples (avg per scrape)",
+          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 68},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(20, sum by (namespace, deployment) (avg_over_time(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m]) * on(namespace,pod) group_left(replicaset) label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on(namespace,replicaset) group_left(deployment) label_replace(kube_replicaset_owner{owner_kind=\"Deployment\"}, \"deployment\", \"$1\", \"owner_name\", \"(.*)\")))",
+              "legendFormat": "{{namespace}}/{{deployment}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 90,
+          "type": "row",
+          "title": "Flux",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 78},
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 91,
+          "type": "table",
+          "title": "Flux events (annotations)",
+          "description": "Recent Flux change/error annotations for the selected event namespace.",
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 79},
+          "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+          "targets": [
+            {
+              "refId": "A",
+              "type": "annotations",
+              "limit": 50,
+              "tags": ["flux", "namespace:$event_namespace"],
+              "matchAny": false
+            }
+          ],
+          "options": {"showHeader": true}
+        },
+        {
+          "id": 92,
+          "type": "table",
+          "title": "Flux events (global)",
+          "description": "Recent Flux change/error annotations across all namespaces (namespace tag not required).",
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 79},
+          "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+          "targets": [
+            {
+              "refId": "A",
+              "type": "annotations",
+              "limit": 50,
+              "tags": ["flux"],
+              "matchAny": false
+            }
+          ],
+          "options": {"showHeader": true}
         }
       ]
     }
