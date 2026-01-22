@@ -231,10 +231,16 @@ data:
         {
           "id": 5,
           "type": "timeseries",
-          "title": "Series churn (max series added per scrape, top pods)",
+          "title": "Series churn (max series added per scrape, top deployments)",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "topk(20, sum by (namespace,pod) (max_over_time(scrape_series_added{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))", "legendFormat": "{{namespace}}/{{pod}}"}]
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(20, sum by (namespace, deployment) (max_over_time(scrape_series_added{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m]) * on(namespace,pod) group_left(replicaset) label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on(namespace,replicaset) group_left(deployment) label_replace(kube_replicaset_owner{owner_kind=\"Deployment\"}, \"deployment\", \"$1\", \"owner_name\", \"(.*)\")))",
+              "legendFormat": "{{namespace}}/{{deployment}}"
+            }
+          ]
         },
         {
           "id": 12,
