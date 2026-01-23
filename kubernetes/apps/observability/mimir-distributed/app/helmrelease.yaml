@@ -91,16 +91,16 @@ spec:
     # Run the built-in nginx gateway so clients can talk to a single endpoint.
     gateway:
       enabled: true
-      replicas: 1
+      replicas: 2
       service:
         type: ClusterIP
       resources:
         requests:
-          cpu: 100m
-          memory: 256Mi
+          cpu: 250m
+          memory: 512Mi
         limits:
-          cpu: 500m
-          memory: 1Gi
+          cpu: "1"
+          memory: 2Gi
 
     # Keep MinIO disabled; this cluster already has an S3-compatible object store.
     minio:
@@ -114,11 +114,11 @@ spec:
         size: 10Gi
       resources:
         requests:
-          cpu: 500m
-          memory: 512Mi
-        limits:
           cpu: "1"
-          memory: 2Gi
+          memory: 1Gi
+        limits:
+          cpu: "2"
+          memory: 4Gi
       extraEnv:
         # Cap on-disk log retention to prevent filling the PVC.
         # NOTE: retention.bytes applies per-partition; total disk usage can exceed this if there are many partitions.
@@ -165,6 +165,10 @@ spec:
         # Enforce long-term retention via the compactor.
         limits:
           compactor_blocks_retention_period: 90d
+          # Reduce chances of 429 throttling under normal cluster ingest.
+          # If this is still too low/high, tune alongside ingester/distributor scaling.
+          ingestion_rate: 50000
+          ingestion_burst_size: 200000
 
         # Explicitly set key backends to S3 as well.
         blocks_storage:
@@ -215,17 +219,17 @@ spec:
 
     # Ensure ingesters use Longhorn for WAL/data.
     ingester:
-      replicas: 1
+      replicas: 3
       persistentVolume:
         storageClass: longhorn
         size: 10Gi
       resources:
         requests:
-          cpu: 200m
-          memory: 1Gi
+          cpu: 250m
+          memory: 2Gi
         limits:
           cpu: "1"
-          memory: 3Gi
+          memory: 4Gi
 
     store_gateway:
       replicas: 1
@@ -255,14 +259,14 @@ spec:
           memory: 1Gi
 
     distributor:
-      replicas: 1
+      replicas: 2
       resources:
         requests:
-          cpu: 50m
-          memory: 256Mi
+          cpu: 200m
+          memory: 512Mi
         limits:
-          cpu: 500m
-          memory: 1Gi
+          cpu: "1"
+          memory: 2Gi
 
     querier:
       replicas: 1
