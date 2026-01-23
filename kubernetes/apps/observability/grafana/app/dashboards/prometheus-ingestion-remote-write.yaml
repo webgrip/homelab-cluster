@@ -174,7 +174,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "max(prometheus_remote_storage_queue_highest_received_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"} - prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"})"
+              "expr": "max(max_over_time(prometheus_remote_storage_queue_highest_received_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]) - max_over_time(prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))"
             }
           ],
           "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
@@ -364,12 +364,12 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "max by (remote_alias) (time() - label_replace(label_replace(prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}, \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\"))",
+              "expr": "max by (remote_alias) (time() - label_replace(label_replace(max_over_time(prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]), \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\"))",
               "legendFormat": "sent {{remote_alias}}"
             },
             {
               "refId": "B",
-              "expr": "max by (remote_alias) (time() - label_replace(label_replace(prometheus_remote_storage_queue_highest_received_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}, \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\"))",
+              "expr": "max by (remote_alias) (time() - label_replace(label_replace(max_over_time(prometheus_remote_storage_queue_highest_received_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]), \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\"))",
               "legendFormat": "recv {{remote_alias}}"
             }
           ],
@@ -384,7 +384,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "max by (remote_alias) (label_replace(label_replace(prometheus_remote_storage_queue_highest_received_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}, \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\") - label_replace(label_replace(prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}, \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\"))",
+              "expr": "max by (remote_alias) (label_replace(label_replace(max_over_time(prometheus_remote_storage_queue_highest_received_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]), \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\") - label_replace(label_replace(max_over_time(prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]), \"remote_alias\", \"$1\", \"remote_name\", \"(.*)\"), \"remote_alias\", \"mimir\", \"remote_name\", \"b95f1a\"))",
               "legendFormat": "{{remote_alias}}"
             }
           ],
