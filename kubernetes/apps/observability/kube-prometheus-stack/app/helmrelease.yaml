@@ -40,29 +40,8 @@ spec:
             reloader.stakater.com/auto: "true"
         # Accept remote_write in-cluster (used by Tempo metrics-generator).
         enableRemoteWriteReceiver: true
-        # Remote write to Grafana Mimir for long-term, horizontally scalable metrics storage.
-        remoteWrite:
-          - name: mimir
-            url: http://mimir-distributed-gateway.observability.svc.cluster.local/api/v1/push
-            headers:
-              X-Scope-OrgID: homelab
-            queueConfig:
-              # Backlog/failures usually mean either the receiver is overloaded (429/5xx)
-              # or Prometheus isn't parallelizing enough. These settings give Prometheus
-              # more room to buffer and more concurrency without going extreme.
-              minShards: 4
-              maxShards: 50
-              capacity: 10000
-              maxSamplesPerSend: 5000
-              batchSendDeadline: 5s
-              minBackoff: 50ms
-              maxBackoff: 5s
-              retryOnHttp429: true
-            writeRelabelConfigs:
-              # Keep long-term metrics useful while avoiding obvious cardinality traps.
-              # (These labels are high-churn and rarely needed for long-term trends.)
-              - action: labeldrop
-                regex: "pod_uid|container_id|image_id"
+        # Remote write to Mimir is disabled (Mimir turned off).
+        remoteWrite: []
         serviceMonitorSelectorNilUsesHelmValues: false
         podMonitorSelectorNilUsesHelmValues: false
         probeSelectorNilUsesHelmValues: false

@@ -67,15 +67,12 @@ spec:
 
           otelcol.processor.batch "metrics" {
             output {
-              metrics = [otelcol.exporter.prometheusremotewrite.mimir.input]
+              metrics = [otelcol.exporter.prometheusremotewrite.prometheus.input]
             }
           }
 
-          otelcol.exporter.prometheusremotewrite "mimir" {
-            endpoint = "http://mimir-distributed-gateway.observability.svc.cluster.local/api/v1/push"
-            headers = {
-              "X-Scope-OrgID" = "homelab",
-            }
+          otelcol.exporter.prometheusremotewrite "prometheus" {
+            endpoint = "http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090/api/v1/write"
           }
 
           otelcol.processor.attributes "loki_labels" {
