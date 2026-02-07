@@ -45,15 +45,41 @@ Symptoms:
 
 Checks:
 
+- Confirm Flux has applied the operator + jobs:
+  - `flux get kustomizations -A | grep renovate`
+  - `flux get helmreleases -A | grep renovate`
+
 - Operator health:
   - `kubectl -n renovate get deploy,pods`
   - `kubectl -n renovate logs deploy/renovate-operator --tail=200`
 - Renovate job status:
   - `kubectl -n renovate get renovatejobs`
+  - `kubectl -n renovate describe renovatejob webgrip-gitops`
   - `kubectl -n renovate get jobs --sort-by=.metadata.creationTimestamp | tail`
+- Recent run pods/logs:
+  - `kubectl -n renovate get pods --sort-by=.metadata.creationTimestamp | tail -20`
+  - `kubectl -n renovate logs job/<k8s-job-name> --all-containers --tail=200`
 - Token wiring:
   - Confirm secret exists: `kubectl -n renovate get secret renovate-secrets`
   - Confirm token has repo access / permissions (GitHub org settings)
+
+If you don't see any PRs coming in:
+
+- First check whether it’s actually executing:
+  - The default schedules are not frequent (e.g. `webgrip-gitops` runs daily at 03:00).
+  - In Prometheus, query: `increase(renovate_operator_project_executions_total{renovate_namespace="renovate"}[24h])`
+- If executions are 0:
+  - Check the operator logs for scheduling/admission errors.
+  - Ensure RenovateJobs exist: `kubectl -n renovate get renovatejobs`
+- If executions are >0 but still no PRs:
+  - Check failures: `renovate_operator_run_failed{renovate_namespace="renovate"} == 1`
+  - Check warnings/errors: `renovate_operator_dependency_issues{renovate_namespace="renovate"} == 1`
+  - Open the repo's Dependency Dashboard issue (Renovate usually explains why it didn't open PRs).
+- Common GitHub-side causes:
+  - Token/App not installed on the repo(s) (fine-grained PAT scope or App installation)
+  - Missing permissions (`Contents`, `Pull requests`, `Issues` need write)
+  - Branch protections that block branch pushes / PR updates
+  - No updates available (this happens more often than you'd expect)
 
 If webhook-triggering is involved:
 
