@@ -1,0 +1,55 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/renovate-operator.mogenius.com/renovatejob_v1alpha1.json
+apiVersion: renovate-operator.mogenius.com/v1alpha1
+kind: RenovateJob
+metadata:
+  name: webgrip-ci
+spec:
+  discoveryFilter: webgrip/*
+  schedule: 0 4 * * 1
+  parallelism: 3
+  image: docker.io/renovate/renovate:43.4.2-full@sha256:6dafbedb9e4816805affde589187c50af42ed4a4a550086e471d14be5333ba85
+  secretRef: renovate-secrets
+  webhook:
+    enabled: true
+    authentication:
+      enabled: true
+      secretRef:
+        name: renovate-webhook-auth
+        key: token
+  extraEnv:
+    - name: RENOVATE_PLATFORM
+      value: github
+    - name: RENOVATE_ENDPOINT
+      value: https://api.github.com/
+    - name: RENOVATE_CONFIG_FILE
+      value: /config/renovate.json
+    - name: RENOVATE_BASE_DIR
+      value: /tmp/renovate
+    - name: LOG_LEVEL
+      value: info
+  extraVolumes:
+    - name: config
+      configMap:
+        name: renovate-config-ci
+    - name: tmp
+      emptyDir: {}
+  extraVolumeMounts:
+    - name: config
+      mountPath: /config
+      readOnly: true
+    - name: tmp
+      mountPath: /tmp
+  resources:
+    requests:
+      cpu: 25m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  securityContext:
+    pod:
+      runAsNonRoot: true
+      runAsUser: 65534
+      runAsGroup: 65534
+    container:
+      allowPrivilegeEscalation: false

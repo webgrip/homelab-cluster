@@ -1,0 +1,48 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: renovate-config-infra
+data:
+  renovate.json: |-
+    {
+      "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+      "extends": [
+        "config:recommended",
+        ":dependencyDashboard",
+        ":labels(dependencies)"
+      ],
+      "dependencyDashboard": true,
+      "automerge": false,
+
+      "platform": "github",
+      "autodiscover": true,
+      "autodiscoverFilter": ["webgrip/*"],
+      "onboarding": true,
+      "requireConfig": "optional",
+
+      "prConcurrentLimit": 2,
+      "prHourlyLimit": 1,
+
+      "enabledManagers": [
+        "terraform",
+        "terragrunt"
+      ],
+
+      "ignorePaths": [
+        "**/*.sops.yaml",
+        "**/*.sops.yml"
+      ],
+
+      "packageRules": [
+        {
+          "matchManagers": ["terraform", "terragrunt"],
+          "groupName": "Terraform"
+        },
+        {
+          "matchUpdateTypes": ["major"],
+          "addLabels": ["major"],
+          "dependencyDashboardApproval": true
+        }
+      ]
+    }

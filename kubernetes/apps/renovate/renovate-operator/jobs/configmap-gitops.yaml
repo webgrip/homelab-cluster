@@ -1,0 +1,60 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: renovate-config-gitops
+data:
+  renovate.json: |-
+    {
+      "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+      "extends": [
+        "config:recommended",
+        ":dependencyDashboard",
+        ":labels(dependencies)"
+      ],
+      "dependencyDashboard": true,
+      "automerge": false,
+
+      "platform": "github",
+      "autodiscover": true,
+      "autodiscoverFilter": ["webgrip/*"],
+      "onboarding": true,
+      "requireConfig": "optional",
+
+      "prConcurrentLimit": 5,
+      "prHourlyLimit": 2,
+
+      "enabledManagers": [
+        "flux",
+        "kustomize",
+        "helm-values",
+        "helmfile"
+      ],
+
+      "ignorePaths": [
+        "**/*.sops.yaml",
+        "**/*.sops.yml",
+        "bootstrap/**",
+        "talos/**",
+        "kubeconfig",
+        "github-push-token.txt",
+        "github-deploy.key.pub"
+      ],
+
+      "packageRules": [
+        {
+          "matchManagers": ["flux"],
+          "groupName": "Flux OCI/Helm updates"
+        },
+        {
+          "matchManagers": ["helm-values", "kustomize", "helmfile"],
+          "matchDatasources": ["docker"],
+          "groupName": "Container images (GitOps)"
+        },
+        {
+          "matchUpdateTypes": ["major"],
+          "addLabels": ["major"],
+          "dependencyDashboardApproval": true
+        }
+      ]
+    }

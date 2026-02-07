@@ -1,0 +1,96 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-renovate-operator-rules
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: platform.renovate-operator
+      rules:
+        - alert: RenovateOperatorDeploymentUnavailable
+          expr: |
+            kube_deployment_status_replicas_available{namespace="renovate", deployment="renovate-operator"} < 1
+          for: 10m
+          labels:
+            severity: critical
+            owner: platform
+            service: renovate
+          annotations:
+            summary: "Renovate operator unavailable (renovate/renovate-operator)"
+            description: |
+              What's happening:
+              - The renovate-operator Deployment has 0 available replicas for 10m.
+
+              Impact/risk:
+              - Scheduled Renovate runs will not start.
+              - Webhook-triggered runs will fail.
+
+              Likely causes:
+              - Pod crashloop, image pull, or failed rollout
+              - Node scheduling constraints / resource pressure
+              - Missing CRDs or RBAC regressions
+
+              First actions:
+              - Check: kubectl -n renovate get deploy,pods
+              - Inspect: kubectl -n renovate describe deploy renovate-operator
+              - Logs: kubectl -n renovate logs deploy/renovate-operator
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#renovate"
+
+        - alert: RenovateProjectRunFailed
+          expr: |
+            renovate_operator_run_failed{renovate_namespace="renovate"} == 1
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+            service: renovate
+          annotations:
+            summary: "Renovate run failed ({{$labels.project}})"
+            description: |
+              What's happening:
+              - The last Renovate run for the project failed.
+
+              Impact/risk:
+              - Dependency updates for this repo may stop until the failure is fixed.
+
+              Likely causes:
+              - GitHub auth/rate-limiting (token permissions, org repo access)
+              - Invalid renovate.json or preset/manager configuration
+              - Dependency resolution errors (registries, network, private packages)
+
+              First actions:
+              - Check renovate-operator logs for this project/job
+              - Review the Dependency Dashboard issue in the repo
+              - Trigger a one-off run after fixing auth/config
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#renovate"
+
+        - alert: RenovateProjectDependencyIssues
+          expr: |
+            renovate_operator_dependency_issues{renovate_namespace="renovate"} == 1
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: renovate
+          annotations:
+            summary: "Renovate detected dependency issues ({{$labels.project}})"
+            description: |
+              What's happening:
+              - Renovate completed, but logged WARN/ERROR entries (dependency issues=1).
+
+              Impact/risk:
+              - Updates may be delayed or partially applied.
+              - PRs may not be created for affected dependencies.
+
+              Likely causes:
+              - Registry/package lookup failures
+              - Repository-specific configuration warnings
+              - GitHub API throttling or transient network errors
+
+              First actions:
+              - Open the repo's Dependency Dashboard issue to see details
+              - Check renovate-operator logs for warnings/errors for this project
+              - Re-run the job after addressing registry/auth issues
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#renovate"

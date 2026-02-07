@@ -36,6 +36,37 @@ Checks:
 - `kubectl -n flux-system logs deploy/kustomize-controller --tail=200`
 - `kubectl -n flux-system logs deploy/helm-controller --tail=200`
 
+## Renovate
+
+Symptoms:
+
+- `RenovateOperatorDeploymentUnavailable`, `RenovateProjectRunFailed`, or `RenovateProjectDependencyIssues` firing.
+- Renovate PRs stop showing up, or Dependency Dashboard indicates errors.
+
+Checks:
+
+- Operator health:
+  - `kubectl -n renovate get deploy,pods`
+  - `kubectl -n renovate logs deploy/renovate-operator --tail=200`
+- Renovate job status:
+  - `kubectl -n renovate get renovatejobs`
+  - `kubectl -n renovate get jobs --sort-by=.metadata.creationTimestamp | tail`
+- Token wiring:
+  - Confirm secret exists: `kubectl -n renovate get secret renovate-secrets`
+  - Confirm token has repo access / permissions (GitHub org settings)
+
+If webhook-triggering is involved:
+
+- Confirm the route exists and is Accepted:
+  - `kubectl -n renovate get httproute`
+  - `kubectl get httproute -A | grep renovate`
+- Test a manual trigger (URL-encode the repo name):
+  - `curl -X POST "https://renovate-webhook.${SECRET_DOMAIN}/webhook/v1/schedule?job=webgrip-gitops&namespace=renovate&project=webgrip%2Fhomelab-cluster" -H "Authorization: Bearer <token>"`
+
+Where it's configured:
+
+- [kubernetes/apps/renovate](../../kubernetes/apps/renovate)
+
 ## Apps (baseline)
 
 Symptoms:
