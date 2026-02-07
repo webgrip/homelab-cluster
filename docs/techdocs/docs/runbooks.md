@@ -67,7 +67,7 @@ If you don't see any PRs coming in:
 
 - First check whether it’s actually executing:
   - The operator runs RenovateJobs hourly (to keep autodiscovery/project status fresh) and also triggers runs via webhook events.
-  - PR creation is additionally gated by Renovate's internal schedule in each job config (UTC off-hours windows in the `renovate-config-*` ConfigMaps).
+  - PR creation is additionally gated by Renovate scheduling rules in each job config (UTC off-hours windows in the `renovate-config-*` ConfigMaps). These are applied via `packageRules` so autodiscovery can still run hourly.
   - In Prometheus, query: `increase(renovate_operator_project_executions_total{renovate_namespace="renovate"}[24h])`
 - If executions are 0:
   - Check the operator logs for scheduling/admission errors.
