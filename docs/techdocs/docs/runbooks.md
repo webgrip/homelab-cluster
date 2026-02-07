@@ -66,7 +66,7 @@ Checks:
 If you don't see any PRs coming in:
 
 - First check whether it’s actually executing:
-  - The default schedules are not frequent (e.g. `webgrip-gitops` runs daily at 03:00).
+  - The RenovateJobs run on a cron schedule (currently hourly) and the operator also triggers runs via webhook events.
   - In Prometheus, query: `increase(renovate_operator_project_executions_total{renovate_namespace="renovate"}[24h])`
 - If executions are 0:
   - Check the operator logs for scheduling/admission errors.
@@ -88,6 +88,10 @@ If webhook-triggering is involved:
   - `kubectl get httproute -A | grep renovate`
 - Test a manual trigger (URL-encode the repo name):
   - `curl -X POST "https://renovate-webhook.${SECRET_DOMAIN}/webhook/v1/schedule?job=webgrip-gitops&namespace=renovate&project=webgrip%2Fhomelab-cluster" -H "Authorization: Bearer <token>"`
+
+Notes:
+
+- The webhook-trigger path assumes the repo already exists in the RenovateJob's discovered project list (`status.projects`). If this is a brand-new install (or a brand-new repo), wait for the next scheduled run of the RenovateJob to populate projects before relying on webhook-triggered runs.
 
 Where it's configured:
 
