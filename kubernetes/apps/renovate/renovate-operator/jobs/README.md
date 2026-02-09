@@ -27,6 +27,13 @@ This Secret is created/updated automatically in-cluster (do not commit it to git
 
 Created/rotated by: CronJob `renovate-github-app-token`
 
+### Bootstrap (run once, manually)
+
+The GitHub App token is rotated by the CronJob every 15 minutes.
+If you want the runtime Secret created immediately (e.g. right after first install), run a one-off Job from the CronJob:
+
+- `kubectl -n renovate create job --from=cronjob/renovate-github-app-token renovate-github-app-token-bootstrap-$(date +%s)`
+
 ### 3) Webhook auth (public endpoint)
 
 - **Secret name:** `renovate-webhook-auth`
