@@ -76,7 +76,7 @@ spec:
             - name: RUNTIME_SECRET_NAME
               value: renovate-runtime-token
             - name: RUNTIME_SECRET_KEY
-              value: RENOVATE_TOKEN
+              value: token
           command:
             - /bin/sh
             - -ceu
@@ -85,6 +85,7 @@ spec:
 
               kubectl -n renovate create secret generic "$RUNTIME_SECRET_NAME" \
                 --from-literal="$RUNTIME_SECRET_KEY=$token" \
+                --from-literal="RENOVATE_TOKEN=$token" \
                 --dry-run=client \
                 -o yaml \
                 | kubectl apply -f -

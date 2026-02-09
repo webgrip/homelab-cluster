@@ -23,7 +23,7 @@ This Secret is created/updated automatically in-cluster (do not commit it to git
 
 - **Secret name:** `renovate-runtime-token`
 - **Namespace:** `renovate`
-- **Key:** `RENOVATE_TOKEN` (the GitHub App installation token; expires hourly)
+- **Key:** `token` (the GitHub App installation token; expires hourly)
 
 Created/rotated by: CronJob `renovate-github-app-token`
 
@@ -45,7 +45,7 @@ Template: `webhook-auth.secret.template.yaml`
 
 ## Notes
 
-- Renovate executor Jobs read `RENOVATE_TOKEN` from `renovate-runtime-token`.
+- Renovate executor Jobs read the token from `renovate-runtime-token`.
 - The webhook bearer `token` is separate; it only protects the public webhook endpoint.
 - The in-cluster token minter uses `ghcr.io/mshekow/github-app-installation-token` pinned by digest (see the CronJob/Job manifests).
 
