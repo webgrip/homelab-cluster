@@ -54,7 +54,14 @@ Template: `webhook-auth.secret.template.yaml`
 
 - Renovate executor Jobs read the token from `renovate-runtime-token`.
 - The webhook bearer `token` is separate; it only protects the public webhook endpoint.
-- The in-cluster token minter uses `ghcr.io/mshekow/github-app-installation-token` pinned by digest (see the CronJob/Job manifests).
+- The in-cluster token minter uses `ghcr.io/mshekow/github-app-installation-token` pinned by digest (see the CronJob manifest).
+
+## Renovate manifests
+
+- RenovateJob: `webgrip-gitops.yaml`
+- Renovate config: `configmap-gitops.yaml`
+
+The RenovateJob runs one repository per executor Job. Autodiscovery is disabled in the config so a job created for `org/repo` doesn't scan the whole org.
 
 ## Enable Vulnerability Alerts feature (GitHub)
 
