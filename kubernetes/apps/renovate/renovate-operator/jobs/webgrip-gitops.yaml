@@ -6,8 +6,11 @@ metadata:
   name: webgrip-gitops
 spec:
   discoveryFilter: webgrip/*
-  schedule: 0 */6 * * *
-  parallelism: 1
+  # renovate-operator evaluates cron in its controller timezone (typically UTC).
+  # 09:00 Europe/Amsterdam is 08:00 UTC in winter and 07:00 UTC in summer (DST),
+  # so run at both times and let Renovate's own schedule+timezone gate actions.
+  schedule: 0 7,8 * * *
+  parallelism: 5
   image: docker.io/renovate/renovate:43.4.2-full@sha256:6dafbedb9e4816805affde589187c50af42ed4a4a550086e471d14be5333ba85
   secretRef: renovate-runtime-token
   webhook:

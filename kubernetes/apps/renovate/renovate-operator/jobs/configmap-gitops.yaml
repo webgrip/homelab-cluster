@@ -10,16 +10,42 @@ data:
       "extends": [
         "config:recommended",
         ":dependencyDashboard",
-        ":labels(dependencies)"
+        ":labels(dependencies)",
+        ":configMigration",
+
+        "docker:pinDigests",
+        "helpers:pinGitHubActionDigests",
+        ":pinDevDependencies",
+        ":maintainLockFilesWeekly",
+
+        "abandonments:recommended",
+        "security:minimumReleaseAgeNpm"
       ],
-      "dependencyDashboard": true,
-      "automerge": false,
 
       "platform": "github",
       "autodiscover": false,
-      "timezone": "UTC",
       "onboarding": true,
       "requireConfig": "optional",
+
+      "timezone": "Europe/Amsterdam",
+
+      "updateNotScheduled": false,
+
+      "prConcurrentLimit": 2,
+      "prHourlyLimit": 1,
+
+      "branchConcurrentLimit": 2,
+      "commitBodyTable": true,
+
+      "rebaseWhen": "conflicted",
+      "recreateWhen": "auto",
+
+      "minimumReleaseAge": "1 days",
+
+      "schedule": ["* 9 * * *"],
+
+      "dependencyDashboard": true,
+      "dependencyDashboardAutoclose": true,
 
       "vulnerabilityAlerts": {
         "enabled": true,
@@ -34,9 +60,6 @@ data:
           "maxRequestsPerSecond": 1
         }
       ],
-
-      "prConcurrentLimit": 2,
-      "prHourlyLimit": 1,
 
       "enabledManagers": [
         "flux",
@@ -78,11 +101,19 @@ data:
       "packageRules": [
         {
           "matchManagers": ["flux"],
-          "groupName": "Flux OCI/Helm updates"
+          "groupName": "Flux controllers & OCI artifacts",
+          "separateMinorPatch": true
+        },
+        {
+          "matchManagers": ["helm-values", "kustomize", "helmfile"],
+          "matchDatasources": ["docker"],
+          "groupName": "GitOps container images",
+          "pinDigests": true
         },
         {
           "matchManagers": ["github-actions"],
-          "groupName": "GitHub Actions"
+          "groupName": "GitHub Actions",
+          "automerge": false
         },
         {
           "matchManagers": ["pre-commit"],
@@ -90,16 +121,13 @@ data:
         },
         {
           "matchManagers": ["terraform", "terragrunt"],
-          "groupName": "Terraform"
-        },
-        {
-          "matchManagers": ["helm-values", "kustomize", "helmfile"],
-          "matchDatasources": ["docker"],
-          "groupName": "Container images (GitOps)"
+          "groupName": "Terraform",
+          "separateMinorPatch": true
         },
         {
           "matchManagers": ["npm"],
-          "groupName": "npm"
+          "groupName": "npm",
+          "rangeStrategy": "replace"
         },
         {
           "matchManagers": ["pip_requirements", "poetry", "pipenv"],
@@ -128,12 +156,30 @@ data:
         {
           "matchManagers": ["dockerfile", "docker-compose"],
           "matchDatasources": ["docker"],
-          "groupName": "app container images"
+          "groupName": "application container images",
+          "pinDigests": true
         },
         {
           "matchUpdateTypes": ["major"],
-          "addLabels": ["major"],
+          "labels": ["major"],
           "dependencyDashboardApproval": true
+        },
+        {
+          "matchUpdateTypes": ["patch"],
+          "matchDepTypes": ["dependencies"],
+          "automerge": true,
+          "schedule": ["at any time"]
+        },
+        {
+          "matchDepTypes": ["devDependencies"],
+          "groupName": "dev-only deps",
+          "automerge": true,
+          "automergeType": "pr"
+        },
+        {
+          "matchPackagePatterns": ["^@types/"],
+          "groupName": "typescript types",
+          "automerge": true
         }
       ]
     }
