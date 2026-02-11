@@ -56,6 +56,22 @@ Template: `webhook-auth.secret.template.yaml`
 - The webhook bearer `token` is separate; it only protects the public webhook endpoint.
 - The in-cluster token minter uses `ghcr.io/mshekow/github-app-installation-token` pinned by digest (see the CronJob manifest).
 
+## Make Dependency Dashboard actions immediate (GitHub webhook)
+
+Renovate only processes Dependency Dashboard checkbox changes during a run.
+To avoid waiting for the next cron run, configure GitHub to call the operator webhook endpoint.
+
+### GitHub webhook setup
+
+Create a GitHub webhook (repo-level or org-level) with:
+
+- **Payload URL:** `https://renovate-webhook.${SECRET_DOMAIN}/webhook/v1/github?namespace=renovate&job=webgrip-gitops`
+- **Content type:** `application/json`
+- **Secret:** the same bearer token stored in Secret `renovate-webhook-auth` key `token`
+- **Events:** enable **Issues** (Dependency Dashboard interactions) and **Pull requests** (PR checkbox interactions)
+
+This causes Renovate runs to be triggered immediately when you tick boxes or use Renovate checkboxes in PRs.
+
 ## Renovate manifests
 
 - RenovateJob: `webgrip-gitops.yaml`
