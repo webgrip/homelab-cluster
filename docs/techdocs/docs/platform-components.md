@@ -17,7 +17,7 @@ This page documents the platform building blocks that applications rely on: GitO
 | Networking & ingress | `kubernetes/apps/network` | Envoy internal/external Gateway API stacks, `k8s-gateway`, Cloudflare DNS + Tunnel. |
 | PKI & security | `kubernetes/apps/cert-manager`, `kubernetes/components/sops` | ACME HTTP-01/DNS-01 issuers, wildcard certs, encrypted secret distribution. |
 | CI infrastructure | `kubernetes/apps/arc-systems` | actions-runner-controller with gha-runner-scale-set for GitHub burst compute. |
-| Applications | `kubernetes/apps/default`, `kubernetes/apps/freshrss`, `kubernetes/apps/invoiceninja` | Echo sample service, FreshRSS backed by a namespace-local CNPG PostgreSQL cluster, and Invoice Ninja 5.12.39 backed by an app-template MariaDB 11.8.5 StatefulSet on Longhorn.
+| Applications | `kubernetes/apps/default`, `kubernetes/apps/freshrss`, `kubernetes/apps/invoiceninja` | Echo sample service, FreshRSS backed by a namespace-local CNPG PostgreSQL cluster, and Invoice Ninja 5.12.39 backed by an app-template MariaDB 11.8.5 StatefulSet on Longhorn. |
 
 Use this table when linking Backstage components (catalog entries live under `catalog/components/*.yaml`).
 
@@ -58,13 +58,13 @@ CloudNativePG details:
 - Operator is installed cluster-wide in `cnpg-system` via a HelmRelease that exposes Prometheus metrics with a PodMonitor and publishes a Grafana dashboard ConfigMap labelled `grafana_dashboard=1` so your existing Grafana sidecar/operator can auto-import it.
 - When you're ready to enable CNPG backups, include the component at `kubernetes/components/cnpg-backup/` in the namespace Kustomization.
 - This repo also supports:
-	- Automated restore drills (`kubernetes/components/cnpg-restore-test/`) to prove backups can actually be restored.
-	- An always-on warm standby (`kubernetes/components/cnpg-disaster-recovery/`) for faster recovery with continuous WAL replay.
+  - Automated restore drills (`kubernetes/components/cnpg-restore-test/`) to prove backups can actually be restored.
+  - An always-on warm standby (`kubernetes/components/cnpg-disaster-recovery/`) for faster recovery with continuous WAL replay.
 
 ## Security + Secrets
 
 - Age keys live under `bootstrap/` and are distributed via Taskfile targets.
-- `kubernetes/components/sops/` renders secret values into namespaces. Renovate is configured to ignore `**/*.sops.*` via `.renovaterc.json5`.
+- `kubernetes/components/sops/` renders secret values into namespaces. Renovate is configured to ignore `**/*.sops.*` via `.renovaterc.json5` (see [docs/techdocs/docs/renovate.md](renovate.md)).
 - FreshRSS pulls database credentials from SOPS secrets in-namespace and connects to the CNPG `*-db-rw` service.
 
 ## Platform options (what you can choose)
@@ -83,4 +83,4 @@ See [docs/techdocs/docs/adding-applications.md](adding-applications.md) for the 
 - `kubernetes/apps/arc-systems/actions-runner-controller/` is the control plane for GitHub Actions scale sets. It uses the shared SOPS secret for the GitHub App.
 - `kubernetes/apps/arc-systems/gha-runner-scale-set/` provisions Docker-in-Docker runners that register against the App URL stored in `cluster-secrets.sops.yaml`.
 - `talos/patches/global/machine-kernel.yaml` keeps the `binfmt_misc` kernel module loaded on every Talos node so QEMU binfmt handlers can be registered inside runner jobs for multi-arch Docker builds.
-- Renovate + GitHub Actions automation resides under `.github/workflows/` and is referenced from `catalog/components/flux-gitops.yaml` so Backstage shows build status next to the manifests.
+- Renovate + GitHub Actions automation resides under `.github/workflows/` and is referenced from `catalog/components/flux-gitops.yaml` so Backstage shows build status next to the manifests (see [docs/techdocs/docs/renovate.md](renovate.md)).

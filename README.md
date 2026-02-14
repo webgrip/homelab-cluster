@@ -14,7 +14,7 @@ _... managed with Flux, Renovate, GitHub Actions, and Talos_
 [![Talos](https://img.shields.io/badge/Talos-v1.11.5-1E90FF?style=for-the-badge&logo=talos&logoColor=white)](https://talos.dev)&nbsp;&nbsp;
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-v1.34.2-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)](https://kubernetes.io)&nbsp;&nbsp;
 [![Flux](https://img.shields.io/badge/Flux-GitOps-orange?style=for-the-badge&logo=flux&logoColor=white)](https://fluxcd.io)&nbsp;&nbsp;
-[![Renovate](https://img.shields.io/github/actions/workflow/status/webgrip/homelab-cluster/schedule-renovate.yaml?branch=main&label=&logo=renovatebot&style=for-the-badge&color=1f8ceb)](https://github.com/renovatebot/renovate)
+[![Renovate](https://img.shields.io/badge/Renovate-in%20cluster-1f8ceb?style=for-the-badge&logo=renovatebot)](docs/techdocs/docs/renovate.md)
 
 </div>
 
