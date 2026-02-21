@@ -83,3 +83,9 @@ Apply changes and confirm OPNsense also created corresponding WAN firewall allow
 - Test from outside the LAN (phone hotspot) to avoid NAT reflection confusion.
 - Confirm the Service has the expected external IP:
   - `kubectl -n zomboid get svc`
+
+## Storage notes
+
+Persisting `/home/steam/Zomboid` is required for saves/config.
+
+Do not mount a PVC over `/home/steam/pz-dedicated` itself: this image ships scripts (including `start-server.sh`) under that path and a full mount will mask them, causing startup failures. If you want to cache workshop downloads, persist only `/home/steam/pz-dedicated/steamapps/workshop`.
