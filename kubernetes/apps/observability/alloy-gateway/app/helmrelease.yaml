@@ -67,12 +67,18 @@ spec:
 
           otelcol.processor.batch "metrics" {
             output {
-              metrics = [otelcol.exporter.prometheusremotewrite.prometheus.input]
+              metrics = [otelcol.exporter.prometheus.prometheus.input]
             }
           }
 
-          otelcol.exporter.prometheusremotewrite "prometheus" {
-            endpoint = "http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090/api/v1/write"
+          otelcol.exporter.prometheus "prometheus" {
+            forward_to = [prometheus.remote_write.prometheus.receiver]
+          }
+
+          prometheus.remote_write "prometheus" {
+            endpoint {
+              url = "http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090/api/v1/write"
+            }
           }
 
           otelcol.processor.attributes "loki_labels" {
