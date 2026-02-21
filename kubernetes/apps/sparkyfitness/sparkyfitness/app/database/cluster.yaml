@@ -14,6 +14,7 @@ spec:
     storageClass: longhorn
   postgresql:
     parameters:
+      shared_preload_libraries: "pg_stat_statements"
       pg_stat_statements.max: "10000"
       pg_stat_statements.track: "all"
   plugins:
@@ -37,3 +38,32 @@ spec:
       owner: sparky
       secret:
         name: sparkyfitness-db-secret
+      postInitSQL:
+        # Create the extension and transfer ownership so the app can manage grants.
+        - "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
+        - "ALTER EXTENSION pg_stat_statements OWNER TO sparky;"
+        # Ensure the app role can execute any overloads of pg_stat_statements_reset.
+        - |
+          DO $$
+          DECLARE
+            fn RECORD;
+          BEGIN
+            FOR fn IN
+              SELECT
+                n.nspname AS schema_name,
+                p.proname AS function_name,
+                pg_get_function_identity_arguments(p.oid) AS args
+              FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE p.proname = 'pg_stat_statements_reset'
+            LOOP
+              EXECUTE format(
+                'GRANT EXECUTE ON FUNCTION %I.%I(%s) TO %I WITH GRANT OPTION',
+                fn.schema_name,
+                fn.function_name,
+                fn.args,
+                'sparky'
+              );
+            END LOOP;
+          END
+          $$;

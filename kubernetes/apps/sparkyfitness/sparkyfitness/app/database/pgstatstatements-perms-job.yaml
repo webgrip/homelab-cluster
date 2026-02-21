@@ -1,0 +1,64 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sparkyfitness-db-pgstatstatements-perms
+  namespace: sparkyfitness
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: psql
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PGHOST
+              value: sparkyfitness-db-rw
+            - name: PGPORT
+              value: "5432"
+            - name: PGDATABASE
+              value: sparkyfitness_db
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: sparkyfitness-db-superuser
+                  key: username
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sparkyfitness-db-superuser
+                  key: password
+          command:
+            - /bin/sh
+            - -ceu
+          args:
+            - |
+              psql -v ON_ERROR_STOP=1 <<'SQL'
+              CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+              ALTER EXTENSION pg_stat_statements OWNER TO sparky;
+              DO $$
+              DECLARE
+                fn RECORD;
+              BEGIN
+                FOR fn IN
+                  SELECT
+                    n.nspname AS schema_name,
+                    p.proname AS function_name,
+                    pg_get_function_identity_arguments(p.oid) AS args
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE p.proname = 'pg_stat_statements_reset'
+                LOOP
+                  EXECUTE format(
+                    'GRANT EXECUTE ON FUNCTION %I.%I(%s) TO %I WITH GRANT OPTION',
+                    fn.schema_name,
+                    fn.function_name,
+                    fn.args,
+                    'sparky'
+                  );
+                END LOOP;
+              END
+              $$;
+              SQL
