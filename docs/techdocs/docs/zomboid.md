@@ -1,4 +1,3 @@
-````markdown
 # Project Zomboid Dedicated Server
 
 This cluster runs the Project Zomboid dedicated server as a Flux-managed HelmRelease using the `bjw-s/app-template` chart.
@@ -84,5 +83,3 @@ Apply changes and confirm OPNsense also created corresponding WAN firewall allow
 - Test from outside the LAN (phone hotspot) to avoid NAT reflection confusion.
 - Confirm the Service has the expected external IP:
   - `kubectl -n zomboid get svc`
-
-````
