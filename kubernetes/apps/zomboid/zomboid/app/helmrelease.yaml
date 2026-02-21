@@ -1,0 +1,100 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: zomboid
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: zomboid
+  interval: 1h
+  values:
+    controllers:
+      zomboid:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        strategy: Recreate
+        pod:
+          terminationGracePeriodSeconds: 120
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            runAsNonRoot: false
+            fsGroup: 1000
+            fsGroupChangePolicy: OnRootMismatch
+        containers:
+          app:
+            image:
+              repository: docker.io/danixu86/project-zomboid-dedicated-server
+              tag: latest-unstable
+            env:
+              SERVERNAME: zomboid
+              DISPLAYNAME: "Zomboid"
+              MIN_MEMORY: 2048m
+              MAX_MEMORY: 4096m
+            envFrom:
+              - secretRef:
+                  name: zomboid-secrets
+            ports:
+              - name: game
+                containerPort: &gamePort 16261
+                protocol: UDP
+              - name: game2
+                containerPort: &gamePort2 16262
+                protocol: UDP
+              - name: steam1
+                containerPort: &steamPort1 8766
+                protocol: UDP
+              - name: steam2
+                containerPort: &steamPort2 8767
+                protocol: UDP
+              - name: rcon
+                containerPort: &rconPort 27015
+                protocol: TCP
+            resources:
+              requests:
+                cpu: 500m
+                memory: 2Gi
+              limits:
+                memory: 8Gi
+    service:
+      app:
+        type: LoadBalancer
+        annotations:
+          lbipam.cilium.io/ips: "10.0.0.29"
+          coredns.io/hostname: "zomboid.${SECRET_DOMAIN}"
+        externalTrafficPolicy: Cluster
+        ports:
+          game:
+            port: *gamePort
+            targetPort: game
+            protocol: UDP
+          game2:
+            port: *gamePort2
+            targetPort: game2
+            protocol: UDP
+          steam1:
+            port: *steamPort1
+            targetPort: steam1
+            protocol: UDP
+          steam2:
+            port: *steamPort2
+            targetPort: steam2
+            protocol: UDP
+          rcon:
+            port: *rconPort
+            targetPort: rcon
+            protocol: TCP
+    persistence:
+      data:
+        existingClaim: zomboid
+        advancedMounts:
+          zomboid:
+            app:
+              - path: /home/steam/Zomboid
+                subPath: Zomboid
+                readOnly: false
+              - path: /home/steam/pz-dedicated
+                subPath: pz-dedicated
+                readOnly: false
