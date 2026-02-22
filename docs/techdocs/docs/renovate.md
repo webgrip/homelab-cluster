@@ -202,7 +202,8 @@ Alerts include:
 
 Each alert annotation points to the Renovate section in the runbooks page:
 
-- [docs/techdocs/docs/runbooks.md](runbooks.md)
+- Runbooks index: [docs/techdocs/docs/runbooks.md](runbooks.md)
+- Renovate runbook: [docs/techdocs/docs/runbooks/renovate.md](runbooks/renovate.md)
 
 ## Secrets and credentials (SOPS policy)
 
