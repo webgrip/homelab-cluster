@@ -1,0 +1,110 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zomboid-config
+data:
+  # NOTE:
+  # - This ConfigMap is for non-sensitive configuration.
+  # - Keep credentials/passwords in the SOPS Secret (zomboid-secrets).
+  # - The HelmRelease loads envFrom in order: ConfigMap first, then Secret,
+  #   so the Secret values override anything listed here.
+
+  # --- Sensitive keys (placeholders; overridden by Secret) ---
+  ADMINUSERNAME: "admin"
+  ADMINPASSWORD: ""
+  PASSWORD: ""
+  RCONPASSWORD: ""
+
+  # --- Server visibility/name ---
+  PUBLIC: "true"
+  DISPLAYNAME: "Zomboid"
+  SERVERNAME: "zomboid"
+
+  # --- Storage ---
+  # Recommended to keep this on the PVC so world state survives restarts.
+  CACHEDIR: "/home/steam/Zomboid"
+
+  # --- Debug/updates ---
+  DEBUG: "false"
+  FORCEUPDATE: "false"
+  FORCESTEAMCLIENTSOUPDATE: "false"
+
+  # --- Networking ---
+  # Leave empty to listen on all interfaces.
+  IP: ""
+  PORT: "16261"
+  STEAMPORT1: "8766"
+  STEAMPORT2: "8767"
+  STEAMVAC: "true"
+  NOSTEAM: "false"
+
+  # --- JVM memory ---
+  MIN_MEMORY: "2048m"
+  MAX_MEMORY: "4096m"
+  # Fallback used if MIN_MEMORY/MAX_MEMORY are not set.
+  MEMORY: ""
+
+  # --- Presets/resets ---
+  # Allowed SERVERPRESET values (per image docs):
+  # - Apocalypse
+  # - Beginner
+  # - Builder
+  # - FirstWeek
+  # - SixMonthsLater
+  # - Survival
+  # - Survivor
+  SERVERPRESET: "Builder"
+  SERVERPRESETREPLACE: "false"
+  SOFTRESET: "false"
+
+  # --- Mods/workshop ---
+  # Allowed values: workshop, steam, mods (comma-separated)
+  MODFOLDERS: "workshop,steam,mods"
+
+  # Mods install on second server start; maps are added on third start.
+  # IMPORTANT: Leaving WORKSHOP_IDS empty can clear WorkshopItems in the INI.
+  # IMPORTANT: Leaving MOD_IDS empty can clear Mods in the INI.
+  # If you're not actively managing mod IDs here, keep SELF_MANAGED_MODS=true.
+  # When you are ready to manage mods with env vars, set SELF_MANAGED_MODS=false
+  # and populate WORKSHOP_IDS + MOD_IDS.
+  # NOTE (Build 42): the image docs note mod IDs may need to be escaped in the INI;
+  # if you see mod IDs written as \\mod1;\\mod2 in the ini, that's expected.
+  SELF_MANAGED_MODS: "true"
+  WORKSHOP_IDS: ""
+  MOD_IDS: ""
+
+  # Recommended mod pack (names only; add the corresponding Workshop IDs + Mod IDs):
+  #
+  # QoL / "vanilla+" (usually safe starters)
+  # - Mod Options
+  # - Common Sense
+  # - Better Sorting
+  # - Fuel Side Indicator
+  # - Minimal Display Bars
+  #
+  # Vehicles (popular, but always verify B42 compatibility)
+  # - Filibuster Rhymes' Used Cars!
+  # - Autotsar Trailers
+  # - Autotsar Tuning Atelier
+  #
+  # Character / progression
+  # - More Traits
+  #
+  # Clothing / immersion
+  # - AuthenticZ
+  #
+  # Nice-to-haves (optional)
+  # - Weapon Condition Indicator
+  # - Rain Wash
+  # - Manage Containers
+  #
+  # Adding these safely:
+  # 1) Confirm each mod supports Build 42 (unstable).
+  # 2) Populate WORKSHOP_IDS (semicolon-separated workshop item IDs).
+  # 3) Populate MOD_IDS (semicolon-separated mod IDs).
+  # 4) Flip SELF_MANAGED_MODS to false.
+  # NOTE: Mod compatibility varies a lot on Build 42/unstable.
+
+  # --- Locale ---
+  LANG: "en_US.UTF-8"

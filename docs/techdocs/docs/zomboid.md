@@ -44,11 +44,22 @@ The workload consumes a Secret named `zomboid-secrets` in the `zomboid` namespac
 - `PASSWORD` (server join password)
 - `RCONPASSWORD`
 
+## Config
+
+Non-sensitive environment variables are provided via the `zomboid-config` ConfigMap.
+
+- Applied config: [kubernetes/apps/zomboid/zomboid/app/configmap.yaml](kubernetes/apps/zomboid/zomboid/app/configmap.yaml)
+- Template (not applied): [kubernetes/apps/zomboid/zomboid/app/configmap.template.yaml](kubernetes/apps/zomboid/zomboid/app/configmap.template.yaml)
+
+Keep passwords and credentials in the Secret only (not the ConfigMap).
+
+Note: `zomboid-config` contains placeholder keys for sensitive variables so the full set of supported env vars is visible in one place, but the real values should still come from `zomboid-secrets` (the Secret is loaded after the ConfigMap and overrides it).
+
 ### Template
 
 Use the template file below and encrypt it with SOPS before applying it:
 
-- [kubernetes/apps/zomboid/zomboid/app/secret.template.yaml](../../kubernetes/apps/zomboid/zomboid/app/secret.template.yaml)
+- [kubernetes/apps/zomboid/zomboid/app/secret.template.yaml](kubernetes/apps/zomboid/zomboid/app/secret.template.yaml)
 
 Suggested workflow:
 
