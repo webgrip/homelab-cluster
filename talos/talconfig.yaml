@@ -82,6 +82,25 @@ nodes:
         mtu: 1500
         vip:
           ip: "10.0.0.25"
+  - hostname: "fringe-workstation"
+    ipAddress: "10.0.0.23"
+    installDisk: "/dev/sda"
+    machineSpec:
+      secureboot: false
+    talosImageURL: factory.talos.dev/installer/1da3394e6229e507d4e3d166b718cacff86435a61c4765feedd66b43ac237558
+    controlPlane: false
+    patches:
+      - "@./patches/worker/fringe-dedicated.yaml"
+    networkInterfaces:
+      - deviceSelector:
+          hardwareAddr: "f0:92:1c:e0:ec:3b"
+        dhcp: false
+        addresses:
+          - "10.0.0.23/24"
+        routes:
+          - network: "0.0.0.0/0"
+            gateway: "10.0.0.1"
+        mtu: 1500
 
 # Global patches
 patches:
@@ -96,3 +115,4 @@ patches:
 controlPlane:
   patches:
     - "@./patches/controller/cluster.yaml"
+    - "@./patches/controller/nodegroup-soyo.yaml"
