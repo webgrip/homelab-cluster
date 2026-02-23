@@ -89,11 +89,37 @@ Create port-forwards on WAN to the in-cluster LoadBalancer IP `10.0.0.29`:
 
 Apply changes and confirm OPNsense also created corresponding WAN firewall allow rules.
 
+### OPNsense outbound NAT (Static Port) — common UDP fix
+
+If clients outside your LAN get **"The server failed to respond"** even though the WAN port-forwards are correct, you may need to preserve source ports for UDP replies.
+
+In OPNsense:
+
+1. Go to **Firewall → NAT → Outbound**.
+2. Switch mode to **Hybrid** (keeps automatic rules + lets you add overrides).
+3. Add an outbound NAT rule:
+  - Interface: `WAN`
+  - Protocol: `UDP`
+  - Source: `10.0.0.29/32`
+  - Destination: `any`
+  - Translation / target: `Interface address`
+  - **Static-port: enabled**
+4. Apply, then re-test from a mobile network.
+
+This is a common requirement for UDP-heavy game/Steam traffic; without it, return traffic can be source-port rewritten in ways some clients/servers don’t tolerate.
+
 ### Testing
 
 - Test from outside the LAN (phone hotspot) to avoid NAT reflection confusion.
 - Confirm the Service has the expected external IP:
   - `kubectl -n zomboid get svc`
+
+If it still fails, do packet captures on OPNsense:
+
+- **WAN capture**: Protocol `udp`, Port `16261` while attempting a join. You should see inbound packets to your WAN IP.
+- **LAN/VLAN capture** (the interface that can see `10.0.0.0/24`): Host `10.0.0.29`, Protocol `udp`, Port `16261`. You should see the forwarded packets.
+
+If packets hit WAN but never appear on the LAN capture, the port-forward/rules aren’t matching. If they appear on LAN but you never see replies on WAN, outbound NAT/static-port or routing is the next suspect.
 
 ## Storage notes
 
