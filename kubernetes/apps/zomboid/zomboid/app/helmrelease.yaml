@@ -79,6 +79,44 @@ spec:
                 memory: 2Gi
               limits:
                 memory: 8Gi
+          a2sExporter:
+            image:
+              repository: docker.io/armsnyder/a2s-exporter
+              tag: v0.4.0
+            args:
+              - --address
+              - 127.0.0.1:8766
+              - --port
+              - "9841"
+              - --exclude-player-metrics
+              - "true"
+            ports:
+              - name: metrics
+                containerPort: 9841
+                protocol: TCP
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /metrics
+                    port: 9841
+                  initialDelaySeconds: 5
+                  periodSeconds: 30
+                  timeoutSeconds: 2
+                  failureThreshold: 3
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /metrics
+                    port: 9841
+                  initialDelaySeconds: 2
+                  periodSeconds: 10
+                  timeoutSeconds: 2
+                  failureThreshold: 3
     service:
       app:
         type: LoadBalancer
@@ -231,6 +269,20 @@ spec:
             port: *rconPort
             targetPort: rcon
             protocol: TCP
+      metrics:
+        type: ClusterIP
+        ports:
+          metrics:
+            port: 9841
+            targetPort: metrics
+            protocol: TCP
+
+    serviceMonitor:
+      metrics:
+        service:
+          identifier: metrics
+        endpoints:
+          - port: metrics
     persistence:
       server-config:
         type: configMap
