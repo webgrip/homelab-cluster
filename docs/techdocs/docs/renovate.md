@@ -106,7 +106,7 @@ Important behaviors in the current global config:
 - Grouping is defined via `packageRules` (e.g. “GitOps container images”, “Flux controllers & OCI artifacts”, “GitHub Actions”).
 - Major updates require Dependency Dashboard approval (`dependencyDashboardApproval: true`).
 - It is resilient to flaky registries: `abortOnExternalHostError: false`.
-- Schedule defaults to `at any time` and `minimumReleaseAge` defaults to `1 days`.
+- Schedule defaults to `at any time` and no `minimumReleaseAge` delay is configured.
 - `autodiscover: false` is set in Renovate config. Discovery is handled by the RenovateJob/operator layer, and each execution should only handle the intended repository.
 
 Ignore paths are defined globally too (including `bootstrap/**` and `talos/**`).
@@ -120,7 +120,7 @@ Key behaviors in the current repo config:
 - Dependency Dashboard enabled and the title is customized.
 - Schedule is restricted: `schedule: ["every weekend"]`.
 - Semantic commit conventions, commit message formatting, and update-type labeling.
-- A GitHub Actions packageRule enables automerge for minor/patch/digest updates (with `minimumReleaseAge: "3 days"`).
+- A GitHub Actions packageRule enables automerge for minor/patch/digest updates.
 - Two custom regex managers are defined to process `# renovate:` annotations.
 
 Annotated dependency pins are the mechanism used for values that aren’t otherwise discoverable by a native manager. Example:
