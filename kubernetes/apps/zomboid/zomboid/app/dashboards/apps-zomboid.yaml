@@ -41,23 +41,38 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "max(a2s_server_up{namespace=\"zomboid\", service=\"zomboid-metrics\"})",
+              "expr": "max(a2s_server_up{namespace=\\\"zomboid\\\"})",
               "legendFormat": "up"
             }
           ],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
-          "fieldConfig": {"defaults": {"decimals": 0, "mappings": [{"options": {"0": {"text": "down"}, "1": {"text": "up"}}, "type": "value"}]}, "overrides": []}
+          "options": {
+            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+            "orientation": "auto",
+            "textMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {"0": {"text": "down"}, "1": {"text": "up"}}
+                }
+              ]
+            },
+            "overrides": []
+          }
         },
         {
           "id": 2,
           "type": "stat",
-          "title": "Players",
+          "title": "Players (A2S)",
           "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "max(a2s_server_players{namespace=\"zomboid\", service=\"zomboid-metrics\"})",
+              "expr": "max(a2s_server_players{namespace=\\\"zomboid\\\"})",
               "legendFormat": "players"
             }
           ],
@@ -67,13 +82,13 @@ data:
         {
           "id": 3,
           "type": "stat",
-          "title": "Max players",
+          "title": "Max players (A2S)",
           "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "max(a2s_server_max_players{namespace=\"zomboid\", service=\"zomboid-metrics\"})",
+              "expr": "max(a2s_server_max_players{namespace=\\\"zomboid\\\"})",
               "legendFormat": "max"
             }
           ],
@@ -89,7 +104,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "max by (map) (a2s_server_info{namespace=\"zomboid\", service=\"zomboid-metrics\"})",
+              "expr": "max by (map) (a2s_server_info{namespace=\\\"zomboid\\\"})",
               "legendFormat": "{{map}}"
             }
           ],
@@ -98,30 +113,95 @@ data:
         },
         {
           "id": 5,
-          "type": "timeseries",
-          "title": "Players over time",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "type": "stat",
+          "title": "CPU throttling % (5m)",
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "max(a2s_server_players{namespace=\"zomboid\", service=\"zomboid-metrics\"})",
-              "legendFormat": "players"
+              "expr": "100 * sum(rate(container_cpu_cfs_throttled_periods_total{namespace=\\\"zomboid\\\", pod=~\\\"zomboid-.*\\\", container=\\\"app\\\"}[5m])) / clamp_min(sum(rate(container_cpu_cfs_periods_total{namespace=\\\"zomboid\\\", pod=~\\\"zomboid-.*\\\", container=\\\"app\\\"}[5m])), 1)",
+              "legendFormat": "throttle"
             }
           ],
-          "fieldConfig": {"defaults": {"unit": "none", "decimals": 0}, "overrides": []},
-          "options": {"legend": {"showLegend": true}}
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 1}, "overrides": []
+          }
         },
         {
           "id": 6,
-          "type": "timeseries",
-          "title": "Pod CPU (cores)",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "type": "stat",
+          "title": "Restarts (30m)",
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"zomboid\", pod=~\"zomboid-.*\", container=\"app\"}[5m]))",
+              "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\\\"zomboid\\\"}[30m]))",
+              "legendFormat": "restarts"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 7,
+          "type": "stat",
+          "title": "Memory used % (current)",
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "100 * sum(container_memory_working_set_bytes{namespace=\\\"zomboid\\\", pod=~\\\"zomboid-.*\\\", container=\\\"app\\\"}) / clamp_min(sum(kube_pod_container_resource_limits{namespace=\\\"zomboid\\\", pod=~\\\"zomboid-.*\\\", container=\\\"app\\\", resource=\\\"memory\\\", unit=\\\"byte\\\"}), 1)",
+              "legendFormat": "mem%"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 1}, "overrides": []}
+        },
+        {
+          "id": 8,
+          "type": "stat",
+          "title": "PVC used % (zomboid)",
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "100 * max(kubelet_volume_stats_used_bytes{namespace=\\\"zomboid\\\", persistentvolumeclaim=~\\\"zomboid.*\\\"}) / clamp_min(max(kubelet_volume_stats_capacity_bytes{namespace=\\\"zomboid\\\", persistentvolumeclaim=~\\\"zomboid.*\\\"}), 1)",
+              "legendFormat": "pvc%"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 1}, "overrides": []}
+        },
+        {
+          "id": 9,
+          "type": "timeseries",
+          "title": "Players over time",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max(a2s_server_players{namespace=\\\"zomboid\\\"})",
+              "legendFormat": "players"
+            }
+          ],
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []},
+          "options": {"legend": {"showLegend": true}}
+        },
+        {
+          "id": 10,
+          "type": "timeseries",
+          "title": "Pod CPU (cores)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\\\"zomboid\\\", pod=~\\\"zomboid-.*\\\", container=\\\"app\\\"}[5m]))",
               "legendFormat": "cpu"
             }
           ],
@@ -129,15 +209,15 @@ data:
           "options": {"legend": {"showLegend": true}}
         },
         {
-          "id": 7,
+          "id": 11,
           "type": "timeseries",
           "title": "Pod memory (bytes)",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(container_memory_working_set_bytes{namespace=\"zomboid\", pod=~\"zomboid-.*\", container=\"app\"})",
+              "expr": "sum(container_memory_working_set_bytes{namespace=\\\"zomboid\\\", pod=~\\\"zomboid-.*\\\", container=\\\"app\\\"})",
               "legendFormat": "mem"
             }
           ],
@@ -145,36 +225,95 @@ data:
           "options": {"legend": {"showLegend": true}}
         },
         {
-          "id": 8,
+          "id": 12,
           "type": "timeseries",
-          "title": "Pod network (bytes/s)",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+          "title": "CPU throttling % (over time)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(container_network_receive_bytes_total{namespace=\"zomboid\", pod=~\"zomboid-.*\"}[5m]))",
-              "legendFormat": "rx"
-            },
-            {
-              "refId": "B",
-              "expr": "sum(rate(container_network_transmit_bytes_total{namespace=\"zomboid\", pod=~\"zomboid-.*\"}[5m]))",
-              "legendFormat": "tx"
+              "expr": "100 * sum(rate(container_cpu_cfs_throttled_periods_total{namespace=\\\"zomboid\\\", pod=~\\\"zomboid-.*\\\", container=\\\"app\\\"}[5m])) / clamp_min(sum(rate(container_cpu_cfs_periods_total{namespace=\\\"zomboid\\\", pod=~\\\"zomboid-.*\\\", container=\\\"app\\\"}[5m])), 1)",
+              "legendFormat": "throttle%"
             }
           ],
-          "fieldConfig": {"defaults": {"unit": "Bps"}, "overrides": []},
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 1}, "overrides": []},
           "options": {"legend": {"showLegend": true}}
         },
         {
-          "id": 9,
-          "type": "logs",
-          "title": "Zomboid logs",
-          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 20},
+          "id": 13,
+          "type": "timeseries",
+          "title": "PVC usage % (zomboid)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "100 * max(kubelet_volume_stats_used_bytes{namespace=\\\"zomboid\\\", persistentvolumeclaim=~\\\"zomboid.*\\\"}) / clamp_min(max(kubelet_volume_stats_capacity_bytes{namespace=\\\"zomboid\\\", persistentvolumeclaim=~\\\"zomboid.*\\\"}), 1)",
+              "legendFormat": "pvc%"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 1}, "overrides": []},
+          "options": {"legend": {"showLegend": true}}
+        },
+        {
+          "id": 14,
+          "type": "timeseries",
+          "title": "Metrics scrape p95 (s)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(scrape_duration_seconds_bucket{namespace=\\\"zomboid\\\"}[5m])))",
+              "legendFormat": "p95"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s", "decimals": 3}, "overrides": []},
+          "options": {"legend": {"showLegend": true}}
+        },
+        {
+          "id": 15,
+          "type": "timeseries",
+          "title": "Joins / disconnects (logs, 5m)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32},
           "datasource": {"type": "loki", "uid": "loki"},
           "targets": [
             {
               "refId": "A",
-              "expr": "{namespace=\"zomboid\", pod=~\"zomboid-.*\"}"
+              "expr": "sum(count_over_time({namespace=\\\"zomboid\\\", pod=~\\\"zomboid-.*\\\"} |~ \\\"fully-connected\\\" [5m]))"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(count_over_time({namespace=\\\"zomboid\\\", pod=~\\\"zomboid-.*\\\"} |~ \\\"\\\\[disconnected\\\\]\\\" [5m]))"
+            }
+          ],
+          "options": {"legend": {"showLegend": true}}
+        },
+        {
+          "id": 16,
+          "type": "timeseries",
+          "title": "Errors/exceptions (logs, 5m)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32},
+          "datasource": {"type": "loki", "uid": "loki"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(count_over_time({namespace=\\\"zomboid\\\", pod=~\\\"zomboid-.*\\\"} |~ \\\"(?i)(error|exception)\\\" [5m]))"
+            }
+          ],
+          "options": {"legend": {"showLegend": true}}
+        },
+        {
+          "id": 17,
+          "type": "logs",
+          "title": "Zomboid logs",
+          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 40},
+          "datasource": {"type": "loki", "uid": "loki"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "{namespace=\\\"zomboid\\\", pod=~\\\"zomboid-.*\\\"}"
             }
           ],
           "options": {
