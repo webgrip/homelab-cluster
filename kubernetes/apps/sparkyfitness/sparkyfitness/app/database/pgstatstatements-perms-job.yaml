@@ -52,6 +52,13 @@ spec:
                   WHERE p.proname = 'pg_stat_statements_reset'
                 LOOP
                   EXECUTE format(
+                    'ALTER FUNCTION %I.%I(%s) OWNER TO %I',
+                    fn.schema_name,
+                    fn.function_name,
+                    fn.args,
+                    'sparky'
+                  );
+                  EXECUTE format(
                     'GRANT EXECUTE ON FUNCTION %I.%I(%s) TO %I WITH GRANT OPTION',
                     fn.schema_name,
                     fn.function_name,

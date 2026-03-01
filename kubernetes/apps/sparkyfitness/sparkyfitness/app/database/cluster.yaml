@@ -6,6 +6,7 @@ metadata:
   namespace: sparkyfitness
 spec:
   instances: 1
+  enableSuperuserAccess: true
   inheritedMetadata:
     annotations:
       reloader.stakater.com/auto: "true"
@@ -43,7 +44,7 @@ spec:
         # Create the extension and transfer ownership so the app can manage grants.
         - "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
         - "ALTER EXTENSION pg_stat_statements OWNER TO sparky;"
-        # Ensure the app role can execute any overloads of pg_stat_statements_reset.
+        # Ensure the app role can manage any overloads of pg_stat_statements_reset.
         - |
           DO $$
           DECLARE
@@ -58,6 +59,13 @@ spec:
               JOIN pg_namespace n ON n.oid = p.pronamespace
               WHERE p.proname = 'pg_stat_statements_reset'
             LOOP
+              EXECUTE format(
+                'ALTER FUNCTION %I.%I(%s) OWNER TO %I',
+                fn.schema_name,
+                fn.function_name,
+                fn.args,
+                'sparky'
+              );
               EXECUTE format(
                 'GRANT EXECUTE ON FUNCTION %I.%I(%s) TO %I WITH GRANT OPTION',
                 fn.schema_name,
