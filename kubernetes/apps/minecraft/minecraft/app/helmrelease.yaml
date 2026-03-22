@@ -1,0 +1,153 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: minecraft
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: minecraft
+  interval: 1h
+  timeout: 20m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+      strategy: uninstall
+  values:
+    controllers:
+      minecraft:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        strategy: Recreate
+        pod:
+          nodeSelector:
+            nodegroup: fringe
+          tolerations:
+            - key: dedicated
+              operator: Equal
+              value: fringe
+              effect: NoSchedule
+          terminationGracePeriodSeconds: 120
+          securityContext:
+            fsGroup: 1000
+            fsGroupChangePolicy: OnRootMismatch
+        initContainers:
+          geyser-config-sync:
+            image:
+              repository: docker.io/library/busybox
+              tag: 1.36.1
+            command:
+              - sh
+              - -c
+              - |
+                set -eu
+                src_file=/config/geyser/config.yml
+                dst_dir=/data/plugins/Geyser-Spigot
+                dst_file="$dst_dir/config.yml"
+                mkdir -p "$dst_dir"
+                cp -f "$src_file" "$dst_file"
+          bluemap-config-sync:
+            image:
+              repository: docker.io/library/busybox
+              tag: 1.36.1
+            command:
+              - sh
+              - -c
+              - |
+                set -eu
+                src_dir=/config/bluemap
+                dst_dir=/data/plugins/BlueMap
+                mkdir -p "$dst_dir"
+                cp -f "$src_dir/core.conf" "$dst_dir/core.conf"
+                cp -f "$src_dir/webserver.conf" "$dst_dir/webserver.conf"
+        containers:
+          app:
+            image:
+              repository: docker.io/itzg/minecraft-server
+              tag: java21
+            envFrom:
+              - configMapRef:
+                  name: minecraft-config
+            ports:
+              - name: game
+                containerPort: &gamePort 25565
+                protocol: TCP
+              - name: bedrock
+                containerPort: &bedrockPort 19132
+                protocol: UDP
+              - name: map
+                containerPort: &mapPort 8100
+                protocol: TCP
+            probes:
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  exec:
+                    command:
+                      - mc-health
+                  initialDelaySeconds: 20
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 12
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  exec:
+                    command:
+                      - mc-health
+                  initialDelaySeconds: 120
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+            resources:
+              requests:
+                cpu: 500m
+                memory: 2Gi
+              limits:
+                memory: 8Gi
+
+    service:
+      app:
+        type: LoadBalancer
+        annotations:
+          lbipam.cilium.io/ips: "10.0.0.30"
+          coredns.io/hostname: "minecraft.${SECRET_DOMAIN}"
+        externalTrafficPolicy: Cluster
+        ports:
+          game:
+            port: *gamePort
+            targetPort: game
+            protocol: TCP
+          bedrock:
+            port: *bedrockPort
+            targetPort: bedrock
+            protocol: UDP
+          map:
+            port: *mapPort
+            targetPort: map
+            protocol: TCP
+
+    persistence:
+      data:
+        existingClaim: minecraft
+        globalMounts:
+          - path: /data
+            readOnly: false
+      geyser-config:
+        type: configMap
+        name: geyser-config
+        globalMounts:
+          - path: /config/geyser
+            readOnly: true
+      bluemap-config:
+        type: configMap
+        name: bluemap-config
+        globalMounts:
+          - path: /config/bluemap
+            readOnly: true

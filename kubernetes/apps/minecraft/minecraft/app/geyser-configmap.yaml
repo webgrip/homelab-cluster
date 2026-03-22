@@ -1,0 +1,26 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: geyser-config
+data:
+  config.yml: |
+    # Managed by GitOps (homelab-cluster). This file is copied into the PVC on startup.
+    #
+    # Key intent:
+    # - Listen for Bedrock connections on UDP 19132
+    # - Use Floodgate auth so Bedrock players can join without a Java account
+
+    bedrock:
+      address: 0.0.0.0
+      port: 19132
+      clone-remote-port: false
+
+    remote:
+      # Java server is the same pod.
+      address: 127.0.0.1
+      port: 25565
+      auth-type: floodgate
+
+    # Floodgate key location (relative to the Geyser plugin directory)
+    floodgate-key-file: ../floodgate/key.pem
