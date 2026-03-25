@@ -12,10 +12,10 @@ spec:
   timeout: 20m
   install:
     remediation:
-      retries: 3
+      retries: 10
   upgrade:
     remediation:
-      retries: 3
+      retries: 10
       strategy: uninstall
   values:
     controllers:
@@ -83,13 +83,33 @@ spec:
                 containerPort: &mapPort 8100
                 protocol: TCP
             probes:
+              startup:
+                enabled: true
+                custom: true
+                spec:
+                  exec:
+                    command:
+                      - mc-monitor
+                      - status
+                      - --host
+                      - 127.0.0.1
+                      - --port
+                      - "25565"
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 90
               readiness:
                 enabled: true
                 custom: true
                 spec:
                   exec:
                     command:
-                      - mc-health
+                      - mc-monitor
+                      - status
+                      - --host
+                      - 127.0.0.1
+                      - --port
+                      - "25565"
                   initialDelaySeconds: 20
                   periodSeconds: 10
                   timeoutSeconds: 5
@@ -100,11 +120,16 @@ spec:
                 spec:
                   exec:
                     command:
-                      - mc-health
-                  initialDelaySeconds: 120
+                      - mc-monitor
+                      - status
+                      - --host
+                      - 127.0.0.1
+                      - --port
+                      - "25565"
+                  initialDelaySeconds: 0
                   periodSeconds: 30
                   timeoutSeconds: 5
-                  failureThreshold: 3
+                  failureThreshold: 5
             resources:
               requests:
                 cpu: 500m
