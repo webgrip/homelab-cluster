@@ -1,0 +1,71 @@
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: sparkyfitness-db
+  namespace: sparkyfitness
+spec:
+  instances: 1
+  enableSuperuserAccess: true
+  inheritedMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
+  storage:
+    resizeInUseVolumes: true
+    size: 30Gi
+    storageClass: longhorn
+  postgresql:
+    shared_preload_libraries:
+      - pg_stat_statements
+    parameters:
+      pg_stat_statements.max: "10000"
+      pg_stat_statements.track: "all"
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: sparkyfitness-db-store
+        serverName: sparkyfitness-db
+  managed:
+    roles:
+      - name: sparky
+        ensure: present
+        login: true
+        createdb: true
+        createrole: true
+        passwordSecret:
+          name: sparkyfitness-db-secret
+  bootstrap:
+    initdb:
+      database: sparkyfitness_db
+      owner: sparky
+      secret:
+        name: sparkyfitness-db-secret
+      postInitSQL:
+        # Create the extension.
+        - "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
+        # Ensure the app role can manage any overloads of pg_stat_statements_reset.
+        - |
+          DO $pgstat$
+          DECLARE
+            fn RECORD;
+          BEGIN
+            FOR fn IN
+              SELECT
+                n.nspname AS schema_name,
+                p.proname AS function_name,
+                pg_get_function_identity_arguments(p.oid) AS args
+              FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE p.proname = 'pg_stat_statements_reset'
+            LOOP
+              EXECUTE format(
+                'GRANT EXECUTE ON FUNCTION %I.%I(%s) TO %I WITH GRANT OPTION',
+                fn.schema_name,
+                fn.function_name,
+                fn.args,
+                'sparky'
+              );
+            END LOOP;
+          END;
+          $pgstat$;

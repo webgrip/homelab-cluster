@@ -1,0 +1,307 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: zomboid
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: zomboid
+  interval: 1h
+  timeout: 20m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+      strategy: uninstall
+  values:
+    controllers:
+      zomboid:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        strategy: Recreate
+        pod:
+          nodeSelector:
+            nodegroup: fringe
+          tolerations:
+            - key: dedicated
+              operator: Equal
+              value: fringe
+              effect: NoSchedule
+          terminationGracePeriodSeconds: 120
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            runAsNonRoot: false
+            fsGroup: 1000
+            fsGroupChangePolicy: OnRootMismatch
+        initContainers:
+          config-sync:
+            image:
+              repository: docker.io/library/busybox
+              tag: 1.36.1
+            command:
+              - sh
+              - -c
+              - |
+                set -eu
+                src_dir=/config
+                dst_dir=/home/steam/Zomboid/Server
+                mkdir -p "$dst_dir"
+                for src_file in "$src_dir"/*; do
+                  [ -e "$src_file" ] || continue
+                  cp -f "$src_file" "$dst_dir/$(basename "$src_file")"
+                done
+        containers:
+          app:
+            image:
+              repository: docker.io/danixu86/project-zomboid-dedicated-server
+              tag: 42.15.3-unstable@sha256:cbf2d462951260f419fce3161927e21d80dfd10d483722c1dd24a3373e2ffc34
+            envFrom:
+              - configMapRef:
+                  name: zomboid-config
+              - secretRef:
+                  name: zomboid-secrets
+            ports:
+              - name: game
+                containerPort: &gamePort 16261
+                protocol: UDP
+              - name: game2
+                containerPort: &gamePort2 16262
+                protocol: UDP
+              - name: steam1
+                containerPort: &steamPort1 8766
+                protocol: UDP
+              - name: steam2
+                containerPort: &steamPort2 8767
+                protocol: UDP
+              - name: rcon
+                containerPort: &rconPort 27015
+                protocol: TCP
+            resources:
+              requests:
+                cpu: 500m
+                memory: 2Gi
+              limits:
+                memory: 8Gi
+          a2s-exporter:
+            image:
+              repository: docker.io/armsnyder/a2s-exporter
+              tag: v0.4.0
+            args:
+              - -address
+              - 127.0.0.1:8766
+              - -port
+              - "9841"
+            ports:
+              - name: metrics
+                containerPort: 9841
+                protocol: TCP
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /metrics
+                    port: 9841
+                  initialDelaySeconds: 5
+                  periodSeconds: 30
+                  timeoutSeconds: 2
+                  failureThreshold: 3
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /metrics
+                    port: 9841
+                  initialDelaySeconds: 2
+                  periodSeconds: 10
+                  timeoutSeconds: 2
+                  failureThreshold: 3
+    service:
+      app:
+        type: LoadBalancer
+        annotations:
+          lbipam.cilium.io/ips: "10.0.0.29"
+          coredns.io/hostname: "zomboid.${SECRET_DOMAIN}"
+        externalTrafficPolicy: Cluster
+        ports:
+          game:
+            port: *gamePort
+            targetPort: game
+            protocol: UDP
+          game2:
+            port: *gamePort2
+            targetPort: game2
+            protocol: UDP
+          p16263:
+            port: 16263
+            targetPort: 16263
+            protocol: UDP
+          p16264:
+            port: 16264
+            targetPort: 16264
+            protocol: UDP
+          p16265:
+            port: 16265
+            targetPort: 16265
+            protocol: UDP
+          p16266:
+            port: 16266
+            targetPort: 16266
+            protocol: UDP
+          p16267:
+            port: 16267
+            targetPort: 16267
+            protocol: UDP
+          p16268:
+            port: 16268
+            targetPort: 16268
+            protocol: UDP
+          p16269:
+            port: 16269
+            targetPort: 16269
+            protocol: UDP
+          p16270:
+            port: 16270
+            targetPort: 16270
+            protocol: UDP
+          p16271:
+            port: 16271
+            targetPort: 16271
+            protocol: UDP
+          p16272:
+            port: 16272
+            targetPort: 16272
+            protocol: UDP
+          p16273:
+            port: 16273
+            targetPort: 16273
+            protocol: UDP
+          p16274:
+            port: 16274
+            targetPort: 16274
+            protocol: UDP
+          p16275:
+            port: 16275
+            targetPort: 16275
+            protocol: UDP
+          p16276:
+            port: 16276
+            targetPort: 16276
+            protocol: UDP
+          p16277:
+            port: 16277
+            targetPort: 16277
+            protocol: UDP
+          p16278:
+            port: 16278
+            targetPort: 16278
+            protocol: UDP
+          p16279:
+            port: 16279
+            targetPort: 16279
+            protocol: UDP
+          p16280:
+            port: 16280
+            targetPort: 16280
+            protocol: UDP
+          p16281:
+            port: 16281
+            targetPort: 16281
+            protocol: UDP
+          p16282:
+            port: 16282
+            targetPort: 16282
+            protocol: UDP
+          p16283:
+            port: 16283
+            targetPort: 16283
+            protocol: UDP
+          p16284:
+            port: 16284
+            targetPort: 16284
+            protocol: UDP
+          p16285:
+            port: 16285
+            targetPort: 16285
+            protocol: UDP
+          p16286:
+            port: 16286
+            targetPort: 16286
+            protocol: UDP
+          p16287:
+            port: 16287
+            targetPort: 16287
+            protocol: UDP
+          p16288:
+            port: 16288
+            targetPort: 16288
+            protocol: UDP
+          p16289:
+            port: 16289
+            targetPort: 16289
+            protocol: UDP
+          p16290:
+            port: 16290
+            targetPort: 16290
+            protocol: UDP
+          p16291:
+            port: 16291
+            targetPort: 16291
+            protocol: UDP
+          p16292:
+            port: 16292
+            targetPort: 16292
+            protocol: UDP
+          p16293:
+            port: 16293
+            targetPort: 16293
+            protocol: UDP
+          steam1:
+            port: *steamPort1
+            targetPort: steam1
+            protocol: UDP
+          steam2:
+            port: *steamPort2
+            targetPort: steam2
+            protocol: UDP
+          rcon:
+            port: *rconPort
+            targetPort: rcon
+            protocol: TCP
+      metrics:
+        type: ClusterIP
+        ports:
+          metrics:
+            port: 9841
+            targetPort: metrics
+            protocol: TCP
+
+    serviceMonitor:
+      metrics:
+        service:
+          identifier: metrics
+        endpoints:
+          - port: metrics
+    persistence:
+      server-config:
+        type: configMap
+        name: zomboid-server-config
+        globalMounts:
+          - path: /config
+            readOnly: true
+      data:
+        existingClaim: zomboid
+        globalMounts:
+          - path: /home/steam/Zomboid
+            subPath: Zomboid
+            readOnly: false
+          - path: /home/steam/pz-dedicated/steamapps/workshop
+            subPath: workshop
+            readOnly: false

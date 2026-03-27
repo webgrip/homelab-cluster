@@ -1,0 +1,79 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: twitch-exporter
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: twitch-exporter
+  interval: 1h
+  values:
+    controllers:
+      twitch-exporter:
+        strategy: RollingUpdate
+        annotations:
+          reloader.stakater.com/auto: "true"
+        containers:
+          app:
+            image:
+              repository: ghcr.io/webgrip/twitch-exporter
+              tag: 1.0.3
+            envFrom:
+              - secretRef:
+                  name: twitch-exporter-secret
+            args:
+              - "--web.listen-address=0.0.0.0:9184"
+              - "--web.telemetry-path=/metrics"
+              - "--twitch.client-id=$(TWITCH_CLIENT_ID)"
+              - "--twitch.client-secret=$(TWITCH_CLIENT_SECRET)"
+              - "--twitch.self-channel=$(TWITCH_SELF_CHANNEL)"
+            ports:
+              - name: http
+                containerPort: &port 9184
+            probes:
+              liveness: &probes
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /metrics
+                    port: http
+                  initialDelaySeconds: 0
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+              readiness: *probes
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities: { drop: ["ALL"] }
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+              limits:
+                cpu: 200m
+                memory: 256Mi
+
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+
+    service:
+      app:
+        controller: twitch-exporter
+        ports:
+          http:
+            port: *port
+
+    serviceMonitor:
+      app:
+        endpoints:
+          - port: http
+            path: /metrics
+            interval: 30s
+            scrapeTimeout: 10s

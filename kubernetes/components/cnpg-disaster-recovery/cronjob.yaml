@@ -1,0 +1,136 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cnpg-disaster-recovery-check
+spec:
+  # Temporarily paused to reduce control-plane/storage pressure.
+  # Flip back to false to re-enable.
+  suspend: true
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 21600
+      template:
+        spec:
+          serviceAccountName: cnpg-disaster-recovery-check
+          automountServiceAccountToken: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          restartPolicy: Never
+          containers:
+            - name: dr-check
+              image: alpine/k8s:1.34.3
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              env:
+                - name: NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                # Optional: name of the source CNPG cluster to compare WAL LSNs against.
+                # If set, the check avoids false failures when the standby is fully caught up
+                # but pg_last_xact_replay_timestamp() is old due to no recent transactions.
+                - name: SOURCE_CLUSTER
+                  value: ""
+                - name: TARGET_CLUSTER
+                  value: cnpg-disaster-recovery
+                - name: MAX_REPLAY_LAG_SECONDS
+                  value: "900"
+                # When SOURCE_CLUSTER is set, prefer LSN-based lag checks.
+                # Consider the standby healthy if WAL lag is within this byte threshold,
+                # even if pg_last_xact_replay_timestamp() is old due to low/no traffic.
+                - name: MAX_WAL_LAG_BYTES
+                  value: "1048576" # 1MiB
+              command:
+                - /bin/sh
+                - -ceu
+                - |
+                  echo "[cnpg-disaster-recovery-check] starting"
+
+                  get_cluster_pod() {
+                    cluster_name="$1"
+                    pod_name=$(kubectl -n "$NAMESPACE" get pods -l "cnpg.io/cluster=$cluster_name,cnpg.io/instanceRole=primary" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+                    if [ -z "$pod_name" ]; then
+                      pod_name=$(kubectl -n "$NAMESPACE" get pods -l "cnpg.io/cluster=$cluster_name" -o jsonpath='{.items[0].metadata.name}')
+                    fi
+                    printf "%s" "$pod_name"
+                  }
+
+                  run_psql() {
+                    pod_name="$1"
+                    query="$2"
+                    kubectl -n "$NAMESPACE" exec "$pod_name" -- psql -U postgres -d postgres -v ON_ERROR_STOP=1 -Atc "$query"
+                  }
+
+                  kubectl -n "$NAMESPACE" wait --for=condition=Ready "cluster.postgresql.cnpg.io/$TARGET_CLUSTER" --timeout=15m
+
+                  target_pod=$(get_cluster_pod "$TARGET_CLUSTER")
+                  kubectl -n "$NAMESPACE" wait --for=condition=Ready "pod/$target_pod" --timeout=10m
+
+                  is_recovery=$(run_psql "$target_pod" "SELECT pg_is_in_recovery();")
+
+                  if [ "$is_recovery" != "t" ]; then
+                    echo "[cnpg-disaster-recovery-check] FAIL: not in recovery (pg_is_in_recovery=$is_recovery)"
+                    exit 1
+                  fi
+
+                  # Prefer an LSN-based check against the source cluster when configured.
+                  # This avoids false positives when there are no recent transactions to update
+                  # pg_last_xact_replay_timestamp(), but the standby has actually caught up.
+                  if [ -n "$SOURCE_CLUSTER" ]; then
+                    kubectl -n "$NAMESPACE" wait --for=condition=Ready "cluster.postgresql.cnpg.io/$SOURCE_CLUSTER" --timeout=15m
+                    source_pod=$(get_cluster_pod "$SOURCE_CLUSTER")
+                    kubectl -n "$NAMESPACE" wait --for=condition=Ready "pod/$source_pod" --timeout=10m
+
+                    standby_lsn=$(run_psql "$target_pod" "SELECT pg_last_wal_replay_lsn();")
+                    source_lsn=$(run_psql "$source_pod" "SELECT pg_current_wal_lsn();")
+                    wal_diff_bytes=$(run_psql "$source_pod" "SELECT pg_wal_lsn_diff('$source_lsn', '$standby_lsn')::bigint;")
+
+                    case "$wal_diff_bytes" in
+                      ''|*[!0-9-]*)
+                        echo "[cnpg-disaster-recovery-check] WARN: wal diff not an integer: '$wal_diff_bytes' (source_lsn=$source_lsn standby_lsn=$standby_lsn)"
+                        ;;
+                      *)
+                        max_wal_lag_bytes="$MAX_WAL_LAG_BYTES"
+                        if [ -z "$max_wal_lag_bytes" ]; then
+                          max_wal_lag_bytes=0
+                        fi
+
+                        if [ "$wal_diff_bytes" -le "$max_wal_lag_bytes" ]; then
+                          echo "[cnpg-disaster-recovery-check] OK: standby lag within threshold (wal_diff_bytes=$wal_diff_bytes max=$max_wal_lag_bytes)"
+                          echo "[cnpg-disaster-recovery-check] done"
+                          exit 0
+                        fi
+                        echo "[cnpg-disaster-recovery-check] INFO: wal_diff_bytes=$wal_diff_bytes (source_lsn=$source_lsn standby_lsn=$standby_lsn)"
+                        ;;
+                    esac
+                  fi
+
+                  lag_seconds=$(run_psql "$target_pod" "SELECT COALESCE(EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp())), 0)::int;")
+
+                  case "$lag_seconds" in
+                    ''|*[!0-9]*)
+                      echo "[cnpg-disaster-recovery-check] FAIL: replay lag not an integer: '$lag_seconds'"
+                      exit 1
+                      ;;
+                  esac
+
+                  if [ "$lag_seconds" -gt "$MAX_REPLAY_LAG_SECONDS" ]; then
+                    echo "[cnpg-disaster-recovery-check] FAIL: replay lag $lag_seconds""s exceeds $MAX_REPLAY_LAG_SECONDS""s"
+                    exit 1
+                  fi
+
+                  echo "[cnpg-disaster-recovery-check] OK: replay_lag_seconds=$lag_seconds"
+                  echo "[cnpg-disaster-recovery-check] done"

@@ -1,0 +1,133 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: alloy-gateway
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: alloy
+      version: 1.6.0
+      sourceRef:
+        kind: HelmRepository
+        name: grafana-charts-alloy-gateway
+        namespace: observability
+  values:
+    controller:
+      type: deployment
+      replicas: 2
+
+    alloy:
+      podAnnotations:
+        reloader.stakater.com/auto: "true"
+
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      configMap:
+        create: true
+        content: |
+          faro.receiver "main" {
+            server {
+              listen_address = "0.0.0.0:12347"
+            }
+
+            output {
+              logs   = [loki.write.main.receiver]
+              traces = [otelcol.processor.batch.main.input]
+            }
+          }
+
+          loki.write "main" {
+            endpoint {
+              url = "http://loki-gateway.observability.svc.cluster.local/loki/api/v1/push"
+            }
+          }
+
+          otelcol.receiver.otlp "main" {
+            grpc {
+              endpoint = "0.0.0.0:4317"
+            }
+
+            http {
+              endpoint = "0.0.0.0:4318"
+            }
+
+            output {
+              traces = [otelcol.processor.batch.main.input]
+              logs   = [otelcol.processor.attributes.loki_labels.input]
+              metrics = [otelcol.processor.batch.metrics.input]
+            }
+          }
+
+          otelcol.processor.batch "metrics" {
+            output {
+              metrics = [otelcol.exporter.prometheus.prometheus.input]
+            }
+          }
+
+          otelcol.exporter.prometheus "prometheus" {
+            forward_to = [prometheus.remote_write.prometheus.receiver]
+          }
+
+          prometheus.remote_write "prometheus" {
+            endpoint {
+              url = "http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090/api/v1/write"
+            }
+          }
+
+          otelcol.processor.attributes "loki_labels" {
+            action {
+              key = "loki.resource.labels"
+              action = "insert"
+              value = "service.name, service.namespace, deployment.environment"
+            }
+
+            action {
+              key = "loki.attribute.labels"
+              action = "insert"
+              value = "event.domain, event.name"
+            }
+
+            output {
+              logs = [otelcol.exporter.loki.main.input]
+            }
+          }
+
+          otelcol.exporter.loki "main" {
+            forward_to = [loki.write.main.receiver]
+          }
+
+          otelcol.processor.batch "main" {
+            output {
+              traces = [otelcol.exporter.otlp.tempo.input]
+            }
+          }
+
+          otelcol.exporter.otlp "tempo" {
+            client {
+              endpoint = "tempo.observability.svc.cluster.local:4317"
+              tls {
+                insecure = true
+              }
+            }
+          }
+
+      extraPorts:
+        - name: otlp-grpc
+          port: 4317
+          targetPort: 4317
+          protocol: TCP
+        - name: otlp-http
+          port: 4318
+          targetPort: 4318
+          protocol: TCP
+        - name: faro
+          port: 12347
+          targetPort: 12347
+          protocol: TCP

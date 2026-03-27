@@ -1,0 +1,637 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-prometheus-ingestion-remote-write
+  namespace: observability
+  annotations:
+    grafana_folder: Observability
+  labels:
+    grafana_dashboard: "1"
+data:
+  prometheus-ingestion-remote-write.json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Prometheus / Ingestion + Remote Write",
+      "uid": "prom-ingest-rw",
+      "timezone": "browser",
+      "tags": ["prometheus", "remote_write", "ingestion"],
+      "editable": false,
+      "refresh": "30s",
+      "time": {"from": "now-6h", "to": "now"},
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          },
+          {
+            "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+            "enable": true,
+            "hide": false,
+            "iconColor": "rgba(170, 170, 170, 1)",
+            "name": "Flux changes",
+            "type": "tags",
+            "tags": ["flux", "flux_event:change", "namespace:$event_namespace"],
+            "matchAny": false
+          },
+          {
+            "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+            "enable": true,
+            "hide": false,
+            "iconColor": "rgba(255, 85, 85, 1)",
+            "name": "Flux errors",
+            "type": "tags",
+            "tags": ["flux", "flux_event:error", "namespace:$event_namespace"],
+            "matchAny": false
+          }
+        ]
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "remote",
+            "type": "query",
+            "label": "remote",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "refresh": 2,
+            "includeAll": true,
+            "allValue": ".*",
+            "multi": true,
+            "query": {"query": "label_values(prometheus_remote_storage_samples_pending, remote_name)", "refId": "remote"},
+            "current": {"selected": true, "text": "All", "value": "$__all"}
+          },
+          {
+            "name": "namespace",
+            "type": "query",
+            "label": "namespace",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "refresh": 2,
+            "includeAll": true,
+            "allValue": ".*",
+            "multi": true,
+            "query": {"query": "label_values(scrape_samples_post_metric_relabeling, namespace)", "refId": "namespace"},
+            "current": {"selected": true, "text": "All", "value": "$__all"}
+          },
+          {
+            "name": "event_namespace",
+            "type": "query",
+            "label": "event namespace",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "refresh": 2,
+            "includeAll": false,
+            "multi": false,
+            "query": {"query": "label_values(kube_pod_info, namespace)", "refId": "event_namespace"},
+            "current": {"selected": true, "text": "flux-system", "value": "flux-system"}
+          },
+          {
+            "name": "job",
+            "type": "query",
+            "label": "job",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "refresh": 2,
+            "includeAll": true,
+            "allValue": ".*",
+            "multi": true,
+            "query": {"query": "label_values(scrape_samples_post_metric_relabeling, job)", "refId": "job"},
+            "current": {"selected": true, "text": "All", "value": "$__all"}
+          },
+          {
+            "name": "pod",
+            "type": "query",
+            "label": "pod",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "refresh": 2,
+            "includeAll": true,
+            "allValue": ".*",
+            "multi": true,
+            "query": {"query": "label_values(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\"}, pod)", "refId": "pod"},
+            "current": {"selected": true, "text": "All", "value": "$__all"}
+          },
+          {
+            "name": "prom_instance",
+            "type": "query",
+            "label": "prometheus",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "refresh": 2,
+            "includeAll": true,
+            "allValue": ".*",
+            "multi": true,
+            "query": {"query": "label_values(prometheus_remote_storage_samples_pending, instance)", "refId": "prom_instance"},
+            "current": {"selected": true, "text": "All", "value": "$__all"}
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "Total scrape samples (avg per scrape)",
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(avg_over_time(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m]))"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []},
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "horizontal"}
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Remote write pending samples (sum)",
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(prometheus_remote_storage_samples_pending{remote_name=~\"$remote\",instance=~\"$prom_instance\"})"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "horizontal"}
+        },
+        {
+          "id": 8,
+          "type": "stat",
+          "title": "TSDB head series",
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(prometheus_tsdb_head_series{instance=~\"$prom_instance\"})"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "horizontal"}
+        },
+        {
+          "id": 9,
+          "type": "stat",
+          "title": "Remote write backlog age (max)",
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max(max_over_time(prometheus_remote_storage_queue_highest_received_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]) - max_over_time(prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "horizontal"}
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "Top namespaces by scrape samples (avg per scrape)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(15, sum by (namespace) (avg_over_time(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))",
+              "legendFormat": "{{namespace}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 10,
+          "type": "timeseries",
+          "title": "Top jobs by scrape samples (avg per scrape)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "topk(15, sum by (job) (avg_over_time(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",pod=~\"$pod\"}[5m])))", "legendFormat": "{{job}}"}],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "Top pods by scrape samples (avg per scrape)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "topk(20, sum by (namespace,pod) (avg_over_time(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))", "legendFormat": "{{namespace}}/{{pod}}"}],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 11,
+          "type": "timeseries",
+          "title": "Scrape duration (p95 by job)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(15, quantile by (job) (0.95, max_over_time(scrape_duration_seconds{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))",
+              "legendFormat": "{{job}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Series churn (max series added per scrape, top deployments)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(20, sum by (namespace, deployment) (max_over_time(scrape_series_added{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m]) * on(namespace,pod) group_left(replicaset) label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on(namespace,replicaset) group_left(deployment) label_replace(kube_replicaset_owner{owner_kind=\"Deployment\"}, \"deployment\", \"$1\", \"owner_name\", \"(.*)\")))",
+              "legendFormat": "{{namespace}}/{{deployment}}"
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "type": "timeseries",
+          "title": "Dropped samples (scrape + relabel, top jobs)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(15, sum by (job) (avg_over_time(scrape_samples_dropped{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))",
+              "legendFormat": "{{job}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 13,
+          "type": "timeseries",
+          "title": "TSDB write pressure (WAL fsync p95)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(prometheus_tsdb_wal_fsync_duration_seconds_bucket{instance=~\"$prom_instance\"}[5m])))"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Remote write health (failed/retried/dropped samples/sec)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(rate(prometheus_remote_storage_samples_failed_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))", "legendFormat": "failed"},
+            {"refId": "B", "expr": "sum(rate(prometheus_remote_storage_samples_retried_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))", "legendFormat": "retried"},
+            {"refId": "C", "expr": "sum(rate(prometheus_remote_storage_samples_dropped_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))", "legendFormat": "dropped"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
+        },
+        {
+          "id": 14,
+          "type": "timeseries",
+          "title": "Remote write throughput (samples/sec, bytes/sec)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 36},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (remote_name) (rate(prometheus_remote_storage_samples_in_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))",
+              "legendFormat": "samples {{remote_name}}"
+            },
+            {
+              "refId": "B",
+              "expr": "sum by (remote_name) (rate(prometheus_remote_storage_bytes_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))",
+              "legendFormat": "bytes {{remote_name}}"
+            }
+          ]
+        },
+        {
+          "id": 15,
+          "type": "timeseries",
+          "title": "Remote write shards (current/desired/max)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 36},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (remote_name) (prometheus_remote_storage_shards{remote_name=~\"$remote\",instance=~\"$prom_instance\"})",
+              "legendFormat": "shards {{remote_name}}"
+            },
+            {
+              "refId": "B",
+              "expr": "sum by (remote_name) (prometheus_remote_storage_shards_desired{remote_name=~\"$remote\",instance=~\"$prom_instance\"})",
+              "legendFormat": "desired {{remote_name}}"
+            },
+            {
+              "refId": "C",
+              "expr": "sum by (remote_name) (prometheus_remote_storage_shards_max{remote_name=~\"$remote\",instance=~\"$prom_instance\"})",
+              "legendFormat": "max {{remote_name}}"
+            }
+          ]
+        },
+        {
+          "id": 16,
+          "type": "timeseries",
+          "title": "Remote write send latency (p95)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 44},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.95, sum by (le, remote_name) (rate(prometheus_remote_storage_sent_batch_duration_seconds_bucket{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m])))"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "Remote write pending samples (by remote)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 44},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (remote_name) (prometheus_remote_storage_samples_pending{remote_name=~\"$remote\",instance=~\"$prom_instance\"})",
+              "legendFormat": "{{remote_name}}"
+            }
+          ]
+        },
+        {
+          "id": 17,
+          "type": "timeseries",
+          "title": "Remote write send age (seconds, by remote)",
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 52},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (remote_name) (time() - max_over_time(prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))",
+              "legendFormat": "sent {{remote_name}}"
+            },
+            {
+              "refId": "B",
+              "expr": "max by (remote_name) (time() - max_over_time(prometheus_remote_storage_queue_highest_received_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))",
+              "legendFormat": "recv {{remote_name}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+        },
+        {
+          "id": 18,
+          "type": "timeseries",
+          "title": "Remote write backlog age (seconds, by remote)",
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 60},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (remote_name) (max_over_time(prometheus_remote_storage_queue_highest_received_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]) - max_over_time(prometheus_remote_storage_queue_highest_sent_timestamp_seconds{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))",
+              "legendFormat": "{{remote_name}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+        },
+        {
+          "id": 19,
+          "type": "timeseries",
+          "title": "Top deployments by scrape samples (avg per scrape)",
+          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 68},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(20, sum by (namespace, deployment) (avg_over_time(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m]) * on(namespace,pod) group_left(replicaset) label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on(namespace,replicaset) group_left(deployment) label_replace(kube_replicaset_owner{owner_kind=\"Deployment\"}, \"deployment\", \"$1\", \"owner_name\", \"(.*)\")))",
+              "legendFormat": "{{namespace}}/{{deployment}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 80,
+          "type": "row",
+          "title": "Noise (cardinality / churn)",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 78},
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 81,
+          "type": "timeseries",
+          "title": "Top jobs by active series (post-relabel)",
+          "description": "High series counts drive memory and churn. This is a good first stop when Prometheus/Mimir gets noisy.",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 79},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(15, sum by (job) (max_over_time(scrape_series_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))",
+              "legendFormat": "{{job}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 82,
+          "type": "timeseries",
+          "title": "Top pods by active series (post-relabel)",
+          "description": "Pod names include hashes; use the deployment panel above for stable grouping.",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 79},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(20, sum by (namespace,pod) (max_over_time(scrape_series_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))",
+              "legendFormat": "{{namespace}}/{{pod}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 83,
+          "type": "timeseries",
+          "title": "Series churn (top jobs, series added per scrape)",
+          "description": "High churn is often worse than high steady-state series (WAL + compactions + remote_write load).",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 87},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(15, sum by (job) (max_over_time(scrape_series_added{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))",
+              "legendFormat": "{{job}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 84,
+          "type": "timeseries",
+          "title": "TSDB head series created (series/sec)",
+          "description": "If this spikes, you likely have a cardinality regression. Use the panels above to find which job/pods.",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 87},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(prometheus_tsdb_head_series_created_total{instance=~\"$prom_instance\"}[5m]))"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
+        },
+        {
+          "id": 85,
+          "type": "table",
+          "title": "Noisiest jobs (action list)",
+          "description": "Single panel view of the usual suspects. Sort by Value and look for repeat offenders across signals.",
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 95},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "label_replace(topk(10, sum by (job) (max_over_time(scrape_series_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m]))), \"signal\", \"active_series\", \"job\", \".*\") or label_replace(topk(10, sum by (job) (max_over_time(scrape_series_added{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m]))), \"signal\", \"series_added_per_scrape\", \"job\", \".*\") or label_replace(topk(10, sum by (job) (avg_over_time(scrape_samples_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m]))), \"signal\", \"samples_per_scrape\", \"job\", \".*\")"
+            }
+          ],
+          "transformations": [
+            {"id": "labelsToFields", "options": {}},
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true, "__name__": true, "instance": true, "namespace": true, "pod": true},
+                "indexByName": {"job": 0, "signal": 1, "Value": 2},
+                "renameByName": {"Value": "value"}
+              }
+            },
+            {"id": "sortBy", "options": {"sort": [{"field": "value", "desc": true}]}}
+          ],
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []},
+          "options": {"showHeader": true}
+        },
+        {
+          "id": 86,
+          "type": "timeseries",
+          "title": "Top namespaces by active series (post-relabel)",
+          "description": "Namespace-level view of steady-state cardinality (post-relabel).",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 103},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(15, sum by (namespace) (max_over_time(scrape_series_post_metric_relabeling{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))",
+              "legendFormat": "{{namespace}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 87,
+          "type": "timeseries",
+          "title": "Remote write errors by remote (samples/sec)",
+          "description": "If one remote_name is erroring, you’ll see it immediately. Look for 429/5xx in Prometheus logs and scale the receiver.",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 103},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (remote_name) (rate(prometheus_remote_storage_samples_failed_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))",
+              "legendFormat": "failed {{remote_name}}"
+            },
+            {
+              "refId": "B",
+              "expr": "sum by (remote_name) (rate(prometheus_remote_storage_samples_retried_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))",
+              "legendFormat": "retried {{remote_name}}"
+            },
+            {
+              "refId": "C",
+              "expr": "sum by (remote_name) (rate(prometheus_remote_storage_samples_dropped_total{remote_name=~\"$remote\",instance=~\"$prom_instance\"}[5m]))",
+              "legendFormat": "dropped {{remote_name}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}, "tooltip": {"mode": "multi", "sort": "desc"}}
+        },
+        {
+          "id": 88,
+          "type": "timeseries",
+          "title": "Top namespaces by churn (series added per scrape)",
+          "description": "High churn is a frequent root cause of remote_write backlogs (WAL pressure + more samples/metadata churn).",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 111},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(15, sum by (namespace) (max_over_time(scrape_series_added{namespace=~\"$namespace\",job=~\"$job\",pod=~\"$pod\"}[5m])))",
+              "legendFormat": "{{namespace}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 89,
+          "type": "timeseries",
+          "title": "Prometheus latency p95 (rules + queries)",
+          "description": "If this spikes, Prometheus is struggling (CPU/IO/GC) and remote_write will often lag as a symptom.",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 111},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(prometheus_rule_evaluation_duration_seconds_bucket{instance=~\"$prom_instance\"}[5m])))",
+              "legendFormat": "rule eval p95"
+            },
+            {
+              "refId": "B",
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(prometheus_engine_query_duration_seconds_bucket{instance=~\"$prom_instance\"}[5m])))",
+              "legendFormat": "query p95"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right"}}
+        },
+        {
+          "id": 90,
+          "type": "row",
+          "title": "Flux",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 119},
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 91,
+          "type": "table",
+          "title": "Flux events (annotations)",
+          "description": "Recent Flux change/error annotations for the selected event namespace.",
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 120},
+          "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+          "targets": [
+            {
+              "refId": "A",
+              "type": "annotations",
+              "limit": 50,
+              "tags": ["flux", "namespace:$event_namespace"],
+              "matchAny": false
+            }
+          ],
+          "options": {"showHeader": true}
+        },
+        {
+          "id": 92,
+          "type": "table",
+          "title": "Flux events (global)",
+          "description": "Recent Flux change/error annotations across all namespaces (namespace tag not required).",
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 120},
+          "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+          "targets": [
+            {
+              "refId": "A",
+              "type": "annotations",
+              "limit": 50,
+              "tags": ["flux"],
+              "matchAny": false
+            }
+          ],
+          "options": {"showHeader": true}
+        }
+      ]
+    }

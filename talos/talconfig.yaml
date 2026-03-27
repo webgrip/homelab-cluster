@@ -20,6 +20,7 @@ cniConfig:
 customization:
   systemExtensions:
     officialExtensions:
+      - siderolabs/binfmt-misc
       - siderolabs/iscsi-tools
       - siderolabs/util-linux-tools
 
@@ -29,7 +30,7 @@ nodes:
     installDisk: "/dev/sdb"
     machineSpec:
       secureboot: false
-    talosImageURL: factory.talos.dev/installer/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba
+    talosImageURL: factory.talos.dev/installer/1da3394e6229e507d4e3d166b718cacff86435a61c4765feedd66b43ac237558
     controlPlane: true
     networkInterfaces:
       - deviceSelector:
@@ -48,7 +49,7 @@ nodes:
     installDisk: "/dev/sdb"
     machineSpec:
       secureboot: false
-    talosImageURL: factory.talos.dev/installer/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba
+    talosImageURL: factory.talos.dev/installer/1da3394e6229e507d4e3d166b718cacff86435a61c4765feedd66b43ac237558
     controlPlane: true
     networkInterfaces:
       - deviceSelector:
@@ -67,7 +68,7 @@ nodes:
     installDisk: "/dev/sdb"
     machineSpec:
       secureboot: false
-    talosImageURL: factory.talos.dev/installer/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba
+    talosImageURL: factory.talos.dev/installer/1da3394e6229e507d4e3d166b718cacff86435a61c4765feedd66b43ac237558
     controlPlane: true
     networkInterfaces:
       - deviceSelector:
@@ -81,10 +82,30 @@ nodes:
         mtu: 1500
         vip:
           ip: "10.0.0.25"
+  - hostname: "fringe-workstation"
+    ipAddress: "10.0.0.23"
+    installDisk: "/dev/sda"
+    machineSpec:
+      secureboot: false
+    talosImageURL: factory.talos.dev/installer/1da3394e6229e507d4e3d166b718cacff86435a61c4765feedd66b43ac237558
+    controlPlane: false
+    patches:
+      - "@./patches/worker/fringe-dedicated.yaml"
+    networkInterfaces:
+      - deviceSelector:
+          hardwareAddr: "f0:92:1c:e0:ec:3b"
+        dhcp: false
+        addresses:
+          - "10.0.0.23/24"
+        routes:
+          - network: "0.0.0.0/0"
+            gateway: "10.0.0.1"
+        mtu: 1500
 
 # Global patches
 patches:
   - "@./patches/global/machine-files.yaml"
+  - "@./patches/global/machine-kernel.yaml"
   - "@./patches/global/machine-kubelet.yaml"
   - "@./patches/global/machine-network.yaml"
   - "@./patches/global/machine-sysctls.yaml"
@@ -94,4 +115,4 @@ patches:
 controlPlane:
   patches:
     - "@./patches/controller/cluster.yaml"
-
+    - "@./patches/controller/nodegroup-soyo.yaml"

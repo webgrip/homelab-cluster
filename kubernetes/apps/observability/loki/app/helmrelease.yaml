@@ -1,0 +1,118 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: loki
+spec:
+  interval: 1h
+  timeout: 20m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+      strategy: uninstall
+  chart:
+    spec:
+      chart: loki
+      version: 6.53.0
+      sourceRef:
+        kind: HelmRepository
+        name: grafana-charts-loki
+        namespace: observability
+  values:
+    deploymentMode: SingleBinary
+
+    podAnnotations:
+      reloader.stakater.com/auto: "true"
+
+    # Explicitly disable SimpleScalable targets when using SingleBinary.
+    # The chart validates that only one mode has >0 replicas.
+    read:
+      replicas: 0
+
+    write:
+      replicas: 0
+
+    backend:
+      replicas: 0
+
+    # Defaults are far too large for small clusters; caches can be re-enabled later.
+    chunksCache:
+      enabled: false
+
+    resultsCache:
+      enabled: false
+
+    monitoring:
+      dashboards:
+        enabled: true
+      rules:
+        enabled: true
+        alerting: true
+      serviceMonitor:
+        enabled: true
+
+    # NOTE: In this chart, `global.*` env/args apply to read/write/backend/etc.
+    # In SingleBinary mode, you must configure env/args under `singleBinary`.
+
+    loki:
+      auth_enabled: false
+      commonConfig:
+        replication_factor: 1
+      compactor:
+        retention_enabled: true
+        delete_request_store: s3
+      limits_config:
+        retention_period: 720h
+      schemaConfig:
+        configs:
+          - from: "2024-04-01"
+            store: tsdb
+            object_store: s3
+            schema: v13
+            index:
+              prefix: index_
+              period: 24h
+      storage:
+        bucketNames:
+          chunks: loki-chunks
+          ruler: loki-ruler
+          admin: loki-admin
+        type: s3
+        s3:
+          endpoint: $${S3_ENDPOINT}
+          region: $${S3_REGION}
+          accessKeyId: $${S3_ACCESS_KEY_ID}
+          secretAccessKey: $${S3_SECRET_ACCESS_KEY}
+          s3ForcePathStyle: true
+          insecure: true
+
+    gateway:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+
+    singleBinary:
+      replicas: 1
+      extraArgs:
+        - -config.expand-env=true
+      extraEnvFrom:
+        - secretRef:
+            name: observability-s3
+      persistence:
+        enabled: true
+        storageClass: longhorn
+        size: 10Gi
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          cpu: "2"
+          memory: 1500Mi

@@ -1,0 +1,153 @@
+---
+apiVersion: sloth.slok.dev/v1
+kind: PrometheusServiceLevel
+metadata:
+  name: synthetics-availability
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: sloth
+spec:
+  service: "synthetics"
+  labels:
+    owner: platform
+  slos:
+    - name: grafana-availability
+      objective: 99.9
+      description: "Availability SLO based on blackbox probe_success for Grafana ingress."
+      timeWindow: 30d
+      sli:
+        events:
+          errorQuery: |
+            sum(
+              count_over_time(probe_success{namespace="observability", endpoint="grafana"}[{{.window}}])
+              -
+              sum_over_time(probe_success{namespace="observability", endpoint="grafana"}[{{.window}}])
+            )
+          totalQuery: |
+            sum(
+              count_over_time(probe_success{namespace="observability", endpoint="grafana"}[{{.window}}])
+            )
+      alerting:
+        name: SyntheticGrafanaAvailability
+        labels:
+          category: slo
+        annotations:
+          summary: "Synthetic availability SLO burn rate (grafana)"
+          description: |
+            What's happening:
+            - Fast burn indicates the Grafana ingress endpoint is failing synthetic probes.
+
+            Impact/risk:
+            - Users may be unable to reach Grafana.
+
+            Likely causes:
+            - Ingress/proxy/downstream service outage
+            - DNS/network issue
+            - Synthetic prober issues
+
+            First actions:
+            - Check blackbox probe success/latency for grafana
+            - Check ingress/controller and service endpoints
+            - Check recent changes and pod health
+          runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#synthetic-probes-blackbox"
+          dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/synthetic-blackbox/synthetic-blackbox"
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning
+
+    - name: prometheus-availability
+      objective: 99.9
+      description: "Availability SLO based on blackbox probe_success for Prometheus ingress."
+      timeWindow: 30d
+      sli:
+        events:
+          errorQuery: |
+            sum(
+              count_over_time(probe_success{namespace="observability", endpoint="prometheus"}[{{.window}}])
+              -
+              sum_over_time(probe_success{namespace="observability", endpoint="prometheus"}[{{.window}}])
+            )
+          totalQuery: |
+            sum(
+              count_over_time(probe_success{namespace="observability", endpoint="prometheus"}[{{.window}}])
+            )
+      alerting:
+        name: SyntheticPrometheusAvailability
+        labels:
+          category: slo
+        annotations:
+          summary: "Synthetic availability SLO burn rate (prometheus)"
+          description: |
+            What's happening:
+            - Fast burn indicates the Prometheus ingress endpoint is failing synthetic probes.
+
+            Impact/risk:
+            - Prometheus UI may be unreachable; operational debugging is degraded.
+
+            Likely causes:
+            - Ingress/proxy/service outage
+            - DNS/network issue
+            - Synthetic prober issues
+
+            First actions:
+            - Check blackbox probe success/latency for prometheus
+            - Check ingress/controller and service endpoints
+            - Check recent changes and pod health
+          runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#synthetic-probes-blackbox"
+          dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/synthetic-blackbox/synthetic-blackbox"
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning
+
+    - name: alertmanager-availability
+      objective: 99.9
+      description: "Availability SLO based on blackbox probe_success for Alertmanager ingress."
+      timeWindow: 30d
+      sli:
+        events:
+          errorQuery: |
+            sum(
+              count_over_time(probe_success{namespace="observability", endpoint="alertmanager"}[{{.window}}])
+              -
+              sum_over_time(probe_success{namespace="observability", endpoint="alertmanager"}[{{.window}}])
+            )
+          totalQuery: |
+            sum(
+              count_over_time(probe_success{namespace="observability", endpoint="alertmanager"}[{{.window}}])
+            )
+      alerting:
+        name: SyntheticAlertmanagerAvailability
+        labels:
+          category: slo
+        annotations:
+          summary: "Synthetic availability SLO burn rate (alertmanager)"
+          description: |
+            What's happening:
+            - Fast burn indicates the Alertmanager ingress endpoint is failing synthetic probes.
+
+            Impact/risk:
+            - Alertmanager UI may be unreachable; triage/silencing is degraded.
+
+            Likely causes:
+            - Ingress/proxy/service outage
+            - DNS/network issue
+            - Synthetic prober issues
+
+            First actions:
+            - Check blackbox probe success/latency for alertmanager
+            - Check ingress/controller and service endpoints
+            - Check recent changes and pod health
+          runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#synthetic-probes-blackbox"
+          dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/synthetic-blackbox/synthetic-blackbox"
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning

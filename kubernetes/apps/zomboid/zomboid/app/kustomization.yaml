@@ -1,0 +1,23 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: zomboid-server-config
+    files:
+      - server-config/zomboid-yonnurs.ini
+      - server-config/zomboid-yonnurs_SandboxVars.lua
+      - server-config/zomboid-yonnurs_spawnregions.lua
+      - server-config/zomboid-yonnurs_spawnpoints.lua
+
+resources:
+  - ./ocirepository.yaml
+  - ./pvc.yaml
+  - ./configmap.yaml
+  - ./secret.sops.yaml
+  - ./dashboards/apps-zomboid.yaml
+  - ./helmrelease.yaml

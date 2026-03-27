@@ -1,0 +1,209 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: kube-prometheus-stack
+      version: 82.2.0
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: observability
+  values:
+    grafana:
+      enabled: false
+
+    # This cluster is kube-proxy-free (Cilium).
+    kubeProxy:
+      enabled: false
+
+    # Avoid scraping control-plane components that are often not exposed by default.
+    kubeEtcd:
+      enabled: false
+    kubeControllerManager:
+      enabled: false
+    kubeScheduler:
+      enabled: false
+
+    prometheus:
+      prometheusSpec:
+        image:
+          registry: quay.io
+          repository: prometheus/prometheus
+          tag: v3.9.1
+          sha: 1f0f50f06acaceb0f5670d2c8a658a599affe7b0d8e78b898c1035653849a702
+        retention: 15d
+        externalUrl: https://prometheus.${SECRET_DOMAIN}
+        externalLabels:
+          cluster: homelab-cluster
+        podMetadata:
+          annotations:
+            reloader.stakater.com/auto: "true"
+        # Accept remote_write in-cluster (used by Tempo metrics-generator).
+        enableRemoteWriteReceiver: true
+        # Remote write to Mimir is disabled (Mimir turned off).
+        remoteWrite: []
+        serviceMonitorSelectorNilUsesHelmValues: false
+        podMonitorSelectorNilUsesHelmValues: false
+        probeSelectorNilUsesHelmValues: false
+        ruleSelectorNilUsesHelmValues: false
+        serviceMonitorSelector: {}
+        podMonitorSelector: {}
+        probeSelector: {}
+        ruleSelector: {}
+        serviceMonitorNamespaceSelector: {}
+        podMonitorNamespaceSelector: {}
+        probeNamespaceSelector: {}
+        ruleNamespaceSelector: {}
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: longhorn
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests:
+                  storage: 50Gi
+        resources:
+          requests:
+            cpu: 400m
+            memory: 1500Mi
+          limits:
+            cpu: "2"
+            memory: 3Gi
+
+    prometheusOperator:
+      image:
+        registry: quay.io
+        repository: prometheus-operator/prometheus-operator
+        tag: v0.89.0
+        sha: fea93ca9be807eee2f51f4d997b7a2bf073d4051d9012b45b3c84a7b9e8b3f25
+      prometheusConfigReloader:
+        image:
+          registry: quay.io
+          repository: prometheus-operator/prometheus-config-reloader
+          tag: v0.89.0
+          sha: cb4ac6a56555bef0e202bec11e367dfe07ffb241cf4d30566b12b864692607a8
+      podAnnotations:
+        reloader.stakater.com/auto: "true"
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+
+    kube-state-metrics:
+      podAnnotations:
+        reloader.stakater.com/auto: "true"
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+
+    nodeExporter:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 64Mi
+        limits:
+          cpu: 50m
+          memory: 128Mi
+
+    prometheus-node-exporter:
+      podAnnotations:
+        reloader.stakater.com/auto: "true"
+
+    alertmanager:
+      config:
+        global:
+          resolve_timeout: 5m
+
+        route:
+          receiver: "null"
+          group_by: [alertname, namespace, severity, service, owner]
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 12h
+          routes:
+            # Keep the always-firing Watchdog out of your inbox.
+            - receiver: "null"
+              matchers:
+                - alertname="Watchdog"
+
+            - receiver: discord
+              matchers:
+                - severity=~"warning|critical"
+                - alertname!="InfoInhibitor"
+
+        receivers:
+          - name: "null"
+
+          - name: discord
+            slack_configs:
+              - api_url_file: "/etc/alertmanager/secrets/alertmanager-discord/webhook_url"
+                send_resolved: true
+                title: "[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }} ({{ .CommonLabels.namespace }})"
+                title_link: "{{ .ExternalURL }}/#/alerts?receiver={{ .Receiver }}"
+                text: |-
+                  Cluster: {{ .CommonLabels.cluster }}
+                  Namespace: {{ .CommonLabels.namespace }}
+                  Severity: {{ .CommonLabels.severity }}
+                  {{ if .CommonLabels.owner }}Owner: {{ .CommonLabels.owner }}{{ end }}
+                  {{ if .CommonLabels.service }}Service: {{ .CommonLabels.service }}{{ end }}
+                  {{ if .CommonLabels.instance }}Instance: {{ .CommonLabels.instance }}{{ end }}
+                  {{ if .CommonLabels.remote_name }}Remote: {{ .CommonLabels.remote_name }}{{ end }}
+
+                  {{ range .Alerts }}
+                  ---
+                  {{ .Annotations.summary }}
+                  {{ .Annotations.description }}
+                  {{ if .Annotations.runbook_url }}Runbook: {{ .Annotations.runbook_url }}{{ end }}
+                  {{ if .Annotations.dashboard_url }}Dashboard: {{ .Annotations.dashboard_url }}{{ end }}
+                  {{ if .GeneratorURL }}Query: {{ .GeneratorURL }}{{ end }}
+                  {{ end }}
+
+                  Alertmanager: {{ .ExternalURL }}
+                  {{ if .CommonLabels.alertname }}Silence: {{ .ExternalURL }}/#/silences/new?filter=%7Balertname%3D%22{{ .CommonLabels.alertname }}%22{{ if .CommonLabels.namespace }}%2Cnamespace%3D%22{{ .CommonLabels.namespace }}%22{{ end }}{{ if .CommonLabels.service }}%2Cservice%3D%22{{ .CommonLabels.service }}%22{{ end }}{{ if .CommonLabels.owner }}%2Cowner%3D%22{{ .CommonLabels.owner }}%22{{ end }}%7D{{ end }}
+
+        inhibit_rules:
+          - source_matchers:
+              - severity="critical"
+            target_matchers:
+              - severity="warning"
+            equal: [namespace, alertname]
+
+      alertmanagerSpec:
+        image:
+          registry: quay.io
+          repository: prometheus/alertmanager
+          tag: v0.31.1
+          sha: 88b605de9aba0410775c1eb3438f951115054e0d307f23f274a4c705f51630c1
+        externalUrl: https://alertmanager.${SECRET_DOMAIN}
+        podMetadata:
+          annotations:
+            reloader.stakater.com/auto: "true"
+        secrets:
+          - alertmanager-discord
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        storage:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: longhorn
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests:
+                  storage: 5Gi

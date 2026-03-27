@@ -1,0 +1,86 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: drawio
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: drawio
+  interval: 1h
+  values:
+    controllers:
+      drawio:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        containers:
+          app:
+            image:
+              repository: jgraph/drawio
+              tag: latest@sha256:ac1dcda00a7dd098930c45eed0e58bf6db9ab1c9b9f780a9309d02dd23965cf0
+            env:
+              DRAWIO_BASE_URL: https://drawio.${SECRET_DOMAIN}
+              DRAWIO_SELF_CONTAINED: "1"
+              PLANTUML_URL: http://plantuml-server:8080/
+            ports:
+              - name: http
+                containerPort: &drawioPort 8080
+            probes:
+              liveness: &probe
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /
+                    port: http
+                  initialDelaySeconds: 10
+                  periodSeconds: 20
+                  timeoutSeconds: 2
+                  failureThreshold: 3
+              readiness: *probe
+            resources:
+              requests:
+                cpu: 100m
+                memory: 512Mi
+              limits:
+                memory: 1Gi
+      plantuml-server:
+        containers:
+          app:
+            image:
+              repository: jgraph/plantuml-server
+              tag: latest@sha256:97f22b700223264223e057089c1a0ccdabd062ed2e4a3e904538434a487f757b
+            ports:
+              - name: http
+                containerPort: &plantumlPort 8080
+            probes:
+              liveness: &plantumlProbe
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /
+                    port: http
+                  initialDelaySeconds: 10
+                  periodSeconds: 30
+                  timeoutSeconds: 3
+                  failureThreshold: 3
+              readiness: *plantumlProbe
+            resources:
+              requests:
+                cpu: 25m
+                memory: 256Mi
+              limits:
+                memory: 1Gi
+    service:
+      drawio:
+        controller: drawio
+        ports:
+          http:
+            port: *drawioPort
+      plantuml-server:
+        controller: plantuml-server
+        ports:
+          http:
+            port: *plantumlPort

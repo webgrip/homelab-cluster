@@ -14,6 +14,12 @@ metadata:
   name: l2-policy
 spec:
   loadBalancerIPs: true
+  serviceSelector:
+    matchExpressions:
+      - key: io.kubernetes.service.namespace
+        operator: NotIn
+        values:
+          - zomboid
   # NOTE: interfaces might need to be set if you have more than one active NIC on your hosts
   # interfaces:
   #   - ^eno[0-9]+
@@ -21,3 +27,18 @@ spec:
   nodeSelector:
     matchLabels:
       kubernetes.io/os: linux
+
+---
+apiVersion: cilium.io/v2alpha1
+kind: CiliumL2AnnouncementPolicy
+metadata:
+  name: l2-policy-zomboid
+spec:
+  loadBalancerIPs: true
+  serviceSelector:
+    matchLabels:
+      io.kubernetes.service.namespace: zomboid
+      io.kubernetes.service.name: zomboid
+  nodeSelector:
+    matchLabels:
+      nodegroup: fringe

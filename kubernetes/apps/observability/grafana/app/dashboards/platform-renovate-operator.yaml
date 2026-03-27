@@ -1,0 +1,225 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-platform-renovate-operator
+  namespace: observability
+  annotations:
+    grafana_folder: Platform
+  labels:
+    grafana_dashboard: "1"
+data:
+  platform-renovate-operator.json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Platform / Renovate (operator)",
+      "uid": "platform-renovate-operator",
+      "timezone": "browser",
+      "tags": ["renovate", "dependencies", "gitops"],
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "30s",
+      "time": {"from": "now-7d", "to": "now"},
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "kube_ns",
+            "type": "query",
+            "label": "k8s namespace",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "refresh": 2,
+            "includeAll": false,
+            "multi": false,
+            "query": {"query": "label_values(kube_pod_info, namespace)", "refId": "kube_ns"},
+            "current": {"selected": true, "text": "renovate", "value": "renovate"}
+          },
+          {
+            "name": "renovate_namespace",
+            "type": "query",
+            "label": "renovate namespace label",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "refresh": 2,
+            "includeAll": false,
+            "multi": false,
+            "query": {"query": "label_values(renovate_operator_project_executions_total, renovate_namespace)", "refId": "renovate_namespace"},
+            "current": {"selected": true, "text": "renovate", "value": "renovate"}
+          },
+          {
+            "name": "renovate_job",
+            "type": "query",
+            "label": "renovate job",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "refresh": 2,
+            "includeAll": true,
+            "allValue": ".*",
+            "multi": true,
+            "query": {
+              "query": "label_values(renovate_operator_project_executions_total{renovate_namespace=~\"$renovate_namespace\"}, renovate_job)",
+              "refId": "renovate_job"
+            },
+            "current": {"selected": true, "text": "All", "value": "$__all"}
+          },
+          {
+            "name": "project",
+            "type": "query",
+            "label": "project",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "refresh": 2,
+            "includeAll": true,
+            "allValue": ".*",
+            "multi": true,
+            "query": {
+              "query": "label_values(renovate_operator_project_executions_total{renovate_namespace=~\"$renovate_namespace\", renovate_job=~\"$renovate_job\"}, project)",
+              "refId": "project"
+            },
+            "current": {"selected": true, "text": "All", "value": "$__all"}
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "Operator available replicas",
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "kube_deployment_status_replicas_available{namespace=\"$kube_ns\", deployment=\"renovate-operator\"}",
+              "legendFormat": "available"
+            }
+          ],
+          "options": {
+            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+            "orientation": "auto",
+            "textMode": "auto"
+          },
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Runs failed (selected)",
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(renovate_operator_run_failed{renovate_namespace=~\"$renovate_namespace\", renovate_job=~\"$renovate_job\", project=~\"$project\"})",
+              "legendFormat": "failed"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Dependency issues (selected)",
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(renovate_operator_dependency_issues{renovate_namespace=~\"$renovate_namespace\", renovate_job=~\"$renovate_job\", project=~\"$project\"})",
+              "legendFormat": "issues"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Executions (24h)",
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(increase(renovate_operator_project_executions_total{renovate_namespace=~\"$renovate_namespace\", renovate_job=~\"$renovate_job\", project=~\"$project\"}[24h]))",
+              "legendFormat": "executions"
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Executions rate by status",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (status) (rate(renovate_operator_project_executions_total{renovate_namespace=~\"$renovate_namespace\", renovate_job=~\"$renovate_job\", project=~\"$project\"}[5m]))",
+              "legendFormat": "{{status}}"
+            }
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Operator reconcile errors/s",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (controller) (rate(controller_runtime_reconcile_errors_total{namespace=\"$kube_ns\"}[5m])) or on() vector(0)",
+              "legendFormat": "{{controller}}"
+            }
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {}, "overrides": []}
+        },
+        {
+          "id": 7,
+          "type": "table",
+          "title": "Projects: last run failed",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (project, renovate_job) (renovate_operator_run_failed{renovate_namespace=~\"$renovate_namespace\", renovate_job=~\"$renovate_job\", project=~\"$project\"})",
+              "legendFormat": "{{project}}"
+            }
+          ],
+          "options": {"showHeader": true, "cellHeight": "sm"},
+          "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": []}
+        },
+        {
+          "id": 8,
+          "type": "table",
+          "title": "Projects: dependency issues",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (project, renovate_job) (renovate_operator_dependency_issues{renovate_namespace=~\"$renovate_namespace\", renovate_job=~\"$renovate_job\", project=~\"$project\"})",
+              "legendFormat": "{{project}}"
+            }
+          ],
+          "options": {"showHeader": true, "cellHeight": "sm"},
+          "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": []}
+        }
+      ]
+    }

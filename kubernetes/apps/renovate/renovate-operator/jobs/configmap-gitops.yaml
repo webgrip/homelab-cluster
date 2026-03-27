@@ -1,0 +1,184 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: renovate-config-gitops
+data:
+  renovate.json: |-
+    {
+      "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+      "extends": [
+        "config:recommended",
+        ":dependencyDashboard",
+        ":labels(dependencies)",
+        ":configMigration",
+
+        "docker:pinDigests",
+        "helpers:pinGitHubActionDigests",
+        ":pinDevDependencies",
+        ":maintainLockFilesWeekly",
+
+        "abandonments:recommended"
+      ],
+
+      "platform": "github",
+      "autodiscover": false,
+      "onboarding": true,
+      "requireConfig": "optional",
+
+      "timezone": "Europe/Amsterdam",
+
+      "updateNotScheduled": false,
+
+      "abortOnExternalHostError": false,
+
+      "prConcurrentLimit": 2,
+      "prHourlyLimit": 0,
+
+      "branchConcurrentLimit": 2,
+      "commitBodyTable": true,
+
+      "rebaseWhen": "conflicted",
+      "recreateWhen": "auto",
+
+      "schedule": ["at any time"],
+
+      "dependencyDashboard": true,
+      "dependencyDashboardAutoclose": true,
+
+      "vulnerabilityAlerts": {
+        "enabled": true,
+        "labels": ["security"],
+        "schedule": ["at any time"]
+      },
+
+      "hostRules": [
+        {
+          "matchHost": "api.github.com",
+          "concurrentRequestLimit": 2,
+          "maxRequestsPerSecond": 1
+        }
+      ],
+
+      "enabledManagers": [
+        "flux",
+        "kustomize",
+        "helm-values",
+        "helmfile",
+
+        "github-actions",
+        "pre-commit",
+
+        "terraform",
+        "terragrunt",
+
+        "npm",
+        "pip_requirements",
+        "poetry",
+        "pipenv",
+        "gomod",
+        "cargo",
+        "maven",
+        "gradle",
+        "composer",
+        "nuget",
+
+        "dockerfile",
+        "docker-compose"
+      ],
+
+      "ignorePaths": [
+        "**/*.sops.yaml",
+        "**/*.sops.yml",
+        "bootstrap/**",
+        "talos/**",
+        "kubeconfig",
+        "github-push-token.txt",
+        "github-deploy.key.pub"
+      ],
+
+      "packageRules": [
+        {
+          "matchManagers": ["flux"],
+          "groupName": "Flux controllers & OCI artifacts",
+          "separateMinorPatch": true
+        },
+        {
+          "matchManagers": ["helm-values", "kustomize", "helmfile"],
+          "matchDatasources": ["docker"],
+          "groupName": "GitOps container images",
+          "pinDigests": true
+        },
+        {
+          "matchManagers": ["github-actions"],
+          "groupName": "GitHub Actions",
+          "automerge": false
+        },
+        {
+          "matchManagers": ["pre-commit"],
+          "groupName": "pre-commit hooks"
+        },
+        {
+          "matchManagers": ["terraform", "terragrunt"],
+          "groupName": "Terraform",
+          "separateMinorPatch": true
+        },
+        {
+          "matchManagers": ["npm"],
+          "groupName": "npm",
+          "rangeStrategy": "replace"
+        },
+        {
+          "matchManagers": ["pip_requirements", "poetry", "pipenv"],
+          "groupName": "python"
+        },
+        {
+          "matchManagers": ["gomod"],
+          "groupName": "go modules"
+        },
+        {
+          "matchManagers": ["cargo"],
+          "groupName": "rust crates"
+        },
+        {
+          "matchManagers": ["maven", "gradle"],
+          "groupName": "jvm"
+        },
+        {
+          "matchManagers": ["composer"],
+          "groupName": "php composer"
+        },
+        {
+          "matchManagers": ["nuget"],
+          "groupName": "dotnet"
+        },
+        {
+          "matchManagers": ["dockerfile", "docker-compose"],
+          "matchDatasources": ["docker"],
+          "groupName": "application container images",
+          "pinDigests": true
+        },
+        {
+          "matchUpdateTypes": ["major"],
+          "labels": ["major"],
+          "dependencyDashboardApproval": true
+        },
+        {
+          "matchUpdateTypes": ["patch"],
+          "matchDepTypes": ["dependencies"],
+          "automerge": true,
+          "schedule": ["at any time"]
+        },
+        {
+          "matchDepTypes": ["devDependencies"],
+          "groupName": "dev-only deps",
+          "automerge": true,
+          "automergeType": "pr"
+        },
+        {
+          "matchPackagePatterns": ["^@types/"],
+          "groupName": "typescript types",
+          "automerge": true
+        }
+      ]
+    }

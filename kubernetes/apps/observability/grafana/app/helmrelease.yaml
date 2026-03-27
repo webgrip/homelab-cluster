@@ -1,0 +1,216 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: grafana
+spec:
+  interval: 1h
+  install:
+    timeout: 15m
+  upgrade:
+    timeout: 15m
+  rollback:
+    timeout: 15m
+  chart:
+    spec:
+      chart: grafana
+      version: 10.5.15
+      sourceRef:
+        kind: HelmRepository
+        name: grafana-charts
+        namespace: observability
+  values:
+    podAnnotations:
+      reloader.stakater.com/auto: "true"
+
+    serviceMonitor:
+      enabled: true
+
+    # Injected by a SOPS-managed Secret you create separately.
+    # Expected keys:
+    # - GF_AUTH_GITHUB_CLIENT_ID
+    # - GF_AUTH_GITHUB_CLIENT_SECRET
+    envFromSecret: grafana-github-oauth
+
+    grafana.ini:
+      server:
+        root_url: https://grafana.${SECRET_DOMAIN}/
+
+      users:
+        auto_assign_org_role: Viewer
+
+      auth.github:
+        enabled: true
+        auto_login: true
+        allow_sign_up: true
+        scopes: user:email,read:org
+        allowed_organizations: webgrip
+        allow_assign_grafana_admin: true
+        # Promote members of the GitHub team to Grafana server admin.
+        # Team reference format: "@<org>/<team>" (nested teams use "@<org>/<parent>/<child>").
+        skip_org_role_sync: false
+        # GitHub typically exposes the team slug as "@org/<team>"; some setups may include parent team path.
+        # Keep a login-based fallback so you can recover access if group sync isn't working yet.
+        role_attribute_path: "[login=='ryangr0'][0] && 'GrafanaAdmin' || contains(groups[*], '@webgrip/grafana') && 'GrafanaAdmin' || contains(groups[*], '@webgrip/infrastructure/grafana') && 'GrafanaAdmin' || 'Viewer'"
+
+      rendering:
+        server_url: http://grafana-image-renderer.observability.svc.cluster.local:8081/render
+        callback_url: http://grafana.observability.svc.cluster.local/
+
+    plugins:
+      - grafana-pyroscope-app
+      - grafana-clock-panel
+      - grafana-piechart-panel
+      - grafana-polystat-panel
+      - grafana-image-renderer
+      - yesoreyeram-infinity-datasource
+      - simpod-json-datasource
+      - yesoreyeram-boomtable-panel
+      - vonage-status-panel
+      - marcusolsson-dynamictext-panel
+
+    imageRenderer:
+      enabled: true
+      serverURL: http://grafana-image-renderer.observability.svc.cluster.local:8081/render
+      renderingCallbackURL: http://grafana.observability.svc.cluster.local/
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 200m
+          memory: 512Mi
+
+    admin:
+      existingSecret: grafana-admin
+      userKey: admin-user
+      passwordKey: admin-password
+
+    persistence:
+      enabled: true
+      storageClassName: longhorn
+      size: 10Gi
+
+    # Grafana uses a ReadWriteOnce PVC; RollingUpdate can temporarily create a second pod
+    # and trigger Longhorn multi-attach failures. Recreate avoids that.
+    deploymentStrategy:
+      type: Recreate
+
+    service:
+      type: ClusterIP
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+    # Provision core datasources for the LGTM+P stack.
+    datasources:
+      datasources.yaml:
+        apiVersion: 1
+        datasources:
+          - name: Prometheus
+            type: prometheus
+            uid: prometheus
+            access: proxy
+            url: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090
+            isDefault: true
+            jsonData:
+              exemplarTraceIdDestinations:
+                - datasourceUid: tempo
+                  name: trace_id
+                - datasourceUid: tempo
+                  name: traceID
+          - name: Loki
+            type: loki
+            uid: loki
+            access: proxy
+            url: http://loki-gateway.observability.svc.cluster.local
+            jsonData:
+              derivedFields:
+                - name: TraceID
+                  matcherRegex: '"trace_id"\\s*:\\s*"([0-9a-fA-F]{32})"'
+                  datasourceUid: tempo
+                  url: "$${__value.raw}"
+          - name: Tempo
+            type: tempo
+            uid: tempo
+            access: proxy
+            url: http://tempo.observability.svc.cluster.local:3200
+            jsonData:
+              tracesToLogsV2:
+                datasourceUid: loki
+                spanStartTimeShift: "-1h"
+                spanEndTimeShift: "1h"
+                tags:
+                  [
+                    "job",
+                    "namespace",
+                    "pod",
+                    "service.name",
+                    "service.namespace",
+                  ]
+                filterByTraceID: true
+                filterBySpanID: false
+                customQuery: false
+              nodeGraph:
+                enabled: true
+              tracesToMetrics:
+                datasourceUid: prometheus
+                # Tags must exist on the span/resource, but the resulting labels must match
+                # the Prometheus label names produced by Tempo span-metrics (dots become underscores).
+                tags:
+                  - key: service.name
+                    value: service
+                  - key: http.method
+                    value: http_method
+                  - key: http.status_code
+                    value: http_status_code
+                  - key: rpc.system
+                    value: rpc_system
+                  - key: rpc.service
+                    value: rpc_service
+                  - key: rpc.method
+                    value: rpc_method
+                queries:
+                  - name: Span metrics
+                    query: "sum(rate(traces_spanmetrics_latency_bucket{$$__tags}[5m]))"
+              serviceMap:
+                datasourceUid: prometheus
+              tracesToProfiles:
+                datasourceUid: pyroscope
+                tags: ["namespace", "pod", "service.name", "service.namespace"]
+                profileTypeId: "process_cpu:cpu:nanoseconds:cpu:nanoseconds"
+                customQuery: false
+          - name: Pyroscope
+            type: pyroscope
+            uid: pyroscope
+            access: proxy
+            url: http://pyroscope.observability.svc.cluster.local:4040
+          - name: Alertmanager
+            type: alertmanager
+            uid: alertmanager
+            access: proxy
+            url: http://kube-prometheus-stack-alertmanager.observability.svc.cluster.local:9093
+            jsonData:
+              implementation: prometheus
+
+    sidecar:
+      dashboards:
+        enabled: true
+        searchNamespace: ALL
+        label: grafana_dashboard
+        labelValue: "1"
+        folderAnnotation: grafana_folder
+        provider:
+          foldersFromFilesStructure: true
+      resources:
+        requests:
+          cpu: 10m
+          memory: 64Mi
+        limits:
+          cpu: 50m
+          memory: 128Mi

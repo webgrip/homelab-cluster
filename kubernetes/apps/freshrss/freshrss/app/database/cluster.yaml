@@ -1,0 +1,26 @@
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: freshrss-db
+  namespace: freshrss
+spec:
+  instances: 1
+  inheritedMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
+  storage:
+    size: 10Gi
+    storageClass: longhorn
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: freshrss-db-store
+        serverName: freshrss-db
+  bootstrap:
+    initdb:
+      database: freshrss
+      owner: freshrss
+      secret:
+        name: freshrss-db-secret

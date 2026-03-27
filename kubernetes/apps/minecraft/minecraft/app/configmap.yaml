@@ -1,0 +1,45 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minecraft-config
+data:
+  # NOTE:
+  # - This ConfigMap is for non-sensitive configuration.
+  # - If you later enable RCON or add operator/admin credentials,
+  #   create a Secret and wire it into the HelmRelease via envFrom.
+
+  # Required by the itzg/minecraft-server image.
+  EULA: "TRUE"
+
+  # Server type/version
+  TYPE: "PAPER"
+  VERSION: "1.21.11"
+
+  # Paper plugins
+  # Optional: provide a comma/space separated list of plugin URLs.
+  # Example: "https://github.com/EssentialsX/Essentials/releases/download/2.20.1/EssentialsX-2.20.1.jar"
+  PLUGINS: "https://github.com/EssentialsX/Essentials/releases/download/2.21.2/EssentialsX-2.21.2.jar,https://github.com/EssentialsX/Essentials/releases/download/2.21.2/EssentialsXChat-2.21.2.jar,https://github.com/EssentialsX/Essentials/releases/download/2.21.2/EssentialsXSpawn-2.21.2.jar,https://download.luckperms.net/1626/bukkit/loader/LuckPerms-Bukkit-5.5.38.jar,https://download.geysermc.org/v2/projects/geyser/versions/2.9.4/builds/1100/downloads/spigot,https://download.geysermc.org/v2/projects/floodgate/versions/2.2.5/builds/130/downloads/spigot,https://github.com/BlueMap-Minecraft/BlueMap/releases/download/v5.16/bluemap-5.16-paper.jar"
+
+  # Gameplay defaults
+  DIFFICULTY: "normal"
+  MODE: "survival"
+  PVP: "true"
+  MAX_PLAYERS: "20"
+  VIEW_DISTANCE: "10"
+
+  # Server branding
+  MOTD: "Homelab Minecraft"
+
+  # JVM / resource tuning
+  # Keep heap below the pod memory limit to leave headroom for native memory,
+  # off-heap, metaspace, plugins, and the OS.
+  MEMORY: "4G"
+
+  # Paper performance flags
+  # Uses Aikar's tuned defaults for G1GC.
+  USE_AIKAR_FLAGS: "true"
+
+  # RCON is disabled by default to avoid needing a Secret.
+  ENABLE_RCON: "false"
+  RCON_PORT: "25575"

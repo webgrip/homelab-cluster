@@ -1,0 +1,121 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: tempo
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: tempo
+      version: 1.24.4
+      sourceRef:
+        kind: HelmRepository
+        name: grafana-charts-tempo
+        namespace: observability
+  values:
+    podAnnotations:
+      reloader.stakater.com/auto: "true"
+
+    # Tempo can temporarily stall /ready (eg, during heavy compaction/WAL activity).
+    # The chart defaults (timeout=5s, failureThreshold=3) cause frequent kubelet restarts.
+    livenessProbe:
+      httpGet:
+        path: /ready
+        port: 3200
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 15
+      failureThreshold: 6
+      successThreshold: 1
+
+    readinessProbe:
+      httpGet:
+        path: /ready
+        port: 3200
+      initialDelaySeconds: 20
+      periodSeconds: 10
+      timeoutSeconds: 15
+      failureThreshold: 6
+      successThreshold: 1
+
+    serviceMonitor:
+      enabled: true
+
+    tempo:
+      extraEnvFrom:
+        - secretRef:
+            name: observability-s3
+
+      # Trace block retention in object storage.
+      retention: 336h
+
+      # The chart defaults this to 1024, which can OOM with a 1Gi limit.
+      memBallastSizeMbs: 256
+
+      # Expand $VAR/${VAR} in the generated config using the container env.
+      # This keeps S3 credentials/endpoints out of the HelmRelease spec.
+      extraArgs:
+        config.expand-env: true
+
+      metricsGenerator:
+        enabled: true
+        # Prometheus remote_write receiver (enabled in kube-prometheus-stack HelmRelease).
+        remoteWriteUrl: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090/api/v1/write
+        processor:
+          service_graphs:
+            wait: 10s
+            max_items: 2000
+            # Keep service graphs low-cardinality: only client/server edges.
+            # Adding dimensions multiplies the number of time series per edge.
+            dimensions: []
+          span_metrics:
+            # Keep span-metrics cardinality sane for small clusters.
+            # Avoid high-cardinality dimensions like http.target/url, k8s.pod.name, user ids, etc.
+            dimensions:
+              # Enable per-namespace app metrics/alerts. This increases series count, but is worth it
+              # for app-level visibility in a homelab.
+              - k8s.namespace.name
+              - http.method
+              - http.status_code
+              - rpc.system
+              - rpc.service
+              - rpc.method
+            intrinsic_dimensions:
+              service: true
+              span_name: false
+              span_kind: true
+              status_code: true
+              status_message: false
+            enable_target_info: false
+        storage:
+          path: /tmp/tempo
+        traces_storage:
+          path: /tmp/traces
+
+      overrides:
+        defaults:
+          metrics_generator:
+            processors:
+              - local-blocks
+              - service-graphs
+              - span-metrics
+
+      resources:
+        requests:
+          cpu: 100m
+          memory: 1Gi
+        limits:
+          cpu: "1"
+          memory: 3Gi
+      # Store traces in S3-compatible object storage.
+      storage:
+        trace:
+          backend: s3
+          s3:
+            bucket: tempo
+            endpoint: ${S3_ENDPOINT}
+            region: ${S3_REGION}
+            access_key: ${S3_ACCESS_KEY_ID}
+            secret_key: ${S3_SECRET_ACCESS_KEY}
+            insecure: true

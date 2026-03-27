@@ -8,7 +8,7 @@ spec:
   chart:
     spec:
       chart: longhorn
-      version: 1.10.1
+      version: 1.11.0
       sourceRef:
         kind: HelmRepository
         name: longhorn
@@ -36,8 +36,18 @@ spec:
       replicaAutoBalance: best-effort
       storageMinimalAvailablePercentage: "1"
       storageReservedPercentageForDefaultDisk: "10"
+      # Allow system-managed components (like longhorn-csi-plugin) to run on the tainted fringe node.
+      taintToleration: "dedicated=fringe:NoSchedule"
     ingress:
       enabled: false
     metrics:
       serviceMonitor:
         enabled: true
+
+    # Allow the Longhorn manager DaemonSet to run on the tainted fringe node.
+    longhornManager:
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: fringe
+          effect: NoSchedule

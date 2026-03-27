@@ -1,0 +1,251 @@
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: grafana-annotations
+  namespace: flux-system
+spec:
+  type: grafana
+  address: http://grafana.observability.svc.cluster.local/api/annotations
+  secretRef:
+    name: grafana-annotations-token
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: grafana-annotations-reconciles
+  namespace: flux-system
+spec:
+  providerRef:
+    name: grafana-annotations
+  eventSeverity: info
+  eventMetadata:
+    flux_event: change
+  # Treat info events as "change" by default (so you get an annotation whenever Flux
+  # actually does something), but suppress the high-frequency noise that does NOT
+  # represent a change.
+  exclusionList:
+    # Periodic controller tick (no-op)
+    - "(?i)^Reconciliation finished in .* next run in .*$"
+    - "(?i)^Reconciliation finished in .*$"
+    # Source-controller no-op wording (note the upstream typo)
+    - "(?i)^no changes since last reconcilation:.*$"
+    - "(?i)^no changes since last reconciliation:.*$"
+  eventSources:
+    - kind: Kustomization
+      name: "*"
+      namespace: arc-systems
+    - kind: HelmRelease
+      name: "*"
+      namespace: arc-systems
+    - kind: Kustomization
+      name: "*"
+      namespace: backstage
+    - kind: HelmRelease
+      name: "*"
+      namespace: backstage
+    - kind: Kustomization
+      name: "*"
+      namespace: cert-manager
+    - kind: HelmRelease
+      name: "*"
+      namespace: cert-manager
+    - kind: Kustomization
+      name: "*"
+      namespace: cnpg-dr
+    - kind: HelmRelease
+      name: "*"
+      namespace: cnpg-dr
+    - kind: Kustomization
+      name: "*"
+      namespace: cnpg-system
+    - kind: HelmRelease
+      name: "*"
+      namespace: cnpg-system
+    - kind: Kustomization
+      name: "*"
+      namespace: default
+    - kind: HelmRelease
+      name: "*"
+      namespace: default
+    - kind: Kustomization
+      name: "*"
+      namespace: flux-system
+    - kind: HelmRelease
+      name: "*"
+      namespace: flux-system
+    - kind: Kustomization
+      name: "*"
+      namespace: freshrss
+    - kind: HelmRelease
+      name: "*"
+      namespace: freshrss
+    - kind: Kustomization
+      name: "*"
+      namespace: invoiceninja
+    - kind: HelmRelease
+      name: "*"
+      namespace: invoiceninja
+    - kind: Kustomization
+      name: "*"
+      namespace: kube-system
+    - kind: HelmRelease
+      name: "*"
+      namespace: kube-system
+    - kind: Kustomization
+      name: "*"
+      namespace: longhorn-system
+    - kind: HelmRelease
+      name: "*"
+      namespace: longhorn-system
+    - kind: Kustomization
+      name: "*"
+      namespace: network
+    - kind: HelmRelease
+      name: "*"
+      namespace: network
+    - kind: Kustomization
+      name: "*"
+      namespace: observability
+    - kind: HelmRelease
+      name: "*"
+      namespace: observability
+    - kind: Kustomization
+      name: "*"
+      namespace: searxng
+    - kind: HelmRelease
+      name: "*"
+      namespace: searxng
+    - kind: Kustomization
+      name: "*"
+      namespace: sparkyfitness
+    - kind: HelmRelease
+      name: "*"
+      namespace: sparkyfitness
+    - kind: GitRepository
+      name: "*"
+      namespace: flux-system
+    - kind: OCIRepository
+      name: "*"
+      namespace: flux-system
+    - kind: HelmRepository
+      name: "*"
+      namespace: flux-system
+    - kind: Bucket
+      name: "*"
+      namespace: flux-system
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: grafana-annotations-errors
+  namespace: flux-system
+spec:
+  providerRef:
+    name: grafana-annotations
+  eventSeverity: error
+  eventMetadata:
+    flux_event: error
+  eventSources:
+    - kind: Kustomization
+      name: "*"
+      namespace: arc-systems
+    - kind: HelmRelease
+      name: "*"
+      namespace: arc-systems
+    - kind: Kustomization
+      name: "*"
+      namespace: backstage
+    - kind: HelmRelease
+      name: "*"
+      namespace: backstage
+    - kind: Kustomization
+      name: "*"
+      namespace: cert-manager
+    - kind: HelmRelease
+      name: "*"
+      namespace: cert-manager
+    - kind: Kustomization
+      name: "*"
+      namespace: cnpg-dr
+    - kind: HelmRelease
+      name: "*"
+      namespace: cnpg-dr
+    - kind: Kustomization
+      name: "*"
+      namespace: cnpg-system
+    - kind: HelmRelease
+      name: "*"
+      namespace: cnpg-system
+    - kind: Kustomization
+      name: "*"
+      namespace: default
+    - kind: HelmRelease
+      name: "*"
+      namespace: default
+    - kind: Kustomization
+      name: "*"
+      namespace: flux-system
+    - kind: HelmRelease
+      name: "*"
+      namespace: flux-system
+    - kind: Kustomization
+      name: "*"
+      namespace: freshrss
+    - kind: HelmRelease
+      name: "*"
+      namespace: freshrss
+    - kind: Kustomization
+      name: "*"
+      namespace: invoiceninja
+    - kind: HelmRelease
+      name: "*"
+      namespace: invoiceninja
+    - kind: Kustomization
+      name: "*"
+      namespace: kube-system
+    - kind: HelmRelease
+      name: "*"
+      namespace: kube-system
+    - kind: Kustomization
+      name: "*"
+      namespace: longhorn-system
+    - kind: HelmRelease
+      name: "*"
+      namespace: longhorn-system
+    - kind: Kustomization
+      name: "*"
+      namespace: network
+    - kind: HelmRelease
+      name: "*"
+      namespace: network
+    - kind: Kustomization
+      name: "*"
+      namespace: observability
+    - kind: HelmRelease
+      name: "*"
+      namespace: observability
+    - kind: Kustomization
+      name: "*"
+      namespace: searxng
+    - kind: HelmRelease
+      name: "*"
+      namespace: searxng
+    - kind: Kustomization
+      name: "*"
+      namespace: sparkyfitness
+    - kind: HelmRelease
+      name: "*"
+      namespace: sparkyfitness
+    - kind: GitRepository
+      name: "*"
+      namespace: flux-system
+    - kind: OCIRepository
+      name: "*"
+      namespace: flux-system
+    - kind: HelmRepository
+      name: "*"
+      namespace: flux-system
+    - kind: Bucket
+      name: "*"
+      namespace: flux-system

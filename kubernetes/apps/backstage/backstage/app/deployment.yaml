@@ -1,0 +1,74 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backstage
+  namespace: backstage
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backstage
+  template:
+    metadata:
+      labels:
+        app: backstage
+      annotations:
+        reloader.stakater.com/auto: "true"
+    spec:
+      serviceAccountName: backstage-kubernetes
+      containers:
+        - name: backstage
+          image: webgrip/backstage-application:1.0.4
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 7007
+          envFrom:
+            - configMapRef:
+                name: backstage-config
+            - secretRef:
+                name: backstage-secrets
+            - secretRef:
+                name: backstage-db-secret
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: K8S_SERVICE_ACCOUNT_TOKEN_BACKSTAGE
+              valueFrom:
+                secretKeyRef:
+                  name: backstage-kubernetes-token
+                  key: token
+            - name: POSTGRES_HOST
+              value: "backstage-db-rw.backstage.svc.cluster.local"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: backstage-db-secret
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: backstage-db-secret
+                  key: password
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 7007
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 7007
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

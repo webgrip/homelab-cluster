@@ -1,0 +1,66 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: beyla
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: beyla
+      version: 1.10.4
+      sourceRef:
+        kind: HelmRepository
+        name: grafana-charts-beyla
+        namespace: observability
+  values:
+    podAnnotations:
+      reloader.stakater.com/auto: "true"
+
+    # eBPF-based auto-instrumentation.
+    preset: application
+
+    privileged: true
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+    config:
+      create: true
+      data:
+        # Beyla is typically deployed as a DaemonSet (one pod per node). If you see 3 pods,
+        # that's because you have 3 nodes.
+        # To reduce overhead, make instrumentation opt-in and add trace sampling.
+        discovery:
+          instrument:
+            # Only instrument pods that explicitly opt-in.
+            - k8s_namespace: "*"
+              k8s_pod_annotations:
+                beyla.instrument: "true"
+
+        attributes:
+          kubernetes:
+            enable: true
+
+        # Export traces over OTLP HTTP to the Alloy gateway.
+        otel_traces_export:
+          endpoint: http://alloy-gateway.observability.svc.cluster.local:4318
+          sampler:
+            name: traceidratio
+            arg: "0.1"
+
+        # Optional: keep Prometheus endpoint enabled (if you later want to scrape it).
+        prometheus_export:
+          port: 9090
+          path: /metrics
+
+    service:
+      enabled: false
+
+    serviceMonitor:
+      enabled: false
