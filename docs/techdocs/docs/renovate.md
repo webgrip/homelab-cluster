@@ -103,7 +103,8 @@ Important behaviors in the current global config:
 
 - Managers enabled include: `flux`, `kustomize`, `helm-values`, `helmfile`, `github-actions`, plus many language ecosystems.
 - Dependency Dashboard enabled and auto-closing enabled.
-- Grouping is defined via `packageRules` (e.g. “GitOps container images”, “Flux controllers & OCI artifacts”, “GitHub Actions”).
+- Experimental OSV vulnerability alerts are enabled, and the Dependency Dashboard lists unresolved OSV CVEs for direct dependencies.
+- Grouping is defined via `packageRules` (e.g. “GitOps container images”, “Flux controllers & OCI artifacts”, “GitHub Actions”), and Flux updates are intentionally split into patch and minor PRs so patch updates can auto-merge while minor updates stay for manual review.
 - Major updates require Dependency Dashboard approval (`dependencyDashboardApproval: true`).
 - It is resilient to flaky registries: `abortOnExternalHostError: false`.
 - Schedule defaults to `at any time` and no `minimumReleaseAge` delay is configured.
@@ -122,6 +123,7 @@ Key behaviors in the current repo config:
 - Semantic commit conventions, commit message formatting, and update-type labeling.
 - A GitHub Actions packageRule enables automerge for minor/patch/digest updates.
 - GitOps changes under `kubernetes/apps/*` are regrouped by top-level app directory so each namespace/area gets its own Renovate PR.
+- Reused dependencies that span many apps, such as `ghcr.io/bjw-s-labs/helm/app-template`, are carved back out into shared PRs to avoid one dependency generating many near-identical namespace PRs.
 - Two custom regex managers are defined to process `# renovate:` annotations.
 
 Annotated dependency pins are the mechanism used for values that aren’t otherwise discoverable by a native manager. Example:
@@ -141,6 +143,7 @@ This repo uses Renovate to keep PR noise manageable:
 
 - Global defaults still provide coarse grouping by manager/datasource.
 - Repo-level packageRules then split `kubernetes/apps/*` updates by top-level app directory, so `observability`, `network`, `sparkyfitness`, and similar areas get separate PRs instead of one repo-wide GitOps batch.
+- A small set of shared cross-namespace dependencies can override that split later in the rule order and stay repo-wide when that produces cleaner PRs.
 - Major updates are gated by the Dependency Dashboard approval checkbox.
 
 Automerge behavior is defined in both places:
@@ -231,6 +234,19 @@ Mechanics (as implemented):
 
 - The CronJob mints a GitHub App installation token.
 - It applies a Secret `renovate-runtime-token` in namespace `renovate` containing `token` and `RENOVATE_TOKEN`.
+
+## Vulnerability sources
+
+This setup uses two vulnerability sources:
+
+- GitHub vulnerability alerts via `vulnerabilityAlerts.enabled: true`
+- OSV via the experimental `osvVulnerabilityAlerts: true`
+
+Operational notes:
+
+- OSV coverage applies to direct dependencies only.
+- The Dependency Dashboard uses `dependencyDashboardOSVVulnerabilitySummary: "unresolved"`, which keeps unresolved OSV findings visible without dumping every fixable item into the dashboard.
+- Because OSV support is still marked experimental upstream, expect some behavior and coverage to evolve across Renovate releases.
 
 ## Maintenance jobs (cleanup)
 
