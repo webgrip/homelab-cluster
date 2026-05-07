@@ -121,6 +121,7 @@ Key behaviors in the current repo config:
 - Schedule is restricted: `schedule: ["every weekend"]`.
 - Semantic commit conventions, commit message formatting, and update-type labeling.
 - A GitHub Actions packageRule enables automerge for minor/patch/digest updates.
+- GitOps changes under `kubernetes/apps/*` are regrouped by top-level app directory so each namespace/area gets its own Renovate PR.
 - Two custom regex managers are defined to process `# renovate:` annotations.
 
 Annotated dependency pins are the mechanism used for values that aren’t otherwise discoverable by a native manager. Example:
@@ -138,7 +139,8 @@ Array merge/override behavior can materially change what Renovate scans. If a de
 
 This repo uses Renovate to keep PR noise manageable:
 
-- Grouping is primarily controlled by global `packageRules.groupName` in the ConfigMap.
+- Global defaults still provide coarse grouping by manager/datasource.
+- Repo-level packageRules then split `kubernetes/apps/*` updates by top-level app directory, so `observability`, `network`, `sparkyfitness`, and similar areas get separate PRs instead of one repo-wide GitOps batch.
 - Major updates are gated by the Dependency Dashboard approval checkbox.
 
 Automerge behavior is defined in both places:
