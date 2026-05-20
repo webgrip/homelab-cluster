@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: Renovate PR Review
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+# One review at a time per PR; cancel in-flight reviews when a new commit lands.
+concurrency:
+  group: renovate-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  ai-review:
+    name: AI Dependency Review
+    # Run only for Renovate / Dependabot PRs that are not already flagged
+    # automerge (those are low-risk by definition and don't need a review).
+    if: >-
+      (
+        github.event.pull_request.user.login == 'renovate[bot]' ||
+        github.event.pull_request.user.login == 'dependabot[bot]'
+      ) &&
+      !contains(github.event.pull_request.labels.*.name, 'automerge')
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read       # checkout + read agent file
+      pull-requests: write # post / update review comment
+      models: read         # GitHub Models API
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Review dependency update
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER:    ${{ github.event.pull_request.number }}
+          # Change the model here if you prefer a different one.
+          # Available at https://github.com/marketplace/models
+          # Examples: openai/gpt-4o-mini  openai/gpt-4.1  meta/Meta-Llama-3.1-70B-Instruct
+          REVIEW_MODEL: openai/gpt-4o
+        run: python3 .github/scripts/renovate_review.py
