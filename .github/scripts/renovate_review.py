@@ -24,7 +24,7 @@ TOKEN      = os.environ["GITHUB_TOKEN"]
 REPO       = os.environ["GITHUB_REPOSITORY"]
 PR_NUMBER  = os.environ["PR_NUMBER"]
 MODEL      = os.environ.get("REVIEW_MODEL", "openai/gpt-4o")
-AGENT_FILE = ".github/agents/renovate-reviewer.md"
+AGENT_FILE = ".github/agents/renovate-reviewer.agent.md"
 SENTINEL   = "<!-- renovate-ai-review -->"
 
 # chars sent to the model; keep cost/latency reasonable

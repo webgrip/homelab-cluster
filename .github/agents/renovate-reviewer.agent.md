@@ -1,9 +1,7 @@
 ---
 name: renovate-reviewer
 description: "Use when: reviewing Renovate, Dependabot, or dependency update pull requests. Produces a read-only supply-chain risk assessment with release-note summary, ecosystem impact, blast-radius analysis, and merge recommendation."
-target: github-copilot
 tools: ["read", "search", "github/*"]
-disable-model-invocation: true
 ---
 
 # Renovate Reviewer
@@ -330,8 +328,8 @@ Your final answer should be the PR comment. Use this structure.
 ```markdown
 ## Dependency Update Review
 
-**Verdict:** <Green Low risk / Yellow Caution / Orange High risk / Red Blocking risk / Gray Unknown risk>  
-**Recommendation:** <Merge / Merge after checks / Hold / Split PR / Close-recreate>  
+**Verdict:** <Green Low risk / Yellow Caution / Orange High risk / Red Blocking risk / Gray Unknown risk>
+**Recommendation:** <Merge / Merge after checks / Hold / Split PR / Close-recreate>
 **Confidence:** <High / Medium / Low>
 
 ### Executive summary
