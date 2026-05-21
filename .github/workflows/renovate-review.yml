@@ -11,6 +11,7 @@ concurrency:
 
 jobs:
   review:
+    name: AI dependency review
     if: >-
       (
         github.event.pull_request.user.login == 'webgrip-renovate[bot]' ||
@@ -18,5 +19,20 @@ jobs:
         github.event.pull_request.user.login == 'dependabot[bot]'
       ) &&
       !contains(github.event.pull_request.labels.*.name, 'automerge')
-    uses: webgrip/.github/.github/workflows/renovate-review.yml@main
-    secrets: inherit
+    runs-on: arc-runner-set
+    permissions:
+      contents: read
+      pull-requests: write
+      models: read
+    steps:
+      - name: Install gh CLI
+        run: sudo apt-get install -y gh
+
+      - name: Run renovate review
+        uses: webgrip/.github/actions/renovate-review@main
+        with:
+          token: ${{ github.token }}
+          pr-number: ${{ github.event.pull_request.number }}
+          pr-title: ${{ github.event.pull_request.title }}
+          pr-author: ${{ github.event.pull_request.user.login }}
+          repository: ${{ github.repository }}
