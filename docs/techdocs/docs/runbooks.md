@@ -4,6 +4,7 @@ This page is intentionally a **links-only index**. Each runbook has its own dedi
 
 ## Platform / GitOps
 
+- Cluster health: [docs/techdocs/docs/runbooks/cluster-health.md](runbooks/cluster-health.md)
 - Flux: [docs/techdocs/docs/runbooks/flux.md](runbooks/flux.md)
 - Renovate: [docs/techdocs/docs/runbooks/renovate.md](runbooks/renovate.md)
 
