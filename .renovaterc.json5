@@ -1,5 +1,8 @@
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // Repo-local policy only. Org/runtime defaults, manager enablement, and
+  // custom extraction rules live in the in-cluster Renovate ConfigMap.
   extends: [
     "config:recommended",
     "docker:enableMajor",
@@ -8,56 +11,37 @@
     ":dependencyDashboard",
     ":semanticCommits",
   ],
+
   dependencyDashboard: true,
   dependencyDashboardTitle: "Renovate Dashboard 🤖",
-  schedule: ["every weekend"],
+  rebaseWhen: "behind-base-branch",
+  fetchChangeLogs: "pr",
+  separateMajorMinor: true,
+
   ignorePaths: [
     "**/*.sops.*",
     // The app is not referenced from observability/kustomization.yaml.
     "kubernetes/apps/observability/twitch-exporter/**",
   ],
-  flux: {
-    managerFilePatterns: [
-      "/(^|/)kubernetes/.+/(?:helmrelease(?:-[^/]+)?|helmrepository|ks(?:-[^/]+)?|kustomization|receiver|grafana-annotations)\\.ya?ml(?:\\.j2)?$/",
-    ],
-  },
-  helmfile: {
-    managerFilePatterns: [
-      "/(^|/)helmfile\\.ya?ml(?:\\.gotmpl)?(?:\\.j2)?$/",
-      "/(^|/)helmfile\\.d/.+\\.ya?ml(?:\\.gotmpl)?(?:\\.j2)?$/",
-    ],
-  },
-  kubernetes: {
-    managerFilePatterns: ["/(^|/)kubernetes/.+\\.ya?ml(?:\\.j2)?$/"],
-  },
-  kustomize: {
-    managerFilePatterns: ["/^kustomization\\.ya?ml(?:\\.j2)?$/"],
-  },
+
   postUpgradeTasks: {
     commands: ["./scripts/update-oci-digests.sh"],
     fileFilters: ["kubernetes/apps/**/ocirepository.yaml"],
     executionMode: "branch",
   },
+
+  prBodyNotes: [
+    "{{#if isMajor}}⚠️ Major update: review upstream migration notes, chart values, and rollout impact before merging.{{/if}}",
+    "{{#if isVulnerabilityAlert}}Security update: prioritize review and verify the vulnerable component is actually deployed.{{/if}}",
+    "{{#if isGroup}}Grouped GitOps PR: confirm the group is operationally coherent before enabling automerge.{{/if}}",
+  ],
+
   packageRules: [
     {
       description: "Keep Renovate's Flux manager away from digest-pinned OCIRepository files. OCIRepository tags are updated by custom.regex and scripts/update-oci-digests.sh refreshes spec.ref.digest from the registry manifest digest.",
       matchManagers: ["flux"],
       pinDigests: false,
-    },
-    {
-      description: "Manage Flux OCIRepository tags without asking Renovate to calculate digest-only OCI Helm chart updates.",
-      matchManagers: ["custom.regex"],
-      matchFileNames: ["kubernetes/apps/**/ocirepository.yaml"],
-      matchDatasources: ["docker"],
-      pinDigests: false,
-    },
-    {
-      description: "Disable digest-only and pin-digest updates for Flux OCIRepository custom regex deps; scripts/update-oci-digests.sh owns spec.ref.digest.",
-      matchManagers: ["custom.regex"],
-      matchFileNames: ["kubernetes/apps/**/ocirepository.yaml"],
-      matchDatasources: ["docker"],
-      matchUpdateTypes: ["pinDigest", "digest"],
-      enabled: false,
+      separateMultipleMajor: true,
     },
     {
       description: "Override Helmfile Dependency Name",
@@ -76,227 +60,74 @@
       minimumGroupSize: 2,
     },
     {
-      description: "Auto-merge GitHub Actions",
+      description: "Auto-merge GitHub Actions only after checks pass",
       matchManagers: ["github-actions"],
       automerge: true,
       automergeType: "branch",
       matchUpdateTypes: ["minor", "patch", "digest"],
-      ignoreTests: true,
     },
     {
-      description: "Auto-merge Mise Tools",
+      description: "Auto-merge Mise tools only after checks pass",
       matchManagers: ["mise"],
       automerge: true,
       automergeType: "branch",
       matchUpdateTypes: ["minor", "patch"],
-      ignoreTests: true,
     },
     {
+      description: "Require dashboard approval and release soak time for major updates",
       matchUpdateTypes: ["major"],
+      dependencyDashboardApproval: true,
+      minimumReleaseAge: "14 days",
+      addLabels: ["type/major"],
       semanticCommitType: "feat",
       commitMessagePrefix: "{{semanticCommitType}}({{semanticCommitScope}})!:",
       commitMessageExtra: "( {{currentVersion}} ➔ {{newVersion}} )",
     },
     {
+      description: "Use feature commits and short soak time for minor updates",
       matchUpdateTypes: ["minor"],
+      minimumReleaseAge: "3 days",
+      addLabels: ["type/minor"],
       semanticCommitType: "feat",
       commitMessageExtra: "( {{currentVersion}} ➔ {{newVersion}} )",
     },
     {
+      description: "Use fix commits for patch updates",
       matchUpdateTypes: ["patch"],
+      minimumReleaseAge: "1 day",
+      addLabels: ["type/patch"],
       semanticCommitType: "fix",
       commitMessageExtra: "( {{currentVersion}} ➔ {{newVersion}} )",
     },
     {
+      description: "Digest-only updates carry digest labels and do not need changelogs",
       matchUpdateTypes: ["digest"],
+      addLabels: ["type/digest"],
       semanticCommitType: "chore",
       commitMessageExtra: "( {{currentDigestShort}} ➔ {{newDigestShort}} )",
+      fetchChangeLogs: "off",
     },
     {
-      matchDatasources: ["docker"],
-      semanticCommitScope: "container",
-      commitMessageTopic: "image {{depName}}",
-    },
-    {
-      matchDatasources: ["helm"],
-      semanticCommitScope: "helm",
-      commitMessageTopic: "chart {{depName}}",
-    },
-    {
-      matchManagers: ["github-actions"],
-      semanticCommitType: "ci",
-      semanticCommitScope: "github-action",
-      commitMessageTopic: "action {{depName}}",
-    },
-    {
-      matchDatasources: ["github-releases"],
-      semanticCommitScope: "github-release",
-      commitMessageTopic: "release {{depName}}",
-    },
-    {
-      matchManagers: ["mise"],
-      semanticCommitScope: "mise",
-      commitMessageTopic: "tool {{depName}}",
-    },
-    {
-      matchUpdateTypes: ["major"],
-      labels: ["type/major"],
-    },
-    {
+      description: "Gate minor updates for cluster-critical namespaces",
+      matchFileNames: [
+        "kubernetes/apps/cert-manager/**",
+        "kubernetes/apps/cnpg-dr/**",
+        "kubernetes/apps/cnpg-system/**",
+        "kubernetes/apps/flux-system/**",
+        "kubernetes/apps/kube-system/**",
+        "kubernetes/apps/longhorn-system/**",
+        "kubernetes/apps/network/**",
+        "kubernetes/apps/renovate/**",
+      ],
       matchUpdateTypes: ["minor"],
-      labels: ["type/minor"],
+      dependencyDashboardApproval: true,
+      minimumReleaseAge: "7 days",
     },
     {
-      matchUpdateTypes: ["patch"],
-      labels: ["type/patch"],
-    },
-    {
-      matchUpdateTypes: ["digest"],
-      labels: ["type/digest"],
-    },
-    {
-      matchDatasources: ["docker"],
-      addLabels: ["renovate/container"],
-    },
-    {
-      matchDatasources: ["helm"],
-      addLabels: ["renovate/helm"],
-    },
-    {
-      matchManagers: ["github-actions"],
-      addLabels: ["renovate/github-action"],
-    },
-    {
-      matchDatasources: ["github-releases"],
-      addLabels: ["renovate/github-release"],
-    },
-    {
-      description: "Group arc-systems updates into a dedicated PR",
-      matchFileNames: ["kubernetes/apps/arc-systems/**"],
-      groupName: "arc-systems namespace",
-      additionalBranchPrefix: "arc-systems-",
-    },
-    {
-      description: "Group backstage updates into a dedicated PR",
-      matchFileNames: ["kubernetes/apps/backstage/**"],
-      groupName: "backstage namespace",
-      additionalBranchPrefix: "backstage-",
-    },
-    {
-      description: "Group cert-manager updates into a dedicated PR",
-      matchFileNames: ["kubernetes/apps/cert-manager/**"],
-      groupName: "cert-manager namespace",
-      additionalBranchPrefix: "cert-manager-",
-    },
-    {
-      description: "Group cnpg-dr updates into a dedicated PR",
-      matchFileNames: ["kubernetes/apps/cnpg-dr/**"],
-      groupName: "cnpg-dr namespace",
-      additionalBranchPrefix: "cnpg-dr-",
-    },
-    {
-      description: "Group cnpg-system updates into a dedicated PR",
-      matchFileNames: ["kubernetes/apps/cnpg-system/**"],
-      groupName: "cnpg-system namespace",
-      additionalBranchPrefix: "cnpg-system-",
-    },
-    {
-      description: "Group default updates into a dedicated PR",
-      matchFileNames: ["kubernetes/apps/default/**"],
-      groupName: "default namespace",
-      additionalBranchPrefix: "default-",
-    },
-    {
-      description: "Group drawio updates into a dedicated PR",
-      matchFileNames: ["kubernetes/apps/drawio/**"],
-      groupName: "drawio namespace",
-      additionalBranchPrefix: "drawio-",
-    },
-    {
-      description: "Group excalidraw updates into a dedicated PR",
-      matchFileNames: ["kubernetes/apps/excalidraw/**"],
-      groupName: "excalidraw namespace",
-      additionalBranchPrefix: "excalidraw-",
-    },
-    {
-      description: "Group flux-system updates into a dedicated PR",
-      matchFileNames: ["kubernetes/apps/flux-system/**"],
-      groupName: "flux-system namespace",
-      additionalBranchPrefix: "flux-system-",
-    },
-    {
-      description: "Group freshrss updates into a dedicated PR",
-      matchFileNames: ["kubernetes/apps/freshrss/**"],
-      groupName: "freshrss namespace",
-      additionalBranchPrefix: "freshrss-",
-    },
-    {
-      description: "Group invoiceninja updates into a dedicated PR",
-      matchFileNames: ["kubernetes/apps/invoiceninja/**"],
-      groupName: "invoiceninja namespace",
-      additionalBranchPrefix: "invoiceninja-",
-    },
-    {
-      description: "Group kube-system updates into a dedicated PR — separate major bumps for cluster-critical components",
-      matchFileNames: ["kubernetes/apps/kube-system/**"],
-      groupName: "kube-system namespace",
-      additionalBranchPrefix: "kube-system-",
-      separateMinorPatch: true,
-    },
-    {
-      description: "Group longhorn-system updates into a dedicated PR",
-      matchFileNames: ["kubernetes/apps/longhorn-system/**"],
-      groupName: "longhorn-system namespace",
-      additionalBranchPrefix: "longhorn-system-",
-    },
-    {
-      description: "Group minecraft updates into a dedicated PR",
-      matchFileNames: ["kubernetes/apps/minecraft/**"],
-      groupName: "minecraft namespace",
-      additionalBranchPrefix: "minecraft-",
-    },
-    {
-      description: "Group n8n updates into a dedicated PR",
-      matchFileNames: ["kubernetes/apps/n8n/**"],
-      groupName: "n8n namespace",
-      additionalBranchPrefix: "n8n-",
-    },
-    {
-      description: "Group network updates into a dedicated PR",
-      matchFileNames: ["kubernetes/apps/network/**"],
-      groupName: "network namespace",
-      additionalBranchPrefix: "network-",
-    },
-    {
-      description: "Group observability updates into a dedicated PR — separate major bumps to avoid multi-major upgrade timeout failures",
-      matchFileNames: ["kubernetes/apps/observability/**"],
-      groupName: "observability namespace",
-      additionalBranchPrefix: "observability-",
-      separateMinorPatch: true,
-    },
-    {
-      description: "Group renovate updates into a dedicated PR",
-      matchFileNames: ["kubernetes/apps/renovate/**"],
-      groupName: "renovate namespace",
-      additionalBranchPrefix: "renovate-",
-    },
-    {
-      description: "Group searxng updates into a dedicated PR",
-      matchFileNames: ["kubernetes/apps/searxng/**"],
-      groupName: "searxng namespace",
-      additionalBranchPrefix: "searxng-",
-    },
-    {
-      description: "Group sparkyfitness updates into a dedicated PR",
-      matchFileNames: ["kubernetes/apps/sparkyfitness/**"],
-      groupName: "sparkyfitness namespace",
-      additionalBranchPrefix: "sparkyfitness-",
-    },
-    {
-      description: "Group zomboid updates into a dedicated PR",
-      matchFileNames: ["kubernetes/apps/zomboid/**"],
-      groupName: "zomboid namespace",
-      additionalBranchPrefix: "zomboid-",
+      description: "Split GitOps app changes by nearest package directory without maintaining one packageRule per namespace",
+      matchFileNames: ["kubernetes/apps/**"],
+      groupName: "kubernetes {{parentDir}}",
+      additionalBranchPrefix: "{{parentDir}}-",
     },
     {
       description: "Group shared app-template updates into a dedicated PR",
@@ -312,52 +143,35 @@
       groupName: "shared busybox",
       additionalBranchPrefix: "shared-busybox-",
     },
-  ],
-  customManagers: [
     {
-      customType: "regex",
-      description: "Process Flux OCIRepository tags; spec.ref.digest is refreshed by scripts/update-oci-digests.sh",
-      managerFilePatterns: [
-        "/(^|/)kubernetes/apps/.+/ocirepository\\.ya?ml(?:\\.j2)?$/",
-      ],
-      matchStrings: [
-        "kind:\\s*OCIRepository[\\s\\S]*?ref:\\s*\\n[\\s\\S]*?tag:\\s*(?<currentValue>\\S+)[\\s\\S]*?url:\\s*oci://(?<depName>\\S+)",
-        "kind:\\s*OCIRepository[\\s\\S]*?url:\\s*oci://(?<depName>\\S+)[\\s\\S]*?ref:\\s*\\n[\\s\\S]*?tag:\\s*(?<currentValue>\\S+)",
-      ],
-      datasourceTemplate: "docker",
+      matchDatasources: ["docker"],
+      semanticCommitScope: "container",
+      commitMessageTopic: "image {{depName}}",
+      addLabels: ["renovate/container"],
     },
     {
-      description: "Process annotated dependencies",
-      customType: "regex",
-      managerFilePatterns: [
-        "/(^|/).+\\.env(?:\\.j2)?$/",
-        "/(^|/).+\\.sh(?:\\.j2)?$/",
-        "/(^|/).+\\.ya?ml(?:\\.j2)?$/",
-      ],
-      matchStrings: [
-        // # renovate: datasource=github-releases depName=k3s-io/k3s
-        // k3s_release_version: &version v1.29.0+k3s1
-        // # renovate: datasource=helm depName=cilium repository=https://helm.cilium.io
-        // version: 1.15.1
-        // # renovate: datasource=docker depName=ghcr.io/siderolabs/kubelet
-        // KUBERNETES_VERSION=v1.31.1
-        "datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( repository=(?<registryUrl>\\S+))?\\n.+(:\\s|=)(&\\S+\\s)?(?<currentValue>\\S+)",
-        // # renovate: datasource=docker depName=ghcr.io/prometheus-operator/prometheus-operator
-        // https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.80.0/example/prometheus-operator-crd/monitoring.coreos.com_alertmanagerconfigs.yaml
-        "datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\n.+/(?<currentValue>(v|\\d)[^/]+)",
-      ],
-      datasourceTemplate: "{{#if datasource}}{{{datasource}}}{{else}}github-releases{{/if}}",
+      matchDatasources: ["helm"],
+      semanticCommitScope: "helm",
+      commitMessageTopic: "chart {{depName}}",
+      addLabels: ["renovate/helm"],
     },
     {
-      customType: "regex",
-      description: "Process OCI dependencies",
-      managerFilePatterns: [
-        "/\\.yaml(?:\\.j2)?$/",
-      ],
-      matchStrings: [
-        "oci://(?<depName>[A-Za-z0-9._/-]+):(?<currentValue>\\S+)",
-      ],
-      datasourceTemplate: "docker",
+      matchManagers: ["github-actions"],
+      semanticCommitType: "ci",
+      semanticCommitScope: "github-action",
+      commitMessageTopic: "action {{depName}}",
+      addLabels: ["renovate/github-action"],
+    },
+    {
+      matchDatasources: ["github-releases"],
+      semanticCommitScope: "github-release",
+      commitMessageTopic: "release {{depName}}",
+      addLabels: ["renovate/github-release"],
+    },
+    {
+      matchManagers: ["mise"],
+      semanticCommitScope: "mise",
+      commitMessageTopic: "tool {{depName}}",
     },
   ],
 }
