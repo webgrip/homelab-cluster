@@ -18,7 +18,8 @@ data:
         ":pinDevDependencies",
         ":maintainLockFilesWeekly",
 
-        "abandonments:recommended"
+        "abandonments:recommended",
+        "mergeConfidence:all-badges"
       ],
 
       "platform": "github",
@@ -27,19 +28,17 @@ data:
       "requireConfig": "optional",
 
       "timezone": "Europe/Amsterdam",
+      "gitAuthor": "Renovate Bot <renovate-bot@webgrip.nl>",
 
       "updateNotScheduled": false,
-      "prConcurrentLimit": 4,
+      "prConcurrentLimit": 8,
       "prHourlyLimit": 0,
-
-      "branchConcurrentLimit": 6,
+      "branchConcurrentLimit": 12,
       "commitBodyTable": true,
       "allowedCommands": ["^./scripts/update-oci-digests\\.sh$"],
 
-      "rebaseWhen": "conflicted",
-      "recreateWhen": "auto",
-      "fetchChangeLogs": "off",
-
+      "rebaseWhen": "behind-base-branch",
+      "fetchChangeLogs": "pr",
       "schedule": ["at any time"],
 
       "dependencyDashboard": true,
@@ -64,27 +63,12 @@ data:
       "enabledManagers": [
         "flux",
         "kustomize",
+        "kubernetes",
         "helm-values",
         "helmfile",
         "custom.regex",
-
         "github-actions",
-        "pre-commit",
-
-        "terraform",
-        "terragrunt",
-
-        "npm",
-        "pip_requirements",
-        "poetry",
-        "pipenv",
-        "gomod",
-        "cargo",
-        "maven",
-        "gradle",
-        "composer",
-        "nuget",
-
+        "mise",
         "dockerfile",
         "docker-compose"
       ],
@@ -93,6 +77,21 @@ data:
         "managerFilePatterns": [
           "/(^|/)kubernetes/.+/(?:helmrelease(?:-[^/]+)?|helmrepository|ks(?:-[^/]+)?|kustomization|receiver|grafana-annotations)\\.ya?ml(?:\\.j2)?$/"
         ]
+      },
+
+      "helmfile": {
+        "managerFilePatterns": [
+          "/(^|/)helmfile\\.ya?ml(?:\\.gotmpl)?(?:\\.j2)?$/",
+          "/(^|/)helmfile\\.d/.+\\.ya?ml(?:\\.gotmpl)?(?:\\.j2)?$/"
+        ]
+      },
+
+      "kubernetes": {
+        "managerFilePatterns": ["/(^|/)kubernetes/.+\\.ya?ml(?:\\.j2)?$/"]
+      },
+
+      "kustomize": {
+        "managerFilePatterns": ["/(^|/)kustomization\\.ya?ml(?:\\.j2)?$/"]
       },
 
       "customManagers": [
@@ -105,6 +104,31 @@ data:
           "matchStrings": [
             "kind:\\s*OCIRepository[\\s\\S]*?ref:\\s*\\n[\\s\\S]*?tag:\\s*(?<currentValue>\\S+)[\\s\\S]*?url:\\s*oci://(?<depName>\\S+)",
             "kind:\\s*OCIRepository[\\s\\S]*?url:\\s*oci://(?<depName>\\S+)[\\s\\S]*?ref:\\s*\\n[\\s\\S]*?tag:\\s*(?<currentValue>\\S+)"
+          ],
+          "datasourceTemplate": "docker"
+        },
+        {
+          "customType": "regex",
+          "description": "Process annotated dependencies",
+          "managerFilePatterns": [
+            "/(^|/).+\\.env(?:\\.j2)?$/",
+            "/(^|/).+\\.sh(?:\\.j2)?$/",
+            "/(^|/).+\\.ya?ml(?:\\.j2)?$/"
+          ],
+          "matchStrings": [
+            "datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( repository=(?<registryUrl>\\S+))?\\n.+(:\\s|=)(&\\S+\\s)?(?<currentValue>\\S+)",
+            "datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\n.+/(?<currentValue>(v|\\d)[^/]+)"
+          ],
+          "datasourceTemplate": "{{#if datasource}}{{{datasource}}}{{else}}github-releases{{/if}}"
+        },
+        {
+          "customType": "regex",
+          "description": "Process inline OCI dependencies",
+          "managerFilePatterns": [
+            "/(^|/).+\\.ya?ml(?:\\.j2)?$/"
+          ],
+          "matchStrings": [
+            "oci://(?<depName>[A-Za-z0-9._/-]+):(?<currentValue>\\S+)"
           ],
           "datasourceTemplate": "docker"
         }
@@ -126,6 +150,7 @@ data:
           "matchManagers": ["flux"],
           "groupName": "Flux controllers",
           "separateMinorPatch": true,
+          "separateMultipleMajor": true,
           "pinDigests": false
         },
         {
@@ -163,7 +188,7 @@ data:
           "enabled": false
         },
         {
-          "matchManagers": ["helm-values", "kustomize"],
+          "matchManagers": ["helm-values", "kustomize", "kubernetes"],
           "matchDatasources": ["docker"],
           "groupName": "GitOps container images",
           "pinDigests": true
@@ -186,42 +211,8 @@ data:
           "automerge": false
         },
         {
-          "matchManagers": ["pre-commit"],
-          "groupName": "pre-commit hooks"
-        },
-        {
-          "matchManagers": ["terraform", "terragrunt"],
-          "groupName": "Terraform",
-          "separateMinorPatch": true
-        },
-        {
-          "matchManagers": ["npm"],
-          "groupName": "npm",
-          "rangeStrategy": "replace"
-        },
-        {
-          "matchManagers": ["pip_requirements", "poetry", "pipenv"],
-          "groupName": "python"
-        },
-        {
-          "matchManagers": ["gomod"],
-          "groupName": "go modules"
-        },
-        {
-          "matchManagers": ["cargo"],
-          "groupName": "rust crates"
-        },
-        {
-          "matchManagers": ["maven", "gradle"],
-          "groupName": "jvm"
-        },
-        {
-          "matchManagers": ["composer"],
-          "groupName": "php composer"
-        },
-        {
-          "matchManagers": ["nuget"],
-          "groupName": "dotnet"
+          "matchManagers": ["mise"],
+          "groupName": "Mise tools"
         },
         {
           "matchManagers": ["dockerfile", "docker-compose"],
@@ -231,8 +222,9 @@ data:
         },
         {
           "matchUpdateTypes": ["major"],
-          "labels": ["major"],
-          "dependencyDashboardApproval": true
+          "addLabels": ["major"],
+          "dependencyDashboardApproval": true,
+          "minimumReleaseAge": "14 days"
         },
         {
           "matchUpdateTypes": ["patch"],

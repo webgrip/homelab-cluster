@@ -2,29 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="${1:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
-ACCEPT_HEADER="application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json, */*"
-
-fetch_digest() {
-  local image="$1"
-  local tag="$2"
-  local host="${image%%/*}"
-  local path="${image#*/}"
-
-  if [[ "$host" == "ghcr.io" ]]; then
-    local token
-    token="$(curl -fsSL "https://ghcr.io/token?scope=repository:${path}:pull&service=ghcr.io" | jq -r .token)"
-    curl -fsSI \
-      -H "Authorization: Bearer ${token}" \
-      -H "Accept: ${ACCEPT_HEADER}" \
-      "https://${host}/v2/${path}/manifests/${tag}" |
-      awk 'BEGIN { IGNORECASE=1 } /^docker-content-digest:/ { gsub("\r", "", $2); print $2; exit }'
-  else
-    curl -fsSI \
-      -H "Accept: ${ACCEPT_HEADER}" \
-      "https://${host}/v2/${path}/manifests/${tag}" |
-      awk 'BEGIN { IGNORECASE=1 } /^docker-content-digest:/ { gsub("\r", "", $2); print $2; exit }'
-  fi
-}
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/oci.sh"
 
 status=0
 

@@ -69,15 +69,16 @@ What it does (as configured):
 
 - Discovers repositories matching `webgrip/*`.
 - Runs on cron schedule `0 */2 * * *` (every 2 hours).
-- Runs up to 5 repositories in parallel (`parallelism: 5`).
+- Runs up to 2 repositories in parallel (`parallelism: 2`).
 - Uses `RENOVATE_CONFIG_FILE=/config/renovate.json` mounted from a ConfigMap.
 - Uses webhook authentication from Secret `renovate-webhook-auth`.
+- Runs as a non-root user with `RENOVATE_BASE_DIR=/tmp`.
 
 Operational implication:
 
 - “I checked a Dependency Dashboard checkbox, why no PR?” is usually answered by:
   - waiting for the next scheduled run, and/or
-  - schedule gating in repo config (see next section).
+  - Dependency Dashboard or release-age gating in repo config (see next section).
 
 ## Renovate configuration: layering, precedence, and the two places to edit
 
@@ -101,13 +102,15 @@ The global config is stored as JSON in a ConfigMap and mounted into the Renovate
 
 Important behaviors in the current global config:
 
-- Managers enabled include: `flux`, `kustomize`, `helm-values`, `helmfile`, `github-actions`, plus many language ecosystems.
+- Managers enabled are intentionally scoped to this GitOps estate: `flux`, `kustomize`, `kubernetes`, `helm-values`, `helmfile`, `custom.regex`, `github-actions`, `mise`, `dockerfile`, and `docker-compose`.
 - Dependency Dashboard enabled and auto-closing enabled.
 - Experimental OSV vulnerability alerts are enabled, and the Dependency Dashboard lists unresolved OSV CVEs for direct dependencies.
+- Merge Confidence badges are enabled for ecosystems supported by Renovate/Mend so applicable PRs show age, adoption, passing, and confidence signals.
 - Grouping is defined via `packageRules` (e.g. “GitOps container images”, “Flux controllers & OCI artifacts”, “GitHub Actions”), and Flux updates are intentionally split into patch and minor PRs so patch updates can auto-merge while minor updates stay for manual review.
-- Major updates require Dependency Dashboard approval (`dependencyDashboardApproval: true`).
-- It is resilient to flaky registries: `abortOnExternalHostError: false`.
-- Schedule defaults to `at any time` and no `minimumReleaseAge` delay is configured.
+- Major updates require Dependency Dashboard approval (`dependencyDashboardApproval: true`) and a release-age soak.
+- Schedule defaults to `at any time`; repo-level package rules add release-age delays for risky updates.
+- Changelogs are fetched for PRs by default, except digest-only updates.
+- The global config owns manager enablement, custom extraction rules, post-upgrade command allowlisting, Git author identity, and org-wide safety defaults.
 - `autodiscover: false` is set in Renovate config. Discovery is handled by the RenovateJob/operator layer, and each execution should only handle the intended repository.
 
 Ignore paths are defined globally too (including `bootstrap/**` and `talos/**`).
@@ -119,12 +122,12 @@ The repo config is where “house style” lives.
 Key behaviors in the current repo config:
 
 - Dependency Dashboard enabled and the title is customized.
-- Schedule is restricted: `schedule: ["every weekend"]`.
-- Semantic commit conventions, commit message formatting, and update-type labeling.
-- A GitHub Actions packageRule enables automerge for minor/patch/digest updates.
-- GitOps changes under `kubernetes/apps/*` are regrouped by top-level app directory so each namespace/area gets its own Renovate PR.
+- The repo does **not** define a global schedule; the in-cluster ConfigMap owns schedule policy.
+- Semantic commit conventions, commit message formatting, update-type labeling, and PR body notes.
+- A GitHub Actions packageRule enables automerge for minor/patch/digest updates only after checks pass.
+- GitOps changes under `kubernetes/apps/*` are regrouped by nearest package directory using Renovate templating instead of one rule per namespace.
 - Reused dependencies that span many apps, such as `ghcr.io/bjw-s-labs/helm/app-template`, are carved back out into shared PRs to avoid one dependency generating many near-identical namespace PRs.
-- Two custom regex managers are defined to process `# renovate:` annotations.
+- Cluster-critical namespaces require Dependency Dashboard approval for minor updates and a longer release-age soak before PR creation.
 
 Annotated dependency pins are the mechanism used for values that aren’t otherwise discoverable by a native manager. Example:
 
@@ -142,9 +145,10 @@ Array merge/override behavior can materially change what Renovate scans. If a de
 This repo uses Renovate to keep PR noise manageable:
 
 - Global defaults still provide coarse grouping by manager/datasource.
-- Repo-level packageRules then split `kubernetes/apps/*` updates by top-level app directory, so `observability`, `network`, `sparkyfitness`, and similar areas get separate PRs instead of one repo-wide GitOps batch.
+- Repo-level packageRules then split `kubernetes/apps/*` updates by nearest package directory, so app/component areas get separate PRs instead of one repo-wide GitOps batch.
 - A small set of shared cross-namespace dependencies can override that split later in the rule order and stay repo-wide when that produces cleaner PRs.
-- Major updates are gated by the Dependency Dashboard approval checkbox.
+- Major updates are gated by the Dependency Dashboard approval checkbox and a release-age soak.
+- Minor updates for cluster-critical namespaces are also dashboard-gated.
 
 Automerge behavior is defined in both places:
 
@@ -155,8 +159,8 @@ If a PR isn’t opening when you expect it to, check these in order:
 
 1. Is there actually an update available?
 2. Did the run execute successfully?
-3. Is it blocked by schedule (`every weekend`)?
-4. Is it blocked by Dependency Dashboard approval (major updates)?
+3. Is it blocked by `minimumReleaseAge` / pending release-age checks?
+4. Is it blocked by Dependency Dashboard approval (major updates, or minor updates in cluster-critical namespaces)?
 5. Is it blocked by GitHub permissions/branch protections?
 
 ## GitHub repo conventions used with Renovate
@@ -232,7 +236,7 @@ Renovate itself uses a runtime token secret created/updated in-cluster.
 
 Mechanics (as implemented):
 
-- The CronJob mints a GitHub App installation token.
+- The CronJob mints a GitHub App installation token every 30 minutes.
 - It applies a Secret `renovate-runtime-token` in namespace `renovate` containing `token` and `RENOVATE_TOKEN`.
 
 ## Vulnerability sources
@@ -286,7 +290,7 @@ kubectl -n renovate logs job/<k8s-job-name> --all-containers --tail=200
 
 1. No PRs, but the Dependency Dashboard is updating
 
-   - Often schedule gating (`every weekend`) or major-approval gating.
+   - Often release-age gating or Dependency Dashboard approval gating.
 2. Run fails with registry/auth errors
 
    - GHCR 403 when reading a private package: GitHub App needs **Packages: read** and correct installation scope.
