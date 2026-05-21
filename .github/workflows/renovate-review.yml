@@ -1,15 +1,6 @@
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 name: Renovate PR Review
 
-# Triggers on Renovate / Dependabot PRs and posts a supply-chain risk
-# assessment comment using actions/ai-inference (GitHub Models).
-#
-# Uses only GITHUB_TOKEN — no PAT required.
-# The model call is entirely read-only; no agent can push code here.
-#
-# System prompt + user template: .github/prompts/renovate-review.prompt.yml
-# Model: change via the `model` field in that file.
-
 on:
   pull_request:
     types: [opened, reopened]
@@ -20,73 +11,11 @@ concurrency:
 
 jobs:
   review:
-    name: AI dependency review
     if: >-
       (
         github.event.pull_request.user.login == 'renovate[bot]' ||
         github.event.pull_request.user.login == 'dependabot[bot]'
       ) &&
       !contains(github.event.pull_request.labels.*.name, 'automerge')
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read        # checkout + read prompt file + fetch diff
-      pull-requests: write  # post comment
-      models: read          # GitHub Models inference
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-
-      - name: Fetch PR context
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
-        run: |
-          gh api "/repos/${REPO}/pulls/${PR_NUMBER}" \
-            -H "Accept: application/vnd.github.diff" | head -c 14000 > /tmp/pr.diff
-
-          gh api "/repos/${REPO}/pulls/${PR_NUMBER}/files" \
-            --jq '.[] | "- `\(.filename)` (+\(.additions) -\(.deletions))"' \
-            | head -50 > /tmp/pr-files.txt
-
-          gh api "/repos/${REPO}/pulls/${PR_NUMBER}" \
-            --jq '.body // "_No PR body._"' | head -c 6000 > /tmp/pr-body.txt
-
-      - name: Run AI inference
-        id: inference
-        uses: actions/ai-inference@17ff458cb182449bbb2e43701fcd98f6af8f6570 # v2.1.0
-        with:
-          prompt-file: .github/prompts/renovate-review.prompt.yml
-          input: |
-            repo: ${{ github.repository }}
-            number: ${{ github.event.pull_request.number }}
-            title: ${{ github.event.pull_request.title }}
-            author: ${{ github.event.pull_request.user.login }}
-          file_input: |
-            files: /tmp/pr-files.txt
-            body: /tmp/pr-body.txt
-            diff: /tmp/pr.diff
-
-      - name: Post review comment
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
-          RESPONSE_FILE: ${{ steps.inference.outputs.response-file }}
-          SENTINEL: "<!-- renovate-ai-review -->"
-        run: |
-          BODY="$(printf '%s\n' "${SENTINEL}"; cat "${RESPONSE_FILE}")"
-
-          COMMENT_ID=$(gh api "/repos/${REPO}/issues/${PR_NUMBER}/comments" \
-            --jq ".[] | select(.body | contains(\"${SENTINEL}\")) | .id" | head -1)
-
-          if [ -n "$COMMENT_ID" ]; then
-            gh api --method PATCH "/repos/${REPO}/issues/comments/${COMMENT_ID}" \
-              -f body="${BODY}"
-          else
-            gh pr comment "${PR_NUMBER}" --repo "${REPO}" --body "${BODY}"
-          fi
+    uses: webgrip/.github/.github/workflows/renovate-review.yml@main
+    secrets: inherit
