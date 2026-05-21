@@ -33,29 +33,14 @@
   },
   packageRules: [
     {
-      description: "Disable digest pinning for Flux OCI Helm charts (Renovate flux manager ignores tag when digest field is present, causing lookup failures)",
+      description: "Enable digest pinning for Flux OCI refs. Works correctly when no pre-existing digest field is present (Renovate uses a HEAD request path). If a stale digest is present in the file, remove it manually first.",
       matchManagers: ["flux"],
-      pinDigests: false,
-    },
-    {
-      description: "Disable Flux OCI digest-only update branches",
-      matchManagers: ["flux"],
-      matchUpdateTypes: ["pinDigest", "digest"],
-      enabled: false,
-    },
-    {
-      description: "Disable Helmfile OCI Helm chart digest pinning",
-      matchManagers: ["helmfile"],
-      matchDatasources: ["docker"],
-      matchUpdateTypes: ["pinDigest", "digest"],
-      pinDigests: false,
-      enabled: false,
+      pinDigests: true,
     },
     {
       description: "Override Helmfile Dependency Name",
       matchDatasources: ["docker"],
       matchManagers: ["helmfile"],
-      pinDigests: false,
       overrideDepName: "{{packageName}}",
     },
     {
