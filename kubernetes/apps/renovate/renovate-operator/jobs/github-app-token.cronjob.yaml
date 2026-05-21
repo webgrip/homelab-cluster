@@ -88,10 +88,12 @@ spec:
                 - -ceu
                 - |
                   token="$(cat /work/token)"
+                  host_rules="$(printf '[{"matchHost":"ghcr.io","hostType":"docker","username":"x-access-token","password":"%s"}]' "$token")"
 
                   kubectl -n renovate create secret generic "$RUNTIME_SECRET_NAME" \
                     --from-literal="$RUNTIME_SECRET_KEY=$token" \
                     --from-literal="RENOVATE_TOKEN=$token" \
+                    --from-literal="RENOVATE_HOST_RULES=$host_rules" \
                     --dry-run=client \
                     -o yaml \
                     | kubectl apply -f -
