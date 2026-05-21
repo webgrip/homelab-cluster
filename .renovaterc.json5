@@ -31,11 +31,23 @@
   kustomize: {
     managerFilePatterns: ["/^kustomization\\.ya?ml(?:\\.j2)?$/"],
   },
+  postUpgradeTasks: {
+    commands: ["./scripts/update-oci-digests.sh"],
+    fileFilters: ["kubernetes/apps/**/ocirepository.yaml"],
+    executionMode: "branch",
+  },
   packageRules: [
     {
       description: "Enable digest pinning for Flux OCI refs. Renovate v37+ correctly handles separate spec.ref.tag + spec.ref.digest fields, updating both together. The flux manager uses spec.ref.digest as the authoritative pin.",
       matchManagers: ["flux"],
       pinDigests: true,
+    },
+    {
+      description: "Disable digest-only Flux OCI chart updates. Renovate cannot reliably resolve digest-only updates for OCI Helm chart artifacts across all registries; version updates run scripts/update-oci-digests.sh before commit to pin the new tag to the registry manifest digest.",
+      matchManagers: ["flux"],
+      matchDatasources: ["docker"],
+      matchUpdateTypes: ["digest"],
+      enabled: false,
     },
     {
       description: "Override Helmfile Dependency Name",
