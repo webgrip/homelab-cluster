@@ -65,6 +65,7 @@ data:
         "kustomize",
         "helm-values",
         "helmfile",
+        "regex",
 
         "github-actions",
         "pre-commit",
@@ -85,6 +86,19 @@ data:
 
         "dockerfile",
         "docker-compose"
+      ],
+
+      "customManagers": [
+        {
+          "description": "Handle Helm values image.sha companion fields (e.g. kube-prometheus-stack). These charts pin digests via a dedicated sha: field alongside tag:. Renovate updates both together as a pinDigest update.",
+          "customType": "regex",
+          "fileMatch": ["kubernetes/.+/helmrelease\\.yaml$"],
+          "matchStrings": [
+            "registry: (?<registryUrl>[^\\s]+)\\s+repository: (?<depName>[^\\s]+)\\s+tag: (?<currentValue>[^\\s@]+)\\s+sha: (?<currentDigest>[a-f0-9]{64})"
+          ],
+          "datasourceTemplate": "docker",
+          "autoReplaceStringTemplate": "registry: {{{registryUrl}}}\n          repository: {{{depName}}}\n          tag: {{{newValue}}}\n          sha: {{{newDigestShort}}}"
+        }
       ],
 
       "ignorePaths": [
@@ -126,6 +140,18 @@ data:
           "matchDatasources": ["docker"],
           "groupName": "GitOps container images",
           "pinDigests": true
+        },
+        {
+          "description": "Helm charts that use a dedicated sha: field for digest pinning (e.g. kube-prometheus-stack). Renovate updates the sha: field directly via customManagers; do not also embed digest inline in tag: which causes a double-digest InvalidImageName error.",
+          "matchManagers": ["helm-values"],
+          "matchPackageNames": [
+            "quay.io/prometheus-operator/prometheus-operator",
+            "quay.io/prometheus-operator/prometheus-config-reloader",
+            "quay.io/prometheus/prometheus",
+            "quay.io/prometheus/alertmanager"
+          ],
+          "matchUpdateTypes": ["pinDigest", "digest"],
+          "enabled": false
         },
         {
           "matchManagers": ["github-actions"],
