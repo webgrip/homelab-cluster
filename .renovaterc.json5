@@ -17,7 +17,9 @@
     "kubernetes/apps/observability/twitch-exporter/**",
   ],
   flux: {
-    managerFilePatterns: ["/(^|/)kubernetes/.+\\.ya?ml(?:\\.j2)?$/"],
+    managerFilePatterns: [
+      "/(^|/)kubernetes/.+/(?:helmrelease(?:-[^/]+)?|helmrepository|ks(?:-[^/]+)?|kustomization|receiver|grafana-annotations)\\.ya?ml(?:\\.j2)?$/",
+    ],
   },
   helmfile: {
     managerFilePatterns: [
@@ -38,15 +40,23 @@
   },
   packageRules: [
     {
-      description: "Enable digest pinning for Flux OCI refs. Renovate v37+ correctly handles separate spec.ref.tag + spec.ref.digest fields, updating both together. The flux manager uses spec.ref.digest as the authoritative pin.",
+      description: "Keep Renovate's Flux manager away from digest-pinned OCIRepository files. OCIRepository tags are updated by custom.regex and scripts/update-oci-digests.sh refreshes spec.ref.digest from the registry manifest digest.",
       matchManagers: ["flux"],
-      pinDigests: true,
+      pinDigests: false,
     },
     {
-      description: "Disable digest-only Flux OCI chart updates. Renovate cannot reliably resolve digest-only updates for OCI Helm chart artifacts across all registries; version updates run scripts/update-oci-digests.sh before commit to pin the new tag to the registry manifest digest.",
-      matchManagers: ["flux"],
+      description: "Manage Flux OCIRepository tags without asking Renovate to calculate digest-only OCI Helm chart updates.",
+      matchManagers: ["custom.regex"],
+      matchFileNames: ["kubernetes/apps/**/ocirepository.yaml"],
       matchDatasources: ["docker"],
-      matchUpdateTypes: ["digest"],
+      pinDigests: false,
+    },
+    {
+      description: "Disable digest-only and pin-digest updates for Flux OCIRepository custom regex deps; scripts/update-oci-digests.sh owns spec.ref.digest.",
+      matchManagers: ["custom.regex"],
+      matchFileNames: ["kubernetes/apps/**/ocirepository.yaml"],
+      matchDatasources: ["docker"],
+      matchUpdateTypes: ["pinDigest", "digest"],
       enabled: false,
     },
     {
@@ -305,6 +315,18 @@
   ],
   customManagers: [
     {
+      customType: "regex",
+      description: "Process Flux OCIRepository tags; spec.ref.digest is refreshed by scripts/update-oci-digests.sh",
+      managerFilePatterns: [
+        "/(^|/)kubernetes/apps/.+/ocirepository\\.ya?ml(?:\\.j2)?$/",
+      ],
+      matchStrings: [
+        "kind:\\s*OCIRepository[\\s\\S]*?ref:\\s*\\n[\\s\\S]*?tag:\\s*(?<currentValue>\\S+)[\\s\\S]*?url:\\s*oci://(?<depName>\\S+)",
+        "kind:\\s*OCIRepository[\\s\\S]*?url:\\s*oci://(?<depName>\\S+)[\\s\\S]*?ref:\\s*\\n[\\s\\S]*?tag:\\s*(?<currentValue>\\S+)",
+      ],
+      datasourceTemplate: "docker",
+    },
+    {
       description: "Process annotated dependencies",
       customType: "regex",
       managerFilePatterns: [
@@ -333,7 +355,7 @@
         "/\\.yaml(?:\\.j2)?$/",
       ],
       matchStrings: [
-        "oci://(?<depName>[^:]+):(?<currentValue>\\S+)",
+        "oci://(?<depName>[A-Za-z0-9._/-]+):(?<currentValue>\\S+)",
       ],
       datasourceTemplate: "docker",
     },

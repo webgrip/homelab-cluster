@@ -89,6 +89,27 @@ data:
         "docker-compose"
       ],
 
+      "flux": {
+        "managerFilePatterns": [
+          "/(^|/)kubernetes/.+/(?:helmrelease(?:-[^/]+)?|helmrepository|ks(?:-[^/]+)?|kustomization|receiver|grafana-annotations)\\.ya?ml(?:\\.j2)?$/"
+        ]
+      },
+
+      "customManagers": [
+        {
+          "customType": "regex",
+          "description": "Process Flux OCIRepository tags; spec.ref.digest is refreshed by scripts/update-oci-digests.sh",
+          "managerFilePatterns": [
+            "/(^|/)kubernetes/apps/.+/ocirepository\\.ya?ml(?:\\.j2)?$/"
+          ],
+          "matchStrings": [
+            "kind:\\s*OCIRepository[\\s\\S]*?ref:\\s*\\n[\\s\\S]*?tag:\\s*(?<currentValue>\\S+)[\\s\\S]*?url:\\s*oci://(?<depName>\\S+)",
+            "kind:\\s*OCIRepository[\\s\\S]*?url:\\s*oci://(?<depName>\\S+)[\\s\\S]*?ref:\\s*\\n[\\s\\S]*?tag:\\s*(?<currentValue>\\S+)"
+          ],
+          "datasourceTemplate": "docker"
+        }
+      ],
+
       "ignorePaths": [
         "**/*.sops.yaml",
         "**/*.sops.yml",
@@ -103,20 +124,31 @@ data:
       "packageRules": [
         {
           "matchManagers": ["flux"],
-          "groupName": "Flux controllers & OCI artifacts",
+          "groupName": "Flux controllers",
           "separateMinorPatch": true,
-          "pinDigests": true
+          "pinDigests": false
         },
         {
-          "description": "Disable digest-only Flux OCI chart updates. Renovate cannot reliably resolve digest-only updates for OCI Helm chart artifacts across all registries; version updates run scripts/update-oci-digests.sh before commit to pin the new tag to the registry manifest digest.",
-          "matchManagers": ["flux"],
+          "description": "Manage Flux OCIRepository tags without asking Renovate to calculate digest-only OCI Helm chart updates.",
+          "matchManagers": ["custom.regex"],
+          "matchFileNames": ["kubernetes/apps/**/ocirepository.yaml"],
           "matchDatasources": ["docker"],
-          "matchUpdateTypes": ["digest"],
+          "groupName": "Flux OCI Helm charts",
+          "separateMinorPatch": true,
+          "pinDigests": false
+        },
+        {
+          "description": "Disable digest-only and pin-digest updates for Flux OCIRepository custom regex deps; scripts/update-oci-digests.sh owns spec.ref.digest.",
+          "matchManagers": ["custom.regex"],
+          "matchFileNames": ["kubernetes/apps/**/ocirepository.yaml"],
+          "matchDatasources": ["docker"],
+          "matchUpdateTypes": ["pinDigest", "digest"],
           "enabled": false
         },
         {
-          "description": "Automerge Flux OCI Helm chart patch updates (includes digest updates alongside version bumps)",
-          "matchManagers": ["flux"],
+          "description": "Automerge Flux OCI Helm chart patch updates; digest pins are refreshed by post-upgrade tasks",
+          "matchManagers": ["custom.regex"],
+          "matchFileNames": ["kubernetes/apps/**/ocirepository.yaml"],
           "matchUpdateTypes": ["patch"],
           "automerge": true,
           "automergeType": "pr",
