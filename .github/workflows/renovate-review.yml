@@ -4,11 +4,25 @@ name: Renovate PR Review
 # Triggers on Renovate / Dependabot PRs and assigns the Copilot cloud agent
 # with the renovate-reviewer custom agent to produce a supply-chain risk assessment.
 #
+# ── Security model ────────────────────────────────────────────────────────────
+# The Copilot agent assignment API requires a *user* token (GITHUB_TOKEN is
+# a bot installation token and is rejected). However, the PAT is ONLY used
+# to call the assignment endpoint — the Copilot SWE agent then runs as the
+# copilot-swe-agent[bot] GitHub App, acting under its OWN app permissions,
+# not the PAT's. Restricting the PAT does NOT restrict what the agent can do.
+#
+# The real safeguards against accidental code changes are:
+#   1. The renovate-reviewer.agent.md instructions + custom_instructions below
+#      both explicitly prohibit any write actions.
+#   2. Branch protection rules on main/master preventing force-pushes or
+#      auto-merge without a human review approval.
+#   3. The nature of a Renovate PR — the agent has nothing to "fix",
+#      only to analyse and report.
+#
 # Required secret: COPILOT_PAT
-#   A classic PAT (repo scope) or fine-grained PAT (actions + contents + issues + pull-requests r/w)
-#   from a user who has a Copilot Business / Enterprise seat.
-#   The Copilot assignment API requires a *user* token — GITHUB_TOKEN won't work.
-#   Create one at https://github.com/settings/tokens and store as an org secret.
+#   Fine-grained PAT with: issues → read/write  (minimum for assignment API)
+#   Belongs to a user with a GitHub Copilot Business/Enterprise seat.
+#   Create at https://github.com/settings/tokens and store as an org secret.
 
 on:
   pull_request:
@@ -46,6 +60,6 @@ jobs:
               "agent_assignment": {
                 "target_repo": "'"${REPO}"'",
                 "custom_agent": "renovate-reviewer",
-                "custom_instructions": "This is an automated Renovate/Dependabot dependency update PR. Use the renovate-reviewer custom agent. Produce a supply-chain risk assessment comment only. Do NOT make code changes, do NOT push commits, do NOT create branches, do NOT approve or merge the PR."
+                "custom_instructions": "IMPORTANT: You are in READ-ONLY review mode. Your ONLY permitted action is to post exactly one GitHub comment with a supply-chain risk assessment. You MUST NOT: push commits, edit files, create or delete branches, create pull requests, approve or merge the PR, request changes, run git commands, or take any action that modifies the repository. If you feel the urge to make a code change, write it as a suggestion in the comment instead. Begin your investigation immediately and post the assessment comment when complete."
               }
             }'

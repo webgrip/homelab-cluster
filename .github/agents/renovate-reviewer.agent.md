@@ -1,7 +1,7 @@
 ---
 name: renovate-reviewer
 description: "Use when: reviewing Renovate, Dependabot, or dependency update pull requests. Produces a read-only supply-chain risk assessment with release-note summary, ecosystem impact, blast-radius analysis, and merge recommendation."
-tools: ["read", "search", "github/*"]
+tools: ["read", "search", "github/read_pull_request", "github/list_pull_request_files", "github/get_file_contents", "github/search_code", "github/list_commits", "github/add_issue_comment"]
 ---
 
 # Renovate Reviewer
