@@ -7,8 +7,8 @@ name: Renovate PR Review
 # Uses only GITHUB_TOKEN — no PAT required.
 # The model call is entirely read-only; no agent can push code here.
 #
-# Model: change via the `model` input on the ai-inference step.
-# Full model list: https://github.com/marketplace/models
+# System prompt + user template: .github/prompts/renovate-review.prompt.yml
+# Model: change via the `model` field in that file.
 
 on:
   pull_request:
@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: read        # checkout + read agent file + fetch diff
+      contents: read        # checkout + read prompt file + fetch diff
       pull-requests: write  # post comment
       models: read          # GitHub Models inference
 
@@ -40,64 +40,36 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Strip frontmatter from agent file
-        run: |
-          # Extract the body after the second '---' delimiter (YAML frontmatter)
-          awk 'BEGIN{d=0} /^---/{d++; next} d>=2{print}' \
-            .github/agents/renovate-reviewer.agent.md \
-            > /tmp/system-prompt.txt
-
-      - name: Build prompt
-        id: prompt
+      - name: Fetch PR context
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           REPO: ${{ github.repository }}
         run: |
-          # Fetch diff (truncated to keep well under model context limits)
-          DIFF=$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}" \
-            -H "Accept: application/vnd.github.diff" | head -c 14000)
+          gh api "/repos/${REPO}/pulls/${PR_NUMBER}" \
+            -H "Accept: application/vnd.github.diff" | head -c 14000 > /tmp/pr.diff
 
-          # Fetch changed file list
-          FILES=$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}/files" \
-            --jq '.[] | "- `\(.filename)` (+\(.additions) -\(.deletions))"' | head -50)
+          gh api "/repos/${REPO}/pulls/${PR_NUMBER}/files" \
+            --jq '.[] | "- `\(.filename)` (+\(.additions) -\(.deletions))"' \
+            | head -50 > /tmp/pr-files.txt
 
-          # Fetch PR body (Renovate release notes)
-          BODY=$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' | head -c 6000)
-
-          # Write prompt to file so special characters don't break env passing
-          cat > /tmp/user-prompt.txt <<PROMPT
-          Review this dependency update pull request.
-
-          **Repository:** ${REPO}
-          **PR #${PR_NUMBER}:** ${PR_TITLE}
-          **Author:** ${PR_AUTHOR}
-
-          ### Changed files
-          ${FILES}
-
-          ### PR body / release notes
-          ${BODY:-_No PR body._}
-
-          ### Diff
-          \`\`\`diff
-          ${DIFF}
-          \`\`\`
-
-          Produce the full structured review following the output template in your instructions.
-          PROMPT
-
-          echo "prompt-file=/tmp/user-prompt.txt" >> "$GITHUB_OUTPUT"
+          gh api "/repos/${REPO}/pulls/${PR_NUMBER}" \
+            --jq '.body // "_No PR body._"' | head -c 6000 > /tmp/pr-body.txt
 
       - name: Run AI inference
         id: inference
         uses: actions/ai-inference@17ff458cb182449bbb2e43701fcd98f6af8f6570 # v2.1.0
         with:
-          model: openai/gpt-4o
-          system-prompt-file: /tmp/system-prompt.txt
-          prompt-file: ${{ steps.prompt.outputs.prompt-file }}
+          prompt-file: .github/prompts/renovate-review.prompt.yml
+          input: |
+            repo: ${{ github.repository }}
+            number: ${{ github.event.pull_request.number }}
+            title: ${{ github.event.pull_request.title }}
+            author: ${{ github.event.pull_request.user.login }}
+          file_input: |
+            files: /tmp/pr-files.txt
+            body: /tmp/pr-body.txt
+            diff: /tmp/pr.diff
 
       - name: Post review comment
         env:
@@ -107,10 +79,8 @@ jobs:
           RESPONSE_FILE: ${{ steps.inference.outputs.response-file }}
           SENTINEL: "<!-- renovate-ai-review -->"
         run: |
-          # Use response-file to avoid shell quoting issues with model output
           BODY="$(printf '%s\n' "${SENTINEL}"; cat "${RESPONSE_FILE}")"
 
-          # Update existing sentinel comment if present, else create new
           COMMENT_ID=$(gh api "/repos/${REPO}/issues/${PR_NUMBER}/comments" \
             --jq ".[] | select(.body | contains(\"${SENTINEL}\")) | .id" | head -1)
 
