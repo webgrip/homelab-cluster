@@ -1,0 +1,20 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: github-billing-exporter
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: github-billing-exporter
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: github-billing-exporter
+  namespaceSelector:
+    matchNames:
+      - observability
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15m
+      scrapeTimeout: 60s

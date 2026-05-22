@@ -1,0 +1,439 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: github-billing-copilot-rules
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: github.billing.recording
+      interval: 5m
+      rules:
+        - record: github:billing_mtd_net_amount_usd:total
+          expr: |
+            max by (org) (github_billing_mtd_net_amount_usd{product="all", sku="all"})
+
+        - record: github:premium_request_mtd_net_amount_usd:total
+          expr: |
+            max by (org) (github_premium_request_mtd_net_amount_usd{model="all", sku="all"})
+
+        - record: github:premium_request_budget_usage_ratio:max
+          expr: |
+            max by (org, budget_id, budget_entity, budget_scope, budget_product_sku) (
+              github_budget_usage_ratio{budget_product_sku="premium_requests"}
+            )
+
+        - record: github:billing_anomaly_ratio:max7d
+          expr: |
+            max by (org, product, sku, repository) (
+              github_billing_anomaly_ratio{window="7d"}
+            )
+
+        - record: github:billing_anomaly_ratio:max30d
+          expr: |
+            max by (org, product, sku, repository) (
+              github_billing_anomaly_ratio{window="30d"}
+            )
+
+        - record: copilot:tool_failure_ratio:15m
+          expr: |
+            (
+              (sum(rate(github_copilot_tool_call_count_total{success!="true"}[15m])) or vector(0))
+              +
+              (sum(rate(copilot_chat_tool_call_count_total{success!="true"}[15m])) or vector(0))
+            )
+            /
+            clamp_min(
+              (sum(rate(github_copilot_tool_call_count_total[15m])) or vector(0))
+              +
+              (sum(rate(copilot_chat_tool_call_count_total[15m])) or vector(0)),
+              1
+            )
+
+        - record: copilot:tool_calls_per_chat:30m
+          expr: |
+            (
+              (sum(increase(github_copilot_tool_call_count_total[30m])) or vector(0))
+              +
+              (sum(increase(copilot_chat_tool_call_count_total[30m])) or vector(0))
+            )
+            /
+            clamp_min(
+              (
+                sum(increase(gen_ai_client_operation_duration_seconds_count{gen_ai_operation_name="chat"}[30m]))
+                or
+                sum(increase(gen_ai_client_operation_duration_count{gen_ai_operation_name="chat"}[30m]))
+                or
+                vector(0)
+              ),
+              1
+            )
+
+        - record: copilot:chat_p90_latency_seconds:5m
+          expr: |
+            histogram_quantile(
+              0.9,
+              sum by (le) (
+                rate(gen_ai_client_operation_duration_seconds_bucket{gen_ai_operation_name="chat"}[5m])
+              )
+            )
+            or
+            histogram_quantile(
+              0.9,
+              sum by (le) (
+                rate(gen_ai_client_operation_duration_bucket{gen_ai_operation_name="chat"}[5m])
+              )
+            )
+            or vector(0)
+
+        - record: copilot:ttft_p90_seconds:5m
+          expr: |
+            histogram_quantile(
+              0.9,
+              sum by (le) (
+                rate(gen_ai_client_operation_time_to_first_chunk_seconds_bucket{gen_ai_operation_name="chat"}[5m])
+              )
+            )
+            or
+            histogram_quantile(
+              0.9,
+              sum by (le) (
+                rate(copilot_chat_time_to_first_token_bucket[5m])
+              )
+            )
+            or vector(0)
+
+    - name: github.billing.alerts
+      rules:
+        - alert: GitHubBillingExporterDown
+          expr: |
+            up{job="github-billing-exporter"} == 0
+          for: 20m
+          labels:
+            severity: warning
+            owner: platform
+            service: github-billing
+          annotations:
+            summary: "GitHub billing exporter is down"
+            description: |
+              What's happening:
+              - Prometheus cannot scrape the github-billing-exporter for 20m.
+
+              Impact/risk:
+              - GitHub cost, budget, forecast, and Copilot seat alerts may be stale.
+
+              First actions:
+              - Check the github-billing-exporter Deployment/Pod in observability.
+              - Check whether the grafana-github-api secret exists and has a valid token.
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/github-cost-executive/github-cost-and-copilot-executive-overview"
+
+        - alert: GitHubBillingExporterScrapeFailed
+          expr: |
+            github_billing_exporter_last_scrape_success == 0
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: github-billing
+          annotations:
+            summary: "GitHub billing exporter scrape failed"
+            description: |
+              What's happening:
+              - The exporter is running but failed its latest GitHub API scrape.
+
+              Impact/risk:
+              - Billing and budget data may be stale or incomplete.
+
+              First actions:
+              - Check github_billing_exporter_api_response_status_code by endpoint.
+              - Verify GitHub PAT permissions and rate limits.
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/github-cost-executive/github-cost-and-copilot-executive-overview"
+
+        - alert: GitHubBillingDataStale
+          expr: |
+            time() - github_billing_exporter_last_scrape_timestamp_seconds > 3600
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: github-billing
+          annotations:
+            summary: "GitHub billing data is stale"
+            description: |
+              What's happening:
+              - The last successful exporter scrape is older than 1 hour.
+
+              Impact/risk:
+              - Spend forecasts and anomaly alerts may not reflect current usage.
+
+              First actions:
+              - Check exporter logs and GitHub API status codes.
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/github-cost-executive/github-cost-and-copilot-executive-overview"
+
+        - alert: GitHubTokenAuthFailure
+          expr: |
+            github_billing_exporter_api_response_status_code{endpoint!~"actions_runners|copilot_metrics"} == 401
+            or
+            github_billing_exporter_api_response_status_code{endpoint!~"actions_runners|copilot_metrics"} == 403
+          for: 15m
+          labels:
+            severity: critical
+            owner: platform
+            service: github-billing
+          annotations:
+            summary: "GitHub API token auth/permission failure"
+            description: |
+              What's happening:
+              - At least one GitHub billing exporter endpoint is returning 401/403.
+
+              Impact/risk:
+              - Billing, budget, Copilot seat, or runner data may be missing.
+
+              First actions:
+              - Check endpoint label on this alert.
+              - Verify the fine-grained PAT permissions and expiration.
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/github-cost-executive/github-cost-and-copilot-executive-overview"
+
+        - alert: GitHubPremiumRequestBudgetWarning
+          expr: |
+            github:premium_request_budget_usage_ratio:max > 0.7
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: github-billing
+          annotations:
+            summary: "GitHub premium request budget >70% used"
+            description: |
+              What's happening:
+              - Premium request spend is above 70% of the configured premium_requests budget.
+
+              Impact/risk:
+              - Copilot premium request usage may hit the budget cap before month end.
+
+              First actions:
+              - Check premium spend by model and user.
+              - Review recent model mix and agent/tool-heavy sessions.
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/github-cost-executive/github-cost-and-copilot-executive-overview"
+
+        - alert: GitHubPremiumRequestBudgetCritical
+          expr: |
+            github:premium_request_budget_usage_ratio:max > 0.9
+          for: 15m
+          labels:
+            severity: critical
+            owner: platform
+            service: github-billing
+          annotations:
+            summary: "GitHub premium request budget >90% used"
+            description: |
+              What's happening:
+              - Premium request spend is above 90% of the configured premium_requests budget.
+
+              Impact/risk:
+              - Budget exhaustion is likely soon; usage may be blocked if prevent_further_usage is enabled.
+
+              First actions:
+              - Check premium request usage by model and user immediately.
+              - Consider reducing expensive model/agent use or raising the cap intentionally.
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/github-cost-executive/github-cost-and-copilot-executive-overview"
+
+        - alert: GitHubBillingDailySpendAnomaly
+          expr: |
+            github:billing_anomaly_ratio:max7d > 2
+            and on (org, product, sku, repository)
+            github_billing_daily_latest_net_amount_usd{window="7d"} > 1
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: github-billing
+          annotations:
+            summary: "GitHub daily spend anomaly ({{$labels.product}}/{{$labels.repository}})"
+            description: |
+              What's happening:
+              - Latest daily spend is more than 2x the trailing 7-day baseline and above $1.
+
+              Impact/risk:
+              - A workflow, model, package, Codespace, or storage consumer may be unexpectedly expensive.
+
+              First actions:
+              - Check product, sku, and repository labels.
+              - Review recent workflow/model/package activity for that repository.
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/github-cost-executive/github-cost-and-copilot-executive-overview"
+
+        - alert: GitHubBudgetMissingEnforcement
+          expr: |
+            github_budget_prevent_further_usage == 0
+          for: 1h
+          labels:
+            severity: warning
+            owner: platform
+            service: github-billing
+          annotations:
+            summary: "GitHub budget has no prevent-further-usage enforcement"
+            description: |
+              What's happening:
+              - A GitHub budget is configured without prevent_further_usage.
+
+              Impact/risk:
+              - Spend can exceed the configured cap.
+
+              First actions:
+              - Review the budget entity/product and decide if enforcement should be enabled.
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/github-cost-executive/github-cost-and-copilot-executive-overview"
+
+        - alert: GitHubBudgetMissingAlertRecipients
+          expr: |
+            github_budget_will_alert == 0
+            or
+            github_budget_alert_recipient_count == 0
+          for: 1h
+          labels:
+            severity: warning
+            owner: platform
+            service: github-billing
+          annotations:
+            summary: "GitHub budget has missing alert recipients"
+            description: |
+              What's happening:
+              - A GitHub budget is not configured to alert, or has no recipients.
+
+              Impact/risk:
+              - Budget thresholds may be crossed without anyone being notified.
+
+              First actions:
+              - Add alert recipients or enable alerting for the budget.
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/github-cost-executive/github-cost-and-copilot-executive-overview"
+
+        - alert: GitHubCopilotSeatInactive
+          expr: |
+            github_copilot_seat_inactive_days > 45
+          for: 6h
+          labels:
+            severity: warning
+            owner: platform
+            service: github-copilot
+          annotations:
+            summary: "Copilot seat inactive for >45 days ({{$labels.login}})"
+            description: |
+              What's happening:
+              - A Copilot seat has not shown activity/authentication for more than 45 days.
+
+              Impact/risk:
+              - Paid seats may be unused and reclaimable.
+
+              First actions:
+              - Confirm whether {{$labels.login}} still needs the seat.
+              - Reclaim or reassign if appropriate.
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/github-cost-executive/github-cost-and-copilot-executive-overview"
+
+        - alert: ArcRunnerPendingPods
+          expr: |
+            sum(kube_pod_status_phase{namespace="arc-systems", phase="Pending"} == 1) > 0
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+            service: arc-systems
+          annotations:
+            summary: "ARC runner pods pending"
+            description: |
+              What's happening:
+              - One or more pods in arc-systems are Pending for 10m.
+
+              Impact/risk:
+              - Self-hosted GitHub Actions jobs may be delayed.
+
+              First actions:
+              - Check pending pod events for scheduling, image pull, or quota/resource issues.
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/github-cost-executive/github-cost-and-copilot-executive-overview"
+
+        - alert: CopilotChatLatencyHigh
+          expr: |
+            copilot:chat_p90_latency_seconds:5m > 30
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: github-copilot
+          annotations:
+            summary: "Copilot chat P90 latency high"
+            description: |
+              What's happening:
+              - Copilot chat P90 latency is above 30s for 15m.
+
+              Impact/risk:
+              - User-perceived Copilot responsiveness is degraded.
+
+              First actions:
+              - Check model mix, token volume, and recent Copilot traces/logs.
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/copilot-agent-performance/github-copilot-agent-performance"
+
+        - alert: CopilotTimeToFirstChunkHigh
+          expr: |
+            copilot:ttft_p90_seconds:5m > 10
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: github-copilot
+          annotations:
+            summary: "Copilot time-to-first-chunk P90 high"
+            description: |
+              What's happening:
+              - Copilot time to first chunk/token is above 10s for 15m.
+
+              Impact/risk:
+              - Copilot feels slow even if total completion eventually succeeds.
+
+              First actions:
+              - Check Copilot telemetry, traces, and model/provider status.
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/copilot-agent-performance/github-copilot-agent-performance"
+
+        - alert: CopilotToolFailureRateHigh
+          expr: |
+            copilot:tool_failure_ratio:15m > 0.1
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: github-copilot
+          annotations:
+            summary: "Copilot tool failure ratio high"
+            description: |
+              What's happening:
+              - More than 10% of Copilot tool calls are failing over 15m.
+
+              Impact/risk:
+              - Agent/chat workflows may be unreliable or repeatedly retrying.
+
+              First actions:
+              - Check tool failure labels and recent Copilot logs/traces.
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/copilot-agent-performance/github-copilot-agent-performance"
+
+        - alert: CopilotTelemetryStopped
+          expr: |
+            absent(gen_ai_client_operation_duration_seconds_count)
+            and
+            absent(gen_ai_client_operation_duration_count)
+          for: 2h
+          labels:
+            severity: warning
+            owner: platform
+            service: github-copilot
+          annotations:
+            summary: "Copilot telemetry appears stopped"
+            description: |
+              What's happening:
+              - Prometheus has no Copilot operation count metrics for 2h.
+
+              Impact/risk:
+              - Copilot usage, latency, and alerting dashboards may be blind.
+
+              First actions:
+              - Check Alloy ingestion and VS Code Copilot telemetry pipeline.
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/copilot-activity-overview/github-copilot-activity-overview"

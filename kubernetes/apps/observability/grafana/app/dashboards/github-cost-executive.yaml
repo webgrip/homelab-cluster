@@ -1,0 +1,263 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-github-cost-executive
+  namespace: observability
+  annotations:
+    grafana_folder: Copilot
+  labels:
+    grafana_dashboard: "1"
+data:
+  github-cost-executive.json: |-
+    {
+      "schemaVersion": 39,
+      "title": "GitHub Cost & Copilot / Executive Overview",
+      "uid": "github-cost-executive",
+      "timezone": "browser",
+      "tags": ["github", "billing", "copilot", "executive", "alerts"],
+      "editable": true,
+      "graphTooltip": 1,
+      "refresh": "15m",
+      "time": {"from": "now-30d", "to": "now"},
+      "links": [
+        {"title": "Billing drill-down", "url": "/d/github-usage-billing/github-usage-billing-and-forecasts", "type": "link", "icon": "external link"},
+        {"title": "Copilot Activity", "url": "/d/copilot-activity-overview/github-copilot-activity-overview", "type": "link", "icon": "external link"},
+        {"title": "Copilot Performance", "url": "/d/copilot-agent-performance/github-copilot-agent-performance", "type": "link", "icon": "external link"}
+      ],
+      "templating": {
+        "list": [
+          {
+            "name": "org",
+            "label": "GitHub org",
+            "type": "custom",
+            "query": "webgrip",
+            "current": {"selected": true, "text": "webgrip", "value": "webgrip"}
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "text",
+          "title": "",
+          "gridPos": {"h": 3, "w": 24, "x": 0, "y": 0},
+          "options": {
+            "mode": "markdown",
+            "content": "## GitHub cost and Copilot executive overview\nHuman-first view backed by the `github-billing-exporter` Prometheus metrics. Use this for daily status, budget risk, anomalies, and alert triage. Use the linked billing drill-down dashboard for raw GitHub API rows."
+          }
+        },
+        {"id": 2, "type": "row", "title": "Executive status", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 3}, "panels": []},
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "GitHub MTD Spend",
+          "gridPos": {"h": 4, "w": 4, "x": 0, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "max(github_billing_mtd_net_amount_usd{org=\"$${org}\",product=\"all\",sku=\"all\"})", "legendFormat": "MTD"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "yellow", "value": 50}, {"color": "red", "value": 100}]}}, "overrides": []}
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Premium Requests MTD",
+          "gridPos": {"h": 4, "w": 4, "x": 4, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "max(github_premium_request_mtd_net_amount_usd{org=\"$${org}\",model=\"all\",sku=\"all\"})", "legendFormat": "premium"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "yellow", "value": 10}, {"color": "red", "value": 18}]}}, "overrides": []}
+        },
+        {
+          "id": 5,
+          "type": "gauge",
+          "title": "Premium Budget Used",
+          "gridPos": {"h": 4, "w": 4, "x": 8, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "max(github_budget_usage_ratio{org=\"$${org}\",budget_product_sku=\"premium_requests\"})", "legendFormat": "used"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "showThresholdLabels": false, "showThresholdMarkers": true},
+          "fieldConfig": {"defaults": {"unit": "percentunit", "decimals": 1, "min": 0, "max": 1, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "yellow", "value": 0.7}, {"color": "red", "value": 0.9}]}}, "overrides": []}
+        },
+        {
+          "id": 6,
+          "type": "stat",
+          "title": "Likely Month-End Forecast",
+          "gridPos": {"h": 4, "w": 4, "x": 12, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "max(github_billing_forecast_amount_usd{org=\"$${org}\",product=\"all\",sku=\"all\",scenario=\"likely\"})", "legendFormat": "likely"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
+        },
+        {
+          "id": 7,
+          "type": "stat",
+          "title": "Inactive Copilot Seats >45d",
+          "gridPos": {"h": 4, "w": 4, "x": 16, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "count(github_copilot_seat_inactive_days{org=\"$${org}\"} > 45) or vector(0)", "legendFormat": "inactive seats"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "yellow", "value": 1}, {"color": "red", "value": 3}]}}, "overrides": []}
+        },
+        {
+          "id": 8,
+          "type": "stat",
+          "title": "Exporter/API Health",
+          "gridPos": {"h": 4, "w": 4, "x": 20, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "min(github_billing_exporter_last_scrape_success{org=\"$${org}\"})", "legendFormat": "success"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "bool", "decimals": 0, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red"}, {"color": "green", "value": 1}]}}, "overrides": []}
+        },
+        {"id": 9, "type": "row", "title": "Cost drivers and forecast", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 8}, "panels": []},
+        {
+          "id": 10,
+          "type": "bargauge",
+          "title": "MTD Spend by Product",
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 9},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sort_desc(max by (product) (github_billing_mtd_net_amount_usd{org=\"$${org}\",sku=\"all\",product!=\"all\"}))", "legendFormat": "{{product}}"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "horizontal", "displayMode": "gradient"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2}, "overrides": []}
+        },
+        {
+          "id": 11,
+          "type": "bargauge",
+          "title": "Month-End Forecast Band",
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 9},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "max by (scenario) (github_billing_forecast_amount_usd{org=\"$${org}\",product=\"all\",sku=\"all\"})", "legendFormat": "{{scenario}}"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "horizontal", "displayMode": "gradient"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2}, "overrides": []}
+        },
+        {
+          "id": 12,
+          "type": "bargauge",
+          "title": "Top Actions Repositories by Latest Daily Cost",
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 9},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "topk(10, max by (repository) (github_billing_daily_latest_net_amount_usd{org=\"$${org}\",product=\"actions\",window=\"7d\"}))", "legendFormat": "{{repository}}"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "horizontal", "displayMode": "gradient"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 4}, "overrides": []}
+        },
+        {
+          "id": 13,
+          "type": "table",
+          "title": "Spend Anomalies vs 7d Baseline",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 17},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sort_desc(github_billing_anomaly_ratio{org=\"$${org}\",window=\"7d\"})", "format": "table", "instant": true}],
+          "options": {"showHeader": true},
+          "fieldConfig": {"defaults": {"decimals": 2}, "overrides": []}
+        },
+        {
+          "id": 14,
+          "type": "table",
+          "title": "Budget Coverage and Enforcement",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 17},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "github_budget_amount_usd{org=\"$${org}\"}", "format": "table", "instant": true},
+            {"refId": "B", "expr": "github_budget_prevent_further_usage{org=\"$${org}\"}", "format": "table", "instant": true},
+            {"refId": "C", "expr": "github_budget_alert_recipient_count{org=\"$${org}\"}", "format": "table", "instant": true}
+          ],
+          "options": {"showHeader": true},
+          "fieldConfig": {"defaults": {}, "overrides": []}
+        },
+        {"id": 15, "type": "row", "title": "Copilot productivity and reliability", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 25}, "panels": []},
+        {
+          "id": 16,
+          "type": "timeseries",
+          "title": "Copilot Chat and Agent Volume",
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 26},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(increase(gen_ai_client_operation_duration_seconds_count{gen_ai_operation_name=\"chat\"}[$$__rate_interval])) or sum(increase(gen_ai_client_operation_duration_count{gen_ai_operation_name=\"chat\"}[$$__rate_interval]))", "legendFormat": "chat"},
+            {"refId": "B", "expr": "sum(increase(gen_ai_client_operation_duration_seconds_count{gen_ai_operation_name=\"invoke_agent\"}[$$__rate_interval])) or vector(0)", "legendFormat": "agent"}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 17,
+          "type": "timeseries",
+          "title": "Copilot Latency P90",
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 26},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "copilot:chat_p90_latency_seconds:5m", "legendFormat": "chat p90"},
+            {"refId": "B", "expr": "copilot:ttft_p90_seconds:5m", "legendFormat": "ttft p90"}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"unit": "s", "decimals": 2, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "yellow", "value": 10}, {"color": "red", "value": 30}]}}, "overrides": []}
+        },
+        {
+          "id": 18,
+          "type": "timeseries",
+          "title": "Tool Failure Ratio and Tool Calls / Chat",
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 26},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "copilot:tool_failure_ratio:15m", "legendFormat": "failure ratio"},
+            {"refId": "B", "expr": "copilot:tool_calls_per_chat:30m", "legendFormat": "tool calls / chat"}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"decimals": 2}, "overrides": [{"matcher": {"id": "byName", "options": "failure ratio"}, "properties": [{"id": "unit", "value": "percentunit"}]}]}
+        },
+        {
+          "id": 19,
+          "type": "bargauge",
+          "title": "Request Mix by Model",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 34},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sort_desc(sum by (gen_ai_request_model) (increase(gen_ai_client_operation_duration_seconds_count[$$__range])) or sum by (gen_ai_request_model) (increase(gen_ai_client_operation_duration_count[$$__range])))", "legendFormat": "{{gen_ai_request_model}}"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "horizontal", "displayMode": "gradient"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 20,
+          "type": "timeseries",
+          "title": "Edit Survival / Acceptance Proxy",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 34},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum by (copilot_chat_edit_source) (increase(copilot_chat_edit_survival_no_revert_sum[$$__range])) / clamp_min(sum by (copilot_chat_edit_source) (increase(copilot_chat_edit_survival_no_revert_count[$$__range])), 1)", "legendFormat": "no revert / {{copilot_chat_edit_source}}"},
+            {"refId": "B", "expr": "sum by (copilot_chat_edit_source) (increase(copilot_chat_edit_survival_four_gram_sum[$$__range])) / clamp_min(sum by (copilot_chat_edit_source) (increase(copilot_chat_edit_survival_four_gram_count[$$__range])), 1)", "legendFormat": "four gram / {{copilot_chat_edit_source}}"}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"unit": "percentunit", "decimals": 2}, "overrides": []}
+        },
+        {"id": 21, "type": "row", "title": "Operations and debug", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 42}, "panels": []},
+        {
+          "id": 22,
+          "type": "timeseries",
+          "title": "ARC Running vs Pending Pods",
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 43},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(kube_pod_status_phase{namespace=\"arc-systems\", phase=\"Running\"} == 1) or vector(0)", "legendFormat": "running"},
+            {"refId": "B", "expr": "sum(kube_pod_status_phase{namespace=\"arc-systems\", phase=\"Pending\"} == 1) or vector(0)", "legendFormat": "pending"}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 23,
+          "type": "table",
+          "title": "Copilot Seat Inactivity",
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 43},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sort_desc(github_copilot_seat_inactive_days{org=\"$${org}\"})", "format": "table", "instant": true}],
+          "options": {"showHeader": true},
+          "fieldConfig": {"defaults": {"unit": "d", "decimals": 1}, "overrides": []}
+        },
+        {
+          "id": 24,
+          "type": "table",
+          "title": "GitHub API Endpoint Status",
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 43},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "github_billing_exporter_api_response_status_code{org=\"$${org}\"}", "format": "table", "instant": true}],
+          "options": {"showHeader": true},
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
+        }
+      ]
+    }
