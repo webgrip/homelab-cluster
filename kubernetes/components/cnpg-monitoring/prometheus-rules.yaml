@@ -226,11 +226,15 @@ spec:
       rules:
         - alert: CNPGRestoreTestFailed
           expr: |
-            max by (namespace) (
-              kube_job_status_failed{job_name=~"cnpg-restore-test-.*"} == 1
-              and on (namespace, job_name)
-              (time() - kube_job_created{job_name=~"cnpg-restore-test-.*"} < 86400)
-            ) > 0
+            (
+              max by (namespace) (
+                kube_job_status_failed{job_name=~"cnpg-restore-test-.*"} == 1
+                and on (namespace, job_name)
+                (time() - kube_job_created{job_name=~"cnpg-restore-test-.*"} < 86400)
+              ) > 0
+            )
+            unless on (namespace)
+              kube_cronjob_spec_suspend{cronjob="cnpg-restore-test"} == 1
           for: 10m
           labels:
             severity: warning
@@ -259,9 +263,13 @@ spec:
 
         - alert: CNPGRestoreTestStale
           expr: |
-            (kube_cronjob_status_last_successful_time{cronjob="cnpg-restore-test"} == 0)
-            or
-            (time() - kube_cronjob_status_last_successful_time{cronjob="cnpg-restore-test"} > 93600)
+            (
+              (kube_cronjob_status_last_successful_time{cronjob="cnpg-restore-test"} == 0)
+              or
+              (time() - kube_cronjob_status_last_successful_time{cronjob="cnpg-restore-test"} > 93600)
+            )
+            unless on (namespace)
+              kube_cronjob_spec_suspend{cronjob="cnpg-restore-test"} == 1
           for: 30m
           labels:
             severity: warning

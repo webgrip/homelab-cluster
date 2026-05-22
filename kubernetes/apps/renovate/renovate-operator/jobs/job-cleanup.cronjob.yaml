@@ -65,8 +65,8 @@ spec:
                 - -ceu
                 - |
                   namespace="renovate"
-                  ttl_days="3"
-                  cutoff_epoch="$(date -u -d "-${ttl_days} days" +%s)"
+                  ttl_secs=$((3 * 86400))
+                  cutoff_epoch=$(( $(date -u +%s) - ttl_secs ))
 
                   kubectl get jobs -n "$namespace" -o go-template='{{range .items}}{{.metadata.name}} {{.metadata.creationTimestamp}} {{if .status.active}}{{.status.active}}{{else}}0{{end}}{{"\n"}}{{end}}' |
                     while read -r job_name created_ts active; do
