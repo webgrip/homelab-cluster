@@ -14,6 +14,9 @@ These credentials are used by the token minter CronJob to mint a short-lived Git
   - `RENOVATE_GITHUB_APP_ID`
   - `RENOVATE_GITHUB_APP_INSTALLATION_ID`
   - `RENOVATE_GITHUB_APP_PRIVATE_KEY` (PEM)
+- **Optional keys for Docker Hub rate-limit avoidance:**
+  - `RENOVATE_DOCKERHUB_USERNAME`
+  - `RENOVATE_DOCKERHUB_TOKEN`
 
 Template: `secret.template.yaml`
 
@@ -24,6 +27,9 @@ This Secret is created/updated automatically in-cluster (do not commit it to git
 - **Secret name:** `renovate-runtime-token`
 - **Namespace:** `renovate`
 - **Key:** `token` (the GitHub App installation token; expires hourly)
+- **Additional generated keys:**
+  - `RENOVATE_TOKEN`
+  - `RENOVATE_HOST_RULES` (always includes GHCR auth, and includes Docker Hub auth when configured)
 
 Created/rotated by: CronJob `renovate-github-app-token`
 
@@ -55,6 +61,7 @@ Template: `webhook-auth.secret.template.yaml`
 - Renovate executor Jobs read the token from `renovate-runtime-token`.
 - The webhook bearer `token` is separate; it only protects the public webhook endpoint.
 - The in-cluster token minter uses `ghcr.io/mshekow/github-app-installation-token` pinned by digest (see the CronJob manifest).
+- The token minter also builds `RENOVATE_HOST_RULES` for registry auth. Without Docker Hub credentials, Renovate talks to Docker Hub anonymously and can hit 429 rate limits.
 
 ## Make Dependency Dashboard actions immediate (GitHub webhook)
 
@@ -104,3 +111,18 @@ Whatever you use for `RENOVATE_TOKEN` (PAT or GitHub App token) must be able to 
 - **GitHub App**: ensure the app has **Dependabot alerts: Read** (and normal PR/contents permissions).
 
 After updating the GitHub App permissions and `renovate-secrets`, wait for the CronJob to refresh `renovate-runtime-token`.
+
+## Reduce Docker Hub rate limiting
+
+Renovate scans a lot of Docker-based dependencies in this estate, so anonymous Docker Hub traffic is the most common source of aborted runs.
+
+### Recommended Docker Hub setup
+
+1. Create a Docker Hub account if you do not already have one.
+2. Create a Docker Hub personal access token for Renovate.
+3. Add these keys to `kubernetes/apps/renovate/renovate-operator/jobs/secret.sops.yaml`:
+   - `RENOVATE_DOCKERHUB_USERNAME`
+   - `RENOVATE_DOCKERHUB_TOKEN`
+4. Wait for CronJob `renovate-github-app-token` to refresh `renovate-runtime-token`, or trigger it manually once.
+
+After that refresh, Renovate executor Jobs will authenticate Docker Hub requests via `RENOVATE_HOST_RULES` instead of using the anonymous Docker Hub rate limit bucket.

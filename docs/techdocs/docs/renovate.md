@@ -223,6 +223,10 @@ Renovate-related secrets in this repo:
 - GitHub App credentials: [kubernetes/apps/renovate/renovate-operator/jobs/secret.sops.yaml](../../kubernetes/apps/renovate/renovate-operator/jobs/secret.sops.yaml)
 - Webhook auth token: [kubernetes/apps/renovate/renovate-operator/jobs/webhook-auth.secret.sops.yaml](../../kubernetes/apps/renovate/renovate-operator/jobs/webhook-auth.secret.sops.yaml)
 
+Optional credentials to reduce registry throttling:
+
+- Docker Hub account + token in `renovate-secrets` (`RENOVATE_DOCKERHUB_USERNAME`, `RENOVATE_DOCKERHUB_TOKEN`)
+
 Human note:
 
 - SOPS-encrypted secrets require human-encryption workflows; never commit plaintext secrets.
@@ -237,7 +241,8 @@ Renovate itself uses a runtime token secret created/updated in-cluster.
 Mechanics (as implemented):
 
 - The CronJob mints a GitHub App installation token every 30 minutes.
-- It applies a Secret `renovate-runtime-token` in namespace `renovate` containing `token` and `RENOVATE_TOKEN`.
+- It applies a Secret `renovate-runtime-token` in namespace `renovate` containing `token`, `RENOVATE_TOKEN`, and `RENOVATE_HOST_RULES`.
+- `RENOVATE_HOST_RULES` always authenticates GHCR with the GitHub App token and can also authenticate Docker Hub when `renovate-secrets` includes `RENOVATE_DOCKERHUB_USERNAME` and `RENOVATE_DOCKERHUB_TOKEN`.
 
 ## Vulnerability sources
 
@@ -293,8 +298,8 @@ kubectl -n renovate logs job/<k8s-job-name> --all-containers --tail=200
    - Often release-age gating or Dependency Dashboard approval gating.
 2. Run fails with registry/auth errors
 
-   - GHCR 403 when reading a private package: GitHub App needs **Packages: read** and correct installation scope.
-   - Docker Hub 429/rate limit: global config is set to not abort the whole run, but some lookups may still fail.
+    - GHCR 403 when reading a private package: GitHub App needs **Packages: read** and correct installation scope.
+    - Docker Hub 429/rate limit: configure `RENOVATE_DOCKERHUB_USERNAME` and `RENOVATE_DOCKERHUB_TOKEN` in Secret `renovate-secrets`, then wait for CronJob `renovate-github-app-token` to refresh `renovate-runtime-token`. The global Renovate config also throttles Docker Hub requests and reduces branch/repository parallelism to lower burst traffic.
 3. Renovate executes but doesn’t “see” expected files
 
    - Check `ignorePaths` interaction between global ConfigMap and repo config.

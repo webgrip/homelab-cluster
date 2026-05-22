@@ -53,6 +53,39 @@ spec:
                     echo "failed to mint installation token" >&2
                     exit 1
                   fi
+
+                  node - <<'EOF'
+                  const fs = require('node:fs');
+
+                  const token = fs.readFileSync('/work/token', 'utf8').trim();
+                  const dockerHubUsername = process.env.RENOVATE_DOCKERHUB_USERNAME;
+                  const dockerHubToken = process.env.RENOVATE_DOCKERHUB_TOKEN;
+
+                  if ((dockerHubUsername || dockerHubToken) && !(dockerHubUsername && dockerHubToken)) {
+                    console.error('set both RENOVATE_DOCKERHUB_USERNAME and RENOVATE_DOCKERHUB_TOKEN');
+                    process.exit(1);
+                  }
+
+                  const hostRules = [
+                    {
+                      matchHost: 'ghcr.io',
+                      hostType: 'docker',
+                      username: 'x-access-token',
+                      password: token,
+                    },
+                  ];
+
+                  if (dockerHubUsername && dockerHubToken) {
+                    hostRules.push({
+                      matchHost: 'docker.io',
+                      hostType: 'docker',
+                      username: dockerHubUsername,
+                      password: dockerHubToken,
+                    });
+                  }
+
+                  fs.writeFileSync('/work/host-rules.json', JSON.stringify(hostRules));
+                  EOF
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
@@ -88,12 +121,11 @@ spec:
                 - -ceu
                 - |
                   token="$(cat /work/token)"
-                  host_rules="$(printf '[{"matchHost":"ghcr.io","hostType":"docker","username":"x-access-token","password":"%s"}]' "$token")"
 
                   kubectl -n renovate create secret generic "$RUNTIME_SECRET_NAME" \
                     --from-literal="$RUNTIME_SECRET_KEY=$token" \
                     --from-literal="RENOVATE_TOKEN=$token" \
-                    --from-literal="RENOVATE_HOST_RULES=$host_rules" \
+                    --from-file="RENOVATE_HOST_RULES=/work/host-rules.json" \
                     --dry-run=client \
                     -o yaml \
                     | kubectl apply -f -
