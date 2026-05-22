@@ -170,16 +170,14 @@ data:
               "type": "json",
               "source": "url",
               "url": "https://api.github.com/organizations/$${org}/settings/billing/usage/summary",
-              "parser": "uql",
-              "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_amount\"=sum(\"netAmount\")"
+              "parser": "backend",
+              "root_selector": "usageItems"
             }
           ],
           "options": {
             "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
+              "calcs": ["sum"],
+              "fields": "/^netAmount$/",
               "values": false
             },
             "orientation": "auto",
@@ -202,8 +200,8 @@ data:
         {
           "id": 4,
           "type": "stat",
-          "title": "Personal MTD Net Spend",
-          "description": "GET /users/{username}/settings/billing/usage/summary. This only includes usage billed directly to the personal account; org-managed usage appears in the org panels.",
+          "title": "Copilot Seat Cost MTD",
+          "description": "GET /organizations/{org}/settings/billing/usage/summary filtered to Copilot products.",
           "gridPos": {
             "h": 4,
             "w": 6,
@@ -219,17 +217,16 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/users/$${username}/settings/billing/usage/summary",
-              "parser": "uql",
-              "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_amount\"=sum(\"netAmount\")"
+              "url": "https://api.github.com/organizations/$${org}/settings/billing/usage/summary",
+              "parser": "backend",
+              "root_selector": "usageItems",
+              "filterExpression": "product.toLowerCase()===\"copilot\""
             }
           ],
           "options": {
             "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
+              "calcs": ["sum"],
+              "fields": "/^netAmount$/",
               "values": false
             },
             "orientation": "auto",
@@ -270,16 +267,14 @@ data:
               "type": "json",
               "source": "url",
               "url": "https://api.github.com/organizations/$${org}/settings/billing/premium_request/usage",
-              "parser": "uql",
-              "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_amount\"=sum(\"netAmount\")"
+              "parser": "backend",
+              "root_selector": "usageItems"
             }
           ],
           "options": {
             "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
+              "calcs": ["sum"],
+              "fields": "/^netAmount$/",
               "values": false
             },
             "orientation": "auto",
@@ -320,16 +315,14 @@ data:
               "type": "json",
               "source": "url",
               "url": "https://api.github.com/organizations/$${org}/settings/billing/premium_request/usage?user=$${username}",
-              "parser": "uql",
-              "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_amount\"=sum(\"netAmount\")"
+              "parser": "backend",
+              "root_selector": "usageItems"
             }
           ],
           "options": {
             "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
+              "calcs": ["sum"],
+              "fields": "/^netAmount$/",
               "values": false
             },
             "orientation": "auto",
@@ -365,7 +358,8 @@ data:
         {
           "id": 8,
           "type": "table",
-          "title": "Org spend projection",
+          "title": "Org spend by product — MTD with projection notes",
+          "description": "Current MTD spend by product/SKU. Projections: best case = current pace, likeliest ≈ ×1.5, worst case ≈ ×2.",
           "gridPos": {
             "h": 7,
             "w": 12,
@@ -382,25 +376,30 @@ data:
               "type": "json",
               "source": "url",
               "url": "https://api.github.com/organizations/$${org}/settings/billing/usage/summary",
-              "parser": "uql",
-              "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"current_mtd\"=sum(\"netAmount\")\n| extend \"best_case\"=\"current_mtd\", \"likeliest\"=mul(\"current_mtd\",1.5), \"worst_case\"=mul(\"current_mtd\",2)"
+              "parser": "backend",
+              "root_selector": "usageItems"
             }
           ],
           "options": {
             "showHeader": true
           },
           "fieldConfig": {
-            "defaults": {
-              "unit": "currencyUSD",
-              "decimals": 2
-            },
-            "overrides": []
+            "defaults": {"unit": "currencyUSD", "decimals": 4},
+            "overrides": [
+              {"matcher": {"id": "byName", "options": "product"}, "properties": [{"id": "unit", "value": "string"}]},
+              {"matcher": {"id": "byName", "options": "sku"}, "properties": [{"id": "unit", "value": "string"}]},
+              {"matcher": {"id": "byName", "options": "unitType"}, "properties": [{"id": "unit", "value": "string"}]},
+              {"matcher": {"id": "byName", "options": "grossQuantity"}, "properties": [{"id": "unit", "value": "short"}, {"id": "decimals", "value": 2}]},
+              {"matcher": {"id": "byName", "options": "netQuantity"}, "properties": [{"id": "unit", "value": "short"}, {"id": "decimals", "value": 2}]},
+              {"matcher": {"id": "byName", "options": "pricePerUnit"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 6}]}
+            ]
           }
         },
         {
           "id": 9,
           "type": "table",
-          "title": "Premium request projection",
+          "title": "Premium request usage by model — MTD",
+          "description": "Current MTD premium requests by model. Projections: best case = current, likeliest ≈ ×1.5, worst case ≈ ×2.",
           "gridPos": {
             "h": 7,
             "w": 12,
@@ -417,35 +416,19 @@ data:
               "type": "json",
               "source": "url",
               "url": "https://api.github.com/organizations/$${org}/settings/billing/premium_request/usage",
-              "parser": "uql",
-              "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"current_mtd\"=sum(\"netAmount\"), \"current_requests\"=sum(\"netQuantity\")\n| extend \"best_case\"=\"current_mtd\", \"likeliest\"=mul(\"current_mtd\",1.5), \"worst_case\"=mul(\"current_mtd\",2)"
+              "parser": "backend",
+              "root_selector": "usageItems"
             }
           ],
           "options": {
             "showHeader": true
           },
           "fieldConfig": {
-            "defaults": {
-              "unit": "currencyUSD",
-              "decimals": 2
-            },
+            "defaults": {},
             "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "current_requests"
-                },
-                "properties": [
-                  {
-                    "id": "unit",
-                    "value": "short"
-                  },
-                  {
-                    "id": "decimals",
-                    "value": 0
-                  }
-                ]
-              }
+              {"matcher": {"id": "byName", "options": "netAmount"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]},
+              {"matcher": {"id": "byName", "options": "grossAmount"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]},
+              {"matcher": {"id": "byName", "options": "pricePerUnit"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]}
             ]
           }
         },
@@ -482,8 +465,8 @@ data:
               "type": "json",
               "source": "url",
               "url": "https://api.github.com/organizations/$${org}/settings/billing/usage/summary",
-              "parser": "uql",
-              "uql": "parse-json\n| scope \"usageItems\"\n| project \"product\", \"sku\", \"unitType\", \"grossQuantity\", \"netQuantity\", \"pricePerUnit\", \"netAmount\"\n| order by \"netAmount\" desc"
+              "parser": "backend",
+              "root_selector": "usageItems"
             }
           ],
           "options": {
@@ -504,7 +487,7 @@ data:
                   },
                   {
                     "id": "decimals",
-                    "value": 2
+                    "value": 4
                   }
                 ]
               }
@@ -531,8 +514,9 @@ data:
               "type": "json",
               "source": "url",
               "url": "https://api.github.com/organizations/$${org}/settings/billing/usage",
-              "parser": "uql",
-              "uql": "parse-json\n| scope \"usageItems\"\n| extend \"product_lc\"=tolower(\"product\")\n| where \"product_lc\" in ('actions','codespaces','packages','lfs','git_lfs')\n| project \"date\", \"product\", \"sku\", \"repositoryName\", \"quantity\", \"unitType\", \"netAmount\"\n| order by \"date\" desc"
+              "parser": "backend",
+              "root_selector": "usageItems",
+              "filterExpression": "[\"actions\",\"codespaces\",\"packages\",\"git_lfs\",\"lfs\"].includes((product||\"\").toLowerCase())"
             }
           ],
           "options": {
@@ -594,16 +578,14 @@ data:
               "type": "json",
               "source": "url",
               "url": "https://api.github.com/orgs/$${org}/copilot/billing/seats?per_page=100",
-              "parser": "uql",
-              "uql": "parse-json\n| project \"total_seats\"=tonumber(\"total_seats\")"
+              "parser": "backend",
+              "root_selector": "seats"
             }
           ],
           "options": {
             "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
+              "calcs": ["count"],
+              "fields": "/^plan_type$/",
               "values": false
             },
             "orientation": "auto",
@@ -643,8 +625,8 @@ data:
               "type": "json",
               "source": "url",
               "url": "https://api.github.com/orgs/$${org}/copilot/billing/seats?per_page=100",
-              "parser": "uql",
-              "uql": "parse-json\n| scope \"seats\"\n| project \"login\"=\"assignee.login\", \"plan_type\", \"created_at\", \"last_activity_at\", \"last_activity_editor\", \"last_authenticated_at\", \"pending_cancellation_date\""
+              "parser": "backend",
+              "root_selector": "seats"
             }
           ],
           "options": {
@@ -676,8 +658,9 @@ data:
               "type": "json",
               "source": "url",
               "url": "https://api.github.com/organizations/$${org}/settings/billing/usage",
-              "parser": "uql",
-              "uql": "parse-json\n| scope \"usageItems\"\n| extend \"product_lc\"=tolower(\"product\")\n| where \"product_lc\" in ('copilot')\n| project \"date\", \"sku\", \"quantity\", \"unitType\", \"grossAmount\", \"discountAmount\", \"netAmount\"\n| order by \"date\" desc"
+              "parser": "backend",
+              "root_selector": "usageItems",
+              "filterExpression": "(product||\"\").toLowerCase()===\"copilot\""
             }
           ],
           "options": {
@@ -717,8 +700,8 @@ data:
               "type": "json",
               "source": "url",
               "url": "https://api.github.com/organizations/$${org}/settings/billing/premium_request/usage",
-              "parser": "uql",
-              "uql": "parse-json\n| scope \"usageItems\"\n| project \"product\", \"sku\", \"model\", \"unitType\", \"grossQuantity\", \"discountQuantity\", \"netQuantity\", \"pricePerUnit\", \"netAmount\"\n| order by \"netAmount\" desc"
+              "parser": "backend",
+              "root_selector": "usageItems"
             }
           ],
           "options": {
@@ -780,8 +763,8 @@ data:
               "type": "json",
               "source": "url",
               "url": "https://api.github.com/organizations/$${org}/settings/billing/budgets?per_page=10",
-              "parser": "uql",
-              "uql": "parse-json\n| scope \"budgets\"\n| project \"id\", \"budget_scope\", \"budget_entity_name\", \"budget_type\", \"budget_product_sku\", \"budget_amount\", \"prevent_further_usage\", \"will_alert\"=\"budget_alerting.will_alert\""
+              "parser": "backend",
+              "root_selector": "budgets"
             }
           ],
           "options": {
@@ -843,8 +826,8 @@ data:
               "type": "json",
               "source": "url",
               "url": "https://api.github.com/organizations/$${org}/settings/billing/usage",
-              "parser": "uql",
-              "uql": "parse-json\n| scope \"usageItems\"\n| project \"date\", \"product\", \"sku\", \"quantity\", \"unitType\", \"grossAmount\", \"discountAmount\", \"netAmount\", \"repositoryName\"\n| order by \"date\" desc"
+              "parser": "backend",
+              "root_selector": "usageItems"
             }
           ],
           "options": {
@@ -885,8 +868,8 @@ data:
               "type": "json",
               "source": "url",
               "url": "https://api.github.com/organizations/$${org}/settings/billing/premium_request/usage?user=$${username}",
-              "parser": "uql",
-              "uql": "parse-json\n| scope \"usageItems\"\n| project \"product\", \"sku\", \"model\", \"unitType\", \"grossQuantity\", \"netQuantity\", \"pricePerUnit\", \"netAmount\"\n| order by \"netAmount\" desc"
+              "parser": "backend",
+              "root_selector": "usageItems"
             }
           ],
           "options": {
@@ -907,7 +890,7 @@ data:
                   },
                   {
                     "id": "decimals",
-                    "value": 2
+                    "value": 4
                   }
                 ]
               }
@@ -934,14 +917,14 @@ data:
               "type": "json",
               "source": "url",
               "url": "https://api.github.com/organizations/$${org}/settings/billing/premium_request/usage?user=$${username}",
-              "parser": "uql",
-              "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_amount\"=sum(\"netAmount\")"
+              "parser": "backend",
+              "root_selector": "usageItems"
             }
           ],
           "options": {
             "reduceOptions": {
-              "calcs": ["lastNotNull"],
-              "fields": "",
+              "calcs": ["sum"],
+              "fields": "/^netAmount$/",
               "values": false
             },
             "orientation": "auto",
@@ -952,7 +935,7 @@ data:
           "fieldConfig": {
             "defaults": {
               "unit": "currencyUSD",
-              "decimals": 2,
+              "decimals": 4,
               "color": {
                 "mode": "fixed",
                 "fixedColor": "orange"
@@ -981,14 +964,14 @@ data:
               "type": "json",
               "source": "url",
               "url": "https://api.github.com/organizations/$${org}/settings/billing/premium_request/usage?user=$${username}",
-              "parser": "uql",
-              "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_requests\"=sum(\"netQuantity\")"
+              "parser": "backend",
+              "root_selector": "usageItems"
             }
           ],
           "options": {
             "reduceOptions": {
-              "calcs": ["lastNotNull"],
-              "fields": "",
+              "calcs": ["sum"],
+              "fields": "/^netQuantity$/",
               "values": false
             },
             "orientation": "auto",
