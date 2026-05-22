@@ -105,7 +105,7 @@ data:
           },
           "options": {
             "mode": "markdown",
-            "content": "## GitHub Copilot \u00b7 Activity Overview\nBuilt against the **live** metric schema now emitted by VS Code Copilot through Alloy: `gen_ai_*`, `github_copilot_*`, and `copilot_chat_tool_*`. Unsupported edit/session metrics were removed so the dashboard stays live.\n\nUse this dashboard for throughput, model mix, tokens, tool activity, and provider-level overview."
+            "content": "## GitHub Copilot \u00b7 Activity Overview\nLive VS Code Copilot telemetry collected through Alloy. Use this dashboard to understand request volume, model mix, token usage, tool activity, and efficiency signals.\n\nThe panels below favor human-readable names and derived ratios over raw telemetry labels."
           }
         },
         {
@@ -639,7 +639,8 @@ data:
             {
               "refId": "A",
               "expr": "sort_desc(sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_count[$__range])))",
-              "instant": true
+              "instant": true,
+              "legendFormat": "{{gen_ai_request_model}}"
             }
           ],
           "options": {
@@ -683,7 +684,8 @@ data:
             {
               "refId": "A",
               "expr": "sort_desc(sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum[$__range])))",
-              "instant": true
+              "instant": true,
+              "legendFormat": "{{gen_ai_request_model}}"
             }
           ],
           "options": {
@@ -712,7 +714,7 @@ data:
         {
           "id": 17,
           "type": "piechart",
-          "title": "Operations by Provider",
+          "title": "Model Mix by Operations",
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -726,8 +728,9 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (gen_ai_provider_name) (increase(gen_ai_client_token_usage_count{gen_ai_request_model=~\"$model\"}[$__range]))",
-              "instant": true
+              "expr": "sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_count{gen_ai_request_model=~\"$model\"}[$__range]))",
+              "instant": true,
+              "legendFormat": "{{gen_ai_request_model}}"
             }
           ],
           "options": {
@@ -750,7 +753,7 @@ data:
         {
           "id": 18,
           "type": "piechart",
-          "title": "Token Split: Input vs Output",
+          "title": "Input vs Output Token Mix",
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -765,7 +768,8 @@ data:
             {
               "refId": "A",
               "expr": "sum by (gen_ai_token_type) (increase(gen_ai_client_token_usage_sum{gen_ai_request_model=~\"$model\"}[$__range]))",
-              "instant": true
+              "instant": true,
+              "legendFormat": "{{gen_ai_token_type}}"
             }
           ],
           "options": {
@@ -788,7 +792,7 @@ data:
         {
           "id": 19,
           "type": "row",
-          "title": "Current Live Signals",
+          "title": "Efficiency & Current Live Signals",
           "collapsed": false,
           "gridPos": {
             "h": 1,
@@ -800,11 +804,12 @@ data:
         },
         {
           "id": 20,
-          "type": "bargauge",
-          "title": "Current CLI Tool Volume",
+          "type": "stat",
+          "title": "Avg Tokens / Chat",
+          "description": "Total input + output tokens divided by chat operations for the selected time range.",
           "gridPos": {
-            "h": 7,
-            "w": 12,
+            "h": 4,
+            "w": 6,
             "x": 0,
             "y": 43
           },
@@ -815,8 +820,196 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sort_desc(sum by (gen_ai_tool_name) (github_copilot_tool_call_count_total))",
+              "expr": "sum(increase(gen_ai_client_token_usage_sum{gen_ai_request_model=~\"$model\"}[$__range])) / clamp_min((sum(increase(gen_ai_client_operation_duration_seconds_count{gen_ai_operation_name=\"chat\",gen_ai_request_model=~\"$model\"}[$__range])) or sum(increase(gen_ai_client_operation_duration_count{gen_ai_operation_name=\"chat\",gen_ai_request_model=~\"$model\"}[$__range]))), 1)",
               "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "green"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 27,
+          "type": "stat",
+          "title": "Output Token Share",
+          "description": "How much of token volume is generated output. Higher values usually mean longer Copilot responses.",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 43
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(increase(gen_ai_client_token_usage_sum{gen_ai_token_type=\"output\",gen_ai_request_model=~\"$model\"}[$__range])) / clamp_min(sum(increase(gen_ai_client_token_usage_sum{gen_ai_request_model=~\"$model\"}[$__range])), 1)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "decimals": 1,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "orange"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 28,
+          "type": "stat",
+          "title": "Agent Share",
+          "description": "Agent invocations as a share of chat + agent operations.",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 12,
+            "y": 43
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(sum(increase(gen_ai_client_operation_duration_seconds_count{gen_ai_operation_name=\"invoke_agent\",gen_ai_request_model=~\"$model\"}[$__range])) or vector(0)) / clamp_min(((sum(increase(gen_ai_client_operation_duration_seconds_count{gen_ai_operation_name=\"chat\",gen_ai_request_model=~\"$model\"}[$__range])) or sum(increase(gen_ai_client_operation_duration_count{gen_ai_operation_name=\"chat\",gen_ai_request_model=~\"$model\"}[$__range])) or vector(0)) + (sum(increase(gen_ai_client_operation_duration_seconds_count{gen_ai_operation_name=\"invoke_agent\",gen_ai_request_model=~\"$model\"}[$__range])) or vector(0))), 1)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "decimals": 1,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "purple"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 29,
+          "type": "stat",
+          "title": "Tools / Chat",
+          "description": "CLI and chat tool calls divided by chat operations. This shows how tool-heavy the session is.",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 18,
+            "y": 43
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "((sum(increase(github_copilot_tool_call_count_total[$__range])) or vector(0)) + (sum(increase(copilot_chat_tool_call_count_total[$__range])) or vector(0))) / clamp_min((sum(increase(gen_ai_client_operation_duration_seconds_count{gen_ai_operation_name=\"chat\",gen_ai_request_model=~\"$model\"}[$__range])) or sum(increase(gen_ai_client_operation_duration_count{gen_ai_operation_name=\"chat\",gen_ai_request_model=~\"$model\"}[$__range]))), 1)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 1,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "yellow"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 30,
+          "type": "bargauge",
+          "title": "Current CLI Tool Volume",
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 47
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sort_desc(sum by (gen_ai_tool_name) (github_copilot_tool_call_count_total))",
+              "instant": true,
+              "legendFormat": "{{gen_ai_tool_name}}"
             }
           ],
           "options": {
@@ -843,14 +1036,14 @@ data:
           }
         },
         {
-          "id": 21,
+          "id": 31,
           "type": "bargauge",
           "title": "Current Chat Tool Volume",
           "gridPos": {
             "h": 7,
             "w": 12,
             "x": 12,
-            "y": 43
+            "y": 47
           },
           "datasource": {
             "type": "prometheus",
@@ -860,7 +1053,8 @@ data:
             {
               "refId": "A",
               "expr": "sort_desc(sum by (gen_ai_tool_name) (copilot_chat_tool_call_count_total))",
-              "instant": true
+              "instant": true,
+              "legendFormat": "{{gen_ai_tool_name}}"
             }
           ],
           "options": {
@@ -895,7 +1089,7 @@ data:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 50
+            "y": 54
           },
           "panels": []
         },
@@ -908,7 +1102,7 @@ data:
             "h": 4,
             "w": 6,
             "x": 0,
-            "y": 51
+            "y": 55
           },
           "datasource": {
             "type": "yesoreyeram-infinity-datasource",
@@ -958,7 +1152,7 @@ data:
             "h": 4,
             "w": 6,
             "x": 6,
-            "y": 51
+            "y": 55
           },
           "datasource": {
             "type": "yesoreyeram-infinity-datasource",
@@ -1008,7 +1202,7 @@ data:
             "h": 4,
             "w": 12,
             "x": 12,
-            "y": 51
+            "y": 55
           },
           "datasource": {
             "type": "yesoreyeram-infinity-datasource",
@@ -1060,7 +1254,7 @@ data:
             "h": 8,
             "w": 24,
             "x": 0,
-            "y": 55
+            "y": 59
           },
           "datasource": {
             "type": "yesoreyeram-infinity-datasource",
