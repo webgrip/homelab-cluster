@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: Renovate PR Review (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Pull Request number to review'
+        required: true
+        type: number
+
+jobs:
+  review:
+    runs-on: arc-runner-set
+    steps:
+      - name: Fetch PR details
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: ${{ inputs.pr_number }}
+            });
+            core.setOutput('user', pr.user.login);
+            core.setOutput('found', 'true');
+
+      - name: Validate PR is from Renovate
+        if: |
+          steps.pr.outputs.user != 'webgrip-renovate[bot]' &&
+          steps.pr.outputs.user != 'renovate[bot]' &&
+          steps.pr.outputs.user != 'dependabot[bot]'
+        run: |
+          echo "Error: PR #${{ inputs.pr_number }} is not from a dependency bot (user: ${{ steps.pr.outputs.user }})"
+          exit 1
+
+      - name: Trigger review workflow
+        uses: webgrip/.github/.github/workflows/renovate-review.yml@main
+        with:
+          pr_number: ${{ inputs.pr_number }}
