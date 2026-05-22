@@ -68,10 +68,13 @@ while IFS= read -r -d '' file; do
     continue
   fi
 
-  digest="$(fetch_digest "$image" "$tag")"
+  if ! digest="$(fetch_digest "$image" "$tag")"; then
+    echo "WARN ${file}: registry unreachable for ${image}:${tag}, skipping" >&2
+    continue
+  fi
   if [[ -z "$digest" ]]; then
-    echo "FAIL ${file}: could not resolve registry digest for ${image}:${tag}" >&2
-    exit 1
+    echo "WARN ${file}: empty digest for ${image}:${tag}, skipping" >&2
+    continue
   fi
 
   update_ref_digest "$file" "$digest"
