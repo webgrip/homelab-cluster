@@ -94,7 +94,7 @@ data:
             "query": {
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/orgs/${org}/copilot/billing/seats?per_page=100",
+              "url": "https://api.github.com/orgs/$${org}/copilot/billing/seats?per_page=100",
               "parser": "backend",
               "root_selector": "seats",
               "columns": [
@@ -107,8 +107,8 @@ data:
             "includeAll": false,
             "current": {
               "selected": false,
-              "text": "${__user.login}",
-              "value": "${__user.login}"
+              "text": "$${__user.login}",
+              "value": "$${__user.login}"
             }
           },
           {
@@ -122,7 +122,7 @@ data:
             "query": {
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/orgs/${org}/teams?per_page=100",
+              "url": "https://api.github.com/orgs/$${org}/teams?per_page=100",
               "parser": "backend",
               "root_selector": "",
               "columns": [
@@ -133,11 +133,11 @@ data:
             "refresh": 2,
             "sort": 1,
             "multi": false,
-            "includeAll": true,
+            "includeAll": false,
             "current": {
-              "selected": true,
-              "text": "All",
-              "value": "$__all"
+              "selected": false,
+              "text": "",
+              "value": ""
             }
           }
         ]
@@ -155,7 +155,7 @@ data:
           },
           "options": {
             "mode": "markdown",
-            "content": "## GitHub usage, billing, budgets & forecasts\nThis dashboard uses the provisioned **GitHub API** Infinity datasource. Use the **GitHub user** picker to scope user-level panels to yourself or any other Copilot seat holder in `$org`. Use the **GitHub team** picker to scope team-level Copilot metrics.\n\nThe **GitHub user** dropdown is pre-populated from the org's Copilot seats list and defaults to your own Grafana login (`${__user.login}`). Org owners can select any seat holder. The forecast projections are: **best case** = current MTD spend, **likeliest** = 1.5×, **worst case** = 2×."
+            "content": "## GitHub usage, billing, budgets & forecasts\nThis dashboard uses the provisioned **GitHub API** Infinity datasource. Use the **GitHub user** picker to scope user-level panels to yourself or any other Copilot seat holder in `$$org`. Use the **GitHub team** picker to scope the team-only panel to a specific team.\n\nThe **GitHub user** dropdown is pre-populated from the org's Copilot seats list and defaults to your own Grafana login (`$${__user.login}`). The **GitHub team** dropdown loads org teams and leaves team scope unselected until you pick one. Org owners can select any seat holder. The forecast projections are: **best case** = current MTD spend, **likeliest** = 1.5×, **worst case** = 2×."
           }
         },
         {
@@ -191,7 +191,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/organizations/${org}/settings/billing/usage/summary",
+              "url": "https://api.github.com/organizations/$${org}/settings/billing/usage/summary",
               "parser": "uql",
               "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_amount\"=sum(\"netAmount\")"
             }
@@ -241,7 +241,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/users/${username}/settings/billing/usage/summary",
+              "url": "https://api.github.com/users/$${username}/settings/billing/usage/summary",
               "parser": "uql",
               "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_amount\"=sum(\"netAmount\")"
             }
@@ -291,7 +291,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/organizations/${org}/settings/billing/premium_request/usage",
+              "url": "https://api.github.com/organizations/$${org}/settings/billing/premium_request/usage",
               "parser": "uql",
               "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_amount\"=sum(\"netAmount\")"
             }
@@ -341,7 +341,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/organizations/${org}/settings/billing/premium_request/usage?user=${username}",
+              "url": "https://api.github.com/organizations/$${org}/settings/billing/premium_request/usage?user=$${username}",
               "parser": "uql",
               "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_amount\"=sum(\"netAmount\")"
             }
@@ -403,7 +403,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/organizations/${org}/settings/billing/usage/summary",
+              "url": "https://api.github.com/organizations/$${org}/settings/billing/usage/summary",
               "parser": "uql",
               "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"current_mtd\"=sum(\"netAmount\")\n| extend \"best_case\"=\"current_mtd\", \"likeliest\"=mul(\"current_mtd\",1.5), \"worst_case\"=mul(\"current_mtd\",2)"
             }
@@ -438,7 +438,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/organizations/${org}/settings/billing/premium_request/usage",
+              "url": "https://api.github.com/organizations/$${org}/settings/billing/premium_request/usage",
               "parser": "uql",
               "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"current_mtd\"=sum(\"netAmount\"), \"current_requests\"=sum(\"netQuantity\")\n| extend \"best_case\"=\"current_mtd\", \"likeliest\"=mul(\"current_mtd\",1.5), \"worst_case\"=mul(\"current_mtd\",2)"
             }
@@ -503,7 +503,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/organizations/${org}/settings/billing/usage/summary",
+              "url": "https://api.github.com/organizations/$${org}/settings/billing/usage/summary",
               "parser": "uql",
               "uql": "parse-json\n| scope \"usageItems\"\n| project \"product\", \"sku\", \"unitType\", \"grossQuantity\", \"netQuantity\", \"pricePerUnit\", \"netAmount\"\n| order by \"netAmount\" desc"
             }
@@ -552,7 +552,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/organizations/${org}/settings/billing/usage",
+              "url": "https://api.github.com/organizations/$${org}/settings/billing/usage",
               "parser": "uql",
               "uql": "parse-json\n| scope \"usageItems\"\n| extend \"product_lc\"=tolower(\"product\")\n| where \"product_lc\" in ('actions','codespaces','packages','lfs','git_lfs')\n| project \"date\", \"product\", \"sku\", \"repositoryName\", \"quantity\", \"unitType\", \"netAmount\"\n| order by \"date\" desc"
             }
@@ -615,7 +615,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/orgs/${org}/copilot/billing/seats?per_page=100",
+              "url": "https://api.github.com/orgs/$${org}/copilot/billing/seats?per_page=100",
               "parser": "uql",
               "uql": "parse-json\n| project \"total_seats\"=tonumber(\"total_seats\")"
             }
@@ -664,7 +664,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/orgs/${org}/copilot/billing/seats?per_page=100",
+              "url": "https://api.github.com/orgs/$${org}/copilot/billing/seats?per_page=100",
               "parser": "uql",
               "uql": "parse-json\n| scope \"seats\"\n| project \"login\"=\"assignee.login\", \"plan_type\", \"created_at\", \"last_activity_at\", \"last_activity_editor\", \"last_authenticated_at\", \"pending_cancellation_date\""
             }
@@ -697,7 +697,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/orgs/${org}/copilot/metrics",
+              "url": "https://api.github.com/orgs/$${org}/copilot/metrics",
               "parser": "uql",
               "uql": "parse-json\n| project \"date\", \"total_active_users\", \"total_engaged_users\", \"ide_code_completion_users\"=\"copilot_ide_code_completions.total_engaged_users\", \"ide_chat_users\"=\"copilot_ide_chat.total_engaged_users\", \"dotcom_chat_users\"=\"copilot_dotcom_chat.total_engaged_users\", \"dotcom_pr_users\"=\"copilot_dotcom_pull_requests.total_engaged_users\"\n| order by \"date\" desc"
             }
@@ -732,7 +732,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/organizations/${org}/settings/billing/premium_request/usage",
+              "url": "https://api.github.com/organizations/$${org}/settings/billing/premium_request/usage",
               "parser": "uql",
               "uql": "parse-json\n| scope \"usageItems\"\n| project \"product\", \"sku\", \"model\", \"unitType\", \"grossQuantity\", \"discountQuantity\", \"netQuantity\", \"pricePerUnit\", \"netAmount\"\n| order by \"netAmount\" desc"
             }
@@ -795,7 +795,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/organizations/${org}/settings/billing/budgets?per_page=10",
+              "url": "https://api.github.com/organizations/$${org}/settings/billing/budgets?per_page=10",
               "parser": "uql",
               "uql": "parse-json\n| scope \"budgets\"\n| project \"id\", \"budget_scope\", \"budget_entity_name\", \"budget_type\", \"budget_product_sku\", \"budget_amount\", \"prevent_further_usage\", \"will_alert\"=\"budget_alerting.will_alert\""
             }
@@ -841,8 +841,8 @@ data:
         {
           "id": 23,
           "type": "table",
-          "title": "Team daily Copilot metrics — $team",
-          "description": "GET /orgs/{org}/team/{team}/copilot/metrics — shows activity for all team members if a team is selected.",
+          "title": "Team daily Copilot metrics — $$team",
+          "description": "GET /orgs/{org}/team/{team}/copilot/metrics — shows activity for the selected team.",
           "gridPos": {
             "h": 10,
             "w": 24,
@@ -858,7 +858,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/orgs/${org}/team/${team}/copilot/metrics",
+              "url": "https://api.github.com/orgs/$${org}/team/$${team}/copilot/metrics",
               "parser": "uql",
               "uql": "parse-json\n| project \"date\", \"total_active_users\", \"total_engaged_users\""
             }
@@ -877,7 +877,7 @@ data:
         {
           "id": 24,
           "type": "table",
-          "title": "User premium requests — $username",
+          "title": "User premium requests — $$username",
           "description": "GET /organizations/{org}/settings/billing/premium_request/usage?user={username}. Shows org-billed Copilot premium requests scoped to the selected user.",
           "gridPos": {
             "h": 8,
@@ -894,7 +894,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/organizations/${org}/settings/billing/premium_request/usage?user=${username}",
+              "url": "https://api.github.com/organizations/$${org}/settings/billing/premium_request/usage?user=$${username}",
               "parser": "uql",
               "uql": "parse-json\n| scope \"usageItems\"\n| project \"product\", \"sku\", \"model\", \"unitType\", \"grossQuantity\", \"netQuantity\", \"pricePerUnit\", \"netAmount\"\n| order by \"netAmount\" desc"
             }
@@ -927,7 +927,7 @@ data:
         {
           "id": 25,
           "type": "stat",
-          "title": "User MTD spend — $username",
+          "title": "User MTD spend — $$username",
           "gridPos": {
             "h": 4,
             "w": 6,
@@ -943,7 +943,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/organizations/${org}/settings/billing/premium_request/usage?user=${username}",
+              "url": "https://api.github.com/organizations/$${org}/settings/billing/premium_request/usage?user=$${username}",
               "parser": "uql",
               "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_amount\"=sum(\"netAmount\")"
             }
@@ -974,7 +974,7 @@ data:
         {
           "id": 26,
           "type": "stat",
-          "title": "User request count — $username",
+          "title": "User request count — $$username",
           "gridPos": {
             "h": 4,
             "w": 6,
@@ -990,7 +990,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/organizations/${org}/settings/billing/premium_request/usage?user=${username}",
+              "url": "https://api.github.com/organizations/$${org}/settings/billing/premium_request/usage?user=$${username}",
               "parser": "uql",
               "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_requests\"=sum(\"netQuantity\")"
             }
