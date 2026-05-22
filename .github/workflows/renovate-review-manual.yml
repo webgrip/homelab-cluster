@@ -9,33 +9,58 @@ on:
         required: true
         type: number
 
+concurrency:
+  group: renovate-review-manual-${{ inputs.pr_number }}
+  cancel-in-progress: true
+
 jobs:
   review:
+    name: AI dependency review
     runs-on: arc-runner-set
+    permissions:
+      contents: read
+      pull-requests: write
+      models: read
     steps:
-      - name: Fetch PR details
+      - name: Load PR metadata
         id: pr
         uses: actions/github-script@v7
         with:
           script: |
+            const prNumber = Number('${{ inputs.pr_number }}');
+            const allowedAuthors = new Set([
+              'webgrip-renovate[bot]',
+              'renovate[bot]',
+              'dependabot[bot]',
+            ]);
+
             const { data: pr } = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              pull_number: ${{ inputs.pr_number }}
+              pull_number: prNumber,
             });
-            core.setOutput('user', pr.user.login);
-            core.setOutput('found', 'true');
 
-      - name: Validate PR is from Renovate
-        if: |
-          steps.pr.outputs.user != 'webgrip-renovate[bot]' &&
-          steps.pr.outputs.user != 'renovate[bot]' &&
-          steps.pr.outputs.user != 'dependabot[bot]'
-        run: |
-          echo "Error: PR #${{ inputs.pr_number }} is not from a dependency bot (user: ${{ steps.pr.outputs.user }})"
-          exit 1
+            if (!allowedAuthors.has(pr.user.login)) {
+              throw new Error(
+                `PR #${prNumber} is authored by ${pr.user.login}, not a supported dependency bot.`
+              );
+            }
 
-      - name: Trigger review workflow
-        uses: webgrip/.github/.github/workflows/renovate-review.yml@main
+            if (pr.labels.some(({ name }) => name === 'automerge')) {
+              throw new Error(
+                `PR #${prNumber} has the automerge label; manual review is intentionally skipped.`
+              );
+            }
+
+            core.setOutput('number', String(pr.number));
+            core.setOutput('title', pr.title);
+            core.setOutput('author', pr.user.login);
+
+      - name: Run renovate review
+        uses: webgrip/.github/actions/renovate-review@main
         with:
-          pr_number: ${{ inputs.pr_number }}
+          token: ${{ github.token }}
+          pr-number: ${{ steps.pr.outputs.number }}
+          pr-title: ${{ steps.pr.outputs.title }}
+          pr-author: ${{ steps.pr.outputs.author }}
+          repository: ${{ github.repository }}
