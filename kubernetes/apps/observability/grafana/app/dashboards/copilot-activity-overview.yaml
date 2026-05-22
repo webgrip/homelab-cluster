@@ -22,7 +22,7 @@ data:
       ],
       "editable": true,
       "graphTooltip": 1,
-      "refresh": "5m",
+      "refresh": "1m",
       "time": {
         "from": "now-24h",
         "to": "now"
@@ -36,7 +36,7 @@ data:
           "targetBlank": false
         },
         {
-          "title": "Copilot Code Impact",
+          "title": "Copilot Events & Traces",
           "url": "/d/copilot-code-impact",
           "type": "link",
           "icon": "external link",
@@ -69,7 +69,10 @@ data:
               "type": "prometheus",
               "uid": "prometheus"
             },
-            "query": "label_values(gen_ai_client_operation_duration_count, gen_ai_request_model)",
+            "query": {
+              "query": "label_values(gen_ai_client_token_usage_count, gen_ai_request_model)",
+              "refId": "Prometheus-model-Variable-Query"
+            },
             "refresh": 2,
             "sort": 1,
             "multi": true,
@@ -95,7 +98,7 @@ data:
           },
           "options": {
             "mode": "markdown",
-            "content": "## GitHub Copilot \u00b7 Activity Overview\nAll signals via VS Code \u2192 OTLP \u2192 Alloy Gateway \u2192 Prometheus/Tempo/Loki. Enable in VS Code `settings.json`: `\"github.copilot.chat.otel.enabled\": true, \"github.copilot.chat.otel.otlpEndpoint\": \"https://otlp.YOUR_DOMAIN\", \"github.copilot.chat.otel.captureContent\": true`\n\n\u26a0\ufe0f **If panels show No data**: verify metric names in Prometheus Explore with `{__name__=~\"gen_ai.*\"}` or `{__name__=~\"copilot_chat.*\"}`. Alloy converts OTel dots to underscores and may append `_seconds`/`_total` unit suffixes."
+            "content": "## GitHub Copilot \u00b7 Activity Overview\nBuilt against the **live** metric schema now emitted by VS Code Copilot through Alloy: `gen_ai_*`, `github_copilot_*`, and `copilot_chat_tool_*`. Unsupported edit/session metrics were removed so the dashboard stays live.\n\nUse this dashboard for throughput, model mix, tokens, tool activity, and provider-level overview."
           }
         },
         {
@@ -114,7 +117,7 @@ data:
         {
           "id": 3,
           "type": "stat",
-          "title": "Chat Sessions",
+          "title": "Chat Operations",
           "gridPos": {
             "h": 4,
             "w": 4,
@@ -128,7 +131,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(increase(copilot_chat_session_count_total[$__range])) or sum(increase(copilot_chat_session_count[$__range]))",
+              "expr": "sum(increase(gen_ai_client_operation_duration_seconds_count{gen_ai_operation_name=\"chat\",gen_ai_request_model=~\"$model\"}[$__range])) or sum(increase(gen_ai_client_operation_duration_count{gen_ai_operation_name=\"chat\",gen_ai_request_model=~\"$model\"}[$__range]))",
               "instant": true
             }
           ],
@@ -147,20 +150,11 @@ data:
           },
           "fieldConfig": {
             "defaults": {
-              "decimals": 0,
               "unit": "short",
+              "decimals": 0,
               "color": {
                 "mode": "fixed",
                 "fixedColor": "blue"
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "blue",
-                    "value": null
-                  }
-                ]
               }
             },
             "overrides": []
@@ -169,7 +163,7 @@ data:
         {
           "id": 4,
           "type": "stat",
-          "title": "LLM Operations",
+          "title": "Agent Invocations",
           "gridPos": {
             "h": 4,
             "w": 4,
@@ -183,7 +177,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(increase(gen_ai_client_operation_duration_count{gen_ai_request_model=~\"$model\"}[$__range]))",
+              "expr": "sum(increase(gen_ai_client_operation_duration_seconds_count{gen_ai_operation_name=\"invoke_agent\",gen_ai_request_model=~\"$model\"}[$__range])) or vector(0)",
               "instant": true
             }
           ],
@@ -202,20 +196,11 @@ data:
           },
           "fieldConfig": {
             "defaults": {
-              "decimals": 0,
               "unit": "short",
+              "decimals": 0,
               "color": {
                 "mode": "fixed",
                 "fixedColor": "purple"
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "purple",
-                    "value": null
-                  }
-                ]
               }
             },
             "overrides": []
@@ -257,20 +242,11 @@ data:
           },
           "fieldConfig": {
             "defaults": {
-              "decimals": 0,
               "unit": "short",
+              "decimals": 0,
               "color": {
                 "mode": "fixed",
                 "fixedColor": "green"
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
               }
             },
             "overrides": []
@@ -312,20 +288,11 @@ data:
           },
           "fieldConfig": {
             "defaults": {
-              "decimals": 0,
               "unit": "short",
+              "decimals": 0,
               "color": {
                 "mode": "fixed",
                 "fixedColor": "orange"
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "orange",
-                    "value": null
-                  }
-                ]
               }
             },
             "overrides": []
@@ -334,7 +301,7 @@ data:
         {
           "id": 7,
           "type": "stat",
-          "title": "Tool Calls",
+          "title": "CLI Tool Calls",
           "gridPos": {
             "h": 4,
             "w": 4,
@@ -348,7 +315,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(increase(copilot_chat_tool_call_count_total[$__range])) or sum(increase(copilot_chat_tool_call_count[$__range]))",
+              "expr": "sum(increase(github_copilot_tool_call_count_total[$__range])) or vector(0)",
               "instant": true
             }
           ],
@@ -367,20 +334,11 @@ data:
           },
           "fieldConfig": {
             "defaults": {
-              "decimals": 0,
               "unit": "short",
+              "decimals": 0,
               "color": {
                 "mode": "fixed",
                 "fixedColor": "yellow"
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "yellow",
-                    "value": null
-                  }
-                ]
               }
             },
             "overrides": []
@@ -389,7 +347,7 @@ data:
         {
           "id": 8,
           "type": "stat",
-          "title": "PRs Created (Copilot Agent)",
+          "title": "Chat Tool Calls",
           "gridPos": {
             "h": 4,
             "w": 4,
@@ -403,7 +361,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(increase(copilot_chat_pull_request_count_total[$__range])) or vector(0)",
+              "expr": "sum(increase(copilot_chat_tool_call_count_total[$__range])) or vector(0)",
               "instant": true
             }
           ],
@@ -422,20 +380,11 @@ data:
           },
           "fieldConfig": {
             "defaults": {
-              "decimals": 0,
               "unit": "short",
+              "decimals": 0,
               "color": {
                 "mode": "fixed",
                 "fixedColor": "teal"
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "teal",
-                    "value": null
-                  }
-                ]
               }
             },
             "overrides": []
@@ -457,7 +406,7 @@ data:
         {
           "id": 10,
           "type": "timeseries",
-          "title": "Sessions Started & LLM Operations",
+          "title": "Chat vs Agent Operations",
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -471,13 +420,13 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(increase(copilot_chat_session_count_total[$__rate_interval]))",
-              "legendFormat": "Sessions"
+              "expr": "sum(increase(gen_ai_client_operation_duration_seconds_count{gen_ai_operation_name=\"chat\",gen_ai_request_model=~\"$model\"}[$__rate_interval])) or sum(increase(gen_ai_client_operation_duration_count{gen_ai_operation_name=\"chat\",gen_ai_request_model=~\"$model\"}[$__rate_interval]))",
+              "legendFormat": "Chat operations"
             },
             {
               "refId": "B",
-              "expr": "sum(increase(gen_ai_client_operation_duration_count{gen_ai_request_model=~\"$model\"}[$__rate_interval]))",
-              "legendFormat": "LLM Operations"
+              "expr": "sum(increase(gen_ai_client_operation_duration_seconds_count{gen_ai_operation_name=\"invoke_agent\",gen_ai_request_model=~\"$model\"}[$__rate_interval])) or vector(0)",
+              "legendFormat": "Agent invocations"
             }
           ],
           "options": {
@@ -496,54 +445,14 @@ data:
               "custom": {
                 "lineWidth": 2,
                 "fillOpacity": 10,
-                "gradientMode": "none",
+                "showPoints": "never",
                 "stacking": {
                   "mode": "none",
                   "group": "A"
-                },
-                "showPoints": "never"
+                }
               }
             },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Sessions"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "blue"
-                    }
-                  },
-                  {
-                    "id": "custom.lineWidth",
-                    "value": 2
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "LLM Operations"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "purple"
-                    }
-                  },
-                  {
-                    "id": "custom.lineWidth",
-                    "value": 2
-                  }
-                ]
-              }
-            ]
+            "overrides": []
           }
         },
         {
@@ -587,53 +496,21 @@ data:
               "unit": "short",
               "custom": {
                 "lineWidth": 2,
-                "fillOpacity": 25,
-                "gradientMode": "none",
+                "fillOpacity": 20,
+                "showPoints": "never",
                 "stacking": {
                   "mode": "normal",
                   "group": "A"
-                },
-                "showPoints": "never"
+                }
               }
             },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Input tokens/s"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "green"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Output tokens/s"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "orange"
-                    }
-                  }
-                ]
-              }
-            ]
+            "overrides": []
           }
         },
         {
           "id": 12,
           "type": "timeseries",
-          "title": "Agent Invocations per Interval",
+          "title": "CLI Tool Calls by Tool Name",
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -647,13 +524,8 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(increase(copilot_chat_agent_invocation_duration_count[$__rate_interval]))",
-              "legendFormat": "Agent invocations"
-            },
-            {
-              "refId": "B",
-              "expr": "sum(increase(copilot_chat_cloud_session_count_total[$__rate_interval])) or sum(increase(copilot_chat_cloud_session_count[$__rate_interval]))",
-              "legendFormat": "Cloud/remote sessions"
+              "expr": "sum by (gen_ai_tool_name) (increase(github_copilot_tool_call_count_total[$__rate_interval]))",
+              "legendFormat": "{{gen_ai_tool_name}}"
             }
           ],
           "options": {
@@ -672,52 +544,20 @@ data:
               "custom": {
                 "lineWidth": 2,
                 "fillOpacity": 10,
-                "gradientMode": "none",
+                "showPoints": "never",
                 "stacking": {
                   "mode": "none",
                   "group": "A"
-                },
-                "showPoints": "never"
+                }
               }
             },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Agent invocations"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "semi-dark-blue"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Cloud/remote sessions"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "semi-dark-purple"
-                    }
-                  }
-                ]
-              }
-            ]
+            "overrides": []
           }
         },
         {
           "id": 13,
           "type": "timeseries",
-          "title": "Tool Calls Over Time (by tool name)",
+          "title": "Chat Tool Calls by Tool Name",
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -751,12 +591,11 @@ data:
               "custom": {
                 "lineWidth": 2,
                 "fillOpacity": 10,
-                "gradientMode": "none",
+                "showPoints": "never",
                 "stacking": {
                   "mode": "none",
                   "group": "A"
-                },
-                "showPoints": "never"
+                }
               }
             },
             "overrides": []
@@ -765,7 +604,7 @@ data:
         {
           "id": 14,
           "type": "row",
-          "title": "Model Breakdown \u2014 Last $__range",
+          "title": "Model & Provider Breakdown \u2014 Last $__range",
           "collapsed": false,
           "gridPos": {
             "h": 1,
@@ -778,7 +617,7 @@ data:
         {
           "id": 15,
           "type": "bargauge",
-          "title": "LLM Operations by Model",
+          "title": "Operations by Model",
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -792,8 +631,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (gen_ai_request_model) (increase(gen_ai_client_operation_duration_count[$__range]))",
-              "legendFormat": "{{gen_ai_request_model}}",
+              "expr": "sort_desc(sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_count[$__range])))",
               "instant": true
             }
           ],
@@ -807,27 +645,12 @@ data:
               "values": false
             },
             "displayMode": "gradient",
-            "valueMode": "color",
-            "text": {},
-            "showUnfilled": true
+            "valueMode": "color"
           },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
               "decimals": 0,
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "blue",
-                    "value": null
-                  },
-                  {
-                    "color": "purple",
-                    "value": 100
-                  }
-                ]
-              },
               "color": {
                 "mode": "continuous-BlYlRd"
               }
@@ -838,7 +661,7 @@ data:
         {
           "id": 16,
           "type": "bargauge",
-          "title": "Total Tokens Consumed by Model",
+          "title": "Total Tokens by Model",
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -852,8 +675,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum[$__range]))",
-              "legendFormat": "{{gen_ai_request_model}}",
+              "expr": "sort_desc(sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum[$__range])))",
               "instant": true
             }
           ],
@@ -867,27 +689,12 @@ data:
               "values": false
             },
             "displayMode": "gradient",
-            "valueMode": "color",
-            "text": {},
-            "showUnfilled": true
+            "valueMode": "color"
           },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
               "decimals": 0,
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "blue",
-                    "value": null
-                  },
-                  {
-                    "color": "purple",
-                    "value": 100
-                  }
-                ]
-              },
               "color": {
                 "mode": "continuous-BlYlRd"
               }
@@ -912,8 +719,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (gen_ai_provider_name) (increase(gen_ai_client_operation_duration_count{gen_ai_request_model=~\"$model\"}[$__range]))",
-              "legendFormat": "{{gen_ai_provider_name}}",
+              "expr": "sum by (gen_ai_provider_name) (increase(gen_ai_client_token_usage_count{gen_ai_request_model=~\"$model\"}[$__range]))",
               "instant": true
             }
           ],
@@ -952,7 +758,6 @@ data:
             {
               "refId": "A",
               "expr": "sum by (gen_ai_token_type) (increase(gen_ai_client_token_usage_sum{gen_ai_request_model=~\"$model\"}[$__range]))",
-              "legendFormat": "{{gen_ai_token_type}}",
               "instant": true
             }
           ],
@@ -976,7 +781,7 @@ data:
         {
           "id": 19,
           "type": "row",
-          "title": "User Engagement & Edits",
+          "title": "Current Live Signals",
           "collapsed": false,
           "gridPos": {
             "h": 1,
@@ -988,308 +793,13 @@ data:
         },
         {
           "id": 20,
-          "type": "timeseries",
-          "title": "Edit Decisions (Accept / Reject)",
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 43
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum(increase(copilot_chat_edit_acceptance_count_total{action=\"accepted\"}[$__rate_interval])) or sum(increase(copilot_chat_edit_acceptance_count_total{outcome=\"accepted\"}[$__rate_interval]))",
-              "legendFormat": "Accepted"
-            },
-            {
-              "refId": "B",
-              "expr": "sum(increase(copilot_chat_edit_acceptance_count_total{action=\"rejected\"}[$__rate_interval])) or sum(increase(copilot_chat_edit_acceptance_count_total{outcome=\"rejected\"}[$__rate_interval]))",
-              "legendFormat": "Rejected"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "none"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 15,
-                "gradientMode": "none",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                },
-                "showPoints": "never"
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Accepted"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "green"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Rejected"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "red"
-                    }
-                  }
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "id": 21,
-          "type": "timeseries",
-          "title": "Lines of Code Added / Removed by Copilot",
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 43
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum(increase(copilot_chat_lines_of_code_count_total{direction=\"added\"}[$__rate_interval])) or sum(increase(copilot_chat_lines_of_code_count_total[$__rate_interval]))",
-              "legendFormat": "Added"
-            },
-            {
-              "refId": "B",
-              "expr": "sum(increase(copilot_chat_lines_of_code_count_total{direction=\"removed\"}[$__rate_interval]))",
-              "legendFormat": "Removed"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "none"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 15,
-                "gradientMode": "none",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                },
-                "showPoints": "never"
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Added"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "green"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Removed"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "red"
-                    }
-                  }
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "id": 22,
-          "type": "timeseries",
-          "title": "User Actions (Copy / Insert / Apply / Followup)",
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 51
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum by (action) (increase(copilot_chat_user_action_count_total[$__rate_interval]))",
-              "legendFormat": "{{action}}"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "none"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 10,
-                "gradientMode": "none",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                },
-                "showPoints": "never"
-              }
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 23,
-          "type": "timeseries",
-          "title": "User Feedback Over Time (Thumbs Up/Down)",
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 51
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum by (rating) (increase(copilot_chat_user_feedback_count_total[$__rate_interval]))",
-              "legendFormat": "{{rating}}"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "none"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 10,
-                "gradientMode": "none",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                },
-                "showPoints": "never"
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*positive.*|.*up.*"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "green"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*negative.*|.*down.*"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "red"
-                    }
-                  }
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "id": 24,
           "type": "bargauge",
-          "title": "Edits by Source (Last $__range)",
+          "title": "Current CLI Tool Volume",
           "gridPos": {
-            "h": 8,
+            "h": 7,
             "w": 12,
             "x": 0,
-            "y": 59
+            "y": 43
           },
           "datasource": {
             "type": "prometheus",
@@ -1298,8 +808,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (copilot_chat_edit_source) (increase(copilot_chat_edit_acceptance_count_total[$__range]))",
-              "legendFormat": "{{copilot_chat_edit_source}}",
+              "expr": "sort_desc(sum by (gen_ai_tool_name) (github_copilot_tool_call_count_total))",
               "instant": true
             }
           ],
@@ -1313,27 +822,12 @@ data:
               "values": false
             },
             "displayMode": "gradient",
-            "valueMode": "color",
-            "text": {},
-            "showUnfilled": true
+            "valueMode": "color"
           },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
               "decimals": 0,
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "blue",
-                    "value": null
-                  },
-                  {
-                    "color": "purple",
-                    "value": 100
-                  }
-                ]
-              },
               "color": {
                 "mode": "continuous-BlYlRd"
               }
@@ -1342,14 +836,14 @@ data:
           }
         },
         {
-          "id": 25,
-          "type": "timeseries",
-          "title": "Chat Edit Session Outcomes (File-level)",
+          "id": 21,
+          "type": "bargauge",
+          "title": "Current Chat Tool Volume",
           "gridPos": {
-            "h": 8,
+            "h": 7,
             "w": 12,
             "x": 12,
-            "y": 59
+            "y": 43
           },
           "datasource": {
             "type": "prometheus",
@@ -1358,32 +852,28 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (outcome) (increase(copilot_chat_chat_edit_outcome_count_total[$__rate_interval])) or sum by (outcome) (increase(copilot_chat_chat_edit_outcome_count[$__rate_interval]))",
-              "legendFormat": "{{outcome}}"
+              "expr": "sort_desc(sum by (gen_ai_tool_name) (copilot_chat_tool_call_count_total))",
+              "instant": true
             }
           ],
           "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
             },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "none"
-            }
+            "displayMode": "gradient",
+            "valueMode": "color"
           },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 10,
-                "gradientMode": "none",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                },
-                "showPoints": "never"
+              "decimals": 0,
+              "color": {
+                "mode": "continuous-BlYlRd"
               }
             },
             "overrides": []

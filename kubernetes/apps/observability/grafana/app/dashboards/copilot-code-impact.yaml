@@ -11,7 +11,7 @@ data:
   copilot-code-impact.json: |-
     {
       "schemaVersion": 39,
-      "title": "GitHub Copilot / Code Impact & Quality",
+      "title": "GitHub Copilot / Events, Logs & Traces",
       "uid": "copilot-code-impact",
       "timezone": "browser",
       "tags": [
@@ -19,13 +19,14 @@ data:
         "ai",
         "opentelemetry",
         "genai",
-        "quality"
+        "logs",
+        "traces"
       ],
       "editable": true,
       "graphTooltip": 1,
-      "refresh": "5m",
+      "refresh": "30s",
       "time": {
-        "from": "now-7d",
+        "from": "now-24h",
         "to": "now"
       },
       "links": [
@@ -76,13 +77,13 @@ data:
           },
           "options": {
             "mode": "markdown",
-            "content": "## GitHub Copilot \u00b7 Code Impact & Quality\nMeasures the real-world impact of Copilot edits: acceptance rates, code survival (how much AI code persists after editing), lines contributed, and user satisfaction.\n\n**Survival scores** (0\u20131): `four_gram` = 4-gram text similarity after 5 min; `no_revert` = code not reverted within the session. Higher scores \u2192 AI-generated code is accepted and kept. **Attribute names may vary**: `action` vs `outcome` for acceptance, `direction` for added/removed LOC."
+            "content": "## GitHub Copilot \u00b7 Events, Logs & Traces\nVS Code currently emits rich **logs and traces**, but not the code-impact metrics the original dashboard assumed. This dashboard replaces the blank quality panels with live Loki and Tempo views: event volume, recent logs, inference details, and trace search.\n\nEvent labels confirmed live in Loki: `event_name in {copilot_chat.tool.call, gen_ai.client.inference.operation.details}` and `service_name=\"copilot-chat\"`."
           }
         },
         {
           "id": 2,
           "type": "row",
-          "title": "Quality Summary \u2014 Last $__range",
+          "title": "Loki Event Summary",
           "collapsed": false,
           "gridPos": {
             "h": 1,
@@ -95,7 +96,7 @@ data:
         {
           "id": 3,
           "type": "stat",
-          "title": "Edit Acceptance Rate",
+          "title": "Tool Call Events",
           "gridPos": {
             "h": 4,
             "w": 6,
@@ -103,51 +104,36 @@ data:
             "y": 4
           },
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "loki",
+            "uid": "loki"
           },
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(increase(copilot_chat_edit_acceptance_count_total{action=\"accepted\"}[$__range])) / sum(increase(copilot_chat_edit_acceptance_count_total[$__range]))",
-              "instant": true
+              "expr": "sum(count_over_time({service_name=\"copilot-chat\", event_name=\"copilot_chat.tool.call\"}[$__range]))",
+              "queryType": "instant"
             }
           ],
           "options": {
             "reduceOptions": {
               "calcs": [
                 "lastNotNull"
-              ]
+              ],
+              "fields": "",
+              "values": false
             },
             "orientation": "auto",
             "textMode": "auto",
             "colorMode": "background",
-            "graphMode": "area"
+            "graphMode": "none"
           },
           "fieldConfig": {
             "defaults": {
-              "decimals": 1,
-              "unit": "percentunit",
+              "unit": "short",
+              "decimals": 0,
               "color": {
                 "mode": "fixed",
-                "fixedColor": "green"
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "red",
-                    "value": null
-                  },
-                  {
-                    "color": "yellow",
-                    "value": 0.3
-                  },
-                  {
-                    "color": "green",
-                    "value": 0.6
-                  }
-                ]
+                "fixedColor": "blue"
               }
             },
             "overrides": []
@@ -156,7 +142,7 @@ data:
         {
           "id": 4,
           "type": "stat",
-          "title": "Code Survival \u2014 4-gram P50",
+          "title": "Inference Events",
           "gridPos": {
             "h": 4,
             "w": 6,
@@ -164,51 +150,36 @@ data:
             "y": 4
           },
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "loki",
+            "uid": "loki"
           },
           "targets": [
             {
               "refId": "A",
-              "expr": "histogram_quantile(0.5, sum by (le) (rate(copilot_chat_edit_survival_four_gram_bucket[$__range])))",
-              "instant": true
+              "expr": "sum(count_over_time({service_name=\"copilot-chat\", event_name=\"gen_ai.client.inference.operation.details\"}[$__range]))",
+              "queryType": "instant"
             }
           ],
           "options": {
             "reduceOptions": {
               "calcs": [
                 "lastNotNull"
-              ]
+              ],
+              "fields": "",
+              "values": false
             },
             "orientation": "auto",
             "textMode": "auto",
             "colorMode": "background",
-            "graphMode": "area"
+            "graphMode": "none"
           },
           "fieldConfig": {
             "defaults": {
-              "decimals": 2,
-              "unit": "percentunit",
+              "unit": "short",
+              "decimals": 0,
               "color": {
                 "mode": "fixed",
                 "fixedColor": "purple"
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "red",
-                    "value": null
-                  },
-                  {
-                    "color": "yellow",
-                    "value": 0.5
-                  },
-                  {
-                    "color": "green",
-                    "value": 0.75
-                  }
-                ]
               }
             },
             "overrides": []
@@ -217,7 +188,7 @@ data:
         {
           "id": 5,
           "type": "stat",
-          "title": "Code Survival \u2014 No-Revert P50",
+          "title": "Tempo Span Calls",
           "gridPos": {
             "h": 4,
             "w": 6,
@@ -231,7 +202,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "histogram_quantile(0.5, sum by (le) (rate(copilot_chat_edit_survival_no_revert_bucket[$__range])))",
+              "expr": "sum(increase(traces_spanmetrics_calls_total{service=\"copilot-chat\"}[$__range])) or vector(0)",
               "instant": true
             }
           ],
@@ -239,37 +210,22 @@ data:
             "reduceOptions": {
               "calcs": [
                 "lastNotNull"
-              ]
+              ],
+              "fields": "",
+              "values": false
             },
             "orientation": "auto",
             "textMode": "auto",
             "colorMode": "background",
-            "graphMode": "area"
+            "graphMode": "none"
           },
           "fieldConfig": {
             "defaults": {
-              "decimals": 2,
-              "unit": "percentunit",
+              "unit": "short",
+              "decimals": 0,
               "color": {
                 "mode": "fixed",
-                "fixedColor": "blue"
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "red",
-                    "value": null
-                  },
-                  {
-                    "color": "yellow",
-                    "value": 0.5
-                  },
-                  {
-                    "color": "green",
-                    "value": 0.75
-                  }
-                ]
+                "fixedColor": "green"
               }
             },
             "overrides": []
@@ -278,7 +234,7 @@ data:
         {
           "id": 6,
           "type": "stat",
-          "title": "Lines of Code Added",
+          "title": "Alloy Exported Spans",
           "gridPos": {
             "h": 4,
             "w": 6,
@@ -292,7 +248,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(increase(copilot_chat_lines_of_code_count_total{direction=\"added\"}[$__range])) or sum(increase(copilot_chat_lines_of_code_count_total[$__range]))",
+              "expr": "sum(increase(otelcol_exporter_sent_spans_total[$__range])) or vector(0)",
               "instant": true
             }
           ],
@@ -300,29 +256,22 @@ data:
             "reduceOptions": {
               "calcs": [
                 "lastNotNull"
-              ]
+              ],
+              "fields": "",
+              "values": false
             },
             "orientation": "auto",
             "textMode": "auto",
             "colorMode": "background",
-            "graphMode": "area"
+            "graphMode": "none"
           },
           "fieldConfig": {
             "defaults": {
-              "decimals": 0,
               "unit": "short",
+              "decimals": 0,
               "color": {
                 "mode": "fixed",
-                "fixedColor": "teal"
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "teal",
-                    "value": null
-                  }
-                ]
+                "fixedColor": "orange"
               }
             },
             "overrides": []
@@ -331,7 +280,7 @@ data:
         {
           "id": 7,
           "type": "row",
-          "title": "Edit Acceptance Over Time",
+          "title": "Event Volume Over Time",
           "collapsed": false,
           "gridPos": {
             "h": 1,
@@ -344,7 +293,7 @@ data:
         {
           "id": 8,
           "type": "timeseries",
-          "title": "Edit Acceptance Rate Over Time",
+          "title": "Loki Event Volume by Event Name",
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -352,91 +301,15 @@ data:
             "y": 9
           },
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "loki",
+            "uid": "loki"
           },
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(copilot_chat_edit_acceptance_count_total{action=\"accepted\"}[$__rate_interval])) / sum(rate(copilot_chat_edit_acceptance_count_total[$__rate_interval]))",
-              "legendFormat": "Acceptance rate (action label)"
-            },
-            {
-              "refId": "B",
-              "expr": "sum(rate(copilot_chat_edit_acceptance_count_total{outcome=\"accepted\"}[$__rate_interval])) / sum(rate(copilot_chat_edit_acceptance_count_total[$__rate_interval]))",
-              "legendFormat": "Acceptance rate (outcome label)"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
-            },
-            "tooltip": {
-              "mode": "multi"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "percentunit",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 15,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                }
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": "Acceptance rate.*"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "green"
-                    }
-                  }
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "id": 9,
-          "type": "timeseries",
-          "title": "Edit Decisions \u2014 Accepted vs Rejected",
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 9
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum(increase(copilot_chat_edit_acceptance_count_total{action=~\"accepted|accepted.*\"}[$__rate_interval])) or sum(increase(copilot_chat_edit_acceptance_count_total{outcome=\"accepted\"}[$__rate_interval]))",
-              "legendFormat": "Accepted"
-            },
-            {
-              "refId": "B",
-              "expr": "sum(increase(copilot_chat_edit_acceptance_count_total{action=~\"rejected.*\"}[$__rate_interval])) or sum(increase(copilot_chat_edit_acceptance_count_total{outcome=\"rejected\"}[$__rate_interval]))",
-              "legendFormat": "Rejected"
-            },
-            {
-              "refId": "C",
-              "expr": "sum by (copilot_chat_edit_source) (increase(copilot_chat_edit_acceptance_count_total[$__rate_interval]))",
-              "legendFormat": "By source: {{copilot_chat_edit_source}}"
+              "expr": "sum by (event_name) (count_over_time({service_name=\"copilot-chat\"}[$__interval]))",
+              "queryType": "range",
+              "legendFormat": "{{event_name}}"
             }
           ],
           "options": {
@@ -453,65 +326,22 @@ data:
               "unit": "short",
               "custom": {
                 "lineWidth": 2,
-                "fillOpacity": 10,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                }
+                "fillOpacity": 12,
+                "showPoints": "never"
               }
             },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Accepted"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "green"
-                    }
-                  },
-                  {
-                    "id": "custom.fillOpacity",
-                    "value": 20
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Rejected"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "red"
-                    }
-                  },
-                  {
-                    "id": "custom.fillOpacity",
-                    "value": 20
-                  }
-                ]
-              }
-            ]
+            "overrides": []
           }
         },
         {
-          "id": 10,
+          "id": 9,
           "type": "timeseries",
-          "title": "File-level Chat Edit Outcomes",
+          "title": "Tokens by Model Over Time",
           "gridPos": {
             "h": 8,
             "w": 12,
-            "x": 0,
-            "y": 17
+            "x": 12,
+            "y": 9
           },
           "datasource": {
             "type": "prometheus",
@@ -520,8 +350,8 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (outcome) (increase(copilot_chat_chat_edit_outcome_count_total[$__rate_interval])) or sum by (outcome) (increase(copilot_chat_chat_edit_outcome_count[$__rate_interval]))",
-              "legendFormat": "{{outcome}}"
+              "expr": "sum by (gen_ai_request_model, gen_ai_token_type) (rate(gen_ai_client_token_usage_sum[$__rate_interval]))",
+              "legendFormat": "{{gen_ai_request_model}} / {{gen_ai_token_type}}"
             }
           ],
           "options": {
@@ -530,7 +360,8 @@ data:
               "placement": "bottom"
             },
             "tooltip": {
-              "mode": "multi"
+              "mode": "multi",
+              "sort": "none"
             }
           },
           "fieldConfig": {
@@ -550,9 +381,53 @@ data:
           }
         },
         {
+          "id": 10,
+          "type": "bargauge",
+          "title": "Inference Operations by Model",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 17
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sort_desc(sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_count[$__range])))",
+              "instant": true
+            }
+          ],
+          "options": {
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "displayMode": "gradient",
+            "valueMode": "color"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "continuous-BlYlRd"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
           "id": 11,
-          "type": "timeseries",
-          "title": "Hunk-level Accept vs Reject (inline chat)",
+          "type": "bargauge",
+          "title": "CLI Tool Calls by Tool",
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -566,30 +441,28 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (action) (increase(copilot_chat_edit_acceptance_count_total{copilot_chat_edit_source=~\".*inline.*|.*hunk.*\"}[$__rate_interval])) or sum by (action) (increase(copilot_chat_edit_acceptance_count_total[$__rate_interval]))",
-              "legendFormat": "{{action}}"
+              "expr": "sort_desc(sum by (gen_ai_tool_name) (increase(github_copilot_tool_call_count_total[$__range])))",
+              "instant": true
             }
           ],
           "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
             },
-            "tooltip": {
-              "mode": "multi"
-            }
+            "displayMode": "gradient",
+            "valueMode": "color"
           },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 10,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                }
+              "decimals": 0,
+              "color": {
+                "mode": "continuous-BlYlRd"
               }
             },
             "overrides": []
@@ -598,7 +471,7 @@ data:
         {
           "id": 12,
           "type": "row",
-          "title": "Code Survival Scores Over Time",
+          "title": "Recent Logs",
           "collapsed": false,
           "gridPos": {
             "h": 1,
@@ -610,230 +483,133 @@ data:
         },
         {
           "id": 13,
-          "type": "timeseries",
-          "title": "4-gram Survival Score \u2014 P25 / P50 / P75",
+          "type": "logs",
+          "title": "Recent Copilot Logs",
           "gridPos": {
-            "h": 8,
-            "w": 12,
+            "h": 10,
+            "w": 24,
             "x": 0,
             "y": 26
           },
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "loki",
+            "uid": "loki"
           },
           "targets": [
             {
               "refId": "A",
-              "expr": "histogram_quantile(0.25, sum by (le) (rate(copilot_chat_edit_survival_four_gram_bucket[$__rate_interval])))",
-              "legendFormat": "P25"
-            },
-            {
-              "refId": "B",
-              "expr": "histogram_quantile(0.5, sum by (le) (rate(copilot_chat_edit_survival_four_gram_bucket[$__rate_interval])))",
-              "legendFormat": "P50 (median)"
-            },
-            {
-              "refId": "C",
-              "expr": "histogram_quantile(0.75, sum by (le) (rate(copilot_chat_edit_survival_four_gram_bucket[$__rate_interval])))",
-              "legendFormat": "P75"
+              "expr": "{service_name=\"copilot-chat\"}",
+              "queryType": "range",
+              "direction": "backward",
+              "maxLines": 200
             }
           ],
           "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
-            },
-            "tooltip": {
-              "mode": "multi"
-            }
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "prettifyLogMessage": true,
+            "showCommonLabels": false,
+            "showLabels": true,
+            "showTime": true,
+            "sortOrder": "Descending"
           },
           "fieldConfig": {
-            "defaults": {
-              "unit": "percentunit",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 10,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                }
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "P25"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "red"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "P50 (median)"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "yellow"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "P75"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "green"
-                    }
-                  }
-                ]
-              }
-            ]
+            "defaults": {},
+            "overrides": []
           }
         },
         {
           "id": 14,
-          "type": "timeseries",
-          "title": "No-Revert Survival Score \u2014 P25 / P50 / P75",
+          "type": "logs",
+          "title": "Recent Inference Detail Events",
           "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 26
+            "h": 10,
+            "w": 24,
+            "x": 0,
+            "y": 36
           },
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "loki",
+            "uid": "loki"
           },
           "targets": [
             {
               "refId": "A",
-              "expr": "histogram_quantile(0.25, sum by (le) (rate(copilot_chat_edit_survival_no_revert_bucket[$__rate_interval])))",
-              "legendFormat": "P25"
-            },
-            {
-              "refId": "B",
-              "expr": "histogram_quantile(0.5, sum by (le) (rate(copilot_chat_edit_survival_no_revert_bucket[$__rate_interval])))",
-              "legendFormat": "P50 (median)"
-            },
-            {
-              "refId": "C",
-              "expr": "histogram_quantile(0.75, sum by (le) (rate(copilot_chat_edit_survival_no_revert_bucket[$__rate_interval])))",
-              "legendFormat": "P75"
+              "expr": "{service_name=\"copilot-chat\", event_name=\"gen_ai.client.inference.operation.details\"}",
+              "queryType": "range",
+              "direction": "backward",
+              "maxLines": 200
             }
           ],
           "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
-            },
-            "tooltip": {
-              "mode": "multi"
-            }
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "prettifyLogMessage": true,
+            "showCommonLabels": false,
+            "showLabels": true,
+            "showTime": true,
+            "sortOrder": "Descending"
           },
           "fieldConfig": {
-            "defaults": {
-              "unit": "percentunit",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 10,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                }
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "P25"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "red"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "P50 (median)"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "yellow"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "P75"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "green"
-                    }
-                  }
-                ]
-              }
-            ]
+            "defaults": {},
+            "overrides": []
           }
         },
         {
           "id": 15,
           "type": "row",
-          "title": "Code Volume",
+          "title": "Tempo Traces",
           "collapsed": false,
           "gridPos": {
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 34
+            "y": 46
           },
           "panels": []
         },
         {
           "id": 16,
+          "type": "traces",
+          "title": "Recent Copilot Traces",
+          "gridPos": {
+            "h": 10,
+            "w": 24,
+            "x": 0,
+            "y": 47
+          },
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "tempo",
+                "uid": "tempo"
+              },
+              "queryType": "traceql",
+              "query": "{resource.service.name=\"copilot-chat\"}",
+              "limit": 20,
+              "tableType": "traces"
+            }
+          ],
+          "options": {},
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          }
+        },
+        {
+          "id": 17,
           "type": "timeseries",
-          "title": "Lines of Code Added / Removed Over Time",
+          "title": "Span Calls by Kind / Status",
           "gridPos": {
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 35
+            "y": 57
           },
           "datasource": {
             "type": "prometheus",
@@ -842,13 +618,8 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(increase(copilot_chat_lines_of_code_count_total{direction=\"added\"}[$__rate_interval])) or sum(increase(copilot_chat_lines_of_code_count_total[$__rate_interval]))",
-              "legendFormat": "Added"
-            },
-            {
-              "refId": "B",
-              "expr": "sum(increase(copilot_chat_lines_of_code_count_total{direction=\"removed\"}[$__rate_interval]))",
-              "legendFormat": "Removed"
+              "expr": "sum by (span_kind, status_code) (rate(traces_spanmetrics_calls_total{service=\"copilot-chat\"}[$__rate_interval]))",
+              "legendFormat": "{{span_kind}} / {{status_code}}"
             }
           ],
           "options": {
@@ -857,7 +628,8 @@ data:
               "placement": "bottom"
             },
             "tooltip": {
-              "mode": "multi"
+              "mode": "multi",
+              "sort": "none"
             }
           },
           "fieldConfig": {
@@ -865,103 +637,12 @@ data:
               "unit": "short",
               "custom": {
                 "lineWidth": 2,
-                "fillOpacity": 15,
+                "fillOpacity": 10,
                 "showPoints": "never",
                 "stacking": {
                   "mode": "none",
                   "group": "A"
                 }
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Added"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "green"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Removed"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "red"
-                    }
-                  }
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "id": 17,
-          "type": "bargauge",
-          "title": "Lines Added by Edit Source (Last $__range)",
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 35
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sort_desc(sum by (copilot_chat_edit_source) (increase(copilot_chat_lines_of_code_count_total[$__range])))",
-              "legendFormat": "{{copilot_chat_edit_source}}",
-              "instant": true
-            }
-          ],
-          "options": {
-            "orientation": "horizontal",
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ]
-            },
-            "displayMode": "gradient",
-            "valueMode": "color"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "decimals": 0,
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  },
-                  {
-                    "color": "blue",
-                    "value": 100
-                  },
-                  {
-                    "color": "purple",
-                    "value": 1000
-                  }
-                ]
-              },
-              "color": {
-                "mode": "continuous-GrYlRd"
               }
             },
             "overrides": []
@@ -969,103 +650,13 @@ data:
         },
         {
           "id": 18,
-          "type": "row",
-          "title": "User Feedback & Satisfaction",
-          "collapsed": false,
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 43
-          },
-          "panels": []
-        },
-        {
-          "id": 19,
           "type": "timeseries",
-          "title": "User Feedback (Thumbs Up / Down) Over Time",
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 44
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum by (rating) (increase(copilot_chat_user_feedback_count_total[$__rate_interval]))",
-              "legendFormat": "{{rating}}"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
-            },
-            "tooltip": {
-              "mode": "multi"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 10,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                }
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*positive.*|.*up.*|.*thumb.*up.*"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "green"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*negative.*|.*down.*|.*thumb.*down.*"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "red"
-                    }
-                  }
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "id": 20,
-          "type": "timeseries",
-          "title": "User Actions by Type (Copy / Insert / Apply / Followup)",
+          "title": "Tool Success by Tool Name",
           "gridPos": {
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 44
+            "y": 57
           },
           "datasource": {
             "type": "prometheus",
@@ -1074,8 +665,8 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (action) (increase(copilot_chat_user_action_count_total[$__rate_interval]))",
-              "legendFormat": "{{action}}"
+              "expr": "sum by (gen_ai_tool_name, success) (increase(github_copilot_tool_call_count_total[$__rate_interval]))",
+              "legendFormat": "{{gen_ai_tool_name}} / success={{success}}"
             }
           ],
           "options": {
@@ -1084,7 +675,8 @@ data:
               "placement": "bottom"
             },
             "tooltip": {
-              "mode": "multi"
+              "mode": "multi",
+              "sort": "none"
             }
           },
           "fieldConfig": {
@@ -1099,230 +691,6 @@ data:
                   "group": "A"
                 }
               }
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 21,
-          "type": "row",
-          "title": "Context & Summarization",
-          "collapsed": false,
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 52
-          },
-          "panels": []
-        },
-        {
-          "id": 22,
-          "type": "timeseries",
-          "title": "Agent Context Summarization Events",
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 53
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum by (outcome) (increase(copilot_chat_agent_summarization_count_total[$__rate_interval])) or sum by (outcome) (increase(copilot_chat_agent_summarization_count[$__rate_interval]))",
-              "legendFormat": "{{outcome}}"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
-            },
-            "tooltip": {
-              "mode": "multi"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 10,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                }
-              }
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 23,
-          "type": "timeseries",
-          "title": "Cloud Sessions & PR-Ready Notifications",
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 53
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum(increase(copilot_chat_cloud_session_count_total[$__rate_interval])) or sum(increase(copilot_chat_cloud_session_count[$__rate_interval]))",
-              "legendFormat": "Cloud sessions started"
-            },
-            {
-              "refId": "B",
-              "expr": "sum(increase(copilot_chat_cloud_pr_ready_count_total[$__rate_interval])) or sum(increase(copilot_chat_cloud_pr_ready_count[$__rate_interval]))",
-              "legendFormat": "PR ready notifications"
-            },
-            {
-              "refId": "C",
-              "expr": "sum(increase(copilot_chat_pull_request_count_total[$__rate_interval])) or sum(increase(copilot_chat_pull_request_count[$__rate_interval]))",
-              "legendFormat": "PRs created"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
-            },
-            "tooltip": {
-              "mode": "multi"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 10,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                }
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "PRs created"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "teal"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "PR ready notifications"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "green"
-                    }
-                  }
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "id": 24,
-          "type": "piechart",
-          "title": "Edit Acceptance by Source (Last $__range)",
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 61
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum by (copilot_chat_edit_source) (increase(copilot_chat_edit_acceptance_count_total[$__range]))",
-              "legendFormat": "{{copilot_chat_edit_source}}",
-              "instant": true
-            }
-          ],
-          "options": {
-            "pieType": "donut",
-            "legend": {
-              "displayMode": "list",
-              "placement": "right"
-            },
-            "tooltip": {
-              "mode": "single"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short"
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 25,
-          "type": "piechart",
-          "title": "User Feedback Distribution (Last $__range)",
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 61
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum by (rating) (increase(copilot_chat_user_feedback_count_total[$__range]))",
-              "legendFormat": "{{rating}}",
-              "instant": true
-            }
-          ],
-          "options": {
-            "pieType": "donut",
-            "legend": {
-              "displayMode": "list",
-              "placement": "right"
-            },
-            "tooltip": {
-              "mode": "single"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short"
             },
             "overrides": []
           }
