@@ -1,0 +1,811 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-github-usage-billing
+  namespace: observability
+  annotations:
+    grafana_folder: Copilot
+  labels:
+    grafana_dashboard: "1"
+data:
+  github-usage-billing.json: |-
+    {
+      "schemaVersion": 39,
+      "title": "GitHub / Usage, Billing & Forecasts",
+      "uid": "github-usage-billing",
+      "timezone": "browser",
+      "tags": [
+        "github",
+        "billing",
+        "budgets",
+        "copilot",
+        "actions",
+        "codespaces",
+        "packages",
+        "lfs"
+      ],
+      "editable": true,
+      "graphTooltip": 1,
+      "refresh": "15m",
+      "time": {
+        "from": "now-30d",
+        "to": "now"
+      },
+      "links": [
+        {
+          "title": "Copilot Activity Overview",
+          "url": "/d/copilot-activity-overview",
+          "type": "link",
+          "icon": "external link",
+          "targetBlank": false
+        },
+        {
+          "title": "Copilot Agent Performance",
+          "url": "/d/copilot-agent-performance",
+          "type": "link",
+          "icon": "external link",
+          "targetBlank": false
+        },
+        {
+          "title": "Copilot Events & Traces",
+          "url": "/d/copilot-code-impact",
+          "type": "link",
+          "icon": "external link",
+          "targetBlank": false
+        }
+      ],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "org",
+            "label": "GitHub org",
+            "type": "custom",
+            "query": "webgrip",
+            "current": {
+              "selected": true,
+              "text": "webgrip",
+              "value": "webgrip"
+            }
+          },
+          {
+            "name": "username",
+            "label": "GitHub user",
+            "type": "custom",
+            "query": "ryangr0",
+            "current": {
+              "selected": true,
+              "text": "ryangr0",
+              "value": "ryangr0"
+            }
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "text",
+          "title": "",
+          "gridPos": {
+            "h": 4,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "## GitHub usage, billing, budgets & forecasts\nThis dashboard uses the provisioned **GitHub API** Infinity datasource to read enhanced billing usage, premium request usage, organization budgets, Copilot seats, and Copilot usage metrics for `$org` / `$username`.\n\nThe forecast tables are simple MTD scenario projections: **best case** = no further spend this period, **likeliest** = 1.5x current MTD run rate, **worst case** = 2x current MTD run rate. Replace the multipliers once enough daily history exists for model-based forecasting."
+          }
+        },
+        {
+          "id": 2,
+          "type": "row",
+          "title": "Month-to-date spend",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 4
+          },
+          "panels": []
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Org MTD Net Spend",
+          "description": "GET /organizations/{org}/settings/billing/usage/summary",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 5
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/organizations/${org}/settings/billing/usage/summary",
+              "parser": "uql",
+              "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_amount\"=sum(\"netAmount\")"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "green"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "User MTD Net Spend",
+          "description": "GET /users/{username}/settings/billing/usage/summary",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 5
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/users/${username}/settings/billing/usage/summary",
+              "parser": "uql",
+              "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_amount\"=sum(\"netAmount\")"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "blue"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 5,
+          "type": "stat",
+          "title": "Org Premium Request Spend",
+          "description": "GET /organizations/{org}/settings/billing/premium_request/usage",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 12,
+            "y": 5
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/organizations/${org}/settings/billing/premium_request/usage",
+              "parser": "uql",
+              "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_amount\"=sum(\"netAmount\")"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "purple"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 6,
+          "type": "stat",
+          "title": "User Premium Request Spend",
+          "description": "GET /users/{username}/settings/billing/premium_request/usage",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 18,
+            "y": 5
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/users/${username}/settings/billing/premium_request/usage",
+              "parser": "uql",
+              "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_amount\"=sum(\"netAmount\")"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "orange"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 7,
+          "type": "row",
+          "title": "Projected scenarios",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 9
+          },
+          "panels": []
+        },
+        {
+          "id": 8,
+          "type": "table",
+          "title": "Org spend projection",
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 10
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/organizations/${org}/settings/billing/usage/summary",
+              "parser": "uql",
+              "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"current_mtd\"=sum(\"netAmount\")\n| extend \"best_case\"=\"current_mtd\", \"likeliest\"=mul(\"current_mtd\",1.5), \"worst_case\"=mul(\"current_mtd\",2)"
+            }
+          ],
+          "options": {
+            "showHeader": true
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 9,
+          "type": "table",
+          "title": "Premium request projection",
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 10
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/organizations/${org}/settings/billing/premium_request/usage",
+              "parser": "uql",
+              "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"current_mtd\"=sum(\"netAmount\"), \"current_requests\"=sum(\"netQuantity\")\n| extend \"best_case\"=\"current_mtd\", \"likeliest\"=mul(\"current_mtd\",1.5), \"worst_case\"=mul(\"current_mtd\",2)"
+            }
+          ],
+          "options": {
+            "showHeader": true
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "current_requests"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "short"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 10,
+          "type": "row",
+          "title": "Actions, Codespaces, Packages, LFS and other billed usage",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 17
+          },
+          "panels": []
+        },
+        {
+          "id": 11,
+          "type": "table",
+          "title": "Org usage summary by product and SKU",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 18
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/organizations/${org}/settings/billing/usage/summary",
+              "parser": "uql",
+              "uql": "parse-json\n| scope \"usageItems\"\n| project \"product\", \"sku\", \"unitType\", \"grossQuantity\", \"netQuantity\", \"pricePerUnit\", \"netAmount\"\n| order by \"netAmount\" desc"
+            }
+          ],
+          "options": {
+            "showHeader": true
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "netAmount"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 12,
+          "type": "table",
+          "title": "Actions / Codespaces / Packages / LFS detail",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 18
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/organizations/${org}/settings/billing/usage",
+              "parser": "uql",
+              "uql": "parse-json\n| scope \"usageItems\"\n| extend \"product_lc\"=tolower(\"product\")\n| where \"product_lc\" in ('actions','codespaces','packages','lfs','git_lfs')\n| project \"date\", \"product\", \"sku\", \"repositoryName\", \"quantity\", \"unitType\", \"netAmount\"\n| order by \"date\" desc"
+            }
+          ],
+          "options": {
+            "showHeader": true
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "netAmount"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 13,
+          "type": "row",
+          "title": "Copilot billing, seats and product usage",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 27
+          },
+          "panels": []
+        },
+        {
+          "id": 14,
+          "type": "stat",
+          "title": "Assigned Copilot Seats",
+          "description": "GET /orgs/{org}/copilot/billing/seats",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 28
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/orgs/${org}/copilot/billing/seats?per_page=100",
+              "parser": "uql",
+              "uql": "parse-json\n| project \"total_seats\"=tonumber(\"total_seats\")"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "blue"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 15,
+          "type": "table",
+          "title": "Copilot seats and recent activity",
+          "gridPos": {
+            "h": 10,
+            "w": 18,
+            "x": 6,
+            "y": 28
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/orgs/${org}/copilot/billing/seats?per_page=100",
+              "parser": "uql",
+              "uql": "parse-json\n| scope \"seats\"\n| project \"login\"=\"assignee.login\", \"plan_type\", \"created_at\", \"last_activity_at\", \"last_activity_editor\", \"last_authenticated_at\", \"pending_cancellation_date\""
+            }
+          ],
+          "options": {
+            "showHeader": true
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          }
+        },
+        {
+          "id": 16,
+          "type": "table",
+          "title": "Copilot daily usage metrics",
+          "description": "GET /orgs/{org}/copilot/metrics",
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 0,
+            "y": 38
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/orgs/${org}/copilot/metrics",
+              "parser": "uql",
+              "uql": "parse-json\n| project \"date\", \"total_active_users\", \"total_engaged_users\", \"ide_code_completion_users\"=\"copilot_ide_code_completions.total_engaged_users\", \"ide_chat_users\"=\"copilot_ide_chat.total_engaged_users\", \"dotcom_chat_users\"=\"copilot_dotcom_chat.total_engaged_users\", \"dotcom_pr_users\"=\"copilot_dotcom_pull_requests.total_engaged_users\"\n| order by \"date\" desc"
+            }
+          ],
+          "options": {
+            "showHeader": true
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 17,
+          "type": "table",
+          "title": "Premium request usage by model",
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 12,
+            "y": 38
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/organizations/${org}/settings/billing/premium_request/usage",
+              "parser": "uql",
+              "uql": "parse-json\n| scope \"usageItems\"\n| project \"product\", \"sku\", \"model\", \"unitType\", \"grossQuantity\", \"discountQuantity\", \"netQuantity\", \"pricePerUnit\", \"netAmount\"\n| order by \"netAmount\" desc"
+            }
+          ],
+          "options": {
+            "showHeader": true
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "netAmount"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 18,
+          "type": "row",
+          "title": "Budgets",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 48
+          },
+          "panels": []
+        },
+        {
+          "id": 19,
+          "type": "table",
+          "title": "Organization budgets",
+          "description": "GET /organizations/{org}/settings/billing/budgets",
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 49
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/organizations/${org}/settings/billing/budgets?per_page=10",
+              "parser": "uql",
+              "uql": "parse-json\n| scope \"budgets\"\n| project \"id\", \"budget_scope\", \"budget_entity_name\", \"budget_type\", \"budget_product_sku\", \"budget_amount\", \"prevent_further_usage\", \"will_alert\"=\"budget_alerting.will_alert\""
+            }
+          ],
+          "options": {
+            "showHeader": true
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "budget_amount"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 20,
+          "type": "row",
+          "title": "15 more dashboard ideas",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 58
+          },
+          "panels": []
+        },
+        {
+          "id": 21,
+          "type": "text",
+          "title": "Suggested next metrics",
+          "gridPos": {
+            "h": 13,
+            "w": 24,
+            "x": 0,
+            "y": 59
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "1. Copilot premium requests per repository or cost center\n2. Premium request burn-down against budget caps\n3. Cost per active Copilot user and per engaged user\n4. Seat inactivity and reclaim candidates\n5. Acceptance rate by language, editor, and model\n6. Chat-to-code conversion rate using insertion/copy events\n7. Actions minutes split by hosted runner label and repository\n8. Self-hosted ARC runner utilization versus queued jobs\n9. Codespaces storage/runtime split by owner and repository\n10. Package egress/storage growth by package namespace\n11. Git LFS storage and bandwidth trend by repository\n12. Advanced Security active committers versus purchased seats\n13. Billing anomalies compared with trailing 7-day and 30-day baselines\n14. Budget alert recipients and prevent-further-usage coverage gaps\n15. Forecast confidence bands using daily seasonality instead of static multipliers"
+          }
+        }
+      ]
+    }

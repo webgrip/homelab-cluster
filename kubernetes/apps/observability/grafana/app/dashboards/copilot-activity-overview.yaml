@@ -41,6 +41,13 @@ data:
           "type": "link",
           "icon": "external link",
           "targetBlank": false
+        },
+        {
+          "title": "GitHub Usage, Billing & Forecasts",
+          "url": "/d/github-usage-billing",
+          "type": "link",
+          "icon": "external link",
+          "targetBlank": false
         }
       ],
       "annotations": {
@@ -877,6 +884,221 @@ data:
               }
             },
             "overrides": []
+          }
+        },
+        {
+          "id": 22,
+          "type": "row",
+          "title": "Premium Requests & Billing API",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 50
+          },
+          "panels": []
+        },
+        {
+          "id": 23,
+          "type": "stat",
+          "title": "Org Premium Request Spend",
+          "description": "GET /organizations/{org}/settings/billing/premium_request/usage via the GitHub API datasource.",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 51
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/organizations/webgrip/settings/billing/premium_request/usage",
+              "parser": "uql",
+              "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_amount\"=sum(\"netAmount\")"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "purple"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 24,
+          "type": "stat",
+          "title": "User Premium Request Spend",
+          "description": "GET /users/ryangr0/settings/billing/premium_request/usage via the GitHub API datasource.",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 51
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/users/ryangr0/settings/billing/premium_request/usage",
+              "parser": "uql",
+              "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_amount\"=sum(\"netAmount\")"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "orange"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 25,
+          "type": "table",
+          "title": "Premium Request Projection",
+          "description": "MTD scenarios: best = current spend, likeliest = 1.5x, worst = 2x.",
+          "gridPos": {
+            "h": 4,
+            "w": 12,
+            "x": 12,
+            "y": 51
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/organizations/webgrip/settings/billing/premium_request/usage",
+              "parser": "uql",
+              "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"current_mtd\"=sum(\"netAmount\"), \"current_requests\"=sum(\"netQuantity\")\n| extend \"best_case\"=\"current_mtd\", \"likeliest\"=mul(\"current_mtd\",1.5), \"worst_case\"=mul(\"current_mtd\",2)"
+            }
+          ],
+          "options": {
+            "showHeader": true
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "current_requests"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "short"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 26,
+          "type": "table",
+          "title": "Premium Requests by Product / Model",
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 55
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/organizations/webgrip/settings/billing/premium_request/usage",
+              "parser": "uql",
+              "uql": "parse-json\n| scope \"usageItems\"\n| project \"product\", \"sku\", \"model\", \"unitType\", \"grossQuantity\", \"discountQuantity\", \"netQuantity\", \"pricePerUnit\", \"netAmount\"\n| order by \"netAmount\" desc"
+            }
+          ],
+          "options": {
+            "showHeader": true
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "netAmount"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              }
+            ]
           }
         }
       ]

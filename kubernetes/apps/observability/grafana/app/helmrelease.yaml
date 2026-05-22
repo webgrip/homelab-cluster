@@ -37,6 +37,14 @@ spec:
     # - GF_AUTH_GITHUB_CLIENT_ID
     # - GF_AUTH_GITHUB_CLIENT_SECRET
     envFromSecret: grafana-github-oauth
+    # Optional SOPS-managed Secret for GitHub billing/usage API dashboards.
+    # Expected key: token
+    envValueFrom:
+      GITHUB_API_TOKEN:
+        secretKeyRef:
+          name: grafana-github-api
+          key: token
+          optional: true
 
     grafana.ini:
       server:
@@ -203,6 +211,20 @@ spec:
             url: http://kube-prometheus-stack-alertmanager.observability.svc.cluster.local:9093
             jsonData:
               implementation: prometheus
+          - name: GitHub API
+            type: yesoreyeram-infinity-datasource
+            uid: github-api
+            access: proxy
+            jsonData:
+              auth_method: bearerToken
+              allowedHosts:
+                - https://api.github.com
+              httpHeaderName1: Accept
+              httpHeaderName2: X-GitHub-Api-Version
+            secureJsonData:
+              bearerToken: ${GITHUB_API_TOKEN}
+              httpHeaderValue1: application/vnd.github+json
+              httpHeaderValue2: "2026-03-10"
 
     sidecar:
       dashboards:
