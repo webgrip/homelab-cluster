@@ -19,10 +19,10 @@ jobs:
     runs-on: arc-runner-set
     permissions:
       contents: read
-      issues: write
-      pull-requests: read
+      pull-requests: write
+      models: read
     steps:
-      - name: Load PR metadata
+      - name: Validate PR
         id: pr
         uses: actions/github-script@v7
         with:
@@ -48,21 +48,14 @@ jobs:
 
             if (pr.labels.some(({ name }) => name === 'automerge')) {
               throw new Error(
-                `PR #${prNumber} has the automerge label; manual review is intentionally skipped.`
+                `PR #${prNumber} has the automerge label; review is intentionally skipped.`
               );
             }
 
             core.setOutput('number', String(pr.number));
-            core.setOutput('title', pr.title);
-            core.setOutput('author', pr.user.login);
-            core.setOutput('base-ref', pr.base.ref);
 
-      - name: Run renovate review
-        uses: webgrip/.github/actions/renovate-review@main
+      - uses: webgrip/.github/actions/renovate-review@main
         with:
-          agent-token: ${{ secrets.COPILOT_AGENT_TOKEN }}
-          base-ref: ${{ steps.pr.outputs.base-ref }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           pr-number: ${{ steps.pr.outputs.number }}
-          pr-title: ${{ steps.pr.outputs.title }}
-          pr-author: ${{ steps.pr.outputs.author }}
           repository: ${{ github.repository }}
