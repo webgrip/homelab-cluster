@@ -1009,30 +1009,333 @@ data:
           }
         },
         {
-          "id": 20,
+          "id": 27,
           "type": "row",
-          "title": "15 more dashboard ideas",
+          "title": "Cost allocation, budgets and burn-down",
           "collapsed": false,
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 58
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 91},
+          "panels": []
+        },
+        {
+          "id": 28,
+          "type": "table",
+          "title": "Copilot premium requests by cost center / model",
+          "description": "GitHub's premium-request endpoint does not expose repository names; model/SKU is the available cost-center dimension.",
+          "gridPos": {"h": 9, "w": 12, "x": 0, "y": 92},
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "github-api"},
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/organizations/$${org}/settings/billing/premium_request/usage",
+              "parser": "backend",
+              "root_selector": "usageItems",
+              "url_options": {"method": "GET", "data": ""}
+            }
+          ],
+          "options": {"showHeader": true},
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": [
+              {"matcher": {"id": "byName", "options": "netAmount"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]},
+              {"matcher": {"id": "byName", "options": "grossAmount"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]},
+              {"matcher": {"id": "byName", "options": "pricePerUnit"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]}
+            ]
           }
         },
         {
-          "id": 21,
+          "id": 29,
+          "type": "table",
+          "title": "Premium request budget burn-down inputs",
+          "description": "Budget cap and enforcement settings for premium_requests. Compare against Org Premium Request Spend above for burn-down.",
+          "gridPos": {"h": 9, "w": 12, "x": 12, "y": 92},
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "github-api"},
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/organizations/$${org}/settings/billing/budgets?per_page=10",
+              "parser": "backend",
+              "root_selector": "budgets",
+              "url_options": {"method": "GET", "data": ""},
+              "filterExpression": "budget_product_sku == \"premium_requests\""
+            }
+          ],
+          "options": {"showHeader": true},
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": [
+              {"matcher": {"id": "byName", "options": "budget_amount"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 0}]}
+            ]
+          }
+        },
+        {
+          "id": 30,
+          "type": "stat",
+          "title": "Premium request budget cap",
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 101},
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "github-api"},
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/organizations/$${org}/settings/billing/budgets?per_page=10",
+              "parser": "backend",
+              "root_selector": "budgets",
+              "url_options": {"method": "GET", "data": ""},
+              "filterExpression": "budget_product_sku == \"premium_requests\""
+            }
+          ],
+          "options": {"reduceOptions": {"calcs": ["sum"], "fields": "/^budget_amount$/", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
+        },
+        {
+          "id": 31,
+          "type": "table",
+          "title": "Budget alert recipients and enforcement gaps",
+          "description": "Look for will_alert=false, empty alert recipients, or prevent_further_usage=false.",
+          "gridPos": {"h": 8, "w": 18, "x": 6, "y": 101},
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "github-api"},
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/organizations/$${org}/settings/billing/budgets?per_page=10",
+              "parser": "backend",
+              "root_selector": "budgets",
+              "url_options": {"method": "GET", "data": ""}
+            }
+          ],
+          "options": {"showHeader": true},
+          "fieldConfig": {"defaults": {}, "overrides": [{"matcher": {"id": "byName", "options": "budget_amount"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 0}]}]}
+        },
+        {
+          "id": 32,
+          "type": "row",
+          "title": "Copilot seats, activity and local productivity proxies",
+          "collapsed": false,
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 109},
+          "panels": []
+        },
+        {
+          "id": 33,
+          "type": "table",
+          "title": "Seat inactivity and reclaim candidates",
+          "description": "Copilot seat list with last_activity_at and last_authenticated_at. Sort by oldest activity to find reclaim candidates.",
+          "gridPos": {"h": 9, "w": 12, "x": 0, "y": 110},
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "github-api"},
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/orgs/$${org}/copilot/billing/seats?per_page=100",
+              "parser": "backend",
+              "root_selector": "seats",
+              "url_options": {"method": "GET", "data": ""}
+            }
+          ],
+          "options": {"showHeader": true},
+          "fieldConfig": {"defaults": {}, "overrides": []}
+        },
+        {
+          "id": 34,
+          "type": "stat",
+          "title": "Observed chat requests",
+          "description": "Local VS Code telemetry proxy for active/engaged Copilot usage.",
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 110},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(increase(gen_ai_client_operation_duration_seconds_count{gen_ai_operation_name=\"chat\"}[$$__range])) or sum(increase(gen_ai_client_operation_duration_count{gen_ai_operation_name=\"chat\"}[$$__range])) or vector(0)", "legendFormat": "chat requests"}
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "green"}}, "overrides": []}
+        },
+        {
+          "id": 35,
+          "type": "stat",
+          "title": "Observed agent requests",
+          "description": "Local VS Code telemetry proxy for engaged/agentic usage.",
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 110},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(increase(gen_ai_client_operation_duration_seconds_count{gen_ai_operation_name=\"invoke_agent\"}[$$__range])) or vector(0)", "legendFormat": "agent requests"}
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "purple"}}, "overrides": []}
+        },
+        {
+          "id": 36,
+          "type": "stat",
+          "title": "Chat-to-code conversion proxy",
+          "description": "Edit-survival events divided by Copilot chat sessions. This is a local telemetry proxy, not GitHub's enterprise seat metric.",
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 114},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(increase(copilot_chat_edit_survival_no_revert_count[$$__range])) / clamp_min(sum(increase(copilot_chat_session_count_total[$$__range])), 1)", "legendFormat": "conversion proxy"}
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "percentunit", "decimals": 2, "color": {"mode": "fixed", "fixedColor": "orange"}}, "overrides": []}
+        },
+        {
+          "id": 37,
+          "type": "stat",
+          "title": "Tool calls per chat request",
+          "description": "Local tool-call intensity proxy for chat-to-code workflow.",
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 114},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "((sum(increase(github_copilot_tool_call_count_total[$$__range])) or vector(0)) + (sum(increase(copilot_chat_tool_call_count_total[$$__range])) or vector(0))) / clamp_min((sum(increase(gen_ai_client_operation_duration_seconds_count{gen_ai_operation_name=\"chat\"}[$$__range])) or sum(increase(gen_ai_client_operation_duration_count{gen_ai_operation_name=\"chat\"}[$$__range])) or vector(0)), 1)", "legendFormat": "tool calls / chat"}
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 2, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
+        },
+        {
+          "id": 38,
+          "type": "timeseries",
+          "title": "Acceptance proxy by edit source",
+          "description": "VS Code emits edit-survival metrics by edit source, not GitHub language/editor acceptance metrics.",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 119},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum by (copilot_chat_edit_source) (increase(copilot_chat_edit_survival_no_revert_sum[$$__range])) / clamp_min(sum by (copilot_chat_edit_source) (increase(copilot_chat_edit_survival_no_revert_count[$$__range])), 1)", "legendFormat": "no revert / {{copilot_chat_edit_source}}"},
+            {"refId": "B", "expr": "sum by (copilot_chat_edit_source) (increase(copilot_chat_edit_survival_four_gram_sum[$$__range])) / clamp_min(sum by (copilot_chat_edit_source) (increase(copilot_chat_edit_survival_four_gram_count[$$__range])), 1)", "legendFormat": "four gram / {{copilot_chat_edit_source}}"}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"unit": "percentunit", "decimals": 2}, "overrides": []}
+        },
+        {
+          "id": 39,
+          "type": "timeseries",
+          "title": "Copilot request mix by model",
+          "description": "Model dimension for active Copilot requests. Language/editor dimensions are not present in the current telemetry.",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 119},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum by (gen_ai_request_model) (increase(gen_ai_client_operation_duration_seconds_count[$$__rate_interval])) or sum by (gen_ai_request_model) (increase(gen_ai_client_operation_duration_count[$$__rate_interval]))", "legendFormat": "{{gen_ai_request_model}}"}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 40,
+          "type": "row",
+          "title": "Actions, ARC, Codespaces, Packages, LFS and Advanced Security",
+          "collapsed": false,
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 127},
+          "panels": []
+        },
+        {
+          "id": 41,
+          "type": "table",
+          "title": "Actions minutes by repository and SKU",
+          "description": "Billing detail for GitHub-hosted Actions usage. Runner labels are not exposed by the billing endpoint, but SKU/repository are.",
+          "gridPos": {"h": 9, "w": 12, "x": 0, "y": 128},
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "github-api"},
+          "targets": [
+            {"refId": "A", "type": "json", "source": "url", "url": "https://api.github.com/organizations/$${org}/settings/billing/usage", "parser": "backend", "root_selector": "usageItems", "url_options": {"method": "GET", "data": ""}, "filterExpression": "product == \"actions\""}
+          ],
+          "options": {"showHeader": true},
+          "fieldConfig": {"defaults": {}, "overrides": [{"matcher": {"id": "byName", "options": "netAmount"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]}, {"matcher": {"id": "byName", "options": "quantity"}, "properties": [{"id": "unit", "value": "short"}, {"id": "decimals", "value": 2}]}]}
+        },
+        {
+          "id": 42,
+          "type": "timeseries",
+          "title": "Self-hosted ARC runner capacity vs queued pods",
+          "description": "Kubernetes proxy for ARC utilization: active runner/controller pods and pending pods in arc-systems. GitHub queue metrics are not exposed in Prometheus.",
+          "gridPos": {"h": 9, "w": 12, "x": 12, "y": 128},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(kube_pod_status_phase{namespace=\"arc-systems\", phase=\"Running\"} == 1) or vector(0)", "legendFormat": "running pods"},
+            {"refId": "B", "expr": "sum(kube_pod_status_phase{namespace=\"arc-systems\", phase=\"Pending\"} == 1) or vector(0)", "legendFormat": "queued/pending pods"}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "right"}},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []}
+        },
+        {
+          "id": 43,
+          "type": "table",
+          "title": "Codespaces storage/runtime by owner and repository",
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 137},
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "github-api"},
+          "targets": [
+            {"refId": "A", "type": "json", "source": "url", "url": "https://api.github.com/organizations/$${org}/settings/billing/usage", "parser": "backend", "root_selector": "usageItems", "url_options": {"method": "GET", "data": ""}, "filterExpression": "product == \"codespaces\""}
+          ],
+          "options": {"showHeader": true},
+          "fieldConfig": {"defaults": {}, "overrides": [{"matcher": {"id": "byName", "options": "netAmount"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]}]}
+        },
+        {
+          "id": 44,
+          "type": "table",
+          "title": "Package egress/storage growth by namespace",
+          "description": "Uses billing usage rows for product=packages when present.",
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 137},
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "github-api"},
+          "targets": [
+            {"refId": "A", "type": "json", "source": "url", "url": "https://api.github.com/organizations/$${org}/settings/billing/usage", "parser": "backend", "root_selector": "usageItems", "url_options": {"method": "GET", "data": ""}, "filterExpression": "product == \"packages\""}
+          ],
+          "options": {"showHeader": true},
+          "fieldConfig": {"defaults": {}, "overrides": [{"matcher": {"id": "byName", "options": "netAmount"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]}]}
+        },
+        {
+          "id": 45,
+          "type": "table",
+          "title": "Git LFS storage and bandwidth trend by repository",
+          "description": "Uses billing usage rows for product=lfs when present.",
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 137},
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "github-api"},
+          "targets": [
+            {"refId": "A", "type": "json", "source": "url", "url": "https://api.github.com/organizations/$${org}/settings/billing/usage", "parser": "backend", "root_selector": "usageItems", "url_options": {"method": "GET", "data": ""}, "filterExpression": "product == \"lfs\""}
+          ],
+          "options": {"showHeader": true},
+          "fieldConfig": {"defaults": {}, "overrides": [{"matcher": {"id": "byName", "options": "netAmount"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]}]}
+        },
+        {
+          "id": 46,
+          "type": "table",
+          "title": "Advanced Security active committers / purchased seats",
+          "description": "Shows Advanced Security billing rows when the org has billed usage. Empty means no Advanced Security billing rows in the selected range.",
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 145},
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "github-api"},
+          "targets": [
+            {"refId": "A", "type": "json", "source": "url", "url": "https://api.github.com/organizations/$${org}/settings/billing/usage", "parser": "backend", "root_selector": "usageItems", "url_options": {"method": "GET", "data": ""}, "filterExpression": "product == \"advanced_security\""}
+          ],
+          "options": {"showHeader": true},
+          "fieldConfig": {"defaults": {}, "overrides": [{"matcher": {"id": "byName", "options": "netAmount"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]}]}
+        },
+        {
+          "id": 47,
+          "type": "row",
+          "title": "Anomalies and forecast confidence",
+          "collapsed": false,
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 153},
+          "panels": []
+        },
+        {
+          "id": 48,
+          "type": "table",
+          "title": "Billing anomaly source table (daily product/repository costs)",
+          "description": "Source rows for anomaly review against trailing 7-day and 30-day baselines; sort by date/product/repository/netAmount.",
+          "gridPos": {"h": 10, "w": 12, "x": 0, "y": 154},
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "github-api"},
+          "targets": [
+            {"refId": "A", "type": "json", "source": "url", "url": "https://api.github.com/organizations/$${org}/settings/billing/usage", "parser": "backend", "root_selector": "usageItems", "url_options": {"method": "GET", "data": ""}}
+          ],
+          "options": {"showHeader": true},
+          "fieldConfig": {"defaults": {}, "overrides": [{"matcher": {"id": "byName", "options": "netAmount"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]}, {"matcher": {"id": "byName", "options": "grossAmount"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]}]}
+        },
+        {
+          "id": 49,
           "type": "text",
-          "title": "Suggested next metrics",
-          "gridPos": {
-            "h": 13,
-            "w": 24,
-            "x": 0,
-            "y": 59
-          },
+          "title": "Forecast confidence bands and unavailable direct dimensions",
+          "gridPos": {"h": 10, "w": 12, "x": 12, "y": 154},
           "options": {
             "mode": "markdown",
-            "content": "1. Copilot premium requests per repository or cost center\n2. Premium request burn-down against budget caps\n3. Cost per active Copilot user and per engaged user\n4. Seat inactivity and reclaim candidates\n5. Acceptance rate by language, editor, and model\n6. Chat-to-code conversion rate using insertion/copy events\n7. Actions minutes split by hosted runner label and repository\n8. Self-hosted ARC runner utilization versus queued jobs\n9. Codespaces storage/runtime split by owner and repository\n10. Package egress/storage growth by package namespace\n11. Git LFS storage and bandwidth trend by repository\n12. Advanced Security active committers versus purchased seats\n13. Billing anomalies compared with trailing 7-day and 30-day baselines\n14. Budget alert recipients and prevent-further-usage coverage gaps\n15. Forecast confidence bands using daily seasonality instead of static multipliers"
+            "content": "### Implemented as live source panels\n\n- Premium request burn-down inputs: premium budget cap + current premium spend.\n- Daily billing rows: source data for trailing 7-day/30-day anomaly review and seasonality-aware forecasts.\n- ARC utilization proxy: running vs pending pods in `arc-systems`.\n- Copilot behavior proxies: chat requests, agent requests, tool calls/chat, and edit-survival acceptance proxies.\n\n### Not directly exposed by current APIs/plan\n\n- Premium requests per repository: GitHub premium-request billing rows expose model/SKU but not repository.\n- Cost per active/engaged user: `/orgs/{org}/copilot/metrics` returns 404 for this org, so active/engaged users are not available.\n- Acceptance by language/editor: local telemetry exposes model and edit source, not language/editor.\n- GitHub queue depth for ARC: no queue metrics are currently scraped; pending pods are used as the cluster-side proxy.\n\nUse the daily billing source table for true seasonality/forecast work once Grafana transformations or a small scheduled exporter is added."
           }
         }
       ]
