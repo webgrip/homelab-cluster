@@ -658,8 +658,8 @@ data:
         {
           "id": 16,
           "type": "table",
-          "title": "Copilot daily usage metrics",
-          "description": "GET /orgs/{org}/copilot/metrics",
+          "title": "Daily Copilot subscription cost",
+          "description": "GET /organizations/{org}/settings/billing/usage — daily charge for Copilot Business seats",
           "gridPos": {
             "h": 10,
             "w": 12,
@@ -675,20 +675,26 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/orgs/$${org}/copilot/metrics",
+              "url": "https://api.github.com/organizations/$${org}/settings/billing/usage",
               "parser": "uql",
-              "uql": "parse-json\n| project \"date\", \"total_active_users\", \"total_engaged_users\", \"ide_code_completion_users\"=\"copilot_ide_code_completions.total_engaged_users\", \"ide_chat_users\"=\"copilot_ide_chat.total_engaged_users\", \"dotcom_chat_users\"=\"copilot_dotcom_chat.total_engaged_users\", \"dotcom_pr_users\"=\"copilot_dotcom_pull_requests.total_engaged_users\"\n| order by \"date\" desc"
+              "uql": "parse-json\n| scope \"usageItems\"\n| extend \"product_lc\"=tolower(\"product\")\n| where \"product_lc\" in ('copilot')\n| project \"date\", \"sku\", \"quantity\", \"unitType\", \"grossAmount\", \"discountAmount\", \"netAmount\"\n| order by \"date\" desc"
             }
           ],
           "options": {
             "showHeader": true
           },
           "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "decimals": 0
-            },
-            "overrides": []
+            "defaults": {},
+            "overrides": [
+              {
+                "matcher": {"id": "byName", "options": "netAmount"},
+                "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]
+              },
+              {
+                "matcher": {"id": "byName", "options": "grossAmount"},
+                "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]
+              }
+            ]
           }
         },
         {
@@ -806,7 +812,7 @@ data:
         {
           "id": 22,
           "type": "row",
-          "title": "Team Copilot Metrics",
+          "title": "Daily usage trends",
           "collapsed": false,
           "gridPos": {
             "h": 1,
@@ -819,8 +825,8 @@ data:
         {
           "id": 23,
           "type": "table",
-          "title": "Team daily Copilot metrics — $$team",
-          "description": "GET /orgs/{org}/team/{team}/copilot/metrics — shows activity for the selected team.",
+          "title": "Daily costs by product",
+          "description": "GET /organizations/{org}/settings/billing/usage — all products, daily, most recent first.",
           "gridPos": {
             "h": 10,
             "w": 24,
@@ -836,20 +842,26 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/orgs/$${org}/team/$${team}/copilot/metrics",
+              "url": "https://api.github.com/organizations/$${org}/settings/billing/usage",
               "parser": "uql",
-              "uql": "parse-json\n| project \"date\", \"total_active_users\", \"total_engaged_users\""
+              "uql": "parse-json\n| scope \"usageItems\"\n| project \"date\", \"product\", \"sku\", \"quantity\", \"unitType\", \"grossAmount\", \"discountAmount\", \"netAmount\", \"repositoryName\"\n| order by \"date\" desc"
             }
           ],
           "options": {
             "showHeader": true
           },
           "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "decimals": 0
-            },
-            "overrides": []
+            "defaults": {},
+            "overrides": [
+              {
+                "matcher": {"id": "byName", "options": "netAmount"},
+                "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]
+              },
+              {
+                "matcher": {"id": "byName", "options": "grossAmount"},
+                "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]
+              }
+            ]
           }
         },
         {
