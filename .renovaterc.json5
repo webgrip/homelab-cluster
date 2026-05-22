@@ -22,6 +22,10 @@
     "**/*.sops.*",
     // The app is not referenced from observability/kustomization.yaml.
     "kubernetes/apps/observability/twitch-exporter/**",
+    // The Renovate ConfigMap contains raw regex patterns that the custom.regex manager
+    // matches against itself, producing "Invalid regex manager registryUrl" and
+    // "Missing datasource!" warnings on every run.
+    "kubernetes/apps/renovate/renovate-operator/jobs/configmap-gitops.yaml",
   ],
 
   postUpgradeTasks: {
@@ -48,6 +52,11 @@
       matchDatasources: ["docker"],
       matchManagers: ["helmfile"],
       overrideDepName: "{{packageName}}",
+    },
+    {
+      description: "Disable digest pinning for talos/ version files — talhelper uses plain semver strings; appending @sha256: makes talenv.yaml unparseable",
+      matchFileNames: ["talos/**"],
+      pinDigests: false,
     },
     {
       description: "Flux Operator Group",
