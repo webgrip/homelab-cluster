@@ -89,6 +89,45 @@ data:
               "text": "All",
               "value": "$__all"
             }
+          },
+          {
+            "name": "org",
+            "label": "GitHub org",
+            "type": "custom",
+            "query": "webgrip",
+            "current": {
+              "selected": true,
+              "text": "webgrip",
+              "value": "webgrip"
+            }
+          },
+          {
+            "name": "user",
+            "label": "GitHub user",
+            "type": "query",
+            "datasource": {
+              "type": "yesoreyeram-infinity-datasource",
+              "uid": "github-api"
+            },
+            "query": {
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/orgs/${org}/copilot/billing/seats?per_page=100",
+              "parser": "backend",
+              "root_selector": "seats",
+              "columns": [
+                { "selector": "assignee.login", "text": "login", "type": "string" }
+              ]
+            },
+            "refresh": 2,
+            "sort": 1,
+            "multi": false,
+            "includeAll": false,
+            "current": {
+              "selected": false,
+              "text": "${__user.login}",
+              "value": "${__user.login}"
+            }
           }
         ]
       },
@@ -1113,7 +1152,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/organizations/webgrip/settings/billing/premium_request/usage",
+              "url": "https://api.github.com/organizations/${org}/settings/billing/premium_request/usage",
               "parser": "uql",
               "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_amount\"=sum(\"netAmount\")"
             }
@@ -1147,7 +1186,7 @@ data:
           "id": 24,
           "type": "stat",
           "title": "User Premium Request Spend",
-          "description": "GET /organizations/webgrip/settings/billing/premium_request/usage?user=ryangr0 via the GitHub API datasource. This is the org-billed Copilot path.",
+          "description": "GET /organizations/{org}/settings/billing/premium_request/usage?user=${user} via the GitHub API datasource. This is the org-billed Copilot path.",
           "gridPos": {
             "h": 4,
             "w": 6,
@@ -1163,7 +1202,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/organizations/webgrip/settings/billing/premium_request/usage?user=ryangr0",
+              "url": "https://api.github.com/organizations/${org}/settings/billing/premium_request/usage?user=${user}",
               "parser": "uql",
               "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_amount\"=sum(\"netAmount\")"
             }
@@ -1213,7 +1252,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/organizations/webgrip/settings/billing/premium_request/usage",
+              "url": "https://api.github.com/organizations/${org}/settings/billing/premium_request/usage",
               "parser": "uql",
               "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"current_mtd\"=sum(\"netAmount\"), \"current_requests\"=sum(\"netQuantity\")\n| extend \"best_case\"=\"current_mtd\", \"likeliest\"=mul(\"current_mtd\",1.5), \"worst_case\"=mul(\"current_mtd\",2)"
             }
@@ -1265,7 +1304,7 @@ data:
               "refId": "A",
               "type": "json",
               "source": "url",
-              "url": "https://api.github.com/organizations/webgrip/settings/billing/premium_request/usage",
+              "url": "https://api.github.com/organizations/${org}/settings/billing/premium_request/usage",
               "parser": "uql",
               "uql": "parse-json\n| scope \"usageItems\"\n| project \"product\", \"sku\", \"model\", \"unitType\", \"grossQuantity\", \"discountQuantity\", \"netQuantity\", \"pricePerUnit\", \"netAmount\"\n| order by \"netAmount\" desc"
             }

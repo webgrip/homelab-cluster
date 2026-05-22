@@ -86,12 +86,58 @@ data:
           {
             "name": "username",
             "label": "GitHub user",
-            "type": "custom",
-            "query": "ryangr0",
+            "type": "query",
+            "datasource": {
+              "type": "yesoreyeram-infinity-datasource",
+              "uid": "github-api"
+            },
+            "query": {
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/orgs/${org}/copilot/billing/seats?per_page=100",
+              "parser": "backend",
+              "root_selector": "seats",
+              "columns": [
+                { "selector": "assignee.login", "text": "login", "type": "string" }
+              ]
+            },
+            "refresh": 2,
+            "sort": 1,
+            "multi": false,
+            "includeAll": false,
+            "current": {
+              "selected": false,
+              "text": "${__user.login}",
+              "value": "${__user.login}"
+            }
+          },
+          {
+            "name": "team",
+            "label": "GitHub team",
+            "type": "query",
+            "datasource": {
+              "type": "yesoreyeram-infinity-datasource",
+              "uid": "github-api"
+            },
+            "query": {
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/orgs/${org}/teams?per_page=100",
+              "parser": "backend",
+              "root_selector": "",
+              "columns": [
+                { "selector": "slug", "text": "slug", "type": "string" },
+                { "selector": "name", "text": "name", "type": "string" }
+              ]
+            },
+            "refresh": 2,
+            "sort": 1,
+            "multi": false,
+            "includeAll": true,
             "current": {
               "selected": true,
-              "text": "ryangr0",
-              "value": "ryangr0"
+              "text": "All",
+              "value": "$__all"
             }
           }
         ]
@@ -109,7 +155,7 @@ data:
           },
           "options": {
             "mode": "markdown",
-            "content": "## GitHub usage, billing, budgets & forecasts\nThis dashboard uses the provisioned **GitHub API** Infinity datasource to read enhanced billing usage, premium request usage, organization budgets, Copilot seats, and Copilot usage metrics for `$org` / `$username`.\n\nThe forecast tables are simple MTD scenario projections: **best case** = no further spend this period, **likeliest** = 1.5x current MTD run rate, **worst case** = 2x current MTD run rate. Replace the multipliers once enough daily history exists for model-based forecasting."
+            "content": "## GitHub usage, billing, budgets & forecasts\nThis dashboard uses the provisioned **GitHub API** Infinity datasource. Use the **GitHub user** picker to scope user-level panels to yourself or any other Copilot seat holder in `$org`. Use the **GitHub team** picker to scope team-level Copilot metrics.\n\nThe **GitHub user** dropdown is pre-populated from the org's Copilot seats list and defaults to your own Grafana login (`${__user.login}`). Org owners can select any seat holder. The forecast projections are: **best case** = current MTD spend, **likeliest** = 1.5×, **worst case** = 2×."
           }
         },
         {
@@ -780,6 +826,199 @@ data:
           }
         },
         {
+          "id": 22,
+          "type": "row",
+          "title": "Team Copilot Metrics",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 72
+          },
+          "panels": []
+        },
+        {
+          "id": 23,
+          "type": "table",
+          "title": "Team daily Copilot metrics — $team",
+          "description": "GET /orgs/{org}/team/{team}/copilot/metrics — shows activity for all team members if a team is selected.",
+          "gridPos": {
+            "h": 10,
+            "w": 24,
+            "x": 0,
+            "y": 73
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/orgs/${org}/team/${team}/copilot/metrics",
+              "parser": "uql",
+              "uql": "parse-json\n| project \"date\", \"total_active_users\", \"total_engaged_users\""
+            }
+          ],
+          "options": {
+            "showHeader": true
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 24,
+          "type": "table",
+          "title": "User premium requests — $username",
+          "description": "GET /organizations/{org}/settings/billing/premium_request/usage?user={username}. Shows org-billed Copilot premium requests scoped to the selected user.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 83
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/organizations/${org}/settings/billing/premium_request/usage?user=${username}",
+              "parser": "uql",
+              "uql": "parse-json\n| scope \"usageItems\"\n| project \"product\", \"sku\", \"model\", \"unitType\", \"grossQuantity\", \"netQuantity\", \"pricePerUnit\", \"netAmount\"\n| order by \"netAmount\" desc"
+            }
+          ],
+          "options": {
+            "showHeader": true
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "netAmount"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 25,
+          "type": "stat",
+          "title": "User MTD spend — $username",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 12,
+            "y": 83
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/organizations/${org}/settings/billing/premium_request/usage?user=${username}",
+              "parser": "uql",
+              "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_amount\"=sum(\"netAmount\")"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "orange"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 26,
+          "type": "stat",
+          "title": "User request count — $username",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 18,
+            "y": 83
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "github-api"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "https://api.github.com/organizations/${org}/settings/billing/premium_request/usage?user=${username}",
+              "parser": "uql",
+              "uql": "parse-json\n| scope \"usageItems\"\n| summarize \"net_requests\"=sum(\"netQuantity\")"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "purple"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
           "id": 20,
           "type": "row",
           "title": "15 more dashboard ideas",
@@ -789,8 +1028,7 @@ data:
             "w": 24,
             "x": 0,
             "y": 58
-          },
-          "panels": []
+          }
         },
         {
           "id": 21,
