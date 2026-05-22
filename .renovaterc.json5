@@ -22,6 +22,10 @@
     "**/*.sops.*",
     // The app is not referenced from observability/kustomization.yaml.
     "kubernetes/apps/observability/twitch-exporter/**",
+    // The Renovate ConfigMap contains raw regex patterns that the custom.regex manager
+    // matches against itself, producing "Invalid regex manager registryUrl" and
+    // "Missing datasource!" warnings on every run.
+    "kubernetes/apps/renovate/renovate-operator/jobs/configmap-gitops.yaml",
   ],
 
   postUpgradeTasks: {
@@ -48,6 +52,11 @@
       matchDatasources: ["docker"],
       matchManagers: ["helmfile"],
       overrideDepName: "{{packageName}}",
+    },
+    {
+      description: "Disable digest pinning for talos/ version files — talhelper uses plain semver strings; appending @sha256: makes talenv.yaml unparseable",
+      matchFileNames: ["talos/**"],
+      pinDigests: false,
     },
     {
       description: "Flux Operator Group",
@@ -124,10 +133,10 @@
       minimumReleaseAge: "7 days",
     },
     {
-      description: "Split GitOps app changes by nearest package directory without maintaining one packageRule per namespace",
+      description: "Split GitOps app changes per app — parentDir2 resolves to the app name in kubernetes/apps/<namespace>/<app>/app/** layout",
       matchFileNames: ["kubernetes/apps/**"],
-      groupName: "kubernetes {{parentDir}}",
-      additionalBranchPrefix: "{{parentDir}}-",
+      groupName: "kubernetes {{parentDir2}}",
+      additionalBranchPrefix: "{{parentDir2}}-",
     },
     {
       description: "Group shared app-template updates into a dedicated PR",
@@ -172,6 +181,12 @@
       matchManagers: ["mise"],
       semanticCommitScope: "mise",
       commitMessageTopic: "tool {{depName}}",
+    },
+    {
+      description: "Scope kubernetes/apps commits to the app name (parentDir2) rather than the datasource type",
+      matchFileNames: ["kubernetes/apps/**"],
+      semanticCommitScope: "{{parentDir2}}",
+      commitMessageTopic: "{{depName}}",
     },
   ],
 }
