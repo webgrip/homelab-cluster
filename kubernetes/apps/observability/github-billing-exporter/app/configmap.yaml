@@ -122,9 +122,17 @@ data:
         for (product, sku), mtd in groups.items():
             days = daily_by_group.get((product, sku), {})
             values = list(days.values())
-            daily_avg = sum(values) / len(values) if values else mtd / max(now.day, 1)
-            max_daily = max(values) if values else daily_avg
-            min_daily = min(values) if values else 0
+            # Some GitHub billing accounts return month-bucketed rows from the
+            # "daily" endpoint. Treat fewer than three current-month buckets as
+            # insufficient daily history and fall back to MTD pace.
+            if len(values) >= 3:
+                daily_avg = sum(values) / len(values)
+                max_daily = max(values)
+                min_daily = min(values)
+            else:
+                daily_avg = mtd / max(now.day, 1)
+                max_daily = daily_avg * 1.5
+                min_daily = 0
             scenarios = {
                 "best": mtd + min_daily * remaining,
                 "likely": mtd + daily_avg * remaining,
