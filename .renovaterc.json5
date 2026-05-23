@@ -5,6 +5,8 @@
   // custom extraction rules live in the in-cluster Renovate ConfigMap.
   extends: [
     "config:recommended",
+    "abandonments:recommended",
+    "mergeConfidence:all-badges",
     "docker:enableMajor",
     "helpers:pinGitHubActionDigests",
     ":automergeBranch",
@@ -38,6 +40,7 @@
     "{{#if isMajor}}⚠️ Major update: review upstream migration notes, chart values, and rollout impact before merging.{{/if}}",
     "{{#if isVulnerabilityAlert}}Security update: prioritize review and verify the vulnerable component is actually deployed.{{/if}}",
     "{{#if isGroup}}Grouped GitOps PR: confirm the group is operationally coherent before enabling automerge.{{/if}}",
+    "Merge Confidence badges are included where Renovate supports them; low/neutral confidence means this update deserves a manual impact check before merge.",
   ],
 
   packageRules: [
@@ -117,8 +120,9 @@
       fetchChangeLogs: "off",
     },
     {
-      description: "Gate minor updates for cluster-critical namespaces",
+      description: "Gate minor updates for cluster-critical platform files",
       matchFileNames: [
+        "bootstrap/**",
         "kubernetes/apps/cert-manager/**",
         "kubernetes/apps/cnpg-dr/**",
         "kubernetes/apps/cnpg-system/**",
