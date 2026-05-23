@@ -19,8 +19,8 @@ jobs:
     runs-on: arc-runner-set
     permissions:
       contents: read
-      pull-requests: write
-      models: read
+      issues: write
+      pull-requests: read
     steps:
       - name: Validate PR
         id: pr
@@ -53,9 +53,15 @@ jobs:
             }
 
             core.setOutput('number', String(pr.number));
+            core.setOutput('title', pr.title);
+            core.setOutput('author', pr.user.login);
+            core.setOutput('base_ref', pr.base.ref);
 
       - uses: webgrip/.github/actions/renovate-review@main
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          agent-token: ${{ secrets.COPILOT_AGENT_TOKEN }}
+          base-ref: ${{ steps.pr.outputs.base_ref }}
           pr-number: ${{ steps.pr.outputs.number }}
+          pr-title: ${{ steps.pr.outputs.title }}
+          pr-author: ${{ steps.pr.outputs.author }}
           repository: ${{ github.repository }}
