@@ -1,0 +1,82 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+# Triggered when the renovate-reviewer Copilot agent closes the tracking issue.
+# Reads the agent's review comment and posts it to the original Renovate PR.
+name: Renovate Review — Publish to PR
+
+on:
+  issues:
+    types: [closed]
+
+jobs:
+  publish:
+    # Only run for tracking issues created by the renovate-review action
+    if: startsWith(github.event.issue.title, 'Renovate agent review for #')
+    runs-on: arc-runner-set
+
+    permissions:
+      issues: read
+      pull-requests: write
+
+    steps:
+      - name: Relay agent review to Renovate PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+
+            // Extract PR number from the marker in the issue body
+            const markerMatch = issue.body && issue.body.match(/renovate-agent-review:[^#]+#(\d+)/);
+            if (!markerMatch) {
+              console.log('No PR marker found in issue body — skipping.');
+              return;
+            }
+            const prNumber = parseInt(markerMatch[1], 10);
+
+            // Find the agent's review comment (last comment by Copilot)
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              per_page: 100,
+            });
+
+            const agentLogins = new Set(['Copilot', 'copilot-swe-agent[bot]']);
+            const reviewComment = comments
+              .filter(c => agentLogins.has(c.user.login))
+              .pop();
+
+            if (!reviewComment) {
+              console.log('No review comment from Copilot found on issue — skipping.');
+              return;
+            }
+
+            const sentinel = '<!-- renovate-ai-review -->';
+            const body = `${sentinel}\n${reviewComment.body}`;
+
+            // Check for an existing sentinel comment on the PR
+            const { data: prComments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              per_page: 100,
+            });
+
+            const existing = prComments.find(c => c.body.startsWith(sentinel));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+              console.log(`Updated review comment on PR #${prNumber}`);
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body,
+              });
+              console.log(`Posted review comment on PR #${prNumber}`);
+            }
