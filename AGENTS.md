@@ -2,6 +2,21 @@
 
 This repo is GitOps-managed (Flux + HelmRelease + Kustomize) and uses SOPS for secrets.
 
+## Tooling / execution context
+
+Use the repo's `.mise.toml` for operational commands. In practice, prefer `mise exec -- <command>` (or equivalent `mise x -- <command>`) for cluster tooling so the pinned versions and required environment variables are loaded automatically.
+
+This matters especially for:
+
+- `kubectl` (uses repo `KUBECONFIG`)
+- `flux`
+- `talosctl` (uses repo `TALOSCONFIG`)
+- `helm`, `jq`, `cilium`, and related cluster tooling
+
+Do not assume these tools are available or correctly configured outside `mise`, even if a system binary exists on `PATH`.
+
+When embedding shell scripts in Kubernetes manifests that are reconciled by Flux/Kustomize, escape shell variable syntax as `$${...}` so GitOps variable substitution does not eat runtime shell expansions.
+
 ## How to work in this repo (broad strokes)
 
 When you (the agent) are asked to make changes here, the intent is usually:
