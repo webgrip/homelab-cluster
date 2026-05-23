@@ -11,7 +11,7 @@ name: Renovate Review — Relay from Copilot session
 
 on:
   workflow_run:
-    workflows: ["Copilot"]
+    workflows: ["Copilot cloud agent"]   # actual workflow name (not just "Copilot")
     types: [completed]
 
 jobs:
@@ -32,8 +32,8 @@ jobs:
             const run = context.payload.workflow_run;
             const headBranch = run.head_branch || '';
 
-            // Only process branches named like: copilot/review-dependency-update-131
-            const prMatch = headBranch.match(/copilot\/review-dependency-update-(\d+)$/);
+            // Branch pattern observed: copilot/renovate-review-pr-131
+            const prMatch = headBranch.match(/copilot\/renovate-review-pr-(\d+)$/);
             if (!prMatch) {
               console.log(`Branch "${headBranch}" is not a renovate-review branch — skipping.`);
               return;
@@ -50,10 +50,8 @@ jobs:
               per_page: 10,
             });
 
-            // The agent runs in a job whose name starts with "copilot" or "Copilot"
-            const agentJob = jobsData.jobs.find(j =>
-              /copilot/i.test(j.name)
-            );
+            // The agent runs in a job called "copilot" (any case)
+            const agentJob = jobsData.jobs.find(j => /copilot/i.test(j.name));
             if (!agentJob) {
               console.log('No Copilot agent job found in run — skipping.');
               return;
@@ -61,7 +59,6 @@ jobs:
             console.log(`Agent job: "${agentJob.name}" (id=${agentJob.id})`);
 
             // ── 2. Download the agent job logs ─────────────────────────────
-            // GitHub redirects to a zip/text file; octokit follows redirects.
             let logText = '';
             try {
               const logsResp = await github.request(
@@ -84,8 +81,7 @@ jobs:
             }
 
             // ── 3. Parse copilot-result ────────────────────────────────────
-            // Log line format: "2026-05-23T05:54:57.000Z <content>"
-            // Strip leading timestamps from each line.
+            // Log lines are prefixed with ISO timestamps; strip them.
             const lines = logText.split('\n').map(l =>
               l.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s?/, '')
             );
@@ -96,16 +92,16 @@ jobs:
               return;
             }
 
-            // End marker is "Start flushing callbacks" which appears right after the result
+            // End marker appears right after the result block
             const flushIdx = lines.findIndex((l, i) =>
               i > resultIdx && l.includes('Start flushing callbacks')
             );
             const resultLines = lines.slice(
               resultIdx,
-              flushIdx === -1 ? resultIdx + 200 : flushIdx
+              flushIdx === -1 ? resultIdx + 300 : flushIdx
             );
 
-            // First line: "copilot-result: <commit title>" — strip prefix, use as heading
+            // First line: "copilot-result: <summary title>"
             const title = resultLines[0].replace(/^copilot-result:\s*/, '').trim();
             const body = resultLines.slice(1).join('\n').trim();
             const sentinel = '<!-- renovate-ai-review -->';
