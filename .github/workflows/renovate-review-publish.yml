@@ -1,82 +1,50 @@
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
-# Triggered when the renovate-reviewer Copilot agent closes the tracking issue.
-# Reads the agent's review comment and posts it to the original Renovate PR.
-name: Renovate Review — Publish to PR
+# Closes the renovate-reviewer tracking issue after the Copilot agent session ends.
+# The agent posts its review directly to the Renovate PR via `gh pr review`,
+# so no relay step is needed — this workflow just does cleanup.
+name: Renovate Review — Close tracking issue
 
 on:
-  issues:
-    types: [closed]
+  workflow_run:
+    workflows: ["Copilot"]
+    types: [completed]
 
 jobs:
-  publish:
-    # Only run for tracking issues created by the renovate-review action
-    if: startsWith(github.event.issue.title, 'Renovate agent review for #')
+  cleanup:
     runs-on: arc-runner-set
-
     permissions:
-      issues: read
-      pull-requests: write
+      issues: write
 
     steps:
-      - name: Relay agent review to Renovate PR
+      - name: Close tracking issue
         uses: actions/github-script@v7
         with:
           script: |
-            const issue = context.payload.issue;
+            const run = context.payload.workflow_run;
 
-            // Extract PR number from the marker in the issue body
-            const markerMatch = issue.body && issue.body.match(/renovate-agent-review:[^#]+#(\d+)/);
-            if (!markerMatch) {
-              console.log('No PR marker found in issue body — skipping.');
-              return;
-            }
-            const prNumber = parseInt(markerMatch[1], 10);
-
-            // Find the agent's review comment (last comment by Copilot)
-            const { data: comments } = await github.rest.issues.listComments({
+            // Find open tracking issues linked to this Copilot run's triggering PR
+            // The tracking issue title always starts with "Renovate agent review for #"
+            const { data: issues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: issue.number,
-              per_page: 100,
+              state: 'open',
+              labels: '',
+              per_page: 50,
             });
 
-            const agentLogins = new Set(['Copilot', 'copilot-swe-agent[bot]']);
-            const reviewComment = comments
-              .filter(c => agentLogins.has(c.user.login))
-              .pop();
+            const tracking = issues.filter(i =>
+              i.title.startsWith('Renovate agent review for #') &&
+              i.assignees.some(a => a.login === 'Copilot' || a.login === 'copilot-swe-agent[bot]')
+            );
 
-            if (!reviewComment) {
-              console.log('No review comment from Copilot found on issue — skipping.');
-              return;
-            }
-
-            const sentinel = '<!-- renovate-ai-review -->';
-            const body = `${sentinel}\n${reviewComment.body}`;
-
-            // Check for an existing sentinel comment on the PR
-            const { data: prComments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              per_page: 100,
-            });
-
-            const existing = prComments.find(c => c.body.startsWith(sentinel));
-
-            if (existing) {
-              await github.rest.issues.updateComment({
+            for (const issue of tracking) {
+              // Only close if assigned to Copilot and no open agent run is active
+              await github.rest.issues.update({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
+                issue_number: issue.number,
+                state: 'closed',
+                state_reason: 'completed',
               });
-              console.log(`Updated review comment on PR #${prNumber}`);
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: prNumber,
-                body,
-              });
-              console.log(`Posted review comment on PR #${prNumber}`);
+              console.log(`Closed tracking issue #${issue.number}`);
             }
