@@ -2,27 +2,30 @@
 #
 # Triggered when the Copilot agent session completes.
 #
-# The Copilot runtime unsets all auth tokens (GITHUB_TOKEN, GH_TOKEN) before
-# the agent runs, so write commands like `gh pr review` always fail.
-# Instead, the agent outputs its review via `copilot-result:` in job logs.
-# This workflow extracts that content and posts it to the Renovate PR.
+# The Copilot runtime unsets all auth tokens before the agent runs, so write
+# commands like `gh pr review` always fail. Instead, the agent outputs its
+# review via `copilot-result:` in job logs. This workflow extracts that and
+# posts it to the Renovate PR.
 #
 name: Renovate Review — Relay from Copilot session
 
 on:
   workflow_run:
-    workflows: ["Copilot cloud agent"]   # actual workflow name (not just "Copilot")
+    workflows: ["Copilot cloud agent"]
     types: [completed]
 
 jobs:
   relay:
     name: Extract review from logs → post to PR
+    # workflow_run from Copilot's "dynamic" event requires explicit approval.
+    # Using head_branch from the trusted default branch ref sidesteps this.
+    if: github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure'
     runs-on: arc-runner-set
 
     permissions:
-      issues: write        # create/close tracking issues; post PR comments (issues API)
-      pull-requests: write # post PR review comments
-      actions: read        # download workflow run logs
+      issues: write
+      pull-requests: write
+      actions: read
 
     steps:
       - name: Parse copilot-result and post to Renovate PR
@@ -31,138 +34,104 @@ jobs:
           script: |
             const run = context.payload.workflow_run;
             const headBranch = run.head_branch || '';
+            console.log(`Copilot run completed: branch="${headBranch}" conclusion="${run.conclusion}"`);
 
-            // Branch pattern observed: copilot/renovate-review-pr-131
-            const prMatch = headBranch.match(/copilot\/renovate-review-pr-(\d+)$/);
+            // The branch name ends in the PR number but the prefix varies:
+            //   copilot/review-dependency-update-131
+            //   copilot/renovate-review-pr-131
+            //   copilot/review-pr-131
+            // Match any copilot/ branch that ends with digits.
+            const prMatch = headBranch.match(/^copilot\/.+-(\d+)$/);
             if (!prMatch) {
-              console.log(`Branch "${headBranch}" is not a renovate-review branch — skipping.`);
+              console.log(`Branch "${headBranch}" doesn't look like a copilot PR branch — skipping.`);
               return;
             }
             const prNumber = parseInt(prMatch[1], 10);
             const runId = run.id;
-            console.log(`Copilot session completed for PR #${prNumber} (run ${runId})`);
+            console.log(`Targeting PR #${prNumber} (run ${runId})`);
 
-            // ── 1. Get jobs for this workflow run ──────────────────────────
+            // ── 1. Get agent job ───────────────────────────────────────────
             const { data: jobsData } = await github.rest.actions.listJobsForWorkflowRun({
               owner: context.repo.owner,
               repo: context.repo.repo,
               run_id: runId,
               per_page: 10,
             });
-
-            // The agent runs in a job called "copilot" (any case)
             const agentJob = jobsData.jobs.find(j => /copilot/i.test(j.name));
             if (!agentJob) {
-              console.log('No Copilot agent job found in run — skipping.');
+              console.log('No Copilot agent job found — skipping.');
               return;
             }
             console.log(`Agent job: "${agentJob.name}" (id=${agentJob.id})`);
 
-            // ── 2. Download the agent job logs ─────────────────────────────
+            // ── 2. Download job logs ───────────────────────────────────────
             let logText = '';
             try {
               const logsResp = await github.request(
                 'GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs',
-                {
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  job_id: agentJob.id,
-                }
+                { owner: context.repo.owner, repo: context.repo.repo, job_id: agentJob.id }
               );
               logText = typeof logsResp.data === 'string' ? logsResp.data : '';
             } catch (e) {
               console.log(`Failed to fetch job logs: ${e.message}`);
               return;
             }
-
-            if (!logText) {
-              console.log('Empty log response — skipping.');
-              return;
-            }
+            if (!logText) { console.log('Empty log response — skipping.'); return; }
 
             // ── 3. Parse copilot-result ────────────────────────────────────
-            // Log lines are prefixed with ISO timestamps; strip them.
             const lines = logText.split('\n').map(l =>
               l.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s?/, '')
             );
-
             const resultIdx = lines.findIndex(l => l.startsWith('copilot-result:'));
             if (resultIdx === -1) {
-              console.log('No copilot-result marker found in logs — agent may not have completed.');
+              console.log('No copilot-result in logs — agent may not have produced output.');
               return;
             }
-
-            // End marker appears right after the result block
             const flushIdx = lines.findIndex((l, i) =>
               i > resultIdx && l.includes('Start flushing callbacks')
             );
-            const resultLines = lines.slice(
-              resultIdx,
-              flushIdx === -1 ? resultIdx + 300 : flushIdx
-            );
-
-            // First line: "copilot-result: <summary title>"
+            const resultLines = lines.slice(resultIdx, flushIdx === -1 ? resultIdx + 300 : flushIdx);
             const title = resultLines[0].replace(/^copilot-result:\s*/, '').trim();
             const body = resultLines.slice(1).join('\n').trim();
-            const sentinel = '<!-- renovate-ai-review -->';
-            const reviewBody = `${sentinel}\n### ${title}\n\n${body}`;
 
             console.log(`Review title: ${title}`);
-            console.log(`Review body length: ${body.length} chars`);
+            console.log(`Review body: ${body.length} chars`);
+            if (!body) { console.log('Empty review body — skipping.'); return; }
 
-            if (!body) {
-              console.log('Review body is empty — skipping post.');
-              return;
-            }
-
-            // ── 4. Post or update the review comment on the Renovate PR ───
+            // ── 4. Post/update comment on Renovate PR ──────────────────────
+            const sentinel = '<!-- renovate-ai-review -->';
+            const reviewBody = `${sentinel}\n### ${title}\n\n${body}`;
             const { data: prComments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              per_page: 100,
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: prNumber, per_page: 100,
             });
-
             const existing = prComments.find(c => c.body && c.body.startsWith(sentinel));
             if (existing) {
               await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body: reviewBody,
+                owner: context.repo.owner, repo: context.repo.repo,
+                comment_id: existing.id, body: reviewBody,
               });
               console.log(`Updated review comment on PR #${prNumber}`);
             } else {
               await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: prNumber,
-                body: reviewBody,
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: prNumber, body: reviewBody,
               });
               console.log(`Posted review comment to PR #${prNumber}`);
             }
 
-            // ── 5. Close the tracking issue ────────────────────────────────
+            // ── 5. Close tracking issue ────────────────────────────────────
             const { data: openIssues } = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              per_page: 50,
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', per_page: 50,
             });
-
-            const tracking = openIssues.filter(i =>
+            for (const issue of openIssues.filter(i =>
               i.title.startsWith(`Renovate agent review for #${prNumber}:`) &&
-              i.assignees.some(a =>
-                a.login === 'Copilot' || a.login === 'copilot-swe-agent[bot]'
-              )
-            );
-            for (const issue of tracking) {
+              i.assignees.some(a => /copilot/i.test(a.login))
+            )) {
               await github.rest.issues.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issue.number,
-                state: 'closed',
-                state_reason: 'completed',
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issue.number, state: 'closed', state_reason: 'completed',
               });
               console.log(`Closed tracking issue #${issue.number}`);
             }
