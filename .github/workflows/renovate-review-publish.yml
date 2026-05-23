@@ -22,9 +22,9 @@ jobs:
     runs-on: arc-runner-set
 
     permissions:
-      contents: write      # delete the review file after posting
+      contents: write      # delete copilot/** branches after posting
       issues: write        # post PR comment + close tracking issue
-      pull-requests: write
+      pull-requests: write # close Copilot artifact PRs
 
     steps:
       - name: Find and post pending reviews
@@ -98,20 +98,37 @@ jobs:
                 console.log(`Posted review comment to PR #${prNumber}`);
               }
 
-              // Delete the review file so we don't repost it
-              const { data: fileData } = await github.rest.repos.getContent({
-                owner: context.repo.owner, repo: context.repo.repo,
-                path: '.copilot-review/result.md',
-                ref: branch.name,
+              // Close the Copilot artifact PR, if GitHub created one for this branch.
+              const { data: artifactPrs } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                head: `${context.repo.owner}:${branch.name}`,
+                per_page: 10,
               });
-              await github.rest.repos.deleteFile({
-                owner: context.repo.owner, repo: context.repo.repo,
-                path: '.copilot-review/result.md',
-                message: 'chore: remove copilot review artifact',
-                sha: fileData.sha,
-                branch: branch.name,
+              for (const artifactPr of artifactPrs.filter(pr => pr.number !== prNumber)) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: artifactPr.number,
+                  body: `Relayed the Renovate review to #${prNumber}; closing this Copilot artifact PR.`,
+                });
+                await github.rest.pulls.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: artifactPr.number,
+                  state: 'closed',
+                });
+                console.log(`Closed Copilot artifact PR #${artifactPr.number}`);
+              }
+
+              // Delete the copilot/** branch so the artifact is gone and cannot be reprocessed.
+              await github.rest.git.deleteRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `heads/${branch.name}`,
               });
-              console.log(`Deleted review file from ${branch.name}`);
+              console.log(`Deleted Copilot artifact branch ${branch.name}`);
 
               // Close tracking issue if one exists
               const { data: openIssues } = await github.rest.issues.listForRepo({
