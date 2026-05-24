@@ -32,6 +32,23 @@ This is the detailed procedure for upgrading Talos across the cluster, one node 
 - etcd members via a single node:
   - `mise exec -- talosctl etcd members --endpoints <any-node-ip> --nodes <same-node-ip>`
 
+### Talos 1.13 preflight (v1.12 -> v1.13)
+
+Run these checks before upgrading to `talosVersion: v1.13.x`:
+
+- Confirm no legacy `.machine.env` usage (migrate to `EnvironmentConfig` if found):
+  - `grep -RniE "machine\\.env|EnvironmentConfig" talos/`
+- If GPU workloads are used, migrate from NVIDIA device plugin/runtime class to GPU Operator (CDI-based) before upgrading:
+  - `mise exec -- kubectl get ds -A | grep -i nvidia`
+  - `mise exec -- kubectl get runtimeclass`
+- Validate Talos API automation and upgrade tasks still use standard `talosctl upgrade`/`talhelper` flows (LifecycleService-backed in 1.13):
+  - `grep -RniE "upgrade-node|talosctl upgrade|talhelper gencommand upgrade" .taskfiles talos docs`
+
+Recommended follow-up improvements after upgrade:
+
+- When custom Talos component env vars are needed, manage them explicitly via `EnvironmentConfig` documents.
+- For future GPU enablement, prefer CDI-compatible deployment patterns (GPU Operator) over legacy device plugin-only setup.
+
 ## Upgrade one node
 
 - `mise exec -- task talos:upgrade-node IP=<node-ip>`
