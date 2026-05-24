@@ -8,7 +8,7 @@ Kubernetes is pinned in `talos/talenv.yaml`:
 
 - `kubernetesVersion: vX.Y.Z`
 
-If you want “latest patch in the current minor”, check Kubernetes patch releases and select the newest `1.34.x`.
+If you want “latest patch in the current minor”, check Kubernetes patch releases and select the newest patch in your currently supported minor (for example `1.36.x` on Talos `v1.13.x`).
 
 ## Update the pin
 
