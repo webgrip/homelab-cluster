@@ -17,6 +17,8 @@ These credentials are used by the token minter CronJob to mint a short-lived Git
 - **Optional keys for Docker Hub rate-limit avoidance:**
   - `RENOVATE_DOCKERHUB_USERNAME`
   - `RENOVATE_DOCKERHUB_TOKEN`
+- **Optional key for GitHub Enterprise:**
+  - `RENOVATE_GITHUB_API` (for example `https://ghe.example.com/api/v3`; defaults to `https://api.github.com`)
 
 Template: `secret.template.yaml`
 
