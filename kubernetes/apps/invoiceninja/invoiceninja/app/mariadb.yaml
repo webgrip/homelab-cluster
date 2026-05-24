@@ -54,9 +54,32 @@ spec:
                 secretKeyRef:
                   name: invoiceninja-secrets
                   key: MARIADB_PASSWORD
+            - name: MARIADB_AUTO_UPGRADE
+              value: "1"
+            - name: MARIADB_DISABLE_UPGRADE_BACKUP
+              value: "1"
           ports:
             - name: mysql
               containerPort: 3306
+          readinessProbe:
+            exec:
+              command:
+                - healthcheck.sh
+                - --connect
+                - --innodb_initialized
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command:
+                - healthcheck.sh
+                - --connect
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
           volumeMounts:
             - name: data
               mountPath: /var/lib/mysql
