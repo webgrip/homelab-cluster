@@ -31,10 +31,41 @@ spec:
     githubConfigSecret: gha-runner-scale-set-secrets
     minRunners: 2
     maxRunners: 10
+    scaleSetLabels:
+      - arc
+      - homelab
+      - dind
     runnerGroup: Default
     runnerScaleSetName: arc-runner-set
+    resourceMeta:
+      autoscalingListener:
+        labels:
+          app.kubernetes.io/component: listener
+      ephemeralRunnerSet:
+        labels:
+          app.kubernetes.io/component: ephemeral-runner-set
+    listenerMetrics:
+      gauges:
+        gha_assigned_jobs:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_running_jobs:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_registered_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_busy_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_min_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_max_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_desired_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_idle_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
     template:
       metadata:
+        labels:
+          app.kubernetes.io/component: runner
         annotations:
           prometheus.io/scrape: "true"
           prometheus.io/path: "/metrics"
@@ -101,6 +132,8 @@ spec:
             emptyDir: {}
     listenerTemplate:
       metadata:
+        labels:
+          app.kubernetes.io/component: listener
         annotations:
           prometheus.io/scrape: "true"
           prometheus.io/path: "/metrics"
