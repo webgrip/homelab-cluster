@@ -29,7 +29,11 @@ spec:
                     name: renovate-secrets
               env:
                 - name: GITHUB_API
-                  value: https://api.github.com
+                  valueFrom:
+                    secretKeyRef:
+                      name: renovate-secrets
+                      key: RENOVATE_GITHUB_API
+                      optional: true
               command:
                 - /bin/sh
                 - -ceu
@@ -46,7 +50,7 @@ spec:
                     "$RENOVATE_GITHUB_APP_ID" \
                     "$RENOVATE_GITHUB_APP_INSTALLATION_ID" \
                     /secrets/private-key.txt \
-                    "$GITHUB_API" \
+                    "${GITHUB_API:-https://api.github.com}" \
                     > /work/token
 
                   if [ ! -s /work/token ]; then
@@ -110,8 +114,6 @@ spec:
               image: docker.io/alpine/k8s:1.36.1@sha256:692239d739589247c4a791205ed9619c28ae85a21286e19a6211c04a62c56668
               imagePullPolicy: IfNotPresent
               env:
-                - name: GITHUB_API
-                  value: https://api.github.com
                 - name: RUNTIME_SECRET_NAME
                   value: renovate-runtime-token
                 - name: RUNTIME_SECRET_KEY
