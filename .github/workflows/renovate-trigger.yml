@@ -1,0 +1,235 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+---
+name: Renovate Trigger
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: renovate-trigger
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  trigger:
+    name: Trigger Renovate
+    runs-on: arc-runner-set
+    steps:
+      - name: Trigger all Renovate projects
+        env:
+          RENOVATE_NAMESPACE: renovate
+          RENOVATE_JOB: webgrip-gitops
+          RENOVATE_WEBHOOK_URL: https://renovate-webhook.webgrip.dev/webhook/v1/schedule
+        run: |
+          set -euo pipefail
+
+          python3 <<'PY'
+          import base64
+          import json
+          import os
+          import ssl
+          import sys
+          import time
+          import urllib.parse
+          import urllib.request
+          from urllib.error import HTTPError
+
+          namespace = os.environ["RENOVATE_NAMESPACE"]
+          renovate_job = os.environ["RENOVATE_JOB"]
+          webhook_url = os.environ["RENOVATE_WEBHOOK_URL"]
+
+          api_host = os.environ["KUBERNETES_SERVICE_HOST"]
+          api_port = os.environ.get("KUBERNETES_SERVICE_PORT_HTTPS", "443")
+          api_server = f"https://{api_host}:{api_port}"
+
+          token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+          ca_path = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+
+          with open(token_path, encoding="utf-8") as token_file:
+              service_account_token = token_file.read().strip()
+
+          ssl_context = ssl.create_default_context(cafile=ca_path)
+
+          def api_request(path, method="GET"):
+              request = urllib.request.Request(
+                  f"{api_server}{path}",
+                  method=method,
+                  headers={
+                      "Authorization": f"Bearer {service_account_token}",
+                      "Accept": "application/json",
+                  },
+              )
+              with urllib.request.urlopen(request, context=ssl_context) as response:
+                  body = response.read()
+                  if not body:
+                      return None
+                  return json.loads(body)
+
+          def delete_completed_jobs():
+              jobs = api_request(f"/apis/batch/v1/namespaces/{namespace}/jobs")
+              jobs_to_delete = []
+
+              for job in jobs.get("items", []):
+                  name = job["metadata"]["name"]
+                  status = job.get("status", {})
+                  active = int(status.get("active", 0) or 0)
+                  succeeded = int(status.get("succeeded", 0) or 0)
+                  failed = int(status.get("failed", 0) or 0)
+
+                  if (
+                      name.startswith(f"{renovate_job}-")
+                      and active == 0
+                      and (succeeded > 0 or failed > 0)
+                  ):
+                      jobs_to_delete.append(name)
+
+              for name in jobs_to_delete:
+                  encoded_name = urllib.parse.quote(name, safe="")
+                  api_request(
+                      f"/apis/batch/v1/namespaces/{namespace}/jobs/{encoded_name}",
+                      method="DELETE",
+                  )
+
+              if jobs_to_delete:
+                  print(f"Deleted {len(jobs_to_delete)} completed jobs.")
+              else:
+                  print("No completed jobs to clean up.")
+
+              return len(jobs_to_delete)
+
+          def get_webhook_token():
+              secret = api_request(
+                  f"/api/v1/namespaces/{namespace}/secrets/renovate-webhook-auth"
+              )
+              encoded_token = secret.get("data", {}).get("token")
+              if not encoded_token:
+                  raise RuntimeError("Secret renovate-webhook-auth is missing data.token")
+              return base64.b64decode(encoded_token).decode("utf-8").strip()
+
+          def get_renovate_job():
+              return api_request(
+                  "/apis/renovate-operator.mogenius.com/v1alpha1"
+                  f"/namespaces/{namespace}/renovatejobs/{renovate_job}"
+              )
+
+          def get_projects():
+              job = get_renovate_job()
+              projects = [
+                  project["name"]
+                  for project in job.get("status", {}).get("projects", [])
+                  if project.get("name")
+              ]
+              if not projects:
+                  raise RuntimeError(
+                      f"No projects discovered in RenovateJob {namespace}/{renovate_job}"
+                  )
+              return projects
+
+          def post_webhook(project, webhook_token):
+              query = urllib.parse.urlencode(
+                  {
+                      "job": renovate_job,
+                      "namespace": namespace,
+                      "project": project,
+                  }
+              )
+              request = urllib.request.Request(
+                  f"{webhook_url}?{query}",
+                  data=b"",
+                  method="POST",
+                  headers={"Authorization": f"Bearer {webhook_token}"},
+              )
+
+              try:
+                  with urllib.request.urlopen(request) as response:
+                      return response.status
+              except HTTPError as error:
+                  return error.code
+
+          deleted_jobs = delete_completed_jobs()
+
+          webhook_token = get_webhook_token()
+          projects = get_projects()
+
+          print(f"Triggering {len(projects)} projects...")
+          failed_projects = []
+          webhook_results = []
+
+          for project in projects:
+              status_code = post_webhook(project, webhook_token)
+              print(f"{project} -> {status_code}")
+              webhook_results.append({"project": project, "status_code": status_code})
+              if status_code < 200 or status_code >= 300:
+                  failed_projects.append({"project": project, "status_code": status_code})
+
+          print("Waiting for scheduled status confirmation...")
+          time.sleep(5)
+
+          refreshed_job = get_renovate_job()
+          final_statuses = [
+              {"name": project.get("name", "<unknown>"), "status": project.get("status", "<unknown>")}
+              for project in refreshed_job.get("status", {}).get("projects", [])
+          ]
+          schedule = refreshed_job.get("spec", {}).get("schedule", "<unknown>")
+
+          # Write summary data to JSON for the next step
+          summary = {
+              "deleted_jobs": deleted_jobs,
+              "webhook_results": webhook_results,
+              "final_statuses": final_statuses,
+              "schedule": schedule,
+              "failed_projects": failed_projects,
+          }
+          with open("renovate-summary.json", "w") as f:
+              json.dump(summary, f)
+
+          if failed_projects:
+              print("One or more webhook requests failed:", file=sys.stderr)
+              for item in failed_projects:
+                  print(f"{item['project']} -> {item['status_code']}", file=sys.stderr)
+              sys.exit(1)
+          PY
+
+      - name: Renovate Trigger Summary
+        if: always()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const summaryPath = 'renovate-summary.json';
+            let summary = {};
+            if (fs.existsSync(summaryPath)) {
+              summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
+            }
+            function detailsBlock(title, bodyMarkdown) {
+              return `\n<details><summary><strong>${title}</strong></summary>\n\n${bodyMarkdown}\n</details>\n`;
+            }
+            function fenced(lang, content) {
+              return '```' + lang + '\n' + content.replace(/```/g,'`\u200b``') + '\n```';
+            }
+            core.summary
+              .addHeading('Renovate Trigger Summary', 2)
+              .addRaw(`**Schedule:** ${summary.schedule || '<unknown>'}`)
+              .addEOL().addSeparator();
+            if (summary.webhook_results && summary.webhook_results.length) {
+              core.summary.addHeading('Webhook Results', 3)
+                .addTable([
+                  ['Project', 'HTTP Status'],
+                  ...summary.webhook_results.map(r => [r.project, String(r.status_code)])
+                ]);
+            }
+            if (summary.final_statuses && summary.final_statuses.length) {
+              core.summary.addHeading('Final Project Statuses', 3)
+                .addTable([
+                  ['Project', 'Status'],
+                  ...summary.final_statuses.map(s => [s.name, s.status])
+                ]);
+            }
+            core.summary.addRaw(`Deleted completed jobs: **${summary.deleted_jobs ?? 0}**`).addEOL();
+            if (summary.failed_projects && summary.failed_projects.length) {
+              core.summary.addRaw(detailsBlock('Failed Projects',
+                summary.failed_projects.map(f => `- ${f.project} (HTTP ${f.status_code})`).join('\n')
+              ));
+            }
+            await core.summary.write();
