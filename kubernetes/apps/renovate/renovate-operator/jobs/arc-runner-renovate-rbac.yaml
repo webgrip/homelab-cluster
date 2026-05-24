@@ -1,0 +1,32 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: renovate-trigger
+  namespace: renovate
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["renovate-webhook-auth"]
+    verbs: ["get"]
+  - apiGroups: ["renovate-operator.mogenius.com"]
+    resources: ["renovatejobs"]
+    resourceNames: ["webgrip-gitops"]
+    verbs: ["get"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: renovate-trigger
+  namespace: renovate
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: renovate-trigger
+subjects:
+  - kind: ServiceAccount
+    name: arc-runner-set
+    namespace: arc-systems

@@ -86,10 +86,14 @@ jobs:
 
               for name in jobs_to_delete:
                   encoded_name = urllib.parse.quote(name, safe="")
-                  api_request(
-                      f"/apis/batch/v1/namespaces/{namespace}/jobs/{encoded_name}",
-                      method="DELETE",
-                  )
+                  try:
+                      api_request(
+                          f"/apis/batch/v1/namespaces/{namespace}/jobs/{encoded_name}",
+                          method="DELETE",
+                      )
+                  except HTTPError as error:
+                      if error.code != 404:
+                          raise
 
               if jobs_to_delete:
                   print(f"Deleted {len(jobs_to_delete)} completed jobs.")
@@ -147,89 +151,36 @@ jobs:
               except HTTPError as error:
                   return error.code
 
-          deleted_jobs = delete_completed_jobs()
+          delete_completed_jobs()
 
           webhook_token = get_webhook_token()
           projects = get_projects()
 
           print(f"Triggering {len(projects)} projects...")
           failed_projects = []
-          webhook_results = []
 
           for project in projects:
               status_code = post_webhook(project, webhook_token)
               print(f"{project} -> {status_code}")
-              webhook_results.append({"project": project, "status_code": status_code})
               if status_code < 200 or status_code >= 300:
-                  failed_projects.append({"project": project, "status_code": status_code})
+                  failed_projects.append((project, status_code))
 
           print("Waiting for scheduled status confirmation...")
           time.sleep(5)
 
           refreshed_job = get_renovate_job()
-          final_statuses = [
-              {"name": project.get("name", "<unknown>"), "status": project.get("status", "<unknown>")}
-              for project in refreshed_job.get("status", {}).get("projects", [])
-          ]
-          schedule = refreshed_job.get("spec", {}).get("schedule", "<unknown>")
+          print("Final project statuses:")
+          for project in refreshed_job.get("status", {}).get("projects", []):
+              name = project.get("name", "<unknown>")
+              status = project.get("status", "<unknown>")
+              print(f"{name}\t{status}")
 
-          # Write summary data to JSON for the next step
-          summary = {
-              "deleted_jobs": deleted_jobs,
-              "webhook_results": webhook_results,
-              "final_statuses": final_statuses,
-              "schedule": schedule,
-              "failed_projects": failed_projects,
-          }
-          with open("renovate-summary.json", "w") as f:
-              json.dump(summary, f)
+          schedule = refreshed_job.get("spec", {}).get("schedule", "<unknown>")
+          print(f"Configured cron schedule: {schedule}")
 
           if failed_projects:
               print("One or more webhook requests failed:", file=sys.stderr)
-              for item in failed_projects:
-                  print(f"{item['project']} -> {item['status_code']}", file=sys.stderr)
+              for project, status_code in failed_projects:
+                  print(f"{project} -> {status_code}", file=sys.stderr)
               sys.exit(1)
           PY
-
-      - name: Renovate Trigger Summary
-        if: always()
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const fs = require('fs');
-            const summaryPath = 'renovate-summary.json';
-            let summary = {};
-            if (fs.existsSync(summaryPath)) {
-              summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
-            }
-            function detailsBlock(title, bodyMarkdown) {
-              return `\n<details><summary><strong>${title}</strong></summary>\n\n${bodyMarkdown}\n</details>\n`;
-            }
-            function fenced(lang, content) {
-              return '```' + lang + '\n' + content.replace(/```/g,'`\u200b``') + '\n```';
-            }
-            core.summary
-              .addHeading('Renovate Trigger Summary', 2)
-              .addRaw(`**Schedule:** ${summary.schedule || '<unknown>'}`)
-              .addEOL().addSeparator();
-            if (summary.webhook_results && summary.webhook_results.length) {
-              core.summary.addHeading('Webhook Results', 3)
-                .addTable([
-                  ['Project', 'HTTP Status'],
-                  ...summary.webhook_results.map(r => [r.project, String(r.status_code)])
-                ]);
-            }
-            if (summary.final_statuses && summary.final_statuses.length) {
-              core.summary.addHeading('Final Project Statuses', 3)
-                .addTable([
-                  ['Project', 'Status'],
-                  ...summary.final_statuses.map(s => [s.name, s.status])
-                ]);
-            }
-            core.summary.addRaw(`Deleted completed jobs: **${summary.deleted_jobs ?? 0}**`).addEOL();
-            if (summary.failed_projects && summary.failed_projects.length) {
-              core.summary.addRaw(detailsBlock('Failed Projects',
-                summary.failed_projects.map(f => `- ${f.project} (HTTP ${f.status_code})`).join('\n')
-              ));
-            }
-            await core.summary.write();
