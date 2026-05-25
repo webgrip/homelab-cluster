@@ -1,0 +1,26 @@
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: grafana-db
+  namespace: observability
+spec:
+  instances: 1
+  inheritedMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
+  storage:
+    size: 5Gi
+    storageClass: longhorn
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: grafana-db-store
+        serverName: grafana-db
+  bootstrap:
+    initdb:
+      database: grafana
+      owner: grafana
+      secret:
+        name: grafana-db-secret
