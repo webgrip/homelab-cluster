@@ -23,3 +23,13 @@ Use this when certificates are expiring soon, aren’t being issued, or controll
 - Missing/incorrect DNS credentials.
 - DNS provider API rate limiting.
 - Clock skew or DNS propagation delays.
+
+## Runtime expectations
+
+- This cluster currently uses ACME DNS01 via Cloudflare (`clusterissuer.yaml`).
+- cert-manager pods are expected to run as UID/GID `65532` (controller, webhook, cainjector, startupapicheck) as pinned in Helm values.
+
+## If HTTP-01 via Gateway API is added later
+
+- Validate `HTTPRoute` annotations and resulting solver `parentRef` behavior during rollout.
+- Check `Order` / `Challenge` resources for duplicate or unexpected `parentRef` references.
