@@ -48,16 +48,15 @@ spec:
     # - GF_AUTH_GITHUB_CLIENT_ID
     # - GF_AUTH_GITHUB_CLIENT_SECRET
     envFromSecret: grafana-github-oauth
-    # Pull database password from the CNPG-generated app secret.
-    env:
-      GF_DATABASE_PASSWORD:
-        valueFrom:
-          secretKeyRef:
-            name: grafana-db-app
-            key: password
     # Optional SOPS-managed Secret for GitHub billing/usage API dashboards.
     # Expected key: token
     envValueFrom:
+      # Pull database password from the CNPG-generated app secret.
+      # Grafana reads GF_DATABASE_PASSWORD automatically for grafana.ini [database] password.
+      GF_DATABASE_PASSWORD:
+        secretKeyRef:
+          name: grafana-db-app
+          key: password
       GITHUB_API_TOKEN:
         secretKeyRef:
           name: grafana-github-api
@@ -73,7 +72,8 @@ spec:
         host: grafana-db-rw.observability.svc.cluster.local:5432
         name: grafana
         user: grafana
-        password: ${GF_DATABASE_PASSWORD}
+        # password is injected via GF_DATABASE_PASSWORD env var (envValueFrom above)
+        # to avoid triggering the chart's assertNoLeakedSecrets check.
         ssl_mode: require
 
       users:
