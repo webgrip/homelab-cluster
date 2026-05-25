@@ -1,0 +1,454 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-kyverno-violations
+  namespace: observability
+  annotations:
+    grafana_folder: Platform
+  labels:
+    grafana_dashboard: "1"
+data:
+  kyverno-violations.json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Kyverno / Policy Violations",
+      "uid": "kyverno-violations",
+      "timezone": "browser",
+      "tags": ["kyverno", "policy", "security", "compliance", "violations"],
+      "description": "Actionable view of Kyverno policy violations: what is failing, where, and why. Powered by Policy Reporter.",
+      "editable": false,
+      "graphTooltip": 1,
+      "refresh": "2m",
+      "time": {"from": "now-24h", "to": "now"},
+      "timepicker": {
+        "refresh_intervals": ["30s", "1m", "2m", "5m", "15m"],
+        "time_options": ["1h", "3h", "6h", "12h", "24h", "2d", "7d"]
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "pluginId": "prometheus",
+            "label": "Datasource",
+            "hide": 0,
+            "current": {}
+          },
+          {
+            "name": "namespace",
+            "type": "query",
+            "datasource": {"type": "prometheus", "uid": "${datasource}"},
+            "label": "Namespace",
+            "hide": 0,
+            "multi": true,
+            "includeAll": true,
+            "allValue": ".*",
+            "query": "label_values(policyreport_result, namespace)",
+            "refresh": 2,
+            "sort": 1,
+            "current": {}
+          },
+          {
+            "name": "policy",
+            "type": "query",
+            "datasource": {"type": "prometheus", "uid": "${datasource}"},
+            "label": "Policy",
+            "hide": 0,
+            "multi": true,
+            "includeAll": true,
+            "allValue": ".*",
+            "query": "label_values(policyreport_result, policy)",
+            "refresh": 2,
+            "sort": 1,
+            "current": {}
+          },
+          {
+            "name": "severity",
+            "type": "query",
+            "datasource": {"type": "prometheus", "uid": "${datasource}"},
+            "label": "Severity",
+            "hide": 0,
+            "multi": true,
+            "includeAll": true,
+            "allValue": ".*",
+            "query": "label_values(policyreport_result{status=\"fail\"}, severity)",
+            "refresh": 2,
+            "sort": 0,
+            "current": {}
+          }
+        ]
+      },
+      "annotations": {"list": []},
+      "panels": [
+
+        {
+          "id": 1,
+          "type": "row",
+          "title": "⚠ Compliance Overview",
+          "collapsed": false,
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}
+        },
+
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Active Violations",
+          "description": "Resources currently failing at least one policy (status=fail)",
+          "gridPos": {"h": 4, "w": 4, "x": 0, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 10},
+                  {"color": "red", "value": 50}
+                ]
+              },
+              "mappings": [],
+              "unit": "short"
+            }
+          },
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "auto", "graphMode": "none", "colorMode": "background"},
+          "targets": [{"expr": "sum(policyreport_result{status=\"fail\", namespace=~\"$namespace\", policy=~\"$policy\", severity=~\"$severity\"})", "legendFormat": "", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
+        },
+
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "High / Critical",
+          "description": "Fail results with severity=high or critical",
+          "gridPos": {"h": 4, "w": 4, "x": 4, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "orange", "value": 1},
+                  {"color": "red", "value": 5}
+                ]
+              },
+              "unit": "short"
+            }
+          },
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "auto", "graphMode": "none", "colorMode": "background"},
+          "targets": [{"expr": "sum(policyreport_result{status=\"fail\", severity=~\"high|critical\", namespace=~\"$namespace\", policy=~\"$policy\"})", "legendFormat": "", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
+        },
+
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Medium",
+          "description": "Fail results with severity=medium",
+          "gridPos": {"h": 4, "w": 4, "x": 8, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 5},
+                  {"color": "orange", "value": 20}
+                ]
+              },
+              "unit": "short"
+            }
+          },
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "auto", "graphMode": "none", "colorMode": "background"},
+          "targets": [{"expr": "sum(policyreport_result{status=\"fail\", severity=\"medium\", namespace=~\"$namespace\", policy=~\"$policy\"})", "legendFormat": "", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
+        },
+
+        {
+          "id": 5,
+          "type": "stat",
+          "title": "Warnings / Skipped",
+          "description": "Warn or skip results",
+          "gridPos": {"h": 4, "w": 4, "x": 12, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 10}
+                ]
+              },
+              "unit": "short"
+            }
+          },
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "auto", "graphMode": "none", "colorMode": "background"},
+          "targets": [{"expr": "sum(policyreport_result{status=~\"warn|skip\", namespace=~\"$namespace\", policy=~\"$policy\"})", "legendFormat": "", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
+        },
+
+        {
+          "id": 6,
+          "type": "stat",
+          "title": "Passing",
+          "description": "Resources passing all checked policies",
+          "gridPos": {"h": 4, "w": 4, "x": 16, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "fixed", "fixedColor": "green"},
+              "unit": "short"
+            }
+          },
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "auto", "graphMode": "none", "colorMode": "background"},
+          "targets": [{"expr": "sum(policyreport_result{status=\"pass\", namespace=~\"$namespace\", policy=~\"$policy\"})", "legendFormat": "", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
+        },
+
+        {
+          "id": 7,
+          "type": "gauge",
+          "title": "Compliance Score",
+          "description": "Percentage of results that pass (pass / (pass + fail + warn)). Higher is better.",
+          "gridPos": {"h": 4, "w": 4, "x": 20, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "red", "value": null},
+                  {"color": "orange", "value": 70},
+                  {"color": "yellow", "value": 85},
+                  {"color": "green", "value": 95}
+                ]
+              },
+              "unit": "percent",
+              "min": 0,
+              "max": 100
+            }
+          },
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "showThresholdLabels": false, "showThresholdMarkers": true},
+          "targets": [{"expr": "100 * sum(policyreport_result{status=\"pass\", namespace=~\"$namespace\"}) / (sum(policyreport_result{status=~\"pass|fail|warn\", namespace=~\"$namespace\"}) > 0)", "legendFormat": "", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
+        },
+
+        {
+          "id": 10,
+          "type": "row",
+          "title": "🎯 What Needs Attention",
+          "collapsed": false,
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5}
+        },
+
+        {
+          "id": 11,
+          "type": "table",
+          "title": "Violations by Policy & Rule",
+          "description": "Policies with the most failing resources. Click a policy to filter. Fix the top offenders first.",
+          "gridPos": {"h": 10, "w": 12, "x": 0, "y": 6},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {
+            "defaults": {"unit": "short"},
+            "overrides": [
+              {"matcher": {"id": "byName", "options": "Violations"}, "properties": [{"id": "custom.width", "value": 90}, {"id": "color", "mode": "thresholds"}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 5}, {"color": "red", "value": 20}]}}]},
+              {"matcher": {"id": "byName", "options": "Policy"}, "properties": [{"id": "custom.width", "value": 260}]},
+              {"matcher": {"id": "byName", "options": "Rule"}, "properties": [{"id": "custom.width", "value": 220}]},
+              {"matcher": {"id": "byName", "options": "Severity"}, "properties": [{"id": "custom.width", "value": 80}, {"id": "mappings", "value": [{"type": "value", "options": {"high": {"color": "red", "index": 0}, "critical": {"color": "dark-red", "index": 1}, "medium": {"color": "orange", "index": 2}, "low": {"color": "yellow", "index": 3}}}]}, {"id": "custom.displayMode", "value": "color-text"}]}
+            ]
+          },
+          "options": {"sortBy": [{"displayName": "Violations", "desc": true}], "footer": {"show": false}},
+          "transformations": [
+            {"id": "labelsToFields", "options": {"mode": "columns", "valueLabel": "Violations"}},
+            {"id": "organize", "options": {"renameByName": {"policy": "Policy", "rule": "Rule", "severity": "Severity", "Value #A": "Violations"}, "excludeByName": {"Time": true, "source": true, "category": true, "kind": true, "name": true, "namespace": true, "status": true}}}
+          ],
+          "targets": [{"expr": "sort_desc(sum by (policy, rule, severity) (policyreport_result{status=\"fail\", namespace=~\"$namespace\", policy=~\"$policy\", severity=~\"$severity\"}))", "legendFormat": "{{policy}} / {{rule}} / {{severity}}", "instant": true, "format": "table", "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
+        },
+
+        {
+          "id": 12,
+          "type": "table",
+          "title": "Violations by Namespace",
+          "description": "Namespaces with the most failing resources. Use this to prioritize remediation by team/app.",
+          "gridPos": {"h": 10, "w": 12, "x": 12, "y": 6},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {
+            "defaults": {"unit": "short"},
+            "overrides": [
+              {"matcher": {"id": "byName", "options": "Violations"}, "properties": [{"id": "custom.width", "value": 90}, {"id": "color", "mode": "thresholds"}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 5}, {"color": "orange", "value": 20}, {"color": "red", "value": 40}]}}]},
+              {"matcher": {"id": "byName", "options": "Namespace"}, "properties": [{"id": "custom.width", "value": 200}]}
+            ]
+          },
+          "options": {"sortBy": [{"displayName": "Violations", "desc": true}], "footer": {"show": false}},
+          "transformations": [
+            {"id": "labelsToFields", "options": {"mode": "columns", "valueLabel": "Violations"}},
+            {"id": "organize", "options": {"renameByName": {"namespace": "Namespace", "Value #A": "Violations"}, "excludeByName": {"Time": true, "policy": true, "rule": true, "severity": true, "kind": true, "name": true, "source": true, "status": true, "category": true}}}
+          ],
+          "targets": [{"expr": "sort_desc(sum by (namespace) (policyreport_result{status=\"fail\", namespace=~\"$namespace\", policy=~\"$policy\", severity=~\"$severity\"}))", "legendFormat": "{{namespace}}", "instant": true, "format": "table", "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
+        },
+
+        {
+          "id": 20,
+          "type": "row",
+          "title": "📋 Detailed Violations",
+          "collapsed": false,
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 16}
+        },
+
+        {
+          "id": 21,
+          "type": "table",
+          "title": "All Failing Resources",
+          "description": "Every resource currently failing a policy check. Use Namespace/Policy/Severity filters above to narrow down.",
+          "gridPos": {"h": 14, "w": 24, "x": 0, "y": 17},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {
+            "defaults": {"unit": "short"},
+            "overrides": [
+              {"matcher": {"id": "byName", "options": "Severity"}, "properties": [{"id": "custom.width", "value": 80}, {"id": "mappings", "value": [{"type": "value", "options": {"high": {"color": "red", "index": 0}, "critical": {"color": "dark-red", "index": 1}, "medium": {"color": "orange", "index": 2}, "low": {"color": "yellow", "index": 3}, "info": {"color": "blue", "index": 4}}}]}, {"id": "custom.displayMode", "value": "color-background"}]},
+              {"matcher": {"id": "byName", "options": "Namespace"}, "properties": [{"id": "custom.width", "value": 140}]},
+              {"matcher": {"id": "byName", "options": "Kind"}, "properties": [{"id": "custom.width", "value": 90}]},
+              {"matcher": {"id": "byName", "options": "Resource"}, "properties": [{"id": "custom.width", "value": 200}]},
+              {"matcher": {"id": "byName", "options": "Policy"}, "properties": [{"id": "custom.width", "value": 220}]},
+              {"matcher": {"id": "byName", "options": "Rule"}, "properties": [{"id": "custom.width", "value": 220}]},
+              {"matcher": {"id": "byName", "options": "Category"}, "properties": [{"id": "custom.width", "value": 130}]}
+            ]
+          },
+          "options": {"sortBy": [{"displayName": "Severity", "desc": true}], "footer": {"show": false}},
+          "transformations": [
+            {"id": "labelsToFields", "options": {"mode": "columns", "valueLabel": "Count"}},
+            {"id": "organize", "options": {
+              "renameByName": {
+                "namespace": "Namespace", "kind": "Kind", "name": "Resource",
+                "policy": "Policy", "rule": "Rule", "severity": "Severity",
+                "category": "Category", "source": "Source", "Value #A": "Count"
+              },
+              "excludeByName": {"Time": true, "status": true, "Count": true}
+            }}
+          ],
+          "targets": [{"expr": "policyreport_result{status=\"fail\", namespace=~\"$namespace\", policy=~\"$policy\", severity=~\"$severity\"}", "legendFormat": "{{namespace}} / {{kind}} / {{name}} / {{policy}} / {{rule}}", "instant": true, "format": "table", "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
+        },
+
+        {
+          "id": 30,
+          "type": "row",
+          "title": "📈 Violation Trends",
+          "collapsed": false,
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 31}
+        },
+
+        {
+          "id": 31,
+          "type": "timeseries",
+          "title": "Violations Over Time by Severity",
+          "description": "Total active failing results over time, split by severity. Downward trend = remediation progress.",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {
+            "defaults": {"unit": "short", "custom": {"lineWidth": 2, "fillOpacity": 10, "spanNulls": false}},
+            "overrides": [
+              {"matcher": {"id": "byName", "options": "critical"}, "properties": [{"id": "color", "value": {"fixedColor": "dark-red", "mode": "fixed"}}]},
+              {"matcher": {"id": "byName", "options": "high"}, "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]},
+              {"matcher": {"id": "byName", "options": "medium"}, "properties": [{"id": "color", "value": {"fixedColor": "orange", "mode": "fixed"}}]},
+              {"matcher": {"id": "byName", "options": "low"}, "properties": [{"id": "color", "value": {"fixedColor": "yellow", "mode": "fixed"}}]},
+              {"matcher": {"id": "byName", "options": "info"}, "properties": [{"id": "color", "value": {"fixedColor": "blue", "mode": "fixed"}}]}
+            ]
+          },
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+          "targets": [
+            {"expr": "sum by (severity) (policyreport_result{status=\"fail\", namespace=~\"$namespace\", policy=~\"$policy\"})", "legendFormat": "{{severity}}", "datasource": {"type": "prometheus", "uid": "${datasource}"}}
+          ]
+        },
+
+        {
+          "id": 32,
+          "type": "timeseries",
+          "title": "Violations Over Time by Policy",
+          "description": "Top 10 policies by current violation count, trended over time.",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {
+            "defaults": {"unit": "short", "custom": {"lineWidth": 2, "fillOpacity": 5, "spanNulls": false}}
+          },
+          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
+          "targets": [
+            {"expr": "topk(10, sum by (policy) (policyreport_result{status=\"fail\", namespace=~\"$namespace\"}))", "legendFormat": "{{policy}}", "datasource": {"type": "prometheus", "uid": "${datasource}"}}
+          ]
+        },
+
+        {
+          "id": 33,
+          "type": "timeseries",
+          "title": "Violations Over Time by Namespace",
+          "description": "Top 10 namespaces by current violation count, trended over time.",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 40},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {
+            "defaults": {"unit": "short", "custom": {"lineWidth": 2, "fillOpacity": 5, "spanNulls": false}}
+          },
+          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
+          "targets": [
+            {"expr": "topk(10, sum by (namespace) (policyreport_result{status=\"fail\", policy=~\"$policy\"}))", "legendFormat": "{{namespace}}", "datasource": {"type": "prometheus", "uid": "${datasource}"}}
+          ]
+        },
+
+        {
+          "id": 34,
+          "type": "piechart",
+          "title": "Violations by Category",
+          "description": "Breakdown of failing results by category (security, best-practice, etc.)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 40},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {
+            "defaults": {"unit": "short"}
+          },
+          "options": {"legend": {"displayMode": "table", "placement": "right", "values": ["value"]}, "pieType": "pie", "tooltip": {"mode": "multi"}},
+          "targets": [
+            {"expr": "sum by (category) (policyreport_result{status=\"fail\", namespace=~\"$namespace\", policy=~\"$policy\", severity=~\"$severity\"})", "legendFormat": "{{category}}", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}
+          ]
+        },
+
+        {
+          "id": 40,
+          "type": "row",
+          "title": "🌐 Cluster-Scoped Violations",
+          "collapsed": false,
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 48}
+        },
+
+        {
+          "id": 41,
+          "type": "table",
+          "title": "Cluster-Scoped Policy Violations",
+          "description": "ClusterPolicyReport results — violations on cluster-scoped resources (Nodes, Namespaces, ClusterRoles, etc.)",
+          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 49},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {
+            "defaults": {"unit": "short"},
+            "overrides": [
+              {"matcher": {"id": "byName", "options": "Severity"}, "properties": [{"id": "custom.width", "value": 80}, {"id": "mappings", "value": [{"type": "value", "options": {"high": {"color": "red", "index": 0}, "critical": {"color": "dark-red", "index": 1}, "medium": {"color": "orange", "index": 2}, "low": {"color": "yellow", "index": 3}}}]}, {"id": "custom.displayMode", "value": "color-background"}]},
+              {"matcher": {"id": "byName", "options": "Kind"}, "properties": [{"id": "custom.width", "value": 120}]},
+              {"matcher": {"id": "byName", "options": "Resource"}, "properties": [{"id": "custom.width", "value": 250}]},
+              {"matcher": {"id": "byName", "options": "Policy"}, "properties": [{"id": "custom.width", "value": 250}]},
+              {"matcher": {"id": "byName", "options": "Rule"}, "properties": [{"id": "custom.width", "value": 200}]}
+            ]
+          },
+          "options": {"sortBy": [{"displayName": "Severity", "desc": true}], "footer": {"show": false}},
+          "transformations": [
+            {"id": "labelsToFields", "options": {"mode": "columns", "valueLabel": "Count"}},
+            {"id": "organize", "options": {
+              "renameByName": {
+                "kind": "Kind", "name": "Resource",
+                "policy": "Policy", "rule": "Rule", "severity": "Severity",
+                "category": "Category", "Value #A": "Count"
+              },
+              "excludeByName": {"Time": true, "status": true, "Count": true, "source": true, "namespace": true}
+            }}
+          ],
+          "targets": [{"expr": "clusterpolicyreport_result{status=\"fail\", policy=~\"$policy\", severity=~\"$severity\"}", "legendFormat": "{{kind}} / {{name}} / {{policy}} / {{rule}}", "instant": true, "format": "table", "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
+        }
+
+      ]
+    }

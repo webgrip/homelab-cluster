@@ -1,0 +1,76 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/helm.toolkit.fluxcd.io/helmrelease_v2.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: policy-reporter
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: policy-reporter
+      version: 3.7.4
+      sourceRef:
+        kind: HelmRepository
+        name: policy-reporter
+        namespace: kyverno
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+  values:
+    fullnameOverride: policy-reporter
+
+    replicaCount: 2
+
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 1234
+      runAsGroup: 1234
+      fsGroup: 1234
+      seccompProfile:
+        type: RuntimeDefault
+
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
+
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
+
+    # Expose policyreport_result{namespace,policy,rule,kind,name,status,severity,category,source} metrics
+    metrics:
+      enabled: true
+      mode: detailed
+
+    # Wire ServiceMonitor into kube-prometheus-stack Prometheus
+    monitoring:
+      enabled: true
+      serviceMonitor:
+        labels:
+          release: kube-prometheus-stack
+        interval: 60s
+        scrapeTimeout: 55s
+
+    # Only watch application namespaces — skip kyverno internals
+    reportFilter:
+      namespaces:
+        exclude:
+          - kyverno
+          - flux-system
+          - kube-system
+          - kube-public
+          - kube-node-lease
+
+    leaderElection:
+      enabled: true
