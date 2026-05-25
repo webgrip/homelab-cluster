@@ -48,6 +48,13 @@ spec:
     # - GF_AUTH_GITHUB_CLIENT_ID
     # - GF_AUTH_GITHUB_CLIENT_SECRET
     envFromSecret: grafana-github-oauth
+    # Pull database password from the CNPG-generated app secret.
+    env:
+      GF_DATABASE_PASSWORD:
+        valueFrom:
+          secretKeyRef:
+            name: grafana-db-app
+            key: password
     # Optional SOPS-managed Secret for GitHub billing/usage API dashboards.
     # Expected key: token
     envValueFrom:
@@ -60,6 +67,14 @@ spec:
     grafana.ini:
       server:
         root_url: https://grafana.${SECRET_DOMAIN}/
+
+      database:
+        type: postgres
+        host: grafana-db-rw.observability.svc.cluster.local:5432
+        name: grafana
+        user: grafana
+        password: ${GF_DATABASE_PASSWORD}
+        ssl_mode: require
 
       users:
         auto_assign_org_role: Viewer
@@ -110,11 +125,6 @@ spec:
       existingSecret: grafana-admin
       userKey: admin-user
       passwordKey: admin-password
-
-    persistence:
-      enabled: true
-      storageClassName: longhorn
-      size: 10Gi
 
     # Grafana uses a ReadWriteOnce PVC; RollingUpdate can temporarily create a second pod
     # and trigger Longhorn multi-attach failures. Recreate avoids that.

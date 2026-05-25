@@ -27,3 +27,19 @@ spec:
           kubernetes:
             deploy:
               type: GatewayNamespace
+    deployment:
+      envoyGateway:
+        startupProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 12  # 2 minutes grace on cold start
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          failureThreshold: 6   # 2 minutes before kill after startup
