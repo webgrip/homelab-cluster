@@ -44,7 +44,7 @@ data:
             "multi": true,
             "includeAll": true,
             "allValue": ".*",
-            "query": "label_values(policyreport_result, namespace)",
+            "query": "label_values(policy_report_result, namespace)",
             "refresh": 2,
             "sort": 1,
             "current": {}
@@ -58,7 +58,7 @@ data:
             "multi": true,
             "includeAll": true,
             "allValue": ".*",
-            "query": "label_values(policyreport_result, policy)",
+            "query": "label_values(policy_report_result, policy)",
             "refresh": 2,
             "sort": 1,
             "current": {}
@@ -72,7 +72,7 @@ data:
             "multi": true,
             "includeAll": true,
             "allValue": ".*",
-            "query": "label_values(policyreport_result{status=\"fail\"}, severity)",
+            "query": "label_values(policy_report_result{status=\"fail\"}, severity)",
             "refresh": 2,
             "sort": 0,
             "current": {}
@@ -113,7 +113,7 @@ data:
             }
           },
           "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "auto", "graphMode": "none", "colorMode": "background"},
-          "targets": [{"expr": "sum(policyreport_result{status=\"fail\", namespace=~\"$namespace\", policy=~\"$policy\", severity=~\"$severity\"})", "legendFormat": "", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
+          "targets": [{"expr": "sum(policy_report_result{status=\"fail\", namespace=~\"$namespace\", policy=~\"$policy\", severity=~\"$severity\"})", "legendFormat": "", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
         },
 
         {
@@ -138,7 +138,7 @@ data:
             }
           },
           "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "auto", "graphMode": "none", "colorMode": "background"},
-          "targets": [{"expr": "sum(policyreport_result{status=\"fail\", severity=~\"high|critical\", namespace=~\"$namespace\", policy=~\"$policy\"})", "legendFormat": "", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
+          "targets": [{"expr": "sum(policy_report_result{status=\"fail\", severity=~\"high|critical\", namespace=~\"$namespace\", policy=~\"$policy\"})", "legendFormat": "", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
         },
 
         {
@@ -163,7 +163,7 @@ data:
             }
           },
           "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "auto", "graphMode": "none", "colorMode": "background"},
-          "targets": [{"expr": "sum(policyreport_result{status=\"fail\", severity=\"medium\", namespace=~\"$namespace\", policy=~\"$policy\"})", "legendFormat": "", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
+          "targets": [{"expr": "sum(policy_report_result{status=\"fail\", severity=\"medium\", namespace=~\"$namespace\", policy=~\"$policy\"})", "legendFormat": "", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
         },
 
         {
@@ -187,7 +187,7 @@ data:
             }
           },
           "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "auto", "graphMode": "none", "colorMode": "background"},
-          "targets": [{"expr": "sum(policyreport_result{status=~\"warn|skip\", namespace=~\"$namespace\", policy=~\"$policy\"})", "legendFormat": "", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
+          "targets": [{"expr": "sum(policy_report_result{status=~\"warn|skip\", namespace=~\"$namespace\", policy=~\"$policy\"})", "legendFormat": "", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
         },
 
         {
@@ -204,7 +204,7 @@ data:
             }
           },
           "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "auto", "graphMode": "none", "colorMode": "background"},
-          "targets": [{"expr": "sum(policyreport_result{status=\"pass\", namespace=~\"$namespace\", policy=~\"$policy\"})", "legendFormat": "", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
+          "targets": [{"expr": "sum(policy_report_result{status=\"pass\", namespace=~\"$namespace\", policy=~\"$policy\"})", "legendFormat": "", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
         },
 
         {
@@ -232,7 +232,7 @@ data:
             }
           },
           "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "showThresholdLabels": false, "showThresholdMarkers": true},
-          "targets": [{"expr": "100 * sum(policyreport_result{status=\"pass\", namespace=~\"$namespace\"}) / (sum(policyreport_result{status=~\"pass|fail|warn\", namespace=~\"$namespace\"}) > 0)", "legendFormat": "", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
+          "targets": [{"expr": "100 * sum(policy_report_result{status=\"pass\", namespace=~\"$namespace\"}) / (sum(policy_report_result{status=~\"pass|fail|warn\", namespace=~\"$namespace\"}) > 0)", "legendFormat": "", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
         },
 
         {
@@ -264,7 +264,7 @@ data:
             {"id": "labelsToFields", "options": {"mode": "columns", "valueLabel": "Violations"}},
             {"id": "organize", "options": {"renameByName": {"policy": "Policy", "rule": "Rule", "severity": "Severity", "Value #A": "Violations"}, "excludeByName": {"Time": true, "source": true, "category": true, "kind": true, "name": true, "namespace": true, "status": true}}}
           ],
-          "targets": [{"expr": "sort_desc(sum by (policy, rule, severity) (policyreport_result{status=\"fail\", namespace=~\"$namespace\", policy=~\"$policy\", severity=~\"$severity\"}))", "legendFormat": "{{policy}} / {{rule}} / {{severity}}", "instant": true, "format": "table", "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
+          "targets": [{"expr": "sort_desc(sum by (policy, rule, severity) (policy_report_result{status=\"fail\", namespace=~\"$namespace\", policy=~\"$policy\", severity=~\"$severity\"}))", "legendFormat": "{{policy}} / {{rule}} / {{severity}}", "instant": true, "format": "table", "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
         },
 
         {
@@ -286,7 +286,7 @@ data:
             {"id": "labelsToFields", "options": {"mode": "columns", "valueLabel": "Violations"}},
             {"id": "organize", "options": {"renameByName": {"namespace": "Namespace", "Value #A": "Violations"}, "excludeByName": {"Time": true, "policy": true, "rule": true, "severity": true, "kind": true, "name": true, "source": true, "status": true, "category": true}}}
           ],
-          "targets": [{"expr": "sort_desc(sum by (namespace) (policyreport_result{status=\"fail\", namespace=~\"$namespace\", policy=~\"$policy\", severity=~\"$severity\"}))", "legendFormat": "{{namespace}}", "instant": true, "format": "table", "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
+          "targets": [{"expr": "sort_desc(sum by (namespace) (policy_report_result{status=\"fail\", namespace=~\"$namespace\", policy=~\"$policy\", severity=~\"$severity\"}))", "legendFormat": "{{namespace}}", "instant": true, "format": "table", "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
         },
 
         {
@@ -328,7 +328,7 @@ data:
               "excludeByName": {"Time": true, "status": true, "Count": true}
             }}
           ],
-          "targets": [{"expr": "policyreport_result{status=\"fail\", namespace=~\"$namespace\", policy=~\"$policy\", severity=~\"$severity\"}", "legendFormat": "{{namespace}} / {{kind}} / {{name}} / {{policy}} / {{rule}}", "instant": true, "format": "table", "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
+          "targets": [{"expr": "policy_report_result{status=\"fail\", namespace=~\"$namespace\", policy=~\"$policy\", severity=~\"$severity\"}", "legendFormat": "{{namespace}} / {{kind}} / {{name}} / {{policy}} / {{rule}}", "instant": true, "format": "table", "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
         },
 
         {
@@ -358,7 +358,7 @@ data:
           },
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
           "targets": [
-            {"expr": "sum by (severity) (policyreport_result{status=\"fail\", namespace=~\"$namespace\", policy=~\"$policy\"})", "legendFormat": "{{severity}}", "datasource": {"type": "prometheus", "uid": "${datasource}"}}
+            {"expr": "sum by (severity) (policy_report_result{status=\"fail\", namespace=~\"$namespace\", policy=~\"$policy\"})", "legendFormat": "{{severity}}", "datasource": {"type": "prometheus", "uid": "${datasource}"}}
           ]
         },
 
@@ -374,7 +374,7 @@ data:
           },
           "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
           "targets": [
-            {"expr": "topk(10, sum by (policy) (policyreport_result{status=\"fail\", namespace=~\"$namespace\"}))", "legendFormat": "{{policy}}", "datasource": {"type": "prometheus", "uid": "${datasource}"}}
+            {"expr": "topk(10, sum by (policy) (policy_report_result{status=\"fail\", namespace=~\"$namespace\"}))", "legendFormat": "{{policy}}", "datasource": {"type": "prometheus", "uid": "${datasource}"}}
           ]
         },
 
@@ -390,7 +390,7 @@ data:
           },
           "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
           "targets": [
-            {"expr": "topk(10, sum by (namespace) (policyreport_result{status=\"fail\", policy=~\"$policy\"}))", "legendFormat": "{{namespace}}", "datasource": {"type": "prometheus", "uid": "${datasource}"}}
+            {"expr": "topk(10, sum by (namespace) (policy_report_result{status=\"fail\", policy=~\"$policy\"}))", "legendFormat": "{{namespace}}", "datasource": {"type": "prometheus", "uid": "${datasource}"}}
           ]
         },
 
@@ -406,7 +406,7 @@ data:
           },
           "options": {"legend": {"displayMode": "table", "placement": "right", "values": ["value"]}, "pieType": "pie", "tooltip": {"mode": "multi"}},
           "targets": [
-            {"expr": "sum by (category) (policyreport_result{status=\"fail\", namespace=~\"$namespace\", policy=~\"$policy\", severity=~\"$severity\"})", "legendFormat": "{{category}}", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}
+            {"expr": "sum by (category) (policy_report_result{status=\"fail\", namespace=~\"$namespace\", policy=~\"$policy\", severity=~\"$severity\"})", "legendFormat": "{{category}}", "instant": true, "datasource": {"type": "prometheus", "uid": "${datasource}"}}
           ]
         },
 
@@ -447,7 +447,7 @@ data:
               "excludeByName": {"Time": true, "status": true, "Count": true, "source": true, "namespace": true}
             }}
           ],
-          "targets": [{"expr": "clusterpolicyreport_result{status=\"fail\", policy=~\"$policy\", severity=~\"$severity\"}", "legendFormat": "{{kind}} / {{name}} / {{policy}} / {{rule}}", "instant": true, "format": "table", "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
+          "targets": [{"expr": "clusterpolicy_report_result{status=\"fail\", policy=~\"$policy\", severity=~\"$severity\"}", "legendFormat": "{{kind}} / {{name}} / {{policy}} / {{rule}}", "instant": true, "format": "table", "datasource": {"type": "prometheus", "uid": "${datasource}"}}]
         }
 
       ]
