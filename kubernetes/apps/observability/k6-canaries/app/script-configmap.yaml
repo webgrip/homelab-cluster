@@ -10,6 +10,7 @@ data:
     import { check, sleep } from 'k6';
 
     export const options = {
+      insecureSkipTLSVerify: true,
       vus: 1,
       duration: '30s',
       thresholds: {
@@ -19,14 +20,17 @@ data:
     };
 
     const endpoints = [
-      { name: 'grafana', url: 'https://grafana.' + __ENV.SECRET_DOMAIN + '/api/health' },
-      { name: 'prometheus', url: 'https://prometheus.' + __ENV.SECRET_DOMAIN + '/-/ready' },
-      { name: 'alertmanager', url: 'https://alertmanager.' + __ENV.SECRET_DOMAIN + '/-/ready' },
+      { name: 'grafana', path: '/api/health' },
+      { name: 'prometheus', path: '/-/ready' },
+      { name: 'alertmanager', path: '/-/ready' },
     ];
 
     export default function () {
       for (const endpoint of endpoints) {
-        const res = http.get(endpoint.url, { tags: { endpoint: endpoint.name } });
+        const res = http.get('https://envoy-internal.network.svc.cluster.local' + endpoint.path, {
+          headers: { Host: endpoint.name + '.' + __ENV.SECRET_DOMAIN },
+          tags: { endpoint: endpoint.name },
+        });
         check(res, {
           'status is OK/redirect': (r) => r.status >= 200 && r.status < 400,
         });
