@@ -42,7 +42,7 @@ Run these checks before upgrading to `talosVersion: v1.13.x`:
   - `mise exec -- kubectl get ds -A | grep -i nvidia`
   - `mise exec -- kubectl get runtimeclass`
 - Validate Talos API automation and upgrade tasks still use standard `talosctl upgrade`/`talhelper` flows (LifecycleService-backed in 1.13):
-  - `grep -RniE "upgrade-node|talosctl upgrade|talhelper gencommand upgrade" .taskfiles talos docs`
+  - `grep -RniE "upgrade-node|talosctl upgrade|talhelper gencommand upgrade" justfile .taskfiles talos docs`
 
 Recommended follow-up improvements after upgrade:
 
@@ -51,7 +51,7 @@ Recommended follow-up improvements after upgrade:
 
 ## Upgrade one node
 
-- `mise exec -- task talos:upgrade-node IP=<node-ip>`
+- `mise exec -- just talos-upgrade-node IP=<node-ip>`
 
 Verify:
 
@@ -63,4 +63,4 @@ Verify:
 - If `etcd members` is flaky or gets canceled, always pin to a single endpoint/node:
   - `mise exec -- talosctl etcd members --endpoints <ip> --nodes <ip>`
 - If you need to upgrade a maintenance-mode node, the tasks support `INSECURE=true`:
-  - `mise exec -- task talos:upgrade-node IP=<ip> INSECURE=true`
+  - `mise exec -- just talos-upgrade-node IP=<ip> INSECURE=true`

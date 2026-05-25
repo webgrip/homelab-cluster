@@ -17,7 +17,7 @@ If you want “latest patch in the current minor”, check Kubernetes patch rele
 
 ## Run the upgrade
 
-- `mise exec -- task talos:upgrade-k8s`
+- `mise exec -- just talos-upgrade-k8s`
 
 ## Verify
 
