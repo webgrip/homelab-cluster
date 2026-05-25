@@ -110,7 +110,14 @@ jobs:
               if not encoded_token:
                   raise RuntimeError("Secret renovate-webhook-auth is missing data.token")
               decoded_token = base64.b64decode(encoded_token).decode("utf-8").strip()
-              tokens = [token.strip() for token in decoded_token.split(",") if token.strip()]
+              candidates = [decoded_token]
+              candidates.extend(
+                  token.strip() for token in decoded_token.replace("\n", ",").split(",")
+              )
+              tokens = []
+              for token in candidates:
+                  if token and token not in tokens:
+                      tokens.append(token)
               if not tokens:
                   raise RuntimeError("Secret renovate-webhook-auth token is empty")
               return tokens
