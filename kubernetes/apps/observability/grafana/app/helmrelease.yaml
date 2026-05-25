@@ -55,7 +55,7 @@ spec:
       # Grafana reads GF_DATABASE_PASSWORD automatically for grafana.ini [database] password.
       GF_DATABASE_PASSWORD:
         secretKeyRef:
-          name: grafana-db-app
+          name: grafana-db-secret
           key: password
       GITHUB_API_TOKEN:
         secretKeyRef:
@@ -181,13 +181,11 @@ spec:
                 spanStartTimeShift: "-1h"
                 spanEndTimeShift: "1h"
                 tags:
-                  [
-                    "job",
-                    "namespace",
-                    "pod",
-                    "service.name",
-                    "service.namespace",
-                  ]
+                  - "job"
+                  - "namespace"
+                  - "pod"
+                  - "service.name"
+                  - "service.namespace"
                 filterByTraceID: true
                 filterBySpanID: false
                 customQuery: false
@@ -217,7 +215,11 @@ spec:
                 datasourceUid: prometheus
               tracesToProfiles:
                 datasourceUid: pyroscope
-                tags: ["namespace", "pod", "service.name", "service.namespace"]
+                tags:
+                  - "namespace"
+                  - "pod"
+                  - "service.name"
+                  - "service.namespace"
                 profileTypeId: "process_cpu:cpu:nanoseconds:cpu:nanoseconds"
                 customQuery: false
           - name: Pyroscope
