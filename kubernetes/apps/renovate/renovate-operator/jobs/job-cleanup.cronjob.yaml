@@ -38,7 +38,7 @@ metadata:
   name: renovate-job-cleanup
   namespace: renovate
 spec:
-  schedule: "35 3 * * *"
+  schedule: "*/30 * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 1
@@ -65,7 +65,7 @@ spec:
                 - -ceu
                 - |
                   namespace="renovate"
-                  ttl_secs=$((3 * 86400))
+                  ttl_secs=$((1 * 3600))
                   cutoff_epoch=$(( $(date -u +%s) - ttl_secs ))
 
                   kubectl get jobs -n "$namespace" -o go-template='{{range .items}}{{.metadata.name}} {{.metadata.creationTimestamp}} {{if .status.active}}{{.status.active}}{{else}}0{{end}}{{"\n"}}{{end}}' |
