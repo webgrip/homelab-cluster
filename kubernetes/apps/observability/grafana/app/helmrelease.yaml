@@ -32,6 +32,17 @@ spec:
     serviceMonitor:
       enabled: true
 
+    # Grafana readiness can intermittently time out under load; keep probes tolerant.
+    readinessProbe:
+      httpGet:
+        path: /api/health
+        port: 3000
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 6
+      successThreshold: 1
+
     # Injected by a SOPS-managed Secret you create separately.
     # Expected keys:
     # - GF_AUTH_GITHUB_CLIENT_ID

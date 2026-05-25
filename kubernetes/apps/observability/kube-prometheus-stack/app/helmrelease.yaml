@@ -111,6 +111,25 @@ spec:
         limits:
           cpu: 200m
           memory: 256Mi
+      # Reduce restarts caused by transient API connectivity during /livez checks.
+      livenessProbe:
+        httpGet:
+          path: /livez
+          port: http
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 10
+        failureThreshold: 6
+        successThreshold: 1
+      readinessProbe:
+        httpGet:
+          path: /readyz
+          port: metrics
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 10
+        failureThreshold: 6
+        successThreshold: 1
 
     nodeExporter:
       resources:
