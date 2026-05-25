@@ -102,7 +102,7 @@ jobs:
 
               return len(jobs_to_delete)
 
-          def get_webhook_token():
+          def get_webhook_tokens():
               secret = api_request(
                   f"/api/v1/namespaces/{namespace}/secrets/renovate-webhook-auth"
               )
@@ -113,7 +113,7 @@ jobs:
               tokens = [token.strip() for token in decoded_token.split(",") if token.strip()]
               if not tokens:
                   raise RuntimeError("Secret renovate-webhook-auth token is empty")
-              return tokens[0]
+              return tokens
 
           def get_renovate_job():
               return api_request(
@@ -134,7 +134,7 @@ jobs:
                   )
               return projects
 
-          def post_webhook(project, webhook_token):
+          def post_webhook(project, webhook_tokens):
               query = urllib.parse.urlencode(
                   {
                       "job": renovate_job,
@@ -142,29 +142,39 @@ jobs:
                       "project": project,
                   }
               )
-              request = urllib.request.Request(
-                  f"{webhook_url}?{query}",
-                  data=b"",
-                  method="POST",
-                  headers={"Authorization": f"Bearer {webhook_token}"},
-              )
 
-              try:
-                  with urllib.request.urlopen(request) as response:
-                      return response.status
-              except HTTPError as error:
-                  return error.code
+              last_auth_error = None
+              for webhook_token in webhook_tokens:
+                  request = urllib.request.Request(
+                      f"{webhook_url}?{query}",
+                      data=b"",
+                      method="POST",
+                      headers={"Authorization": f"Bearer {webhook_token}"},
+                  )
+
+                  try:
+                      with urllib.request.urlopen(request) as response:
+                          return response.status
+                  except HTTPError as error:
+                      if error.code in (401, 403):
+                          last_auth_error = error.code
+                          continue
+                      return error.code
+
+              if last_auth_error is not None:
+                  return last_auth_error
+              return 500
 
           delete_completed_jobs()
 
-          webhook_token = get_webhook_token()
+          webhook_tokens = get_webhook_tokens()
           projects = get_projects()
 
           print(f"Triggering {len(projects)} projects...")
           failed_projects = []
 
           for project in projects:
-              status_code = post_webhook(project, webhook_token)
+              status_code = post_webhook(project, webhook_tokens)
               print(f"{project} -> {status_code}")
               if status_code < 200 or status_code >= 300:
                   failed_projects.append((project, status_code))
