@@ -12,22 +12,11 @@ metadata:
     policies.kyverno.io/subject: Pod
     kyverno.io/kyverno-version: 1.18.1
     policies.kyverno.io/description: >-
-      Audit that application images from internal registries are signed with cosign.
+      Audit that application images from internal registries are signed with
+      Sigstore/Cosign keyless signatures issued by GitHub Actions OIDC.
       This policy runs in Audit mode so existing unsigned workloads are surfaced in
       PolicyReports without being blocked. Promote to Enforce once all images in scope
-      are signed in CI.
-
-      To enable enforcement for a specific image prefix, move its entry to a new
-      ClusterPolicy with validationFailureAction: Enforce.
-
-      Image signing setup:
-        1. Generate a cosign keypair: `cosign generate-key-pair k8s://kyverno/cosign-signing-secrets`
-        2. Sign images in CI: `cosign sign --key k8s://kyverno/cosign-signing-secrets <image>@<digest>`
-        3. Update the publicKey below with the contents of cosign.pub from the generated secret.
-
-      External public keys referenced here should be kept in a Secret in the kyverno
-      namespace and referenced via `secret.name` / `secret.data` instead of being
-      inlined once real keys exist.
+      are signed in CI with id-token: write and digest-pinned deployment references.
 spec:
   validationFailureAction: Audit
   background: false # verifyImages requires admission context
@@ -35,9 +24,8 @@ spec:
   rules:
     # -----------------------------------------------------------------------
     # Internal images: ghcr.io/webgrip/*
-    # These are images built and signed by this organisation's own CI.
-    # Replace the placeholder publicKey with the real cosign.pub once CI
-    # signing is configured.
+    # These are images built and signed by this organisation's GitHub Actions
+    # workflows using keyless Cosign identities from GitHub OIDC.
     # -----------------------------------------------------------------------
     - name: verify-webgrip-images
       match:
@@ -70,14 +58,9 @@ spec:
           attestors:
             - count: 1
               entries:
-                - keys:
-                    # TODO: replace with real cosign.pub once CI signing is configured.
-                    # Generate with: cosign generate-key-pair k8s://kyverno/cosign-signing-secrets
-                    # Retrieve pub: kubectl get secret cosign-signing-secrets -n kyverno -o jsonpath='{.data.cosign\.pub}' | base64 -d
-                    publicKeys: |-
-                      -----BEGIN PUBLIC KEY-----
-                      # PLACEHOLDER – replace with actual cosign public key
-                      -----END PUBLIC KEY-----
+                - keyless:
+                    subjectRegExp: "^https://github\\.com/webgrip/[^/]+/\\.github/workflows/[^@]+@refs/(heads/main|tags/v.*)$"
+                    issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev
           required: true
@@ -109,7 +92,7 @@ spec:
             - count: 1
               entries:
                 - keyless:
-                    subject: "https://kubernetes.io/namespaces/kyverno/serviceaccounts/*"
+                    subject: "https://github.com/kyverno/kyverno/.github/workflows/*"
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev

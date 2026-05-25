@@ -1,0 +1,104 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/clusterpolicy_v1.json
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: image-attestations-audit
+  annotations:
+    pod-policies.kyverno.io/autogen-controllers: DaemonSet,Deployment,StatefulSet
+    policies.kyverno.io/title: Image Attestations (Audit)
+    policies.kyverno.io/category: Software Supply Chain
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Audit that internal GHCR images carry keyless GitHub OIDC attestations for
+      SLSA provenance, CycloneDX SBOMs, and vulnerability scan freshness. These
+      rules are intentionally Audit-only until every internal image build publishes
+      the corresponding Cosign/GitHub Artifact Attestation records.
+spec:
+  validationFailureAction: Audit
+  background: false
+  webhookTimeoutSeconds: 30
+  failurePolicy: Fail
+  rules:
+    - name: verify-github-slsa-provenance
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/webgrip/*"
+          skipImageReferences:
+            - "ghcr.io/webgrip/*:*"
+          attestations:
+            - type: https://slsa.dev/provenance/v1
+              attestors:
+                - count: 1
+                  entries:
+                    - keyless:
+                        subjectRegExp: "^https://github\\.com/webgrip/[^/]+/\\.github/workflows/[^@]+@refs/(heads/main|tags/v.*)$"
+                        issuer: "https://token.actions.githubusercontent.com"
+                        rekor:
+                          url: https://rekor.sigstore.dev
+              conditions:
+                - all:
+                    - key: "{{ buildDefinition.buildType }}"
+                      operator: Equals
+                      value: https://actions.github.io/buildtypes/workflow/v1
+
+    - name: verify-cyclonedx-sbom
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/webgrip/*"
+          skipImageReferences:
+            - "ghcr.io/webgrip/*:*"
+          attestations:
+            - predicateType: https://cyclonedx.org/schema
+              attestors:
+                - count: 1
+                  entries:
+                    - keyless:
+                        subjectRegExp: "^https://github\\.com/webgrip/[^/]+/\\.github/workflows/[^@]+@refs/(heads/main|tags/v.*)$"
+                        issuer: "https://token.actions.githubusercontent.com"
+                        rekor:
+                          url: https://rekor.sigstore.dev
+              conditions:
+                - all:
+                    - key: "{{ Data.bomFormat }}"
+                      operator: Equals
+                      value: CycloneDX
+
+    - name: verify-vulnerability-scan-attestation
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/webgrip/*"
+          skipImageReferences:
+            - "ghcr.io/webgrip/*:*"
+          attestations:
+            - predicateType: cosign.sigstore.dev/attestation/vuln/v1
+              attestors:
+                - count: 1
+                  entries:
+                    - keyless:
+                        subjectRegExp: "^https://github\\.com/webgrip/[^/]+/\\.github/workflows/[^@]+@refs/(heads/main|tags/v.*)$"
+                        issuer: "https://token.actions.githubusercontent.com"
+                        rekor:
+                          url: https://rekor.sigstore.dev
+              conditions:
+                - all:
+                    - key: "{{ time_since('', '{{metadata.scanFinishedOn}}', '') }}"
+                      operator: LessThanOrEquals
+                      value: 168h
