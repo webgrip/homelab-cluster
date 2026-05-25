@@ -30,7 +30,7 @@ metadata:
       inlined once real keys exist.
 spec:
   validationFailureAction: Audit
-  background: false  # verifyImages requires admission context
+  background: false # verifyImages requires admission context
   webhookTimeoutSeconds: 30
   rules:
     # -----------------------------------------------------------------------
@@ -66,7 +66,7 @@ spec:
         - imageReferences:
             - "ghcr.io/webgrip/*"
           skipImageReferences:
-            - "ghcr.io/webgrip/*:*"   # skip tag-only refs; require digest-pinned (handled by image-supply-chain-audit)
+            - "ghcr.io/webgrip/*:*" # skip tag-only refs; require digest-pinned (handled by image-supply-chain-audit)
           attestors:
             - count: 1
               entries:
@@ -74,15 +74,12 @@ spec:
                     # TODO: replace with real cosign.pub once CI signing is configured.
                     # Generate with: cosign generate-key-pair k8s://kyverno/cosign-signing-secrets
                     # Retrieve pub: kubectl get secret cosign-signing-secrets -n kyverno -o jsonpath='{.data.cosign\.pub}' | base64 -d
-                    publicKey: |-
+                    publicKeys: |-
                       -----BEGIN PUBLIC KEY-----
                       # PLACEHOLDER – replace with actual cosign public key
                       -----END PUBLIC KEY-----
                     rekor:
                       url: https://rekor.sigstore.dev
-                    ctlog:
-                      url: https://ctfe.sigstore.dev
-                      ignoreTLog: false
           required: true
           mutateDigest: true
           verifyDigest: true
@@ -116,9 +113,6 @@ spec:
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev
-                    ctlog:
-                      url: https://ctfe.sigstore.dev
-                      ignoreTLog: false
                     additionalExtensions:
                       githubWorkflowRepository: "kyverno/kyverno"
           required: true
