@@ -44,7 +44,7 @@ This is the living source of truth for the Talos-powered cluster behind `grippel
 
 ## <img src="https://raw.githubusercontent.com/kubernetes/kubernetes/refs/heads/master/logo/logo.svg" alt="🌱" width="20" height="20"> Kubernetes
 
-My cluster runs on three bare-metal Talos controllers (`soyo-1`..`3`) that also schedule workloads. Everything runs kube-proxy-free via Cilium, with split-DNS gateways and Cloudflare tunnels for ingress. GitOps keeps the manifests authoritative while Taskfile/Mise make local development reproducible.
+My cluster runs on three bare-metal Talos controllers (`soyo-1`..`3`) that also schedule workloads. Everything runs kube-proxy-free via Cilium, with split-DNS gateways and Cloudflare tunnels for ingress. GitOps keeps the manifests authoritative while just/Mise make local development reproducible.
 
 ### Core Components
 

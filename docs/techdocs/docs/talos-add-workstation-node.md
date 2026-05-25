@@ -157,7 +157,7 @@ Notes:
 From the repo root:
 
 ```bash
-task talos:generate-config
+just talos-generate-config
 ```
 
 This runs `talhelper genconfig` and regenerates:
@@ -171,12 +171,12 @@ If this step fails, fix the YAML errors in `talos/talconfig.yaml` first.
 
 ## Step 4 — Apply config to the new node (maintenance API)
 
-This repo’s task supports applying to a maintenance-mode node by passing `INSECURE=true`.
+This repo’s just recipe supports applying to a maintenance-mode node by passing `INSECURE=true`.
 
 Run:
 
 ```bash
-task talos:apply-node IP=10.0.0.23 INSECURE=true
+just talos-apply-node IP=10.0.0.23 INSECURE=true
 ```
 
 What it does (high level):
@@ -206,7 +206,7 @@ Expected:
 
 If you still get TLS errors here, you may be hitting one of these:
 
-- `talos/clusterconfig/talosconfig` is outdated (re-run `task talos:generate-config`).
+- `talos/clusterconfig/talosconfig` is outdated (re-run `just talos-generate-config`).
 - You’re connecting to the wrong node IP.
 
 ---
@@ -276,11 +276,11 @@ talosctl version
 
 ---
 
-## Why the repo task uses `INSECURE=true`
+## Why the repo just recipe uses `INSECURE=true`
 
 When a node is in maintenance mode:
 
 - You often need `--insecure`.
 - You also want `--endpoints=<node-ip>` to ensure the command doesn’t try to use cluster endpoints from `talosconfig` that the new node doesn’t trust yet.
 
-This repository wires that behavior into the `talos:apply-node` task.
+This repository wires that behavior into the `talos-apply-node` recipe.

@@ -6,7 +6,7 @@ This page documents the platform building blocks that applications rely on: GitO
 
 - `kubernetes/apps/flux-system/` installs Flux controllers (`flux-instance`, `flux-operator`) and the Weave GitOps UI.
 - Talos machine configs under `talos/clusterconfig/` plus patches in `talos/patches/` match the hardware + wiring section. Apply changes with `talosctl apply-config` after committing updates.
-- Bootstrap artifacts live in `bootstrap/` (Helmfile, SOPS age keys, GitHub deploy keys). `scripts/bootstrap-apps.sh` + `Taskfile.yaml` automate the same steps described in the README overview.
+- Bootstrap artifacts live in `bootstrap/` (Helmfile, SOPS age keys, GitHub deploy keys). `scripts/bootstrap-apps.sh` + `justfile` automate the same steps described in the README overview.
 - Secrets flow through Age-encrypted SOPS files (`kubernetes/components/sops/cluster-secrets.sops.yaml` etc.). Flux decrypts them inside the cluster so no plaintext lands in Git.
 
 ## Workload Layers
@@ -63,7 +63,7 @@ CloudNativePG details:
 
 ## Security + Secrets
 
-- Age keys live under `bootstrap/` and are distributed via Taskfile targets.
+- Age keys live under `bootstrap/` and are distributed via just recipes.
 - `kubernetes/components/sops/` renders secret values into namespaces. Renovate is configured to ignore `**/*.sops.*` via `.renovaterc.json5` (see [docs/techdocs/docs/renovate.md](renovate.md)).
 - FreshRSS pulls database credentials from SOPS secrets in-namespace and connects to the CNPG `*-db-rw` service.
 
