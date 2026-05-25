@@ -12,6 +12,12 @@ verify-oci-digests:
 update-oci-digests:
     ./scripts/update-oci-digests.sh {{ justfile_directory() }}
 
+kyverno-test:
+    ./scripts/run-kyverno-cli-tests.sh {{ justfile_directory() }}
+
+kyverno-chainsaw:
+    ./scripts/run-kyverno-chainsaw.sh {{ justfile_directory() }}
+
 bootstrap-talos:
     #!/usr/bin/env bash
     set -euo pipefail

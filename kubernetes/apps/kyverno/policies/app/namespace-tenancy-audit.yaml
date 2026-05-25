@@ -1,0 +1,163 @@
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: namespace-tenancy-audit
+  annotations:
+    policies.kyverno.io/title: Namespace Tenancy Audit
+    policies.kyverno.io/category: Multi-Tenancy, Pod Security Admission, Networking
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Namespace,NetworkPolicy,ResourceQuota
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Add future namespace security defaults and audit namespace readiness for
+      ownership, resource controls, and network isolation.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: add-application-psa-labels
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      preconditions:
+        all:
+          - key: "{{ request.object.metadata.name }}"
+            operator: AnyNotIn
+            value: &platformNamespaces
+              - arc-systems
+              - cert-manager
+              - cnpg-system
+              - flux-system
+              - kube-node-lease
+              - kube-public
+              - kube-system
+              - kyverno
+              - longhorn-system
+              - network
+              - observability
+              - renovate
+      mutate:
+        patchStrategicMerge:
+          metadata:
+            labels:
+              +(pod-security.kubernetes.io/enforce): baseline
+              +(pod-security.kubernetes.io/audit): restricted
+              +(pod-security.kubernetes.io/warn): restricted
+    - name: require-namespace-ownership-labels
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      exclude:
+        any:
+          - resources:
+              names: *platformNamespaces
+      validate:
+        message: "Application namespaces should declare owner, tier, and exposure labels."
+        pattern:
+          metadata:
+            labels:
+              webgrip.io/owner: "?*"
+              webgrip.io/tier: "platform | app | game | data"
+              webgrip.io/exposure: "internal | external | private"
+    - name: require-resourcequota
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      exclude:
+        any:
+          - resources:
+              names: *platformNamespaces
+      context:
+        - name: resourcequotas
+          apiCall:
+            urlPath: /api/v1/namespaces/{{ request.object.metadata.name }}/resourcequotas
+            jmesPath: items[] | length(@)
+      validate:
+        message: "Application namespaces should have at least one ResourceQuota."
+        deny:
+          conditions:
+            any:
+              - key: "{{ resourcequotas }}"
+                operator: Equals
+                value: 0
+    - name: require-networkpolicy
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      exclude:
+        any:
+          - resources:
+              names: *platformNamespaces
+      context:
+        - name: networkpolicies
+          apiCall:
+            urlPath: /apis/networking.k8s.io/v1/namespaces/{{ request.object.metadata.name }}/networkpolicies
+            jmesPath: items[] | length(@)
+      validate:
+        message: "Application namespaces should have at least one NetworkPolicy."
+        deny:
+          conditions:
+            any:
+              - key: "{{ networkpolicies }}"
+                operator: Equals
+                value: 0
+    - name: require-default-deny-ingress
+      match:
+        any:
+          - resources:
+              kinds:
+                - NetworkPolicy
+      validate:
+        message: "Default deny NetworkPolicies should cover ingress."
+        deny:
+          conditions:
+            all:
+              - key: "{{ request.object.metadata.name }}"
+                operator: Equals
+                value: default-deny
+              - key: Ingress
+                operator: AnyNotIn
+                value: "{{ request.object.spec.policyTypes[] || `[]` }}"
+    - name: require-default-deny-egress
+      match:
+        any:
+          - resources:
+              kinds:
+                - NetworkPolicy
+      validate:
+        message: "Default deny NetworkPolicies should cover egress."
+        deny:
+          conditions:
+            all:
+              - key: "{{ request.object.metadata.name }}"
+                operator: Equals
+                value: default-deny
+              - key: Egress
+                operator: AnyNotIn
+                value: "{{ request.object.spec.policyTypes[] || `[]` }}"
+    - name: require-dns-egress-policy-shape
+      match:
+        any:
+          - resources:
+              kinds:
+                - NetworkPolicy
+      validate:
+        message: "DNS allow NetworkPolicies should explicitly allow TCP and UDP 53 egress."
+        deny:
+          conditions:
+            all:
+              - key: "{{ request.object.metadata.name }}"
+                operator: Equals
+                value: allow-dns
+              - key: 53
+                operator: AnyNotIn
+                value: "{{ request.object.spec.egress[].ports[].port || `[]` }}"

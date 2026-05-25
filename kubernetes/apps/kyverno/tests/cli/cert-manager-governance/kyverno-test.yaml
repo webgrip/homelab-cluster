@@ -1,0 +1,33 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: cert-manager-governance
+policies:
+  - ../../policies/cert-manager-governance.yaml
+resources:
+  - resources.yaml
+results:
+  - policy: cert-manager-governance
+    rule: restrict-certificate-issuer
+    resources:
+      - app/wrong-issuer-cert
+    kind: Certificate
+    result: fail
+  - policy: cert-manager-governance
+    rule: restrict-certificate-dnsnames
+    resources:
+      - app/wrong-dns-cert
+    kind: Certificate
+    result: fail
+  - policy: cert-manager-governance
+    rule: restrict-certificate-commonname
+    resources:
+      - app/wrong-commonname-cert
+    kind: Certificate
+    result: fail
+  - policy: cert-manager-governance
+    rule: restrict-clusterissuer-acme-zone
+    resources:
+      - wrong-zone
+    kind: ClusterIssuer
+    result: fail

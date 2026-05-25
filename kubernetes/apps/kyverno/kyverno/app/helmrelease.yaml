@@ -1,0 +1,182 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kyverno
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: kyverno
+  interval: 1h
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  values:
+    fullnameOverride: kyverno
+
+    global:
+      priorityClassName: system-cluster-critical
+
+    grafana:
+      enabled: true
+
+    features:
+      admissionReports:
+        enabled: true
+      aggregateReports:
+        enabled: true
+      policyReports:
+        enabled: true
+      validatingAdmissionPolicyReports:
+        enabled: true
+      reporting:
+        validate: true
+        mutate: true
+        mutateExisting: true
+        imageVerify: true
+        generate: true
+      backgroundScan:
+        enabled: true
+        backgroundScanWorkers: 4
+        backgroundScanInterval: 1h
+        skipResourceFilters: false
+      generateValidatingAdmissionPolicy:
+        enabled: true
+      policyExceptions:
+        enabled: true
+        namespace: kyverno
+      logging:
+        format: json
+        verbosity: 2
+
+    admissionController:
+      replicas: 3
+      apiPriorityAndFairness: true
+      rbac:
+        serviceAccount:
+          automountServiceAccountToken: false
+        clusterRole:
+          extraResources:
+            - apiGroups:
+                - admissionregistration.k8s.io
+              resources:
+                - validatingadmissionpolicies
+                - validatingadmissionpolicybindings
+              verbs:
+                - create
+                - delete
+                - get
+                - list
+                - patch
+                - update
+                - watch
+      certManager:
+        enabled: true
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 2
+        unhealthyPodEvictionPolicy: AlwaysAllow
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: admission-controller
+              app.kubernetes.io/instance: kyverno
+      service:
+        trafficDistribution: PreferClose
+      metricsService:
+        trafficDistribution: PreferClose
+      serviceMonitor:
+        enabled: true
+      tracing:
+        enabled: true
+        address: alloy-gateway.observability.svc.cluster.local
+        port: 4317
+
+    backgroundController:
+      replicas: 2
+      rbac:
+        serviceAccount:
+          automountServiceAccountToken: false
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
+        unhealthyPodEvictionPolicy: AlwaysAllow
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: background-controller
+              app.kubernetes.io/instance: kyverno
+      metricsService:
+        trafficDistribution: PreferClose
+      serviceMonitor:
+        enabled: true
+      tracing:
+        enabled: true
+        address: alloy-gateway.observability.svc.cluster.local
+        port: 4317
+
+    cleanupController:
+      replicas: 2
+      rbac:
+        serviceAccount:
+          automountServiceAccountToken: false
+      certManager:
+        enabled: true
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
+        unhealthyPodEvictionPolicy: AlwaysAllow
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: cleanup-controller
+              app.kubernetes.io/instance: kyverno
+      metricsService:
+        trafficDistribution: PreferClose
+      serviceMonitor:
+        enabled: true
+      tracing:
+        enabled: true
+        address: alloy-gateway.observability.svc.cluster.local
+        port: 4317
+
+    reportsController:
+      replicas: 2
+      apiPriorityAndFairness: true
+      rbac:
+        serviceAccount:
+          automountServiceAccountToken: false
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
+        unhealthyPodEvictionPolicy: AlwaysAllow
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: reports-controller
+              app.kubernetes.io/instance: kyverno
+      metricsService:
+        trafficDistribution: PreferClose
+      serviceMonitor:
+        enabled: true
+      tracing:
+        enabled: true
+        address: alloy-gateway.observability.svc.cluster.local
+        port: 4317

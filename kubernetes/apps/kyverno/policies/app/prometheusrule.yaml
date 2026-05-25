@@ -1,0 +1,139 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kyverno-policy-alerts
+  namespace: kyverno
+  labels:
+    release: kube-prometheus-stack  # must match the Helm release label so the Prometheus operator picks this up
+spec:
+  groups:
+    - name: kyverno.admission
+      interval: 1m
+      rules:
+        # -------------------------------------------------------------------
+        # Enforce-mode admissions being denied – these are active blocks.
+        # A non-zero rate over a 5-minute window warrants attention.
+        # -------------------------------------------------------------------
+        - alert: KyvernoAdmissionDenied
+          expr: |
+            sum by (policy_name, rule_name, resource_namespace, resource_kind) (
+              increase(kyverno_policy_results_total{
+                result="fail",
+                policy_background_mode="false",
+                request_operation=~"CREATE|UPDATE"
+              }[5m])
+            ) > 0
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kyverno admission denied: {{ $labels.policy_name }}/{{ $labels.rule_name }}"
+            description: >-
+              Policy {{ $labels.policy_name }} rule {{ $labels.rule_name }} denied a
+              {{ $labels.resource_kind }} in namespace {{ $labels.resource_namespace }}
+              in the last 5 minutes. Check the admission webhook logs and PolicyReports.
+            runbook_url: "https://kyverno.io/docs/troubleshooting/"
+
+        # -------------------------------------------------------------------
+        # Audit violations accumulating – background scan found failures.
+        # Alert when the total audit-fail count across any single policy is large.
+        # -------------------------------------------------------------------
+        - alert: KyvernoAuditViolationHigh
+          expr: |
+            sum by (policy_name, resource_namespace) (
+              kyverno_policy_results_total{
+                result="fail",
+                policy_background_mode="true"
+              }
+            ) > 20
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High Kyverno audit violations: {{ $labels.policy_name }}"
+            description: >-
+              Policy {{ $labels.policy_name }} has more than 20 audit-mode failures in
+              namespace {{ $labels.resource_namespace }} sustained over 15 minutes.
+              Review PolicyReports and resolve or add a governed PolicyException.
+            runbook_url: "https://kyverno.io/docs/policy-reports/"
+
+        # -------------------------------------------------------------------
+        # Policy errors – misconfigurations or CEL/JMESPath parse failures
+        # that prevent the rule from running at all.
+        # -------------------------------------------------------------------
+        - alert: KyvernoPolicyError
+          expr: |
+            sum by (policy_name, rule_name) (
+              increase(kyverno_policy_results_total{result="error"}[10m])
+            ) > 0
+          for: 0m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Kyverno policy error: {{ $labels.policy_name }}/{{ $labels.rule_name }}"
+            description: >-
+              Policy {{ $labels.policy_name }} rule {{ $labels.rule_name }} is producing
+              errors (not denials). This usually means a CEL/JMESPath expression is
+              broken or a referenced resource is missing. The rule is not enforcing.
+            runbook_url: "https://kyverno.io/docs/troubleshooting/"
+
+    - name: kyverno.controllers
+      interval: 1m
+      rules:
+        # -------------------------------------------------------------------
+        # Webhook latency – if the admission webhook is slow it will affect
+        # all API server operations in the cluster.
+        # -------------------------------------------------------------------
+        - alert: KyvernoWebhookLatencyHigh
+          expr: |
+            histogram_quantile(0.99,
+              sum by (le, controller) (
+                rate(kyverno_admission_request_duration_seconds_bucket[5m])
+              )
+            ) > 2
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kyverno admission webhook p99 latency > 2s"
+            description: >-
+              The Kyverno admission controller p99 latency is {{ $value | humanizeDuration }}
+              over the last 5 minutes. High webhook latency degrades all API server
+              operations. Check controller resources and policy complexity.
+            runbook_url: "https://kyverno.io/docs/installation/platform-notes/"
+
+        # -------------------------------------------------------------------
+        # Background controller queue depth – large backlogs mean reports
+        # are stale and enforce background scans are not completing.
+        # -------------------------------------------------------------------
+        - alert: KyvernoBackgroundQueueDepthHigh
+          expr: |
+            kyverno_controller_queue_depth{controller=~".*background.*"} > 500
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kyverno background controller queue depth high"
+            description: >-
+              The Kyverno background controller queue depth is {{ $value }}, sustained
+              over 10 minutes. Background scans and report generation are falling behind.
+              Consider increasing backgroundScanWorkers or reducing scan scope.
+            runbook_url: "https://kyverno.io/docs/installation/customization/"
+
+        # -------------------------------------------------------------------
+        # Reports controller queue depth
+        # -------------------------------------------------------------------
+        - alert: KyvernoReportsQueueDepthHigh
+          expr: |
+            kyverno_controller_queue_depth{controller=~".*report.*"} > 500
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kyverno reports controller queue depth high"
+            description: >-
+              The Kyverno reports controller queue depth is {{ $value }}. PolicyReports
+              are not being written promptly. Check reports-controller resources.
+            runbook_url: "https://kyverno.io/docs/installation/customization/"

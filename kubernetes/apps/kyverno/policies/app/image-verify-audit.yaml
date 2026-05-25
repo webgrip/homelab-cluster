@@ -1,0 +1,126 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/clusterpolicy_v1.json
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: image-verify-audit
+  annotations:
+    pod-policies.kyverno.io/autogen-controllers: DaemonSet,Deployment,StatefulSet
+    policies.kyverno.io/title: Image Signature Verification (Audit)
+    policies.kyverno.io/category: Software Supply Chain
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Audit that application images from internal registries are signed with cosign.
+      This policy runs in Audit mode so existing unsigned workloads are surfaced in
+      PolicyReports without being blocked. Promote to Enforce once all images in scope
+      are signed in CI.
+
+      To enable enforcement for a specific image prefix, move its entry to a new
+      ClusterPolicy with validationFailureAction: Enforce.
+
+      Image signing setup:
+        1. Generate a cosign keypair: `cosign generate-key-pair k8s://kyverno/cosign-signing-secrets`
+        2. Sign images in CI: `cosign sign --key k8s://kyverno/cosign-signing-secrets <image>@<digest>`
+        3. Update the publicKey below with the contents of cosign.pub from the generated secret.
+
+      External public keys referenced here should be kept in a Secret in the kyverno
+      namespace and referenced via `secret.name` / `secret.data` instead of being
+      inlined once real keys exist.
+spec:
+  validationFailureAction: Audit
+  background: false  # verifyImages requires admission context
+  webhookTimeoutSeconds: 30
+  rules:
+    # -----------------------------------------------------------------------
+    # Internal images: ghcr.io/webgrip/*
+    # These are images built and signed by this organisation's own CI.
+    # Replace the placeholder publicKey with the real cosign.pub once CI
+    # signing is configured.
+    # -----------------------------------------------------------------------
+    - name: verify-webgrip-images
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - kube-system
+                      - kube-public
+                      - kube-node-lease
+                      - kyverno
+                      - flux-system
+                      - cert-manager
+                      - cnpg-system
+                      - longhorn-system
+                      - network
+                      - observability
+                      - arc-systems
+                      - renovate
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/webgrip/*"
+          skipImageReferences:
+            - "ghcr.io/webgrip/*:*"   # skip tag-only refs; require digest-pinned (handled by image-supply-chain-audit)
+          attestors:
+            - count: 1
+              entries:
+                - keys:
+                    # TODO: replace with real cosign.pub once CI signing is configured.
+                    # Generate with: cosign generate-key-pair k8s://kyverno/cosign-signing-secrets
+                    # Retrieve pub: kubectl get secret cosign-signing-secrets -n kyverno -o jsonpath='{.data.cosign\.pub}' | base64 -d
+                    publicKey: |-
+                      -----BEGIN PUBLIC KEY-----
+                      # PLACEHOLDER – replace with actual cosign public key
+                      -----END PUBLIC KEY-----
+                    rekor:
+                      url: https://rekor.sigstore.dev
+                    ctlog:
+                      url: https://ctfe.sigstore.dev
+                      ignoreTLog: false
+          required: true
+          mutateDigest: true
+          verifyDigest: true
+          imageRegistryCredentials:
+            allowInsecureRegistry: false
+
+    # -----------------------------------------------------------------------
+    # Third-party images with keyless OIDC signing (sigstore)
+    # These projects sign releases via GitHub Actions OIDC — no static key needed.
+    # -----------------------------------------------------------------------
+    - name: verify-kyverno-images-keyless
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: In
+                    values:
+                      - kyverno
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/kyverno/*"
+          attestors:
+            - count: 1
+              entries:
+                - keyless:
+                    subject: "https://kubernetes.io/namespaces/kyverno/serviceaccounts/*"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev
+                    ctlog:
+                      url: https://ctfe.sigstore.dev
+                      ignoreTLog: false
+                    additionalExtensions:
+                      githubWorkflowRepository: "kyverno/kyverno"
+          required: true
+          mutateDigest: true
+          verifyDigest: true

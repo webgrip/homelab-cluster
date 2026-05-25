@@ -1,0 +1,38 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: generate-defaults
+policies:
+  - ../../policies/namespace-defaults-generate.yaml
+resources:
+  - resources.yaml
+variables: values.yaml
+results:
+  - policy: namespace-defaults-generate
+    rule: generate-resourcequota
+    resources:
+      - kyverno-test-defaults
+    generatedResource: generated-resourcequota.yaml
+    kind: Namespace
+    result: pass
+  - policy: namespace-defaults-generate
+    rule: generate-limitrange
+    resources:
+      - kyverno-test-defaults
+    generatedResource: generated-limitrange.yaml
+    kind: Namespace
+    result: pass
+  - policy: namespace-defaults-generate
+    rule: generate-default-deny-networkpolicy
+    resources:
+      - kyverno-test-defaults
+    generatedResource: generated-default-deny.yaml
+    kind: Namespace
+    result: pass
+  - policy: namespace-defaults-generate
+    rule: generate-allow-dns-networkpolicy
+    resources:
+      - kyverno-test-defaults
+    generatedResource: generated-allow-dns.yaml
+    kind: Namespace
+    result: pass

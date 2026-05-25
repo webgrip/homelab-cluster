@@ -1,0 +1,45 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: network-exposure
+policies:
+  - ../../policies/network-exposure-enforce.yaml
+resources:
+  - resources.yaml
+results:
+  - policy: network-exposure-enforce
+    rule: disallow-nodeport-services
+    resources:
+      - app/nodeport-service
+    kind: Service
+    result: fail
+  - policy: network-exposure-enforce
+    rule: disallow-service-external-ips
+    resources:
+      - app/external-ips-service
+    kind: Service
+    result: fail
+  - policy: network-exposure-enforce
+    rule: restrict-loadbalancer-namespaces
+    resources:
+      - app/forbidden-lb-service
+    kind: Service
+    result: fail
+  - policy: network-exposure-enforce
+    rule: require-httproute-https-listener
+    resources:
+      - app/http-listener-route
+    kind: HTTPRoute
+    result: fail
+  - policy: network-exposure-enforce
+    rule: restrict-external-gateway-attachment
+    resources:
+      - app/external-route
+    kind: HTTPRoute
+    result: fail
+  - policy: network-exposure-enforce
+    rule: require-approved-httproute-hostnames
+    resources:
+      - default/bad-hostname-route
+    kind: HTTPRoute
+    result: fail

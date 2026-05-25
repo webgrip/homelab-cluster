@@ -1,0 +1,186 @@
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: storage-cnpg-governance
+  annotations:
+    policies.kyverno.io/title: Storage and CNPG Governance
+    policies.kyverno.io/category: Storage, Database, Disaster Recovery
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: PersistentVolumeClaim,Cluster,ScheduledBackup
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Enforce Longhorn storage invariants and audit CNPG backup and monitoring
+      posture for application databases.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-approved-pvc-storageclass
+      match:
+        any:
+          - resources:
+              kinds:
+                - PersistentVolumeClaim
+      validate:
+        message: "PVCs must use an approved Longhorn StorageClass."
+        pattern:
+          spec:
+            storageClassName: "longhorn | longhorn-general"
+    - name: disallow-rwx-pvcs
+      match:
+        any:
+          - resources:
+              kinds:
+                - PersistentVolumeClaim
+      validate:
+        message: "ReadWriteMany PVCs are not allowed unless this policy is adjusted with an explicit allowlist."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.accessModes[] || `[]` }}"
+                operator: AnyIn
+                value:
+                  - ReadWriteMany
+    - name: require-cnpg-longhorn-storage
+      match:
+        any:
+          - resources:
+              kinds:
+                - Cluster
+      validate:
+        message: "CNPG clusters must use the longhorn StorageClass."
+        pattern:
+          spec:
+            storage:
+              storageClass: longhorn
+    - name: audit-pvc-size-cap
+      match:
+        any:
+          - resources:
+              kinds:
+                - PersistentVolumeClaim
+      validate:
+        failureAction: Audit
+        message: "PVCs larger than 100Gi should be reviewed before admission."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.resources.requests.storage }}"
+                operator: GreaterThan
+                value: 100Gi
+    - name: audit-cnpg-backup-plugin
+      match:
+        any:
+          - resources:
+              kinds:
+                - Cluster
+      validate:
+        failureAction: Audit
+        message: "CNPG clusters should configure the barman-cloud WAL archive plugin."
+        deny:
+          conditions:
+            any:
+              - key: barman-cloud.cloudnative-pg.io
+                operator: AnyNotIn
+                value: "{{ request.object.spec.plugins[].name || `[]` }}"
+    - name: audit-cnpg-scheduledbackup
+      match:
+        any:
+          - resources:
+              kinds:
+                - Cluster
+      context:
+        - name: scheduledbackups
+          apiCall:
+            urlPath: /apis/postgresql.cnpg.io/v1/namespaces/{{ request.object.metadata.namespace }}/scheduledbackups
+            jmesPath: items[?spec.cluster.name == '{{ request.object.metadata.name }}'] | length(@)
+      validate:
+        failureAction: Audit
+        message: "CNPG clusters should have at least one ScheduledBackup."
+        deny:
+          conditions:
+            any:
+              - key: "{{ scheduledbackups }}"
+                operator: Equals
+                value: 0
+    - name: audit-cnpg-monitoring
+      match:
+        any:
+          - resources:
+              kinds:
+                - Cluster
+      validate:
+        failureAction: Audit
+        message: "CNPG clusters should enable monitoring integration."
+        anyPattern:
+          - spec:
+              monitoring:
+                enablePodMonitor: true
+          - metadata:
+              labels:
+                monitoring.webgrip.io/enabled: "true"
+    - name: require-scheduledbackup-owner
+      match:
+        any:
+          - resources:
+              kinds:
+                - ScheduledBackup
+      validate:
+        message: "CNPG ScheduledBackups must be owned by their source cluster."
+        pattern:
+          spec:
+            backupOwnerReference: cluster
+            cluster:
+              name: "?*"
+            method: plugin
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: stateful-delete-protection-enforce
+  annotations:
+    policies.kyverno.io/title: Stateful Delete Protection Enforce
+    policies.kyverno.io/category: Storage, Database, Disaster Recovery
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: PersistentVolumeClaim,Cluster
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Require an explicit break-glass annotation before deleting PVCs or CNPG
+      clusters.
+spec:
+  validationFailureAction: Enforce
+  background: false
+  rules:
+    - name: protect-pvc-delete
+      match:
+        any:
+          - resources:
+              kinds:
+                - PersistentVolumeClaim
+              operations:
+                - DELETE
+      validate:
+        message: "PVC deletion requires policy.webgrip.io/allow-stateful-delete=true."
+        deny:
+          conditions:
+            any:
+              - key: '{{ request.oldObject.metadata.annotations."policy.webgrip.io/allow-stateful-delete" || "false" }}'
+                operator: NotEquals
+                value: "true"
+    - name: protect-cnpg-cluster-delete
+      match:
+        any:
+          - resources:
+              kinds:
+                - Cluster
+              operations:
+                - DELETE
+      validate:
+        message: "CNPG Cluster deletion requires policy.webgrip.io/allow-stateful-delete=true."
+        deny:
+          conditions:
+            any:
+              - key: '{{ request.oldObject.metadata.annotations."policy.webgrip.io/allow-stateful-delete" || "false" }}'
+                operator: NotEquals
+                value: "true"

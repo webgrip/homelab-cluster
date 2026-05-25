@@ -55,6 +55,7 @@ My cluster runs on three bare-metal Talos controllers (`soyo-1`..`3`) that also 
 - [envoy-gateway](https://github.com/envoyproxy/gateway): Provides `envoy-internal`/`envoy-external` Gateway API classes.
 - [flux](https://github.com/fluxcd/flux2): Source, Kustomize, Helm, and notification controllers.
 - [k8s-gateway](https://github.com/kubernetes-sigs/gateway-api): Split DNS responder for internal resolution.
+- [kyverno](https://github.com/kyverno/kyverno): Policy engine for admission control, background scans, policy reports, and namespace guardrails.
 - [metrics-server](https://github.com/kubernetes-sigs/metrics-server), [reloader](https://github.com/stakater/Reloader), [spegel](https://github.com/spegel-org/spegel): telemetry, config reloads, and OCI image cache.
 
 ### GitOps
@@ -67,7 +68,7 @@ Flux watches the `kubernetes/apps` tree, reconciling each top-level `kustomizati
 | --- | --- | --- |
 | Platform control | `flux-system`, `kube-system` | Flux controllers, notification receiver, Weave GitOps UI, plus Cilium, CoreDNS, metrics-server, Spegel, and Reloader.
 | Networking & ingress | `network` | Envoy internal/external gateways, Cloudflare DNS + Tunnel, and `k8s-gateway` for split-horizon DNS.
-| PKI & security | `cert-manager`, `components/sops` | ACME HTTP-01 + DNS-01 issuers for wildcard certs; shared secrets rendered into namespaces through the SOPS component.
+| PKI & security | `cert-manager`, `kyverno`, `components/sops` | ACME HTTP-01 + DNS-01 issuers for wildcard certs, Kyverno admission/reporting/generate policies, and shared secrets rendered into namespaces through the SOPS component.
 | CI infrastructure | `arc-systems` | Actions Runner Controller plus a Docker-in-Docker runner scale set so GitHub repos can burst jobs onto the homelab.
 | Applications | `default`, `freshrss`, `invoiceninja` | Echo sample service, FreshRSS HelmRelease with Bitnami bootstrap job, and Invoice Ninja 5.12.39 paired with an app-template-managed MariaDB 11.8.5 StatefulSet on Longhorn storage.
 

@@ -1,0 +1,168 @@
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: network-exposure-enforce
+  annotations:
+    policies.kyverno.io/title: Network Exposure Enforce
+    policies.kyverno.io/category: Networking, Gateway API
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Service,HTTPRoute
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Enforce service and Gateway API exposure guardrails for this cluster's
+      Cilium LoadBalancer and Envoy Gateway patterns.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: disallow-nodeport-services
+      match:
+        any:
+          - resources:
+              kinds:
+                - Service
+      validate:
+        message: "NodePort Services are not allowed; use Gateway API or approved LoadBalancer Services."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.type || 'ClusterIP' }}"
+                operator: Equals
+                value: NodePort
+    - name: disallow-service-external-ips
+      match:
+        any:
+          - resources:
+              kinds:
+                - Service
+      validate:
+        message: "Service externalIPs are not allowed."
+        pattern:
+          spec:
+            X(externalIPs): "null"
+    - name: restrict-loadbalancer-namespaces
+      match:
+        any:
+          - resources:
+              kinds:
+                - Service
+      validate:
+        message: "LoadBalancer Services are restricted to approved infrastructure and game namespaces."
+        deny:
+          conditions:
+            all:
+              - key: "{{ request.object.spec.type || 'ClusterIP' }}"
+                operator: Equals
+                value: LoadBalancer
+              - key: "{{ request.object.metadata.namespace }}"
+                operator: AnyNotIn
+                value:
+                  - network
+                  - minecraft
+                  - zomboid
+    - name: require-loadbalancer-cilium-ip
+      match:
+        any:
+          - resources:
+              kinds:
+                - Service
+      validate:
+        message: "LoadBalancer Services must request a Cilium LB IPAM address."
+        deny:
+          conditions:
+            all:
+              - key: "{{ request.object.spec.type || 'ClusterIP' }}"
+                operator: Equals
+                value: LoadBalancer
+              - key: '{{ request.object.metadata.annotations."lbipam.cilium.io/ips" || "" }}'
+                operator: Equals
+                value: ""
+    - name: require-httproute-https-listener
+      match:
+        any:
+          - resources:
+              kinds:
+                - HTTPRoute
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - network
+              names:
+                - https-redirect
+      validate:
+        message: "HTTPRoutes must attach to the HTTPS listener."
+        foreach:
+          - list: request.object.spec.parentRefs[]
+            deny:
+              conditions:
+                any:
+                  - key: "{{ element.sectionName || '' }}"
+                    operator: NotEquals
+                    value: https
+    - name: restrict-external-gateway-attachment
+      match:
+        any:
+          - resources:
+              kinds:
+                - HTTPRoute
+      validate:
+        message: "Only approved namespaces may attach HTTPRoutes to envoy-external."
+        foreach:
+          - list: request.object.spec.parentRefs[]
+            deny:
+              conditions:
+                all:
+                  - key: "{{ element.name }}"
+                    operator: Equals
+                    value: envoy-external
+                  - key: "{{ request.object.metadata.namespace }}"
+                    operator: AnyNotIn
+                    value:
+                      - default
+                      - flux-system
+                      - invoiceninja
+                      - network
+                      - observability
+                      - renovate
+    - name: require-approved-httproute-hostnames
+      match:
+        any:
+          - resources:
+              kinds:
+                - HTTPRoute
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - network
+              names:
+                - https-redirect
+      validate:
+        message: "HTTPRoute hostnames must be under ${SECRET_DOMAIN}."
+        foreach:
+          - list: request.object.spec.hostnames[]
+            deny:
+              conditions:
+                any:
+                  - key: "{{ regex_match('^(\\*\\.)?([A-Za-z0-9-]+\\.)*${SECRET_DOMAIN}$', element) }}"
+                    operator: Equals
+                    value: false
+    - name: audit-cross-namespace-backends
+      match:
+        any:
+          - resources:
+              kinds:
+                - HTTPRoute
+      validate:
+        failureAction: Audit
+        message: "Cross-namespace HTTPRoute backendRefs should require explicit review and ReferenceGrants."
+        foreach:
+          - list: request.object.spec.rules[].backendRefs[]
+            deny:
+              conditions:
+                all:
+                  - key: "{{ element.namespace || request.object.metadata.namespace }}"
+                    operator: NotEquals
+                    value: "{{ request.object.metadata.namespace }}"

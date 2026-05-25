@@ -1,0 +1,113 @@
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pod-security-baseline-enforce
+  annotations:
+    policies.kyverno.io/title: Pod Security Baseline Enforce
+    policies.kyverno.io/category: Pod Security Standards (Baseline)
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod,Volume
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Enforce a small set of low-regret baseline pod security controls across
+      application namespaces while leaving platform namespaces untouched.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: host-namespaces
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: &applicationNamespaces
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - arc-systems
+                      - cert-manager
+                      - cnpg-system
+                      - flux-system
+                      - kube-node-lease
+                      - kube-public
+                      - kube-system
+                      - kyverno
+                      - longhorn-system
+                      - network
+                      - observability
+                      - renovate
+      validate:
+        message: >-
+          Sharing the host namespaces is disallowed. The fields spec.hostNetwork,
+          spec.hostIPC, and spec.hostPID must be unset or set to `false`.
+        pattern:
+          spec:
+            =(hostPID): "false"
+            =(hostIPC): "false"
+            =(hostNetwork): "false"
+    - name: host-path
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: >-
+          HostPath volumes are forbidden. The field spec.volumes[*].hostPath must be unset.
+        pattern:
+          spec:
+            =(volumes):
+              - X(hostPath): "null"
+    - name: host-ports-none
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: >-
+          Use of host ports is disallowed. The fields spec.containers[*].ports[*].hostPort,
+          spec.initContainers[*].ports[*].hostPort, and spec.ephemeralContainers[*].ports[*].hostPort
+          must either be unset or set to `0`.
+        pattern:
+          spec:
+            =(ephemeralContainers):
+              - =(ports):
+                  - =(hostPort): 0
+            =(initContainers):
+              - =(ports):
+                  - =(hostPort): 0
+            containers:
+              - =(ports):
+                  - =(hostPort): 0
+    - name: privileged-containers
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: >-
+          Privileged mode is disallowed. The fields spec.containers[*].securityContext.privileged,
+          spec.initContainers[*].securityContext.privileged, and spec.ephemeralContainers[*].securityContext.privileged
+          must be unset or set to `false`.
+        pattern:
+          spec:
+            =(ephemeralContainers):
+              - =(securityContext):
+                  =(privileged): "false"
+            =(initContainers):
+              - =(securityContext):
+                  =(privileged): "false"
+            containers:
+              - =(securityContext):
+                  =(privileged): "false"

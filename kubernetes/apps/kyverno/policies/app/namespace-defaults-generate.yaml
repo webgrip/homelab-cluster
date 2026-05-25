@@ -1,0 +1,136 @@
+---
+# Opt-in labels supported on Namespace resources:
+# - kyverno.io/default-resource-controls: "true"
+# - kyverno.io/default-network-policies: "true"
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: namespace-defaults-generate
+  annotations:
+    policies.kyverno.io/title: Namespace Defaults Generate
+    policies.kyverno.io/category: Multi-Tenancy, Best Practices
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/subject: Namespace, ResourceQuota, LimitRange, NetworkPolicy
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Generate opt-in namespace defaults for resource controls and baseline
+      network isolation so teams can onboard new namespaces with consistent
+      guardrails using labels instead of one-off manifests.
+spec:
+  background: false
+  rules:
+    - name: generate-resourcequota
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      preconditions:
+        all: &resourceControlsPreconditions
+          - key: "{{ request.operation || 'BACKGROUND' }}"
+            operator: AnyIn
+            value:
+              - CREATE
+              - UPDATE
+          - key: '{{ request.object.metadata.labels."kyverno.io/default-resource-controls" || "false" }}'
+            operator: Equals
+            value: "true"
+      generate:
+        apiVersion: v1
+        kind: ResourceQuota
+        name: default-resourcequota
+        namespace: "{{ request.object.metadata.name }}"
+        synchronize: true
+        data:
+          spec:
+            hard:
+              pods: "40"
+              persistentvolumeclaims: "10"
+              requests.cpu: "4"
+              requests.memory: 8Gi
+              limits.cpu: "8"
+              limits.memory: 16Gi
+    - name: generate-limitrange
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      preconditions:
+        all: *resourceControlsPreconditions
+      generate:
+        apiVersion: v1
+        kind: LimitRange
+        name: default-limitrange
+        namespace: "{{ request.object.metadata.name }}"
+        synchronize: true
+        data:
+          spec:
+            limits:
+              - type: Container
+                default:
+                  cpu: 500m
+                  memory: 1Gi
+                defaultRequest:
+                  cpu: 100m
+                  memory: 128Mi
+    - name: generate-default-deny-networkpolicy
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      preconditions:
+        all: &networkPoliciesPreconditions
+          - key: "{{ request.operation || 'BACKGROUND' }}"
+            operator: AnyIn
+            value:
+              - CREATE
+              - UPDATE
+          - key: '{{ request.object.metadata.labels."kyverno.io/default-network-policies" || "false" }}'
+            operator: Equals
+            value: "true"
+      generate:
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        name: default-deny
+        namespace: "{{ request.object.metadata.name }}"
+        synchronize: true
+        data:
+          spec:
+            podSelector: {}
+            policyTypes:
+              - Ingress
+              - Egress
+    - name: generate-allow-dns-networkpolicy
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      preconditions:
+        all: *networkPoliciesPreconditions
+      generate:
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        name: allow-dns
+        namespace: "{{ request.object.metadata.name }}"
+        synchronize: true
+        data:
+          spec:
+            podSelector: {}
+            policyTypes:
+              - Egress
+            egress:
+              - to:
+                  - namespaceSelector:
+                      matchLabels:
+                        kubernetes.io/metadata.name: kube-system
+                    podSelector:
+                      matchLabels:
+                        k8s-app: kube-dns
+                ports:
+                  - protocol: UDP
+                    port: 53
+                  - protocol: TCP
+                    port: 53

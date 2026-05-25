@@ -1,0 +1,24 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: network-guardrails
+spec:
+  concurrent: false
+  steps:
+    - try:
+        - apply:
+            file: namespaces.yaml
+        - apply:
+            file: nodeport-service.yaml
+            expect:
+              - check:
+                  ($error != null): true
+        - apply:
+            file: forbidden-lb-service.yaml
+            expect:
+              - check:
+                  ($error != null): true
+        - apply:
+            file: allowed-lb-service.yaml
+        - assert:
+            file: allowed-lb-service.yaml

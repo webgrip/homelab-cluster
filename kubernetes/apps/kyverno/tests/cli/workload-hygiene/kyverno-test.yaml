@@ -1,0 +1,35 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: workload-hygiene
+policies:
+  - ../../policies/image-supply-chain-audit.yaml
+  - ../../policies/require-probes-audit.yaml
+resources:
+  - resources.yaml
+variables: values.yaml
+results:
+  - policy: image-supply-chain-audit
+    rule: require-image-digest
+    resources:
+      - app/missing-digest
+    kind: Pod
+    result: fail
+  - policy: image-supply-chain-audit
+    rule: disallow-latest-tag-even-with-digest
+    resources:
+      - app/latest-digest
+    kind: Pod
+    result: fail
+  - policy: image-supply-chain-audit
+    rule: require-approved-registries
+    resources:
+      - app/unapproved-registry
+    kind: Pod
+    result: fail
+  - policy: require-pod-probes-audit
+    rule: validate-probes
+    resources:
+      - app/missing-probes
+    kind: Pod
+    result: fail

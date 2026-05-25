@@ -1,0 +1,270 @@
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: workload-advanced-hardening-audit
+  annotations:
+    pod-policies.kyverno.io/autogen-controllers: DaemonSet,Deployment,StatefulSet
+    policies.kyverno.io/title: Workload Advanced Hardening Audit
+    policies.kyverno.io/category: Pod Security Standards (Restricted), Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Audit stricter runtime hardening for application workloads before promoting
+      these controls to enforcement.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: disallow-non-baseline-capabilities
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: &applicationNamespaces
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - arc-systems
+                      - cert-manager
+                      - cnpg-system
+                      - flux-system
+                      - kube-node-lease
+                      - kube-public
+                      - kube-system
+                      - kyverno
+                      - longhorn-system
+                      - network
+                      - observability
+                      - renovate
+      validate:
+        message: "Only Linux capabilities from the Pod Security Baseline allowlist may be added."
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            deny:
+              conditions:
+                any:
+                  - key: "{{ element.securityContext.capabilities.add[] || `[]` }}"
+                    operator: AnyNotIn
+                    value:
+                      - AUDIT_WRITE
+                      - CHOWN
+                      - DAC_OVERRIDE
+                      - FOWNER
+                      - FSETID
+                      - KILL
+                      - MKNOD
+                      - NET_BIND_SERVICE
+                      - SETFCAP
+                      - SETGID
+                      - SETPCAP
+                      - SETUID
+                      - SYS_CHROOT
+    - name: require-drop-all-capabilities
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: "Containers should drop all Linux capabilities with capabilities.drop: [ALL]."
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            deny:
+              conditions:
+                any:
+                  - key: ALL
+                    operator: AnyNotIn
+                    value: "{{ element.securityContext.capabilities.drop[] || `[]` }}"
+    - name: require-readonly-root-filesystem
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: "Containers should set securityContext.readOnlyRootFilesystem to true."
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            deny:
+              conditions:
+                any:
+                  - key: "{{ element.securityContext.readOnlyRootFilesystem || false }}"
+                    operator: NotEquals
+                    value: true
+    - name: disallow-proc-mount-override
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: "Containers may not override procMount away from Default."
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            deny:
+              conditions:
+                any:
+                  - key: "{{ element.securityContext.procMount || 'Default' }}"
+                    operator: NotEquals
+                    value: Default
+    - name: disallow-unconfined-apparmor
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: "AppArmor profiles must not be Unconfined."
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            deny:
+              conditions:
+                any:
+                  - key: "{{ element.securityContext.appArmorProfile.type || 'RuntimeDefault' }}"
+                    operator: Equals
+                    value: Unconfined
+    - name: disallow-explicit-root-user
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: "Pods and containers must not explicitly run as UID 0."
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            deny:
+              conditions:
+                any:
+                  - key: "{{ request.object.spec.securityContext.runAsUser || -1 }}"
+                    operator: Equals
+                    value: 0
+                  - key: "{{ element.securityContext.runAsUser || -1 }}"
+                    operator: Equals
+                    value: 0
+    - name: disallow-explicit-root-group
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: "Pods and containers must not explicitly run with root group IDs."
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            deny:
+              conditions:
+                any:
+                  - key: "{{ request.object.spec.securityContext.runAsGroup || -1 }}"
+                    operator: Equals
+                    value: 0
+                  - key: "{{ request.object.spec.securityContext.fsGroup || -1 }}"
+                    operator: Equals
+                    value: 0
+                  - key: "{{ element.securityContext.runAsGroup || -1 }}"
+                    operator: Equals
+                    value: 0
+    - name: disallow-unsafe-sysctls
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: "Only Kubernetes safe sysctls may be configured."
+        foreach:
+          - list: request.object.spec.securityContext.sysctls[]
+            deny:
+              conditions:
+                any:
+                  - key: "{{ element.name }}"
+                    operator: AnyNotIn
+                    value:
+                      - kernel.shm_rmid_forced
+                      - net.ipv4.ip_local_port_range
+                      - net.ipv4.ip_unprivileged_port_start
+                      - net.ipv4.tcp_syncookies
+                      - net.ipv4.ping_group_range
+    - name: disallow-risky-volume-types
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: "Risky direct node/network volume sources are not allowed in application Pods."
+        pattern:
+          spec:
+            =(volumes):
+              - X(awsElasticBlockStore): "null"
+                X(azureDisk): "null"
+                X(azureFile): "null"
+                X(cephfs): "null"
+                X(cinder): "null"
+                X(fc): "null"
+                X(flexVolume): "null"
+                X(flocker): "null"
+                X(gcePersistentDisk): "null"
+                X(glusterfs): "null"
+                X(hostPath): "null"
+                X(iscsi): "null"
+                X(nfs): "null"
+                X(photonPersistentDisk): "null"
+                X(portworxVolume): "null"
+                X(quobyte): "null"
+                X(rbd): "null"
+                X(scaleIO): "null"
+                X(storageos): "null"
+                X(vsphereVolume): "null"
+    - name: require-non-default-serviceaccount
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: "Application Pods should use an explicit non-default ServiceAccount."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.serviceAccountName || 'default' }}"
+                operator: Equals
+                value: default
+    - name: require-serviceaccount-token-opt-out
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: "Application Pods should set automountServiceAccountToken: false unless they call the Kubernetes API."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.automountServiceAccountToken || true }}"
+                operator: NotEquals
+                value: false

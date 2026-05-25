@@ -1,0 +1,105 @@
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: cert-manager-governance
+  annotations:
+    policies.kyverno.io/title: Cert Manager Governance
+    policies.kyverno.io/category: Cert-Manager, TLS
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Certificate,Issuer,ClusterIssuer
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Restrict certificate issuance to the approved production ClusterIssuer and
+      the cluster domain while auditing certificate lifecycle settings.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: restrict-certificate-issuer
+      match:
+        any:
+          - resources:
+              kinds:
+                - Certificate
+      validate:
+        message: "Certificates must use the letsencrypt-production ClusterIssuer."
+        pattern:
+          spec:
+            issuerRef:
+              name: letsencrypt-production
+              kind: ClusterIssuer
+    - name: restrict-certificate-dnsnames
+      match:
+        any:
+          - resources:
+              kinds:
+                - Certificate
+      validate:
+        message: "Certificate DNS names must be ${SECRET_DOMAIN} or a subdomain of it."
+        foreach:
+          - list: request.object.spec.dnsNames[]
+            deny:
+              conditions:
+                any:
+                  - key: "{{ regex_match('^(\\*\\.)?([A-Za-z0-9-]+\\.)*${SECRET_DOMAIN}$', element) }}"
+                    operator: Equals
+                    value: false
+    - name: restrict-certificate-commonname
+      match:
+        any:
+          - resources:
+              kinds:
+                - Certificate
+      validate:
+        message: "Certificate commonName must be ${SECRET_DOMAIN} or a subdomain of it."
+        deny:
+          conditions:
+            any:
+              - key: "{{ regex_match('^(\\*\\.)?([A-Za-z0-9-]+\\.)*${SECRET_DOMAIN}$', request.object.spec.commonName || '${SECRET_DOMAIN}') }}"
+                operator: Equals
+                value: false
+    - name: restrict-clusterissuer-acme-zone
+      match:
+        any:
+          - resources:
+              kinds:
+                - ClusterIssuer
+      validate:
+        message: "ClusterIssuers must be scoped to ${SECRET_DOMAIN}."
+        pattern:
+          spec:
+            acme:
+              solvers:
+                - selector:
+                    dnsZones:
+                      - "${SECRET_DOMAIN}"
+    - name: audit-certificate-duration
+      match:
+        any:
+          - resources:
+              kinds:
+                - Certificate
+      validate:
+        failureAction: Audit
+        message: "Certificates should declare duration and renewBefore for predictable rotation."
+        pattern:
+          spec:
+            duration: "?*"
+            renewBefore: "?*"
+    - name: audit-certificate-private-key
+      match:
+        any:
+          - resources:
+              kinds:
+                - Certificate
+      validate:
+        failureAction: Audit
+        message: "Certificates should declare private key algorithm, size, encoding, and rotation policy."
+        pattern:
+          spec:
+            privateKey:
+              algorithm: "ECDSA | RSA"
+              size: ">=256"
+              encoding: "PKCS1 | PKCS8"
+              rotationPolicy: Always

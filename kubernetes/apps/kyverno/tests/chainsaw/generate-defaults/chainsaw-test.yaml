@@ -1,0 +1,20 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: generate-defaults
+spec:
+  concurrent: false
+  steps:
+    - try:
+        - create:
+            file: namespace.yaml
+        - assert:
+            file: namespace-assert.yaml
+        - assert:
+            file: resourcequota-assert.yaml
+        - assert:
+            file: limitrange-assert.yaml
+        - assert:
+            file: default-deny-assert.yaml
+        - assert:
+            file: allow-dns-assert.yaml

@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app
+  labels:
+    kubernetes.io/metadata.name: app
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: host-network-pod
+  namespace: app
+spec:
+  hostNetwork: true
+  containers:
+    - name: app
+      image: ghcr.io/acme/app:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hostpath-pod
+  namespace: app
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/acme/app:1.0.0@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  volumes:
+    - name: host
+      hostPath:
+        path: /var/run
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hostport-pod
+  namespace: app
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/acme/app:1.0.0@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+      ports:
+        - containerPort: 8080
+          hostPort: 8080
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: privileged-pod
+  namespace: app
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/acme/app:1.0.0@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+      securityContext:
+        privileged: true

@@ -1,0 +1,33 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: pod-security-baseline
+policies:
+  - ../../policies/pod-security-baseline-enforce.yaml
+resources:
+  - resources.yaml
+results:
+  - policy: pod-security-baseline-enforce
+    rule: host-namespaces
+    resources:
+      - app/host-network-pod
+    kind: Pod
+    result: fail
+  - policy: pod-security-baseline-enforce
+    rule: host-path
+    resources:
+      - app/hostpath-pod
+    kind: Pod
+    result: fail
+  - policy: pod-security-baseline-enforce
+    rule: host-ports-none
+    resources:
+      - app/hostport-pod
+    kind: Pod
+    result: fail
+  - policy: pod-security-baseline-enforce
+    rule: privileged-containers
+    resources:
+      - app/privileged-pod
+    kind: Pod
+    result: fail

@@ -1,6 +1,7 @@
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 #
-# Polls all copilot/** branches every 5 minutes for .copilot-review/result.md.
+# Polls copilot/** branches every 5 minutes for .copilot-review/result.md and
+# prunes stale Copilot branches so the scan stays bounded over time.
 #
 # WHY SCHEDULED INSTEAD OF push/workflow_run:
 # - GitHub requires approval before running workflows triggered by AI actors (Copilot bot).
@@ -31,47 +32,22 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
             const sentinel = '<!-- renovate-ai-review -->';
+            const staleBranchMaxAgeHours = 24;
+            const staleBranchCutoffMs = Date.now() - (staleBranchMaxAgeHours * 60 * 60 * 1000);
+            const relayedReviewCache = new Map();
+            const closedArtifactPrNumbers = new Set();
 
-            async function hasRelayedReview(prNumber) {
-              const { data: comments } = await github.rest.issues.listComments({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: prNumber,
-                per_page: 100,
-              });
-              return comments.some(c => c.body && c.body.startsWith(sentinel));
+            function getCopilotPrs(prsByHead, branchName) {
+              return prsByHead.get(branchName) || [];
             }
 
-            async function closeArtifactPr(artifactPr, targetPrNumber) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: artifactPr.number,
-                body: `Relayed the Renovate review to #${targetPrNumber}; closing this Copilot artifact PR.`,
-              });
-              await github.rest.pulls.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: artifactPr.number,
-                state: 'closed',
-              });
-              console.log(`Closed Copilot artifact PR #${artifactPr.number}`);
-
-              try {
-                await github.rest.git.deleteRef({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  ref: `heads/${artifactPr.head.ref}`,
-                });
-                console.log(`Deleted Copilot artifact branch ${artifactPr.head.ref}`);
-              } catch (e) {
-                if (e.status === 404 || e.status === 422) {
-                  console.log(`Copilot artifact branch ${artifactPr.head.ref} was already gone`);
-                } else {
-                  throw e;
-                }
-              }
+            function addPrByHead(prsByHead, pr) {
+              const existing = prsByHead.get(pr.head.ref) || [];
+              existing.push(pr);
+              prsByHead.set(pr.head.ref, existing);
             }
 
             function extractTargetPrNumber(artifactPr) {
@@ -88,132 +64,245 @@ jobs:
               return null;
             }
 
-            async function closeTrackingIssues(prNumber) {
-              const { data: openIssues } = await github.rest.issues.listForRepo({
-                owner: context.repo.owner, repo: context.repo.repo,
-                state: 'open', per_page: 50,
+            async function listIssueComments(issueNumber) {
+              return github.paginate(github.rest.issues.listComments, {
+                owner,
+                repo,
+                issue_number: issueNumber,
+                per_page: 100,
               });
-              for (const issue of openIssues.filter(i =>
-                i.title.startsWith(`Renovate agent review for #${prNumber}:`) &&
-                i.assignees.some(a => /copilot/i.test(a.login))
-              )) {
-                await github.rest.issues.update({
-                  owner: context.repo.owner, repo: context.repo.repo,
-                  issue_number: issue.number, state: 'closed', state_reason: 'completed',
+            }
+
+            async function hasRelayedReview(prNumber) {
+              if (relayedReviewCache.has(prNumber)) {
+                return relayedReviewCache.get(prNumber);
+              }
+
+              const comments = await listIssueComments(prNumber);
+              const relayed = comments.some(comment => comment.body && comment.body.startsWith(sentinel));
+              relayedReviewCache.set(prNumber, relayed);
+              return relayed;
+            }
+
+            async function deleteBranch(branchName, reason) {
+              try {
+                await github.rest.git.deleteRef({
+                  owner,
+                  repo,
+                  ref: `heads/${branchName}`,
                 });
-                console.log(`Closed tracking issue #${issue.number}`);
+                console.log(`Deleted Copilot branch ${branchName}${reason ? ` (${reason})` : ''}`);
+              } catch (e) {
+                if (e.status === 404 || e.status === 422) {
+                  console.log(`Copilot branch ${branchName} was already gone`);
+                } else {
+                  throw e;
+                }
               }
             }
 
-            // Find all branches named copilot/**
-            const { data: branches } = await github.rest.repos.listBranches({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
+            async function closeArtifactPr(artifactPr, targetPrNumber) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: artifactPr.number,
+                body: `Relayed the Renovate review to #${targetPrNumber}; closing this Copilot artifact PR.`,
+              });
+              await github.rest.pulls.update({
+                owner,
+                repo,
+                pull_number: artifactPr.number,
+                state: 'closed',
+              });
+              closedArtifactPrNumbers.add(artifactPr.number);
+              console.log(`Closed Copilot artifact PR #${artifactPr.number}`);
+              await deleteBranch(artifactPr.head.ref, `closed artifact PR #${artifactPr.number}`);
+            }
+
+            async function getBranchCommitDate(branchName) {
+              try {
+                const { data: branch } = await github.rest.repos.getBranch({
+                  owner,
+                  repo,
+                  branch: branchName,
+                });
+                const { data: commit } = await github.rest.repos.getCommit({
+                  owner,
+                  repo,
+                  ref: branch.commit.sha,
+                });
+                return new Date(commit.commit.committer?.date || commit.commit.author?.date);
+              } catch (e) {
+                if (e.status === 404 || e.status === 422) {
+                  console.log(`Copilot branch ${branchName} disappeared before age check`);
+                  return null;
+                }
+                throw e;
+              }
+            }
+
+            const trackingIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: 'open',
               per_page: 100,
             });
+            const trackingIssuesByPr = new Map();
+            for (const issue of trackingIssues) {
+              if (issue.pull_request) continue;
+              const match = issue.title.match(/^Renovate agent review for #(\d+):/);
+              if (!match) continue;
+              if (!(issue.assignees || []).some(assignee => /copilot/i.test(assignee.login))) continue;
 
-            const copilotBranches = branches.filter(b => b.name.startsWith('copilot/'));
+              const prNumber = Number(match[1]);
+              const existing = trackingIssuesByPr.get(prNumber) || [];
+              existing.push(issue);
+              trackingIssuesByPr.set(prNumber, existing);
+            }
+
+            async function closeTrackingIssues(prNumber) {
+              const issues = trackingIssuesByPr.get(prNumber) || [];
+              for (const issue of issues) {
+                await github.rest.issues.update({
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                  state: 'closed',
+                  state_reason: 'completed',
+                });
+                console.log(`Closed tracking issue #${issue.number}`);
+              }
+              trackingIssuesByPr.delete(prNumber);
+            }
+
+            const branches = await github.paginate(github.rest.repos.listBranches, {
+              owner,
+              repo,
+              per_page: 100,
+            });
+            const copilotBranches = branches.filter(branch => branch.name.startsWith('copilot/'));
             console.log(`Found ${copilotBranches.length} copilot/** branches`);
 
+            const pullRequests = await github.paginate(github.rest.pulls.list, {
+              owner,
+              repo,
+              state: 'all',
+              per_page: 100,
+            });
+            const copilotPrsByHead = new Map();
+            const openCopilotPrs = [];
+            for (const pr of pullRequests.filter(pr => pr.head.ref.startsWith('copilot/'))) {
+              addPrByHead(copilotPrsByHead, pr);
+              if (pr.state === 'open') {
+                openCopilotPrs.push(pr);
+              }
+            }
+            console.log(`Found ${openCopilotPrs.length} open Copilot artifact PRs`);
+
             for (const branch of copilotBranches) {
-              let content;
+              const branchPrs = getCopilotPrs(copilotPrsByHead, branch.name);
+              let content = null;
+
               try {
                 const resp = await github.rest.repos.getContent({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
+                  owner,
+                  repo,
                   path: '.copilot-review/result.md',
                   ref: branch.name,
                 });
                 content = Buffer.from(resp.data.content, 'base64').toString('utf8');
               } catch (e) {
-                // File doesn't exist on this branch — skip
-                continue;
-              }
-
-              console.log(`Found review file on branch: ${branch.name}`);
-
-              const lines = content.split('\n');
-              const prLine = lines[0].trim();
-              const prMatch = prLine.match(/^pr:\s*(\d+)$/);
-              if (!prMatch) {
-                console.log(`Invalid pr: header "${prLine}" on ${branch.name} — skipping`);
-                continue;
-              }
-              const prNumber = parseInt(prMatch[1], 10);
-              const body = lines.slice(2).join('\n').trim();
-
-              if (!body) {
-                console.log(`Empty review body on ${branch.name} — skipping`);
-                continue;
-              }
-
-              console.log(`Posting review for PR #${prNumber} from branch ${branch.name}`);
-
-              // Post or update sentinel comment on the Renovate PR
-              const reviewBody = `${sentinel}\n${body}`;
-
-              const { data: comments } = await github.rest.issues.listComments({
-                owner: context.repo.owner, repo: context.repo.repo,
-                issue_number: prNumber, per_page: 100,
-              });
-              const existing = comments.find(c => c.body && c.body.startsWith(sentinel));
-              if (existing) {
-                await github.rest.issues.updateComment({
-                  owner: context.repo.owner, repo: context.repo.repo,
-                  comment_id: existing.id, body: reviewBody,
-                });
-                console.log(`Updated review comment on PR #${prNumber}`);
-              } else {
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner, repo: context.repo.repo,
-                  issue_number: prNumber, body: reviewBody,
-                });
-                console.log(`Posted review comment to PR #${prNumber}`);
-              }
-
-              // Close the Copilot artifact PR, if GitHub created one for this branch.
-              const { data: artifactPrs } = await github.rest.pulls.list({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                state: 'open',
-                head: `${context.repo.owner}:${branch.name}`,
-                per_page: 10,
-              });
-              for (const artifactPr of artifactPrs.filter(pr => pr.number !== prNumber)) {
-                await closeArtifactPr(artifactPr, prNumber);
-              }
-
-              // Delete the copilot/** branch so the artifact is gone and cannot be reprocessed.
-              try {
-                await github.rest.git.deleteRef({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  ref: `heads/${branch.name}`,
-                });
-                console.log(`Deleted Copilot artifact branch ${branch.name}`);
-              } catch (e) {
-                if (e.status === 404 || e.status === 422) {
-                  console.log(`Copilot artifact branch ${branch.name} was already gone`);
-                } else {
+                if (e.status !== 404) {
                   throw e;
                 }
               }
 
-              await closeTrackingIssues(prNumber);
+              if (content !== null) {
+                console.log(`Found review file on branch: ${branch.name}`);
+
+                const lines = content.split('\n');
+                const prLine = lines[0].trim();
+                const prMatch = prLine.match(/^pr:\s*(\d+)$/);
+                if (!prMatch) {
+                  console.log(`Invalid pr: header "${prLine}" on ${branch.name} — skipping`);
+                  continue;
+                }
+
+                const prNumber = Number(prMatch[1]);
+                const body = lines.slice(2).join('\n').trim();
+                if (!body) {
+                  console.log(`Empty review body on ${branch.name} — skipping`);
+                  continue;
+                }
+
+                console.log(`Posting review for PR #${prNumber} from branch ${branch.name}`);
+
+                const reviewBody = `${sentinel}\n${body}`;
+                const comments = await listIssueComments(prNumber);
+                const existing = comments.find(comment => comment.body && comment.body.startsWith(sentinel));
+                if (existing) {
+                  await github.rest.issues.updateComment({
+                    owner,
+                    repo,
+                    comment_id: existing.id,
+                    body: reviewBody,
+                  });
+                  console.log(`Updated review comment on PR #${prNumber}`);
+                } else {
+                  await github.rest.issues.createComment({
+                    owner,
+                    repo,
+                    issue_number: prNumber,
+                    body: reviewBody,
+                  });
+                  console.log(`Posted review comment to PR #${prNumber}`);
+                }
+                relayedReviewCache.set(prNumber, true);
+
+                for (const artifactPr of branchPrs.filter(pr => pr.state === 'open' && pr.number !== prNumber)) {
+                  await closeArtifactPr(artifactPr, prNumber);
+                }
+
+                await deleteBranch(branch.name, 'processed review artifact');
+                await closeTrackingIssues(prNumber);
+                continue;
+              }
+
+              const openBranchPrs = branchPrs.filter(pr => pr.state === 'open');
+              if (openBranchPrs.length > 0) {
+                console.log(`Keeping active Copilot branch ${branch.name} with ${openBranchPrs.length} open PR(s)`);
+                continue;
+              }
+
+              const closedBranchPrs = branchPrs.filter(pr => pr.state !== 'open');
+              if (closedBranchPrs.length > 0) {
+                await deleteBranch(branch.name, `closed Copilot PR #${closedBranchPrs[0].number}`);
+                continue;
+              }
+
+              const commitDate = await getBranchCommitDate(branch.name);
+              if (!commitDate) {
+                continue;
+              }
+
+              if (commitDate.getTime() >= staleBranchCutoffMs) {
+                console.log(`Keeping recent Copilot branch ${branch.name} from ${commitDate.toISOString()}`);
+                continue;
+              }
+
+              await deleteBranch(
+                branch.name,
+                `stale with no PR or review artifact since ${commitDate.toISOString()}`
+              );
             }
 
             // Cleanup fallback for old Copilot artifact PRs whose review was already relayed
             // before branch deletion existed in this workflow.
-            const { data: openPrs } = await github.rest.pulls.list({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              per_page: 100,
-            });
-            const staleArtifactPrs = openPrs.filter(pr => pr.head.ref.startsWith('copilot/'));
-            console.log(`Found ${staleArtifactPrs.length} open Copilot artifact PRs`);
+            for (const artifactPr of openCopilotPrs) {
+              if (closedArtifactPrNumbers.has(artifactPr.number)) {
+                continue;
+              }
 
-            for (const artifactPr of staleArtifactPrs) {
               const prNumber = extractTargetPrNumber(artifactPr);
               if (!prNumber || prNumber === artifactPr.number) {
                 console.log(`Cannot determine target Renovate PR for Copilot PR #${artifactPr.number} — skipping`);

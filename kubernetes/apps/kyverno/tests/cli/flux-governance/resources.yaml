@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app
+  labels:
+    kubernetes.io/metadata.name: app
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: flux-system
+  labels:
+    kubernetes.io/metadata.name: flux-system
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: bad-oci
+spec:
+  interval: 1h
+  url: oci://ghcr.io/example/chart
+  ref:
+    tag: 1.0.0
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: bad-git
+spec:
+  interval: 1h
+  url: https://github.com/example/other-repo.git
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: bad-kustomization
+  namespace: flux-system
+spec:
+  interval: 1h
+  path: ./kubernetes/apps/example
+  prune: false
+  sourceRef:
+    kind: GitRepository
+    name: other-source
+    namespace: flux-system
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: plain-helm-repo
+  namespace: app
+spec:
+  interval: 1h
+  url: https://charts.example.com
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: bad-helmrelease
+  namespace: app
+spec:
+  interval: 1h
+  chartRef:
+    kind: HelmRepository
+    name: plain-helm-repo
+  install: {}
+  upgrade: {}

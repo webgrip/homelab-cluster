@@ -1,0 +1,175 @@
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: workload-hardening-audit
+  annotations:
+    policies.kyverno.io/title: Workload Hardening Audit
+    policies.kyverno.io/category: Pod Security Standards (Restricted), Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Audit stronger workload hardening requirements across application namespaces
+      to surface remediation work before moving to stricter enforcement.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: privilege-escalation
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: &applicationNamespaces
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - arc-systems
+                      - cert-manager
+                      - cnpg-system
+                      - flux-system
+                      - kube-node-lease
+                      - kube-public
+                      - kube-system
+                      - kyverno
+                      - longhorn-system
+                      - network
+                      - observability
+                      - renovate
+      validate:
+        message: >-
+          Privilege escalation is disallowed. The fields
+          spec.containers[*].securityContext.allowPrivilegeEscalation,
+          spec.initContainers[*].securityContext.allowPrivilegeEscalation,
+          and spec.ephemeralContainers[*].securityContext.allowPrivilegeEscalation
+          must be set to `false`.
+        pattern:
+          spec:
+            =(ephemeralContainers):
+              - securityContext:
+                  allowPrivilegeEscalation: "false"
+            =(initContainers):
+              - securityContext:
+                  allowPrivilegeEscalation: "false"
+            containers:
+              - securityContext:
+                  allowPrivilegeEscalation: "false"
+    - name: run-as-non-root
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: >-
+          Running as root is not allowed. Either the field spec.securityContext.runAsNonRoot
+          must be set to `true`, or the fields spec.containers[*].securityContext.runAsNonRoot,
+          spec.initContainers[*].securityContext.runAsNonRoot, and
+          spec.ephemeralContainers[*].securityContext.runAsNonRoot must be set to `true`.
+        anyPattern:
+          - spec:
+              securityContext:
+                runAsNonRoot: "true"
+              =(ephemeralContainers):
+                - =(securityContext):
+                    =(runAsNonRoot): "true"
+              =(initContainers):
+                - =(securityContext):
+                    =(runAsNonRoot): "true"
+              containers:
+                - =(securityContext):
+                    =(runAsNonRoot): "true"
+          - spec:
+              =(ephemeralContainers):
+                - securityContext:
+                    runAsNonRoot: "true"
+              =(initContainers):
+                - securityContext:
+                    runAsNonRoot: "true"
+              containers:
+                - securityContext:
+                    runAsNonRoot: "true"
+    - name: check-seccomp-strict
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: >-
+          Use of custom Seccomp profiles is disallowed. The fields
+          spec.securityContext.seccompProfile.type,
+          spec.containers[*].securityContext.seccompProfile.type,
+          spec.initContainers[*].securityContext.seccompProfile.type, and
+          spec.ephemeralContainers[*].securityContext.seccompProfile.type
+          must be set to `RuntimeDefault` or `Localhost`.
+        anyPattern:
+          - spec:
+              securityContext:
+                seccompProfile:
+                  type: "RuntimeDefault | Localhost"
+              =(ephemeralContainers):
+                - =(securityContext):
+                    =(seccompProfile):
+                      =(type): "RuntimeDefault | Localhost"
+              =(initContainers):
+                - =(securityContext):
+                    =(seccompProfile):
+                      =(type): "RuntimeDefault | Localhost"
+              containers:
+                - =(securityContext):
+                    =(seccompProfile):
+                      =(type): "RuntimeDefault | Localhost"
+          - spec:
+              =(ephemeralContainers):
+                - securityContext:
+                    seccompProfile:
+                      type: "RuntimeDefault | Localhost"
+              =(initContainers):
+                - securityContext:
+                    seccompProfile:
+                      type: "RuntimeDefault | Localhost"
+              containers:
+                - securityContext:
+                    seccompProfile:
+                      type: "RuntimeDefault | Localhost"
+    - name: validate-resources
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: "CPU and memory resource requests and memory limits are required for containers."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    memory: "?*"
+                    cpu: "?*"
+                  limits:
+                    memory: "?*"
+            =(initContainers):
+              - resources:
+                  requests:
+                    memory: "?*"
+                    cpu: "?*"
+                  limits:
+                    memory: "?*"
+            =(ephemeralContainers):
+              - resources:
+                  requests:
+                    memory: "?*"
+                    cpu: "?*"
+                  limits:
+                    memory: "?*"

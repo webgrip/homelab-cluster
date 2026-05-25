@@ -1,0 +1,70 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/clusterpolicy_v1.json
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: exception-governance
+  annotations:
+    policies.kyverno.io/title: PolicyException Governance
+    policies.kyverno.io/category: Policy Management
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: PolicyException
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Governs the creation and quality of PolicyException resources.
+
+      The Kyverno engine already restricts PolicyExceptions to the kyverno namespace
+      (via `features.policyExceptions.namespace: kyverno` in the HelmRelease).
+      This policy adds two additional controls:
+
+        1. Require every PolicyException to carry an `owner` label and a
+           `policies.kyverno.io/description` annotation so exceptions are
+           attributed and self-documenting in Git history.
+
+        2. Deny wildcard (`*`) resource names in exceptions — exceptions must
+           target specific named resources to limit their blast radius.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-exception-labels-and-annotations
+      match:
+        any:
+          - resources:
+              kinds:
+                - PolicyException
+      validate:
+        message: >-
+          PolicyExceptions must have an 'owner' label (team or person responsible)
+          and a 'policies.kyverno.io/description' annotation explaining why the
+          exception is needed. Both are required for Git-traceable governance.
+        pattern:
+          metadata:
+            labels:
+              owner: "?*"
+            annotations:
+              policies.kyverno.io/description: "?*"
+
+    - name: deny-wildcard-resource-names
+      match:
+        any:
+          - resources:
+              kinds:
+                - PolicyException
+      validate:
+        message: >-
+          PolicyExceptions must target specific resource names, not wildcards (*).
+          Specify the exact resource names the exception applies to so the exception
+          scope is minimal and reviewable.
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.exceptions[].resourceSelector.matchExpressions[].values[] | contains(@, '*') }}"
+                operator: Equals
+                value: true
+              - key: "{{ request.object.spec.match.any[].resources.names[] | contains(@, '*') }}"
+                operator: Equals
+                value: true
+              - key: "{{ request.object.spec.match.all[].resources.names[] | contains(@, '*') }}"
+                operator: Equals
+                value: true

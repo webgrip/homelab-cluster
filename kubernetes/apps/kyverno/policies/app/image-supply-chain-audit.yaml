@@ -1,0 +1,104 @@
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: image-supply-chain-audit
+  annotations:
+    pod-policies.kyverno.io/autogen-controllers: DaemonSet,Deployment,StatefulSet
+    policies.kyverno.io/title: Image Supply Chain Audit
+    policies.kyverno.io/category: Software Supply Chain
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Audit image pinning and registry hygiene before requiring all workloads to
+      use digest-pinned images from approved registries.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: require-image-digest
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: &applicationNamespaces
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - arc-systems
+                      - cert-manager
+                      - cnpg-system
+                      - flux-system
+                      - kube-node-lease
+                      - kube-public
+                      - kube-system
+                      - kyverno
+                      - longhorn-system
+                      - network
+                      - observability
+                      - renovate
+      validate:
+        message: "Images should be pinned by digest."
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            pattern:
+              image: "*@sha256:*"
+    - name: disallow-latest-tag-even-with-digest
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: "Use immutable version tags with digests; avoid latest even when digest-pinned."
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            pattern:
+              image: "!*:latest@*"
+    - name: require-approved-registries
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: "Images should come from explicitly approved registries."
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            anyPattern:
+              - image: "ghcr.io/*"
+              - image: "docker.io/*"
+              - image: "quay.io/*"
+              - image: "registry.k8s.io/*"
+              - image: "mirror.gcr.io/*"
+              - image: "gcr.io/*"
+              - image: "public.ecr.aws/*"
+              - image: "mcr.microsoft.com/*"
+    - name: require-fully-qualified-images
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: "Images should be fully qualified with an explicit registry hostname."
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            deny:
+              conditions:
+                any:
+                  - key: "{{ contains(element.image, '/') }}"
+                    operator: Equals
+                    value: false
+                  - key: "{{ contains(split(element.image, '/')[0], '.') || contains(split(element.image, '/')[0], ':') || split(element.image, '/')[0] == 'localhost' }}"
+                    operator: Equals
+                    value: false

@@ -1,0 +1,51 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: flux-governance
+policies:
+  - ../../policies/flux-governance-enforce.yaml
+resources:
+  - resources.yaml
+results:
+  - policy: flux-governance-enforce
+    rule: require-ocirepository-digest
+    resources:
+      - bad-oci
+    kind: OCIRepository
+    result: fail
+  - policy: flux-governance-enforce
+    rule: restrict-gitrepository-url
+    resources:
+      - bad-git
+    kind: GitRepository
+    result: fail
+  - policy: flux-governance-enforce
+    rule: require-kustomization-prune
+    resources:
+      - flux-system/bad-kustomization
+    kind: Kustomization
+    result: fail
+  - policy: flux-governance-enforce
+    rule: require-kustomization-flux-source
+    resources:
+      - flux-system/bad-kustomization
+    kind: Kustomization
+    result: fail
+  - policy: flux-governance-enforce
+    rule: require-helmrelease-remediation
+    resources:
+      - app/bad-helmrelease
+    kind: HelmRelease
+    result: fail
+  - policy: flux-governance-enforce
+    rule: require-helmrelease-approved-source-kind
+    resources:
+      - app/bad-helmrelease
+    kind: HelmRelease
+    result: fail
+  - policy: flux-governance-enforce
+    rule: audit-helmrepository-use
+    resources:
+      - app/plain-helm-repo
+    kind: HelmRepository
+    result: fail

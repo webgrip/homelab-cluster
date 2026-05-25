@@ -1,0 +1,118 @@
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: flux-governance-enforce
+  annotations:
+    policies.kyverno.io/title: Flux Governance Enforce
+    policies.kyverno.io/category: GitOps, Software Supply Chain
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Kustomization,HelmRelease,OCIRepository,GitRepository
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Enforce GitOps source and reconciliation invariants that are already used
+      by this repository.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-ocirepository-digest
+      match:
+        any:
+          - resources:
+              kinds:
+                - OCIRepository
+      validate:
+        message: "OCIRepository resources must pin spec.ref.digest."
+        pattern:
+          spec:
+            ref:
+              digest: "sha256:*"
+    - name: restrict-gitrepository-url
+      match:
+        any:
+          - resources:
+              kinds:
+                - GitRepository
+      validate:
+        message: "GitRepository sources are restricted to the homelab GitOps repository."
+        pattern:
+          spec:
+            url: "https://github.com/webgrip/homelab-cluster.git"
+    - name: require-kustomization-prune
+      match:
+        any:
+          - resources:
+              kinds:
+                - Kustomization
+      validate:
+        message: "Flux Kustomizations must enable pruning."
+        pattern:
+          spec:
+            prune: true
+    - name: require-kustomization-flux-source
+      match:
+        any:
+          - resources:
+              kinds:
+                - Kustomization
+      validate:
+        message: "Flux Kustomizations must reconcile from the approved flux-system GitRepository."
+        pattern:
+          spec:
+            sourceRef:
+              kind: GitRepository
+              name: flux-system
+              namespace: flux-system
+    - name: require-helmrelease-remediation
+      match:
+        any:
+          - resources:
+              kinds:
+                - HelmRelease
+      validate:
+        message: "HelmReleases must define install and upgrade remediation."
+        pattern:
+          spec:
+            install:
+              remediation:
+                retries: ">=1"
+            upgrade:
+              cleanupOnFail: true
+              remediation:
+                retries: ">=1"
+                remediateLastFailure: true
+    - name: require-helmrelease-approved-source-kind
+      match:
+        any:
+          - resources:
+              kinds:
+                - HelmRelease
+      validate:
+        message: "HelmReleases should use OCIRepository chartRef or an explicitly declared chart sourceRef."
+        anyPattern:
+          - spec:
+              chartRef:
+                kind: OCIRepository
+                name: "?*"
+          - spec:
+              chart:
+                spec:
+                  sourceRef:
+                    kind: "HelmRepository | OCIRepository"
+                    name: "?*"
+    - name: audit-helmrepository-use
+      match:
+        any:
+          - resources:
+              kinds:
+                - HelmRepository
+      validate:
+        failureAction: Audit
+        message: "Prefer OCIRepository chart sources with digest pinning over HelmRepository sources."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.kind }}"
+                operator: Equals
+                value: HelmRepository

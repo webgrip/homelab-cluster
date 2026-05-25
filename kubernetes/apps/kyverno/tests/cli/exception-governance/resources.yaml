@@ -1,0 +1,49 @@
+---
+# Bad: missing owner label and description annotation
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: missing-labels-exception
+  namespace: kyverno
+spec:
+  exceptions:
+    - policyName: pod-security-baseline-enforce
+      ruleNames:
+        - host-namespaces
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - legacy-app
+          names:
+            - legacy-pod
+---
+# Good: has owner label and description annotation
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: well-formed-exception
+  namespace: kyverno
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      The legacy-app/legacy-pod requires hostNetwork because it runs a custom
+      network agent that binds to the host network stack. Tracked in JIRA-1234.
+      Review for removal when legacy-app migrates to the Gateway API in Q3.
+spec:
+  exceptions:
+    - policyName: pod-security-baseline-enforce
+      ruleNames:
+        - host-namespaces
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - legacy-app
+          names:
+            - legacy-pod

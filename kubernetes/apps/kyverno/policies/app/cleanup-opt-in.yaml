@@ -1,0 +1,59 @@
+---
+apiVersion: kyverno.io/v2
+kind: ClusterCleanupPolicy
+metadata:
+  name: cleanup-opt-in-completed-jobs
+  annotations:
+    policies.kyverno.io/title: Cleanup Opt-In Completed Jobs
+    policies.kyverno.io/category: Cleanup, Operations
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/subject: Job
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Remove completed Jobs that explicitly opt in to Kyverno cleanup.
+spec:
+  match:
+    any:
+      - resources:
+          kinds:
+            - Job
+          selector:
+            matchLabels:
+              cleanup.webgrip.io/enabled: "true"
+  conditions:
+    all:
+      - key: "{{ target.status.conditions[?type == 'Complete' && status == 'True'] | length(@) }}"
+        operator: GreaterThan
+        value: 0
+  schedule: "17 * * * *"
+---
+apiVersion: kyverno.io/v2
+kind: ClusterCleanupPolicy
+metadata:
+  name: cleanup-opt-in-terminal-pods
+  annotations:
+    policies.kyverno.io/title: Cleanup Opt-In Terminal Pods
+    policies.kyverno.io/category: Cleanup, Operations
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Remove succeeded or failed Pods that explicitly opt in to Kyverno cleanup.
+spec:
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+          selector:
+            matchLabels:
+              cleanup.webgrip.io/enabled: "true"
+  conditions:
+    any:
+      - key: "{{ target.status.phase }}"
+        operator: Equals
+        value: Succeeded
+      - key: "{{ target.status.phase }}"
+        operator: Equals
+        value: Failed
+  schedule: "23 * * * *"
