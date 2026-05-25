@@ -1,6 +1,5 @@
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
-
   // Repo-local policy only. Org/runtime defaults, manager enablement, and
   // custom extraction rules live in the in-cluster Renovate ConfigMap.
   extends: [
@@ -13,14 +12,12 @@
     ":dependencyDashboard",
     ":semanticCommits",
   ],
-
   dependencyDashboard: true,
   dependencyDashboardTitle: "Renovate Dashboard 🤖",
   rebaseWhen: "behind-base-branch",
   fetchChangeLogs: "pr",
   separateMajorMinor: true,
   recreateWhen: "always",
-
   ignorePaths: [
     "**/*.sops.*",
     // The app is not referenced from observability/kustomization.yaml.
@@ -30,93 +27,135 @@
     // "Missing datasource!" warnings on every run.
     "kubernetes/apps/renovate/renovate-operator/jobs/configmap-gitops.yaml",
   ],
-
   postUpgradeTasks: {
-    commands: ["./scripts/update-oci-digests.sh"],
-    fileFilters: ["kubernetes/apps/**/ocirepository.yaml"],
+    commands: [
+      "./scripts/update-oci-digests.sh"
+    ],
+    fileFilters: [
+      "kubernetes/apps/**/ocirepository.yaml"
+    ],
     executionMode: "branch",
   },
-
   prBodyNotes: [
     "{{#if isMajor}}⚠️ Major update: review upstream migration notes, chart values, and rollout impact before merging.{{/if}}",
     "{{#if isVulnerabilityAlert}}Security update: prioritize review and verify the vulnerable component is actually deployed.{{/if}}",
     "{{#if isGroup}}Grouped GitOps PR: confirm the group is operationally coherent before enabling automerge.{{/if}}",
     "Merge Confidence badges are included where Renovate supports them; low/neutral confidence means this update deserves a manual impact check before merge.",
   ],
-
   packageRules: [
     {
       description: "Keep Renovate's Flux manager away from digest-pinned OCIRepository files. OCIRepository tags are updated by custom.regex and scripts/update-oci-digests.sh refreshes spec.ref.digest from the registry manifest digest.",
-      matchManagers: ["flux"],
+      matchManagers: [
+        "flux"
+      ],
       pinDigests: false,
       separateMultipleMajor: true,
     },
     {
       description: "Override Helmfile Dependency Name",
-      matchDatasources: ["docker"],
-      matchManagers: ["helmfile"],
+      matchDatasources: [
+        "docker"
+      ],
+      matchManagers: [
+        "helmfile"
+      ],
       overrideDepName: "{{packageName}}",
     },
     {
       description: "Disable digest pinning for talos/ version files — talhelper uses plain semver strings; appending @sha256: makes talenv.yaml unparseable",
-      matchFileNames: ["talos/**"],
+      matchFileNames: [
+        "talos/**"
+      ],
       pinDigests: false,
     },
     {
       description: "Flux Operator Group",
       groupName: "flux-operator",
-      matchDatasources: ["docker"],
-      matchPackageNames: ["/flux-operator/", "/flux-instance/", "/flux-operator-manifests/"],
+      matchDatasources: [
+        "docker"
+      ],
+      matchPackageNames: [
+        "/flux-operator/",
+        "/flux-instance/",
+        "/flux-operator-manifests/"
+      ],
       group: {
         commitMessageTopic: "{{{groupName}}} group",
       },
-      minimumGroupSize: 2,
+      minimumGroupSize: 1,
     },
     {
       description: "Auto-merge GitHub Actions only after checks pass",
-      matchManagers: ["github-actions"],
+      matchManagers: [
+        "github-actions"
+      ],
       pinDigests: true,
       automerge: true,
       automergeType: "branch",
-      matchUpdateTypes: ["minor", "patch", "digest"],
+      matchUpdateTypes: [
+        "minor",
+        "patch",
+        "digest"
+      ],
     },
     {
       description: "Auto-merge Mise tools only after checks pass",
-      matchManagers: ["mise"],
+      matchManagers: [
+        "mise"
+      ],
       automerge: true,
       automergeType: "branch",
-      matchUpdateTypes: ["minor", "patch"],
+      matchUpdateTypes: [
+        "minor",
+        "patch"
+      ],
     },
     {
       description: "Require dashboard approval and release soak time for major updates",
-      matchUpdateTypes: ["major"],
+      matchUpdateTypes: [
+        "major"
+      ],
       dependencyDashboardApproval: true,
       minimumReleaseAge: "14 days",
-      addLabels: ["type/major"],
+      addLabels: [
+        "type/major"
+      ],
       semanticCommitType: "feat",
       commitMessagePrefix: "{{semanticCommitType}}({{semanticCommitScope}})!:",
       commitMessageExtra: "( {{currentVersion}} ➔ {{newVersion}} )",
     },
     {
       description: "Use feature commits and short soak time for minor updates",
-      matchUpdateTypes: ["minor"],
+      matchUpdateTypes: [
+        "minor"
+      ],
       minimumReleaseAge: "3 days",
-      addLabels: ["type/minor"],
+      addLabels: [
+        "type/minor"
+      ],
       semanticCommitType: "feat",
       commitMessageExtra: "( {{currentVersion}} ➔ {{newVersion}} )",
     },
     {
       description: "Use fix commits for patch updates",
-      matchUpdateTypes: ["patch"],
+      matchUpdateTypes: [
+        "patch"
+      ],
       minimumReleaseAge: "1 day",
-      addLabels: ["type/patch"],
+      addLabels: [
+        "type/patch"
+      ],
       semanticCommitType: "fix",
       commitMessageExtra: "( {{currentVersion}} ➔ {{newVersion}} )",
     },
     {
       description: "Digest-only updates carry digest labels and do not need changelogs",
-      matchUpdateTypes: ["digest"],
-      addLabels: ["type/digest"],
+      matchUpdateTypes: [
+        "digest"
+      ],
+      addLabels: [
+        "type/digest"
+      ],
       semanticCommitType: "chore",
       commitMessageExtra: "( {{currentDigestShort}} ➔ {{newDigestShort}} )",
       fetchChangeLogs: "off",
@@ -134,68 +173,102 @@
         "kubernetes/apps/network/**",
         "kubernetes/apps/renovate/**",
       ],
-      matchUpdateTypes: ["minor"],
+      matchUpdateTypes: [
+        "minor"
+      ],
       dependencyDashboardApproval: true,
       minimumReleaseAge: "7 days",
     },
     {
       description: "Treat missing release timestamps as stable for GHCR Docker datasource updates; Renovate only supports Docker release timestamps on Docker Hub, so GHCR OCI artifacts can otherwise stay pending forever.",
-      matchDatasources: ["docker"],
-      matchPackageNames: ["/^ghcr\\.io\\//"],
+      matchDatasources: [
+        "docker"
+      ],
+      matchPackageNames: [
+        "/^ghcr\\.io\\//"
+      ],
       minimumReleaseAgeBehaviour: "timestamp-optional",
     },
-
     {
       description: "Ungroup Kubernetes app container images; overrides the global 'GitOps container images' group so each dependency uses Renovate's normal per-dependency branch/topic. The shared app-template and shared busybox rules below still win for those packages because they come last.",
-      matchFileNames: ["kubernetes/apps/**", "!kubernetes/apps/**/ocirepository.yaml"],
-      matchDatasources: ["docker"],
+      matchFileNames: [
+        "kubernetes/apps/**",
+        "!kubernetes/apps/**/ocirepository.yaml"
+      ],
+      matchDatasources: [
+        "docker"
+      ],
       groupName: null,
     },
-
     {
       description: "Group shared app-template updates into a dedicated PR",
-      matchDatasources: ["docker"],
-      matchPackageNames: ["ghcr.io/bjw-s-labs/helm/app-template"],
+      matchDatasources: [
+        "docker"
+      ],
+      matchPackageNames: [
+        "ghcr.io/bjw-s-labs/helm/app-template"
+      ],
       groupName: "shared app-template",
       additionalBranchPrefix: "shared-app-template-",
     },
     {
       description: "Group shared busybox updates into a dedicated PR",
-      matchDatasources: ["docker"],
-      matchPackageNames: ["docker.io/library/busybox"],
+      matchDatasources: [
+        "docker"
+      ],
+      matchPackageNames: [
+        "docker.io/library/busybox"
+      ],
       groupName: "shared busybox",
       additionalBranchPrefix: "shared-busybox-",
     },
     {
-      matchDatasources: ["docker"],
+      matchDatasources: [
+        "docker"
+      ],
       semanticCommitScope: "container",
       commitMessageTopic: "image {{depName}}",
-      addLabels: ["renovate/container"],
+      addLabels: [
+        "renovate/container"
+      ],
     },
     {
-      matchDatasources: ["helm"],
+      matchDatasources: [
+        "helm"
+      ],
       semanticCommitScope: "helm",
       commitMessageTopic: "chart {{depName}}",
-      addLabels: ["renovate/helm"],
+      addLabels: [
+        "renovate/helm"
+      ],
     },
     {
-      matchManagers: ["github-actions"],
+      matchManagers: [
+        "github-actions"
+      ],
       semanticCommitType: "ci",
       semanticCommitScope: "github-action",
       commitMessageTopic: "action {{depName}}",
-      addLabels: ["renovate/github-action"],
+      addLabels: [
+        "renovate/github-action"
+      ],
     },
     {
-      matchDatasources: ["github-releases"],
+      matchDatasources: [
+        "github-releases"
+      ],
       semanticCommitScope: "github-release",
       commitMessageTopic: "release {{depName}}",
-      addLabels: ["renovate/github-release"],
+      addLabels: [
+        "renovate/github-release"
+      ],
     },
     {
-      matchManagers: ["mise"],
+      matchManagers: [
+        "mise"
+      ],
       semanticCommitScope: "mise",
       commitMessageTopic: "tool {{depName}}",
     },
-
   ],
 }
