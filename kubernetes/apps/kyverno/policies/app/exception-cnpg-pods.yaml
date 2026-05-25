@@ -1,0 +1,57 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/policyexception_v2.json
+# Exception for CNPG-managed Pod resources (cluster pods like *-db-1).
+# These pods are created and managed by the CNPG operator — their securityContext
+# and image selection cannot be overridden via Helm values.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: exception-cnpg-pods
+  namespace: kyverno
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      CNPG-operator-managed PostgreSQL instance pods (e.g. freshrss-db-1) use
+      the official CloudNative-PG image from ghcr.io. These pods are not pinned
+      to image digests in their CRD spec and the operator sets resource requests
+      internally. Tracking issue: when CNPG supports digest-pinned images via
+      the Cluster spec, this exception should be removed.
+spec:
+  exceptions:
+    - policyName: workload-hardening-audit
+      ruleNames:
+        - validate-resources
+    - policyName: image-supply-chain-audit
+      ruleNames:
+        - require-image-digest
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - freshrss
+          names:
+            - freshrss-db-1
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - n8n
+          names:
+            - n8n-db-1
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - sparkyfitness
+          names:
+            - sparkyfitness-db-1
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - backstage
+          names:
+            - backstage-db-1

@@ -1,0 +1,47 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/policyexception_v2.json
+# Exception for CNPG-managed TLS certificates and Kyverno's own self-signed webhook certs.
+# These are created by controllers and cannot use letsencrypt-production or our PKI standards.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: exception-system-certificates
+  namespace: kyverno
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      CNPG barman-cloud-client/server certificates use a self-signed ClusterIssuer
+      (barman-cloud-ca) for internal PostgreSQL backup TLS — not letsencrypt-production.
+      Kyverno's own TLS certificates use kyverno-svc-ca, an internal CA for webhook
+      security. Neither can use the external letsencrypt-production issuer.
+      Exempt from cert-manager-governance issuer, commonName, dnsNames, and private-key rules.
+spec:
+  exceptions:
+    - policyName: cert-manager-governance
+      ruleNames:
+        - restrict-certificate-issuer
+        - restrict-certificate-commonname
+        - restrict-certificate-dnsnames
+        - audit-certificate-private-key
+        - audit-certificate-duration
+  match:
+    any:
+      - resources:
+          kinds:
+            - Certificate
+          namespaces:
+            - cnpg-system
+          names:
+            - barman-cloud-client
+            - barman-cloud-server
+      - resources:
+          kinds:
+            - Certificate
+          namespaces:
+            - kyverno
+          names:
+            - kyverno-admission-controller-ca
+            - kyverno-admission-controller-tls
+            - kyverno-cleanup-controller-ca
+            - kyverno-cleanup-controller-tls

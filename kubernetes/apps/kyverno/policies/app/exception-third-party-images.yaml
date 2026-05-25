@@ -1,0 +1,87 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/policyexception_v2.json
+# Exception for third-party apps using Docker Hub or other non-approved registries.
+# These apps will be migrated to use approved registries (mirror.gcr.io, ghcr.io)
+# when upstream charts support it or when we build mirror images.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: exception-third-party-image-supply-chain
+  namespace: kyverno
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      Third-party Helm chart workloads use images from Docker Hub or without fully
+      qualified registry prefixes. Migration path: each app should be updated to
+      use ghcr.io mirror images or approved registries when available.
+      Apps using 'latest' tag with digest are also excepted here.
+      Reviewed quarterly for migration progress.
+spec:
+  exceptions:
+    - policyName: image-supply-chain-audit
+      ruleNames:
+        - autogen-require-approved-registries
+        - autogen-require-fully-qualified-images
+        - autogen-disallow-latest-tag-even-with-digest
+        - autogen-require-image-digest
+  match:
+    any:
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - backstage
+          names:
+            - backstage
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - drawio
+          names:
+            - drawio
+            - drawio-plantuml-server
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - excalidraw
+          names:
+            - excalidraw
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - freshrss
+          names:
+            - freshrss
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - invoiceninja
+          names:
+            - invoiceninja
+            - invoiceninja-mariadb
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - minecraft
+          names:
+            - minecraft
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - n8n
+          names:
+            - n8n
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - sparkyfitness
+          names:
+            - sparkyfitness-server

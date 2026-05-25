@@ -1,0 +1,132 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/policyexception_v2.json
+# Exception for third-party application workloads whose container security
+# context cannot be changed via Helm values.
+# Each namespace gets a documented exception scoped to specific resource names.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: exception-third-party-pod-security
+  namespace: kyverno
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      Third-party Helm chart workloads (Backstage, DrawIO, Excalidraw, FreshRSS,
+      InvoiceNinja, Minecraft, N8N, Searxng, SparkFitness) run containers whose
+      securityContext, seccompProfile, and user/group settings are hard-coded by
+      the upstream chart and cannot be overridden. These apps will be updated to
+      charts that expose securityContext values when available. Until then, audit
+      violations are tracked here and reviewed quarterly.
+spec:
+  exceptions:
+    - policyName: workload-hardening-audit
+      ruleNames:
+        - autogen-check-seccomp-strict
+        - autogen-run-as-non-root
+        - autogen-privilege-escalation
+        - autogen-validate-resources
+        - autogen-cronjob-validate-resources
+    - policyName: workload-advanced-hardening-audit
+      ruleNames:
+        - autogen-require-drop-all-capabilities
+        - autogen-require-non-default-serviceaccount
+        - autogen-disallow-explicit-root-user
+        - autogen-disallow-explicit-root-group
+    - policyName: require-pod-probes-audit
+      ruleNames:
+        - autogen-validate-probes
+  match:
+    any:
+      - resources:
+          kinds:
+            - Deployment
+            - StatefulSet
+            - CronJob
+            - Job
+          namespaces:
+            - backstage
+          names:
+            - backstage
+            - cnpg-disaster-recovery-check
+            - cnpg-restore-test
+      - resources:
+          kinds:
+            - Deployment
+            - StatefulSet
+          namespaces:
+            - drawio
+          names:
+            - drawio
+            - drawio-plantuml-server
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - excalidraw
+          names:
+            - excalidraw
+      - resources:
+          kinds:
+            - Deployment
+            - CronJob
+          namespaces:
+            - freshrss
+          names:
+            - freshrss
+            - cnpg-disaster-recovery-check
+            - cnpg-restore-test
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - invoiceninja
+          names:
+            - invoiceninja
+            - invoiceninja-mariadb
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - minecraft
+          names:
+            - minecraft
+      - resources:
+          kinds:
+            - Deployment
+            - CronJob
+          namespaces:
+            - n8n
+          names:
+            - n8n
+            - cnpg-restore-test
+      - resources:
+          kinds:
+            - Deployment
+            - StatefulSet
+          namespaces:
+            - searxng
+          names:
+            - searxng
+            - searxng-valkey
+      - resources:
+          kinds:
+            - Deployment
+            - StatefulSet
+            - Job
+            - CronJob
+          namespaces:
+            - sparkyfitness
+          names:
+            - sparkyfitness-frontend
+            - sparkyfitness-server
+            - sparkyfitness-db-pgstatstatements-perms
+            - cnpg-disaster-recovery-check
+            - cnpg-restore-test
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - default
+          names:
+            - echo

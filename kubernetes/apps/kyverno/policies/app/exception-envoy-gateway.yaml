@@ -1,0 +1,45 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/policyexception_v2.json
+# Exception for controller-managed Envoy Gateway resources.
+# The Envoy Gateway operator generates Deployments and ConfigMaps — their
+# topology spread, PDB requirements, and ConfigMap keys cannot be configured
+# through our GitOps manifests.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: exception-envoy-gateway-controller
+  namespace: kyverno
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      Envoy Gateway generates Deployments named envoy-external/envoy-internal and
+      matching ConfigMaps. The operator controls pod spec (topology spread, affinity)
+      and ConfigMap keys — our EnvoyProxy CRD does not expose all of these settings.
+      PDB can be added separately; topology spread must await upstream support.
+      Tracking: envoy-gateway issue for topologySpreadConstraints support.
+spec:
+  exceptions:
+    - policyName: secrets-observability-ops-audit
+      ruleNames:
+        - disallow-sensitive-configmap-keys
+        - require-ha-pdb-for-replicated-deployments
+        - require-topology-spread-for-replicated-deployments
+  match:
+    any:
+      - resources:
+          kinds:
+            - ConfigMap
+          namespaces:
+            - network
+          names:
+            - envoy-external
+            - envoy-internal
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - network
+          names:
+            - envoy-external
+            - envoy-internal

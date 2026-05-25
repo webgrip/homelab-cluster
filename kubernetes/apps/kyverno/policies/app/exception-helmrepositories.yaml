@@ -1,0 +1,58 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/policyexception_v2.json
+# Exception for all HelmRepository resources that legitimately use HTTP Helm repositories
+# because no OCI equivalent exists for these chart publishers.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: exception-helmrepositories-http
+  namespace: kyverno
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      Auditing, not blocking. Several upstream Helm chart publishers (Grafana, Prometheus
+      Community, Longhorn, CNPG, Sloth, Policy Reporter) do not publish OCI chart
+      repositories. These HelmRepository resources are the only available source for
+      their charts. Exempt from audit-helmrepository-use until OCI alternatives exist.
+spec:
+  exceptions:
+    - policyName: flux-governance-enforce
+      ruleNames:
+        - audit-helmrepository-use
+  match:
+    any:
+      - resources:
+          kinds:
+            - HelmRepository
+          namespaces:
+            - cnpg-system
+          names:
+            - cloudnative-pg
+      - resources:
+          kinds:
+            - HelmRepository
+          namespaces:
+            - longhorn-system
+          names:
+            - longhorn
+      - resources:
+          kinds:
+            - HelmRepository
+          namespaces:
+            - observability
+          names:
+            - grafana-charts
+            - grafana-charts-alloy
+            - grafana-charts-alloy-gateway
+            - grafana-charts-k6-operator
+            - grafana-charts-tempo
+            - prometheus-community
+            - slok-sloth
+      - resources:
+          kinds:
+            - HelmRepository
+          namespaces:
+            - kyverno
+          names:
+            - policy-reporter
