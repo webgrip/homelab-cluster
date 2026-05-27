@@ -1,0 +1,43 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: security-tetragon-rules
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: security.tetragon
+      rules:
+        - alert: TetragonEventsLost
+          expr: |
+            sum by (pod) (
+              increase(tetragon_observer_ringbuf_events_lost_total[10m])
+            ) > 0
+          labels:
+            severity: warning
+            owner: platform
+            service: tetragon
+          annotations:
+            summary: "Tetragon lost runtime events on {{$labels.pod}}"
+            description: |
+              Tetragon is losing ring-buffer events. Increase resources or reduce exported
+              event volume before depending on process telemetry during investigations.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/security-supply-chain/#tetragon"
+
+        - alert: TetragonPolicyLoadErrors
+          expr: |
+            sum by (state) (
+              tetragon_tracingpolicy_loaded{state=~"error|load_error"}
+            ) > 0
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+            service: tetragon
+          annotations:
+            summary: "Tetragon tracing policy load errors"
+            description: |
+              One or more Tetragon tracing policies failed to load. Inspect the Tetragon
+              operator logs and policy status before assuming coverage is active.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/security-supply-chain/#tetragon"

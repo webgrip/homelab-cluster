@@ -1,0 +1,55 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-security-trivy-sbom
+  namespace: observability
+  annotations:
+    grafana_folder: Trivy
+  labels:
+    grafana_dashboard: "1"
+data:
+  security-trivy-sbom.json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Trivy / 10 Vulnerabilities, SBOMs and Compliance",
+      "uid": "security-trivy-sbom",
+      "timezone": "browser",
+      "tags": ["security", "trivy", "sbom", "cyclonedx", "compliance", "supply-chain"],
+      "description": "Cluster-wide Trivy Operator posture: image vulnerabilities, exposed secrets, config/RBAC/infra audits, compliance failures, and SBOM inventory proxies.",
+      "editable": false,
+      "graphTooltip": 1,
+      "refresh": "1m",
+      "time": {"from": "now-24h", "to": "now"},
+      "timepicker": {
+        "refresh_intervals": ["30s", "1m", "2m", "5m", "15m"],
+        "time_options": ["1h", "6h", "12h", "24h", "2d", "7d", "30d"]
+      },
+      "templating": {
+        "list": [
+          {"name": "datasource", "type": "datasource", "pluginId": "prometheus", "label": "Datasource", "hide": 0, "current": {}},
+          {"name": "namespace", "type": "query", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "label": "Namespace", "multi": true, "includeAll": true, "allValue": ".*", "query": "label_values(trivy_image_vulnerabilities, namespace)", "refresh": 2, "sort": 1, "current": {}},
+          {"name": "severity", "type": "custom", "label": "Severity", "multi": true, "includeAll": true, "allValue": "UNKNOWN|LOW|MEDIUM|HIGH|CRITICAL|Critical|High|Medium|Low|Unknown", "query": "CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN,Critical,High,Medium,Low,Unknown", "current": {}}
+        ]
+      },
+      "annotations": {"list": [{"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard"}]},
+      "panels": [
+        {"id": 1, "type": "row", "title": "Executive risk posture", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}, "collapsed": false},
+        {"id": 2, "type": "stat", "title": "Critical image vulnerabilities", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 1}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum(trivy_image_vulnerabilities{namespace=~\"$namespace\",severity=\"Critical\"}) or on() vector(0)", "legendFormat": "critical"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "red", "value": 1}]}}, "overrides": []}},
+        {"id": 3, "type": "stat", "title": "High image vulnerabilities", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 1}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum(trivy_image_vulnerabilities{namespace=~\"$namespace\",severity=\"High\"}) or on() vector(0)", "legendFormat": "high"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "orange", "value": 1}]}}, "overrides": []}},
+        {"id": 4, "type": "stat", "title": "Exposed secrets", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 1}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum(trivy_image_exposedsecrets{namespace=~\"$namespace\"}) or on() vector(0)", "legendFormat": "secrets"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "red", "value": 1}]}}, "overrides": []}},
+        {"id": 5, "type": "stat", "title": "Compliance failures", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 1}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum(trivy_cluster_compliance{status=\"Fail\"}) or on() vector(0)", "legendFormat": "fail"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "red", "value": 1}]}}, "overrides": []}},
+        {"id": 6, "type": "row", "title": "Vulnerability management", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5}, "collapsed": false},
+        {"id": 7, "type": "timeseries", "title": "Image vulnerabilities by severity", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum by (severity) (trivy_image_vulnerabilities{namespace=~\"$namespace\",severity=~\"$severity\"})", "legendFormat": "{{severity}}"}], "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}}, "fieldConfig": {"defaults": {"custom": {"drawStyle": "line", "fillOpacity": 15, "lineWidth": 2}}, "overrides": []}},
+        {"id": 8, "type": "barchart", "title": "Top vulnerable workloads", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "topk(15, sum by (namespace, resource_name) (trivy_image_vulnerabilities{namespace=~\"$namespace\",severity=~\"Critical|High\"}))", "legendFormat": "{{namespace}}/{{resource_name}}"}], "options": {"legend": {"displayMode": "list", "placement": "bottom"}}, "fieldConfig": {"defaults": {}, "overrides": []}},
+        {"id": 9, "type": "table", "title": "Critical and high findings by workload", "gridPos": {"h": 9, "w": 24, "x": 0, "y": 14}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "format": "table", "instant": true, "expr": "sum by (namespace, resource_kind, resource_name, container_name, image_repository, image_tag, severity) (trivy_image_vulnerabilities{namespace=~\"$namespace\",severity=~\"Critical|High\"})"}], "options": {"showHeader": true}, "fieldConfig": {"defaults": {"custom": {"align": "auto", "inspect": false}}, "overrides": []}},
+        {"id": 10, "type": "row", "title": "SBOM and image inventory", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 23}, "collapsed": false},
+        {"id": 11, "type": "stat", "title": "Images with Trivy image info", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 24}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "count(count by (image_registry, image_repository, image_tag) (trivy_image_info{namespace=~\"$namespace\"})) or on() vector(0)", "legendFormat": "images"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}},
+        {"id": 12, "type": "stat", "title": "EOSL images", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 24}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum(trivy_image_info{namespace=~\"$namespace\",image_os_eosl=\"true\"}) or on() vector(0)", "legendFormat": "eosl"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "red", "value": 1}]}}, "overrides": []}},
+        {"id": 13, "type": "table", "title": "Image inventory and OS lifecycle", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "format": "table", "instant": true, "expr": "sum by (namespace, resource_kind, resource_name, image_registry, image_repository, image_tag, image_os_family, image_os_name, image_os_eosl) (trivy_image_info{namespace=~\"$namespace\"})"}], "options": {"showHeader": true}, "fieldConfig": {"defaults": {}, "overrides": []}},
+        {"id": 14, "type": "timeseries", "title": "Config, RBAC and infra audit findings", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum by (severity) (trivy_resource_configaudits{namespace=~\"$namespace\",severity=~\"$severity\"})", "legendFormat": "config {{severity}}"}, {"refId": "B", "expr": "sum by (severity) (trivy_role_rbacassessments{namespace=~\"$namespace\",severity=~\"$severity\"})", "legendFormat": "rbac {{severity}}"}, {"refId": "C", "expr": "sum by (severity) (trivy_resource_infraassessments{namespace=~\"$namespace\",severity=~\"$severity\"})", "legendFormat": "infra {{severity}}"}], "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}}, "fieldConfig": {"defaults": {}, "overrides": []}},
+        {"id": 15, "type": "row", "title": "Compliance and operator health", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 36}, "collapsed": false},
+        {"id": 16, "type": "barchart", "title": "Compliance checks by spec and status", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 37}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum by (title, status) (trivy_cluster_compliance)", "legendFormat": "{{title}} {{status}}"}], "options": {"legend": {"displayMode": "list", "placement": "bottom"}}, "fieldConfig": {"defaults": {}, "overrides": []}},
+        {"id": 17, "type": "timeseries", "title": "Trivy Operator scrape health", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 37}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum by (pod) (up{namespace=\"security\", pod=~\"trivy-operator.*\"})", "legendFormat": "{{pod}}"}], "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}}, "fieldConfig": {"defaults": {"min": 0, "max": 1}, "overrides": []}}
+      ]
+    }

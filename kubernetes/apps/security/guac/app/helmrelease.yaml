@@ -1,0 +1,105 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: guac
+spec:
+  chart:
+    spec:
+      chart: guac
+      version: 0.8.0
+      sourceRef:
+        kind: HelmRepository
+        name: guacsec
+        namespace: security
+  interval: 1h
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  valuesFrom:
+    - kind: Secret
+      name: guac-secrets
+      valuesKey: values.yaml
+
+  values:
+    imagePullSecrets: []
+
+    guac:
+      graphqlServer:
+        backend: ent
+        debug: false
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+      restApi:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      visualizer:
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      observability:
+        deployServiceMonitor: true
+      sampleData:
+        ingest: false
+      backend:
+        ent:
+          db-driver: postgres
+          db-migrate: true
+          db-debug: false
+      customLabels:
+        release: kube-prometheus-stack
+      # S3 blob-store credentials injected from the security-s3 secret via substituteFrom.
+      common:
+        env:
+          - name: AWS_ACCESS_KEY_ID
+            valueFrom:
+              secretKeyRef:
+                name: security-s3
+                key: S3_ACCESS_KEY_ID
+          - name: AWS_SECRET_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: security-s3
+                key: S3_SECRET_ACCESS_KEY
+          - name: AWS_ENDPOINT
+            valueFrom:
+              secretKeyRef:
+                name: security-s3
+                key: S3_ENDPOINT
+          - name: AWS_BUCKET
+            valueFrom:
+              secretKeyRef:
+                name: security-s3
+                key: S3_GUAC_BUCKET
+
+    nats:
+      exporter:
+        enabled: true
+        serviceMonitor:
+          enabled: true
+          namespace: observability
+          labels:
+            release: kube-prometheus-stack
+
+    # Use the cluster-wide Garage S3 instead of a chart-bundled MinIO.
+    minio:
+      enabled: false

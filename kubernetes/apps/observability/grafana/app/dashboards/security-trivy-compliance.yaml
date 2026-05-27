@@ -1,0 +1,43 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-security-trivy-compliance
+  namespace: observability
+  annotations:
+    grafana_folder: Trivy
+  labels:
+    grafana_dashboard: "1"
+data:
+  security-trivy-compliance.json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Trivy / 20 Compliance Frameworks",
+      "uid": "security-trivy-compliance",
+      "timezone": "browser",
+      "tags": ["security", "trivy", "compliance", "cis", "nsa", "pss"],
+      "description": "Framework-oriented view of Trivy Operator compliance posture across CIS, NSA/CISA, and Pod Security Standards signals.",
+      "editable": false,
+      "graphTooltip": 1,
+      "refresh": "1m",
+      "time": {"from": "now-7d", "to": "now"},
+      "templating": {
+        "list": [
+          {"name": "datasource", "type": "datasource", "pluginId": "prometheus", "label": "Datasource", "hide": 0, "current": {}},
+          {"name": "namespace", "type": "query", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "label": "Namespace", "multi": true, "includeAll": true, "allValue": ".*", "query": "label_values(trivy_image_vulnerabilities, namespace)", "refresh": 2, "sort": 1, "current": {}}
+        ]
+      },
+      "annotations": {"list": [{"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard"}]},
+      "panels": [
+        {"id": 1, "type": "row", "title": "Framework status", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}, "collapsed": false},
+        {"id": 2, "type": "stat", "title": "Failing compliance controls", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 1}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum(trivy_cluster_compliance{status=\"Fail\"}) or on() vector(0)", "legendFormat": "fail"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "orange", "value": 1}, {"color": "red", "value": 5}]}}, "overrides": []}},
+        {"id": 3, "type": "stat", "title": "Passing compliance controls", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 1}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum(trivy_cluster_compliance{status=\"Pass\"}) or on() vector(0)", "legendFormat": "pass"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}},
+        {"id": 4, "type": "stat", "title": "Critical config findings", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 1}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum(trivy_resource_configaudits{namespace=~\"$namespace\", severity=\"Critical\"}) or on() vector(0)", "legendFormat": "critical"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "orange", "value": 1}, {"color": "red", "value": 10}]}}, "overrides": []}},
+        {"id": 5, "type": "stat", "title": "High/critical RBAC findings", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 1}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum(trivy_role_rbacassessments{namespace=~\"$namespace\", severity=~\"Critical|High\"}) or on() vector(0)", "legendFormat": "rbac"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "orange", "value": 1}, {"color": "red", "value": 10}]}}, "overrides": []}},
+        {"id": 6, "type": "barchart", "title": "Compliance checks by control and status", "gridPos": {"h": 9, "w": 12, "x": 0, "y": 5}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum by (title, status) (trivy_cluster_compliance)", "legendFormat": "{{title}} {{status}}"}], "options": {"legend": {"displayMode": "list", "placement": "bottom"}}, "fieldConfig": {"defaults": {}, "overrides": []}},
+        {"id": 7, "type": "timeseries", "title": "Config, RBAC and infra findings by severity", "gridPos": {"h": 9, "w": 12, "x": 12, "y": 5}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum by (severity) (trivy_resource_configaudits{namespace=~\"$namespace\"})", "legendFormat": "config {{severity}}"}, {"refId": "B", "expr": "sum by (severity) (trivy_role_rbacassessments{namespace=~\"$namespace\"})", "legendFormat": "rbac {{severity}}"}, {"refId": "C", "expr": "sum by (severity) (trivy_resource_infraassessments{namespace=~\"$namespace\"})", "legendFormat": "infra {{severity}}"}], "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}}, "fieldConfig": {"defaults": {"custom": {"drawStyle": "line", "fillOpacity": 15, "lineWidth": 2}}, "overrides": []}},
+        {"id": 8, "type": "table", "title": "Compliance controls", "gridPos": {"h": 9, "w": 24, "x": 0, "y": 14}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "format": "table", "instant": true, "expr": "sum by (title, status) (trivy_cluster_compliance)"}], "options": {"showHeader": true}, "fieldConfig": {"defaults": {}, "overrides": []}},
+        {"id": 9, "type": "barchart", "title": "Top namespaces with high-severity control drift", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 23}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "topk(10, sum by (namespace) (trivy_resource_configaudits{namespace=~\"$namespace\", severity=~\"Critical|High\"}))", "legendFormat": "config {{namespace}}"}, {"refId": "B", "expr": "topk(10, sum by (namespace) (trivy_role_rbacassessments{namespace=~\"$namespace\", severity=~\"Critical|High\"}))", "legendFormat": "rbac {{namespace}}"}, {"refId": "C", "expr": "topk(10, sum by (namespace) (trivy_resource_infraassessments{namespace=~\"$namespace\", severity=~\"Critical|High\"}))", "legendFormat": "infra {{namespace}}"}], "options": {"legend": {"displayMode": "list", "placement": "bottom"}}, "fieldConfig": {"defaults": {}, "overrides": []}},
+        {"id": 10, "type": "text", "title": "Framework coverage", "gridPos": {"h": 7, "w": 24, "x": 0, "y": 31}, "options": {"mode": "markdown", "content": "Trivy Operator is currently configured to score the cluster against **CIS Kubernetes 1.23**, **NSA Kubernetes Hardening 1.0**, and **Pod Security Standards baseline/restricted**. Use this view for framework-level reporting, and the primary Trivy dashboard for workload-level vulnerability, SBOM, and operator-health triage."}}
+      ]
+    }

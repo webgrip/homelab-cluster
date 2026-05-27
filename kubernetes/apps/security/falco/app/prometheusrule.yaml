@@ -1,0 +1,41 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: security-falco-rules
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: security.falco
+      rules:
+        - alert: FalcoRuntimeDetection
+          expr: |
+            sum by (rule_name, source) (
+              increase(falcosecurity_falco_rules_matches_total{priority=~"0|1|2|3|4"}[15m])
+            ) > 0
+          labels:
+            severity: warning
+            owner: platform
+            service: falco
+          annotations:
+            summary: "Falco runtime detection fired: {{$labels.rule_name}}"
+            description: |
+              Falco detected suspicious runtime behavior. Inspect Falco JSON logs in Loki
+              with labels namespace=security and app.kubernetes.io/name=falco.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/security-supply-chain/#falco"
+
+        - alert: FalcoEventDrops
+          expr: |
+            max(falcosecurity_scap_n_drops_perc) > 0
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+            service: falco
+          annotations:
+            summary: "Falco is dropping kernel events"
+            description: |
+              Falco reports kernel event drops. Increase Falco resources, reduce rule volume,
+              or tune the eBPF buffer before relying on detections for incident response.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/security-supply-chain/#falco"

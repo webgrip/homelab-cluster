@@ -1,0 +1,187 @@
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: rbac-least-privilege-audit
+  annotations:
+    policies.kyverno.io/title: RBAC Least Privilege Audit
+    policies.kyverno.io/category: CIS Kubernetes Benchmark, NIST SP 800-190, Least Privilege
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Role,RoleBinding,ClusterRoleBinding
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Audit RBAC drift in application namespaces that expands blast radius:
+      wildcard permissions, binding the default ServiceAccount, and granting
+      cluster-admin to application workloads.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: disallow-wildcards-in-app-roles
+      match:
+        any:
+          - resources:
+              kinds:
+                - Role
+              namespaceSelector:
+                matchExpressions: &applicationNamespaces
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - arc-systems
+                      - cert-manager
+                      - cnpg-system
+                      - flux-system
+                      - kube-node-lease
+                      - kube-public
+                      - kube-system
+                      - longhorn-system
+                      - network
+                      - observability
+                      - renovate
+                      - security
+      validate:
+        message: >-
+          Roles in application namespaces should not use wildcard apiGroups,
+          resources, verbs, or nonResourceURLs.
+        foreach:
+          - list: request.object.rules[]
+            deny:
+              conditions:
+                any:
+                  - key: "{{ element.apiGroups[] || `[]` }}"
+                    operator: AnyIn
+                    value:
+                      - "*"
+                  - key: "{{ element.resources[] || `[]` }}"
+                    operator: AnyIn
+                    value:
+                      - "*"
+                  - key: "{{ element.verbs[] || `[]` }}"
+                    operator: AnyIn
+                    value:
+                      - "*"
+                  - key: "{{ element.nonResourceURLs[] || `[]` }}"
+                    operator: AnyIn
+                    value:
+                      - "*"
+    - name: disallow-default-serviceaccount-rolebindings
+      match:
+        any:
+          - resources:
+              kinds:
+                - RoleBinding
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: >-
+          RoleBindings in application namespaces should not grant permissions to
+          the default ServiceAccount.
+        foreach:
+          - list: request.object.subjects[]
+            deny:
+              conditions:
+                all:
+                  - key: "{{ element.kind || '' }}"
+                    operator: Equals
+                    value: ServiceAccount
+                  - key: "{{ element.name || '' }}"
+                    operator: Equals
+                    value: default
+    - name: disallow-cluster-admin-rolebindings
+      match:
+        any:
+          - resources:
+              kinds:
+                - RoleBinding
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: >-
+          Application namespaces should not bind the cluster-admin ClusterRole.
+        deny:
+          conditions:
+            all:
+              - key: "{{ request.object.roleRef.kind || '' }}"
+                operator: Equals
+                value: ClusterRole
+              - key: "{{ request.object.roleRef.name || '' }}"
+                operator: Equals
+                value: cluster-admin
+    - name: disallow-default-serviceaccount-clusterbindings
+      match:
+        any:
+          - resources:
+              kinds:
+                - ClusterRoleBinding
+      validate:
+        message: >-
+          ClusterRoleBindings should not grant cluster-wide permissions to
+          default ServiceAccounts in application namespaces.
+        foreach:
+          - list: request.object.subjects[]
+            deny:
+              conditions:
+                all:
+                  - key: "{{ element.kind || '' }}"
+                    operator: Equals
+                    value: ServiceAccount
+                  - key: "{{ element.name || '' }}"
+                    operator: Equals
+                    value: default
+                  - key: "{{ element.namespace || '' }}"
+                    operator: NotIn
+                    value:
+                      - arc-systems
+                      - cert-manager
+                      - cnpg-system
+                      - flux-system
+                      - kube-node-lease
+                      - kube-public
+                      - kube-system
+                      - longhorn-system
+                      - network
+                      - observability
+                      - renovate
+                      - security
+                      - ""
+    - name: disallow-cluster-admin-clusterbindings
+      match:
+        any:
+          - resources:
+              kinds:
+                - ClusterRoleBinding
+      validate:
+        message: >-
+          Application ServiceAccounts should not receive cluster-admin via
+          ClusterRoleBindings.
+        foreach:
+          - list: request.object.subjects[]
+            deny:
+              conditions:
+                all:
+                  - key: "{{ request.object.roleRef.kind || '' }}"
+                    operator: Equals
+                    value: ClusterRole
+                  - key: "{{ request.object.roleRef.name || '' }}"
+                    operator: Equals
+                    value: cluster-admin
+                  - key: "{{ element.kind || '' }}"
+                    operator: Equals
+                    value: ServiceAccount
+                  - key: "{{ element.namespace || '' }}"
+                    operator: NotIn
+                    value:
+                      - arc-systems
+                      - cert-manager
+                      - cnpg-system
+                      - flux-system
+                      - kube-node-lease
+                      - kube-public
+                      - kube-system
+                      - longhorn-system
+                      - network
+                      - observability
+                      - renovate
+                      - security
+                      - ""

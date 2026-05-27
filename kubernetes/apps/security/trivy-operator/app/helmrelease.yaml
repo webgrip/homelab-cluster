@@ -1,0 +1,131 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: trivy-operator
+spec:
+  chart:
+    spec:
+      chart: trivy-operator
+      version: 0.32.1
+      sourceRef:
+        kind: HelmRepository
+        name: aqua-security
+        namespace: security
+  interval: 1h
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  values:
+    fullnameOverride: trivy-operator
+    targetNamespaces: ""
+    excludeNamespaces: "kube-node-lease,kube-public"
+    targetWorkloads: "pod,replicaset,replicationcontroller,statefulset,daemonset,cronjob,job"
+
+    operator:
+      replicas: 1
+      scanJobTTL: 30m
+      scanSecretTTL: 15m
+      scanJobTimeout: 10m
+      scanJobsConcurrentLimit: 4
+      scanNodeCollectorLimit: 1
+      vulnerabilityScannerEnabled: true
+      sbomGenerationEnabled: true
+      clusterSbomCacheEnabled: true
+      scannerReportTTL: 24h
+      cacheReportTTL: 168h
+      configAuditScannerEnabled: true
+      rbacAssessmentScannerEnabled: true
+      infraAssessmentScannerEnabled: true
+      clusterComplianceEnabled: true
+      vulnerabilityScannerScanOnlyCurrentRevisions: true
+      configAuditScannerScanOnlyCurrentRevisions: true
+      accessGlobalSecretsAndServiceAccount: true
+      builtInTrivyServer: true
+      metricsFindingsEnabled: true
+      metricsVulnIdEnabled: false
+      exposedSecretScannerEnabled: true
+      metricsExposedSecretInfo: true
+      metricsConfigAuditInfo: true
+      metricsRbacAssessmentInfo: true
+      metricsInfraAssessmentInfo: true
+      metricsImageInfo: true
+      metricsClusterComplianceInfo: true
+
+    serviceMonitor:
+      enabled: true
+      interval: 60s
+      labels:
+        release: kube-prometheus-stack
+
+    trivyOperator:
+      scanJobsInSameNamespace: false
+      scanJobPodPriorityClassName: system-cluster-critical
+      reportResourceLabels: "app.kubernetes.io/name,app.kubernetes.io/instance,app.kubernetes.io/component,app.kubernetes.io/part-of"
+      reportRecordFailedChecksOnly: false
+      additionalReportLabels: "cluster=homelab-cluster"
+      scanJobPodTemplatePodSecurityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+
+    trivy:
+      sbomSources: "oci,rekor"
+      storageClassEnabled: true
+      storageClassName: longhorn
+      storageSize: 10Gi
+      priorityClassName: system-cluster-critical
+      additionalVulnerabilityReportFields: "Description,Links,CVSS,Target,Class,PackagePath,PackageType"
+      severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+      slow: true
+      ignoreUnfixed: false
+      offlineScan: false
+      timeout: 10m0s
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 750m
+          memory: 1Gi
+      server:
+        replicas: 1
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 2Gi
+
+    compliance:
+      failEntriesLimit: 25
+      reportType: all
+      cron: "0 */6 * * *"
+      specs:
+        - k8s-cis-1.23
+        - k8s-nsa-1.0
+        - k8s-pss-baseline-0.1
+        - k8s-pss-restricted-0.1
+
+    podAnnotations:
+      reloader.stakater.com/auto: "true"
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    priorityClassName: system-cluster-critical
+
+    alternateReportStorage:
+      enabled: true
+      storageClassName: longhorn
+      storage: 20Gi

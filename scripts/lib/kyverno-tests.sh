@@ -25,6 +25,7 @@ prepare_kyverno_test_workspace() {
         namespace-tenancy-audit.yaml
         network-exposure-enforce.yaml
         pod-security-baseline-enforce.yaml
+        rbac-least-privilege-audit.yaml
         require-probes-audit.yaml
     )
 

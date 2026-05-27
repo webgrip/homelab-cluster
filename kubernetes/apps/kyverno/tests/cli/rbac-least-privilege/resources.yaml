@@ -1,0 +1,81 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app
+  labels:
+    kubernetes.io/metadata.name: app
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: app-builder
+  namespace: app
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: wildcard-reader
+  namespace: app
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "*"
+    verbs:
+      - get
+      - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: default-sa-binding
+  namespace: app
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: app
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: wildcard-reader
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cluster-admin-binding
+  namespace: app
+subjects:
+  - kind: ServiceAccount
+    name: app-builder
+    namespace: app
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: default-sa-clusterbinding
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: app
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: app-builder-cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: app-builder
+    namespace: app
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin

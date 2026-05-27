@@ -13,9 +13,10 @@ metadata:
     kyverno.io/kyverno-version: 1.18.1
     policies.kyverno.io/description: >-
       Audit that internal GHCR images carry keyless GitHub OIDC attestations for
-      SLSA provenance, CycloneDX SBOMs, and vulnerability scan freshness. These
-      rules are intentionally Audit-only until every internal image build publishes
-      the corresponding Cosign/GitHub Artifact Attestation records.
+      SLSA provenance, CycloneDX SBOMs, OpenVEX status, and vulnerability scan
+      freshness. These rules are intentionally Audit-only until every internal
+      image build publishes the corresponding Cosign/GitHub Artifact Attestation
+      records.
 spec:
   validationFailureAction: Audit
   background: false
@@ -31,8 +32,6 @@ spec:
       verifyImages:
         - imageReferences:
             - "ghcr.io/webgrip/*"
-          skipImageReferences:
-            - "ghcr.io/webgrip/*:*"
           mutateDigest: false
           attestations:
             - type: https://slsa.dev/provenance/v1
@@ -59,8 +58,6 @@ spec:
       verifyImages:
         - imageReferences:
             - "ghcr.io/webgrip/*"
-          skipImageReferences:
-            - "ghcr.io/webgrip/*:*"
           mutateDigest: false
           attestations:
             - predicateType: https://cyclonedx.org/schema
@@ -87,8 +84,6 @@ spec:
       verifyImages:
         - imageReferences:
             - "ghcr.io/webgrip/*"
-          skipImageReferences:
-            - "ghcr.io/webgrip/*:*"
           mutateDigest: false
           attestations:
             - predicateType: cosign.sigstore.dev/attestation/vuln/v1
@@ -105,3 +100,33 @@ spec:
                     - key: "{{ time_since('', '{{metadata.scanFinishedOn}}', '') }}"
                       operator: LessThanOrEquals
                       value: 168h
+
+    - name: verify-openvex-attestation
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/webgrip/*"
+          mutateDigest: false
+          attestations:
+            - predicateType: https://openvex.dev/ns
+              attestors:
+                - count: 1
+                  entries:
+                    - keyless:
+                        subjectRegExp: "^https://github\\.com/webgrip/[^/]+/\\.github/workflows/[^@]+@refs/(heads/main|tags/v.*)$"
+                        issuer: "https://token.actions.githubusercontent.com"
+                        rekor:
+                          url: https://rekor.sigstore.dev
+              conditions:
+                - all:
+                    - key: "{{ statements[].status || `[]` }}"
+                      operator: AnyIn
+                      value:
+                        - not_affected
+                        - affected
+                        - fixed
+                        - under_investigation

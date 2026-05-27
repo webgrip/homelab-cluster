@@ -1,0 +1,107 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: tetragon
+spec:
+  chart:
+    spec:
+      chart: tetragon
+      version: 1.7.0
+      sourceRef:
+        kind: HelmRepository
+        name: cilium
+        namespace: security
+  interval: 1h
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  values:
+    priorityClassName: system-node-critical
+    podAnnotations:
+      reloader.stakater.com/auto: "true"
+    tolerations:
+      - operator: Exists
+    extraHostPathMounts:
+      - name: sys-kernel-tracing
+        mountPath: /sys/kernel/tracing
+        readOnly: true
+
+    tetragon:
+      clusterName: homelab-cluster
+      debug: false
+      exportFilename: tetragon.log
+      exportFilePerm: "640"
+      exportFileMaxSizeMB: 20
+      exportFileMaxBackups: 10
+      exportRateLimit: 3000
+      exportAllowList: |-
+        {"event_set":["PROCESS_EXEC","PROCESS_EXIT","PROCESS_KPROBE","PROCESS_UPROBE","PROCESS_TRACEPOINT","PROCESS_LSM"]}
+      exportDenyList: |-
+        {"health_check":true}
+      redactionFilters: |-
+        {"redact":["(?i)(?:--?(?:password|passwd|token|secret|api[-_]?key)(?:\\s+|=))(\\S+)"]}
+        {"redact":["(?i)(?:AWS_SECRET_ACCESS_KEY|GITHUB_TOKEN|GH_TOKEN|NPM_TOKEN)=([^\\s]+)"]}
+      enableK8sAPI: true
+      enableProcessCred: true
+      enableProcessNs: true
+      processAncestors:
+        enabled: base
+      prometheus:
+        enabled: true
+        metricsLabelFilter: "namespace,workload,pod,binary"
+        serviceMonitor:
+          enabled: true
+          extraLabels:
+            release: kube-prometheus-stack
+          scrapeInterval: 30s
+      cri:
+        enabled: true
+        socketHostPath: /run/containerd/containerd.sock
+      cgidmap:
+        enabled: true
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+
+    tetragonOperator:
+      replicas: 2
+      failoverLease:
+        enabled: true
+      priorityClassName: system-cluster-critical
+      prometheus:
+        enabled: true
+        serviceMonitor:
+          enabled: true
+          extraLabels:
+            release: kube-prometheus-stack
+          scrapeInterval: 60s
+      resources:
+        requests:
+          cpu: 25m
+          memory: 64Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+
+    export:
+      mode: stdout
+      resources:
+        requests:
+          cpu: 25m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+
+    crds:
+      installMethod: operator

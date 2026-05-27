@@ -1,0 +1,26 @@
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: guac-db
+  namespace: security
+spec:
+  instances: 1
+  inheritedMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
+  storage:
+    size: 20Gi
+    storageClass: longhorn
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: guac-db-store
+        serverName: guac-db
+  bootstrap:
+    initdb:
+      database: guac
+      owner: guac
+      secret:
+        name: guac-secrets

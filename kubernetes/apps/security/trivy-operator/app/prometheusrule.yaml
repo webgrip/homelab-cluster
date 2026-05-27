@@ -1,0 +1,77 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: security-trivy-rules
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: security.trivy
+      rules:
+        - alert: TrivyCriticalImageVulnerabilities
+          expr: |
+            sum by (namespace, resource_kind, resource_name) (
+              trivy_image_vulnerabilities{severity="Critical"}
+            ) > 0
+          for: 30m
+          labels:
+            severity: critical
+            owner: platform
+            service: trivy-operator
+          annotations:
+            summary: "Critical image vulnerabilities detected in {{$labels.namespace}}/{{$labels.resource_name}}"
+            description: |
+              Trivy reports one or more critical image vulnerabilities for this workload.
+              Review the VulnerabilityReport/SbomReport CRs, rebuild the image from a patched base,
+              and keep the image digest pinned after remediation.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/security-supply-chain/#trivy-operator"
+
+        - alert: TrivyHighImageVulnerabilityBacklog
+          expr: |
+            sum(trivy_image_vulnerabilities{severity=~"Critical|High"}) > 20
+          for: 2h
+          labels:
+            severity: warning
+            owner: platform
+            service: trivy-operator
+          annotations:
+            summary: "High vulnerability backlog is growing"
+            description: |
+              The cluster has more than 20 high or critical image vulnerability findings.
+              Prioritize internet-facing and privileged workloads first.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/security-supply-chain/#trivy-operator"
+
+        - alert: TrivyExposedSecretsDetected
+          expr: |
+            sum by (namespace, resource_kind, resource_name) (
+              trivy_image_exposedsecrets{severity=~"Critical|High|Medium"}
+            ) > 0
+          for: 15m
+          labels:
+            severity: critical
+            owner: platform
+            service: trivy-operator
+          annotations:
+            summary: "Potential exposed secret detected in {{$labels.namespace}}/{{$labels.resource_name}}"
+            description: |
+              Trivy detected a potential secret in a container image. Treat this as credential
+              exposure until the image and affected credential are reviewed and rotated.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/security-supply-chain/#trivy-operator"
+
+        - alert: TrivyClusterComplianceFailures
+          expr: |
+            sum by (title) (
+              trivy_cluster_compliance{status="Fail"}
+            ) > 0
+          for: 1h
+          labels:
+            severity: warning
+            owner: platform
+            service: trivy-operator
+          annotations:
+            summary: "Trivy compliance failures detected for {{$labels.title}}"
+            description: |
+              Trivy cluster compliance checks are failing. Review ClusterComplianceReport
+              details before promoting audit-only policies to enforce.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/security-supply-chain/#trivy-operator"

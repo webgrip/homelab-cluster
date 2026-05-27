@@ -1,0 +1,26 @@
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: dependency-track-db
+  namespace: security
+spec:
+  instances: 1
+  inheritedMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
+  storage:
+    size: 20Gi
+    storageClass: longhorn
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: dependency-track-db-store
+        serverName: dependency-track-db
+  bootstrap:
+    initdb:
+      database: dependencytrack
+      owner: dependencytrack
+      secret:
+        name: dependency-track-secret

@@ -1,0 +1,43 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-kyverno-rbac-least-privilege
+  namespace: observability
+  annotations:
+    grafana_folder: Kyverno
+  labels:
+    grafana_dashboard: "1"
+data:
+  kyverno-rbac-least-privilege.json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Kyverno / 30 RBAC and Least Privilege",
+      "uid": "kyverno-rbac-least-privilege",
+      "timezone": "browser",
+      "tags": ["kyverno", "security", "rbac", "least-privilege", "governance"],
+      "description": "Audit view for RBAC blast-radius drift: wildcard roles, default ServiceAccount bindings, and cluster-admin grants to application workloads.",
+      "editable": false,
+      "graphTooltip": 1,
+      "refresh": "1m",
+      "time": {"from": "now-24h", "to": "now"},
+      "templating": {
+        "list": [
+          {"name": "datasource", "type": "datasource", "pluginId": "prometheus", "label": "Datasource", "hide": 0, "current": {}},
+          {"name": "namespace", "type": "query", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "label": "Namespace", "multi": true, "includeAll": true, "allValue": ".*", "query": "label_values(policy_report_result{policy=\"rbac-least-privilege-audit\"}, namespace)", "refresh": 2, "sort": 1, "current": {}}
+        ]
+      },
+      "annotations": {"list": [{"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard"}]},
+      "panels": [
+        {"id": 1, "type": "row", "title": "Least-privilege posture", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}, "collapsed": false},
+        {"id": 2, "type": "stat", "title": "Wildcard app roles", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 1}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum(policy_report_result{namespace=~\"$namespace\", policy=\"rbac-least-privilege-audit\", rule=\"disallow-wildcards-in-app-roles\", status=~\"fail|warn\"}) or on() vector(0)", "legendFormat": "wildcards"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "orange", "value": 1}, {"color": "red", "value": 5}]}}, "overrides": []}},
+        {"id": 3, "type": "stat", "title": "Default ServiceAccount bindings", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 1}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "((sum(policy_report_result{namespace=~\"$namespace\", policy=\"rbac-least-privilege-audit\", rule=\"disallow-default-serviceaccount-rolebindings\", status=~\"fail|warn\"}) or on() vector(0)) + (sum(cluster_policy_report_result{policy=\"rbac-least-privilege-audit\", rule=\"disallow-default-serviceaccount-clusterbindings\", status=~\"fail|warn\"}) or on() vector(0)))", "legendFormat": "bindings"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "orange", "value": 1}, {"color": "red", "value": 3}]}}, "overrides": []}},
+        {"id": 4, "type": "stat", "title": "Cluster-admin grants to workloads", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 1}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "((sum(policy_report_result{namespace=~\"$namespace\", policy=\"rbac-least-privilege-audit\", rule=\"disallow-cluster-admin-rolebindings\", status=~\"fail|warn\"}) or on() vector(0)) + (sum(cluster_policy_report_result{policy=\"rbac-least-privilege-audit\", rule=\"disallow-cluster-admin-clusterbindings\", status=~\"fail|warn\"}) or on() vector(0)))", "legendFormat": "cluster-admin"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "orange", "value": 1}, {"color": "red", "value": 2}]}}, "overrides": []}},
+        {"id": 5, "type": "stat", "title": "Namespaces with RBAC drift", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 1}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "count(count by (namespace) (policy_report_result{namespace=~\"$namespace\", policy=\"rbac-least-privilege-audit\", status=~\"fail|warn\"})) or on() vector(0)", "legendFormat": "namespaces"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}},
+        {"id": 6, "type": "timeseries", "title": "Policy result trend", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 5}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum by (rule, status) (policy_report_result{namespace=~\"$namespace\", policy=\"rbac-least-privilege-audit\"})", "legendFormat": "namespaced {{rule}} {{status}}"}, {"refId": "B", "expr": "sum by (rule, status) (cluster_policy_report_result{policy=\"rbac-least-privilege-audit\"})", "legendFormat": "cluster {{rule}} {{status}}"}], "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}}, "fieldConfig": {"defaults": {"custom": {"drawStyle": "line", "fillOpacity": 15, "lineWidth": 2}}, "overrides": []}},
+        {"id": 7, "type": "barchart", "title": "Top namespaces with RBAC findings", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 5}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "topk(12, sum by (namespace, rule) (policy_report_result{namespace=~\"$namespace\", policy=\"rbac-least-privilege-audit\", status=~\"fail|warn\"}))", "legendFormat": "{{namespace}} {{rule}}"}], "options": {"legend": {"displayMode": "list", "placement": "bottom"}}, "fieldConfig": {"defaults": {}, "overrides": []}},
+        {"id": 8, "type": "table", "title": "Namespaced RBAC violations", "gridPos": {"h": 9, "w": 24, "x": 0, "y": 13}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "format": "table", "instant": true, "expr": "sum by (namespace, resource_kind, resource_name, rule, status) (policy_report_result{namespace=~\"$namespace\", policy=\"rbac-least-privilege-audit\", status=~\"fail|warn\"})"}], "options": {"showHeader": true}, "fieldConfig": {"defaults": {}, "overrides": []}},
+        {"id": 9, "type": "table", "title": "Cluster-scoped RBAC violations", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 22}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "format": "table", "instant": true, "expr": "sum by (resource_kind, resource_name, rule, status) (cluster_policy_report_result{policy=\"rbac-least-privilege-audit\", status=~\"fail|warn\"})"}], "options": {"showHeader": true}, "fieldConfig": {"defaults": {}, "overrides": []}},
+        {"id": 10, "type": "text", "title": "Control intent", "gridPos": {"h": 6, "w": 24, "x": 0, "y": 30}, "options": {"mode": "markdown", "content": "This dashboard operationalizes **least privilege** for Kubernetes RBAC. The audit policy looks for three patterns that routinely turn minor application compromise into cluster compromise: wildcard Roles, default ServiceAccount bindings, and cluster-admin grants to workload identities. Use it alongside Trivy RBAC assessment findings and the main Kyverno violations dashboard."}}
+      ]
+    }

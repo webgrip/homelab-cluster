@@ -1,0 +1,40 @@
+---
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: rbac-least-privilege
+policies:
+  - ../../policies/rbac-least-privilege-audit.yaml
+resources:
+  - resources.yaml
+results:
+  - policy: rbac-least-privilege-audit
+    rule: disallow-wildcards-in-app-roles
+    resources:
+      - app/wildcard-reader
+    kind: Role
+    result: fail
+  - policy: rbac-least-privilege-audit
+    rule: disallow-default-serviceaccount-rolebindings
+    resources:
+      - app/default-sa-binding
+    kind: RoleBinding
+    result: fail
+  - policy: rbac-least-privilege-audit
+    rule: disallow-cluster-admin-rolebindings
+    resources:
+      - app/cluster-admin-binding
+    kind: RoleBinding
+    result: fail
+  - policy: rbac-least-privilege-audit
+    rule: disallow-default-serviceaccount-clusterbindings
+    resources:
+      - default-sa-clusterbinding
+    kind: ClusterRoleBinding
+    result: fail
+  - policy: rbac-least-privilege-audit
+    rule: disallow-cluster-admin-clusterbindings
+    resources:
+      - app-builder-cluster-admin
+    kind: ClusterRoleBinding
+    result: fail

@@ -13,7 +13,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: policy-reporter
-        namespace: kyverno
+        namespace: security
   install:
     remediation:
       retries: 3
@@ -64,11 +64,10 @@ spec:
         # Preserve namespace/name labels from the metric itself (not the scrape target)
         honorLabels: true
 
-    # Only watch application namespaces — skip kyverno internals
+    # Exclude only core Kubernetes namespaces so security and application reports stay visible.
     reportFilter:
       namespaces:
         exclude:
-          - kyverno
           - flux-system
           - kube-system
           - kube-public

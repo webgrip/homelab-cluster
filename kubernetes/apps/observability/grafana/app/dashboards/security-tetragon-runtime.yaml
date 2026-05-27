@@ -1,0 +1,48 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-security-tetragon-runtime
+  namespace: observability
+  annotations:
+    grafana_folder: Tetragon
+  labels:
+    grafana_dashboard: "1"
+data:
+  security-tetragon-runtime.json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Tetragon / 10 Runtime Telemetry",
+      "uid": "security-tetragon-runtime",
+      "timezone": "browser",
+      "tags": ["security", "tetragon", "runtime", "ebpf", "process"],
+      "description": "Tetragon process telemetry, event export health, BPF ring buffer pressure, tracing policy load state, and Loki event stream.",
+      "editable": false,
+      "graphTooltip": 1,
+      "refresh": "30s",
+      "time": {"from": "now-6h", "to": "now"},
+      "templating": {
+        "list": [
+          {"name": "datasource", "type": "datasource", "pluginId": "prometheus", "label": "Datasource", "hide": 0, "current": {}},
+          {"name": "workload", "type": "query", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "label": "Workload", "multi": true, "includeAll": true, "allValue": ".*", "query": "label_values(tetragon_events_exported_total, workload)", "refresh": 2, "sort": 1, "current": {}}
+        ]
+      },
+      "annotations": {"list": [{"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard"}]},
+      "panels": [
+        {"id": 1, "type": "row", "title": "Telemetry health", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}, "collapsed": false},
+        {"id": 2, "type": "stat", "title": "Tetragon agents up", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 1}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum(up{namespace=\"security\", pod=~\"tetragon.*\"} == 1) or on() vector(0)", "legendFormat": "up"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}},
+        {"id": 3, "type": "stat", "title": "Events exported/s", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 1}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum(rate(tetragon_events_exported_total{workload=~\"$workload\"}[5m])) or on() vector(0)", "legendFormat": "events/s"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 2, "unit": "ops"}, "overrides": []}},
+        {"id": 4, "type": "stat", "title": "Ring buffer lost events", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 1}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum(increase(tetragon_observer_ringbuf_events_lost_total[$__range])) or on() vector(0)", "legendFormat": "lost"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "red", "value": 1}]}}, "overrides": []}},
+        {"id": 5, "type": "stat", "title": "Tracing policy errors", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 1}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum(tetragon_tracingpolicy_loaded{state=~\"error|load_error\"}) or on() vector(0)", "legendFormat": "errors"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "red", "value": 1}]}}, "overrides": []}},
+        {"id": 6, "type": "row", "title": "Event stream and BPF health", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5}, "collapsed": false},
+        {"id": 7, "type": "timeseries", "title": "Events exported by workload", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "topk(20, sum by (namespace, workload) (rate(tetragon_events_exported_total{workload=~\"$workload\"}[5m])))", "legendFormat": "{{namespace}}/{{workload}}"}], "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"]}}, "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}},
+        {"id": 8, "type": "timeseries", "title": "BPF/ring buffer health", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum(rate(tetragon_observer_ringbuf_events_received_total[5m]))", "legendFormat": "ringbuf received/s"}, {"refId": "B", "expr": "sum(rate(tetragon_observer_ringbuf_events_lost_total[5m])) or on() vector(0)", "legendFormat": "ringbuf lost/s"}, {"refId": "C", "expr": "sum(rate(tetragon_bpf_missed_events_total[5m])) or on() vector(0)", "legendFormat": "bpf missed/s"}], "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}}, "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}},
+        {"id": 9, "type": "timeseries", "title": "Process cache pressure", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "tetragon_process_cache_size", "legendFormat": "size"}, {"refId": "B", "expr": "tetragon_process_cache_capacity", "legendFormat": "capacity"}, {"refId": "C", "expr": "sum(rate(tetragon_process_cache_evictions_total[5m])) or on() vector(0)", "legendFormat": "evictions/s"}], "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}}, "fieldConfig": {"defaults": {}, "overrides": []}},
+        {"id": 10, "type": "timeseries", "title": "Policy filter operations", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum by (operation, error) (rate(tetragon_policyfilter_operations_total[5m]))", "legendFormat": "{{operation}} {{error}}"}], "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}}, "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}},
+        {"id": 11, "type": "row", "title": "Resource pressure and raw telemetry", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 22}, "collapsed": false},
+        {"id": 12, "type": "timeseries", "title": "Tetragon CPU", "gridPos": {"h": 7, "w": 8, "x": 0, "y": 23}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum by (pod, container) (rate(container_cpu_usage_seconds_total{namespace=\"security\", pod=~\"tetragon.*\", container=~\"tetragon|export-stdout\"}[5m]))", "legendFormat": "{{pod}}/{{container}}"}], "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"]}}, "fieldConfig": {"defaults": {"unit": "cores"}, "overrides": []}},
+        {"id": 13, "type": "timeseries", "title": "Tetragon memory", "gridPos": {"h": 7, "w": 8, "x": 8, "y": 23}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum by (pod, container) (container_memory_working_set_bytes{namespace=\"security\", pod=~\"tetragon.*\", container=~\"tetragon|export-stdout\"})", "legendFormat": "{{pod}}/{{container}}"}], "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"]}}, "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []}},
+        {"id": 14, "type": "table", "title": "Tracing policy load state", "gridPos": {"h": 7, "w": 8, "x": 16, "y": 23}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "format": "table", "instant": true, "expr": "sum by (policy, policy_namespace, state) (tetragon_tracingpolicy_loaded)"}], "options": {"showHeader": true}, "fieldConfig": {"defaults": {}, "overrides": []}},
+        {"id": 15, "type": "logs", "title": "Tetragon JSON event stream", "gridPos": {"h": 12, "w": 24, "x": 0, "y": 30}, "datasource": {"type": "loki", "uid": "loki"}, "targets": [{"refId": "A", "expr": "{namespace=\"security\", container=~\"export-stdout|tetragon\"} | json", "queryType": "range"}], "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true}}
+      ]
+    }

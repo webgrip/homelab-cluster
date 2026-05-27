@@ -1,0 +1,131 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: falco
+spec:
+  chart:
+    spec:
+      chart: falco
+      version: 8.0.5
+      sourceRef:
+        kind: HelmRepository
+        name: falcosecurity
+        namespace: security
+  interval: 1h
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  values:
+    podAnnotations:
+      reloader.stakater.com/auto: "true"
+    podPriorityClassName: system-node-critical
+    tolerations:
+      - operator: Exists
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+    controller:
+      kind: daemonset
+      daemonset:
+        updateStrategy:
+          type: RollingUpdate
+
+    driver:
+      enabled: true
+      kind: modern_ebpf
+      sysfsMountPath: /sys/kernel
+      loader:
+        enabled: false
+      modernEbpf:
+        leastPrivileged: false
+        bufSizePreset: 4
+        cpusForEachBuffer: 2
+        sysfsMount: true
+
+    collectors:
+      enabled: true
+      containerEngine:
+        enabled: true
+        engines:
+          docker:
+            enabled: false
+          podman:
+            enabled: false
+          containerd:
+            enabled: true
+            sockets:
+              - /run/host-containerd/containerd.sock
+          cri:
+            enabled: true
+            sockets:
+              - /run/host-containerd/containerd.sock
+          lxc:
+            enabled: false
+          libvirt_lxc:
+            enabled: false
+          bpm:
+            enabled: false
+      kubernetes:
+        enabled: true
+
+    mounts:
+      volumes:
+        - name: containerd-sock
+          hostPath:
+            path: /run/containerd/containerd.sock
+            type: Socket
+      volumeMounts:
+        - name: containerd-sock
+          mountPath: /run/host-containerd/containerd.sock
+          readOnly: true
+
+    metrics:
+      enabled: true
+      interval: 1h
+      outputRule: true
+      rulesCountersEnabled: true
+      resourceUtilizationEnabled: true
+      stateCountersEnabled: true
+      kernelEventCountersEnabled: true
+      libbpfStatsEnabled: true
+      pluginsMetricsEnabled: true
+
+    serviceMonitor:
+      create: true
+      interval: 30s
+      labels:
+        release: kube-prometheus-stack
+
+    falcoctl:
+      artifact:
+        follow:
+          every: 168h
+
+    falco:
+      time_format_iso_8601: true
+      priority: notice
+      json_output: true
+      json_include_output_property: true
+      json_include_output_fields_property: true
+      json_include_tags_property: true
+      buffered_outputs: false
+      stdout_output:
+        enabled: true
+      syslog_output:
+        enabled: false
+      webserver:
+        enabled: true
+        listen_address: 0.0.0.0
+        listen_port: 8765
+        prometheus_metrics_enabled: true
