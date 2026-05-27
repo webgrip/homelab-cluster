@@ -37,6 +37,13 @@ spec:
     # Keep the initial install simple/reliable: use local persistent storage.
     # (Pyroscope object storage can be enabled later, once you pick bucket policy + format.)
     pyroscope:
+      # When MinIO is disabled, the chart would otherwise render an empty config.
+      # Make the local filesystem object store explicit so the single-binary pod can boot reliably.
+      structuredConfig:
+        storage:
+          backend: filesystem
+          filesystem:
+            dir: /data/v2/shared
       extraArgs:
         log.level: info
       resources:
@@ -48,4 +55,5 @@ spec:
           memory: 1Gi
       persistence:
         enabled: true
+        storageClassName: longhorn
         size: 20Gi
