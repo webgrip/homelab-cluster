@@ -20,6 +20,21 @@ spec:
     podAnnotations:
       reloader.stakater.com/auto: "true"
 
+    # Keep pyroscope off the persistent etcd leader (soyo-3/10.0.0.22).
+    # Pyroscope does sustained high-throughput disk writes; co-locating it with
+    # the etcd leader saturates the shared disk and pushes etcd WAL fsync p99
+    # above the 5 s lease timeout, causing cluster-wide context deadline errors.
+    affinity:
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                    - soyo-3
+
     podSecurityContext:
       # Skip recursive chown on restarts if root dir ownership already matches.
       # Without this, a 20 GB volume with tens-of-thousands of files causes a
