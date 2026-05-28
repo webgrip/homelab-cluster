@@ -1,0 +1,137 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-platform-etcd
+  namespace: observability
+  annotations:
+    grafana_folder: Kubernetes
+  labels:
+    grafana_dashboard: "1"
+data:
+  platform-etcd.json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Platform / etcd Health",
+      "uid": "platform-etcd",
+      "timezone": "browser",
+      "tags": ["kubernetes", "etcd", "platform"],
+      "editable": false,
+      "graphTooltip": 1,
+      "refresh": "30s",
+      "time": {"from": "now-3h", "to": "now"},
+      "panels": [
+        {"id": 1, "type": "row", "title": "Overview", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}, "collapsed": false},
+
+        {"id": 2, "type": "stat", "title": "Leaders", "gridPos": {"h": 4, "w": 4, "x": 0, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(etcd_server_is_leader{job=\"talos-etcd\"})", "legendFormat": "leaders"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "auto", "colorMode": "background"},
+          "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 1}, {"color": "green", "value": 1}]}, "mappings": [{"type": "value", "options": {"0": {"text": "NO LEADER", "color": "red"}}}]}}},
+
+        {"id": 3, "type": "stat", "title": "DB Size (max node)", "gridPos": {"h": 4, "w": 4, "x": 4, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "max(etcd_mvcc_db_total_size_in_use_in_bytes{job=\"talos-etcd\"})", "legendFormat": "in-use"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "auto", "colorMode": "background"},
+          "fieldConfig": {"defaults": {"unit": "bytes", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 500000000}, {"color": "red", "value": 1500000000}]}}}},
+
+        {"id": 4, "type": "stat", "title": "Fragmentation Ratio (max node)", "gridPos": {"h": 4, "w": 4, "x": 8, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "max(etcd_mvcc_db_total_size_in_bytes{job=\"talos-etcd\"} / etcd_mvcc_db_total_size_in_use_in_bytes{job=\"talos-etcd\"})", "legendFormat": "ratio"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "auto", "colorMode": "background"},
+          "fieldConfig": {"defaults": {"decimals": 2, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1.5}, {"color": "red", "value": 2.0}]}}}},
+
+        {"id": 5, "type": "stat", "title": "Leader Changes (1h)", "gridPos": {"h": 4, "w": 4, "x": 12, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(increase(etcd_server_leader_changes_seen_total{job=\"talos-etcd\"}[1h]))", "legendFormat": "changes"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "auto", "colorMode": "background"},
+          "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 3}]}}}},
+
+        {"id": 6, "type": "stat", "title": "WAL Fsync p99 (worst node)", "gridPos": {"h": 4, "w": 4, "x": 16, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "max(histogram_quantile(0.99, sum by (instance, le) (rate(etcd_disk_wal_fsync_duration_seconds_bucket{job=\"talos-etcd\"}[5m]))))", "legendFormat": "p99"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "auto", "colorMode": "background"},
+          "fieldConfig": {"defaults": {"unit": "s", "decimals": 3, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.1}, {"color": "red", "value": 0.5}]}}}},
+
+        {"id": 7, "type": "stat", "title": "Proposals Failed/s", "gridPos": {"h": 4, "w": 4, "x": 20, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(rate(etcd_server_proposals_failed_total{job=\"talos-etcd\"}[5m]))", "legendFormat": "failed/s"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "auto", "colorMode": "background"},
+          "fieldConfig": {"defaults": {"decimals": 3, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.05}, {"color": "red", "value": 0.5}]}}}},
+
+        {"id": 10, "type": "row", "title": "Disk I/O Latency", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5}, "collapsed": false},
+
+        {"id": 11, "type": "timeseries", "title": "WAL Fsync Latency", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "histogram_quantile(0.50, sum by (instance, le) (rate(etcd_disk_wal_fsync_duration_seconds_bucket{job=\"talos-etcd\"}[5m])))", "legendFormat": "p50 {{ instance }}"},
+            {"refId": "B", "expr": "histogram_quantile(0.99, sum by (instance, le) (rate(etcd_disk_wal_fsync_duration_seconds_bucket{job=\"talos-etcd\"}[5m])))", "legendFormat": "p99 {{ instance }}"},
+            {"refId": "C", "expr": "histogram_quantile(0.999, sum by (instance, le) (rate(etcd_disk_wal_fsync_duration_seconds_bucket{job=\"talos-etcd\"}[5m])))", "legendFormat": "p999 {{ instance }}"}
+          ],
+          "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"]}},
+          "fieldConfig": {"defaults": {"unit": "s", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10},
+            "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "yellow", "value": 0.1}, {"color": "red", "value": 0.5}]}}}},
+
+        {"id": 12, "type": "timeseries", "title": "Backend Commit Latency", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "histogram_quantile(0.50, sum by (instance, le) (rate(etcd_disk_backend_commit_duration_seconds_bucket{job=\"talos-etcd\"}[5m])))", "legendFormat": "p50 {{ instance }}"},
+            {"refId": "B", "expr": "histogram_quantile(0.99, sum by (instance, le) (rate(etcd_disk_backend_commit_duration_seconds_bucket{job=\"talos-etcd\"}[5m])))", "legendFormat": "p99 {{ instance }}"},
+            {"refId": "C", "expr": "histogram_quantile(0.999, sum by (instance, le) (rate(etcd_disk_backend_commit_duration_seconds_bucket{job=\"talos-etcd\"}[5m])))", "legendFormat": "p999 {{ instance }}"}
+          ],
+          "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"]}},
+          "fieldConfig": {"defaults": {"unit": "s", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10},
+            "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "yellow", "value": 0.25}, {"color": "red", "value": 1.0}]}}}},
+
+        {"id": 20, "type": "row", "title": "Cluster Health", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 14}, "collapsed": false},
+
+        {"id": 21, "type": "timeseries", "title": "Leader Changes", "gridPos": {"h": 8, "w": 8, "x": 0, "y": 15},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum by (instance) (rate(etcd_server_leader_changes_seen_total{job=\"talos-etcd\"}[5m]))", "legendFormat": "changes/s {{ instance }}"}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+          "fieldConfig": {"defaults": {"unit": "ops", "custom": {"drawStyle": "bars", "lineWidth": 1, "fillOpacity": 80}}}},
+
+        {"id": 22, "type": "timeseries", "title": "Proposals", "gridPos": {"h": 8, "w": 8, "x": 8, "y": 15},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(rate(etcd_server_proposals_committed_total{job=\"talos-etcd\"}[5m]))", "legendFormat": "committed/s"},
+            {"refId": "B", "expr": "sum(rate(etcd_server_proposals_applied_total{job=\"talos-etcd\"}[5m]))", "legendFormat": "applied/s"},
+            {"refId": "C", "expr": "sum(rate(etcd_server_proposals_failed_total{job=\"talos-etcd\"}[5m]))", "legendFormat": "failed/s"},
+            {"refId": "D", "expr": "sum(etcd_server_proposals_pending{job=\"talos-etcd\"})", "legendFormat": "pending"}
+          ],
+          "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"]}},
+          "fieldConfig": {"defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}}}},
+
+        {"id": 23, "type": "timeseries", "title": "DB Size", "gridPos": {"h": 8, "w": 8, "x": 16, "y": 15},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "etcd_mvcc_db_total_size_in_bytes{job=\"talos-etcd\"}", "legendFormat": "total {{ instance }}"},
+            {"refId": "B", "expr": "etcd_mvcc_db_total_size_in_use_in_bytes{job=\"talos-etcd\"}", "legendFormat": "in-use {{ instance }}"}
+          ],
+          "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"unit": "bytes", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10},
+            "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "yellow", "value": 500000000}, {"color": "red", "value": 1500000000}]}}}},
+
+        {"id": 30, "type": "row", "title": "Network", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 23}, "collapsed": false},
+
+        {"id": 31, "type": "timeseries", "title": "Peer Round-Trip Time", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "histogram_quantile(0.99, sum by (To, le) (rate(etcd_network_peer_round_trip_time_seconds_bucket{job=\"talos-etcd\"}[5m])))", "legendFormat": "p99 → {{ To }}"},
+            {"refId": "B", "expr": "histogram_quantile(0.50, sum by (To, le) (rate(etcd_network_peer_round_trip_time_seconds_bucket{job=\"talos-etcd\"}[5m])))", "legendFormat": "p50 → {{ To }}"}
+          ],
+          "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"]}},
+          "fieldConfig": {"defaults": {"unit": "s", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}}}},
+
+        {"id": 32, "type": "timeseries", "title": "Peer Traffic", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum by (instance) (rate(etcd_network_peer_sent_bytes_total{job=\"talos-etcd\"}[5m]))", "legendFormat": "sent {{ instance }}"},
+            {"refId": "B", "expr": "sum by (instance) (rate(etcd_network_peer_received_bytes_total{job=\"talos-etcd\"}[5m]))", "legendFormat": "recv {{ instance }}"}
+          ],
+          "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"unit": "Bps", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}}}}
+      ]
+    }

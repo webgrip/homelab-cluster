@@ -1,0 +1,106 @@
+---
+apiVersion: sloth.slok.dev/v1
+kind: PrometheusServiceLevel
+metadata:
+  name: platform-etcd
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: sloth
+spec:
+  service: "etcd"
+  labels:
+    owner: platform
+  slos:
+    - name: wal-fsync-latency
+      objective: 99
+      description: "99% of etcd WAL fsync operations complete in < 128ms. Slow fsyncs cascade into leader election failures and cluster-wide controller restarts."
+      sli:
+        events:
+          errorQuery: |
+            sum(
+              rate(etcd_disk_wal_fsync_duration_seconds_bucket{job="talos-etcd", le="+Inf"}[{{.window}}])
+            )
+            -
+            sum(
+              rate(etcd_disk_wal_fsync_duration_seconds_bucket{job="talos-etcd", le="0.128"}[{{.window}}])
+            )
+          totalQuery: |
+            sum(
+              rate(etcd_disk_wal_fsync_duration_seconds_count{job="talos-etcd"}[{{.window}}])
+            )
+      alerting:
+        name: EtcdWalFsyncLatencySLO
+        labels:
+          category: slo
+        annotations:
+          summary: "etcd WAL fsync latency SLO burn rate"
+          description: |
+            What's happening:
+            - etcd WAL fsync operations are exceeding 128ms faster than the error budget allows.
+
+            Impact/risk:
+            - Fast burn (>14x): imminent leader election failures → cascading controller CrashLoops
+            - Slow burn (>1x): error budget erosion; cluster is under sustained disk pressure
+
+            Likely causes:
+            - Disk I/O saturation or slow underlying storage on a control-plane node
+            - etcd DB fragmentation (total_size >> in_use_size)
+            - Competing I/O workloads on the same node (Longhorn replicas, etc.)
+
+            First actions:
+            - Check etcd dashboard for per-node fsync latency and fragmentation ratio
+            - Run talosctl etcd defrag on each control-plane node sequentially
+            - Check node disk I/O: talosctl ps / node-exporter disk metrics
+          runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-etcd"
+          dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-etcd/platform-etcd-health"
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning
+
+    - name: leader-stability
+      objective: 99.9
+      description: "etcd leader elections should be rare. Each election briefly stalls all Kubernetes API writes and triggers cascading controller restarts."
+      sli:
+        events:
+          errorQuery: |
+            sum(
+              increase(etcd_server_leader_changes_seen_total{job="talos-etcd"}[{{.window}}])
+            )
+          totalQuery: |
+            sum(
+              increase(etcd_server_proposals_committed_total{job="talos-etcd"}[{{.window}}])
+            )
+      alerting:
+        name: EtcdLeaderStabilitySLO
+        labels:
+          category: slo
+        annotations:
+          summary: "etcd leader stability SLO burn rate"
+          description: |
+            What's happening:
+            - etcd leader changes are consuming the error budget faster than allowed.
+
+            Impact/risk:
+            - Each leader change: API writes stall briefly, lease-based controllers restart
+            - Fast burn: cluster is in a leader election storm — active incident
+
+            Likely causes:
+            - Disk I/O latency (WAL fsync slow → heartbeat timeouts)
+            - Network issues between control-plane nodes
+            - Control-plane node overloaded or restarting
+
+            First actions:
+            - Check EtcdLeaderChangedFrequently alert for correlated WAL fsync degradation
+            - Check control-plane node health and disk I/O
+            - Correlate with recent deployments or node events
+          runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-etcd"
+          dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-etcd/platform-etcd-health"
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning

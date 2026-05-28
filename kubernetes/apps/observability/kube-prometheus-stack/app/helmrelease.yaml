@@ -25,9 +25,26 @@ spec:
     kubeProxy:
       enabled: false
 
-    # Avoid scraping control-plane components that are often not exposed by default.
+    # Talos exposes etcd metrics on port 2381 (HTTP) on each control-plane node IP.
+    # kubeControllerManager and kubeScheduler bind to 127.0.0.1 only on Talos and cannot be scraped.
     kubeEtcd:
-      enabled: false
+      enabled: true
+      endpoints:
+        - 10.0.0.20
+        - 10.0.0.21
+        - 10.0.0.22
+      service:
+        enabled: true
+        port: 2381
+        targetPort: 2381
+      serviceMonitor:
+        scheme: http
+        insecureSkipVerify: true
+        interval: 30s
+        metricRelabelings:
+          - action: replace
+            targetLabel: job
+            replacement: talos-etcd
     kubeControllerManager:
       enabled: false
     kubeScheduler:
@@ -67,7 +84,8 @@ spec:
           volumeClaimTemplate:
             spec:
               storageClassName: longhorn
-              accessModes: ["ReadWriteOnce"]
+              accessModes:
+                - "ReadWriteOnce"
               resources:
                 requests:
                   storage: 50Gi
@@ -151,7 +169,16 @@ spec:
 
         route:
           receiver: "null"
-          group_by: [alertname, namespace, severity, service, owner, project, pod, job, instance]
+          group_by:
+            - alertname
+            - namespace
+            - severity
+            - service
+            - owner
+            - project
+            - pod
+            - job
+            - instance
           group_wait: 30s
           group_interval: 5m
           repeat_interval: 12h
@@ -202,7 +229,9 @@ spec:
               - severity="critical"
             target_matchers:
               - severity="warning"
-            equal: [namespace, alertname]
+            equal:
+              - namespace
+              - alertname
 
       alertmanagerSpec:
         image:
@@ -227,7 +256,8 @@ spec:
           volumeClaimTemplate:
             spec:
               storageClassName: longhorn
-              accessModes: ["ReadWriteOnce"]
+              accessModes:
+                - "ReadWriteOnce"
               resources:
                 requests:
                   storage: 5Gi

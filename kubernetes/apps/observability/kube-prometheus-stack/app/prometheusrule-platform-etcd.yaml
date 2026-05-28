@@ -1,0 +1,283 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-etcd-rules
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: platform.etcd
+      rules:
+        - alert: EtcdMemberDown
+          expr: up{job="talos-etcd"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            owner: platform
+            service: etcd
+          annotations:
+            summary: "etcd member down ({{ $labels.instance }})"
+            description: |
+              What's happening:
+              - Prometheus cannot scrape etcd metrics from {{ $labels.instance }} for 5m.
+
+              Impact/risk:
+              - etcd quorum may be degraded; cluster write availability at risk.
+
+              Likely causes:
+              - The etcd process on that node has stopped or crashed
+              - Network connectivity issue between Prometheus and the node
+              - Talos node is not ready or restarting
+
+              First actions:
+              - Check node and etcd status: talosctl health
+              - Check if the node is Ready and etcd process is running
+              - Check Talos system logs for the affected node
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-etcd"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-etcd/platform-etcd-health"
+
+        - alert: EtcdNoLeader
+          expr: sum(etcd_server_is_leader{job="talos-etcd"}) == 0
+          for: 1m
+          labels:
+            severity: critical
+            owner: platform
+            service: etcd
+          annotations:
+            summary: "etcd has no leader"
+            description: |
+              What's happening:
+              - No etcd member reports itself as leader.
+
+              Impact/risk:
+              - All Kubernetes API writes are blocked; cluster is effectively read-only.
+              - Flux, controllers, and workload management are all stalled.
+
+              Likely causes:
+              - Quorum lost (≥2 members down in a 3-member cluster)
+              - Network partition between etcd members
+              - etcd restart/election storm
+
+              First actions:
+              - talosctl etcd status — check member health and Raft index
+              - Check all control-plane nodes for NotReady or disk pressure
+              - Do NOT run talosctl etcd defrag during a no-leader state
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-etcd"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-etcd/platform-etcd-health"
+
+        - alert: EtcdLeaderChangedFrequently
+          expr: |
+            rate(etcd_server_leader_changes_seen_total{job="talos-etcd"}[15m]) > 0.2
+          for: 5m
+          labels:
+            severity: warning
+            owner: platform
+            service: etcd
+          annotations:
+            summary: "etcd leader changing frequently ({{ $labels.instance }})"
+            description: |
+              What's happening:
+              - etcd is experiencing >3 leader elections per 15m window.
+
+              Impact/risk:
+              - Lease-based controllers (cilium-operator, kube-controller-manager, etc.) lose
+                their leases and restart on each election — the cascade we saw recently.
+
+              Likely causes:
+              - Disk I/O latency causing heartbeat timeouts
+              - Network latency between control-plane nodes
+              - etcd DB fragmentation (run defrag)
+              - CPU saturation on control-plane nodes
+
+              First actions:
+              - Check WAL fsync and backend commit latency in the etcd dashboard
+              - Check disk I/O pressure on control-plane nodes
+              - Run talosctl etcd defrag if fragmentation ratio > 1.5
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-etcd"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-etcd/platform-etcd-health"
+
+        - alert: EtcdHighWalFsyncDuration
+          expr: |
+            histogram_quantile(0.99,
+              sum by (instance, le) (
+                rate(etcd_disk_wal_fsync_duration_seconds_bucket{job="talos-etcd"}[5m])
+              )
+            ) > 0.1
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+            service: etcd
+          annotations:
+            summary: "etcd WAL fsync p99 > 100ms ({{ $labels.instance }})"
+            description: |
+              What's happening:
+              - etcd WAL fsync p99 latency on {{ $labels.instance }} exceeds 100ms.
+
+              Impact/risk:
+              - Slow writes degrade leader election reliability; controllers may lose leases.
+              - Sustained > 500ms will cause cascading controller CrashLoops.
+
+              Likely causes:
+              - Disk I/O saturation or slow underlying storage
+              - etcd DB fragmentation (defrag needed)
+              - Competing disk workloads on the same node
+
+              First actions:
+              - Check node disk I/O and storage utilisation
+              - Check etcd DB fragmentation ratio in the etcd dashboard
+              - Run talosctl etcd defrag if fragmentation ratio > 1.5
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-etcd"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-etcd/platform-etcd-health"
+
+        - alert: EtcdHighWalFsyncDurationCritical
+          expr: |
+            histogram_quantile(0.99,
+              sum by (instance, le) (
+                rate(etcd_disk_wal_fsync_duration_seconds_bucket{job="talos-etcd"}[5m])
+              )
+            ) > 0.5
+          for: 5m
+          labels:
+            severity: critical
+            owner: platform
+            service: etcd
+          annotations:
+            summary: "etcd WAL fsync p99 > 500ms ({{ $labels.instance }})"
+            description: |
+              What's happening:
+              - etcd WAL fsync p99 latency on {{ $labels.instance }} exceeds 500ms — critically slow.
+
+              Impact/risk:
+              - Leader elections will time out; controllers will cascade-restart immediately.
+              - Kubernetes API writes are near-stalled.
+
+              Likely causes:
+              - Severe disk I/O pressure or failing storage
+              - etcd DB fragmentation (DB size >> in-use size)
+
+              First actions:
+              - Immediately check disk health and I/O wait on the node
+              - Run talosctl etcd defrag if fragmentation is high
+              - Consider draining the node if disk is failing
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-etcd"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-etcd/platform-etcd-health"
+
+        - alert: EtcdHighCommitDuration
+          expr: |
+            histogram_quantile(0.99,
+              sum by (instance, le) (
+                rate(etcd_disk_backend_commit_duration_seconds_bucket{job="talos-etcd"}[5m])
+              )
+            ) > 0.25
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+            service: etcd
+          annotations:
+            summary: "etcd backend commit p99 > 250ms ({{ $labels.instance }})"
+            description: |
+              What's happening:
+              - etcd backend (boltdb) commit p99 on {{ $labels.instance }} exceeds 250ms.
+
+              Impact/risk:
+              - Slow commits reduce throughput for all Kubernetes writes.
+
+              Likely causes:
+              - DB fragmentation (large file, low utilisation)
+              - Disk I/O saturation
+              - Large key/value churn (many Flux retries, controller storms)
+
+              First actions:
+              - Check fragmentation ratio: total_size / in_use_size
+              - Run talosctl etcd defrag if ratio > 1.5
+              - Reduce Flux retry storm if Kustomizations are mass-failing
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-etcd"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-etcd/platform-etcd-health"
+
+        - alert: EtcdDbHighFragmentationRatio
+          expr: |
+            (
+              etcd_mvcc_db_total_size_in_bytes{job="talos-etcd"}
+              /
+              etcd_mvcc_db_total_size_in_use_in_bytes{job="talos-etcd"}
+            ) > 1.5
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: etcd
+          annotations:
+            summary: "etcd DB fragmentation ratio > 1.5 ({{ $labels.instance }})"
+            description: |
+              What's happening:
+              - etcd DB on {{ $labels.instance }} has > 50% wasted space
+                (total_size / in_use_size = {{ $value | printf "%.2f" }}).
+
+              Impact/risk:
+              - Fragmentation causes fsync latency spikes → cascading controller restarts.
+              - This was the root cause of the cluster-wide CrashLoop incident.
+
+              First actions:
+              - Run talosctl etcd defrag on each node sequentially (wait ~10s between)
+              - Monitor WAL fsync latency post-defrag to confirm improvement
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-etcd"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-etcd/platform-etcd-health"
+
+        - alert: EtcdDbSizeLarge
+          expr: |
+            etcd_mvcc_db_total_size_in_bytes{job="talos-etcd"} > 1.5e9
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: etcd
+          annotations:
+            summary: "etcd DB size > 1.5 GB ({{ $labels.instance }})"
+            description: |
+              What's happening:
+              - etcd DB on {{ $labels.instance }} exceeds 1.5 GB, approaching the default 2 GB quota.
+
+              Impact/risk:
+              - If DB hits the quota, etcd will reject all write requests.
+              - Kubernetes API becomes read-only; cluster management stops.
+
+              First actions:
+              - Run etcd compaction: talosctl etcd compact
+              - Run etcd defrag: talosctl etcd defrag
+              - Check for large resources / unbounded growth (Events, Leases, CRD objects)
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-etcd"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-etcd/platform-etcd-health"
+
+        - alert: EtcdHighProposalFailureRate
+          expr: |
+            rate(etcd_server_proposals_failed_total{job="talos-etcd"}[5m]) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            owner: platform
+            service: etcd
+          annotations:
+            summary: "etcd proposal failure rate elevated ({{ $labels.instance }})"
+            description: |
+              What's happening:
+              - etcd on {{ $labels.instance }} is failing Raft proposals.
+
+              Impact/risk:
+              - Some Kubernetes writes are being rejected.
+              - Leader instability is likely or imminent.
+
+              Likely causes:
+              - Quorum temporarily lost (node/network hiccup)
+              - Disk I/O too slow for heartbeats
+              - etcd member restarting
+
+              First actions:
+              - Check etcd member health: talosctl etcd status
+              - Correlate with leader change events in the etcd dashboard
+              - Check WAL fsync latency
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-etcd"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-etcd/platform-etcd-health"
