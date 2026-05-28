@@ -20,6 +20,8 @@ prepare_kyverno_test_workspace() {
         cert-manager-governance.yaml
         exception-governance.yaml
         flux-governance-enforce.yaml
+        image-attestations-audit.yaml
+        image-verify-audit.yaml
         image-supply-chain-audit.yaml
         namespace-defaults-generate.yaml
         namespace-tenancy-audit.yaml

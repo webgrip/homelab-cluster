@@ -12,8 +12,9 @@ metadata:
     policies.kyverno.io/subject: Pod
     kyverno.io/kyverno-version: 1.18.1
     policies.kyverno.io/description: >-
-      Audit that application images from internal registries are signed with
-      Sigstore/Cosign keyless signatures issued by GitHub Actions OIDC.
+      Audit that first-party WebGrip images are signed with Sigstore/Cosign
+      keyless signatures issued by the infrastructure release workflow via
+      GitHub Actions OIDC.
       This policy runs in Audit mode so existing unsigned workloads are surfaced in
       PolicyReports without being blocked. Promote to Enforce once all images in scope
       are signed in CI with id-token: write and digest-pinned deployment references.
@@ -23,9 +24,9 @@ spec:
   webhookTimeoutSeconds: 30
   rules:
     # -----------------------------------------------------------------------
-    # Internal images: ghcr.io/webgrip/*
-    # These are images built and signed by this organisation's GitHub Actions
-    # workflows using keyless Cosign identities from GitHub OIDC.
+    # First-party images: ghcr.io/webgrip/*
+    # These images are produced by webgrip/infrastructure releases and signed by
+    # that repository's release workflow using keyless Cosign and GitHub OIDC.
     # -----------------------------------------------------------------------
     - name: verify-webgrip-images
       match:
@@ -33,22 +34,6 @@ spec:
           - resources:
               kinds:
                 - Pod
-              namespaceSelector:
-                matchExpressions:
-                  - key: kubernetes.io/metadata.name
-                    operator: NotIn
-                    values:
-                      - kube-system
-                      - kube-public
-                      - kube-node-lease
-                      - flux-system
-                      - cert-manager
-                      - cnpg-system
-                      - longhorn-system
-                      - network
-                      - observability
-                      - arc-systems
-                      - renovate
       verifyImages:
         - imageReferences:
             - "ghcr.io/webgrip/*"
@@ -56,7 +41,7 @@ spec:
             - count: 1
               entries:
                 - keyless:
-                    subjectRegExp: "^https://github\\.com/webgrip/[^/]+/\\.github/workflows/[^@]+@refs/(heads/main|tags/v.*)$"
+                    subjectRegExp: "^https://github\\.com/webgrip/infrastructure/\\.github/workflows/on_release_published\\.yml@refs/tags/.+$"
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev

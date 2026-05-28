@@ -1,0 +1,29 @@
+---
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: image-verification
+policies:
+  - ../../policies/image-verify-audit.yaml
+  - ../../policies/image-attestations-audit.yaml
+resources:
+  - resources.yaml
+results:
+  - policy: image-verify-audit
+    rule: verify-webgrip-images
+    resources:
+      - app/third-party-digest
+    kind: Pod
+    result: skip
+  - policy: image-attestations-audit
+    rule: verify-github-slsa-provenance
+    resources:
+      - app/third-party-digest
+    kind: Pod
+    result: skip
+  - policy: image-attestations-audit
+    rule: verify-cyclonedx-sbom
+    resources:
+      - app/third-party-digest
+    kind: Pod
+    result: skip

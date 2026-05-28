@@ -1,0 +1,60 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: tempo
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  datasource:
+    name: Tempo
+    type: tempo
+    uid: tempo
+    access: proxy
+    url: http://tempo.observability.svc.cluster.local:3200
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: "-1h"
+        spanEndTimeShift: "1h"
+        tags:
+          - "job"
+          - "namespace"
+          - "pod"
+          - "service.name"
+          - "service.namespace"
+        filterByTraceID: true
+        filterBySpanID: false
+        customQuery: false
+      nodeGraph:
+        enabled: true
+      tracesToMetrics:
+        datasourceUid: prometheus
+        tags:
+          - key: service.name
+            value: service
+          - key: http.method
+            value: http_method
+          - key: http.status_code
+            value: http_status_code
+          - key: rpc.system
+            value: rpc_system
+          - key: rpc.service
+            value: rpc_service
+          - key: rpc.method
+            value: rpc_method
+        queries:
+          - name: Span metrics
+            query: "sum(rate(traces_spanmetrics_latency_bucket{$$__tags}[5m]))"
+      serviceMap:
+        datasourceUid: prometheus
+      tracesToProfiles:
+        datasourceUid: pyroscope
+        tags:
+          - "namespace"
+          - "pod"
+          - "service.name"
+          - "service.namespace"
+        profileTypeId: "process_cpu:cpu:nanoseconds:cpu:nanoseconds"
+        customQuery: false

@@ -2,7 +2,7 @@
 
 Most Kubernetes security writeups fall into one of two traps: they are either architecture-diagram fantasy with no operational details, or they are so vendor-specific that they stop being useful the moment you leave a managed enterprise platform. This cluster takes a more useful path. The goal is not to cosplay a SOC; it is to build a security platform that is GitOps-native, evidence-driven, and realistic enough that the same patterns could scale from a homelab to a serious production environment.
 
-The result is a layered security stack that now combines **Kyverno**, **Trivy Operator**, **Cosign with GitHub OIDC**, **CycloneDX SBOM attestations**, **OpenVEX**, **GUAC**, **Dependency-Track**, **trust-manager**, **Falco**, **Tetragon**, **Policy Reporter**, **Prometheus alerts**, **Grafana dashboards**, **Renovate**, **cert-manager**, **Flux**, **SOPS**, and the cluster’s existing **Cilium** and **Talos** foundations. That sounds like a lot, but it maps cleanly to the way security teams actually think: software supply chain, admission control, runtime detection, identity and least privilege, observability, and operational governance.
+The result is a layered security stack that now combines **Kyverno**, **Trivy Operator**, **Cosign with GitHub OIDC**, **CycloneDX SBOM attestations**, **GUAC**, **Dependency-Track**, **trust-manager**, **Falco**, **Tetragon**, **Policy Reporter**, **Prometheus alerts**, **Grafana dashboards**, **Renovate**, **cert-manager**, **Flux**, **SOPS**, and the cluster’s existing **Cilium** and **Talos** foundations. That sounds like a lot, but it maps cleanly to the way security teams actually think: software supply chain, admission control, runtime detection, identity and least privilege, observability, and operational governance.
 
 This page explains what is actually implemented in the repo today, why each layer exists, where the overlap is, where the gaps still are, and how the controls map to frameworks security professionals already use such as **NIST SSDF**, **SLSA**, **NIST SP 800-190**, **CIS Kubernetes Benchmark**, **NSA/CISA Kubernetes hardening guidance**, and **MITRE ATT&CK for Containers**.
 
@@ -42,7 +42,7 @@ Kyverno now covers several control families:
 - **Flux governance**
 - **cert-manager and storage governance**
 - **Keyless image verification for `ghcr.io/webgrip/*`**
-- **Attestation audit rules for provenance, SBOM, and vulnerability evidence**
+- **Attestation audit rules for provenance and SBOM evidence**
 - **New RBAC least-privilege audit rules**
 
 The newest addition is an RBAC governance layer that audits three common privilege-escalation patterns:
@@ -75,18 +75,12 @@ That makes Trivy more than “a CVE counter.” It is the cluster’s structured
 
 ### 4. Cosign, GitHub OIDC, and attestations as the supply-chain trust layer
 
-The cluster side of keyless signing is now in place. Kyverno verifies internal `ghcr.io/webgrip/*` images using **GitHub OIDC-issued identities** rather than a manually managed public key. It also audits for three important attestations:
+The cluster side of keyless signing is now in place. Kyverno verifies internal `ghcr.io/webgrip/*` images using **GitHub OIDC-issued identities** rather than a manually managed public key. It also audits for two important attestations:
 
 - **SLSA provenance**
 - **CycloneDX SBOM**
-- **fresh vulnerability scan evidence**
 
 That means the cluster can distinguish between “an image exists” and “an image was built by the expected CI identity, with traceable provenance and evidence.”
-
-This layer now also includes **OpenVEX** as audited evidence. That matters because an SBOM plus vulnerability list still leaves an important unanswered question: *is the vulnerability actually exploitable for this artifact in this context?* OpenVEX gives you a machine-readable way to express statuses such as `not_affected`, `affected`, `fixed`, and `under_investigation`. In this cluster, OpenVEX is implemented as two complementary capabilities:
-
-- **Kyverno** now audits for OpenVEX attestations on internal images.
-- **GUAC** is able to ingest and reason over OpenVEX documents alongside SBOM and provenance data.
 
 What is not yet done is just as important: the **application CI pipelines still need to publish those signatures and attestations**. The cluster is ready to consume them, but CI must produce them.
 
@@ -95,12 +89,11 @@ What is not yet done is just as important: the **application CI pipelines still 
 The current Kyverno policies trust **GitHub Actions keyless identities** for images under `ghcr.io/webgrip/*` with the following shape:
 
 - issuer: `https://token.actions.githubusercontent.com`
-- subject pattern: `https://github.com/webgrip/<repo>/.github/workflows/<workflow>@refs/heads/main`
-- or tag pattern: `https://github.com/webgrip/<repo>/.github/workflows/<workflow>@refs/tags/v*`
+- subject pattern: `https://github.com/webgrip/infrastructure/.github/workflows/on_release_published.yml@refs/tags/<tag>`
 
 That means:
 
-- your workflow must run on **`main`** or a **`v*` tag**
+- the infrastructure release workflow must run from a **release tag**
 - the image must be published to **GHCR**
 - the deployment manifest must use a **digest-pinned** image reference
 - the attestation must be pushed where **Kyverno/GUAC can read it**, not only retained in the GitHub UI
@@ -108,9 +101,7 @@ That means:
 The attestation types currently audited are:
 
 - **SLSA provenance**: `https://slsa.dev/provenance/v1`
-- **CycloneDX SBOM**: `https://cyclonedx.org/schema`
-- **vulnerability attestation**: `cosign.sigstore.dev/attestation/vuln/v1`
-- **OpenVEX**: `https://openvex.dev/ns`
+- **CycloneDX SBOM**: `https://cyclonedx.org/bom`
 
 ### 4.5. GUAC, Dependency-Track, and trust-manager as the graph + analysis + trust-distribution layer
 
@@ -181,7 +172,7 @@ If we flatten the stack into a practical inventory, the cluster currently has th
 | **Configuration trust** | Flux, HelmRelease, Kustomize, GitOps repo workflows | Gives you versioned intent, drift visibility, and a clean rollback path. |
 | **Secret management** | SOPS + Age, encrypted manifests, Flux decryption in cluster | Keeps sensitive values out of Git history while remaining GitOps-native. |
 | **Artifact trust** | Cosign keyless verification, GitHub OIDC identity matching | Verifies who built internal images without long-lived signing keys. |
-| **Supply-chain evidence** | SLSA provenance, CycloneDX SBOM, vulnerability attestation audit policies, OpenVEX attestation audit | Lets the cluster reason about build lineage, software composition, and exploitability context, not just image tags. |
+| **Supply-chain evidence** | SLSA provenance and CycloneDX SBOM audit policies | Lets the cluster reason about build lineage and software composition, not just image tags. |
 | **Admission governance** | Kyverno enforcement and audit policies | Encodes acceptable state at deployment time. |
 | **Metadata graphing** | GUAC | Links provenance, SBOMs, vulnerabilities, and VEX/OpenVEX evidence into a queryable graph. |
 | **Continuous SCA/SBOM analysis** | Dependency-Track | Adds portfolio-level component analysis and risk review outside admission-time decisions. |
@@ -242,7 +233,7 @@ An attestation says things like:
 - this image came from a specific GitHub workflow and repository,
 - this is the SLSA provenance for the build,
 - this is the SBOM describing what is inside,
-- this is the vulnerability evidence that was generated at build time.
+- this is the vulnerability evidence that was uploaded to GitHub Security at build time.
 
 GitHub OIDC removes the operational burden of long-lived signing keys. Instead of managing a secret private key, the workflow obtains a short-lived identity token and Cosign uses that identity for keyless signing. That is a substantial improvement in key management hygiene.
 
@@ -277,8 +268,8 @@ This repo’s policy is still the right one: no plaintext secrets in Git. The no
 
 ### GUAC
 
-**Secret name:** `guac-secrets`  
-**Namespace:** `security`  
+**Secret name:** `guac-secrets`
+**Namespace:** `security`
 **Required keys:** `username`, `password`, `values.yaml`
 
 GUAC's S3/blob storage now uses the cluster-wide Garage instance (same as Tempo, Loki, Mimir). S3 credentials are **not** in this secret — they live in the separate `security-s3` SOPS secret (see `kubernetes/components/security-s3/`). Fill in only the database credentials below.
@@ -304,8 +295,8 @@ stringData:
 
 ### security-s3 (GUAC Garage S3 credentials)
 
-**Secret name:** `security-s3`  
-**Namespace:** `security`  
+**Secret name:** `security-s3`
+**Namespace:** `security`
 **Component:** `kubernetes/components/security-s3/security-s3.sops.yaml`
 
 Create a Garage bucket and key first:
@@ -337,8 +328,8 @@ Encrypt with: `sops --encrypt --in-place kubernetes/components/security-s3/secur
 
 ### Dependency-Track
 
-**Secret name:** `dependency-track-secret`  
-**Namespace:** `security`  
+**Secret name:** `dependency-track-secret`
+**Namespace:** `security`
 **Required keys:** `username`, `password`, `secret.key`
 
 Plaintext template to encrypt:
@@ -436,7 +427,7 @@ To make the GitHub OIDC and attestation model fully operational, application rep
 3. sign the digest with Cosign,
 4. publish SLSA provenance,
 5. publish a CycloneDX SBOM attestation,
-6. publish a vulnerability attestation,
+6. upload vulnerability scan results to GitHub Security,
 7. deploy only digest-pinned image references.
 
 Until that exists, the cluster-side policy is correct but only partially effective. The cluster can verify supply-chain evidence only if CI emits it.

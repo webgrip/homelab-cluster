@@ -1,0 +1,32 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: github-api
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  datasource:
+    name: GitHub API
+    type: yesoreyeram-infinity-datasource
+    uid: github-api
+    access: proxy
+    jsonData:
+      auth_method: bearerToken
+      allowedHosts:
+        - https://api.github.com
+      httpHeaderName1: Accept
+      httpHeaderName2: X-GitHub-Api-Version
+    secureJsonData:
+      # Static API version headers (not actually secret, but Infinity stores them in secureJsonData).
+      httpHeaderValue1: "application/vnd.github+json"
+      httpHeaderValue2: "2022-11-28"
+  # Bearer token injected from SOPS-managed secret at runtime via valuesFrom.
+  valuesFrom:
+    - targetPath: secureJsonData.bearerToken
+      valueFrom:
+        secretKeyRef:
+          name: grafana-github-api
+          key: token
+          optional: true

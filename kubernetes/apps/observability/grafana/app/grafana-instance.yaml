@@ -1,0 +1,131 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/grafana/grafana-operator/v5.23.0/deploy/kustomize/base/crds/grafana.integreatly.org_grafanas.yaml
+apiVersion: grafana.integreatly.org/v1beta1
+kind: Grafana
+metadata:
+  name: grafana
+  labels:
+    grafana.internal/instance: grafana
+spec:
+  # Disable the operator's auto-generated admin secret; we supply grafana-admin ourselves.
+  disableDefaultAdminSecret: true
+
+  config:
+    server:
+      root_url: "https://grafana.${SECRET_DOMAIN}/"
+    database:
+      type: postgres
+      host: "grafana-db-rw.observability.svc.cluster.local:5432"
+      name: grafana
+      user: grafana
+      ssl_mode: require
+    users:
+      auto_assign_org_role: Viewer
+    auth.github:
+      enabled: "true"
+      auto_login: "true"
+      allow_sign_up: "true"
+      scopes: "user:email,read:org"
+      allowed_organizations: webgrip
+      allow_assign_grafana_admin: "true"
+      skip_org_role_sync: "false"
+      role_attribute_path: "[login=='ryangr0'][0] && 'GrafanaAdmin' || contains(groups[*], '@webgrip/grafana') && 'GrafanaAdmin' || contains(groups[*], '@webgrip/infrastructure/grafana') && 'GrafanaAdmin' || 'Viewer'"
+    rendering:
+      # Image renderer runs as a sidecar container in the same pod.
+      server_url: "http://localhost:8081/render"
+      callback_url: "http://grafana-service.observability.svc.cluster.local/"
+
+  deployment:
+    metadata:
+      annotations:
+        reloader.stakater.com/auto: "true"
+    spec:
+      strategy:
+        type: Recreate
+      template:
+        spec:
+          containers:
+            - name: grafana
+              env:
+                # Admin credentials from existing SOPS-managed secret.
+                - name: GF_SECURITY_ADMIN_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: grafana-admin
+                      key: admin-user
+                - name: GF_SECURITY_ADMIN_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: grafana-admin
+                      key: admin-password
+                # Database password from CNPG-generated app secret.
+                - name: GF_DATABASE_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: grafana-db-secret
+                      key: password
+                # GitHub API token for the Infinity datasource (optional).
+                - name: GITHUB_API_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: grafana-github-api
+                      key: token
+                      optional: true
+                # GitHub OAuth credentials from SOPS-managed secret.
+                - name: GF_AUTH_GITHUB_CLIENT_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: grafana-github-oauth
+                      key: GF_AUTH_GITHUB_CLIENT_ID
+                - name: GF_AUTH_GITHUB_CLIENT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: grafana-github-oauth
+                      key: GF_AUTH_GITHUB_CLIENT_SECRET
+                # Plugins to install at startup.
+                - name: GF_INSTALL_PLUGINS
+                  value: >-
+                    grafana-pyroscope-app,
+                    grafana-clock-panel,
+                    grafana-piechart-panel,
+                    grafana-polystat-panel,
+                    yesoreyeram-infinity-datasource,
+                    simpod-json-datasource,
+                    yesoreyeram-boomtable-panel,
+                    vonage-status-panel,
+                    marcusolsson-dynamictext-panel
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 1Gi
+              readinessProbe:
+                httpGet:
+                  path: /api/health
+                  port: 3000
+                initialDelaySeconds: 10
+                periodSeconds: 10
+                timeoutSeconds: 5
+                failureThreshold: 6
+                successThreshold: 1
+
+            # Image renderer runs as a sidecar; Grafana contacts it at localhost:8081.
+            - name: grafana-image-renderer
+              image: grafana/grafana-image-renderer:latest
+              ports:
+                - containerPort: 8081
+                  name: http
+              env:
+                - name: HTTP_PORT
+                  value: "8081"
+                - name: ENABLE_METRICS
+                  value: "true"
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  cpu: 200m
+                  memory: 512Mi
