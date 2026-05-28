@@ -2,24 +2,23 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: grafana-dashboard-cert-manager-certificates
-  namespace: observability
+  name: grafana-dashboard-flux-gitops-health
   annotations:
-    grafana_folder: cert-manager
+    grafana_folder: Platform
   labels:
     grafana_dashboard: "1"
 data:
-  cert-manager-certificates.json: |-
+  flux-gitops-health.json: |-
     {
       "schemaVersion": 39,
-      "title": "cert-manager / Certificates",
-      "uid": "security-cert-manager",
+      "title": "Flux / GitOps Health",
+      "uid": "gitops-flux-health",
       "timezone": "browser",
-      "tags": ["security", "cert-manager"],
+      "tags": ["gitops", "flux"],
       "editable": false,
       "graphTooltip": 0,
       "refresh": "30s",
-      "time": {"from": "now-30d", "to": "now"},
+      "time": {"from": "now-6h", "to": "now"},
       "annotations": {
         "list": [
           {
@@ -37,88 +36,66 @@ data:
         {
           "id": 1,
           "type": "stat",
-          "title": "Up targets (cert-manager)",
+          "title": "Up targets (flux-system)",
           "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "sum(up{namespace=\"cert-manager\"} == 1)", "legendFormat": "up"}],
+          "targets": [{"refId": "A", "expr": "sum(up{namespace=\"flux-system\"} == 1)", "legendFormat": "up"}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
           "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
         },
         {
           "id": 2,
           "type": "stat",
-          "title": "Certs expiring < 7d",
+          "title": "Down targets (flux-system)",
           "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum((certmanager_certificate_expiration_timestamp_seconds - time()) < 7*24*3600) or on() vector(0)",
-              "legendFormat": "<7d"
-            }
-          ],
+          "targets": [{"refId": "A", "expr": "sum(up{namespace=\"flux-system\"} == 0)", "legendFormat": "down"}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
           "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
         },
         {
           "id": 3,
-          "type": "stat",
-          "title": "Certs expiring < 30d",
-          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum((certmanager_certificate_expiration_timestamp_seconds - time()) < 30*24*3600) or on() vector(0)",
-              "legendFormat": "<30d"
-            }
-          ],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
-          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
-        },
-        {
-          "id": 4,
           "type": "timeseries",
-          "title": "Min time-to-expiry (by namespace)",
+          "title": "Reconcile duration p95 (by kind)",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "min by (namespace) (certmanager_certificate_expiration_timestamp_seconds - time())",
-              "legendFormat": "{{namespace}}"
+              "expr": "histogram_quantile(0.95, sum by (le, kind) (rate(gotk_reconcile_duration_seconds_bucket[5m])))",
+              "legendFormat": "{{kind}}"
             }
           ],
           "options": {"legend": {"displayMode": "list", "placement": "right"}},
           "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
         },
         {
-          "id": 5,
+          "id": 4,
           "type": "timeseries",
-          "title": "Controller sync errors/s",
+          "title": "Reconcile failures (status=False)",
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(certmanager_controller_sync_call_count{result=\"error\"}[5m])) or sum(rate(certmanager_controller_sync_call_count{status=\"error\"}[5m])) or on() vector(0)",
-              "legendFormat": "errors"
+              "expr": "sum by (kind) (max_over_time(gotk_reconcile_condition{status=\"False\"}[5m]))",
+              "legendFormat": "{{kind}}"
             }
           ],
           "options": {"legend": {"displayMode": "list", "placement": "right"}},
-          "fieldConfig": {"defaults": {}, "overrides": []}
+          "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
         },
         {
-          "id": 6,
+          "id": 5,
           "type": "timeseries",
-          "title": "ACME order failures/s",
+          "title": "Controller reconcile errors/s",
           "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(certmanager_orders_total{state=~\"invalid|errored|failed\"}[5m])) or sum(rate(certmanager_orders_total{status=~\"invalid|errored|failed\"}[5m])) or on() vector(0)",
-              "legendFormat": "order failures"
+              "expr": "sum by (controller) (rate(controller_runtime_reconcile_errors_total{namespace=\"flux-system\"}[5m])) or on() vector(0)",
+              "legendFormat": "{{controller}}"
             }
           ],
           "options": {"legend": {"displayMode": "list", "placement": "right"}},

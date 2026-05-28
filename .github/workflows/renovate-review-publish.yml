@@ -1,3 +1,4 @@
+---
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 #
 # Polls copilot/** branches every 5 minutes for .copilot-review/result.md and
@@ -14,8 +15,8 @@ name: Renovate Review — Relay from Copilot session
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # every 5 minutes
-  workflow_dispatch:          # manual trigger for debugging
+    - cron: "*/5 * * * *" # every 5 minutes
+  workflow_dispatch: # manual trigger for debugging
 
 jobs:
   relay:
@@ -23,15 +24,15 @@ jobs:
     runs-on: arc-runner-set
 
     permissions:
-      contents: write      # delete copilot/** branches after posting
-      issues: write        # post PR comment + close tracking issue
+      contents: write # delete copilot/** branches after posting
+      issues: write # post PR comment + close tracking issue
       pull-requests: write # close Copilot artifact PRs
 
     steps:
       - name: Find and post pending reviews
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
-          script: |
+          script: |-
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const sentinel = '<!-- renovate-ai-review -->';
@@ -39,6 +40,125 @@ jobs:
             const staleBranchCutoffMs = Date.now() - (staleBranchMaxAgeHours * 60 * 60 * 1000);
             const relayedReviewCache = new Map();
             const closedArtifactPrNumbers = new Set();
+            const renovateAuthors = new Set([
+              'webgrip-renovate[bot]',
+              'renovate[bot]',
+            ]);
+
+            function labelNames(pr) {
+              return (pr.labels || []).map(label => label.name);
+            }
+
+            function hasLabel(pr, labelName) {
+              return labelNames(pr).includes(labelName);
+            }
+
+            function getReviewField(body, fieldName) {
+              const escaped = fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const match = body.match(new RegExp(`^\\*\\*${escaped}:\\*\\*\\s*(.+)$`, 'im'));
+              return match ? match[1].trim() : '';
+            }
+
+            function getReviewSection(body, heading) {
+              const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const match = body.match(new RegExp(`^###\\s+${escaped}\\s*$([\\s\\S]*?)(?=^###\\s+|\\z)`, 'im'));
+              return match ? match[1].trim() : '';
+            }
+
+            function isNoneSection(section, patterns) {
+              const normalized = section
+                .replace(/<!--[\s\S]*?-->/g, '')
+                .replace(/^\s*[-*]\s+/gm, '')
+                .trim();
+
+              return patterns.some(pattern => pattern.test(normalized));
+            }
+
+            function reviewAllowsMinorAutomerge(body) {
+              const verdict = getReviewField(body, 'Verdict');
+              const recommendation = getReviewField(body, 'Recommendation');
+              if (!/^Green Low risk$/i.test(verdict)) {
+                return { allowed: false, reason: `review verdict is "${verdict || 'missing'}"` };
+              }
+              if (!/^Merge(?: after checks)?$/i.test(recommendation)) {
+                return { allowed: false, reason: `review recommendation is "${recommendation || 'missing'}"` };
+              }
+
+              const improvementOpportunities = getReviewSection(body, 'Improvement opportunities');
+              if (!isNoneSection(improvementOpportunities, [/^None identified\.?$/i])) {
+                return { allowed: false, reason: 'review lists improvement opportunities' };
+              }
+
+              const preMergeChecks = getReviewSection(body, 'Pre-merge checks');
+              if (!isNoneSection(preMergeChecks, [/^\[ \]\s*No special pre-merge checks beyond normal CI\.?$/i])) {
+                return { allowed: false, reason: 'review lists special pre-merge checks' };
+              }
+
+              const followUp = getReviewSection(body, 'Follow-up');
+              if (!isNoneSection(followUp, [/^None\.?$/i])) {
+                return { allowed: false, reason: 'review lists follow-up work' };
+              }
+
+              return { allowed: true, reason: 'review is green with no extras' };
+            }
+
+            async function enableAutoMerge(prNumber, reviewBody) {
+              const { data: pr } = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: prNumber,
+              });
+
+              if (pr.state !== 'open') {
+                console.log(`PR #${prNumber} is ${pr.state}; skipping auto-merge enablement`);
+                return;
+              }
+              if (pr.draft) {
+                console.log(`PR #${prNumber} is a draft; skipping auto-merge enablement`);
+                return;
+              }
+              if (!renovateAuthors.has(pr.user.login)) {
+                console.log(`PR #${prNumber} is authored by ${pr.user.login}; skipping minor auto-merge gate`);
+                return;
+              }
+              if (!hasLabel(pr, 'type/minor')) {
+                console.log(`PR #${prNumber} is not labeled type/minor; skipping minor auto-merge gate`);
+                return;
+              }
+              if (hasLabel(pr, 'hold')) {
+                console.log(`PR #${prNumber} has the hold label; skipping auto-merge enablement`);
+                return;
+              }
+              if (pr.auto_merge) {
+                console.log(`Auto-merge is already enabled for PR #${prNumber}`);
+                return;
+              }
+
+              const reviewGate = reviewAllowsMinorAutomerge(reviewBody);
+              if (!reviewGate.allowed) {
+                console.log(`PR #${prNumber} is not eligible for minor auto-merge: ${reviewGate.reason}`);
+                return;
+              }
+
+              try {
+                await github.graphql(
+                  `mutation($pullRequestId: ID!) {
+                    enablePullRequestAutoMerge(input: {
+                      pullRequestId: $pullRequestId,
+                      mergeMethod: SQUASH
+                    }) {
+                      pullRequest {
+                        number
+                      }
+                    }
+                  }`,
+                  { pullRequestId: pr.node_id }
+                );
+                console.log(`Enabled auto-merge for clean minor Renovate PR #${prNumber}`);
+              } catch (e) {
+                core.warning(`Could not enable auto-merge for PR #${prNumber}: ${e.message}`);
+              }
+            }
 
             function getCopilotPrs(prsByHead, branchName) {
               return prsByHead.get(branchName) || [];
@@ -258,6 +378,7 @@ jobs:
                   console.log(`Posted review comment to PR #${prNumber}`);
                 }
                 relayedReviewCache.set(prNumber, true);
+                await enableAutoMerge(prNumber, body);
 
                 for (const artifactPr of branchPrs.filter(pr => pr.state === 'open' && pr.number !== prNumber)) {
                   await closeArtifactPr(artifactPr, prNumber);

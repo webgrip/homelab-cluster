@@ -124,7 +124,7 @@ Key behaviors in the current repo config:
 - Dependency Dashboard enabled and the title is customized.
 - The repo does **not** define a global schedule; the in-cluster ConfigMap owns schedule policy.
 - Semantic commit conventions, commit message formatting, update-type labeling, and PR body notes.
-- A GitHub Actions packageRule enables automerge for minor/patch/digest updates only after checks pass.
+- GitHub Actions and Mise patch updates can still branch-automerge after checks pass; minor updates are opened as PRs so the AI dependency review can gate auto-merge.
 - GitOps changes under `kubernetes/apps/*` are regrouped by nearest package directory using Renovate templating instead of one rule per namespace.
 - Reused dependencies that span many apps, such as `ghcr.io/bjw-s-labs/helm/app-template`, are carved back out into shared PRs to avoid one dependency generating many near-identical namespace PRs.
 - Cluster-critical namespaces require Dependency Dashboard approval for minor updates and a longer release-age soak before PR creation.
@@ -153,7 +153,8 @@ This repo uses Renovate to keep PR noise manageable:
 Automerge behavior is defined in both places:
 
 - Global config enables automerge for some patch updates.
-- Repo config enables automerge for specific managers (notably GitHub Actions) and enforces semantic commits/labels.
+- Repo config enables automerge for specific patch/digest-only manager updates and enforces semantic commits/labels.
+- Minor Renovate PRs are eligible for GitHub auto-merge only after the relayed AI review is `Green Low risk`, recommends `Merge` or `Merge after checks`, and lists no improvement opportunities, special pre-merge checks, or follow-up work.
 
 If a PR isn’t opening when you expect it to, check these in order:
 
