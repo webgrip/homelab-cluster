@@ -20,6 +20,13 @@ spec:
     podAnnotations:
       reloader.stakater.com/auto: "true"
 
+    podSecurityContext:
+      # Skip recursive chown on restarts if root dir ownership already matches.
+      # Without this, a 20 GB volume with tens-of-thousands of files causes a
+      # multi-minute write storm that saturates disk I/O and causes etcd WAL
+      # fsync latency spikes across the whole cluster.
+      fsGroupChangePolicy: OnRootMismatch
+
     serviceMonitor:
       enabled: true
 
