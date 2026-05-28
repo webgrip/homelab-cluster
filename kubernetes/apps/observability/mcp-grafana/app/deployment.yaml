@@ -1,0 +1,70 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-grafana
+  labels:
+    app.kubernetes.io/name: mcp-grafana
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-grafana
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mcp-grafana
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: mcp-grafana
+          image: docker.io/grafana/mcp-grafana:v0.14.0
+          args:
+            - --transport=streamable-http
+            - --address=0.0.0.0:8000
+            # Enable full tool suite relevant to this homelab stack.
+            # Pyroscope, admin, runpanelquery, and examples are off by default.
+            # OnCall/Incident/Sift/Asserts are Grafana Cloud features — omitted.
+            - --enabled-tools=search,datasource,dashboard,prometheus,loki,alerting,annotations,navigation,rendering,pyroscope,admin,runpanelquery,examples
+          env:
+            - name: GRAFANA_URL
+              value: "http://grafana-service.observability.svc.cluster.local:3000"
+            - name: GRAFANA_SERVICE_ACCOUNT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mcp-grafana-token
+                  key: token
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
