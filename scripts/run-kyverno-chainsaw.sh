@@ -41,9 +41,37 @@ kubectl_cmd --kubeconfig "${kubeconfig}" -n kyverno rollout status deploy/kyvern
 kubectl_cmd --kubeconfig "${kubeconfig}" -n kyverno rollout status deploy/kyverno-reports-controller --timeout=180s
 
 log info "Applying Kyverno policies under test"
-kubectl_cmd --kubeconfig "${kubeconfig}" apply -f "${workspace}/policies/namespace-defaults-generate.yaml"
-kubectl_cmd --kubeconfig "${kubeconfig}" apply -f "${workspace}/policies/namespace-tenancy-audit.yaml"
-kubectl_cmd --kubeconfig "${kubeconfig}" apply -f "${workspace}/policies/network-exposure-enforce.yaml"
+apply_with_webhook_retry() {
+    local file="${1:?policy file is required}"
+    local attempts="${2:-6}"
+    local delay_seconds="${3:-5}"
+    local attempt=1
+
+    while true; do
+        local output
+        if output="$(kubectl_cmd --kubeconfig "${kubeconfig}" apply -f "${file}" 2>&1)"; then
+            printf '%s\n' "${output}"
+            return 0
+        fi
+
+        printf '%s\n' "${output}" >&2
+        if ! grep -q 'failed calling webhook "mutate-policy.kyverno.svc".*connect: connection refused' <<<"${output}"; then
+            return 1
+        fi
+
+        if ((attempt >= attempts)); then
+            return 1
+        fi
+
+        log warn "Retrying policy apply after webhook connection issue" "file=${file}" "attempt=${attempt}/${attempts}"
+        sleep "${delay_seconds}"
+        ((attempt++))
+    done
+}
+
+apply_with_webhook_retry "${workspace}/policies/namespace-defaults-generate.yaml"
+apply_with_webhook_retry "${workspace}/policies/namespace-tenancy-audit.yaml"
+apply_with_webhook_retry "${workspace}/policies/network-exposure-enforce.yaml"
 
 log info "Running Chainsaw suite" "image=${CHAINSAW_IMAGE}"
 docker run --rm \
