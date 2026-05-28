@@ -24,6 +24,9 @@ spec:
   values:
     controller:
       type: daemonset
+      # hostNetwork gives alloy-agent pods a foothold in the host network namespace
+      # so Talos OS (pre-pod) can reach the syslog listener at 127.0.0.1:6514.
+      hostNetwork: true
 
     alloy:
       podAnnotations:
@@ -100,6 +103,23 @@ spec:
 
           loki.source.kubernetes_events "events" {
             forward_to = [loki.process.kubernetes_events.receiver]
+          }
+
+          // Talos kernel/service logs forwarded over TCP syslog from each node's machined.
+          // Receives Talos json_lines format; syslog parse is best-effort — raw JSON lines
+          // are stored in Loki and can be parsed at query time with | json.
+          // Requires machine.logging.destinations configured via talosctl apply-config.
+          loki.source.syslog "talos" {
+            listener {
+              address  = "0.0.0.0:6514"
+              protocol = "tcp"
+              labels   = {
+                job     = "talos/kernel",
+                cluster = "homelab-cluster",
+                node    = sys.env("NODE_NAME"),
+              }
+            }
+            forward_to = [loki.write.local.receiver]
           }
 
           loki.process "pod_logs" {
