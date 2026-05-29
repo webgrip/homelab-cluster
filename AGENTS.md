@@ -110,31 +110,32 @@ Every resource CRD needs `spec.instanceSelector.matchLabels: { grafana.internal/
        matchLabels:
          grafana.internal/instance: grafana
      allowCrossNamespaceImport: true   # required for non-observability namespaces
-      folder: "<folder-title>"          # e.g. "Security", "Networking", "Platform"
+     folderUID: <uid-from-taxonomy-below>  # use folderUID for cross-namespace dashboards
      json: |
        { "title": "...", "uid": "...", ... }
    ```
+   For dashboards inside `observability` namespace, use `folder: "<Title>"` instead.
 2. Add `- ./grafana-dashboard.yaml` to that service's `kustomization.yaml`.
 3. Do **not** set `namespace:` — `targetNamespace` in the Flux Kustomization handles it.
 
 ### Dashboard folder taxonomy
 
-Use `spec.folder` with one of these Grafana folder titles:
+**Cross-namespace dashboards** (outside `observability`) must use `folderUID` — the operator resolves `folder` and `folderRef` only within the same namespace as the dashboard CRD. `allowCrossNamespaceImport` controls Grafana *instance* targeting, not folder resolution.
 
-| `folder` value | Scope |
-|---|---|
-| `Apps` | User-facing workloads |
-| `Data` | Databases, message queues |
-| `GitHub & Copilot` | GitHub billing and Copilot analytics |
-| `Kubernetes` | Cluster health, workload capacity |
-| `Networking` | Cilium, Envoy Gateway |
-| `Observability` | Prometheus, Alertmanager, Loki, Tempo, Mimir |
-| `Platform` | Flux, cert-manager, Renovate, etcd |
-| `Security` | Kyverno, Falco, Tetragon, Trivy, Cosign |
-| `Storage` | Longhorn |
-| `Synthetics` | Blackbox probes, k6 canaries |
+**Same-namespace dashboards** (inside `observability/grafana/app/dashboards/`) may use `folder: "<Title>"`.
 
-Do **not** use `folderRef` for dashboards that target the central Grafana instance from service namespaces. Grafana Operator resolves `folderRef` only in the same namespace as the `GrafanaDashboard`; `allowCrossNamespaceImport` only controls which Grafana instances the dashboard can target. `spec.folder` is the operator-supported propagation path for dashboards across namespaces because it resolves or creates the folder by Grafana title.
+| Folder title | `folderUID` | Scope |
+|---|---|---|
+| `Apps` | `afn5acnjfqz9ca` | User-facing workloads |
+| `Data` | `bfn5acnv39xc0b` | Databases, message queues |
+| `GitHub & Copilot` | `b4e1e0b5-8de6-4224-960b-0cb5d785d039` | GitHub billing and Copilot analytics |
+| `Kubernetes` | `ffn5acop222o0e` | Cluster health, workload capacity |
+| `Networking` | `54f68a5a-3227-4558-85a0-3f200df26d58` | Cilium, Envoy Gateway |
+| `Observability` | `efn5actp9qcqoc` | Prometheus, Alertmanager, Loki, Tempo, Mimir |
+| `Platform` | `cfn5acphkecqof` | Flux, cert-manager, Renovate, etcd |
+| `Security` | `88988e5b-9560-438e-90e9-cbd01fa258d6` | Kyverno, Falco, Tetragon, Trivy, Cosign |
+| `Storage` | `dfn5acvqq8utce` | Longhorn |
+| `Synthetics` | `d892add9-e5ce-4616-99e8-9a7c27998b34` | Blackbox probes, k6 canaries |
 
 ### Lifecycle
 
