@@ -91,7 +91,7 @@ Every resource CRD needs `spec.instanceSelector.matchLabels: { grafana.internal/
 | `Grafana` | `observability/grafana/app/grafana-instance.yaml` | The instance itself — edit this instead of a HelmRelease |
 | `GrafanaFolder` | `observability/grafana/app/folders/<name>.yaml` | One file per folder |
 | `GrafanaDatasource` | `observability/grafana/app/datasources/<name>.yaml` | One file per datasource; set `spec.datasource.editable: true` |
-| `GrafanaDashboard` (service-specific) | `<namespace>/<service>/app/grafana-dashboard[-name].yaml` | Co-located with the service |
+| `GrafanaDashboard` (all) | `observability/grafana/app/dashboards/<name>.yaml` | All dashboards live here; folder resolution requires the same namespace as GrafanaFolder CRDs |
 | `GrafanaDashboard` (cross-cutting) | `observability/grafana/app/dashboards/<name>.yaml` | Fleet-wide dashboards with no single owner |
 | `GrafanaAlertRuleGroup` | next to the service it alerts on | |
 | `GrafanaContactPoint` | `observability/grafana/app/alerting/` | |
@@ -99,7 +99,7 @@ Every resource CRD needs `spec.instanceSelector.matchLabels: { grafana.internal/
 
 ### Adding a dashboard for a new service
 
-1. Create `kubernetes/apps/<namespace>/<service>/app/grafana-dashboard.yaml`:
+1. Create `kubernetes/apps/observability/grafana/app/dashboards/<service>.yaml`:
    ```yaml
    apiVersion: grafana.integreatly.org/v1beta1
    kind: GrafanaDashboard
@@ -109,14 +109,13 @@ Every resource CRD needs `spec.instanceSelector.matchLabels: { grafana.internal/
      instanceSelector:
        matchLabels:
          grafana.internal/instance: grafana
-     allowCrossNamespaceImport: true   # required for non-observability namespaces
-     folderUID: <uid-from-taxonomy-below>  # use folderUID for cross-namespace dashboards
+     allowCrossNamespaceImport: false
+     folder: "<Title>"   # from the taxonomy below
      json: |
        { "title": "...", "uid": "...", ... }
    ```
-   For dashboards inside `observability` namespace, use `folder: "<Title>"` instead.
-2. Add `- ./grafana-dashboard.yaml` to that service's `kustomization.yaml`.
-3. Do **not** set `namespace:` — `targetNamespace` in the Flux Kustomization handles it.
+2. Add `- ./dashboards/<service>.yaml` to `observability/grafana/app/kustomization.yaml`.
+3. Do **not** create dashboard files in service namespaces — `GrafanaFolder` CRDs live in `observability` and folder resolution is namespace-scoped.
 
 ### Dashboard folder taxonomy
 

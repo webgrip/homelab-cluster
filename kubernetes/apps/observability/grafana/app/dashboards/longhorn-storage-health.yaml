@@ -2,24 +2,24 @@
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
-  name: cert-manager-certificates
+  name: longhorn-storage-health
 spec:
   instanceSelector:
     matchLabels:
       grafana.internal/instance: grafana
-  allowCrossNamespaceImport: true
-  folderUID: cfn5acphkecqof
+  allowCrossNamespaceImport: false
+  folder: "Storage"
   json: |-
     {
       "schemaVersion": 39,
-      "title": "cert-manager / Certificate Health",
-      "uid": "security-cert-manager",
+      "title": "Longhorn / Storage Health",
+      "uid": "storage-longhorn-health",
       "timezone": "browser",
-      "tags": ["security", "cert-manager"],
+      "tags": ["storage", "longhorn"],
       "editable": false,
       "graphTooltip": 0,
       "refresh": "30s",
-      "time": {"from": "now-30d", "to": "now"},
+      "time": {"from": "now-6h", "to": "now"},
       "annotations": {
         "list": [
           {
@@ -37,92 +37,80 @@ spec:
         {
           "id": 1,
           "type": "stat",
-          "title": "Up targets (cert-manager)",
+          "title": "Up targets (longhorn-system)",
           "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "sum(up{namespace=\"cert-manager\"} == 1)", "legendFormat": "up"}],
+          "targets": [{"refId": "A", "expr": "sum(up{namespace=\"longhorn-system\"} == 1)", "legendFormat": "up"}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
           "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
         },
         {
           "id": 2,
           "type": "stat",
-          "title": "Certs expiring < 7d",
+          "title": "Volumes degraded",
           "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum((certmanager_certificate_expiration_timestamp_seconds - time()) < 7*24*3600) or on() vector(0)",
-              "legendFormat": "<7d"
-            }
-          ],
+          "targets": [{"refId": "A", "expr": "sum(longhorn_volume_robustness == 2) or on() vector(0)", "legendFormat": "degraded"}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
           "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
         },
         {
           "id": 3,
           "type": "stat",
-          "title": "Certs expiring < 30d",
+          "title": "Volumes fault",
           "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum((certmanager_certificate_expiration_timestamp_seconds - time()) < 30*24*3600) or on() vector(0)",
-              "legendFormat": "<30d"
-            }
-          ],
+          "targets": [{"refId": "A", "expr": "sum(longhorn_volume_robustness == 3) or on() vector(0)", "legendFormat": "fault"}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
           "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
         },
         {
           "id": 4,
           "type": "timeseries",
-          "title": "Min time-to-expiry (by namespace)",
+          "title": "Top volumes: usage %",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "min by (namespace) (certmanager_certificate_expiration_timestamp_seconds - time())",
-              "legendFormat": "{{namespace}}"
+              "expr": "topk(10, (longhorn_volume_actual_size_bytes / longhorn_volume_capacity_bytes) * 100) or on() vector(0)",
+              "legendFormat": "{{volume}}"
             }
           ],
           "options": {"legend": {"displayMode": "list", "placement": "right"}},
-          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 1}, "overrides": []}
         },
         {
           "id": 5,
           "type": "timeseries",
-          "title": "Controller sync errors/s",
+          "title": "Node storage usage %",
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(certmanager_controller_sync_call_count{result=\"error\"}[5m])) or sum(rate(certmanager_controller_sync_call_count{status=\"error\"}[5m])) or on() vector(0)",
-              "legendFormat": "errors"
+              "expr": "(longhorn_node_storage_usage_bytes / longhorn_node_storage_capacity_bytes) * 100 or on() vector(0)",
+              "legendFormat": "{{node}}"
             }
           ],
           "options": {"legend": {"displayMode": "list", "placement": "right"}},
-          "fieldConfig": {"defaults": {}, "overrides": []}
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 1}, "overrides": []}
         },
         {
           "id": 6,
           "type": "timeseries",
-          "title": "ACME order failures/s",
+          "title": "Top disks: usage %",
           "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(certmanager_orders_total{state=~\"invalid|errored|failed\"}[5m])) or sum(rate(certmanager_orders_total{status=~\"invalid|errored|failed\"}[5m])) or on() vector(0)",
-              "legendFormat": "order failures"
+              "expr": "topk(10, (longhorn_disk_usage_bytes / longhorn_disk_capacity_bytes) * 100) or on() vector(0)",
+              "legendFormat": "{{node}}/{{disk}}"
             }
           ],
           "options": {"legend": {"displayMode": "list", "placement": "right"}},
-          "fieldConfig": {"defaults": {}, "overrides": []}
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 1}, "overrides": []}
         }
       ]
     }
