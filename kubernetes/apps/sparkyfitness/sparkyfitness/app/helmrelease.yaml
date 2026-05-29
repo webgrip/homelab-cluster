@@ -18,6 +18,11 @@ spec:
       retries: 3
       remediateLastFailure: true
   values:
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
     controllers:
       frontend:
         annotations:
@@ -33,6 +38,22 @@ spec:
             envFrom:
               - configMapRef:
                   name: sparkyfitness-frontend-config
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                  - "ALL"
+            probes:
+              liveness:
+                enabled: true
+                type: HTTP
+                path: /
+                port: 80
+              readiness:
+                enabled: true
+                type: HTTP
+                path: /
+                port: 80
             resources:
               requests:
                 cpu: 25m
@@ -45,7 +66,7 @@ spec:
         containers:
           app:
             image:
-              repository: codewithcj/sparkyfitness_server
+              repository: docker.io/codewithcj/sparkyfitness_server
               tag: v0.16.6.3@sha256:b6a1395f02f793d61a7631b840153719a8d07e53fad32655126266b3769c4a97
             ports:
               - name: http
@@ -71,13 +92,28 @@ spec:
                   secretKeyRef:
                     name: sparkyfitness-secrets
                     key: JWT_SECRET
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                  - "ALL"
+            probes:
+              liveness:
+                enabled: true
+                type: HTTP
+                path: /api/health
+                port: 3010
+              readiness:
+                enabled: true
+                type: HTTP
+                path: /api/health
+                port: 3010
             resources:
               requests:
                 cpu: 100m
                 memory: 512Mi
               limits:
                 memory: 2Gi
-            # volume mounts are provided by the chart via `persistence` settings
     persistence:
       backup:
         existingClaim: sparkyfitness-backup
@@ -106,7 +142,8 @@ spec:
             port: 3010
     route:
       app:
-        hostnames: ["{{ .Release.Name }}.${SECRET_DOMAIN}"]
+        hostnames:
+          - "{{ .Release.Name }}.${SECRET_DOMAIN}"
         parentRefs:
           - name: envoy-internal
             namespace: network
