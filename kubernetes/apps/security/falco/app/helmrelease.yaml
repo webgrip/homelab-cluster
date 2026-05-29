@@ -153,11 +153,10 @@ spec:
             exceptions: append
           exceptions:
             - name: cilium_cni_install
-              fields: [proc.name, container.image.repository]
-              comps: [in, startswith]
+              fields: [proc.name]
+              comps: [in]
               values:
-                - - [cilium-cni]
-                  - [quay.io/cilium]
+                - - - cilium-cni
 
         # Cilium agent creates raw packet sockets for network policy/monitoring.
         - rule: Packet socket created in container
@@ -165,10 +164,11 @@ spec:
             exceptions: append
           exceptions:
             - name: cilium_agent_networking
-              fields: [container.image.repository]
-              comps: [startswith]
+              fields: [proc.name]
+              comps: [in]
               values:
-                - - quay.io/cilium/cilium
+                - - - cilium
+                    - cilium-agent
 
     falco:
       time_format_iso_8601: true
