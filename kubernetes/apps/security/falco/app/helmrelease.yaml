@@ -118,7 +118,8 @@ spec:
         # Suppress K8s API contact alerts for legitimate cluster operators and system components.
         # These processes all have valid reasons to call the K8s API.
         - rule: Contact K8S API Server From Container
-          enabled: true
+          override:
+            exceptions: append
           exceptions:
             - name: cluster_operators
               fields: [proc.name]
@@ -148,6 +149,8 @@ spec:
 
         # Cilium CNI binary injection is expected behavior for eBPF CNI setup.
         - rule: Drop and execute new binary in container
+          override:
+            exceptions: append
           exceptions:
             - name: cilium_cni_install
               fields: [proc.name, container.image.repository]
@@ -158,6 +161,8 @@ spec:
 
         # Cilium agent creates raw packet sockets for network policy/monitoring.
         - rule: Packet socket created in container
+          override:
+            exceptions: append
           exceptions:
             - name: cilium_agent_networking
               fields: [container.image.repository]
