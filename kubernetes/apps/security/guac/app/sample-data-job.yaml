@@ -1,0 +1,59 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: guac-sample-data
+spec:
+  activeDeadlineSeconds: 900
+  backoffLimit: 2
+  template:
+    spec:
+      securityContext:
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        runAsGroup: 65532
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      restartPolicy: Never
+      initContainers:
+        - name: clone-sample-data
+          image: docker.io/alpine/git:2.49.1
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          args:
+            - clone
+            - --depth=1
+            - https://github.com/guacsec/guac-data.git
+            - /shared-data/guac-data
+          volumeMounts:
+            - name: shared-data
+              mountPath: /shared-data
+      containers:
+        - name: ingest-sample-data
+          image: ghcr.io/guacsec/guac:v1.0.1
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          command:
+            - sh
+            - -ec
+            - |
+              /opt/guac/guacone collect files \
+                --gql-addr http://graphql-server.security.svc.cluster.local:8080/query \
+                /shared-data/guac-data/docs
+              /opt/guac/guacone collect files \
+                --gql-addr http://graphql-server.security.svc.cluster.local:8080/query \
+                /shared-data/guac-data/top-dh-sboms/zookeeper.json
+          volumeMounts:
+            - name: shared-data
+              mountPath: /shared-data
+      volumes:
+        - name: shared-data
+          emptyDir: {}
