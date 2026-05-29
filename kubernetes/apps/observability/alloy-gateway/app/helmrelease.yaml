@@ -24,15 +24,17 @@ spec:
   values:
     controller:
       type: deployment
-      replicas: 2
+      replicas: 1
 
-    topologySpreadConstraints:
-      - maxSkew: 1
-        topologyKey: kubernetes.io/hostname
-        whenUnsatisfiable: DoNotSchedule
-        labelSelector:
-          matchLabels:
-            app.kubernetes.io/name: alloy
+    nodeSelector:
+      nodegroup: fringe
+    tolerations:
+      - key: dedicated
+        operator: Equal
+        value: fringe
+        effect: NoSchedule
+
+    topologySpreadConstraints: []
 
     alloy:
       podAnnotations:
