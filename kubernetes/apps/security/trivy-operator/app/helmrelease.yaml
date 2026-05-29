@@ -32,7 +32,7 @@ spec:
       scanJobTTL: 30m
       scanSecretTTL: 15m
       scanJobTimeout: 10m
-      scanJobsConcurrentLimit: 4
+      scanJobsConcurrentLimit: 2
       scanNodeCollectorLimit: 1
       nodeCollector:
         # Talos nodes have an immutable rootfs — node-collector requires write access
@@ -72,6 +72,13 @@ spec:
 
     trivyOperator:
       scanJobsInSameNamespace: false
+      scanJobNodeSelector:
+        nodegroup: fringe
+      scanJobTolerations:
+        - key: dedicated
+          operator: Equal
+          value: fringe
+          effect: NoSchedule
       scanJobPodPriorityClassName: system-cluster-critical
       reportResourceLabels: "app.kubernetes.io/name,app.kubernetes.io/instance,app.kubernetes.io/component,app.kubernetes.io/part-of"
       reportRecordFailedChecksOnly: false
@@ -125,6 +132,13 @@ spec:
 
     podAnnotations:
       reloader.stakater.com/auto: "true"
+    nodeSelector:
+      nodegroup: fringe
+    tolerations:
+      - key: dedicated
+        operator: Equal
+        value: fringe
+        effect: NoSchedule
     resources:
       requests:
         cpu: 100m
