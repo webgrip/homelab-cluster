@@ -112,6 +112,60 @@ spec:
         follow:
           every: 168h
 
+    customRules:
+      homelab-exceptions.yaml: |-
+        # Suppress K8s API contact alerts for legitimate cluster operators and system components.
+        # These processes all have valid reasons to call the K8s API.
+        - rule: Contact K8S API Server From Container
+          exceptions:
+            - name: cluster_operators
+              fields: [proc.name]
+              comps: [in]
+              values:
+                - - longhorn-manager
+                  - manager
+                  - trivy-operator
+                  - operator
+                  - kyverno
+                  - prometheus
+                  - reports-controller
+                  - kube-state-metrics
+                  - background-controller
+                  - csi-provisioner
+                  - csi-resizer
+                  - csi-snapshotter
+                  - csi-attacher
+                  - notification-controller
+                  - flux-operator
+                  - trust-manager
+                  - python
+                  - controller
+                  - source-controller
+                  - helm-controller
+                  - kustomize-controller
+          append: true
+
+        # Cilium CNI binary injection is expected behavior for eBPF CNI setup.
+        - rule: Drop and execute new binary in container
+          exceptions:
+            - name: cilium_cni_install
+              fields: [proc.name, container.image.repository]
+              comps: [in, startswith]
+              values:
+                - - [cilium-cni]
+                  - [quay.io/cilium]
+          append: true
+
+        # Cilium agent creates raw packet sockets for network policy/monitoring.
+        - rule: Packet socket created in container
+          exceptions:
+            - name: cilium_agent_networking
+              fields: [container.image.repository]
+              comps: [startswith]
+              values:
+                - - quay.io/cilium/cilium
+          append: true
+
     falco:
       time_format_iso_8601: true
       priority: notice
