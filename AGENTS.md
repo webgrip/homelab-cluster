@@ -90,7 +90,7 @@ Every resource CRD needs `spec.instanceSelector.matchLabels: { grafana.internal/
 |---|---|---|
 | `Grafana` | `observability/grafana/app/grafana-instance.yaml` | The instance itself — edit this instead of a HelmRelease |
 | `GrafanaFolder` | `observability/grafana/app/folders/<name>.yaml` | One file per folder |
-| `GrafanaDatasource` | `observability/grafana/app/datasources/<name>.yaml` | One file per datasource |
+| `GrafanaDatasource` | `observability/grafana/app/datasources/<name>.yaml` | One file per datasource; set `spec.datasource.editable: true` |
 | `GrafanaDashboard` (service-specific) | `<namespace>/<service>/app/grafana-dashboard[-name].yaml` | Co-located with the service |
 | `GrafanaDashboard` (cross-cutting) | `observability/grafana/app/dashboards/<name>.yaml` | Fleet-wide dashboards with no single owner |
 | `GrafanaAlertRuleGroup` | next to the service it alerts on | |
@@ -110,7 +110,7 @@ Every resource CRD needs `spec.instanceSelector.matchLabels: { grafana.internal/
        matchLabels:
          grafana.internal/instance: grafana
      allowCrossNamespaceImport: true   # required for non-observability namespaces
-     folderRef: <folder-crd-name>      # e.g. security, networking, platform
+      folder: "<folder-title>"          # e.g. "Security", "Networking", "Platform"
      json: |
        { "title": "...", "uid": "...", ... }
    ```
@@ -119,20 +119,22 @@ Every resource CRD needs `spec.instanceSelector.matchLabels: { grafana.internal/
 
 ### Dashboard folder taxonomy
 
-Use `folderRef` pointing to one of these GrafanaFolder CRD names:
+Use `spec.folder` with one of these Grafana folder titles:
 
-| `folderRef` value | Grafana folder | Scope |
-|---|---|---|
-| `apps` | Apps | User-facing workloads |
-| `data` | Data | Databases, message queues |
-| `github-copilot` | GitHub & Copilot | GitHub billing and Copilot analytics |
-| `kubernetes` | Kubernetes | Cluster health, workload capacity |
-| `networking` | Networking | Cilium, Envoy Gateway |
-| `observability` | Observability | Prometheus, Alertmanager, Loki, Tempo, Mimir |
-| `platform` | Platform | Flux, cert-manager, Renovate, etcd |
-| `security` | Security | Kyverno, Falco, Tetragon, Trivy, Cosign |
-| `storage` | Storage | Longhorn |
-| `synthetics` | Synthetics | Blackbox probes, k6 canaries |
+| `folder` value | Scope |
+|---|---|
+| `Apps` | User-facing workloads |
+| `Data` | Databases, message queues |
+| `GitHub & Copilot` | GitHub billing and Copilot analytics |
+| `Kubernetes` | Cluster health, workload capacity |
+| `Networking` | Cilium, Envoy Gateway |
+| `Observability` | Prometheus, Alertmanager, Loki, Tempo, Mimir |
+| `Platform` | Flux, cert-manager, Renovate, etcd |
+| `Security` | Kyverno, Falco, Tetragon, Trivy, Cosign |
+| `Storage` | Longhorn |
+| `Synthetics` | Blackbox probes, k6 canaries |
+
+Do **not** use `folderRef` for dashboards that target the central Grafana instance from service namespaces. Grafana Operator resolves `folderRef` only in the same namespace as the `GrafanaDashboard`; `allowCrossNamespaceImport` only controls which Grafana instances the dashboard can target. `spec.folder` is the operator-supported propagation path for dashboards across namespaces because it resolves or creates the folder by Grafana title.
 
 ### Lifecycle
 
@@ -144,6 +146,7 @@ Use `folderRef` pointing to one of these GrafanaFolder CRD names:
 
 - Do not create dashboard ConfigMaps with `grafana_dashboard: "1"` labels — the sidecar has been removed.
 - Do not add datasources to the `Grafana` CRD's `spec.config`; create a `GrafanaDatasource` CRD instead.
+- Do not omit `editable: true` on `GrafanaDatasource` resources; otherwise Grafana may treat operator-created datasources as read-only and reject future updates.
 - Do not modify `observability/grafana/app/helmrelease.yaml` — it no longer exists; edit `grafana-instance.yaml`.
 
 ## Guardrails
@@ -154,4 +157,3 @@ Use `folderRef` pointing to one of these GrafanaFolder CRD names:
   - a plaintext YAML template the human should encrypt with SOPS
   - any external setup steps (OAuth app config, DNS, etc.)
 - Prefer wiring secrets into workloads via Helm values such as `existingSecret`, `extraEnvFrom`, or `envFromSecret`.
-
