@@ -68,7 +68,7 @@ spec:
             "multi": true,
             "includeAll": true,
             "allValue": ".*",
-            "query": "label_values(policyreport_result{policy=~\"image-verify.*|image-attest.*\"}, namespace)",
+            "query": "label_values(policy_report_result{policy=~\"image-verify-audit|image-attestations-audit\"}, namespace)",
             "refresh": 2,
             "sort": 1,
             "current": {}
@@ -131,7 +131,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(policyreport_result{policy=~\"image-verify.*\",status=\"pass\"}) or on() vector(0)"
+              "expr": "sum(policy_report_result{policy=~\"image-verify-audit|image-attestations-audit\",status=\"pass\"}) or on() vector(0)"
             }
           ],
           "options": {
@@ -182,7 +182,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(policyreport_result{policy=~\"image-verify.*\",status=\"fail\"}) or on() vector(0)"
+              "expr": "sum(policy_report_result{policy=~\"image-verify-audit|image-attestations-audit\",status=\"fail\"}) or on() vector(0)"
             }
           ],
           "options": {
@@ -237,7 +237,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(policyreport_result{policy=~\"image-attest.*\",status=\"fail\"}) or on() vector(0)"
+              "expr": "sum(policy_report_result{policy=~\"image-attestations-audit\",status=\"fail\"}) or on() vector(0)"
             }
           ],
           "options": {
@@ -292,7 +292,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(kyverno_policy_results_total{policy_name=~\"image-verify.*|image-attestations.*\"}[5m])) * 60 or on() vector(0)"
+              "expr": "sum(rate(kyverno_policy_results_total{policy_name=~\"image-verify-audit|image-attestations-audit\"}[5m])) * 60 or on() vector(0)"
             }
           ],
           "options": {
@@ -355,7 +355,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (status) (policyreport_result{policy=~\"image-verify.*\",namespace=~\"$namespace\"})",
+              "expr": "sum by (status) (policy_report_result{policy=~\"image-verify-audit|image-attestations-audit\",namespace=~\"$namespace\"})",
               "legendFormat": "{{status}}"
             }
           ],
@@ -445,7 +445,7 @@ spec:
               "refId": "A",
               "instant": true,
               "format": "table",
-              "expr": "sort_desc(sum by (namespace) (policyreport_result{policy=~\"image-verify.*\",status=\"fail\",namespace=~\"$namespace\"}))",
+              "expr": "sort_desc(sum by (namespace) (policy_report_result{policy=~\"image-verify-audit|image-attestations-audit\",status=\"fail\",namespace=~\"$namespace\"}))",
               "legendFormat": "{{namespace}}"
             }
           ],
@@ -494,7 +494,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "policyreport_result{policy=~\"image-verify.*|image-attest.*\",status=~\"fail|warn\",namespace=~\"$namespace\"}",
+              "expr": "policy_report_result{policy=~\"image-verify-audit|image-attestations-audit\",status=~\"fail|warn\",namespace=~\"$namespace\"}",
               "instant": true,
               "format": "table"
             }
@@ -594,12 +594,12 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (status) (policyreport_result{policy=~\"image-hygiene.*|image-supply-chain.*\",namespace=~\"$namespace\"})",
+              "expr": "sum by (status) (policy_report_result{policy=~\"image-hygiene-audit|image-supply-chain-audit\",namespace=~\"$namespace\"})",
               "legendFormat": "hygiene {{status}}"
             },
             {
               "refId": "B",
-              "expr": "sum by (status) (policyreport_result{policy=~\"image-verify.*|image-attest.*\",namespace=~\"$namespace\"})",
+              "expr": "sum by (status) (policy_report_result{policy=~\"image-verify-audit|image-attestations-audit\",namespace=~\"$namespace\"})",
               "legendFormat": "verify {{status}}"
             }
           ],
@@ -672,7 +672,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (result) (rate(kyverno_policy_results_total{policy_name=~\".*image.*|.*verify.*|.*attest.*\"}[5m]))",
+              "expr": "sum by (rule_result) (rate(kyverno_policy_results_total{policy_name=~\"image-verify-audit|image-attestations-audit|image-hygiene-audit|image-supply-chain-audit\"}[5m]))",
               "legendFormat": "{{result}}"
             }
           ],
@@ -775,7 +775,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "policyreport_result{policy=~\".*image.*|.*verify.*|.*attest.*|.*cosign.*\",status=~\"fail|warn\",namespace=~\"$namespace\"}",
+              "expr": "policy_report_result{policy=~\"image-verify-audit|image-attestations-audit|image-hygiene-audit|image-supply-chain-audit\",status=~\"fail|warn\",namespace=~\"$namespace\"}",
               "instant": true,
               "format": "table"
             }

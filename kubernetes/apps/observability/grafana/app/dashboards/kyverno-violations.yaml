@@ -75,9 +75,9 @@ spec:
               "type": "prometheus",
               "uid": "${datasource}"
             },
-            "definition": "label_values(policyreport_result, namespace)",
+            "definition": "label_values(policy_report_result, namespace)",
             "query": {
-              "query": "label_values(policyreport_result, namespace)",
+              "query": "label_values(policy_report_result, namespace)",
               "refId": "StandardVariableQuery"
             },
             "refresh": 2,
@@ -96,9 +96,9 @@ spec:
               "type": "prometheus",
               "uid": "${datasource}"
             },
-            "definition": "label_values(policyreport_result{status=\"fail\"}, policy)",
+            "definition": "label_values(policy_report_result{status=\"fail\"}, policy)",
             "query": {
-              "query": "label_values(policyreport_result{status=\"fail\"}, policy)",
+              "query": "label_values(policy_report_result{status=\"fail\"}, policy)",
               "refId": "StandardVariableQuery"
             },
             "refresh": 2,
@@ -217,7 +217,7 @@ spec:
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "sum(policyreport_result{status=\"fail\"})",
+              "expr": "sum((policy_report_result or cluster_policy_report_result){status=\"fail\"})",
               "refId": "A",
               "legendFormat": "",
               "instant": true
@@ -279,7 +279,7 @@ spec:
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "sum(policyreport_result{status=\"fail\",severity=\"critical\"})",
+              "expr": "sum((policy_report_result or cluster_policy_report_result){status=\"fail\",severity=\"critical\"})",
               "refId": "A",
               "legendFormat": "",
               "instant": true
@@ -345,7 +345,7 @@ spec:
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "sum(policyreport_result{status=\"fail\",severity=\"high\"})",
+              "expr": "sum((policy_report_result or cluster_policy_report_result){status=\"fail\",severity=\"high\"})",
               "refId": "A",
               "legendFormat": "",
               "instant": true
@@ -411,7 +411,7 @@ spec:
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "sum(increase(kyverno_policy_results_total{result=\"fail\"}[1h]))",
+              "expr": "sum(increase(kyverno_policy_results_total{rule_result=\"fail\"}[1h]))",
               "refId": "A",
               "legendFormat": "",
               "instant": true
@@ -477,7 +477,7 @@ spec:
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "count(count by (namespace) (policyreport_result{status=\"fail\"} > 0))",
+              "expr": "count(count by (namespace) ((policy_report_result or cluster_policy_report_result){status=\"fail\"} > 0))",
               "refId": "A",
               "legendFormat": "",
               "instant": true
@@ -543,7 +543,7 @@ spec:
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "sum(increase(kyverno_policy_results_total{result=\"fail\",policy_validation_mode=\"enforce\"}[$__range]))",
+              "expr": "sum(increase(kyverno_policy_results_total{rule_result=\"fail\",policy_validation_mode=\"enforce\"}[$__range]))",
               "refId": "A",
               "legendFormat": "",
               "instant": true
@@ -662,7 +662,7 @@ spec:
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "sum by (severity) (policyreport_result{status=\"fail\",namespace=~\"$namespace\"})",
+              "expr": "sum by (severity) (policy_report_result{status=\"fail\",namespace=~\"$namespace\"})",
               "refId": "A",
               "legendFormat": "{{severity}}",
               "instant": true
@@ -709,7 +709,7 @@ spec:
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "topk(15, sum by (namespace) (policyreport_result{status=\"fail\"}))",
+              "expr": "topk(15, sum by (namespace) ((policy_report_result or cluster_policy_report_result){status=\"fail\"}))",
               "refId": "A",
               "legendFormat": "{{namespace}}",
               "instant": true
@@ -808,7 +808,7 @@ spec:
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "sum by (severity) (increase(kyverno_policy_results_total{result=\"fail\"}[$__interval]))",
+              "expr": "sum by (severity) (increase(kyverno_policy_results_total{rule_result=\"fail\"}[$__interval]))",
               "refId": "A",
               "legendFormat": "{{severity}}"
             }
@@ -1026,7 +1026,7 @@ spec:
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "sum by (namespace, policy, rule, kind, name, status, severity, category, source) (policyreport_result{namespace=~\"$namespace\",policy=~\"$policy\",status=\"fail\"})",
+              "expr": "sum by (namespace, policy, rule, kind, name, status, severity, category, source) (policy_report_result{namespace=~\"$namespace\",policy=~\"$policy\",status=\"fail\"})",
               "refId": "A",
               "legendFormat": "",
               "instant": true,
@@ -1100,7 +1100,7 @@ spec:
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "topk(20, sum by (policy) (policyreport_result{namespace=~\"$namespace\",status=\"fail\"}))",
+              "expr": "topk(20, sum by (policy) (policy_report_result{namespace=~\"$namespace\",status=\"fail\"}))",
               "refId": "A",
               "legendFormat": "{{policy}}",
               "instant": true
@@ -1147,7 +1147,7 @@ spec:
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "sum by (kind) (policyreport_result{namespace=~\"$namespace\",status=\"fail\"})",
+              "expr": "sum by (kind) (policy_report_result{namespace=~\"$namespace\",status=\"fail\"})",
               "refId": "A",
               "legendFormat": "{{kind}}",
               "instant": true
@@ -1195,7 +1195,7 @@ spec:
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "topk(10, sum by (policy_name) (rate(kyverno_policy_results_total{result=\"fail\",policy_validation_mode=\"enforce\"}[$__interval])))",
+              "expr": "topk(10, sum by (policy_name) (rate(kyverno_policy_results_total{rule_result=\"fail\",policy_validation_mode=\"enforce\"}[$__interval])))",
               "refId": "A",
               "legendFormat": "{{policy_name}}"
             }
@@ -1318,7 +1318,7 @@ spec:
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "sum by (result) (rate(kyverno_policy_results_total{policy_type=\"mutate\"}[$__interval]))",
+              "expr": "sum by (rule_result) (rate(kyverno_policy_results_total{policy_type=\"mutate\"}[$__interval]))",
               "refId": "A",
               "legendFormat": "{{result}}"
             }
@@ -1441,7 +1441,7 @@ spec:
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "sum by (result) (rate(kyverno_policy_results_total{policy_type=\"generate\"}[$__interval]))",
+              "expr": "sum by (rule_result) (rate(kyverno_policy_results_total{policy_type=\"generate\"}[$__interval]))",
               "refId": "A",
               "legendFormat": "{{result}}"
             }
@@ -1554,7 +1554,7 @@ spec:
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "sort_desc(sum by (source) (policyreport_result{namespace=~\"$namespace\",status=\"fail\"}))",
+              "expr": "sort_desc(sum by (source) (policy_report_result{namespace=~\"$namespace\",status=\"fail\"}))",
               "refId": "A",
               "legendFormat": "",
               "instant": true,
