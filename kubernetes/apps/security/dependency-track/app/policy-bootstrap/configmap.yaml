@@ -1,0 +1,116 @@
+---
+# Idempotent DT policy bootstrap script.
+# Creates 10 security policies via the DT REST API.
+# Safe to re-run: skips policies that already exist by name.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dt-policy-bootstrap
+  namespace: security
+data:
+  bootstrap.sh: |-
+    #!/bin/sh
+    set -u
+
+    DT_URL="${DT_URL:-http://dependency-track-api-server.security.svc.cluster.local:8080}"
+    API_KEY="$DT_API_KEY"
+
+    api() {
+      METHOD="$1"
+      ENDPOINT="$2"
+      DATA="$3"
+      if [ -n "$DATA" ]; then
+        curl -sf -X "$METHOD" \
+          -H "X-Api-Key: $API_KEY" \
+          -H "Content-Type: application/json" \
+          -d "$DATA" \
+          "$DT_URL/api/v1$ENDPOINT"
+      else
+        curl -sf -X "$METHOD" \
+          -H "X-Api-Key: $API_KEY" \
+          "$DT_URL/api/v1$ENDPOINT"
+      fi
+    }
+
+    # create_policy NAME OPERATOR STATE
+    # Prints UUID of created or existing policy
+    create_policy() {
+      PNAME="$1"
+      OPERATOR="$2"
+      STATE="$3"
+
+      # Check if already exists
+      EXISTING=$(api GET "/policy" "" | python3 -c "import sys,json; d=json.load(sys.stdin); r=[p['uuid'] for p in d if p['name']=='$PNAME']; print(r[0] if r else '')" 2>/dev/null)
+      if [ -n "$EXISTING" ]; then
+        echo "  [exists] $PNAME ($EXISTING)" >&2
+        echo "$EXISTING"
+        return
+      fi
+
+      RESP=$(api PUT "/policy" "{\"name\":\"$PNAME\",\"operator\":\"$OPERATOR\",\"violationState\":\"$STATE\",\"global\":true,\"onlyLatestProjectVersion\":true}")
+      UUID=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['uuid'])" 2>/dev/null)
+      echo "  [created] $PNAME ($UUID)" >&2
+      echo "$UUID"
+    }
+
+    cond() {
+      UUID="$1"
+      SUBJ="$2"
+      OP="$3"
+      VAL="$4"
+      api PUT "/policy/$UUID/condition" "{\"subject\":\"$SUBJ\",\"operator\":\"$OP\",\"value\":\"$VAL\"}" > /dev/null
+    }
+
+    echo "=== Dependency Track Policy Bootstrap ==="
+
+    # Wait for DT API
+    for i in $(seq 1 30); do
+      CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Api-Key: $API_KEY" "$DT_URL/api/v1/project?limit=1")
+      [ "$CODE" = "200" ] && echo "DT ready." && break
+      echo "  ($i) HTTP $CODE - retrying in 10s..."
+      sleep 10
+    done
+
+    echo "--- P1: Critical Severity [FAIL] ---"
+    UUID=$(create_policy "P1: Critical Severity" "ANY" "FAIL")
+    cond "$UUID" "SEVERITY" "IS" "CRITICAL"
+
+    echo "--- P2: High Severity [WARN] ---"
+    UUID=$(create_policy "P2: High Severity" "ANY" "WARN")
+    cond "$UUID" "SEVERITY" "IS" "HIGH"
+
+    echo "--- P3: Medium Severity [INFO] ---"
+    UUID=$(create_policy "P3: Medium Severity" "ANY" "INFO")
+    cond "$UUID" "SEVERITY" "IS" "MEDIUM"
+
+    echo "--- P4: High EPSS >= 30% [FAIL] ---"
+    UUID=$(create_policy "P4: High Exploitation Probability EPSS 30pct" "ANY" "FAIL")
+    cond "$UUID" "EPSS" "NUMERIC_GREATER_THAN_OR_EQUAL" "0.3"
+
+    echo "--- P5: Medium EPSS >= 10% [WARN] ---"
+    UUID=$(create_policy "P5: Medium Exploitation Probability EPSS 10pct" "ANY" "WARN")
+    cond "$UUID" "EPSS" "NUMERIC_GREATER_THAN_OR_EQUAL" "0.1"
+
+    echo "--- P6: Remote Code Execution CWEs [FAIL] ---"
+    UUID=$(create_policy "P6: Remote Code Execution Risk CWE" "ANY" "FAIL")
+    cond "$UUID" "CWE" "CONTAINS_ANY" "CWE-94 CWE-77 CWE-78 CWE-502 CWE-434"
+
+    echo "--- P7: Auth and AuthZ Flaws CWEs [FAIL] ---"
+    UUID=$(create_policy "P7: Authentication and AuthZ Flaws CWE" "ANY" "FAIL")
+    cond "$UUID" "CWE" "CONTAINS_ANY" "CWE-287 CWE-306 CWE-862 CWE-863 CWE-798"
+
+    echo "--- P8: Injection Flaws CWEs [WARN] ---"
+    UUID=$(create_policy "P8: Injection Flaws CWE" "ANY" "WARN")
+    cond "$UUID" "CWE" "CONTAINS_ANY" "CWE-89 CWE-79 CWE-90 CWE-91 CWE-93"
+
+    echo "--- P9: Stale Components 2+ years [WARN] ---"
+    UUID=$(create_policy "P9: Stale Components 2 years" "ANY" "WARN")
+    cond "$UUID" "AGE" "NUMERIC_GREATER_THAN_OR_EQUAL" "730"
+
+    echo "--- P10: Copyleft License Risk [INFO] ---"
+    UUID=$(create_policy "P10: Copyleft License Risk" "ANY" "INFO")
+    cond "$UUID" "LICENSE_GROUP" "IS" "Copyleft"
+
+    echo ""
+    echo "=== Done. Active policies ==="
+    api GET "/policy" "" | python3 -c "import sys,json; d=json.load(sys.stdin); [print('  ['+p['violationState']+'] '+p['name']) for p in sorted(d, key=lambda x: x['name'])]"

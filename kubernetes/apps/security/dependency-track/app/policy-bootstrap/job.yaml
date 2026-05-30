@@ -1,0 +1,46 @@
+---
+# One-shot Job that idempotently creates DT security policies.
+# Re-apply to pick up any new policies added to bootstrap.sh.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dt-policy-bootstrap
+  namespace: security
+  annotations:
+    # Bump this value to re-run the job after updating policies
+    policy-revision: "1"
+spec:
+  ttlSecondsAfterFinished: 86400 # keep logs for 24h
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: bootstrap
+          image: ghcr.io/aquasecurity/trivy:0.69.3
+          command:
+            - "/bin/sh"
+            - "/scripts/bootstrap.sh"
+          env:
+            - name: DT_URL
+              value: "http://dependency-track-api-server.security.svc.cluster.local:8080"
+            - name: DT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: dependency-track-api-key
+                  key: api-key
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+      volumes:
+        - name: scripts
+          configMap:
+            name: dt-policy-bootstrap
+            defaultMode: 0755
