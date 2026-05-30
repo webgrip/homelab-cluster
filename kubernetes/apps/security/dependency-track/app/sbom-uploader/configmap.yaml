@@ -9,25 +9,36 @@ data:
     #!/bin/sh
     set -e
     echo "[init] Listing all running container images across cluster..."
-    kubectl get pods -A \
-      -o jsonpath='{range .items[*]}{range .spec.containers[*]}{.image}{"\n"}{end}{range .spec.initContainers[*]}{.image}{"\n"}{end}{end}' \
-      | sort -u | grep -v '^$' > /work/images.txt
-    COUNT=$(wc -l < /work/images.txt)
+
+    # Parse JSON output with grep/sed (busybox-compatible; avoids jsonpath newline quirks)
+    kubectl get pods -A -o json 2>/tmp/kubectl-err.txt \
+      | grep '"image":' \
+      | sed 's/.*"image": *"//; s/".*//' \
+      | sort -u \
+      | grep -v '^$' > /work/images.txt
+
+    if [ ! -s /work/images.txt ]; then
+      ERR=$(cat /tmp/kubectl-err.txt 2>/dev/null | head -1)
+      echo "[init] ERROR: images.txt is empty. kubectl stderr: ${ERR}"
+      exit 1
+    fi
+
+    COUNT=$(wc -l < /work/images.txt | tr -d ' \t')
     echo "[init] Found ${COUNT} unique images"
 
   upload.sh: |-
     #!/bin/sh
     set -e
 
-    if [ ! -f /work/images.txt ]; then
-      echo "ERROR: /work/images.txt not found — init container may have failed"
+    if [ ! -f /work/images.txt ] || [ ! -s /work/images.txt ]; then
+      echo "ERROR: /work/images.txt not found or empty — init container may have failed"
       exit 1
     fi
 
     UPLOADED=0
     FAILED=0
     SKIPPED=0
-    TOTAL=$(wc -l < /work/images.txt)
+    TOTAL=$(wc -l < /work/images.txt | tr -d ' \t')
 
     echo "Starting SBOM upload for ${TOTAL} images to ${DT_URL}"
     echo ""
@@ -35,15 +46,19 @@ data:
     while IFS= read -r image; do
       [ -z "$image" ] && continue
 
-      # Derive project name and version from image reference
-      # Strip registry host (anything before first / that contains a dot or colon)
-      IMAGE_PATH=$(echo "$image" | sed 's|^[^/]*\.[^/]*/||; s|^[^/]*:[0-9][^/]*/||')
-      PROJECT_NAME=$(echo "$IMAGE_PATH" | sed 's|@.*||' | cut -d: -f1)
-      PROJECT_VERSION=$(echo "$IMAGE_PATH" | grep -oP '(?<=:)[^@]+' | head -1)
+      # Parse name and version from image ref (busybox awk/sed, no grep -P)
+      IMAGE_NO_DIGEST=$(echo "$image" | cut -d@ -f1)
+      FIRST_SEG=$(echo "$IMAGE_NO_DIGEST" | cut -d/ -f1)
+      if echo "$FIRST_SEG" | grep -qE '\.|:'; then
+        IMAGE_PATH=$(echo "$IMAGE_NO_DIGEST" | cut -d/ -f2-)
+      else
+        IMAGE_PATH=$IMAGE_NO_DIGEST
+      fi
+      PROJECT_NAME=$(echo "$IMAGE_PATH" | cut -d: -f1)
+      PROJECT_VERSION=$(echo "$IMAGE_PATH" | awk -F: '{if (NF>1) print $NF; else print "latest"}')
       [ -z "$PROJECT_VERSION" ] && PROJECT_VERSION="latest"
 
       echo "--- [${PROJECT_NAME}:${PROJECT_VERSION}]"
-      echo "    image: ${image}"
 
       # Generate CycloneDX SBOM via trivy
       if ! trivy image \
