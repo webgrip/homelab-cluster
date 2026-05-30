@@ -1,0 +1,380 @@
+---
+# Security SLOs — evaluated directly by Grafana Alerting against Prometheus.
+# Visible in Grafana → Alerting → Alert Rules under the "Security" folder.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaAlertRuleGroup
+metadata:
+  name: slo-security
+  namespace: observability
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: security
+  interval: 1m
+  rules:
+    # -------------------------------------------------------------------------
+    # Dependency-Track SLOs
+    # -------------------------------------------------------------------------
+    - uid: slo-dt-critical-cves
+      title: "SLO: Critical CVEs in Portfolio"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange:
+            from: 600
+            to: 0
+          datasourceUid: prometheus
+          model:
+            expr: "sum(dt_portfolio_vulnerabilities{severity=\"critical\"})"
+            instant: true
+            refId: query
+            datasource:
+              uid: prometheus
+              type: prometheus
+        - refId: threshold
+          relativeTimeRange:
+            from: 0
+            to: 0
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            datasource:
+              uid: "-100"
+              type: __expr__
+            conditions:
+              - type: query
+                evaluator:
+                  type: gt
+                  params:
+                    - 0
+                operator:
+                  type: and
+                query:
+                  params:
+                    - query
+                reducer:
+                  type: last
+      noDataState: NoData
+      execErrState: Error
+      for: 15m
+      annotations:
+        summary: "{{ $value | humanize }} critical CVEs in portfolio"
+        description: "Dependency-Track reports {{ $value | humanize }} critical CVEs across the portfolio. Review: https://dependency-track.webgrip.dev/projects"
+      labels:
+        severity: warning
+        slo: supply-chain
+        team: security
+
+    - uid: slo-dt-high-cves
+      title: "SLO: High CVEs in Portfolio (> 500)"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange:
+            from: 600
+            to: 0
+          datasourceUid: prometheus
+          model:
+            expr: "sum(dt_portfolio_vulnerabilities{severity=\"high\"})"
+            instant: true
+            refId: query
+            datasource:
+              uid: prometheus
+              type: prometheus
+        - refId: threshold
+          relativeTimeRange:
+            from: 0
+            to: 0
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            datasource:
+              uid: "-100"
+              type: __expr__
+            conditions:
+              - type: query
+                evaluator:
+                  type: gt
+                  params:
+                    - 500
+                operator:
+                  type: and
+                query:
+                  params:
+                    - query
+                reducer:
+                  type: last
+      noDataState: NoData
+      execErrState: Error
+      for: 1h
+      annotations:
+        summary: "{{ $value | humanize }} high CVEs in portfolio"
+        description: "Portfolio has {{ $value | humanize }} high CVEs (threshold: 500). Review and triage findings."
+      labels:
+        severity: warning
+        slo: supply-chain
+        team: security
+
+    - uid: slo-dt-policy-fail
+      title: "SLO: Dependency-Track Policy FAIL Violations"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange:
+            from: 600
+            to: 0
+          datasourceUid: prometheus
+          model:
+            expr: "sum(dt_portfolio_policy_violations{state=\"fail\"})"
+            instant: true
+            refId: query
+            datasource:
+              uid: prometheus
+              type: prometheus
+        - refId: threshold
+          relativeTimeRange:
+            from: 0
+            to: 0
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            datasource:
+              uid: "-100"
+              type: __expr__
+            conditions:
+              - type: query
+                evaluator:
+                  type: gt
+                  params:
+                    - 0
+                operator:
+                  type: and
+                query:
+                  params:
+                    - query
+                reducer:
+                  type: last
+      noDataState: NoData
+      execErrState: Error
+      for: 15m
+      annotations:
+        summary: "{{ $value | humanize }} FAIL policy violations in portfolio"
+        description: "{{ $value | humanize }} components violate policies at FAIL severity. These block compliance. Review: https://dependency-track.webgrip.dev"
+      labels:
+        severity: critical
+        slo: supply-chain
+        team: security
+
+    - uid: slo-dt-risk-score
+      title: "SLO: Portfolio Risk Score Elevated"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange:
+            from: 600
+            to: 0
+          datasourceUid: prometheus
+          model:
+            expr: "dt_portfolio_risk_score"
+            instant: true
+            refId: query
+            datasource:
+              uid: prometheus
+              type: prometheus
+        - refId: threshold
+          relativeTimeRange:
+            from: 0
+            to: 0
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            datasource:
+              uid: "-100"
+              type: __expr__
+            conditions:
+              - type: query
+                evaluator:
+                  type: gt
+                  params:
+                    - 2000
+                operator:
+                  type: and
+                query:
+                  params:
+                    - query
+                reducer:
+                  type: last
+      noDataState: NoData
+      execErrState: Error
+      for: 30m
+      annotations:
+        summary: "Portfolio risk score {{ $value | humanize }} exceeds threshold"
+        description: "Inherited portfolio risk score is {{ $value | humanize }} (threshold: 2000). Dashboard: https://dependency-track.webgrip.dev/dashboard"
+      labels:
+        severity: warning
+        slo: supply-chain
+        team: security
+
+    # -------------------------------------------------------------------------
+    # Kyverno / Policy Reporter SLOs
+    # -------------------------------------------------------------------------
+    - uid: slo-kyverno-fail-high
+      title: "SLO: Kyverno High/Critical FAIL Violations"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange:
+            from: 600
+            to: 0
+          datasourceUid: prometheus
+          model:
+            expr: "sum(policy_report_result{status=\"fail\",severity=~\"high|critical\"})"
+            instant: true
+            refId: query
+            datasource:
+              uid: prometheus
+              type: prometheus
+        - refId: threshold
+          relativeTimeRange:
+            from: 0
+            to: 0
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            datasource:
+              uid: "-100"
+              type: __expr__
+            conditions:
+              - type: query
+                evaluator:
+                  type: gt
+                  params:
+                    - 0
+                operator:
+                  type: and
+                query:
+                  params:
+                    - query
+                reducer:
+                  type: last
+      noDataState: NoData
+      execErrState: Error
+      for: 15m
+      annotations:
+        summary: "{{ $value | humanize }} Kyverno high/critical policy violations"
+        description: "{{ $value | humanize }} resources have high or critical severity Kyverno policy violations. Review in Policy Reporter."
+      labels:
+        severity: critical
+        slo: admission-control
+        team: security
+
+    - uid: slo-kyverno-fail-total
+      title: "SLO: Kyverno Total FAIL Violations (> 50)"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange:
+            from: 600
+            to: 0
+          datasourceUid: prometheus
+          model:
+            expr: "sum(policy_report_result{status=\"fail\"})"
+            instant: true
+            refId: query
+            datasource:
+              uid: prometheus
+              type: prometheus
+        - refId: threshold
+          relativeTimeRange:
+            from: 0
+            to: 0
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            datasource:
+              uid: "-100"
+              type: __expr__
+            conditions:
+              - type: query
+                evaluator:
+                  type: gt
+                  params:
+                    - 50
+                operator:
+                  type: and
+                query:
+                  params:
+                    - query
+                reducer:
+                  type: last
+      noDataState: NoData
+      execErrState: Error
+      for: 30m
+      annotations:
+        summary: "{{ $value | humanize }} total Kyverno FAIL violations"
+        description: "{{ $value | humanize }} FAIL violations across all namespaces (threshold: 50). May indicate admission control drift."
+      labels:
+        severity: warning
+        slo: admission-control
+        team: security
+
+    # -------------------------------------------------------------------------
+    # Observability SLO: DT metrics exporter health
+    # -------------------------------------------------------------------------
+    - uid: slo-dt-exporter-stale
+      title: "SLO: DT Metrics Exporter Not Reporting"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange:
+            from: 3600
+            to: 0
+          datasourceUid: prometheus
+          model:
+            expr: "time() - dt_exporter_last_scrape_timestamp"
+            instant: true
+            refId: query
+            datasource:
+              uid: prometheus
+              type: prometheus
+        - refId: threshold
+          relativeTimeRange:
+            from: 0
+            to: 0
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            datasource:
+              uid: "-100"
+              type: __expr__
+            conditions:
+              - type: query
+                evaluator:
+                  type: gt
+                  params:
+                    - 1800
+                operator:
+                  type: and
+                query:
+                  params:
+                    - query
+                reducer:
+                  type: last
+      noDataState: Alerting
+      execErrState: Alerting
+      for: 10m
+      annotations:
+        summary: "DT metrics exporter has not scraped DT in {{ $value | humanizeDuration }}"
+        description: "The Dependency-Track Prometheus exporter pod is stale. Portfolio metrics in Grafana are outdated."
+      labels:
+        severity: warning
+        slo: observability
+        team: platform

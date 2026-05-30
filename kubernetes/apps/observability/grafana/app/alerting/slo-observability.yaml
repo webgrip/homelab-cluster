@@ -1,0 +1,166 @@
+---
+# Observability SLOs — Prometheus, Grafana, and key data-plane health.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaAlertRuleGroup
+metadata:
+  name: slo-observability
+  namespace: observability
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: observability
+  interval: 1m
+  rules:
+    - uid: slo-prometheus-targets-down
+      title: "SLO: Prometheus Scrape Targets Down"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange:
+            from: 600
+            to: 0
+          datasourceUid: prometheus
+          model:
+            expr: "count(up == 0)"
+            instant: true
+            refId: query
+            datasource:
+              uid: prometheus
+              type: prometheus
+        - refId: threshold
+          relativeTimeRange:
+            from: 0
+            to: 0
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            datasource:
+              uid: "-100"
+              type: __expr__
+            conditions:
+              - type: query
+                evaluator:
+                  type: gt
+                  params:
+                    - 3
+                operator:
+                  type: and
+                query:
+                  params:
+                    - query
+                reducer:
+                  type: last
+      noDataState: NoData
+      execErrState: Error
+      for: 10m
+      annotations:
+        summary: "{{ $value | humanize }} Prometheus scrape targets are down"
+        description: "{{ $value | humanize }} targets have up=0 for > 10 minutes. Metrics from these targets are missing. Check ServiceMonitor configuration."
+      labels:
+        severity: warning
+        slo: observability
+        team: platform
+
+    - uid: slo-prometheus-tsdb-reload-fail
+      title: "SLO: Prometheus TSDB Reload Failures"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange:
+            from: 600
+            to: 0
+          datasourceUid: prometheus
+          model:
+            expr: "increase(prometheus_tsdb_reloads_failures_total[10m])"
+            instant: true
+            refId: query
+            datasource:
+              uid: prometheus
+              type: prometheus
+        - refId: threshold
+          relativeTimeRange:
+            from: 0
+            to: 0
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            datasource:
+              uid: "-100"
+              type: __expr__
+            conditions:
+              - type: query
+                evaluator:
+                  type: gt
+                  params:
+                    - 0
+                operator:
+                  type: and
+                query:
+                  params:
+                    - query
+                reducer:
+                  type: last
+      noDataState: NoData
+      execErrState: Error
+      for: 5m
+      annotations:
+        summary: "Prometheus TSDB reload failures detected"
+        description: "Prometheus has failed to reload its TSDB in the last 10 minutes. This may indicate storage issues."
+      labels:
+        severity: critical
+        slo: observability
+        team: platform
+
+    - uid: slo-grafana-operator-recon-fail
+      title: "SLO: Grafana Operator Reconcile Failures"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange:
+            from: 600
+            to: 0
+          datasourceUid: prometheus
+          model:
+            expr: "sum(increase(grafana_operator_reconciler_failed_reconciles[10m]))"
+            instant: true
+            refId: query
+            datasource:
+              uid: prometheus
+              type: prometheus
+        - refId: threshold
+          relativeTimeRange:
+            from: 0
+            to: 0
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            datasource:
+              uid: "-100"
+              type: __expr__
+            conditions:
+              - type: query
+                evaluator:
+                  type: gt
+                  params:
+                    - 5
+                operator:
+                  type: and
+                query:
+                  params:
+                    - query
+                reducer:
+                  type: last
+      noDataState: NoData
+      execErrState: Error
+      for: 10m
+      annotations:
+        summary: "Grafana operator has {{ $value | humanize }} reconcile failures"
+        description: "The Grafana operator is failing to reconcile resources. Dashboards, alert rules, and datasources may be out of sync."
+      labels:
+        severity: warning
+        slo: observability
+        team: platform

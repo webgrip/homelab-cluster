@@ -1,0 +1,328 @@
+---
+# Platform SLOs — GitOps health, certificate expiry, key infrastructure.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaAlertRuleGroup
+metadata:
+  name: slo-platform
+  namespace: observability
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: platform
+  interval: 1m
+  rules:
+    # -------------------------------------------------------------------------
+    # Flux / GitOps SLOs
+    # -------------------------------------------------------------------------
+    - uid: slo-flux-resource-not-ready
+      title: "SLO: Flux Resource Not Ready"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange:
+            from: 600
+            to: 0
+          datasourceUid: prometheus
+          model:
+            expr: "count(flux_resource_info{ready=\"False\",suspended=\"False\"})"
+            instant: true
+            refId: query
+            datasource:
+              uid: prometheus
+              type: prometheus
+        - refId: threshold
+          relativeTimeRange:
+            from: 0
+            to: 0
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            datasource:
+              uid: "-100"
+              type: __expr__
+            conditions:
+              - type: query
+                evaluator:
+                  type: gt
+                  params:
+                    - 0
+                operator:
+                  type: and
+                query:
+                  params:
+                    - query
+                reducer:
+                  type: last
+      noDataState: NoData
+      execErrState: Error
+      for: 15m
+      annotations:
+        summary: "{{ $value | humanize }} Flux resources not ready"
+        description: "{{ $value | humanize }} unsuspended Flux resources (HelmRelease/Kustomization/etc) are in a not-ready state for > 15 minutes."
+      labels:
+        severity: warning
+        slo: gitops
+        team: platform
+
+    - uid: slo-flux-helm-not-ready
+      title: "SLO: Flux HelmRelease Not Ready"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange:
+            from: 600
+            to: 0
+          datasourceUid: prometheus
+          model:
+            expr: "count(flux_resource_info{kind=\"HelmRelease\",ready=\"False\",suspended=\"False\"})"
+            instant: true
+            refId: query
+            datasource:
+              uid: prometheus
+              type: prometheus
+        - refId: threshold
+          relativeTimeRange:
+            from: 0
+            to: 0
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            datasource:
+              uid: "-100"
+              type: __expr__
+            conditions:
+              - type: query
+                evaluator:
+                  type: gt
+                  params:
+                    - 0
+                operator:
+                  type: and
+                query:
+                  params:
+                    - query
+                reducer:
+                  type: last
+      noDataState: NoData
+      execErrState: Error
+      for: 20m
+      annotations:
+        summary: "{{ $value | humanize }} HelmReleases not ready"
+        description: "{{ $value | humanize }} unsuspended HelmReleases are failing reconciliation for > 20 minutes. Check: kubectl get helmreleases -A | grep -v True"
+      labels:
+        severity: warning
+        slo: gitops
+        team: platform
+
+    # -------------------------------------------------------------------------
+    # Certificate SLOs
+    # -------------------------------------------------------------------------
+    - uid: slo-cert-expiry-14d
+      title: "SLO: Certificate Expiring in < 14 Days"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange:
+            from: 600
+            to: 0
+          datasourceUid: prometheus
+          model:
+            expr: "count((certmanager_certificate_expiration_timestamp_seconds - time()) < (14 * 24 * 3600))"
+            instant: true
+            refId: query
+            datasource:
+              uid: prometheus
+              type: prometheus
+        - refId: threshold
+          relativeTimeRange:
+            from: 0
+            to: 0
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            datasource:
+              uid: "-100"
+              type: __expr__
+            conditions:
+              - type: query
+                evaluator:
+                  type: gt
+                  params:
+                    - 0
+                operator:
+                  type: and
+                query:
+                  params:
+                    - query
+                reducer:
+                  type: last
+      noDataState: NoData
+      execErrState: Error
+      for: 1h
+      annotations:
+        summary: "{{ $value | humanize }} certificate(s) expiring within 14 days"
+        description: "{{ $value | humanize }} TLS certificate(s) will expire within 14 days. cert-manager should auto-renew — check certificate status and issuer health."
+      labels:
+        severity: warning
+        slo: certificates
+        team: platform
+
+    - uid: slo-cert-expiry-3d
+      title: "SLO: Certificate Expiring in < 3 Days (Critical)"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange:
+            from: 600
+            to: 0
+          datasourceUid: prometheus
+          model:
+            expr: "count((certmanager_certificate_expiration_timestamp_seconds - time()) < (3 * 24 * 3600))"
+            instant: true
+            refId: query
+            datasource:
+              uid: prometheus
+              type: prometheus
+        - refId: threshold
+          relativeTimeRange:
+            from: 0
+            to: 0
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            datasource:
+              uid: "-100"
+              type: __expr__
+            conditions:
+              - type: query
+                evaluator:
+                  type: gt
+                  params:
+                    - 0
+                operator:
+                  type: and
+                query:
+                  params:
+                    - query
+                reducer:
+                  type: last
+      noDataState: NoData
+      execErrState: Alerting
+      for: 15m
+      annotations:
+        summary: "{{ $value | humanize }} certificate(s) expiring within 3 days"
+        description: "URGENT: {{ $value | humanize }} TLS certificate(s) expire in < 3 days. Immediate action required. Check cert-manager issuer logs."
+      labels:
+        severity: critical
+        slo: certificates
+        team: platform
+
+    # -------------------------------------------------------------------------
+    # Node SLOs
+    # -------------------------------------------------------------------------
+    - uid: slo-node-memory-pressure
+      title: "SLO: Node Memory Pressure"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange:
+            from: 600
+            to: 0
+          datasourceUid: prometheus
+          model:
+            expr: "count(kube_node_status_condition{condition=\"MemoryPressure\",status=\"true\"})"
+            instant: true
+            refId: query
+            datasource:
+              uid: prometheus
+              type: prometheus
+        - refId: threshold
+          relativeTimeRange:
+            from: 0
+            to: 0
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            datasource:
+              uid: "-100"
+              type: __expr__
+            conditions:
+              - type: query
+                evaluator:
+                  type: gt
+                  params:
+                    - 0
+                operator:
+                  type: and
+                query:
+                  params:
+                    - query
+                reducer:
+                  type: last
+      noDataState: NoData
+      execErrState: Error
+      for: 5m
+      annotations:
+        summary: "{{ $value | humanize }} node(s) under memory pressure"
+        description: "{{ $value | humanize }} cluster node(s) have MemoryPressure condition. OOM evictions likely. Check node resources."
+      labels:
+        severity: critical
+        slo: capacity
+        team: platform
+
+    - uid: slo-node-disk-pressure
+      title: "SLO: Node Disk Pressure"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange:
+            from: 600
+            to: 0
+          datasourceUid: prometheus
+          model:
+            expr: "count(kube_node_status_condition{condition=\"DiskPressure\",status=\"true\"})"
+            instant: true
+            refId: query
+            datasource:
+              uid: prometheus
+              type: prometheus
+        - refId: threshold
+          relativeTimeRange:
+            from: 0
+            to: 0
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            datasource:
+              uid: "-100"
+              type: __expr__
+            conditions:
+              - type: query
+                evaluator:
+                  type: gt
+                  params:
+                    - 0
+                operator:
+                  type: and
+                query:
+                  params:
+                    - query
+                reducer:
+                  type: last
+      noDataState: NoData
+      execErrState: Error
+      for: 5m
+      annotations:
+        summary: "{{ $value | humanize }} node(s) under disk pressure"
+        description: "{{ $value | humanize }} cluster node(s) have DiskPressure condition. Storage may be exhausted."
+      labels:
+        severity: critical
+        slo: capacity
+        team: platform
