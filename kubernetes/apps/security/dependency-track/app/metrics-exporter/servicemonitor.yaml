@@ -1,0 +1,20 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: dependency-track-metrics-exporter
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - security
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dependency-track-metrics-exporter
+  endpoints:
+    - port: metrics
+      interval: 5m
+      scrapeTimeout: 30s
+      path: /metrics

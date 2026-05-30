@@ -116,3 +116,29 @@ data:
     echo ""
     echo "=== Done. Active policies ==="
     api GET "/policy" "" | python3 -c "import sys,json; d=json.load(sys.stdin); [print('  ['+p['violationState']+'] '+p['name']) for p in sorted(d, key=lambda x: x['name'])]"
+
+    # --------------------------------------------------------------------------
+    # Notification rules (idempotent) — wires DT events to Discord via Slack publisher.
+    # DT_DISCORD_WEBHOOK_URL must be set (without /slack suffix); the script appends it.
+    # --------------------------------------------------------------------------
+    if [ -n "${DT_DISCORD_WEBHOOK_URL:-}" ]; then
+      SLACK_PUB=$(api GET "/notification/publisher" "" | python3 -c "import sys,json; d=json.load(sys.stdin); r=[p['uuid'] for p in d if p['name']=='Slack']; print(r[0] if r else '')" 2>/dev/null)
+
+      create_notification_rule() {
+        RNAME="$1"; SCOPE="$2"; LEVEL="$3"; EVENT="$4"
+        EXISTING=$(api GET "/notification/rule" "" | python3 -c "import sys,json; d=json.load(sys.stdin); r=[x['uuid'] for x in (d if isinstance(d,list) else []) if x.get('name')=='$RNAME']; print(r[0] if r else '')" 2>/dev/null)
+        if [ -n "$EXISTING" ]; then echo "  [exists] notification rule $RNAME" >&2; return; fi
+        PCFG=$(printf '{"webhook":"%s/slack"}' "$DT_DISCORD_WEBHOOK_URL")
+        BODY=$(python3 -c "import json,sys; print(json.dumps({'name':sys.argv[1],'scope':sys.argv[2],'notificationLevel':sys.argv[3],'notifyOn':[sys.argv[4]],'publisher':{'uuid':sys.argv[5]},'publisherConfig':sys.argv[6],'enabled':True,'notifyChildren':True}))" \
+          "$RNAME" "$SCOPE" "$LEVEL" "$EVENT" "$SLACK_PUB" "$PCFG")
+        api PUT "/notification/rule" "$BODY" > /dev/null && echo "  [created] notification rule $RNAME" >&2
+      }
+
+      echo "--- Notification rules ---"
+      create_notification_rule "Discord: Critical Vulnerabilities"    "PORTFOLIO" "ERROR"   "NEW_VULNERABILITY"
+      create_notification_rule "Discord: Policy Violations (FAIL)"    "PORTFOLIO" "ERROR"   "POLICY_VIOLATION"
+      create_notification_rule "Discord: BOM Processing Failures"     "PORTFOLIO" "ERROR"   "BOM_PROCESSING_FAILED"
+      create_notification_rule "Discord: New Vulnerable Dependencies"  "PORTFOLIO" "WARNING" "NEW_VULNERABLE_DEPENDENCY"
+    else
+      echo "  [skip] DT_DISCORD_WEBHOOK_URL not set, skipping notification rules"
+    fi

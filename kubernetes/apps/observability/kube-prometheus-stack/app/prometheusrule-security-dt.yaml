@@ -1,0 +1,63 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: security-dependency-track
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: dependency-track.critical
+      interval: 5m
+      rules:
+        - alert: DependencyTrackCriticalVulnerabilities
+          expr: dt_portfolio_vulnerabilities{severity="critical"} > 0
+          for: 15m
+          labels:
+            severity: warning
+            team: security
+          annotations:
+            summary: "DependencyTrack: {{ $value | humanize }} critical vulnerabilities"
+            description: "The portfolio has {{ $value | humanize }} critical severity vulnerabilities. Review at https://dependency-track.webgrip.dev"
+            runbook_url: "https://dependency-track.webgrip.dev/projects"
+
+        - alert: DependencyTrackPolicyViolationsFail
+          expr: dt_portfolio_policy_violations{state="fail"} > 0
+          for: 15m
+          labels:
+            severity: warning
+            team: security
+          annotations:
+            summary: "DependencyTrack: {{ $value | humanize }} policy FAIL violations"
+            description: "{{ $value | humanize }} components have policy violations at FAIL severity. Review at https://dependency-track.webgrip.dev"
+            runbook_url: "https://dependency-track.webgrip.dev/projects"
+
+        - alert: DependencyTrackHighRiskScore
+          expr: dt_portfolio_risk_score > 2000
+          for: 30m
+          labels:
+            severity: warning
+            team: security
+          annotations:
+            summary: "DependencyTrack: portfolio risk score {{ $value | humanize }}"
+            description: "Inherited portfolio risk score is {{ $value | humanize }}, exceeding threshold of 2000. Review https://dependency-track.webgrip.dev/dashboard"
+
+        - alert: DependencyTrackMetricsExporterDown
+          expr: absent(dt_exporter_last_scrape_timestamp) or (time() - dt_exporter_last_scrape_timestamp > 1800)
+          for: 10m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "DependencyTrack metrics exporter is not reporting"
+            description: "The DT Prometheus metrics exporter has not successfully scraped DT in over 30 minutes."
+
+    - name: dependency-track.recording
+      interval: 5m
+      rules:
+        - record: job:dt_portfolio_vuln_ratio:ratio
+          expr: dt_portfolio_projects{state="vulnerable"} / dt_portfolio_projects{state="total"}
+
+        - record: job:dt_portfolio_findings_audit_ratio:ratio
+          expr: dt_portfolio_findings{state="audited"} / dt_portfolio_findings{state="total"}
