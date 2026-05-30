@@ -97,7 +97,10 @@ spec:
       storageClassName: longhorn
       storageSize: 10Gi
       priorityClassName: system-cluster-critical
-      additionalVulnerabilityReportFields: "Description,Links,CVSS,Target,Class,PackagePath,PackageType"
+      # Description/Links/CVSS are omitted — they bloat CRDs past the 3 MiB etcd object
+      # limit for large images. Target/Class/PackagePath/PackageType are kept because
+      # dashboards group by those labels.
+      additionalVulnerabilityReportFields: "Target,Class,PackagePath,PackageType"
       severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
       slow: true
       ignoreUnfixed: false
