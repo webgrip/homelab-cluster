@@ -47,7 +47,7 @@ data:
         return
       fi
 
-      RESP=$(api PUT "/policy" "{\"name\":\"$PNAME\",\"operator\":\"$OPERATOR\",\"violationState\":\"$STATE\",\"global\":true,\"onlyLatestProjectVersion\":true}")
+      RESP=$(api PUT "/policy" "{\"name\":\"$PNAME\",\"operator\":\"$OPERATOR\",\"violationState\":\"$STATE\",\"global\":true,\"onlyLatestProjectVersion\":false}")
       UUID=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['uuid'])" 2>/dev/null)
       echo "  [created] $PNAME ($UUID)" >&2
       echo "$UUID"
@@ -105,11 +105,13 @@ data:
 
     echo "--- P9: Stale Components 2+ years [WARN] ---"
     UUID=$(create_policy "P9: Stale Components 2 years" "ANY" "WARN")
-    cond "$UUID" "AGE" "NUMERIC_GREATER_THAN_OR_EQUAL" "730"
+    cond "$UUID" "AGE" "NUMERIC_GREATER_THAN_OR_EQUAL" "P2Y"
 
     echo "--- P10: Copyleft License Risk [INFO] ---"
     UUID=$(create_policy "P10: Copyleft License Risk" "ANY" "INFO")
-    cond "$UUID" "LICENSE_GROUP" "IS" "Copyleft"
+    # Look up the Copyleft license group UUID dynamically
+    LG_UUID=$(api GET "/licenseGroup" "" | python3 -c "import sys,json; d=json.load(sys.stdin); r=[x['uuid'] for x in d if x['name']=='Copyleft']; print(r[0] if r else '')" 2>/dev/null)
+    if [ -n "$LG_UUID" ]; then cond "$UUID" "LICENSE_GROUP" "IS" "$LG_UUID"; else echo "  WARN: Copyleft license group not found, skipping P10 condition" >&2; fi
 
     echo ""
     echo "=== Done. Active policies ==="
