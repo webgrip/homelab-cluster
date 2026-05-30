@@ -1,0 +1,88 @@
+---
+# Runs every Sunday at 02:00 UTC — scans all running cluster images with
+# Trivy and uploads CycloneDX SBOMs to Dependency Track for CVE correlation.
+#
+# PREREQUISITE: Create an API key in the Dependency Track UI:
+#   Settings → Access Management → Teams → Automation → [+] Generate API Key
+# Then store it in a SOPS-encrypted secret:
+#   kubernetes/apps/security/dependency-track/app/sbom-uploader/secret.sops.yaml
+# Template (encrypt with SOPS before committing):
+#   apiVersion: v1
+#   kind: Secret
+#   metadata:
+#     name: dependency-track-api-key
+#     namespace: security
+#   type: Opaque
+#   stringData:
+#     api-key: "<paste API key here>"
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trivy-sbom-uploader
+  namespace: security
+spec:
+  schedule: "0 2 * * 0"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 14400 # 4h max
+      backoffLimit: 0
+      template:
+        spec:
+          serviceAccountName: trivy-sbom-uploader
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: false
+          initContainers:
+            - name: get-images
+              image: docker.io/alpine/k8s:1.36.1
+              command:
+                - "/bin/sh"
+                - "/scripts/get-images.sh"
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+                - name: scripts
+                  mountPath: /scripts
+          containers:
+            - name: upload
+              image: ghcr.io/aquasecurity/trivy:0.69.3
+              command:
+                - "/bin/sh"
+                - "/scripts/upload.sh"
+              env:
+                - name: DT_URL
+                  value: "http://dependency-track-api-server.security.svc.cluster.local:8080"
+                - name: DT_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: dependency-track-api-key
+                      key: api-key
+                - name: TRIVY_CACHE_DIR
+                  value: /tmp/trivy-cache
+              resources:
+                requests:
+                  cpu: 200m
+                  memory: 512Mi
+                limits:
+                  cpu: "2"
+                  memory: 2Gi
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+                - name: scripts
+                  mountPath: /scripts
+                - name: trivy-cache
+                  mountPath: /tmp/trivy-cache
+          volumes:
+            - name: work
+              emptyDir: {}
+            - name: scripts
+              configMap:
+                name: trivy-sbom-uploader-scripts
+                defaultMode: 0755
+            - name: trivy-cache
+              emptyDir:
+                sizeLimit: 2Gi

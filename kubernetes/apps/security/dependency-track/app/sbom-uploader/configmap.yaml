@@ -1,0 +1,93 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trivy-sbom-uploader-scripts
+  namespace: security
+data:
+  get-images.sh: |
+    #!/bin/sh
+    set -e
+    echo "[init] Listing all running container images across cluster..."
+    kubectl get pods -A \
+      -o jsonpath='{range .items[*]}{range .spec.containers[*]}{.image}{"\n"}{end}{range .spec.initContainers[*]}{.image}{"\n"}{end}{end}' \
+      | sort -u | grep -v '^$' > /work/images.txt
+    COUNT=$(wc -l < /work/images.txt)
+    echo "[init] Found ${COUNT} unique images"
+
+  upload.sh: |-
+    #!/bin/sh
+    set -e
+
+    if [ ! -f /work/images.txt ]; then
+      echo "ERROR: /work/images.txt not found — init container may have failed"
+      exit 1
+    fi
+
+    UPLOADED=0
+    FAILED=0
+    SKIPPED=0
+    TOTAL=$(wc -l < /work/images.txt)
+
+    echo "Starting SBOM upload for ${TOTAL} images to ${DT_URL}"
+    echo ""
+
+    while IFS= read -r image; do
+      [ -z "$image" ] && continue
+
+      # Derive project name and version from image reference
+      # Strip registry host (anything before first / that contains a dot or colon)
+      IMAGE_PATH=$(echo "$image" | sed 's|^[^/]*\.[^/]*/||; s|^[^/]*:[0-9][^/]*/||')
+      PROJECT_NAME=$(echo "$IMAGE_PATH" | sed 's|@.*||' | cut -d: -f1)
+      PROJECT_VERSION=$(echo "$IMAGE_PATH" | grep -oP '(?<=:)[^@]+' | head -1)
+      [ -z "$PROJECT_VERSION" ] && PROJECT_VERSION="latest"
+
+      echo "--- [${PROJECT_NAME}:${PROJECT_VERSION}]"
+      echo "    image: ${image}"
+
+      # Generate CycloneDX SBOM via trivy
+      if ! trivy image \
+          --format cyclonedx \
+          --quiet \
+          --no-progress \
+          --timeout 3m \
+          --output /work/sbom.json \
+          "${image}" 2>/tmp/trivy-err.txt; then
+        ERR=$(head -1 /tmp/trivy-err.txt 2>/dev/null)
+        echo "    SCAN FAILED: ${ERR}"
+        FAILED=$((FAILED + 1))
+        continue
+      fi
+
+      if [ ! -s /work/sbom.json ]; then
+        echo "    SKIPPED: empty SBOM output"
+        SKIPPED=$((SKIPPED + 1))
+        continue
+      fi
+
+      # Upload to Dependency Track (auto-creates project on first upload)
+      HTTP_CODE=$(curl -sf \
+          -X POST "${DT_URL}/api/v1/bom" \
+          -H "X-Api-Key: ${DT_API_KEY}" \
+          -F "autoCreate=true" \
+          -F "projectName=${PROJECT_NAME}" \
+          -F "projectVersion=${PROJECT_VERSION}" \
+          -F "bom=@/work/sbom.json;type=application/json" \
+          -w "%{http_code}" -o /tmp/dt-resp.txt 2>&1) || HTTP_CODE="CURL_ERR"
+
+      case "${HTTP_CODE}" in
+        20*)
+          echo "    UPLOADED: HTTP ${HTTP_CODE}"
+          UPLOADED=$((UPLOADED + 1))
+          ;;
+        *)
+          BODY=$(cat /tmp/dt-resp.txt 2>/dev/null | head -1)
+          echo "    UPLOAD FAILED: HTTP ${HTTP_CODE} — ${BODY}"
+          FAILED=$((FAILED + 1))
+          ;;
+      esac
+
+    done < /work/images.txt
+
+    echo ""
+    echo "=== Done: ${UPLOADED} uploaded, ${FAILED} failed, ${SKIPPED} skipped (of ${TOTAL} total) ==="

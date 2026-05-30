@@ -1,0 +1,33 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: trivy-sbom-uploader
+  namespace: security
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: trivy-sbom-uploader
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "pods"
+      - "namespaces"
+    verbs:
+      - "get"
+      - "list"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: trivy-sbom-uploader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: trivy-sbom-uploader
+subjects:
+  - kind: ServiceAccount
+    name: trivy-sbom-uploader
+    namespace: security
