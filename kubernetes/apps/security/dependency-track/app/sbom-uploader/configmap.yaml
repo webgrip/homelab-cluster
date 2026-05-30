@@ -10,7 +10,6 @@ data:
     set -e
     echo "[init] Listing all running container images across cluster..."
 
-    # Parse JSON output with grep/sed (busybox-compatible; avoids jsonpath newline quirks)
     kubectl get pods -A -o json 2>/tmp/kubectl-err.txt \
       | grep '"image":' \
       | sed 's/.*"image": *"//; s/".*//' \
@@ -28,16 +27,15 @@ data:
 
   upload.sh: |-
     #!/bin/sh
-    set -e
+    # No set -e: batch script must not abort on individual scan/upload failures
 
-    # Install curl (trivy image has apk but not curl binary)
     if ! command -v curl >/dev/null 2>&1; then
       echo "[setup] Installing curl..."
       apk add --no-cache curl >/dev/null 2>&1
     fi
 
     if [ ! -f /work/images.txt ] || [ ! -s /work/images.txt ]; then
-      echo "ERROR: /work/images.txt not found or empty — init container may have failed"
+      echo "ERROR: /work/images.txt not found or empty"
       exit 1
     fi
 
@@ -50,7 +48,9 @@ data:
     echo ""
 
     while IFS= read -r image; do
-      [ -z "$image" ] && continue
+      if [ -z "$image" ]; then
+        continue
+      fi
 
       # Parse name and version from image ref (busybox awk/sed, no grep -P)
       IMAGE_NO_DIGEST=$(echo "$image" | cut -d@ -f1)
@@ -62,20 +62,25 @@ data:
       fi
       PROJECT_NAME=$(echo "$${IMAGE_PATH}" | cut -d: -f1)
       PROJECT_VERSION=$(echo "$${IMAGE_PATH}" | awk -F: '{if (NF>1) print $NF; else print "latest"}')
-      [ -z "$${PROJECT_VERSION}" ] && PROJECT_VERSION="latest"
+      if [ -z "$${PROJECT_VERSION}" ]; then
+        PROJECT_VERSION="latest"
+      fi
 
       echo "--- [$${PROJECT_NAME}:$${PROJECT_VERSION}]"
 
       # Generate CycloneDX SBOM via trivy
-      if ! trivy image \
-          --format cyclonedx \
-          --quiet \
-          --no-progress \
-          --timeout 3m \
-          --output /work/sbom.json \
-          "$image" 2>/tmp/trivy-err.txt; then
+      trivy image \
+        --format cyclonedx \
+        --quiet \
+        --no-progress \
+        --timeout 3m \
+        --output /work/sbom.json \
+        "$image" 2>/tmp/trivy-err.txt
+      TRIVY_RC=$?
+
+      if [ $${TRIVY_RC} -ne 0 ]; then
         ERR=$(head -1 /tmp/trivy-err.txt 2>/dev/null)
-        echo "    SCAN FAILED: $${ERR}"
+        echo "    SCAN FAILED (rc=$${TRIVY_RC}): $${ERR}"
         FAILED=$$(($${FAILED} + 1))
         continue
       fi
@@ -86,27 +91,33 @@ data:
         continue
       fi
 
-      # Upload to Dependency Track via multipart POST (auto-creates project)
+      # Upload to Dependency Track via multipart POST
       HTTP_CODE=$(curl -sf \
-          -X POST "$${DT_URL}/api/v1/bom" \
-          -H "X-Api-Key: $${DT_API_KEY}" \
-          -F "autoCreate=true" \
-          -F "projectName=$${PROJECT_NAME}" \
-          -F "projectVersion=$${PROJECT_VERSION}" \
-          -F "bom=@/work/sbom.json;type=application/json" \
-          -w "%{http_code}" -o /tmp/dt-resp.txt 2>&1) || HTTP_CODE="CURL_ERR"
+        -X POST "$${DT_URL}/api/v1/bom" \
+        -H "X-Api-Key: $${DT_API_KEY}" \
+        -F "autoCreate=true" \
+        -F "projectName=$${PROJECT_NAME}" \
+        -F "projectVersion=$${PROJECT_VERSION}" \
+        -F "bom=@/work/sbom.json;type=application/json" \
+        -w "%{http_code}" -o /tmp/dt-resp.txt 2>&1)
+      CURL_RC=$?
 
-      case "$${HTTP_CODE}" in
-        20*)
-          echo "    UPLOADED: HTTP $${HTTP_CODE}"
-          UPLOADED=$$(($${UPLOADED} + 1))
-          ;;
-        *)
-          BODY=$(head -1 /tmp/dt-resp.txt 2>/dev/null)
-          echo "    UPLOAD FAILED: HTTP $${HTTP_CODE} — $${BODY}"
-          FAILED=$$(($${FAILED} + 1))
-          ;;
-      esac
+      if [ $${CURL_RC} -ne 0 ] || [ -z "$${HTTP_CODE}" ]; then
+        echo "    UPLOAD FAILED: curl error $${CURL_RC}"
+        FAILED=$$(($${FAILED} + 1))
+      else
+        case "$${HTTP_CODE}" in
+          20*)
+            echo "    UPLOADED: HTTP $${HTTP_CODE}"
+            UPLOADED=$$(($${UPLOADED} + 1))
+            ;;
+          *)
+            BODY=$(head -1 /tmp/dt-resp.txt 2>/dev/null)
+            echo "    UPLOAD FAILED: HTTP $${HTTP_CODE} — $${BODY}"
+            FAILED=$$(($${FAILED} + 1))
+            ;;
+        esac
+      fi
 
     done < /work/images.txt
 
