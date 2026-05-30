@@ -1,0 +1,80 @@
+---
+# Polls the GUAC S3 bucket for CycloneDX SBOMs written by the trivy-sbom-uploader
+# CronJob and ingests them into the GUAC dependency graph.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: guac-s3-collector
+  namespace: security
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: guac
+      app.kubernetes.io/component: s3-collector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: guac
+        app.kubernetes.io/component: s3-collector
+    spec:
+      nodeSelector:
+        nodegroup: fringe
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: fringe
+          effect: NoSchedule
+      containers:
+        - name: s3-collector
+          image: ghcr.io/guacsec/guac:v1.0.1
+          command:
+            - sh
+            - -c
+            - >-
+              /opt/guac/guaccollect s3
+              --s3-url="${S3_ENDPOINT}"
+              --s3-bucket="${S3_GUAC_BUCKET}"
+              --s3-path=sboms/
+              --s3-region="${S3_REGION}"
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: security-s3
+                  key: S3_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: security-s3
+                  key: S3_SECRET_ACCESS_KEY
+            - name: S3_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: security-s3
+                  key: S3_ENDPOINT
+            - name: S3_GUAC_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: security-s3
+                  key: S3_GUAC_BUCKET
+            - name: S3_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: security-s3
+                  key: S3_REGION
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: guac-config
+              mountPath: /guac
+              readOnly: true
+      volumes:
+        - name: guac-config
+          configMap:
+            name: guac-cm
