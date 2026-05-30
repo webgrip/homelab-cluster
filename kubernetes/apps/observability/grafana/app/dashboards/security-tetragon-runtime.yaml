@@ -50,17 +50,17 @@ spec:
             "current": {}
           },
           {
-            "name": "workload",
+            "name": "node",
             "type": "query",
             "datasource": {
               "type": "prometheus",
               "uid": "${datasource}"
             },
-            "label": "Workload",
+            "label": "Node",
             "multi": true,
             "includeAll": true,
             "allValue": ".*",
-            "query": "label_values(tetragon_events_exported_total, workload)",
+            "query": "label_values(tetragon_events_exported_total, node)",
             "refresh": 2,
             "sort": 1,
             "current": {}
@@ -218,7 +218,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(tetragon_events_exported_total{workload=~\"$workload\"}[5m])) or on() vector(0)",
+              "expr": "sum(rate(tetragon_events_exported_total{node=~\"$node\"}[5m])) or on() vector(0)",
               "legendFormat": ""
             }
           ],
@@ -582,8 +582,8 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk(20, sum by (namespace, workload) (rate(tetragon_events_exported_total{workload=~\"$workload\"}[5m])))",
-              "legendFormat": "{{namespace}}/{{workload}}"
+              "expr": "topk(20, sum by (node) (rate(tetragon_events_exported_total{node=~\"$node\"}[5m])))",
+              "legendFormat": "{{node}}"
             }
           ],
           "options": {
@@ -896,7 +896,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (policy, policy_namespace, state) (tetragon_tracingpolicy_loaded)",
+              "expr": "sum by (node, state) (tetragon_tracingpolicy_loaded)",
               "format": "table",
               "instant": true
             }

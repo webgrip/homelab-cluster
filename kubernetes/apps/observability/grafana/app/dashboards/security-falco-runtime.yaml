@@ -116,7 +116,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(increase(falcosecurity_falco_rules_matches_total{rule_name=~\"$rule\",priority=~\"(?i)critical\"}[$__range])) or on() vector(0)",
+              "expr": "sum(increase(falcosecurity_falco_rules_matches_total{priority=\"2\"}[$__range])) or vector(0)",
               "legendFormat": "CRITICAL"
             }
           ],
@@ -172,7 +172,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(increase(falcosecurity_falco_rules_matches_total{rule_name=~\"$rule\",priority=~\"(?i)error\"}[$__range])) or on() vector(0)",
+              "expr": "sum(increase(falcosecurity_falco_rules_matches_total{priority=\"3\"}[$__range])) or vector(0)",
               "legendFormat": "ERROR"
             }
           ],
@@ -228,7 +228,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(increase(falcosecurity_falco_rules_matches_total{rule_name=~\"$rule\",priority=~\"(?i)warning\"}[$__range])) or on() vector(0)",
+              "expr": "sum(increase(falcosecurity_falco_rules_matches_total{priority=\"4\"}[$__range])) or vector(0)",
               "legendFormat": "WARNING"
             }
           ],
@@ -340,7 +340,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "max(falcosecurity_scap_n_drops_perc) or on() vector(0)",
+              "expr": "(sum(rate(falcosecurity_scap_n_drops_total[5m])) / sum(rate(falcosecurity_scap_n_evts_total[5m]))) * 100 or vector(0)",
               "legendFormat": "drop %"
             }
           ],
@@ -525,7 +525,19 @@ spec:
           },
           "fieldConfig": {
             "defaults": {
-              "decimals": 0
+              "decimals": 0,
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "2": { "text": "Critical", "color": "dark-red", "index": 0 },
+                    "3": { "text": "Error", "color": "orange", "index": 1 },
+                    "4": { "text": "Warning", "color": "dark-yellow", "index": 2 },
+                    "5": { "text": "Notice", "color": "blue", "index": 3 },
+                    "6": { "text": "Info", "color": "green", "index": 4 }
+                  }
+                }
+              ]
             },
             "overrides": []
           }
@@ -688,65 +700,30 @@ spec:
                       {
                         "type": "value",
                         "options": {
-                          "Critical": {
+                          "2": {
                             "text": "Critical",
                             "color": "dark-red",
                             "index": 0
                           },
-                          "CRITICAL": {
-                            "text": "CRITICAL",
-                            "color": "dark-red",
-                            "index": 1
-                          },
-                          "Error": {
+                          "3": {
                             "text": "Error",
                             "color": "orange",
-                            "index": 2
+                            "index": 1
                           },
-                          "ERROR": {
-                            "text": "ERROR",
-                            "color": "orange",
-                            "index": 3
-                          },
-                          "Warning": {
+                          "4": {
                             "text": "Warning",
                             "color": "dark-yellow",
-                            "index": 4
+                            "index": 2
                           },
-                          "WARNING": {
-                            "text": "WARNING",
-                            "color": "dark-yellow",
-                            "index": 5
-                          },
-                          "Notice": {
+                          "5": {
                             "text": "Notice",
                             "color": "blue",
-                            "index": 6
+                            "index": 3
                           },
-                          "NOTICE": {
-                            "text": "NOTICE",
-                            "color": "blue",
-                            "index": 7
-                          },
-                          "Informational": {
-                            "text": "Informational",
+                          "6": {
+                            "text": "Info",
                             "color": "green",
-                            "index": 8
-                          },
-                          "INFO": {
-                            "text": "INFO",
-                            "color": "green",
-                            "index": 9
-                          },
-                          "Debug": {
-                            "text": "Debug",
-                            "color": "semi-dark-blue",
-                            "index": 10
-                          },
-                          "DEBUG": {
-                            "text": "DEBUG",
-                            "color": "semi-dark-blue",
-                            "index": 11
+                            "index": 4
                           }
                         }
                       }
@@ -879,7 +856,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(falcosecurity_falco_num_evts_total[5m])) or on() vector(0)",
+              "expr": "sum(rate(falcosecurity_scap_n_evts_total[5m])) or on() vector(0)",
               "legendFormat": "events/s"
             }
           ],
@@ -1002,7 +979,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "max(falcosecurity_scap_n_drops_perc) or on() vector(0)",
+              "expr": "(sum(rate(falcosecurity_scap_n_drops_total[5m])) / sum(rate(falcosecurity_scap_n_evts_total[5m]))) * 100 or vector(0)",
               "legendFormat": "drop %"
             }
           ],
