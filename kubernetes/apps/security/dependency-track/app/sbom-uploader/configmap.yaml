@@ -80,27 +80,23 @@ data:
         continue
       fi
 
-      # Upload to Dependency Track (auto-creates project on first upload)
-      HTTP_CODE=$(curl -sf \
-          -X POST "$${DT_URL}/api/v1/bom" \
-          -H "X-Api-Key: $${DT_API_KEY}" \
-          -F "autoCreate=true" \
-          -F "projectName=$${PROJECT_NAME}" \
-          -F "projectVersion=$${PROJECT_VERSION}" \
-          -F "bom=@/work/sbom.json;type=application/json" \
-          -w "%{http_code}" -o /tmp/dt-resp.txt 2>&1) || HTTP_CODE="CURL_ERR"
+      # Base64-encode BOM and POST to DT using PUT /api/v1/bom (JSON body, no curl needed)
+      BOM_B64=$(base64 /work/sbom.json | tr -d '\n')
+      printf '{"projectName":"%s","projectVersion":"%s","autoCreate":true,"bom":"%s"}' \
+        "$${PROJECT_NAME}" "$${PROJECT_VERSION}" "$${BOM_B64}" > /tmp/dt-req.json
 
-      case "$${HTTP_CODE}" in
-        20*)
-          echo "    UPLOADED: HTTP $${HTTP_CODE}"
-          UPLOADED=$$(($${UPLOADED} + 1))
-          ;;
-        *)
-          BODY=$(cat /tmp/dt-resp.txt 2>/dev/null | head -1)
-          echo "    UPLOAD FAILED: HTTP $${HTTP_CODE} — $${BODY}"
-          FAILED=$$(($${FAILED} + 1))
-          ;;
-      esac
+      if wget -q -O /tmp/dt-resp.txt \
+          --header="X-Api-Key: $${DT_API_KEY}" \
+          --header="Content-Type: application/json" \
+          --post-file=/tmp/dt-req.json \
+          "$${DT_URL}/api/v1/bom" 2>/tmp/wget-err.txt; then
+        echo "    UPLOADED"
+        UPLOADED=$$(($${UPLOADED} + 1))
+      else
+        ERR=$(cat /tmp/wget-err.txt 2>/dev/null | tail -1)
+        echo "    UPLOAD FAILED: $${ERR}"
+        FAILED=$$(($${FAILED} + 1))
+      fi
 
     done < /work/images.txt
 
