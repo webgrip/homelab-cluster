@@ -19,12 +19,12 @@ data:
 
     if [ ! -s /work/images.txt ]; then
       ERR=$(cat /tmp/kubectl-err.txt 2>/dev/null | head -1)
-      echo "[init] ERROR: images.txt is empty. kubectl stderr: ${ERR}"
+      echo "[init] ERROR: images.txt is empty. kubectl stderr: $${ERR}"
       exit 1
     fi
 
     COUNT=$(wc -l < /work/images.txt | tr -d ' \t')
-    echo "[init] Found ${COUNT} unique images"
+    echo "[init] Found $${COUNT} unique images"
 
   upload.sh: |-
     #!/bin/sh
@@ -40,7 +40,7 @@ data:
     SKIPPED=0
     TOTAL=$(wc -l < /work/images.txt | tr -d ' \t')
 
-    echo "Starting SBOM upload for ${TOTAL} images to ${DT_URL}"
+    echo "Starting SBOM upload for $${TOTAL} images to $${DT_URL}"
     echo ""
 
     while IFS= read -r image; do
@@ -48,17 +48,17 @@ data:
 
       # Parse name and version from image ref (busybox awk/sed, no grep -P)
       IMAGE_NO_DIGEST=$(echo "$image" | cut -d@ -f1)
-      FIRST_SEG=$(echo "$IMAGE_NO_DIGEST" | cut -d/ -f1)
-      if echo "$FIRST_SEG" | grep -qE '\.|:'; then
-        IMAGE_PATH=$(echo "$IMAGE_NO_DIGEST" | cut -d/ -f2-)
+      FIRST_SEG=$(echo "$${IMAGE_NO_DIGEST}" | cut -d/ -f1)
+      if echo "$${FIRST_SEG}" | grep -qE '\.|:'; then
+        IMAGE_PATH=$(echo "$${IMAGE_NO_DIGEST}" | cut -d/ -f2-)
       else
-        IMAGE_PATH=$IMAGE_NO_DIGEST
+        IMAGE_PATH=$${IMAGE_NO_DIGEST}
       fi
-      PROJECT_NAME=$(echo "$IMAGE_PATH" | cut -d: -f1)
-      PROJECT_VERSION=$(echo "$IMAGE_PATH" | awk -F: '{if (NF>1) print $NF; else print "latest"}')
-      [ -z "$PROJECT_VERSION" ] && PROJECT_VERSION="latest"
+      PROJECT_NAME=$(echo "$${IMAGE_PATH}" | cut -d: -f1)
+      PROJECT_VERSION=$(echo "$${IMAGE_PATH}" | awk -F: '{if (NF>1) print $NF; else print "latest"}')
+      [ -z "$${PROJECT_VERSION}" ] && PROJECT_VERSION="latest"
 
-      echo "--- [${PROJECT_NAME}:${PROJECT_VERSION}]"
+      echo "--- [$${PROJECT_NAME}:$${PROJECT_VERSION}]"
 
       # Generate CycloneDX SBOM via trivy
       if ! trivy image \
@@ -67,42 +67,42 @@ data:
           --no-progress \
           --timeout 3m \
           --output /work/sbom.json \
-          "${image}" 2>/tmp/trivy-err.txt; then
+          "$image" 2>/tmp/trivy-err.txt; then
         ERR=$(head -1 /tmp/trivy-err.txt 2>/dev/null)
-        echo "    SCAN FAILED: ${ERR}"
-        FAILED=$((FAILED + 1))
+        echo "    SCAN FAILED: $${ERR}"
+        FAILED=$$(($${FAILED} + 1))
         continue
       fi
 
       if [ ! -s /work/sbom.json ]; then
         echo "    SKIPPED: empty SBOM output"
-        SKIPPED=$((SKIPPED + 1))
+        SKIPPED=$$(($${SKIPPED} + 1))
         continue
       fi
 
       # Upload to Dependency Track (auto-creates project on first upload)
       HTTP_CODE=$(curl -sf \
-          -X POST "${DT_URL}/api/v1/bom" \
-          -H "X-Api-Key: ${DT_API_KEY}" \
+          -X POST "$${DT_URL}/api/v1/bom" \
+          -H "X-Api-Key: $${DT_API_KEY}" \
           -F "autoCreate=true" \
-          -F "projectName=${PROJECT_NAME}" \
-          -F "projectVersion=${PROJECT_VERSION}" \
+          -F "projectName=$${PROJECT_NAME}" \
+          -F "projectVersion=$${PROJECT_VERSION}" \
           -F "bom=@/work/sbom.json;type=application/json" \
           -w "%{http_code}" -o /tmp/dt-resp.txt 2>&1) || HTTP_CODE="CURL_ERR"
 
-      case "${HTTP_CODE}" in
+      case "$${HTTP_CODE}" in
         20*)
-          echo "    UPLOADED: HTTP ${HTTP_CODE}"
-          UPLOADED=$((UPLOADED + 1))
+          echo "    UPLOADED: HTTP $${HTTP_CODE}"
+          UPLOADED=$$(($${UPLOADED} + 1))
           ;;
         *)
           BODY=$(cat /tmp/dt-resp.txt 2>/dev/null | head -1)
-          echo "    UPLOAD FAILED: HTTP ${HTTP_CODE} — ${BODY}"
-          FAILED=$((FAILED + 1))
+          echo "    UPLOAD FAILED: HTTP $${HTTP_CODE} — $${BODY}"
+          FAILED=$$(($${FAILED} + 1))
           ;;
       esac
 
     done < /work/images.txt
 
     echo ""
-    echo "=== Done: ${UPLOADED} uploaded, ${FAILED} failed, ${SKIPPED} skipped (of ${TOTAL} total) ==="
+    echo "=== Done: $${UPLOADED} uploaded, $${FAILED} failed, $${SKIPPED} skipped (of $${TOTAL} total) ==="
