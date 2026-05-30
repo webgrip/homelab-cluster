@@ -101,9 +101,14 @@ spec:
       # limit for large images. Target/Class/PackagePath/PackageType are kept because
       # dashboards group by those labels.
       additionalVulnerabilityReportFields: "Target,Class,PackagePath,PackageType"
-      severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+      # MEDIUM+ only — LOW/UNKNOWN are bulk noise that inflate scan JSON past the 2 MiB
+      # gRPC message limit and the 3 MiB etcd CRD limit for complex images.
+      severity: MEDIUM,HIGH,CRITICAL
       slow: true
-      ignoreUnfixed: false
+      # Only report CVEs that have a published fix available. Unfixed CVEs represent
+      # upstream vendor risk with no actionable remediation path; they balloon report
+      # sizes and make dashboards unreadable. Re-enable if unfixed tracking is needed.
+      ignoreUnfixed: true
       offlineScan: false
       timeout: 10m0s
       resources:
