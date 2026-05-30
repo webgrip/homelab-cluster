@@ -118,7 +118,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(trivy_cluster_compliance{title=~\".*[Cc][Ii][Ss].*\",status=\"Fail\"}) or on() vector(0)"
+              "expr": "sum(trivy_cluster_compliance{title=~\".*CIS.*\",status=\"Fail\"}) or on() vector(0)"
             }
           ],
           "options": {
@@ -177,7 +177,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(trivy_cluster_compliance{title=~\".*[Nn][Ss][Aa].*\",status=\"Fail\"}) or on() vector(0)"
+              "expr": "sum(trivy_cluster_compliance{title=~\".*NSA.*\",status=\"Fail\"}) or on() vector(0)"
             }
           ],
           "options": {
@@ -567,7 +567,7 @@ spec:
               "refId": "A",
               "instant": true,
               "format": "table",
-              "expr": "sum by (status) (trivy_cluster_compliance)",
+              "expr": "sum by (title, status) (trivy_cluster_compliance)",
               "legendFormat": "{{status}}"
             }
           ],
@@ -791,109 +791,6 @@ spec:
           }
         },
         {
-          "id": 14,
-          "type": "timeseries",
-          "title": "Infra Assessment Findings by Severity",
-          "gridPos": {
-            "h": 9,
-            "w": 8,
-            "x": 16,
-            "y": 28
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum by (severity) (trivy_resource_infraassessments{namespace=~\"$namespace\"})",
-              "legendFormat": "{{severity}}"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "right",
-              "calcs": [
-                "lastNotNull"
-              ]
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "custom": {
-                "drawStyle": "line",
-                "fillOpacity": 15,
-                "lineWidth": 2,
-                "showPoints": "never"
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Critical"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#F2495C"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "High"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#FF9830"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Medium"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#FADE2A"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Low"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#5794F2"
-                    }
-                  }
-                ]
-              }
-            ]
-          }
-        },
-        {
           "id": 15,
           "type": "row",
           "title": "Namespace Compliance Scorecard",
@@ -908,7 +805,7 @@ spec:
         {
           "id": 16,
           "type": "table",
-          "title": "Per-Namespace Security Posture (Config + RBAC + Infra Critical/High)",
+          "title": "Per-Namespace Security Posture (Config + RBAC Critical/High)",
           "gridPos": {
             "h": 10,
             "w": 24,
@@ -929,12 +826,6 @@ spec:
             {
               "refId": "B",
               "expr": "sum by (namespace) (trivy_role_rbacassessments{namespace=~\"$namespace\",severity=~\"Critical|High\"})",
-              "instant": true,
-              "format": "table"
-            },
-            {
-              "refId": "C",
-              "expr": "sum by (namespace) (trivy_resource_infraassessments{namespace=~\"$namespace\",severity=~\"Critical|High\"})",
               "instant": true,
               "format": "table"
             }
@@ -959,8 +850,7 @@ spec:
                 "renameByName": {
                   "namespace": "Namespace",
                   "Value #A": "Config Crit/High",
-                  "Value #B": "RBAC Crit/High",
-                  "Value #C": "Infra Crit/High"
+                  "Value #B": "RBAC Crit/High"
                 },
                 "excludeByName": {
                   "Time": true
