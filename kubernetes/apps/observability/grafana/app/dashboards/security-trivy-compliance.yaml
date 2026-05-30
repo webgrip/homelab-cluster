@@ -15,29 +15,967 @@ spec:
       "title": "Trivy / Compliance Posture",
       "uid": "security-trivy-compliance",
       "timezone": "browser",
-      "tags": ["security", "trivy", "compliance", "cis", "nsa", "pss"],
-      "description": "Framework-oriented view of Trivy Operator compliance posture across CIS, NSA/CISA, and Pod Security Standards signals.",
+      "tags": [
+        "security",
+        "trivy",
+        "compliance",
+        "cis",
+        "nsa",
+        "pss"
+      ],
+      "description": "Framework-level compliance posture: CIS/NSA/PSS controls, config/RBAC drift, and per-namespace scorecard.",
       "editable": false,
       "graphTooltip": 1,
-      "refresh": "1m",
-      "time": {"from": "now-7d", "to": "now"},
-      "templating": {
-        "list": [
-          {"name": "datasource", "type": "datasource", "pluginId": "prometheus", "label": "Datasource", "hide": 0, "current": {}},
-          {"name": "namespace", "type": "query", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "label": "Namespace", "multi": true, "includeAll": true, "allValue": ".*", "query": "label_values(trivy_image_vulnerabilities, namespace)", "refresh": 2, "sort": 1, "current": {}}
+      "refresh": "5m",
+      "time": {
+        "from": "now-7d",
+        "to": "now"
+      },
+      "timepicker": {
+        "refresh_intervals": [
+          "1m",
+          "5m",
+          "15m"
+        ],
+        "time_options": [
+          "24h",
+          "2d",
+          "7d",
+          "30d"
         ]
       },
-      "annotations": {"list": [{"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard"}]},
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "pluginId": "prometheus",
+            "label": "Datasource",
+            "hide": 0,
+            "current": {}
+          },
+          {
+            "name": "namespace",
+            "type": "query",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${datasource}"
+            },
+            "label": "Namespace",
+            "multi": true,
+            "includeAll": true,
+            "allValue": ".*",
+            "query": "label_values(trivy_resource_configaudits, namespace)",
+            "refresh": 2,
+            "sort": 1,
+            "current": {}
+          }
+        ]
+      },
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
       "panels": [
-        {"id": 1, "type": "row", "title": "Framework status", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}, "collapsed": false},
-        {"id": 2, "type": "stat", "title": "Failing compliance controls", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 1}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum(trivy_cluster_compliance{status=\"Fail\"}) or on() vector(0)", "legendFormat": "fail"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "orange", "value": 1}, {"color": "red", "value": 5}]}}, "overrides": []}},
-        {"id": 3, "type": "stat", "title": "Passing compliance controls", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 1}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum(trivy_cluster_compliance{status=\"Pass\"}) or on() vector(0)", "legendFormat": "pass"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}},
-        {"id": 4, "type": "stat", "title": "Critical config findings", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 1}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum(trivy_resource_configaudits{namespace=~\"$namespace\", severity=\"Critical\"}) or on() vector(0)", "legendFormat": "critical"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "orange", "value": 1}, {"color": "red", "value": 10}]}}, "overrides": []}},
-        {"id": 5, "type": "stat", "title": "High/critical RBAC findings", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 1}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum(trivy_role_rbacassessments{namespace=~\"$namespace\", severity=~\"Critical|High\"}) or on() vector(0)", "legendFormat": "rbac"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "orange", "value": 1}, {"color": "red", "value": 10}]}}, "overrides": []}},
-        {"id": 6, "type": "barchart", "title": "Compliance checks by control and status", "gridPos": {"h": 9, "w": 12, "x": 0, "y": 5}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum by (title, status) (trivy_cluster_compliance)", "legendFormat": "{{title}} {{status}}"}], "options": {"legend": {"displayMode": "list", "placement": "bottom"}}, "fieldConfig": {"defaults": {}, "overrides": []}},
-        {"id": 7, "type": "timeseries", "title": "Config, RBAC and infra findings by severity", "gridPos": {"h": 9, "w": 12, "x": 12, "y": 5}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "sum by (severity) (trivy_resource_configaudits{namespace=~\"$namespace\"})", "legendFormat": "config {{severity}}"}, {"refId": "B", "expr": "sum by (severity) (trivy_role_rbacassessments{namespace=~\"$namespace\"})", "legendFormat": "rbac {{severity}}"}, {"refId": "C", "expr": "sum by (severity) (trivy_resource_infraassessments{namespace=~\"$namespace\"})", "legendFormat": "infra {{severity}}"}], "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}}, "fieldConfig": {"defaults": {"custom": {"drawStyle": "line", "fillOpacity": 15, "lineWidth": 2}}, "overrides": []}},
-        {"id": 8, "type": "table", "title": "Compliance controls", "gridPos": {"h": 9, "w": 24, "x": 0, "y": 14}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "format": "table", "instant": true, "expr": "sum by (title, status) (trivy_cluster_compliance)"}], "options": {"showHeader": true}, "fieldConfig": {"defaults": {}, "overrides": []}},
-        {"id": 9, "type": "barchart", "title": "Top namespaces with high-severity control drift", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 23}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"refId": "A", "expr": "topk(10, sum by (namespace) (trivy_resource_configaudits{namespace=~\"$namespace\", severity=~\"Critical|High\"}))", "legendFormat": "config {{namespace}}"}, {"refId": "B", "expr": "topk(10, sum by (namespace) (trivy_role_rbacassessments{namespace=~\"$namespace\", severity=~\"Critical|High\"}))", "legendFormat": "rbac {{namespace}}"}, {"refId": "C", "expr": "topk(10, sum by (namespace) (trivy_resource_infraassessments{namespace=~\"$namespace\", severity=~\"Critical|High\"}))", "legendFormat": "infra {{namespace}}"}], "options": {"legend": {"displayMode": "list", "placement": "bottom"}}, "fieldConfig": {"defaults": {}, "overrides": []}},
-        {"id": 10, "type": "text", "title": "Framework coverage", "gridPos": {"h": 7, "w": 24, "x": 0, "y": 31}, "options": {"mode": "markdown", "content": "Trivy Operator is currently configured to score the cluster against **CIS Kubernetes 1.23**, **NSA Kubernetes Hardening 1.0**, and **Pod Security Standards baseline/restricted**. Use this view for framework-level reporting, and the primary Trivy dashboard for workload-level vulnerability, SBOM, and operator-health triage."}}
+        {
+          "id": 1,
+          "type": "row",
+          "title": "Framework Scorecard",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "collapsed": false
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "CIS Controls Failing",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(trivy_cluster_compliance{title=~\".*[Cc][Ii][Ss].*\",status=\"Fail\"}) or on() vector(0)"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 5
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "NSA Controls Failing",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(trivy_cluster_compliance{title=~\".*[Nn][Ss][Aa].*\",status=\"Fail\"}) or on() vector(0)"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 5
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "All Controls Failing",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 8,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(trivy_cluster_compliance{status=\"Fail\"}) or on() vector(0)"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 10
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 5,
+          "type": "stat",
+          "title": "Total Controls Passing",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 12,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(trivy_cluster_compliance{status=\"Pass\"}) or on() vector(0)"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 6,
+          "type": "stat",
+          "title": "Config Findings Critical",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 16,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(trivy_resource_configaudits{namespace=~\"$namespace\",severity=\"Critical\"}) or on() vector(0)"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 10
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 7,
+          "type": "stat",
+          "title": "RBAC Critical Findings",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 20,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(trivy_role_rbacassessments{namespace=~\"$namespace\",severity=~\"Critical|High\"}) or on() vector(0)"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 10
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 8,
+          "type": "row",
+          "title": "Control Breakdown",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 5
+          },
+          "collapsed": false
+        },
+        {
+          "id": 9,
+          "type": "table",
+          "title": "Failing Compliance Controls",
+          "gridPos": {
+            "h": 12,
+            "w": 24,
+            "x": 0,
+            "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (title, description, status) (trivy_cluster_compliance{status=\"Fail\"})",
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "options": {
+            "showHeader": true
+          },
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "title": "Control",
+                  "description": "Description",
+                  "status": "Status",
+                  "Value": ""
+                },
+                "excludeByName": {
+                  "Time": true,
+                  "Value": true
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Status"
+                },
+                "properties": [
+                  {
+                    "id": "custom.displayMode",
+                    "value": "color-text"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "Fail": {
+                            "text": "❌ Fail",
+                            "color": "#F2495C",
+                            "index": 0
+                          },
+                          "Warn": {
+                            "text": "⚠ Warn",
+                            "color": "#FF9830",
+                            "index": 1
+                          },
+                          "Pass": {
+                            "text": "✅ Pass",
+                            "color": "#73BF69",
+                            "index": 2
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 10,
+          "type": "barchart",
+          "title": "Compliance Pass / Fail / Warn by Framework",
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 18
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "instant": true,
+              "format": "table",
+              "expr": "sum by (status) (trivy_cluster_compliance)",
+              "legendFormat": "{{status}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "xTickLabelRotation": -30
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Fail"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#F2495C"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Pass"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#73BF69"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Warn"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FF9830"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 11,
+          "type": "row",
+          "title": "Drift Over Time",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 27
+          },
+          "collapsed": false
+        },
+        {
+          "id": 12,
+          "type": "timeseries",
+          "title": "Config Audit Findings Trend (Critical+High) by Namespace",
+          "gridPos": {
+            "h": 9,
+            "w": 8,
+            "x": 0,
+            "y": 28
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (namespace) (trivy_resource_configaudits{namespace=~\"$namespace\",severity=~\"Critical|High\"})",
+              "legendFormat": "{{namespace}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 13,
+          "type": "timeseries",
+          "title": "RBAC Assessment Drift by Severity",
+          "gridPos": {
+            "h": 9,
+            "w": 8,
+            "x": 8,
+            "y": 28
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (severity) (trivy_role_rbacassessments{namespace=~\"$namespace\"})",
+              "legendFormat": "{{severity}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "showPoints": "never"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Critical"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#F2495C"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "High"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FF9830"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Medium"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FADE2A"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Low"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#5794F2"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 14,
+          "type": "timeseries",
+          "title": "Infra Assessment Findings by Severity",
+          "gridPos": {
+            "h": 9,
+            "w": 8,
+            "x": 16,
+            "y": 28
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (severity) (trivy_resource_infraassessments{namespace=~\"$namespace\"})",
+              "legendFormat": "{{severity}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "showPoints": "never"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Critical"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#F2495C"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "High"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FF9830"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Medium"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FADE2A"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Low"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#5794F2"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 15,
+          "type": "row",
+          "title": "Namespace Compliance Scorecard",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 37
+          },
+          "collapsed": false
+        },
+        {
+          "id": 16,
+          "type": "table",
+          "title": "Per-Namespace Security Posture (Config + RBAC + Infra Critical/High)",
+          "gridPos": {
+            "h": 10,
+            "w": 24,
+            "x": 0,
+            "y": 38
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (namespace) (trivy_resource_configaudits{namespace=~\"$namespace\",severity=~\"Critical|High\"})",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "sum by (namespace) (trivy_role_rbacassessments{namespace=~\"$namespace\",severity=~\"Critical|High\"})",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "expr": "sum by (namespace) (trivy_resource_infraassessments{namespace=~\"$namespace\",severity=~\"Critical|High\"})",
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "sortBy": [
+              {
+                "displayName": "Config Crit/High",
+                "desc": true
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "namespace": "Namespace",
+                  "Value #A": "Config Crit/High",
+                  "Value #B": "RBAC Crit/High",
+                  "Value #C": "Infra Crit/High"
+                },
+                "excludeByName": {
+                  "Time": true
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": []
+          }
+        }
       ]
     }
