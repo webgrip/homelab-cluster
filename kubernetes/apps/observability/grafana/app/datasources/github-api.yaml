@@ -20,14 +20,8 @@ spec:
       httpHeaderName1: Accept
       httpHeaderName2: X-GitHub-Api-Version
     secureJsonData:
+      # Bearer token injected by Flux substituteFrom (grafana-github-api secret, key: token).
+      bearerToken: "${token}"
       # Static API version headers (not actually secret, but Infinity stores them in secureJsonData).
       httpHeaderValue1: "application/vnd.github+json"
       httpHeaderValue2: "2022-11-28"
-  # Bearer token injected from SOPS-managed secret at runtime via valuesFrom.
-  valuesFrom:
-    - targetPath: secureJsonData.bearerToken
-      valueFrom:
-        secretKeyRef:
-          name: grafana-github-api
-          key: token
-          optional: true
