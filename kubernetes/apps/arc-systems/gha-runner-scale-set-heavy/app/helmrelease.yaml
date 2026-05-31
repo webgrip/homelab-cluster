@@ -2,11 +2,11 @@
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: gha-runner-scale-set-soyo
+  name: gha-runner-scale-set
 spec:
   chartRef:
     kind: OCIRepository
-    name: gha-runner-scale-set-soyo
+    name: gha-runner-scale-set
   dependsOn:
     - name: actions-runner-controller
       namespace: arc-systems
@@ -29,27 +29,28 @@ spec:
       namespace: arc-systems
       name: actions-runner-controller-gha-rs-controller
     githubConfigSecret: gha-runner-scale-set-secrets
-    minRunners: 1
-    maxRunners: 3
+    minRunners: 0
+    maxRunners: 2
     scaleSetLabels:
       - arc-runner-set
       - arc
       - homelab
-      - normal
       - fringe
+      - heavy
+      - dind
     runnerGroup: Default
     runnerScaleSetName: arc-runner-set
     resourceMeta:
       autoscalingListener:
         labels:
           app.kubernetes.io/component: listener
-          homelab.webgrip.nl/runner-pool: fringe
+          homelab.webgrip.nl/runner-pool: heavy
         annotations:
           homelab.webgrip.nl/arc-0-14-2-workaround: "true"
       ephemeralRunnerSet:
         labels:
           app.kubernetes.io/component: ephemeral-runner-set
-          homelab.webgrip.nl/runner-pool: fringe
+          homelab.webgrip.nl/runner-pool: heavy
         annotations:
           homelab.webgrip.nl/arc-0-14-2-workaround: "true"
     listenerMetrics:
@@ -114,7 +115,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/component: runner
-          homelab.webgrip.nl/runner-pool: fringe
+          homelab.webgrip.nl/runner-pool: heavy
         annotations:
           prometheus.io/scrape: "true"
           prometheus.io/path: "/metrics"
@@ -122,30 +123,81 @@ spec:
       spec:
         serviceAccountName: arc-runner-set
         nodeSelector:
-          nodegroup: soyo
+          nodegroup: fringe
+        tolerations:
+          - key: dedicated
+            operator: Equal
+            value: fringe
+            effect: NoSchedule
+        initContainers:
+          - name: init-dind-externals
+            image: ghcr.io/webgrip/github-runner:1.2.2@sha256:7b7a5f4746460b33d4274838752ca8bcb3a90298efdf4dd3ee87f0c01a2cad1a
+            command:
+              - "cp"
+              - "-r"
+              - "-v"
+              - "/home/runner/externals/."
+              - "/home/runner/tmpDir/"
+            volumeMounts:
+              - name: dind-externals
+                mountPath: /home/runner/tmpDir
         containers:
           - name: runner
             image: ghcr.io/webgrip/github-runner:1.2.2@sha256:7b7a5f4746460b33d4274838752ca8bcb3a90298efdf4dd3ee87f0c01a2cad1a
             resources:
               requests:
-                cpu: 250m
-                memory: 512Mi
-              limits:
                 cpu: "1"
                 memory: 2Gi
+              limits:
+                cpu: "2"
+                memory: 4Gi
             command:
               - "/home/runner/run.sh"
+            env:
+              - name: DOCKER_HOST
+                value: unix:///var/run/docker.sock
             volumeMounts:
               - name: work
                 mountPath: /home/runner/_work
+              - name: dind-sock
+                mountPath: /var/run
+          - name: dind
+            image: docker:dind@sha256:6b9cd914eb9c6b342c040a49a27a5eb3804453bae6ecc90f7ff96133595a95e8
+            args:
+              - dockerd
+              - --host=unix:///var/run/docker.sock
+              - --group=$(DOCKER_GROUP_GID)
+            resources:
+              requests:
+                cpu: "2"
+                memory: 4Gi
+              limits:
+                cpu: "4"
+                memory: 8Gi
+            env:
+              - name: DOCKER_GROUP_GID
+                value: "123"
+            securityContext:
+              privileged: true
+            volumeMounts:
+              - name: work
+                mountPath: /home/runner/_work
+              - name: dind-sock
+                mountPath: /var/run
+              - name: dind-externals
+                mountPath: /home/runner/externals
         volumes:
           - name: work
+            emptyDir: {}
+          - name: dind-sock
+            emptyDir: {}
+          - name: dind-externals
             emptyDir: {}
     listenerTemplate:
       metadata:
         labels:
           app.kubernetes.io/component: listener
-          homelab.webgrip.nl/runner-pool: fringe
+          homelab.webgrip.nl/runner-pool: heavy
         annotations:
           prometheus.io/scrape: "true"
           prometheus.io/path: "/metrics"
