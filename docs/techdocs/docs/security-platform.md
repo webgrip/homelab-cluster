@@ -118,6 +118,16 @@ These are not replacements for Kyverno or Trivy. They fill different jobs:
 - trust-manager = trust-bundle lifecycle and distribution
 - OpenVEX = machine-readable exploitability context
 
+**Both GUAC and DT are now fully wired.** See [Supply Chain Intelligence Pipeline](./supply-chain-pipeline.md) for the complete data flow, including how CI attestations and cluster runtime SBOMs converge.
+
+Key operational facts:
+
+- **Daily SBOM upload** (`trivy-sbom-uploader`, 02:00 UTC): scans all running images, pushes CycloneDX SBOMs to both DT and the GUAC S3 bucket.
+- **DT policy engine**: 10 IaC-managed policies evaluate every SBOM upload. Currently showing ~3,900 violations (FAIL/WARN/INFO) across the portfolio.
+- **DT metrics exporter**: Python Deployment in `security` namespace polls DT REST API every 5m, exposes `dt_portfolio_*` Prometheus metrics.
+- **GUAC S3 collector** (`guac-s3-collector`, 05:00 UTC CronJob): ingests runtime SBOMs into the GUAC graph after DT uploads complete.
+- **GUAC OCI collector**: continuously polls GHCR for Cosign attestations (build-time SBOMs, SLSA provenance) on `ghcr.io/webgrip/*` images.
+
 ### 5. Falco and Tetragon as the runtime layer
 
 This cluster now runs both **Falco** and **Tetragon** in the `security` namespace, and they are intentionally complementary rather than redundant.
@@ -150,6 +160,8 @@ Dashboards now live in the folders of the specific tools instead of being dumped
 
 Current tool-specific coverage includes:
 
+- **Security / SOC Command Center** (cross-concern overview)
+- **Security / Supply Chain (Dependency-Track)** — portfolio CVEs, policy violations, risk score trends
 - **Kyverno / 10 Policy Insights**
 - **Kyverno / 20 Policy Violations**
 - **Kyverno / 30 RBAC and Least Privilege**
@@ -161,7 +173,7 @@ Current tool-specific coverage includes:
 - **cert-manager / Certificates**
 - **Renovate** operator visibility
 
-Prometheus alert rules were also added for Trivy, Falco, Tetragon, and Kyverno so this does not rely on human dashboard watching.
+**Alerting**: Three `GrafanaAlertRuleGroup` CRDs provide 16 SLO rules across security, platform, and observability concerns. Rules evaluate against Prometheus and fire into Grafana's alerting system. Discord has been removed — contact points should be configured in Grafana UI (Alerting → Contact Points). See [Supply Chain Intelligence Pipeline](./supply-chain-pipeline.md) for the full SLO rule list.
 
 ## Complete feature inventory at a glance
 
@@ -182,9 +194,10 @@ If we flatten the stack into a practical inventory, the cluster currently has th
 | **Compliance** | Trivy cluster compliance mapped to CIS, NSA, and PSS specs | Gives a framework-oriented posture view instead of a random list of findings. |
 | **Runtime detection** | Falco with metrics, Loki-friendly JSON output, alerting | Surfaces suspicious runtime behavior with a mature rules ecosystem. |
 | **Runtime telemetry** | Tetragon process and eBPF telemetry with metadata enrichment | Gives lower-level process visibility and investigation context. |
-| **Observability** | Policy Reporter, Prometheus, Grafana dashboards, PrometheusRules | Makes the security controls operational instead of invisible background agents. |
+| **Observability** | Policy Reporter, Prometheus, Grafana dashboards, 16 SLO PrometheusRules via GrafanaAlertRuleGroup | Makes the security controls operational instead of invisible background agents. |
 | **Maintenance** | Renovate | Security posture degrades quickly without dependable update hygiene. |
 | **PKI and trust distribution** | cert-manager, trust-manager | Stable certificate automation plus managed trust-bundle distribution is foundational for secure service exposure and identity. |
+| **Supply-chain pipeline** | Trivy → DT + GUAC S3, OCI collector → GUAC graph, 10 IaC DT policies, DT metrics exporter | Continuous SBOM-to-graph pipeline: every running image lands in DT (policy/CVE) and GUAC (relationship queries) daily. |
 
 That is already a meaningful “enterprise-parity” footprint because it covers **preventive**, **detective**, **assurance**, and **operational** controls in a single GitOps workflow.
 
@@ -438,13 +451,13 @@ The stack is already serious, but several open source additions would make it st
 
 ### Best next steps
 
-1. **GUAC** for graphing the relationships between provenance, SBOMs, vulnerabilities, and attestations.
-2. **Dependency-Track** if you want richer SBOM lifecycle management and policy outside Kubernetes admission.
-3. **trust-manager** to standardize trust bundles and certificate distribution across workloads.
-4. **Falco Talon** if you want response automation, not just detection.
-5. **OpenVEX or VEX-aware tooling** to distinguish exploitable versus non-exploitable vulnerabilities.
-6. **Kubescape** if you want another Kubernetes posture lens to compare against Trivy and Kyverno results.
-7. **Headlamp or Backstage security scorecards** if you want a more productized control-plane UI for non-operators.
+1. **Complete CI attestation publishing** in `webgrip/infrastructure` — Cosign sign + SLSA provenance + CycloneDX attestation per release. The cluster is ready; CI is the gap. See [Supply Chain Intelligence Pipeline](./supply-chain-pipeline.md#gaps-and-what-still-needs-to-be-done).
+2. **Promote Kyverno image verification to enforce** for `ghcr.io/webgrip/*` once CI attestations are confirmed.
+3. **VEX analysis in Dependency-Track** — start reviewing and suppressing known-unexploitable CVEs to reduce portfolio noise.
+4. **Falco Talon** if you want response automation (container quarantine, network isolation), not just detection.
+5. **OpenVEX / openvex-go** to generate machine-readable exploitability context at build time and feed it to GUAC and DT.
+6. **Kubescape** if you want another posture lens to cross-reference against Trivy and Kyverno results.
+7. **Grafana contact points** — the 16 SLO alert rules are live but currently route to `null`. Add at least one contact point in the Grafana UI for critical-severity alerts.
 
 ### What not to add just for the sake of adding
 

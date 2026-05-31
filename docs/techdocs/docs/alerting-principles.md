@@ -12,7 +12,7 @@ Before writing an alert, answer these questions in order:
    - If there's no clear action, don't alert. Use a dashboard or a recording rule instead.
 
 2. **Who is the audience?**
-   - **Chat (Discord)**: fast triage, quick links, minimal noise.
+   - **Grafana Alerting** (contact point): fast triage, quick links, minimal noise. Configure contact points in Grafana UI (Alerting → Contact Points).
    - **Page (if you add paging later)**: only user-impacting or data-loss risks; must be immediately actionable.
 
 3. **Is it a symptom alert or a cause alert?**
@@ -88,19 +88,15 @@ Optional (add when you have a good target):
 - `logs_url`: link to Loki search or a curated logs dashboard
 - `silence_url`: pre-filled silence creation link
 
-## Notification formatting principles (Discord)
+## Notification formatting principles (Grafana Alerting)
 
-A Discord alert message should prioritize:
+An alert message should prioritize:
 
 1. **Signal**: alertname + severity + scope
 2. **Next action**: first 2 checks to run
 3. **Links**: runbook + dashboard + Alertmanager
 
-Avoid:
-
-- dumping all labels
-- internal-only service DNS names in links
-- long walls of text
+Contact points are configured in the Grafana UI (Alerting → Contact Points), not in Git. Supported targets include email, Slack, PagerDuty, Teams, webhook, and others.
 
 ## Alert communication template (gold standard)
 
