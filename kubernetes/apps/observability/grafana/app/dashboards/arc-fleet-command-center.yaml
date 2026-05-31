@@ -1,0 +1,2818 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: arc-fleet-command-center
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  allowCrossNamespaceImport: false
+  folder: "Platform"
+  json: |-
+    {
+      "schemaVersion": 39,
+      "title": "GitHub Actions Runners / Fleet Command Center",
+      "uid": "arc-fleet-command-center",
+      "timezone": "browser",
+      "tags": [
+        "arc",
+        "github-actions",
+        "runners",
+        "platform",
+        "homelab"
+      ],
+      "editable": true,
+      "graphTooltip": 1,
+      "refresh": "30s",
+      "time": {
+        "from": "now-3h",
+        "to": "now"
+      },
+      "links": [
+        {
+          "title": "ARC Runtime Health (legacy)",
+          "url": "/d/apps-arc-systems",
+          "type": "link",
+          "icon": "external link",
+          "targetBlank": false
+        }
+      ],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "\ud83c\udfc3 Running Jobs",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_running_jobs{namespace=\"arc-systems\"}) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 4
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "\ud83d\udcec Queued (Assigned \u2212 Running)",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "clamp_min(sum(gha_assigned_jobs{namespace=\"arc-systems\"}) - sum(gha_running_jobs{namespace=\"arc-systems\"}), 0) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 3
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "\u26a1 Registered Runners (Total)",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 8,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_registered_runners{namespace=\"arc-systems\"}) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "green",
+                    "value": 2
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "\ud83d\uded1 Busy Runners (Total)",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 12,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_busy_runners{namespace=\"arc-systems\"}) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 2
+                  },
+                  {
+                    "color": "red",
+                    "value": 4
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 5,
+          "type": "stat",
+          "title": "\ud83d\ude34 Idle Runners (Total)",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 16,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_idle_runners{namespace=\"arc-systems\"}) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "green",
+                    "value": 2
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 6,
+          "type": "gauge",
+          "title": "\ud83d\udcca Fleet Utilization %",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 20,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(100 * sum(gha_busy_runners{namespace=\"arc-systems\"}) / clamp_min(sum(gha_registered_runners{namespace=\"arc-systems\"}), 1)) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 1,
+              "min": 0,
+              "max": 100,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 60
+                  },
+                  {
+                    "color": "orange",
+                    "value": 80
+                  },
+                  {
+                    "color": "red",
+                    "value": 95
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 100,
+          "type": "row",
+          "title": "\ud83c\udfc3 Normal Pool \u2014 arc-runner-set (SOYO nodes, max 3 runners)",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 4
+          },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 7,
+          "type": "stat",
+          "title": "Min",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 0,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_min_runners{namespace=\"arc-systems\",pool=\"normal\"}) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 8,
+          "type": "stat",
+          "title": "Max",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 3,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_max_runners{namespace=\"arc-systems\",pool=\"normal\"}) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 9,
+          "type": "stat",
+          "title": "Desired",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 6,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_desired_runners{namespace=\"arc-systems\",pool=\"normal\"}) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 10,
+          "type": "stat",
+          "title": "Registered",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 9,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_registered_runners{namespace=\"arc-systems\",pool=\"normal\"}) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 11,
+          "type": "stat",
+          "title": "Busy",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 12,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_busy_runners{namespace=\"arc-systems\",pool=\"normal\"}) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 12,
+          "type": "stat",
+          "title": "Idle",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 15,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_idle_runners{namespace=\"arc-systems\",pool=\"normal\"}) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "green",
+                    "value": 2
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 13,
+          "type": "stat",
+          "title": "Scale Headroom",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 18,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_max_runners{namespace=\"arc-systems\",pool=\"normal\"}) - sum(gha_registered_runners{namespace=\"arc-systems\",pool=\"normal\"}) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "green",
+                    "value": 2
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 14,
+          "type": "gauge",
+          "title": "Utilization %",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 21,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(100 * sum(gha_busy_runners{namespace=\"arc-systems\",pool=\"normal\"}) / clamp_min(sum(gha_registered_runners{namespace=\"arc-systems\",pool=\"normal\"}), 1)) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 1,
+              "min": 0,
+              "max": 100,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 60
+                  },
+                  {
+                    "color": "orange",
+                    "value": 80
+                  },
+                  {
+                    "color": "red",
+                    "value": 95
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 101,
+          "type": "row",
+          "title": "\ud83d\udd25 Heavy Pool \u2014 arc-runner-set-heavy (Fringe node, dind, max 2 runners)",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 9
+          },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 15,
+          "type": "stat",
+          "title": "Min",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 0,
+            "y": 10
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_min_runners{namespace=\"arc-systems\",pool=\"heavy\"}) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 16,
+          "type": "stat",
+          "title": "Max",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 3,
+            "y": 10
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_max_runners{namespace=\"arc-systems\",pool=\"heavy\"}) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 17,
+          "type": "stat",
+          "title": "Desired",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 6,
+            "y": 10
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_desired_runners{namespace=\"arc-systems\",pool=\"heavy\"}) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 18,
+          "type": "stat",
+          "title": "Registered",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 9,
+            "y": 10
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_registered_runners{namespace=\"arc-systems\",pool=\"heavy\"}) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 19,
+          "type": "stat",
+          "title": "Busy",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 12,
+            "y": 10
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_busy_runners{namespace=\"arc-systems\",pool=\"heavy\"}) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 20,
+          "type": "stat",
+          "title": "Idle",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 15,
+            "y": 10
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_idle_runners{namespace=\"arc-systems\",pool=\"heavy\"}) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "orange",
+                    "value": 2
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 21,
+          "type": "stat",
+          "title": "Scale Headroom",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 18,
+            "y": 10
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_max_runners{namespace=\"arc-systems\",pool=\"heavy\"}) - sum(gha_registered_runners{namespace=\"arc-systems\",pool=\"heavy\"}) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "green",
+                    "value": 2
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 22,
+          "type": "gauge",
+          "title": "Utilization %",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 21,
+            "y": 10
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(100 * sum(gha_busy_runners{namespace=\"arc-systems\",pool=\"heavy\"}) / clamp_min(sum(gha_registered_runners{namespace=\"arc-systems\",pool=\"heavy\"}), 1)) or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 1,
+              "min": 0,
+              "max": 100,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 60
+                  },
+                  {
+                    "color": "orange",
+                    "value": 80
+                  },
+                  {
+                    "color": "red",
+                    "value": 95
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 102,
+          "type": "row",
+          "title": "\ud83d\udcc8 Job Flow & Autoscaling",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 14
+          },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 23,
+          "type": "timeseries",
+          "title": "Normal Pool \u2014 Assigned vs Running Jobs",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 15
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_assigned_jobs{namespace=\"arc-systems\",pool=\"normal\"}) or vector(0)",
+              "legendFormat": "assigned"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(gha_running_jobs{namespace=\"arc-systems\",pool=\"normal\"}) or vector(0)",
+              "legendFormat": "running"
+            },
+            {
+              "refId": "C",
+              "expr": "clamp_min(sum(gha_assigned_jobs{namespace=\"arc-systems\",pool=\"normal\"}) - sum(gha_running_jobs{namespace=\"arc-systems\",pool=\"normal\"}), 0) or vector(0)",
+              "legendFormat": "queued"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "fillOpacity": 10,
+                "stacking": {
+                  "mode": "none"
+                },
+                "lineWidth": 2,
+                "gradientMode": "opacity"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 24,
+          "type": "timeseries",
+          "title": "Heavy Pool \u2014 Assigned vs Running Jobs",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 15
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_assigned_jobs{namespace=\"arc-systems\",pool=\"heavy\"}) or vector(0)",
+              "legendFormat": "assigned"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(gha_running_jobs{namespace=\"arc-systems\",pool=\"heavy\"}) or vector(0)",
+              "legendFormat": "running"
+            },
+            {
+              "refId": "C",
+              "expr": "clamp_min(sum(gha_assigned_jobs{namespace=\"arc-systems\",pool=\"heavy\"}) - sum(gha_running_jobs{namespace=\"arc-systems\",pool=\"heavy\"}), 0) or vector(0)",
+              "legendFormat": "queued"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "fillOpacity": 10,
+                "stacking": {
+                  "mode": "none"
+                },
+                "lineWidth": 2,
+                "gradientMode": "opacity"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 25,
+          "type": "timeseries",
+          "title": "Normal Pool \u2014 Runner Scaling (desired / registered / busy / idle)",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 23
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_desired_runners{namespace=\"arc-systems\",pool=\"normal\"}) or vector(0)",
+              "legendFormat": "desired"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(gha_registered_runners{namespace=\"arc-systems\",pool=\"normal\"}) or vector(0)",
+              "legendFormat": "registered"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(gha_busy_runners{namespace=\"arc-systems\",pool=\"normal\"}) or vector(0)",
+              "legendFormat": "busy"
+            },
+            {
+              "refId": "D",
+              "expr": "sum(gha_idle_runners{namespace=\"arc-systems\",pool=\"normal\"}) or vector(0)",
+              "legendFormat": "idle"
+            },
+            {
+              "refId": "E",
+              "expr": "sum(gha_max_runners{namespace=\"arc-systems\",pool=\"normal\"}) or vector(0)",
+              "legendFormat": "max cap"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "fillOpacity": 0,
+                "stacking": {
+                  "mode": "none"
+                },
+                "lineWidth": 2,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 26,
+          "type": "timeseries",
+          "title": "Heavy Pool \u2014 Runner Scaling (desired / registered / busy / idle)",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 23
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_desired_runners{namespace=\"arc-systems\",pool=\"heavy\"}) or vector(0)",
+              "legendFormat": "desired"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(gha_registered_runners{namespace=\"arc-systems\",pool=\"heavy\"}) or vector(0)",
+              "legendFormat": "registered"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(gha_busy_runners{namespace=\"arc-systems\",pool=\"heavy\"}) or vector(0)",
+              "legendFormat": "busy"
+            },
+            {
+              "refId": "D",
+              "expr": "sum(gha_idle_runners{namespace=\"arc-systems\",pool=\"heavy\"}) or vector(0)",
+              "legendFormat": "idle"
+            },
+            {
+              "refId": "E",
+              "expr": "sum(gha_max_runners{namespace=\"arc-systems\",pool=\"heavy\"}) or vector(0)",
+              "legendFormat": "max cap"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "fillOpacity": 0,
+                "stacking": {
+                  "mode": "none"
+                },
+                "lineWidth": 2,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 27,
+          "type": "timeseries",
+          "title": "Utilization % \u2014 Both Pools Over Time",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 31
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(100 * sum(gha_busy_runners{namespace=\"arc-systems\",pool=\"normal\"}) / clamp_min(sum(gha_registered_runners{namespace=\"arc-systems\",pool=\"normal\"}), 1)) or vector(0)",
+              "legendFormat": "normal pool"
+            },
+            {
+              "refId": "B",
+              "expr": "(100 * sum(gha_busy_runners{namespace=\"arc-systems\",pool=\"heavy\"}) / clamp_min(sum(gha_registered_runners{namespace=\"arc-systems\",pool=\"heavy\"}), 1)) or vector(0)",
+              "legendFormat": "heavy pool"
+            },
+            {
+              "refId": "C",
+              "expr": "(100 * sum(gha_busy_runners{namespace=\"arc-systems\"}) / clamp_min(sum(gha_registered_runners{namespace=\"arc-systems\"}), 1)) or vector(0)",
+              "legendFormat": "fleet total"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "custom": {
+                "fillOpacity": 0,
+                "stacking": {
+                  "mode": "none"
+                },
+                "lineWidth": 2,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 28,
+          "type": "timeseries",
+          "title": "Scale Efficiency \u2014 Busy vs Capacity Over Time",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 31
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_busy_runners{namespace=\"arc-systems\",pool=\"normal\"}) or vector(0)",
+              "legendFormat": "normal busy"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(gha_max_runners{namespace=\"arc-systems\",pool=\"normal\"}) or vector(0)",
+              "legendFormat": "normal capacity"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(gha_busy_runners{namespace=\"arc-systems\",pool=\"heavy\"}) or vector(0)",
+              "legendFormat": "heavy busy"
+            },
+            {
+              "refId": "D",
+              "expr": "sum(gha_max_runners{namespace=\"arc-systems\",pool=\"heavy\"}) or vector(0)",
+              "legendFormat": "heavy capacity"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "fillOpacity": 0,
+                "stacking": {
+                  "mode": "none"
+                },
+                "lineWidth": 2,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 103,
+          "type": "row",
+          "title": "\ud83d\udcbb Infrastructure & Resources",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 39
+          },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 29,
+          "type": "timeseries",
+          "title": "CPU Usage \u2014 By Pod (arc-systems)",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 40
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"arc-systems\",image!=\"\"}[5m]))",
+              "legendFormat": "{{{{pod}}}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "cores",
+              "custom": {
+                "fillOpacity": 10,
+                "stacking": {
+                  "mode": "none"
+                },
+                "lineWidth": 2,
+                "gradientMode": "opacity"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 30,
+          "type": "timeseries",
+          "title": "Memory Working Set \u2014 By Pod (arc-systems)",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 40
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"arc-systems\",image!=\"\"})",
+              "legendFormat": "{{{{pod}}}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "fillOpacity": 10,
+                "stacking": {
+                  "mode": "none"
+                },
+                "lineWidth": 2,
+                "gradientMode": "opacity"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 31,
+          "type": "timeseries",
+          "title": "CPU Usage \u2014 Normal vs Heavy Pool (summed)",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 48
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"arc-systems\",image!=\"\",pod=~\"arc-runner-set-[^-]{5,6}-runner.*\"}[5m]))",
+              "legendFormat": "normal pool runners"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"arc-systems\",image!=\"\",pod=~\"arc-runner-set-heavy.*runner.*\"}[5m]))",
+              "legendFormat": "heavy pool runners"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"arc-systems\",image!=\"\",pod=~\".*listener.*\"}[5m]))",
+              "legendFormat": "listeners"
+            },
+            {
+              "refId": "D",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"arc-systems\",image!=\"\",pod=~\".*controller.*\"}[5m]))",
+              "legendFormat": "controller"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "cores",
+              "custom": {
+                "fillOpacity": 10,
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                },
+                "lineWidth": 2,
+                "gradientMode": "opacity"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 32,
+          "type": "timeseries",
+          "title": "Memory Usage \u2014 Normal vs Heavy Pool (summed)",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 48
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(container_memory_working_set_bytes{namespace=\"arc-systems\",image!=\"\",pod=~\"arc-runner-set-[^-]{5,6}-runner.*\"})",
+              "legendFormat": "normal pool runners"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(container_memory_working_set_bytes{namespace=\"arc-systems\",image!=\"\",pod=~\"arc-runner-set-heavy.*runner.*\"})",
+              "legendFormat": "heavy pool runners"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(container_memory_working_set_bytes{namespace=\"arc-systems\",image!=\"\",pod=~\".*listener.*\"})",
+              "legendFormat": "listeners"
+            },
+            {
+              "refId": "D",
+              "expr": "sum(container_memory_working_set_bytes{namespace=\"arc-systems\",image!=\"\",pod=~\".*controller.*\"})",
+              "legendFormat": "controller"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "fillOpacity": 10,
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                },
+                "lineWidth": 2,
+                "gradientMode": "opacity"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 33,
+          "type": "timeseries",
+          "title": "Network Receive \u2014 By Pod (arc-systems)",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 56
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod) (rate(container_network_receive_bytes_total{namespace=\"arc-systems\"}[5m]))",
+              "legendFormat": "{{{{pod}}}} rx"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "Bps",
+              "custom": {
+                "fillOpacity": 0,
+                "stacking": {
+                  "mode": "none"
+                },
+                "lineWidth": 2,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 34,
+          "type": "timeseries",
+          "title": "Network Transmit \u2014 By Pod (arc-systems)",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 56
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod) (rate(container_network_transmit_bytes_total{namespace=\"arc-systems\"}[5m]))",
+              "legendFormat": "{{{{pod}}}} tx"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "Bps",
+              "custom": {
+                "fillOpacity": 0,
+                "stacking": {
+                  "mode": "none"
+                },
+                "lineWidth": 2,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 104,
+          "type": "row",
+          "title": "\ud83c\udfe5 Kubernetes Health & Pod Lifecycle",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 64
+          },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 35,
+          "type": "timeseries",
+          "title": "Container Restarts \u2014 Rate (arc-systems)",
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 65
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod, container) (increase(kube_pod_container_status_restarts_total{namespace=\"arc-systems\"}[30m]))",
+              "legendFormat": "{{{{pod}}}} / {{{{container}}}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "fillOpacity": 0,
+                "stacking": {
+                  "mode": "none"
+                },
+                "lineWidth": 2,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 36,
+          "type": "piechart",
+          "title": "Pod Phase Distribution (arc-systems)",
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 65
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (phase) (kube_pod_status_phase{namespace=\"arc-systems\"})",
+              "legendFormat": "{{{{phase}}}}",
+              "instant": true
+            }
+          ],
+          "options": {
+            "pieType": "donut",
+            "displayLabels": [
+              "name",
+              "value"
+            ],
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          }
+        },
+        {
+          "id": 37,
+          "type": "table",
+          "title": "Runner Pod Distribution Across Nodes",
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 65
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "kube_pod_info{namespace=\"arc-systems\"}",
+              "legendFormat": "",
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "options": {
+            "sortBy": [
+              {
+                "displayName": "node",
+                "desc": false
+              }
+            ],
+            "footer": {
+              "show": false
+            }
+          },
+          "transformations": [
+            {
+              "id": "filterFieldsByName",
+              "options": {
+                "include": {
+                  "names": [
+                    "pod",
+                    "node",
+                    "Value"
+                  ]
+                }
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "pod": "Pod",
+                  "node": "Node"
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "fields": [
+                  {
+                    "displayName": "Node",
+                    "desc": false
+                  }
+                ]
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Value"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Running"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 70
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Node"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 140
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 38,
+          "type": "timeseries",
+          "title": "OOM Kills \u2014 arc-systems Containers",
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 73
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod, container) (kube_pod_container_status_last_terminated_reason{namespace=\"arc-systems\",reason=\"OOMKilled\"})",
+              "legendFormat": "{{{{pod}}}} / {{{{container}}}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "fillOpacity": 0,
+                "stacking": {
+                  "mode": "none"
+                },
+                "lineWidth": 2,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 39,
+          "type": "timeseries",
+          "title": "CPU Throttling % \u2014 By Container (arc-systems)",
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 73
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod, container) (rate(container_cpu_cfs_throttled_seconds_total{namespace=\"arc-systems\",image!=\"\"}[5m])) / sum by (pod, container) (rate(container_cpu_cfs_periods_total{namespace=\"arc-systems\",image!=\"\"}[5m])) * 100",
+              "legendFormat": "{{{{pod}}}} / {{{{container}}}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "custom": {
+                "fillOpacity": 0,
+                "stacking": {
+                  "mode": "none"
+                },
+                "lineWidth": 2,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 40,
+          "type": "bargauge",
+          "title": "Memory Requests vs Limits vs Working Set",
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 73
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod) (kube_pod_container_resource_requests{namespace=\"arc-systems\",resource=\"memory\",container!=\"\"})",
+              "legendFormat": "requests: {{{{pod}}}}",
+              "instant": true
+            },
+            {
+              "refId": "B",
+              "expr": "sum by (pod) (kube_pod_container_resource_limits{namespace=\"arc-systems\",resource=\"memory\",container!=\"\"})",
+              "legendFormat": "limits: {{{{pod}}}}",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "orientation": "horizontal",
+            "displayMode": "gradient",
+            "showUnfilled": true
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "color": {
+                "mode": "continuous-BlPu"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 105,
+          "type": "row",
+          "title": "\ud83c\udf9b\ufe0f ARC Controller Health",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 81
+          },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 41,
+          "type": "timeseries",
+          "title": "Controller \u2014 CPU Usage",
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 82
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod, container) (rate(container_cpu_usage_seconds_total{namespace=\"arc-systems\",pod=~\"actions-runner-controller.*\",image!=\"\"}[5m]))",
+              "legendFormat": "{{{{pod}}}} / {{{{container}}}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "cores",
+              "custom": {
+                "fillOpacity": 10,
+                "stacking": {
+                  "mode": "none"
+                },
+                "lineWidth": 2,
+                "gradientMode": "opacity"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 42,
+          "type": "timeseries",
+          "title": "Controller \u2014 Memory Working Set",
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 82
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod, container) (container_memory_working_set_bytes{namespace=\"arc-systems\",pod=~\"actions-runner-controller.*\",image!=\"\"})",
+              "legendFormat": "{{{{pod}}}} / {{{{container}}}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "fillOpacity": 10,
+                "stacking": {
+                  "mode": "none"
+                },
+                "lineWidth": 2,
+                "gradientMode": "opacity"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 43,
+          "type": "stat",
+          "title": "Controller Pod Status",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 16,
+            "y": 82
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "kube_deployment_status_replicas_available{namespace=\"arc-systems\",deployment=~\"actions-runner-controller.*\"} or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 44,
+          "type": "stat",
+          "title": "HelmRelease Healthy",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 20,
+            "y": 82
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "gotk_reconcile_condition{kind=\"HelmRelease\",name=~\"gha-runner.*|actions-runner.*\",namespace=\"arc-systems\",type=\"Ready\",status=\"True\"} or vector(0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 45,
+          "type": "timeseries",
+          "title": "Flux Reconcile Duration \u2014 ARC HelmReleases",
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 86
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.99, sum by (le, name) (rate(gotk_reconcile_duration_seconds_bucket{kind=\"HelmRelease\",namespace=\"arc-systems\"}[5m])))",
+              "legendFormat": "p99 {{{{name}}}}"
+            },
+            {
+              "refId": "B",
+              "expr": "histogram_quantile(0.50, sum by (le, name) (rate(gotk_reconcile_duration_seconds_bucket{kind=\"HelmRelease\",namespace=\"arc-systems\"}[5m])))",
+              "legendFormat": "p50 {{{{name}}}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "fillOpacity": 0,
+                "stacking": {
+                  "mode": "none"
+                },
+                "lineWidth": 2,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 46,
+          "type": "timeseries",
+          "title": "Kyverno Policy Violations \u2014 arc-systems",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 90
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (policy, rule) (increase(kyverno_policy_results_total{namespace=\"arc-systems\",rule_result=\"fail\"}[10m]))",
+              "legendFormat": "{{{{policy}}}} / {{{{rule}}}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "fillOpacity": 0,
+                "stacking": {
+                  "mode": "none"
+                },
+                "lineWidth": 2,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 47,
+          "type": "timeseries",
+          "title": "Pod Start Latency (scheduled \u2192 running) \u2014 arc-systems",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 90
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod) (kube_pod_status_ready_time{namespace=\"arc-systems\"} - kube_pod_created{namespace=\"arc-systems\"})",
+              "legendFormat": "{{{{pod}}}}",
+              "instant": false
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "fillOpacity": 0,
+                "stacking": {
+                  "mode": "none"
+                },
+                "lineWidth": 2,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          }
+        }
+      ]
+    }
