@@ -43,11 +43,24 @@ spec:
 
     resources:
       requests:
-        cpu: 10m
-        memory: 64Mi
+        cpu: 50m
+        memory: 128Mi
       limits:
-        cpu: 100m
+        cpu: 500m
         memory: 256Mi
+
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 8081
+      timeoutSeconds: 5
+      failureThreshold: 6
+    readinessProbe:
+      httpGet:
+        path: /readyz
+        port: 8081
+      timeoutSeconds: 5
+      failureThreshold: 6
 
     nodeSelector:
       nodegroup: fringe

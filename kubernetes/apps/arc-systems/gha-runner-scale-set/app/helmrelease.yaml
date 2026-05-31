@@ -29,8 +29,8 @@ spec:
       namespace: arc-systems
       name: actions-runner-controller-gha-rs-controller
     githubConfigSecret: gha-runner-scale-set-secrets
-    minRunners: 2
-    maxRunners: 10
+    minRunners: 1
+    maxRunners: 4
     scaleSetLabels:
       - arc
       - homelab
@@ -122,6 +122,13 @@ spec:
               - dockerd
               - --host=unix:///var/run/docker.sock
               - --group=$(DOCKER_GROUP_GID)
+            resources:
+              requests:
+                cpu: 500m
+                memory: 1Gi
+              limits:
+                cpu: "2"
+                memory: 4Gi
             env:
               - name: DOCKER_GROUP_GID
                 value: "123"

@@ -35,7 +35,10 @@ spec:
       nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
       orphanAutoDeletion: true
       replicaAutoBalance: best-effort
-      storageMinimalAvailablePercentage: "1"
+      replicaReplenishmentWaitInterval: "120"
+      concurrentReplicaRebuildPerNodeLimit: "1"
+      rebuildConcurrentSyncLimit: "2"
+      storageMinimalAvailablePercentage: "10"
       storageReservedPercentageForDefaultDisk: "10"
       # Allow system-managed components (like longhorn-csi-plugin) to run on the tainted fringe node.
       taintToleration: "dedicated=fringe:NoSchedule"
@@ -44,6 +47,12 @@ spec:
     metrics:
       serviceMonitor:
         enabled: true
+        interval: 60s
+        scrapeTimeout: 30s
+        metricRelabelings:
+          - action: drop
+            sourceLabels: [__name__]
+            regex: longhorn_rest_client_rate_limiter_latency_seconds_bucket
 
     # Allow the Longhorn manager DaemonSet to run on the tainted fringe node.
     longhornManager:

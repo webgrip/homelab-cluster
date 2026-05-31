@@ -32,7 +32,7 @@ spec:
       scanJobTTL: 30m
       scanSecretTTL: 15m
       scanJobTimeout: 10m
-      scanJobsConcurrentLimit: 2
+      scanJobsConcurrentLimit: 1
       scanNodeCollectorLimit: 1
       nodeCollector:
         # Talos nodes have an immutable rootfs — node-collector requires write access
@@ -57,18 +57,23 @@ spec:
       metricsFindingsEnabled: true
       metricsVulnIdEnabled: false
       exposedSecretScannerEnabled: true
-      metricsExposedSecretInfo: true
-      metricsConfigAuditInfo: true
-      metricsRbacAssessmentInfo: true
+      metricsExposedSecretInfo: false
+      metricsConfigAuditInfo: false
+      metricsRbacAssessmentInfo: false
       metricsInfraAssessmentInfo: true
       metricsImageInfo: true
       metricsClusterComplianceInfo: true
 
     serviceMonitor:
       enabled: true
-      interval: 60s
+      interval: 120s
       labels:
         release: kube-prometheus-stack
+      endpointAdditionalProperties:
+        metricRelabelings:
+          - action: drop
+            sourceLabels: [__name__]
+            regex: trivy_(configaudits|exposedsecrets|rbacassessments)_info
 
     trivyOperator:
       scanJobsInSameNamespace: false
@@ -79,7 +84,7 @@ spec:
           operator: Equal
           value: fringe
           effect: NoSchedule
-      scanJobPodPriorityClassName: system-cluster-critical
+      scanJobPodPriorityClassName: ""
       reportResourceLabels: "app.kubernetes.io/name,app.kubernetes.io/instance,app.kubernetes.io/component,app.kubernetes.io/part-of"
       reportRecordFailedChecksOnly: false
       additionalReportLabels: "cluster=homelab-cluster"

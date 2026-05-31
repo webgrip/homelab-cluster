@@ -10,8 +10,8 @@ spec:
     name: github
     endpoint: https://api.github.com/
   # renovate-operator evaluates cron in its controller timezone (typically UTC).
-  # Run frequently so Dependency Dashboard approvals take effect quickly.
-  schedule: "0 */2 * * *"
+  # Keep dashboard approvals responsive without overlapping the busiest batch windows.
+  schedule: "17 */6 * * *"
   parallelism: 1
   image: docker.io/renovate/renovate:43.195.5-full@sha256:ca5fb31e87887f49d1d818d8a4d57e0e85241e0297a7cf906d0a1befcb734e32
   secretRef: renovate-runtime-token
@@ -53,6 +53,7 @@ spec:
       cpu: 250m
       memory: 1Gi
     limits:
+      cpu: "1500m"
       memory: 4Gi
   securityContext:
     pod:
