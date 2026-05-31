@@ -3,21 +3,11 @@
   // Repo-local policy only. Org/runtime defaults, manager enablement, and
   // custom extraction rules live in the in-cluster Renovate ConfigMap.
   extends: [
-    "config:recommended",
-    "abandonments:recommended",
-    "mergeConfidence:all-badges",
+    "github>webgrip/renovate-config#v1.2.1",
     "docker:enableMajor",
-    "helpers:pinGitHubActionDigests",
     ":automergeBranch",
-    ":dependencyDashboard",
-    ":semanticCommits",
   ],
-  dependencyDashboard: true,
   dependencyDashboardTitle: "Renovate Dashboard 🤖",
-  rebaseWhen: "behind-base-branch",
-  fetchChangeLogs: "pr",
-  separateMajorMinor: true,
-  recreateWhen: "always",
   ignorePaths: [
     "**/*.sops.*",
     // The app is not referenced from observability/kustomization.yaml.
@@ -126,56 +116,6 @@
         "python/cpython"
       ],
       allowedVersions: "<=3.14.2",
-    },
-    {
-      description: "Require dashboard approval and release soak time for major updates",
-      matchUpdateTypes: [
-        "major"
-      ],
-      dependencyDashboardApproval: true,
-      minimumReleaseAge: "14 days",
-      addLabels: [
-        "type/major"
-      ],
-      semanticCommitType: "feat",
-      commitMessagePrefix: "{{semanticCommitType}}({{semanticCommitScope}})!:",
-      commitMessageExtra: "( {{currentVersion}} ➔ {{newVersion}} )",
-    },
-    {
-      description: "Use feature commits and short soak time for minor updates",
-      matchUpdateTypes: [
-        "minor"
-      ],
-      minimumReleaseAge: "3 days",
-      addLabels: [
-        "type/minor"
-      ],
-      semanticCommitType: "feat",
-      commitMessageExtra: "( {{currentVersion}} ➔ {{newVersion}} )",
-    },
-    {
-      description: "Use fix commits for patch updates",
-      matchUpdateTypes: [
-        "patch"
-      ],
-      minimumReleaseAge: "1 day",
-      addLabels: [
-        "type/patch"
-      ],
-      semanticCommitType: "fix",
-      commitMessageExtra: "( {{currentVersion}} ➔ {{newVersion}} )",
-    },
-    {
-      description: "Digest-only updates carry digest labels and do not need changelogs",
-      matchUpdateTypes: [
-        "digest"
-      ],
-      addLabels: [
-        "type/digest"
-      ],
-      semanticCommitType: "chore",
-      commitMessageExtra: "( {{currentDigestShort}} ➔ {{newDigestShort}} )",
-      fetchChangeLogs: "off",
     },
     {
       description: "Gate minor updates for cluster-critical platform files",
