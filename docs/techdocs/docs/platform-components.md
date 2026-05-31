@@ -81,6 +81,8 @@ See [docs/techdocs/docs/adding-applications.md](adding-applications.md) for the 
 ## CI Runners & Automation
 
 - `kubernetes/apps/arc-systems/actions-runner-controller/` is the control plane for GitHub Actions scale sets. It uses the shared SOPS secret for the GitHub App.
-- `kubernetes/apps/arc-systems/gha-runner-scale-set/` provisions Docker-in-Docker runners that register against the App URL stored in `cluster-secrets.sops.yaml`.
+- `kubernetes/apps/arc-systems/gha-runner-scale-set/` provisions the fringe heavy Docker-in-Docker runner pool.
+- `kubernetes/apps/arc-systems/gha-runner-scale-set-normal/` provisions the normal runner pool on the SOYO nodes.
+- GitHub Actions jobs should keep the compatibility label `arc-runner-set` and add workload labels such as `normal` or `fringe`/`heavy`/`dind`; see [ARC Runners](arc-runners.md).
 - `talos/patches/global/machine-kernel.yaml` keeps the `binfmt_misc` kernel module loaded on every Talos node so QEMU binfmt handlers can be registered inside runner jobs for multi-arch Docker builds.
 - Renovate + GitHub Actions automation resides under `.github/workflows/` and is referenced from `catalog/components/flux-gitops.yaml` so Backstage shows build status next to the manifests (see [docs/techdocs/docs/renovate.md](renovate.md)).
