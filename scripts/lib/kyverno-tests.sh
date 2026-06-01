@@ -67,12 +67,12 @@ ensure_kind() {
 kubectl_cmd() {
     if command -v kubectl >/dev/null 2>&1; then
         kubectl "$@"
-        return 0
+        return
     fi
 
     if command -v mise >/dev/null 2>&1; then
         mise exec -- kubectl "$@"
-        return 0
+        return
     fi
 
     log error "kubectl is required to run Chainsaw tests"
