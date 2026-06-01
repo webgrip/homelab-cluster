@@ -31,12 +31,23 @@ while IFS= read -r -d '' file; do
     continue
   fi
 
-  actual="$(fetch_digest "$image" "$tag" || true)"
+  actual=""
+  tmp_output="$(mktemp)"
+  if ! fetch_digest "$image" "$tag" >"$tmp_output"; then
+    rm -f "$tmp_output"
+    if [[ "${OCI_FETCH_DIGEST_ERROR_KIND:-}" == "transient" ]]; then
+      echo "WARN ${file}: skipped digest verification for ${image}:${tag} because the registry returned a transient error"
+      continue
+    fi
 
-  if [[ -z "$actual" ]]; then
     echo "FAIL ${file}: could not resolve registry digest for ${image}:${tag}"
     status=1
-  elif [[ "$actual" != "$expected" ]]; then
+    continue
+  fi
+  actual="$(<"$tmp_output")"
+  rm -f "$tmp_output"
+
+  if [[ "$actual" != "$expected" ]]; then
     echo "FAIL ${file}: expected ${expected}, registry has ${actual} for ${image}:${tag}"
     status=1
   else

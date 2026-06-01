@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 ACCEPT_HEADER="application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json, */*"
+OCI_FETCH_DIGEST_ERROR_KIND=""
 
 fetch_digest() {
   local image="$1"
@@ -9,6 +10,10 @@ fetch_digest() {
   local path="${image#*/}"
   local registry_url="https://${host}"
   local auth_header=()
+  local headers_file
+  local status
+
+  OCI_FETCH_DIGEST_ERROR_KIND=""
 
   case "$host" in
     ghcr.io)
@@ -29,9 +34,33 @@ fetch_digest() {
       ;;
   esac
 
-  curl -fsSI \
-    "${auth_header[@]}" \
-    -H "Accept: ${ACCEPT_HEADER}" \
-    "${registry_url}/v2/${path}/manifests/${tag}" |
-    awk 'BEGIN { IGNORECASE=1 } /^docker-content-digest:/ { gsub("\r", "", $2); print $2; exit }'
+  headers_file="$(mktemp)"
+  status="$(
+    curl -sSIL \
+      --retry 4 \
+      --retry-delay 2 \
+      --retry-all-errors \
+      -o /dev/null \
+      -D "$headers_file" \
+      -w '%{http_code}' \
+      "${auth_header[@]}" \
+      -H "Accept: ${ACCEPT_HEADER}" \
+      "${registry_url}/v2/${path}/manifests/${tag}" || true
+  )"
+
+  if [[ "$status" == "200" ]]; then
+    awk 'BEGIN { IGNORECASE=1 } /^docker-content-digest:/ { gsub("\r", "", $2); print $2; exit }' "$headers_file"
+    rm -f "$headers_file"
+    return 0
+  fi
+
+  rm -f "$headers_file"
+
+  if [[ "$status" == "000" || "$status" =~ ^5[0-9][0-9]$ ]]; then
+    OCI_FETCH_DIGEST_ERROR_KIND="transient"
+    return 2
+  fi
+
+  OCI_FETCH_DIGEST_ERROR_KIND="permanent"
+  return 1
 }
