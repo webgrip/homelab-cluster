@@ -68,7 +68,20 @@ while IFS= read -r -d '' file; do
     continue
   fi
 
-  digest="$(fetch_digest "$image" "$tag")"
+  digest=""
+  tmp_output="$(mktemp)"
+  if ! fetch_digest "$image" "$tag" >"$tmp_output"; then
+    rm -f "$tmp_output"
+    if [[ "${OCI_FETCH_DIGEST_ERROR_KIND:-}" == "transient" ]]; then
+      echo "FAIL ${file}: registry returned a transient error while resolving ${image}:${tag}" >&2
+    else
+      echo "FAIL ${file}: could not resolve registry digest for ${image}:${tag}" >&2
+    fi
+    exit 1
+  fi
+  digest="$(<"$tmp_output")"
+  rm -f "$tmp_output"
+
   if [[ -z "$digest" ]]; then
     echo "FAIL ${file}: could not resolve registry digest for ${image}:${tag}" >&2
     exit 1
