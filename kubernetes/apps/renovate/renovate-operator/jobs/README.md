@@ -108,9 +108,9 @@ GitHub UI: Repository → **Settings** → **Code security and analysis**.
 
 Whatever you use for `RENOVATE_TOKEN` (PAT or GitHub App token) must be able to read Dependabot alerts.
 
-- **Classic PAT** (recommended for simplicity): include `repo` and `security_events` scopes.
-- **Fine-grained PAT**: grant repo/org permissions including **Dependabot alerts: Read**, plus permissions for normal Renovate work (e.g. Contents, Pull requests, Issues).
-- **GitHub App**: ensure the app has **Dependabot alerts: Read** (and normal PR/contents permissions).
+- **Classic PAT** (recommended for simplicity): include `repo`, `workflow`, and `security_events` scopes.
+- **Fine-grained PAT**: grant repo/org permissions including **Dependabot alerts: Read**, plus permissions for normal Renovate work (e.g. Contents, Pull requests, Issues, Workflows).
+- **GitHub App**: ensure the app has **Dependabot alerts: Read**, **Contents: Read and write**, **Pull requests: Read and write**, **Issues: Read and write**, and **Workflows: Read and write**. Workflow permission is required for Renovate to update `.github/workflows/*`.
 
 After updating the GitHub App permissions and `renovate-secrets`, wait for the CronJob to refresh `renovate-runtime-token`.
 
