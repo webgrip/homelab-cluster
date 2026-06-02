@@ -72,3 +72,35 @@ spec:
               - Check the HelmRelease events/status for the failing reason
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#flux"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/gitops-flux-health/flux-gitops-health"
+
+        - alert: FluxResourceDriftDetected
+          expr: |
+            max by (namespace, name, kind) (
+              gotk_reconcile_condition{type=~"DriftDetected|Drifted", status="True"}
+            ) > 0
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+            service: flux
+          annotations:
+            summary: "Flux detected runtime drift ({{$labels.kind}} {{$labels.namespace}}/{{$labels.name}})"
+            description: |
+              What's happening:
+              - Flux reports that live cluster state has drifted from the reconciled GitOps state.
+
+              Impact/risk:
+              - Manual cluster changes, failed reconciliation, or controller-side mutations may be hiding differences from Git.
+              - Future reconciliations may revert the live state unexpectedly.
+
+              Likely causes:
+              - Manual kubectl/helm edits against GitOps-managed resources
+              - Controller mutation outside the declared manifest
+              - A GitOps resource with drift detection enabled found live-state differences
+
+              First actions:
+              - Run: flux get all -A
+              - Inspect the affected resource conditions and events
+              - Reconcile or revert the live change through Git
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#flux"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/gitops-flux-health/flux-gitops-health"

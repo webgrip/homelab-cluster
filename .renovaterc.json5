@@ -1,21 +1,27 @@
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
-  // Repo-local policy only. Org/runtime defaults, manager enablement, and
-  // custom extraction rules live in the in-cluster Renovate ConfigMap.
+  // Repo-local policy only. Shared org/GitOps extraction rules live in
+  // webgrip/renovate-config; runtime/admin-only settings live in the
+  // in-cluster Renovate ConfigMap.
+  // Security note: keep this pinned to an immutable commit unless
+  // webgrip/renovate-config enforces immutable/protected release tags.
   extends: [
-    "github>webgrip/renovate-config#v1.2.1",
+    "github>webgrip/renovate-config#50aa0b5dea94eeb0773ea3b23b951f3c71bf7216",
+    "github>webgrip/renovate-config:gitops#50aa0b5dea94eeb0773ea3b23b951f3c71bf7216",
     "docker:enableMajor",
     ":automergeBranch",
   ],
   dependencyDashboardTitle: "Renovate Dashboard 🤖",
   ignorePaths: [
     "**/*.sops.*",
+    "age.key",
+    "cloudflare-tunnel.json",
+    "github-deploy.key",
+    "github-deploy.key.pub",
+    "github-push-token.txt",
+    "kubeconfig",
     // The app is not referenced from observability/kustomization.yaml.
     "kubernetes/apps/observability/twitch-exporter/**",
-    // The Renovate ConfigMap contains raw regex patterns that the custom.regex manager
-    // matches against itself, producing "Invalid regex manager registryUrl" and
-    // "Missing datasource!" warnings on every run.
-    "kubernetes/apps/renovate/renovate-operator/jobs/configmap-gitops.yaml",
     // Kyverno CLI tests intentionally use fake registries/images to exercise policy failures.
     "kubernetes/apps/kyverno/tests/**",
   ],
@@ -36,22 +42,73 @@
   ],
   packageRules: [
     {
-      description: "Keep Renovate's Flux manager away from digest-pinned OCIRepository files. OCIRepository tags are updated by custom.regex and scripts/update-oci-digests.sh refreshes spec.ref.digest from the registry manifest digest.",
+      description: "Prioritize vulnerability fixes ahead of all routine dependency updates",
+      matchJsonata: [
+        "$exists(vulnerabilityFixVersion)"
+      ],
+      dependencyDashboardApproval: false,
+      schedule: [
+        "at any time"
+      ],
+      prPriority: 20,
+    },
+    {
+      description: "Automerge patch-level vulnerability fixes after checks pass",
+      matchJsonata: [
+        "$exists(vulnerabilityFixVersion) and updateType = 'patch'"
+      ],
+      automerge: true,
+      automergeType: "branch",
+      dependencyDashboardApproval: false,
+      minimumReleaseAge: "0 days",
+      schedule: [
+        "at any time"
+      ],
+      prPriority: 20,
+    },
+    {
+      description: "Prioritize updates for cluster-critical platform paths ahead of normal app updates",
+      matchFileNames: [
+        "bootstrap/**",
+        "talos/**",
+        "kubernetes/apps/cert-manager/**",
+        "kubernetes/apps/cnpg-dr/**",
+        "kubernetes/apps/cnpg-system/**",
+        "kubernetes/apps/flux-system/**",
+        "kubernetes/apps/kube-system/**",
+        "kubernetes/apps/longhorn-system/**",
+        "kubernetes/apps/network/**",
+        "kubernetes/apps/renovate/**",
+      ],
+      prPriority: 10,
+    },
+    {
+      description: "Group Flux controller updates and keep Renovate's Flux manager away from digest-pinned OCIRepository files. OCIRepository tags are updated by custom.regex and scripts/update-oci-digests.sh refreshes spec.ref.digest from the registry manifest digest.",
       matchManagers: [
         "flux"
       ],
+      groupName: "Flux controllers",
       pinDigests: false,
+      separateMinorPatch: true,
       separateMultipleMajor: true,
+      commitBodyTable: true,
     },
     {
-      description: "Override Helmfile Dependency Name",
-      matchDatasources: [
-        "docker"
-      ],
+      description: "Automerge Flux OCI Helm chart patch updates; digest pins are refreshed by post-upgrade tasks",
       matchManagers: [
-        "helmfile"
+        "custom.regex"
       ],
-      overrideDepName: "{{packageName}}",
+      matchFileNames: [
+        "kubernetes/apps/**/ocirepository.yaml"
+      ],
+      matchUpdateTypes: [
+        "patch"
+      ],
+      automerge: true,
+      automergeType: "pr",
+      schedule: [
+        "at any time"
+      ],
     },
     {
       description: "Disable digest pinning for talos/ version files — talhelper uses plain semver strings; appending @sha256: makes talenv.yaml unparseable",
@@ -74,6 +131,7 @@
       group: {
         commitMessageTopic: "{{{groupName}}} group",
       },
+      commitBodyTable: true,
       minimumGroupSize: 1,
     },
     {
@@ -83,6 +141,32 @@
       allowedVersions: "/^\\d+\\.\\d+-alpine\\d+\\.\\d+$/",
     },
     {
+      description: "Helm charts that use a dedicated sha: field for digest pinning (e.g. kube-prometheus-stack). Renovate updates the sha: field directly via customManagers; do not also embed digest inline in tag: which causes a double-digest InvalidImageName error.",
+      matchManagers: [
+        "helm-values"
+      ],
+      matchPackageNames: [
+        "quay.io/prometheus-operator/prometheus-operator",
+        "quay.io/prometheus-operator/prometheus-config-reloader",
+        "quay.io/prometheus/prometheus",
+        "quay.io/prometheus/alertmanager"
+      ],
+      matchUpdateTypes: [
+        "pinDigest",
+        "digest"
+      ],
+      enabled: false,
+    },
+    {
+      description: "Group GitHub Actions updates separately from GitOps/runtime dependency updates",
+      matchManagers: [
+        "github-actions"
+      ],
+      groupName: "GitHub Actions",
+      automerge: false,
+      commitBodyTable: true,
+    },
+    {
       description: "Auto-merge GitHub Actions patch/digest updates only after checks pass",
       matchManagers: [
         "github-actions"
@@ -90,10 +174,19 @@
       pinDigests: true,
       automerge: true,
       automergeType: "branch",
+      minimumReleaseAge: "1 day",
       matchUpdateTypes: [
         "patch",
         "digest"
       ],
+    },
+    {
+      description: "Group Mise tool updates separately from GitOps/runtime dependency updates",
+      matchManagers: [
+        "mise"
+      ],
+      groupName: "Mise tools",
+      commitBodyTable: true,
     },
     {
       description: "Auto-merge Mise tool patch updates only after checks pass",
@@ -102,6 +195,7 @@
       ],
       automerge: true,
       automergeType: "branch",
+      minimumReleaseAge: "1 day",
       matchUpdateTypes: [
         "patch"
       ],
@@ -118,6 +212,19 @@
         "python/cpython"
       ],
       allowedVersions: "<=3.14.2",
+    },
+    {
+      description: "Group application container image references outside the Kubernetes GitOps tree",
+      matchManagers: [
+        "dockerfile",
+        "docker-compose"
+      ],
+      matchDatasources: [
+        "docker"
+      ],
+      groupName: "application container images",
+      pinDigests: true,
+      commitBodyTable: true,
     },
     {
       description: "Gate minor updates for cluster-critical platform files",
@@ -137,6 +244,18 @@
       ],
       dependencyDashboardApproval: true,
       minimumReleaseAge: "7 days",
+    },
+    {
+      description: "Keep vchord-scratch CNPG extension images on their PostgreSQL 18 compatibility stream",
+      matchDatasources: [
+        "docker"
+      ],
+      matchPackageNames: [
+        "ghcr.io/tensorchord/vchord-scratch"
+      ],
+      matchCurrentValue: "/^pg18-v/",
+      allowedVersions: "/^pg18-v\\d+\\.\\d+\\.\\d+$/",
+      separateMultipleMajor: true,
     },
     {
       description: "Treat missing release timestamps as stable for GHCR Docker datasource updates; Renovate only supports Docker release timestamps on Docker Hub, so GHCR OCI artifacts can otherwise stay pending forever.",
@@ -169,6 +288,7 @@
       ],
       groupName: "shared app-template",
       additionalBranchPrefix: "shared-app-template-",
+      commitBodyTable: true,
     },
     {
       description: "Group shared busybox updates into a dedicated PR",
@@ -180,6 +300,19 @@
       ],
       groupName: "shared busybox",
       additionalBranchPrefix: "shared-busybox-",
+      commitBodyTable: true,
+    },
+    {
+      description: "Group Grafana.com dashboard revision updates into one reviewable PR",
+      matchDatasources: [
+        "custom.grafana-dashboards"
+      ],
+      groupName: "Grafana dashboards",
+      additionalBranchPrefix: "grafana-dashboards-",
+      commitBodyTable: true,
+      addLabels: [
+        "renovate/grafana-dashboard"
+      ],
     },
     {
       matchDatasources: [

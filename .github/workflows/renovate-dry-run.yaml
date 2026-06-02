@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+---
+name: "Renovate Dry Run"
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - "main"
+    paths:
+      - ".github/workflows/renovate-dry-run.yaml"
+      - ".renovaterc.json5"
+      - "kubernetes/apps/renovate/renovate-operator/jobs/configmap-gitops.yaml"
+      - "kubernetes/apps/renovate/renovate-operator/jobs/webgrip-gitops.yaml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    name: Simulate Renovate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Extract Renovate admin config
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          source = Path("kubernetes/apps/renovate/renovate-operator/jobs/configmap-gitops.yaml")
+          lines = source.read_text(encoding="utf-8").splitlines()
+          capture = False
+          block = []
+
+          for line in lines:
+              if line.strip() == "renovate.json: |-":
+                  capture = True
+                  continue
+              if not capture:
+                  continue
+              if line.startswith("    "):
+                  block.append(line[4:])
+                  continue
+              if line.strip():
+                  break
+
+          if not block:
+              raise RuntimeError(f"Could not extract renovate.json from {source}")
+
+          Path("/tmp/renovate-admin.json").write_text(
+              "\n".join(block) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Validate Renovate config
+        env:
+          GITHUB_COM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RENOVATE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx --yes --package renovate@43.208.0 renovate-config-validator --no-global .renovaterc.json5
+
+      - name: Validate Renovate admin config
+        env:
+          GITHUB_COM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RENOVATE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx --yes --package renovate@43.208.0 renovate-config-validator /tmp/renovate-admin.json
+
+      - name: Run Renovate dry-run
+        env:
+          GITHUB_COM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LOG_LEVEL: info
+          RENOVATE_CONFIG_FILE: /tmp/renovate-admin.json
+          RENOVATE_PLATFORM: local
+          RENOVATE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx --yes renovate@43.208.0 --dry-run=lookup

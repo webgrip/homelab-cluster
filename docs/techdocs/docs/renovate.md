@@ -68,8 +68,8 @@ The main RenovateJob is:
 What it does (as configured):
 
 - Discovers repositories matching `webgrip/*`.
-- Runs on cron schedule `0 */2 * * *` (every 2 hours).
-- Runs up to 2 repositories in parallel (`parallelism: 2`).
+- Runs on cron schedule `17 */6 * * *` (every 6 hours, offset by 17 minutes).
+- Runs one repository at a time (`parallelism: 1`).
 - Uses `RENOVATE_CONFIG_FILE=/config/renovate.json` mounted from a ConfigMap.
 - Uses webhook authentication from Secret `renovate-webhook-auth`.
 - Runs as a non-root user with `RENOVATE_BASE_DIR=/tmp`.
@@ -84,7 +84,7 @@ Operational implication:
 
 Renovate behavior for this repo is the result of **two** config files:
 
-1. Cluster-wide Renovate defaults (used by the RenovateJob)
+1. RenovateJob admin/runtime config
 
    - [kubernetes/apps/renovate/renovate-operator/jobs/configmap-gitops.yaml](../../kubernetes/apps/renovate/renovate-operator/jobs/configmap-gitops.yaml)
 2. Repo-specific Renovate configuration
@@ -93,27 +93,23 @@ Renovate behavior for this repo is the result of **two** config files:
 
 When changing behavior, decide first whether you want:
 
-- a change for *all repos discovered by the job* (edit the ConfigMap), or
+- a runtime/admin change for the in-cluster Renovate executor (edit the ConfigMap), or
 - a change *only for this repo* (edit `.renovaterc.json5`).
 
-### Global config (ConfigMap) highlights
+Do not move self-hosted/admin-only settings such as `allowedCommands`, GitHub API throttling `hostRules`, executor identity, `enabledManagers`, or `RENOVATE_CONFIG_FILE` wiring into `.renovaterc.json5`. Renovate ignores self-hosted settings in repository config and some of them are intentionally protected from repo-controlled changes.
 
-The global config is stored as JSON in a ConfigMap and mounted into the Renovate executor container.
+### Runtime/admin config (ConfigMap) highlights
 
-Important behaviors in the current global config:
+The admin config is stored as JSON in a ConfigMap and mounted into the Renovate executor container.
+
+Important behaviors in the current admin config:
 
 - Managers enabled are intentionally scoped to this GitOps estate: `flux`, `kustomize`, `kubernetes`, `helm-values`, `helmfile`, `custom.regex`, `github-actions`, `mise`, `dockerfile`, and `docker-compose`.
-- Dependency Dashboard enabled and auto-closing enabled.
-- Experimental OSV vulnerability alerts are enabled, and the Dependency Dashboard lists unresolved OSV CVEs for direct dependencies.
-- Merge Confidence badges are enabled for ecosystems supported by Renovate/Mend so applicable PRs show age, adoption, passing, and confidence signals.
-- Grouping is defined via `packageRules` (e.g. “GitOps container images”, “Flux controllers & OCI artifacts”, “GitHub Actions”), and Flux updates are intentionally split into patch and minor PRs so patch updates can auto-merge while minor updates stay for manual review.
-- Major updates require Dependency Dashboard approval (`dependencyDashboardApproval: true`) and a release-age soak.
-- Schedule defaults to `at any time`; repo-level package rules add release-age delays for risky updates.
-- Changelogs are fetched for PRs by default, except digest-only updates.
-- The global config owns manager enablement, custom extraction rules, post-upgrade command allowlisting, Git author identity, and org-wide safety defaults.
+- Post-upgrade commands are allow-listed here. Currently only `./scripts/update-oci-digests.sh` is allowed because the Renovate executor does not have a Docker daemon for tests such as Kyverno CLI.
+- GitHub and Docker Hub API throttling is configured here.
+- Queue limits are configured here. Repository package rules use `prPriority` to decide which updates consume the limited slots first.
+- The admin config owns manager enablement, post-upgrade command allowlisting, Git author identity, and runtime safety defaults.
 - `autodiscover: false` is set in Renovate config. Discovery is handled by the RenovateJob/operator layer, and each execution should only handle the intended repository.
-
-Ignore paths are defined globally too (including `bootstrap/**` and `talos/**`).
 
 ### Repo config (.renovaterc.json5) highlights
 
@@ -121,10 +117,11 @@ The repo config is where “house style” lives.
 
 Key behaviors in the current repo config:
 
-- Dependency Dashboard enabled and the title is customized.
-- The repo does **not** define a global schedule; the in-cluster ConfigMap owns schedule policy.
-- Semantic commit conventions, commit message formatting, update-type labeling, and PR body notes.
-- GitHub Actions and Mise patch updates can still branch-automerge after checks pass; minor updates are opened as PRs so the AI dependency review can gate auto-merge.
+- The repo extends the shared Webgrip default preset and the Webgrip GitOps preset.
+- Shared preset references are pinned to an immutable commit SHA. This is safer than an unprotected mutable tag; switching to tags should only happen after `webgrip/renovate-config` protects release tags.
+- Kubernetes and Talos versions are centralized in `talos/talenv.yaml`; Renovate does not currently expose a generic Kubernetes-version constraint filter for Helm/chart compatibility in repo config, so compatibility gates stay as explicit package rules where needed.
+- The repo defines ignore paths, release-age gates, dependency grouping, PR priority, semantic commit scopes, labels, and PR body notes.
+- GitHub Actions and Mise patch updates can branch-automerge after a 1-day soak and successful checks; minor updates are opened as PRs so the AI dependency review can gate auto-merge.
 - GitOps changes under `kubernetes/apps/*` are regrouped by nearest package directory using Renovate templating instead of one rule per namespace.
 - Reused dependencies that span many apps, such as `ghcr.io/bjw-s-labs/helm/app-template`, are carved back out into shared PRs to avoid one dependency generating many near-identical namespace PRs.
 - Cluster-critical namespaces require Dependency Dashboard approval for minor updates and a longer release-age soak before PR creation.
@@ -135,10 +132,8 @@ Annotated dependency pins are the mechanism used for values that aren’t otherw
 
 Important note about `ignorePaths`:
 
-- The global ConfigMap defines an `ignorePaths` list.
-- The repo config also defines `ignorePaths`.
-
-Array merge/override behavior can materially change what Renovate scans. If a dependency appears “ignored” or “unexpectedly updated”, inspect both files and verify what Renovate reports in logs/Dependency Dashboard.
+- Ignore paths are repo-owned in `.renovaterc.json5`. The admin ConfigMap should not carry repo-specific ignore paths.
+- If a dependency appears “ignored” or “unexpectedly updated”, inspect `.renovaterc.json5` and verify what Renovate reports in logs/Dependency Dashboard.
 
 ## Pull request behavior (grouping, approvals, automerge)
 

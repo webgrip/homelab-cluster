@@ -1,6 +1,6 @@
 # Runbook: Flux
 
-Use this when Flux alerts are firing (for example `FluxKustomizationNotReady` or `FluxHelmReleaseNotReady`) or when “GitOps isn’t applying what you expect”.
+Use this when Flux alerts are firing (for example `FluxKustomizationNotReady`, `FluxHelmReleaseNotReady`, or `FluxResourceDriftDetected`) or when “GitOps isn’t applying what you expect”.
 
 ## Fast triage
 
@@ -36,6 +36,18 @@ Look for:
 - Missing CRDs (a chart expects CRDs that aren’t installed yet).
 - Image pull failures.
 - Secret not present (especially if it’s a SOPS-managed secret that wasn’t created yet).
+- Runtime drift from manual `kubectl`/`helm` changes or controller-side mutation outside Git.
+
+## Runtime drift
+
+When `FluxResourceDriftDetected` fires:
+
+- Inspect the affected resource:
+  - `flux get all -A`
+  - `kubectl -n <namespace> describe <kind> <name>`
+- Check whether the difference was intentional manual work or unintended mutation.
+- If intentional, make the same change in Git and let Flux reconcile it.
+- If unintentional, revert the live change or force a Flux reconcile after confirming the Git state is still correct.
 
 ## Fix workflow (GitOps-first)
 

@@ -7,21 +7,6 @@ data:
   renovate.json: |-
     {
       "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-      "extends": [
-        "config:recommended",
-        ":dependencyDashboard",
-        ":labels(dependencies)",
-        ":configMigration",
-
-        "docker:pinDigests",
-        "helpers:pinGitHubActionDigests",
-        ":pinDevDependencies",
-        ":maintainLockFilesWeekly",
-
-        "abandonments:recommended",
-        "mergeConfidence:all-badges"
-      ],
-
       "platform": "github",
       "autodiscover": false,
       "onboarding": true,
@@ -32,29 +17,10 @@ data:
       "userAgent": "webgrip-homelab/renovate-operator-webgrip-gitops",
 
       "updateNotScheduled": false,
-      "prConcurrentLimit": 4,
+      "prConcurrentLimit": 10,
       "prHourlyLimit": 2,
-      "branchConcurrentLimit": 3,
-      "commitBodyTable": true,
+      "branchConcurrentLimit": 10,
       "allowedCommands": ["^./scripts/update-oci-digests\\.sh$"],
-
-      "rebaseWhen": "behind-base-branch",
-      "fetchChangeLogs": "pr",
-      "schedule": [
-        "after 3am and before 7am every weekday",
-        "every weekend"
-      ],
-
-      "dependencyDashboard": true,
-      "dependencyDashboardAutoclose": true,
-      "dependencyDashboardOSVVulnerabilitySummary": "unresolved",
-      "osvVulnerabilityAlerts": true,
-
-      "vulnerabilityAlerts": {
-        "enabled": true,
-        "labels": ["security"],
-        "schedule": ["at any time"]
-      },
 
       "hostRules": [
         {
@@ -84,179 +50,7 @@ data:
         "docker-compose"
       ],
 
-      "flux": {
-        "managerFilePatterns": [
-          "/(^|/)kubernetes/.+/(?:helmrelease(?:-[^/]+)?|helmrepository|ks(?:-[^/]+)?|kustomization|receiver|grafana-annotations)\\.ya?ml(?:\\.j2)?$/"
-        ]
-      },
-
-      "helmfile": {
-        "managerFilePatterns": [
-          "/(^|/)helmfile\\.ya?ml(?:\\.gotmpl)?(?:\\.j2)?$/",
-          "/(^|/)helmfile\\.d/.+\\.ya?ml(?:\\.gotmpl)?(?:\\.j2)?$/"
-        ]
-      },
-
-      "kubernetes": {
-        "managerFilePatterns": ["/(^|/)kubernetes/.+\\.ya?ml(?:\\.j2)?$/"]
-      },
-
-      "kustomize": {
-        "managerFilePatterns": ["/(^|/)kustomization\\.ya?ml(?:\\.j2)?$/"]
-      },
-
       "renovate-config": {
         "managerFilePatterns": ["/(^|/)\\.renovaterc\\.json5$/"]
-      },
-
-      "customManagers": [
-        {
-          "customType": "regex",
-          "description": "Process Flux OCIRepository tags; spec.ref.digest is refreshed by scripts/update-oci-digests.sh",
-          "managerFilePatterns": [
-            "/(^|/)kubernetes/apps/.+/ocirepository\\.ya?ml(?:\\.j2)?$/"
-          ],
-          "matchStrings": [
-            "kind:\\s*OCIRepository[\\s\\S]*?ref:\\s*\\n[\\s\\S]*?tag:\\s*(?<currentValue>\\S+)[\\s\\S]*?url:\\s*oci://(?<depName>\\S+)",
-            "kind:\\s*OCIRepository[\\s\\S]*?url:\\s*oci://(?<depName>\\S+)[\\s\\S]*?ref:\\s*\\n[\\s\\S]*?tag:\\s*(?<currentValue>\\S+)"
-          ],
-          "datasourceTemplate": "docker"
-        },
-        {
-          "customType": "regex",
-          "description": "Process annotated dependencies",
-          "managerFilePatterns": [
-            "/(^|/).+\\.env(?:\\.j2)?$/",
-            "/(^|/).+\\.sh(?:\\.j2)?$/",
-            "/(^|/).+\\.ya?ml(?:\\.j2)?$/"
-          ],
-          "matchStrings": [
-            "datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( repository=(?<registryUrl>\\S+))?\\n.+(:\\s|=)(&\\S+\\s)?(?<currentValue>\\S+)",
-            "datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\n.+/(?<currentValue>(v|\\d)[^/]+)"
-          ],
-          "datasourceTemplate": "{{#if datasource}}{{{datasource}}}{{else}}github-releases{{/if}}"
-        },
-        {
-          "customType": "regex",
-          "description": "Process inline OCI dependencies",
-          "managerFilePatterns": [
-            "/(^|/).+\\.ya?ml(?:\\.j2)?$/"
-          ],
-          "matchStrings": [
-            "oci://(?<depName>[A-Za-z0-9._/-]+):(?<currentValue>\\S+)"
-          ],
-          "datasourceTemplate": "docker"
-        }
-      ],
-
-      "ignorePaths": [
-        "**/*.sops.yaml",
-        "**/*.sops.yml",
-        "bootstrap/**",
-        "talos/**",
-        ".github/workflows/flux-local.yaml",
-        "kubeconfig",
-        "github-push-token.txt",
-        "github-deploy.key.pub"
-      ],
-
-      "packageRules": [
-        {
-          "matchManagers": ["flux"],
-          "groupName": "Flux controllers",
-          "separateMinorPatch": true,
-          "separateMultipleMajor": true,
-          "pinDigests": false
-        },
-        {
-          "description": "Manage Flux OCIRepository tags without asking Renovate to calculate digest-only OCI Helm chart updates.",
-          "matchManagers": ["custom.regex"],
-          "matchFileNames": ["kubernetes/apps/**/ocirepository.yaml"],
-          "matchDatasources": ["docker"],
-          "groupName": "Flux OCI Helm charts",
-          "separateMinorPatch": true,
-          "pinDigests": false
-        },
-        {
-          "description": "Disable digest-only and pin-digest updates for Flux OCIRepository custom regex deps; scripts/update-oci-digests.sh owns spec.ref.digest.",
-          "matchManagers": ["custom.regex"],
-          "matchFileNames": ["kubernetes/apps/**/ocirepository.yaml"],
-          "matchDatasources": ["docker"],
-          "matchUpdateTypes": ["pinDigest", "digest"],
-          "enabled": false
-        },
-        {
-          "description": "Automerge Flux OCI Helm chart patch updates; digest pins are refreshed by post-upgrade tasks",
-          "matchManagers": ["custom.regex"],
-          "matchFileNames": ["kubernetes/apps/**/ocirepository.yaml"],
-          "matchUpdateTypes": ["patch"],
-          "automerge": true,
-          "automergeType": "pr",
-          "schedule": ["at any time"]
-        },
-        {
-          "description": "Disable Helmfile OCI Helm chart digest pinning (bootstrap-only, not GitOps-managed by Flux)",
-          "matchManagers": ["helmfile"],
-          "matchDatasources": ["docker"],
-          "matchUpdateTypes": ["pinDigest", "digest"],
-          "pinDigests": false,
-          "enabled": false
-        },
-        {
-          "matchManagers": ["helm-values", "kustomize", "kubernetes"],
-          "matchDatasources": ["docker"],
-          "groupName": "GitOps container images",
-          "pinDigests": true
-        },
-        {
-          "description": "Helm charts that use a dedicated sha: field for digest pinning (e.g. kube-prometheus-stack). Renovate updates the sha: field directly via customManagers; do not also embed digest inline in tag: which causes a double-digest InvalidImageName error.",
-          "matchManagers": ["helm-values"],
-          "matchPackageNames": [
-            "quay.io/prometheus-operator/prometheus-operator",
-            "quay.io/prometheus-operator/prometheus-config-reloader",
-            "quay.io/prometheus/prometheus",
-            "quay.io/prometheus/alertmanager"
-          ],
-          "matchUpdateTypes": ["pinDigest", "digest"],
-          "enabled": false
-        },
-        {
-          "matchManagers": ["github-actions"],
-          "groupName": "GitHub Actions",
-          "automerge": false
-        },
-        {
-          "matchManagers": ["mise"],
-          "groupName": "Mise tools"
-        },
-        {
-          "matchManagers": ["dockerfile", "docker-compose"],
-          "matchDatasources": ["docker"],
-          "groupName": "application container images",
-          "pinDigests": true
-        },
-        {
-          "matchUpdateTypes": ["major"],
-          "addLabels": ["major"],
-          "dependencyDashboardApproval": true,
-          "minimumReleaseAge": "14 days"
-        },
-        {
-          "matchUpdateTypes": ["patch"],
-          "matchDepTypes": ["dependencies"],
-          "automerge": true,
-          "schedule": ["at any time"]
-        },
-        {
-          "matchDepTypes": ["devDependencies"],
-          "groupName": "dev-only deps",
-          "automerge": true,
-          "automergeType": "pr"
-        },
-        {
-          "matchPackageNames": ["@types/**"],
-          "groupName": "typescript types",
-          "automerge": true
-        }
-      ]
+      }
     }

@@ -4,9 +4,11 @@ name: "e2e"
 on:
   workflow_dispatch:
   push:
-    branches: ["main"]
+    branches:
+      - "main"
   pull_request:
-    branches: ["main"]
+    branches:
+      - "main"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
@@ -25,6 +27,12 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+
+      - name: Validate Renovate config
+        env:
+          GITHUB_COM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RENOVATE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx --yes --package renovate@43.208.0 renovate-config-validator --no-global .renovaterc.json5
 
       - name: Verify OCIRepository digests
         run: ./scripts/verify-oci-digests.sh "$GITHUB_WORKSPACE"
