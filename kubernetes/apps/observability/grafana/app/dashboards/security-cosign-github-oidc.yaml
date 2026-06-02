@@ -965,6 +965,161 @@ spec:
             "mode": "markdown",
             "content": "Images under `ghcr.io/webgrip/*` are expected to be released by `webgrip/infrastructure` from `.github/workflows/on_release_published.yml`, signed keylessly with Cosign, and published with SLSA provenance plus a CycloneDX SBOM attestation against the immutable image digest.\n\nTrivy SARIF is uploaded to GitHub Security for vulnerability review. Admission remains audit-only until every internal image publishes the required evidence."
           }
+        },
+        {
+          "id": 18,
+          "type": "row",
+          "title": "Container Evidence Matrix",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 59
+          },
+          "collapsed": false
+        },
+        {
+          "id": 19,
+          "type": "table",
+          "title": "All Running Containers - OIDC, Attestation & SBOM Evidence",
+          "description": "Live container inventory from kube-state-metrics joined with Kyverno PolicyReport results. Empty evidence columns mean the pod has no current report for that control, usually because the image is outside the audited policy scope or has not been admitted since reporting began.",
+          "gridPos": {
+            "h": 14,
+            "w": 24,
+            "x": 0,
+            "y": 60
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\"})",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "max by (namespace, pod, oidc_status) (label_replace(label_replace(policy_report_result{namespace=~\"$namespace\",policy=\"image-verify-audit\",rule=~\"verify-webgrip-images|verify-kyverno-images-keyless\"}, \"pod\", \"$1\", \"name\", \"(.*)\"), \"oidc_status\", \"$1\", \"status\", \"(.*)\"))",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "expr": "max by (namespace, pod, attestation_status) (label_replace(label_replace(policy_report_result{namespace=~\"$namespace\",policy=\"image-attestations-audit\",rule=\"verify-github-slsa-provenance\"}, \"pod\", \"$1\", \"name\", \"(.*)\"), \"attestation_status\", \"$1\", \"status\", \"(.*)\"))",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "D",
+              "expr": "max by (namespace, pod, sbom_status) (label_replace(label_replace(policy_report_result{namespace=~\"$namespace\",policy=\"image-attestations-audit\",rule=\"verify-cyclonedx-sbom\"}, \"pod\", \"$1\", \"name\", \"(.*)\"), \"sbom_status\", \"$1\", \"status\", \"(.*)\"))",
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "sortBy": [
+              {
+                "displayName": "Namespace",
+                "desc": false
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "namespace": "Namespace",
+                  "pod": "Pod",
+                  "container": "Container",
+                  "image": "Image",
+                  "oidc_status": "GitHub OIDC Signature",
+                  "attestation_status": "SLSA Attestation",
+                  "sbom_status": "CycloneDX SBOM"
+                },
+                "excludeByName": {
+                  "Time": true,
+                  "Value": true,
+                  "Value #A": true,
+                  "Value #B": true,
+                  "Value #C": true,
+                  "Value #D": true
+                },
+                "indexByName": {
+                  "namespace": 0,
+                  "pod": 1,
+                  "container": 2,
+                  "image": 3,
+                  "oidc_status": 4,
+                  "attestation_status": 5,
+                  "sbom_status": 6
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byRegexp",
+                  "options": "GitHub OIDC Signature|SLSA Attestation|CycloneDX SBOM"
+                },
+                "properties": [
+                  {
+                    "id": "custom.displayMode",
+                    "value": "color-text"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "pass": {
+                            "text": "pass",
+                            "color": "#73BF69",
+                            "index": 0
+                          },
+                          "fail": {
+                            "text": "fail",
+                            "color": "#F2495C",
+                            "index": 1
+                          },
+                          "warn": {
+                            "text": "warn",
+                            "color": "#FF9830",
+                            "index": 2
+                          },
+                          "error": {
+                            "text": "error",
+                            "color": "#808080",
+                            "index": 3
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "noValue",
+                    "value": "not reported"
+                  }
+                ]
+              }
+            ]
+          }
         }
       ]
     }
