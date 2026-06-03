@@ -1,3 +1,4 @@
+---
 cluster:
   allowSchedulingOnControlPlanes: true
   apiServer:
@@ -14,6 +15,11 @@ cluster:
   etcd:
     extraArgs:
       listen-metrics-urls: http://0.0.0.0:2381
+      # Default 100ms/1000ms is too tight for a shared-disk node.
+      # 500ms heartbeat + 5s election timeout tolerate WAL fsync spikes
+      # without triggering unnecessary leader elections.
+      heartbeat-interval: "500"
+      election-timeout: "5000"
     advertisedSubnets:
       - 10.0.0.0/24
   proxy:
