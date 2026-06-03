@@ -35,3 +35,35 @@ guac:
 ## GPG signing is enabled; bypass for agent commits
 
 The repo has `commit.gpgsign=true`. Use `git -c commit.gpgsign=false commit` when committing from the agent environment where GPG keys are not available.
+
+## talosctl requires the clusterconfig talosconfig, not talos/talosconfig
+
+`talos/talosconfig` is a stub file containing only `context: ""` — it has no endpoints. Always use `--talosconfig talos/clusterconfig/talosconfig` for all `talosctl` operations.
+
+## The correct talosconfig for this cluster
+
+```bash
+mise exec -- talosctl --talosconfig talos/clusterconfig/talosconfig --nodes <IP> <command>
+```
+
+## soyo node extra disks are iSCSI LUNs, NOT local SSDs
+
+The only local disk on each soyo control-plane node is `/dev/sda` (WUXIN G15 512GB SSD, rotational=0). All other disks (`sdb`, `sdc`, …) are iSCSI LUNs presented via Linux IET (vendor string `IET`, rotational=1, model `VIRTUAL-DISK`). They are network-attached HDDs. **Never configure etcd or any latency-sensitive workload on these disks.** The extra-disk appearance in `talosctl get discoveredvolumes` is misleading.
+
+## etcd runs on sda4 (shared with all container I/O) — no isolation today
+
+etcd's WAL and boltdb database live on `/dev/sda4` (Talos EPHEMERAL XFS, 510 GB), the same partition used by containerd images, overlay snapshots, kubelet, and Longhorn replica data. There is no I/O isolation. Write-heavy workloads scheduled on control-plane nodes directly contend with etcd fsync latency.
+
+**Consequence:** etcd WAL fsync p99 can spike to 1–4 seconds under disk pressure, triggering leader elections (observed: 3337+ leader changes in a single day). Downstream effect: kube-controller-manager and kube-scheduler lose lease locks and restart repeatedly.
+
+**Mitigations in place (as of 2026-06-03):**
+- `etcd heartbeat-interval: 500ms`, `election-timeout: 5000ms` (in `talos/patches/controller/cluster.yaml`) — reduces election sensitivity to transient disk spikes.
+- Pyroscope suspended — it was the primary write-heavy offender when co-located with the etcd leader.
+
+**Remaining action:** Run `talosctl etcd defrag` on each member (one at a time). See `docs/techdocs/docs/runbooks/etcd-health.md`.
+
+**Long-term fix:** Add a second physical local SSD per soyo node and configure it via `machine.disks` in Talos to mount at `/var/lib/etcd` before etcd starts.
+
+## Do not schedule write-heavy workloads on control-plane nodes
+
+Pyroscope, Loki (local storage mode), databases with high write throughput, and similar workloads must not run on soyo-1/2/3. Use a hard `requiredDuringSchedulingIgnoredDuringExecution` nodeAffinity with `node-role.kubernetes.io/control-plane DoesNotExist`, not a soft preference. Soft preferences are ignored under resource pressure and do not guarantee placement on the worker node.
