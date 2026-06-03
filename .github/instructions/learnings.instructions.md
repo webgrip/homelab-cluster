@@ -67,3 +67,46 @@ etcd's WAL and boltdb database live on `/dev/sda4` (Talos EPHEMERAL XFS, 510 GB)
 ## Do not schedule write-heavy workloads on control-plane nodes
 
 Pyroscope, Loki (local storage mode), databases with high write throughput, and similar workloads must not run on soyo-1/2/3. Use a hard `requiredDuringSchedulingIgnoredDuringExecution` nodeAffinity with `node-role.kubernetes.io/control-plane DoesNotExist`, not a soft preference. Soft preferences are ignored under resource pressure and do not guarantee placement on the worker node.
+
+## task talos:apply-node can trigger a reboot even for etcd config changes
+
+`talhelper gencommand apply` with `--mode=auto` lets Talos decide whether to reboot. Even "simple" etcd config changes (heartbeat-interval, election-timeout) will trigger a reboot if the running config differs in _any other way_ — for example, if feature flags like `rbac`, `stableHostname`, or `apidCheckExtKeyUsage` are absent from the generated config vs what's running. Talos sees these as requiring a restart.
+
+**Consequence:** Every `apply-node` on this cluster currently triggers a full reboot, meaning Longhorn-mounted pods are SIGKILL'd mid-operation.
+
+**Always use `task talos:apply-node-safe IP=<ip> HOSTNAME=<name>`** which drains the node first, applies, waits for Ready, then uncordons. This ensures clean Longhorn unmount before the reboot.
+
+## Talos reboot with Longhorn volumes causes orphaned application locks
+
+When a node reboots with Longhorn-backed pods still running (e.g. due to SIGKILL during shutdown), the CSI plugin terminates before kubelet can unmount volumes. Applications that hold database advisory locks (like Grafana's `server_lock` table) may leave stale rows, causing the app to refuse to start after the reboot.
+
+**Symptom:** Grafana pod CrashLoopBackOff with `there is already a lock for this actionName: oss-ac-basic-role-seeder`.
+
+**Fix:**
+```bash
+kubectl exec -n observability grafana-db-1 -c postgres -- \
+  psql -U postgres -d grafana -c "DELETE FROM server_lock WHERE operation_uid LIKE '%seeder%';"
+kubectl delete pod -n observability -l app=grafana
+```
+
+**Prevention:** Always drain before applying Talos config. Use `task talos:apply-node-safe`.
+
+## After node reboots, stranded Error pods must be manually deleted
+
+After a Talos node reboot, ReplicaSet/Deployment pods that were evicted mid-operation can get stuck in `Error` state with 0 restarts (the controller won't replace them because they're not in `Pending`). They do not self-heal.
+
+**Fix:** `kubectl delete pod -n <namespace> <pod-name>` — the controller will reschedule immediately.
+
+**Common namespaces to check:** `longhorn-system` (csi-attacher, csi-provisioner, csi-resizer, csi-snapshotter, longhorn-ui), `kube-system` (cilium-operator), `security` (policy-reporter).
+
+## etcd DB utilization increases after reboots (compaction triggered)
+
+After applying the etcd timing patch (which caused all 3 nodes to reboot), etcd DB utilization jumped from ~37% to ~91% of allocated space. This is because Talos's etcd restart triggers a compaction cycle. Defrag is still beneficial to reclaim the allocated-but-fragmented boltdb pages.
+
+Run defrag one member at a time after any cluster-wide rolling restart:
+```bash
+TC="--talosconfig talos/clusterconfig/talosconfig"
+mise exec -- talosctl $TC --nodes 10.0.0.21 etcd defrag
+mise exec -- talosctl $TC --nodes 10.0.0.22 etcd defrag
+mise exec -- talosctl $TC --nodes 10.0.0.20 etcd defrag  # current leader last
+```

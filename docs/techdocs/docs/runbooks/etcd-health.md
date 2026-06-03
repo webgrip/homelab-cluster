@@ -71,36 +71,66 @@ Expected result: DB size shrinks from ~430–450 MB to ~165 MB per member. Backe
 
 ## Applying Talos config changes (e.g. etcd tuning)
 
-When changes are made to `talos/patches/` (such as the etcd heartbeat/election-timeout tuning), they must be regenerated and applied to the cluster. This is a rolling, non-disruptive operation.
+When changes are made to `talos/patches/` (such as the etcd heartbeat/election-timeout tuning), they must be regenerated and applied to the cluster.
+
+> ⚠️ **`--mode=auto` almost always triggers a reboot on these nodes.** Even etcd-only config changes cause a reboot if the running config differs in feature flags or other fields from what talhelper generates. A reboot with Longhorn-mounted pods causes SIGKILL races that can leave orphaned application locks in databases (see *Known issues* below). Always use the safe task.
+
+**Preferred method — safe rolling apply with drain:**
+
+```bash
+# Applies one node at a time: drains workloads, applies config, waits for Ready, uncordons
+task talos:apply-node-safe IP=10.0.0.20 HOSTNAME=soyo-1
+task talos:apply-node-safe IP=10.0.0.21 HOSTNAME=soyo-2
+task talos:apply-node-safe IP=10.0.0.22 HOSTNAME=soyo-3
+```
+
+**Manual method (if task runner unavailable):**
 
 ```bash
 # 1. Regenerate all node configs from talconfig + patches
 mise exec -- talhelper genconfig
-
-# 2. Apply to control-plane nodes one at a time
-#    --mode=no-reboot applies without rebooting (config diff is hot-applied where possible)
-#    Talos will tell you if a reboot is required for a specific change.
 TC="--talosconfig talos/clusterconfig/talosconfig"
 
+# 2. For each node: drain → apply → wait → uncordon
+mise exec -- kubectl drain soyo-1 --ignore-daemonsets --delete-emptydir-data --timeout=120s
 mise exec -- talosctl $TC --nodes 10.0.0.20 apply-config \
-  --file talos/clusterconfig/kubernetes-soyo-1.yaml --mode=no-reboot
-
-# Verify soyo-1 is healthy before continuing
-mise exec -- talosctl $TC --nodes 10.0.0.20 health
-
-mise exec -- talosctl $TC --nodes 10.0.0.21 apply-config \
-  --file talos/clusterconfig/kubernetes-soyo-2.yaml --mode=no-reboot
-mise exec -- talosctl $TC --nodes 10.0.0.21 health
-
-mise exec -- talosctl $TC --nodes 10.0.0.22 apply-config \
-  --file talos/clusterconfig/kubernetes-soyo-3.yaml --mode=no-reboot
-mise exec -- talosctl $TC --nodes 10.0.0.22 health
-
-# 3. Confirm etcd timing args took effect (look for heartbeat-interval in logs)
-mise exec -- talosctl $TC --nodes 10.0.0.20 logs etcd 2>&1 | grep -i 'heartbeat\|election' | tail -10
+  --file talos/clusterconfig/kubernetes-soyo-1.yaml --mode=auto
+mise exec -- kubectl wait node/soyo-1 --for=condition=Ready --timeout=300s
+mise exec -- kubectl uncordon soyo-1
+# Repeat for soyo-2 (10.0.0.21) and soyo-3 (10.0.0.22)
 ```
 
-> **Note on `--mode`:** `no-reboot` applies immediately without rebooting. Some changes (kernel args, disk partitioning) require `--mode=reboot`. Talos will return an error and tell you if a reboot is needed — in that case, schedule maintenance and use `--mode=reboot` during a window where quorum is maintained.
+## Known issues after node reboots
+
+### Stranded Error pods (self-heal: NO — manual delete required)
+
+After a Talos reboot, pods evicted mid-operation get stuck in `Error` state with 0 restart count. The ReplicaSet controller will not replace them unless the pod is deleted.
+
+```bash
+# Find all stuck Error pods
+kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded | grep Error
+
+# Delete them (controller reschedules immediately)
+kubectl delete pod -n <namespace> <pod-name>
+```
+
+Common namespaces after CP node reboots: `longhorn-system` (csi-attacher, csi-provisioner, csi-resizer, csi-snapshotter, longhorn-ui), `kube-system` (cilium-operator), `security` (policy-reporter).
+
+### Grafana `server_lock` orphaned lock (after Longhorn SIGKILL on reboot)
+
+If Grafana's PostgreSQL pod is SIGKILL'd mid-migration, a stale row in `server_lock` prevents Grafana from starting.
+
+**Symptom:** `grafana-deployment` CrashLoopBackOff with error: `there is already a lock for this actionName: oss-ac-basic-role-seeder`
+
+**Fix:**
+```bash
+kubectl exec -n observability grafana-db-1 -c postgres -- \
+  psql -U postgres -d grafana -c \
+  "DELETE FROM server_lock WHERE operation_uid LIKE '%seeder%';"
+kubectl delete pod -n observability -l app=grafana
+```
+
+**Prevention:** Use `task talos:apply-node-safe` to drain the node first — Longhorn unmounts cleanly and PostgreSQL shuts down gracefully before the reboot.
 
 ## Diagnosing disk I/O contention
 
@@ -138,7 +168,13 @@ mise exec -- kubectl get pods -A -o wide --field-selector spec.nodeName=soyo-1 |
 **Actions taken:**
 - Pyroscope suspended in Flux and HelmRelease deleted (pod + service removed, PVC preserved).
 - `talos/patches/controller/cluster.yaml`: etcd `heartbeat-interval: 500`, `election-timeout: 5000`.
-- **Still required:** `talosctl etcd defrag` (one member at a time) — this is the highest-impact remaining action.
-- **Still required:** `talhelper genconfig` + `talosctl apply-config` to activate the timing changes.
+- Config applied to all 3 nodes via `task talos:apply-node` (each node rebooted). Confirmed via `talosctl get machineconfig`.
+- etcd DB utilization increased from ~37% to ~91% after the reboots triggered compaction.
+- **Still required:** `talosctl etcd defrag` (one member at a time) — reclaims fragmented boltdb pages.
+
+**Side effect of rolling reboot:**
+- All 3 nodes rebooted; stranded Error pods in longhorn-system, kube-system, security cleaned up manually.
+- `grafana-db-1` was SIGKILL'd mid-operation on soyo-2 reboot → `server_lock` orphaned → Grafana CrashLoopBackOff. Fixed by deleting the stale lock row and restarting the pod.
+- **Mitigation added:** `task talos:apply-node-safe` (drain → apply → wait → uncordon) added to `.taskfiles/talos/Taskfile.yaml` to prevent this in future.
 
 **Structural limitation:** The extra disks on soyo nodes are iSCSI LUNs (vendor: IET, rotational HDD). They are NOT suitable for etcd. The only viable long-term fix is a second physical local SSD per soyo node, configured via `machine.disks` in Talos to mount at `/var/lib/etcd` before etcd starts.
