@@ -20,33 +20,29 @@ spec:
       retries: 3
       remediateLastFailure: true
   values:
-    podAnnotations:
-      reloader.stakater.com/auto: "true"
-
-    podSecurityContext:
-      # Skip recursive chown on restarts if root dir ownership already matches.
-      # Without this, a 20 GB volume with tens-of-thousands of files causes a
-      # multi-minute write storm that saturates disk I/O and causes etcd WAL
-      # fsync latency spikes across the whole cluster.
-      fsGroupChangePolicy: OnRootMismatch
-
     serviceMonitor:
       enabled: true
-
-    # Pyroscope readiness can be slow during compaction/startup.
-    readinessProbe:
-      httpGet:
-        path: /ready
-        port: 4040
-      initialDelaySeconds: 10
-      periodSeconds: 10
-      timeoutSeconds: 5
-      failureThreshold: 6
-      successThreshold: 1
 
     # Keep the initial install simple/reliable: use local persistent storage.
     # (Pyroscope object storage can be enabled later, once you pick bucket policy + format.)
     pyroscope:
+      podAnnotations:
+        reloader.stakater.com/auto: "true"
+
+      podSecurityContext:
+        # Keep chart defaults and skip recursive chown on restarts if root dir
+        # ownership already matches. Without this, the 20 GB volume can trigger
+        # a multi-minute write storm over tens-of-thousands of files.
+        fsGroup: 10001
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroupChangePolicy: OnRootMismatch
+
+      # The chart only renders readinessProbe.initialDelaySeconds.
+      readinessProbe:
+        # Pyroscope readiness can be slow during compaction/startup.
+        initialDelaySeconds: 10
+
       # Keep pyroscope off the persistent etcd leader (soyo-3/10.0.0.22).
       # Pyroscope does sustained high-throughput disk writes; co-locating it with
       # the etcd leader saturates the shared disk and pushes etcd WAL fsync p99
