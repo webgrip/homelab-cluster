@@ -1,10 +1,74 @@
 ---
 # yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+#
+# SUSPENDED: Pyroscope removed 2026-06-03 to fix etcd instability.
+#
+# ROOT CAUSE SUMMARY
+# ==================
+# All three control-plane nodes (soyo-1/2/3) run etcd on /dev/sda4 — the
+# Talos EPHEMERAL XFS partition — which is the SAME disk as containerd's
+# image store, overlay snapshotter, kubelet state, and Longhorn replica data.
+# There is no disk I/O isolation between etcd and workload containers.
+#
+# Pyroscope stores continuous profiling data in a 20 GB Longhorn volume.
+# Its write pattern is sustained high-throughput (compaction cycles, segment
+# flushes, index writes) and it runs as a single-binary with no write throttle.
+# When the pod is scheduled on a control-plane node, every Pyroscope write
+# contends directly with etcd's WAL fsync on the same block device queue.
+#
+# OBSERVED SYMPTOMS (confirmed via Prometheus + etcd logs, 2026-06-03)
+# =====================================================================
+# - etcd WAL fsync p99 spiked to 1–4 SECONDS  (threshold for election: 1s)
+# - etcd self-logged: "leader is overloaded likely from slow disk"
+# - 3337+ leader changes on soyo-3 alone; still accumulating ~50-100/hour
+# - kube-controller-manager: 79–94 restarts; kube-scheduler: 74–85 restarts
+# - kube-apiserver: "etcdserver: request timed out", handler timeouts
+# - Downstream: Flux, Renovate, and lease holders all hit context deadlines
+# - Fragmentation ratio: 436 MB allocated / 163 MB in-use (37% utilisation)
+#   — boltdb has never been defragmented, multiplying backend commit latency
+#
+# WHY THE PREVIOUS AFFINITY DID NOT HELP
+# =======================================
+# The HelmRelease had a *soft* preferredDuringSchedulingIgnoredDuringExecution
+# rule to avoid soyo-3 only. Pyroscope ended up on soyo-1 (10.0.0.20), which
+# is the *current* etcd leader. The rule was wrong in two ways:
+#   1. "preferred" means the scheduler ignores it under resource pressure
+#   2. It excluded only one hostname instead of ALL control-plane nodes
+#
+# THE REAL STRUCTURAL PROBLEM
+# ===========================
+# The extra disks on each soyo node (sdb, sdc, …) are iSCSI LUNs backed by
+# HDDs, presented via Linux IET (iSCSI Enterprise Target). They are NOT local
+# SSDs and are NOT suitable for etcd. Moving etcd to them would make latency
+# dramatically worse (network round-trip + HDD seek per fsync).
+# The only correct long-term fix is a second *local* SSD in each soyo node,
+# configured via machine.disks in Talos to mount at /var/lib/etcd before
+# the etcd service starts. Until then, reducing I/O contention on sda4 is the
+# only lever available.
+#
+# MITIGATIONS APPLIED (2026-06-03)
+# =================================
+# 1. etcd heartbeat-interval raised 100ms → 500ms
+#    etcd election-timeout raised 1000ms → 5000ms
+#    (talos/patches/controller/cluster.yaml — requires talhelper genconfig + apply)
+# 2. Pyroscope suspended here and removed from cluster
+#
+# REMAINING ACTIONS REQUIRED
+# ==========================
+# - Run: talosctl etcd defrag (one member at a time!) to shrink 436MB → ~163MB
+#   This is the single highest-impact action and requires no code change.
+# - Run talhelper genconfig and apply the updated cluster.yaml to all CP nodes
+# - When revisiting Pyroscope: schedule it on fringe-workstation ONLY, using
+#   a hard requiredDuringSchedulingIgnoredDuringExecution anti-affinity against
+#   node-role.kubernetes.io/control-plane='' (DoesNotExist operator).
+# - Long-term: add a second local SSD per soyo node for dedicated etcd storage.
+#
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: pyroscope
 spec:
+  suspend: true
   interval: 1h
   path: ./kubernetes/apps/observability/pyroscope/app
   postBuild:
