@@ -20,12 +20,37 @@ tasks:
       MODE: '{{.MODE | default "auto"}}'
       INSECURE: '{{.INSECURE | default "false"}}'
     requires:
-      vars: [IP]
+      vars:
+        - IP
     preconditions:
       - '{{if eq .INSECURE "true"}}talosctl get disks --nodes {{.IP}} --endpoints {{.IP}} --insecure{{else}}talosctl --nodes {{.IP}} get machineconfig{{end}}'
       - talosctl config info
       - test -f {{.TALOSCONFIG}}
       - which talhelper talosctl yq
+
+  apply-node-safe:
+    desc: Drain node, apply Talos config, wait for Ready, uncordon [IP=required, HOSTNAME=required]
+    dir: "{{.TALOS_DIR}}"
+    vars:
+      MODE: '{{.MODE | default "auto"}}'
+      INSECURE: '{{.INSECURE | default "false"}}'
+    requires:
+      vars:
+        - IP
+        - HOSTNAME
+    preconditions:
+      - talosctl config info
+      - test -f {{.TALOSCONFIG}}
+      - which talhelper talosctl yq kubectl
+    cmds:
+      - desc: Drain node to gracefully evict workloads before reboot
+        cmd: kubectl drain {{.HOSTNAME}} --ignore-daemonsets --delete-emptydir-data --timeout=120s
+      - desc: Apply Talos config
+        cmd: talhelper gencommand apply --node {{.IP}} --extra-flags '--mode={{.MODE}}{{if eq .INSECURE "true"}} --insecure --endpoints={{.IP}}{{end}}' | bash
+      - desc: Wait for node to become Ready again
+        cmd: kubectl wait node/{{.HOSTNAME}} --for=condition=Ready --timeout=300s
+      - desc: Uncordon node to restore scheduling
+        cmd: kubectl uncordon {{.HOSTNAME}}
 
   upgrade-node:
     desc: Upgrade Talos on a single node [IP=required]
@@ -38,7 +63,8 @@ tasks:
         sh: yq '.talosVersion' {{.TALOS_DIR}}/talenv.yaml
       INSECURE: '{{.INSECURE | default "false"}}'
     requires:
-      vars: [IP]
+      vars:
+        - IP
     preconditions:
       - '{{if eq .INSECURE "true"}}talosctl get disks --nodes {{.IP}} --endpoints {{.IP}} --insecure{{else}}talosctl --nodes {{.IP}} get machineconfig{{end}}'
       - talosctl config info
