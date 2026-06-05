@@ -1,22 +1,30 @@
+---
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 name: Renovate PR Review
 
 on:
   pull_request:
-    types: [opened, reopened]
+    types:
+      - opened
+      - reopened
 
 concurrency:
   group: renovate-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  review:
-    if: >-
-      (
-        github.event.pull_request.user.login == 'webgrip-renovate[bot]' ||
-        github.event.pull_request.user.login == 'renovate[bot]' ||
-        github.event.pull_request.user.login == 'dependabot[bot]'
-      ) &&
-      !contains(github.event.pull_request.labels.*.name, 'automerge')
-    uses: webgrip/.github/.github/workflows/renovate-review.yml@6ac576d2dde5a5b6fc7327e111fe5f6823e14383 # main
-    secrets: inherit
+  noop:
+    runs-on: ubuntu-latest
+    steps:
+      - name: No-op
+        run: echo "This job does nothing. The actual review job is defined in webgrip/.github/.github/workflows/renovate-review.yml"
+        # review:
+        #   if: >-
+        #     (
+        #       github.event.pull_request.user.login == 'webgrip-renovate[bot]' ||
+        #       github.event.pull_request.user.login == 'renovate[bot]' ||
+        #       github.event.pull_request.user.login == 'dependabot[bot]'
+        #     ) &&
+        #     !contains(github.event.pull_request.labels.*.name, 'automerge')
+        #   uses: webgrip/.github/.github/workflows/renovate-review.yml@6ac576d2dde5a5b6fc7327e111fe5f6823e14383 # main
+        #   secrets: inherit
