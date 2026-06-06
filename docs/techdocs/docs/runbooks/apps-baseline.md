@@ -32,3 +32,5 @@ Use this when a random workload is down (CrashLoopBackOff, `Unavailable`, readin
 - Image pull errors.
 - Node pressure (memory/disk) evicting pods.
 - Storage issues (unbound PVC, degraded volume).
+- DNS resolution failures for `*.webgrip.dev` hostnames — see [dns-split-dns](dns-split-dns.md).
+- OIDC/OAuth login failures — see [authentik-oidc-login](authentik-oidc-login.md).

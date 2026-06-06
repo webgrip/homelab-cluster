@@ -103,6 +103,76 @@ Backups are optional and depend on having an S3-compatible endpoint configured; 
 
 Important: do not commit any decrypted artifacts (for example `*.decrypted~*.yaml`).
 
+## Authentication (Authentik OIDC)
+
+For apps that support OIDC login, wire them to the cluster's Authentik instance.
+
+### Prerequisites
+
+- Authentik must be deployed and healthy (`kubectl get pods -n authentik`)
+- The app's pod must be able to resolve `authentik.webgrip.dev` (DNS via CoreDNS → k8s-gateway). If not, see the [dns-split-dns runbook](runbooks/dns-split-dns.md).
+
+### Step 1: Create an Authentik OIDC blueprint
+
+Create `kubernetes/apps/authentik/app/blueprints/<nn>-oidc-<appname>.yaml`. Copy the pattern from any existing `3x-oidc-*.yaml`. The blueprint creates:
+
+- An `oauth2provider` with `authorization_code` grant type
+- An `application` linked to that provider
+- `policybinding` entries for `homelab-users-only` and `homelab-mfa-required`
+
+Key template variables in the `context` block:
+
+| Variable | Purpose |
+|---|---|
+| `app_host` | Subdomain (e.g., `n8n`, `searxng`) |
+| `redirect_path` | App's OAuth callback path (check the app's docs) |
+
+### Step 2: Register in the Authentik kustomization
+
+Add the new blueprint filename to the `configMapGenerator.files` list in `kubernetes/apps/authentik/app/kustomization.yaml`.
+
+### Step 3: Configure the app for OIDC
+
+Add OIDC environment variables to the app's ConfigMap/HelmRelease. Non-secret values (discovery URL, endpoints) go in ConfigMaps. Client credentials (`client_id`, `client_secret`) go in a **SOPS-encrypted Secret**.
+
+App-side secret template pattern:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <appname>-oidc-secrets
+  namespace: <app-namespace>
+type: Opaque
+stringData:
+  <APP>_OIDC_CLIENT_ID: "<from-authentik>"
+  <APP>_OIDC_CLIENT_SECRET: "<from-authentik>"
+```
+
+Wire it in the HelmRelease/Deployment via `secretRef` in `envFrom`.
+
+### Step 4: Get credentials from Authentik
+
+After Flux reconciles the blueprint (up to 10 min for Authentik to process it):
+
+```bash
+TOKEN=$(mise exec -- kubectl get secret authentik-secret -n authentik -o jsonpath='{.data.AUTHENTIK_BOOTSTRAP_TOKEN}' | base64 -d)
+mise exec -- kubectl exec -n authentik deployment/authentik-server -- \
+  curl -s -H "Authorization: Bearer $TOKEN" \
+  'http://localhost:8000/api/v3/providers/oauth2/?name=<appname>-oidc' | jq '.results[0] | {client_id, client_secret}'
+```
+
+Fill these into the SOPS secret template, encrypt, and commit.
+
+### Apps that don't support native OIDC
+
+Some apps (FreshRSS, Invoice Ninja) don't have native OIDC support. For these, consider:
+
+- **Proxy provider**: Place the app behind an Authentik outpost proxy with header-based auth
+- **Forward auth**: Use a reverse proxy to check Authentik session before forwarding requests
+
+This is more complex than native OIDC and requires additional infrastructure.
+
 ## Storage (Longhorn)
 
 - Prefer Longhorn for PVC-backed apps.
@@ -121,6 +191,7 @@ Rules of thumb:
 - Ingress is defined (either `HTTPRoute` or `route:` values) and points at the correct gateway.
 - PVCs specify the intended StorageClass.
 - Secrets are SOPS-encrypted and referenced via `envFrom` / `secretKeyRef`.
+- If the app supports OIDC, an Authentik blueprint is created, registered in the kustomization, and OIDC secrets are SOPS-encrypted. See [Authentication (Authentik OIDC)](#authentication-authentik-oidc).
 
 ## Observability checklist
 

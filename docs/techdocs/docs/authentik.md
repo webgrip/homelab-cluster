@@ -41,9 +41,124 @@ entries:
 10-policies.yaml             (no deps, expressions are just strings)
 20-flows-mfa-auth.yaml       (no deps, only internal !KeyOf)
 30-oidc-grafana.yaml         → depends on all three above
+31-oidc-n8n.yaml             → depends on all three above
+32-oidc-searxng.yaml         → depends on all three above
+33-oidc-backstage.yaml       → depends on all three above
 ```
 
-Only the last blueprint needs explicit `metaapplyblueprint` entries; the others are self-contained.\)
+All OIDC provider blueprints (30-33) need explicit `metaapplyblueprint` entries for the three prerequisites. The `10-` and `20-` blueprints are self-contained.
+
+## Adding a new OIDC application
+
+To wire a new app for Authentik OIDC login, you need three things:
+
+### 1) Authentik OIDC blueprint
+
+Create a file in `kubernetes/apps/authentik/app/blueprints/` (e.g. `34-oidc-myapp.yaml`). Copy the pattern from any `3x-oidc-*.yaml`:
+
+```yaml
+version: 1
+metadata:
+  name: Homelab - MyApp OIDC
+  labels:
+    blueprints.goauthentik.io/description: MyApp OIDC provider and application.
+    blueprints.goauthentik.io/instantiate: "true"
+context:
+  domain: webgrip.dev
+  app_host: myapp
+  redirect_path: /auth/callback       # app-specific
+entries:
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: Homelab - Core groups and users
+      required: true
+  # ... two more metaapplyblueprint entries for Policies and MFA flows ...
+
+  - model: authentik_providers_oauth2.oauth2provider
+    id: myapp-oidc-provider
+    identifiers:
+      name: myapp-oidc
+    attrs:
+      name: MyApp OIDC
+      client_type: confidential
+      grant_types:
+        - authorization_code
+        - refresh_token
+      redirect_uris:
+        - matching_mode: strict
+          url: !Format
+            - "https://%s.%s%s"
+            - !Context app_host
+            - !Context domain
+            - !Context redirect_path
+      # ... flows and property_mappings (copy from existing blueprint) ...
+
+  - model: authentik_core.application
+    id: myapp-oidc-app
+    identifiers:
+      slug: myapp
+    attrs:
+      name: MyApp
+      provider: !KeyOf myapp-oidc-provider
+      meta_launch_url: !Format ["https://%s.%s", !Context app_host, !Context domain]
+      open_in_new_tab: true
+      policy_engine_mode: all
+
+  # ... policybindings for homelab-users-only + homelab-mfa-required ...
+```
+
+**Key decisions:**
+- The `slug` in the application identifier determines the well-known URL: `https://authentik.webgrip.dev/application/o/<slug>/.well-known/openid-configuration`
+- `redirect_path` must match the app's OAuth callback — look this up in the app's docs
+- For apps that need group membership (like Grafana's `role_attribute_path`), add a custom `scopemapping` as done in `30-oidc-grafana.yaml`
+- Apps that only need identity (openid/profile/email scopes) can follow the simpler pattern in `31-oidc-n8n.yaml`
+
+### 2) Register in kustomization
+
+Add the new blueprint filename to the `configMapGenerator` in `kubernetes/apps/authentik/app/kustomization.yaml`:
+
+```yaml
+configMapGenerator:
+  - name: authentik-blueprints
+    files:
+      - blueprints/00-core-groups-users.yaml
+      # ... other blueprints ...
+      - blueprints/34-oidc-myapp.yaml    # add here
+```
+
+### 3) App-side OIDC config
+
+Add OIDC environment variables to the app's HelmRelease or ConfigMap. Write client credentials into a SOPS-encrypted secret. See the existing patterns:
+
+| App | Config pattern | Secret template |
+|---|---|---|
+| Grafana | `grafana-instance.yaml` env + `grafana-oauth` secret | (existing) |
+| n8n | `configmap-env.yaml` + `n8n-oidc-secrets` | `n8n-oidc-secrets.template.yaml` |
+| SearXNG | `helmrelease-app.yaml` env + `searxng-oidc-secrets` | `searxng-oidc-secrets.template.yaml` |
+| Backstage | `configmap.yaml` + `backstage-oidc-secrets` | `backstage-oidc-secrets.template.yaml` |
+
+### 4) DNS prerequisite
+
+The app pod must be able to resolve `authentik.webgrip.dev`. If it can't, OIDC will fail with "no such host" — see the [dns-split-dns runbook](runbooks/dns-split-dns.md).
+
+## Retrieving OIDC credentials from Authentik
+
+After blueprints are applied and processed (up to 10 min after Flux reconciliation), get credentials via the Authentik API:
+
+```bash
+# Get bootstrap token
+TOKEN=$(mise exec -- kubectl get secret authentik-secret -n authentik -o jsonpath='{.data.AUTHENTIK_BOOTSTRAP_TOKEN}' | base64 -d)
+
+# Query all OIDC providers
+mise exec -- kubectl exec -n authentik deployment/authentik-server -- \
+  curl -s -H "Authorization: Bearer $TOKEN" \
+  'http://localhost:8000/api/v3/providers/oauth2/?name=<provider-name>' | jq '.results[0] | {client_id, client_secret}'
+```
+
+Or via the UI: **Authentik Admin → Applications → (app) → Provider**.
+
+Copy `client_id` and `client_secret` into the app's SOPS secret template, encrypt it, and add to the kustomization.
 
 ## Secrets
 

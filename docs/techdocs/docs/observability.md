@@ -99,6 +99,7 @@ Authentik login:
 
 - Grafana is configured for Authentik OIDC login.
 - Callback URL: `https://grafana.<SECRET_DOMAIN>/login/generic_oauth`
+- **DNS dependency**: The Grafana pod must be able to resolve `authentik.<SECRET_DOMAIN>`. If login fails with "Failed to get token from provider", check CoreDNS zone forwarding first — see the [split-horizon DNS runbook](runbooks/dns-split-dns.md) and the [Authentik OIDC login runbook](runbooks/authentik-oidc-login.md).
 
 To enable it, a human must create a SOPS-encrypted Secret containing the Authentik OAuth client credentials.
 

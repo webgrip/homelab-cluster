@@ -13,6 +13,7 @@ This page is intentionally a **links-only index**. Each runbook has its own dedi
 - Synthetic probes (blackbox): [docs/techdocs/docs/runbooks/synthetic-probes-blackbox.md](runbooks/synthetic-probes-blackbox.md)
 - Cilium: [docs/techdocs/docs/runbooks/cilium.md](runbooks/cilium.md)
 - Envoy Gateway: [docs/techdocs/docs/runbooks/envoy-gateway.md](runbooks/envoy-gateway.md)
+- Split-horizon DNS (CoreDNS + k8s-gateway): [docs/techdocs/docs/runbooks/dns-split-dns.md](runbooks/dns-split-dns.md)
 
 ## Storage
 
@@ -31,6 +32,10 @@ This page is intentionally a **links-only index**. Each runbook has its own dedi
 ## Apps
 
 - Apps (baseline): [docs/techdocs/docs/runbooks/apps-baseline.md](runbooks/apps-baseline.md)
+
+## Identity / Auth
+
+- Authentik OIDC login failures: [docs/techdocs/docs/runbooks/authentik-oidc-login.md](runbooks/authentik-oidc-login.md)
 
 ## Talos / Kubernetes
 
