@@ -21,15 +21,17 @@ spec:
       ssl_mode: require
     users:
       auto_assign_org_role: Viewer
-    auth.github:
+    auth.generic_oauth:
       enabled: "true"
+      name: Authentik
       auto_login: "true"
       allow_sign_up: "true"
-      scopes: "user:email,read:org"
-      allowed_organizations: webgrip
       allow_assign_grafana_admin: "true"
-      skip_org_role_sync: "false"
-      role_attribute_path: "[login=='ryangr0'][0] && 'GrafanaAdmin' || contains(groups[*], '@webgrip/grafana') && 'GrafanaAdmin' || contains(groups[*], '@webgrip/infrastructure/grafana') && 'GrafanaAdmin' || 'Viewer'"
+      scopes: "openid profile email groups"
+      auth_url: "https://authentik.${SECRET_DOMAIN}/application/o/authorize/"
+      token_url: "https://authentik.${SECRET_DOMAIN}/application/o/token/"
+      api_url: "https://authentik.${SECRET_DOMAIN}/application/o/userinfo/"
+      role_attribute_path: "contains(groups[*], 'homelab-admins') && 'GrafanaAdmin' || contains(groups[*], 'homelab-users') && 'Editor' || 'Viewer'"
     rendering:
       # Image renderer runs as a sidecar container in the same pod.
       server_url: "http://localhost:8081/render"
@@ -78,17 +80,17 @@ spec:
                       name: grafana-github-api
                       key: token
                       optional: true
-                # GitHub OAuth credentials from SOPS-managed secret.
-                - name: GF_AUTH_GITHUB_CLIENT_ID
+                # Authentik OAuth credentials from SOPS-managed secret.
+                - name: GF_AUTH_GENERIC_OAUTH_CLIENT_ID
                   valueFrom:
                     secretKeyRef:
                       name: grafana-github-oauth
-                      key: GF_AUTH_GITHUB_CLIENT_ID
-                - name: GF_AUTH_GITHUB_CLIENT_SECRET
+                      key: GF_AUTH_GENERIC_OAUTH_CLIENT_ID
+                - name: GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET
                   valueFrom:
                     secretKeyRef:
                       name: grafana-github-oauth
-                      key: GF_AUTH_GITHUB_CLIENT_SECRET
+                      key: GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET
                 - name: GF_RENDERING_RENDERER_TOKEN
                   valueFrom:
                     secretKeyRef:

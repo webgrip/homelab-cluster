@@ -1,0 +1,133 @@
+---
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+version: 1
+metadata:
+  name: Homelab - Authentication and MFA flows
+  labels:
+    blueprints.goauthentik.io/description: Authentication flow with MFA validation and enrollment.
+    blueprints.goauthentik.io/instantiate: "true"
+entries:
+  - model: authentik_flows.flow
+    id: homelab-auth-flow
+    identifiers:
+      slug: homelab-authentication
+    attrs:
+      name: Homelab - Authentication
+      title: Homelab Login
+      designation: authentication
+
+  - model: authentik_flows.flow
+    id: homelab-mfa-enroll-flow
+    identifiers:
+      slug: homelab-mfa-enrollment
+    attrs:
+      name: Homelab - MFA Enrollment
+      title: Set up multi-factor authentication
+      designation: enrollment
+
+  - model: authentik_stages_identification.identificationstage
+    id: homelab-identification
+    identifiers:
+      name: homelab-identification
+    attrs:
+      user_fields:
+        - email
+        - username
+
+  - model: authentik_stages_password.passwordstage
+    id: homelab-password
+    identifiers:
+      name: homelab-password
+    attrs:
+      backends:
+        - authentik.core.auth.InbuiltBackend
+
+  - model: authentik_stages_authenticator_totp.authenticatortotpstage
+    id: homelab-mfa-totp
+    identifiers:
+      name: homelab-mfa-totp
+    attrs:
+      friendly_name: Authenticator App (TOTP)
+      digits: "6"
+
+  - model: authentik_stages_authenticator_webauthn.authenticatorwebauthnstage
+    id: homelab-mfa-webauthn
+    identifiers:
+      name: homelab-mfa-webauthn
+    attrs:
+      friendly_name: Security Key or Passkey
+      user_verification: preferred
+      resident_key_requirement: preferred
+
+  - model: authentik_stages_authenticator_static.authenticatorstaticstage
+    id: homelab-mfa-static
+    identifiers:
+      name: homelab-mfa-static
+    attrs:
+      friendly_name: Recovery Codes
+      token_count: 10
+      token_length: 12
+
+  - model: authentik_stages_authenticator_validate.authenticatorvalidatestage
+    id: homelab-mfa-validate
+    identifiers:
+      name: homelab-mfa-validate
+    attrs:
+      not_configured_action: configure
+      device_classes:
+        - totp
+        - webauthn
+        - static
+      configuration_stages:
+        - !KeyOf homelab-mfa-totp
+        - !KeyOf homelab-mfa-webauthn
+        - !KeyOf homelab-mfa-static
+
+  - model: authentik_stages_user_login.userloginstage
+    id: homelab-login
+    identifiers:
+      name: homelab-login
+    attrs:
+      session_duration: hours=8
+
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      order: 10
+      stage: !KeyOf homelab-identification
+      target: !KeyOf homelab-auth-flow
+
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      order: 20
+      stage: !KeyOf homelab-password
+      target: !KeyOf homelab-auth-flow
+
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      order: 30
+      stage: !KeyOf homelab-mfa-validate
+      target: !KeyOf homelab-auth-flow
+
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      order: 100
+      stage: !KeyOf homelab-login
+      target: !KeyOf homelab-auth-flow
+
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      order: 10
+      stage: !KeyOf homelab-mfa-totp
+      target: !KeyOf homelab-mfa-enroll-flow
+
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      order: 20
+      stage: !KeyOf homelab-mfa-webauthn
+      target: !KeyOf homelab-mfa-enroll-flow
+
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      order: 30
+      stage: !KeyOf homelab-mfa-static
+      target: !KeyOf homelab-mfa-enroll-flow

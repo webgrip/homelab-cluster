@@ -1,0 +1,32 @@
+---
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+version: 1
+metadata:
+  name: Homelab - Policies
+  labels:
+    blueprints.goauthentik.io/description: Group-based access and MFA policies.
+    blueprints.goauthentik.io/instantiate: "true"
+entries:
+  - model: authentik_policies_expression.expressionpolicy
+    identifiers:
+      name: homelab-users-only
+    attrs:
+      name: homelab-users-only
+      expression: |
+        return request.user.is_authenticated and request.user.ak_groups.filter(name="homelab-users").exists()
+
+  - model: authentik_policies_expression.expressionpolicy
+    identifiers:
+      name: homelab-admins-only
+    attrs:
+      name: homelab-admins-only
+      expression: |
+        return request.user.is_authenticated and request.user.ak_groups.filter(name="homelab-admins").exists()
+
+  - model: authentik_policies_expression.expressionpolicy
+    identifiers:
+      name: homelab-mfa-required
+    attrs:
+      name: homelab-mfa-required
+      expression: |-
+        return request.user.is_authenticated and request.user.ak_groups.filter(name="homelab-mfa").exists()

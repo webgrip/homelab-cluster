@@ -1,0 +1,106 @@
+---
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+version: 1
+metadata:
+  name: Homelab - Grafana OIDC
+  labels:
+    blueprints.goauthentik.io/description: Grafana OIDC provider and application.
+    blueprints.goauthentik.io/instantiate: "true"
+context:
+  domain: webgrip.dev
+  app_host: grafana
+  redirect_path: /login/generic_oauth
+entries:
+  - model: authentik_providers_oauth2.scopemapping
+    id: grafana-oidc-groups-scope
+    identifiers:
+      name: grafana-groups
+    attrs:
+      name: grafana-groups
+      scope_name: groups
+      description: Group names for Grafana role mapping.
+      expression: |
+        return {
+            "groups": [group.name for group in request.user.ak_groups.all()],
+        }
+
+  - model: authentik_providers_oauth2.oauth2provider
+    id: grafana-oidc-provider
+    identifiers:
+      name: grafana-oidc
+    attrs:
+      name: Grafana OIDC
+      client_type: confidential
+      grant_types:
+        - authorization_code
+        - refresh_token
+      redirect_uris:
+        - matching_mode: strict
+          url: !Format
+            - "https://%s.%s%s"
+            - !Context app_host
+            - !Context domain
+            - !Context redirect_path
+      authentication_flow: !Find
+        - authentik_flows.flow
+        - - slug
+          - homelab-authentication
+      authorization_flow: !Find
+        - authentik_flows.flow
+        - - slug
+          - default-provider-authorization-explicit-consent
+      invalidation_flow: !Find
+        - authentik_flows.flow
+        - - slug
+          - default-provider-invalidation-flow
+      property_mappings:
+        - !Find
+          - authentik_providers_oauth2.scopemapping
+          - - scope_name
+            - "openid"
+        - !Find
+          - authentik_providers_oauth2.scopemapping
+          - - scope_name
+            - "profile"
+        - !Find
+          - authentik_providers_oauth2.scopemapping
+          - - scope_name
+            - "email"
+        - !KeyOf grafana-oidc-groups-scope
+
+  - model: authentik_core.application
+    id: grafana-oidc-app
+    identifiers:
+      slug: grafana
+    attrs:
+      name: Grafana
+      provider: !KeyOf grafana-oidc-provider
+      meta_launch_url: !Format
+        - "https://%s.%s"
+        - !Context app_host
+        - !Context domain
+      meta_description: Grafana login via Authentik OIDC.
+      open_in_new_tab: true
+      policy_engine_mode: all
+
+  - model: authentik_policies.policybinding
+    identifiers:
+      order: 0
+      policy: !Find
+        - authentik_policies_expression.expressionpolicy
+        - - name
+          - homelab-users-only
+      target: !KeyOf grafana-oidc-app
+    attrs:
+      enabled: true
+
+  - model: authentik_policies.policybinding
+    identifiers:
+      order: 10
+      policy: !Find
+        - authentik_policies_expression.expressionpolicy
+        - - name
+          - homelab-mfa-required
+      target: !KeyOf grafana-oidc-app
+    attrs:
+      enabled: true

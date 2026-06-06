@@ -1,0 +1,38 @@
+---
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+version: 1
+metadata:
+  name: Homelab - Core groups and users
+  labels:
+    blueprints.goauthentik.io/description: Core groups and service accounts for Authentik.
+    blueprints.goauthentik.io/instantiate: "true"
+entries:
+  - model: authentik_core.group
+    identifiers:
+      name: homelab-admins
+
+  - model: authentik_core.group
+    identifiers:
+      name: homelab-users
+
+  - model: authentik_core.group
+    identifiers:
+      name: homelab-mfa
+
+  - model: authentik_core.group
+    identifiers:
+      name: service-accounts
+
+  - model: authentik_core.user
+    identifiers:
+      username: svc-homelab
+    attrs:
+      username: svc-homelab
+      name: Homelab Service Account
+      is_active: true
+      type: service_account
+      groups:
+        - !Find
+          - authentik_core.group
+          - - name
+            - service-accounts

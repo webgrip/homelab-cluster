@@ -95,18 +95,18 @@ Rendering:
 
 - Grafana is configured with a **remote image renderer** (chart-managed `grafana-image-renderer` deployment) for reliable panel rendering in alerts/reports.
 
-GitHub login:
+Authentik login:
 
-- Grafana is configured for GitHub OAuth login (often casually called “GitHub OIDC”, but this is GitHub OAuth2 for user login; GitHub Actions OIDC is a different feature).
-- Callback URL: `https://grafana.<SECRET_DOMAIN>/login/github`
+- Grafana is configured for Authentik OIDC login.
+- Callback URL: `https://grafana.<SECRET_DOMAIN>/login/generic_oauth`
 
-To enable it, a human must create a SOPS-encrypted Secret containing the GitHub OAuth client credentials.
+To enable it, a human must create a SOPS-encrypted Secret containing the Authentik OAuth client credentials.
 
 Secret details:
 
 - Namespace: `observability`
 - Name: `grafana-github-oauth`
-- Keys: `GF_AUTH_GITHUB_CLIENT_ID`, `GF_AUTH_GITHUB_CLIENT_SECRET`
+- Keys: `GF_AUTH_GENERIC_OAUTH_CLIENT_ID`, `GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET`
 
 Template (encrypt with SOPS before committing):
 
@@ -118,8 +118,8 @@ metadata:
    namespace: observability
 type: Opaque
 stringData:
-   GF_AUTH_GITHUB_CLIENT_ID: "<github oauth client id>"
-   GF_AUTH_GITHUB_CLIENT_SECRET: "<github oauth client secret>"
+   GF_AUTH_GENERIC_OAUTH_CLIENT_ID: "<authentik oauth client id>"
+   GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: "<authentik oauth client secret>"
 ```
 
 Note:
@@ -127,10 +127,10 @@ Note:
 - If you commit this Secret to Git, add it to [kubernetes/apps/observability/grafana/app/kustomization.yaml](../../kubernetes/apps/observability/grafana/app/kustomization.yaml) so Flux applies it.
 - Alternatively, create it out-of-band with `kubectl` (but then it's no longer fully GitOps-managed).
 
-GitHub OAuth app settings (GitHub org/user → Settings → Developer settings → OAuth Apps):
+Authentik provider settings:
 
-- Homepage URL: `https://grafana.<SECRET_DOMAIN>/`
-- Authorization callback URL: `https://grafana.<SECRET_DOMAIN>/login/github`
+- Provider: `Grafana OIDC` (created via the Authentik blueprint)
+- Redirect URI: `https://grafana.<SECRET_DOMAIN>/login/generic_oauth`
 
 Provisioned datasources:
 
@@ -512,4 +512,3 @@ Implementation notes:
 
 - A CronJob creates a `k6.io/v1alpha1` `TestRun` every 30 minutes.
 - k6 remote-writes metrics to Prometheus (`/api/v1/write`) via the `experimental-prometheus-rw` output.
-
