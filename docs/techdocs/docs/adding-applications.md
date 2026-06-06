@@ -227,6 +227,7 @@ Rules of thumb:
 ## Checklist for a new app PR
 
 ### Foundation
+
 - [ ] New namespace folder exists under `kubernetes/apps/<namespace>/`.
 - [ ] Namespace `kustomization.yaml` includes `../../components/sops`.
 - [ ] App `ks.yaml` uses `substituteFrom: cluster-secrets`.
@@ -235,6 +236,7 @@ Rules of thumb:
 - [ ] All secrets are SOPS-encrypted (`*.sops.yaml`) and referenced via `envFrom` / `secretKeyRef`.
 
 ### If the app supports OIDC
+
 - [ ] **Authentik blueprint** created at `kubernetes/apps/authentik/app/blueprints/<nn>-oidc-<app>.yaml` (copy from existing `3x-oidc-*.yaml`).
 - [ ] Blueprint **registered** in the `configMapGenerator.files` list in `kubernetes/apps/authentik/app/kustomization.yaml`.
 - [ ] **OIDC env vars** (discovery URL, endpoint URLs) added to the app's ConfigMap or HelmRelease values.
@@ -243,6 +245,7 @@ Rules of thumb:
 - [ ] **DNS check:** `authentik.webgrip.dev` resolves from the app namespace (or the CoreDNS zone forward is in place — see [dns-split-dns runbook](runbooks/dns-split-dns.md)).
 
 ### If the app needs a database
+
 - [ ] CNPG `Cluster` resource added under `<app>/app/database/cluster.yaml` (or a separate Flux Kustomization for database-heavy apps).
 - [ ] Database credentials wired via the auto-generated `*-app` secret (not a SOPS secret).
 
