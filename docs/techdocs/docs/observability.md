@@ -105,7 +105,7 @@ To enable it, a human must create a SOPS-encrypted Secret containing the Authent
 Secret details:
 
 - Namespace: `observability`
-- Name: `grafana-github-oauth`
+- Name: `grafana-oauth`
 - Keys: `GF_AUTH_GENERIC_OAUTH_CLIENT_ID`, `GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET`
 
 Template (encrypt with SOPS before committing):
@@ -114,7 +114,7 @@ Template (encrypt with SOPS before committing):
 apiVersion: v1
 kind: Secret
 metadata:
-   name: grafana-github-oauth
+   name: grafana-oauth
    namespace: observability
 type: Opaque
 stringData:
