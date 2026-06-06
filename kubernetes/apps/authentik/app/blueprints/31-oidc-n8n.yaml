@@ -1,0 +1,112 @@
+---
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+version: 1
+metadata:
+  name: Homelab - n8n OIDC
+  labels:
+    blueprints.goauthentik.io/description: n8n OIDC provider and application.
+    blueprints.goauthentik.io/instantiate: "true"
+context:
+  domain: webgrip.dev
+  app_host: n8n
+  redirect_path: /rest/oauth2-credential/callback
+entries:
+  # --- Dependencies: ensure prerequisite blueprints are applied first ---
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: Homelab - Core groups and users
+      required: true
+
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: Homelab - Policies
+      required: true
+
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: Homelab - Authentication and MFA flows
+      required: true
+
+  # --- OIDC provider and application ---
+  - model: authentik_providers_oauth2.oauth2provider
+    id: n8n-oidc-provider
+    identifiers:
+      name: n8n-oidc
+    attrs:
+      name: n8n OIDC
+      client_type: confidential
+      grant_types:
+        - authorization_code
+        - refresh_token
+      redirect_uris:
+        - matching_mode: strict
+          url: !Format
+            - "https://%s.%s%s"
+            - !Context app_host
+            - !Context domain
+            - !Context redirect_path
+      authentication_flow: !Find
+        - authentik_flows.flow
+        - - slug
+          - homelab-authentication
+      authorization_flow: !Find
+        - authentik_flows.flow
+        - - slug
+          - default-provider-authorization-explicit-consent
+      invalidation_flow: !Find
+        - authentik_flows.flow
+        - - slug
+          - default-provider-invalidation-flow
+      property_mappings:
+        - !Find
+          - authentik_providers_oauth2.scopemapping
+          - - scope_name
+            - "openid"
+        - !Find
+          - authentik_providers_oauth2.scopemapping
+          - - scope_name
+            - "profile"
+        - !Find
+          - authentik_providers_oauth2.scopemapping
+          - - scope_name
+            - "email"
+
+  - model: authentik_core.application
+    id: n8n-oidc-app
+    identifiers:
+      slug: n8n
+    attrs:
+      name: n8n
+      provider: !KeyOf n8n-oidc-provider
+      meta_launch_url: !Format
+        - "https://%s.%s"
+        - !Context app_host
+        - !Context domain
+      meta_description: n8n workflow automation login via Authentik OIDC.
+      open_in_new_tab: true
+      policy_engine_mode: all
+
+  - model: authentik_policies.policybinding
+    identifiers:
+      order: 0
+      policy: !Find
+        - authentik_policies_expression.expressionpolicy
+        - - name
+          - homelab-users-only
+      target: !KeyOf n8n-oidc-app
+    attrs:
+      enabled: true
+
+  - model: authentik_policies.policybinding
+    identifiers:
+      order: 10
+      policy: !Find
+        - authentik_policies_expression.expressionpolicy
+        - - name
+          - homelab-mfa-required
+      target: !KeyOf n8n-oidc-app
+    attrs:
+      enabled: true
