@@ -1,0 +1,74 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: security-authentik
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: authentik.health
+      interval: 5m
+      rules:
+        - alert: AuthentikDeploymentUnavailable
+          expr: kube_deployment_status_replicas_available{namespace="authentik", deployment=~"authentik-(server|worker)"} < 1
+          for: 10m
+          labels:
+            severity: critical
+            team: security
+          annotations:
+            summary: "Authentik deployment unavailable (authentik/{{ $labels.deployment }})"
+            description: |
+              What's happening:
+                The {{ $labels.deployment }} deployment in the authentik namespace has no available replicas.
+              Impact/risk:
+                Users may be unable to sign in or complete identity-provider flows for protected applications.
+              Likely causes:
+                Missing authentik-secret, database connectivity issues, failed migrations, image pull failures, or node scheduling pressure.
+              First actions:
+                Check the Authentik HelmRelease, server and worker pod events, and authentik-db cluster health.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/authentik"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/security-authentik/authentik-identity-provider"
+
+        - alert: AuthentikContainerRestarting
+          expr: increase(kube_pod_container_status_restarts_total{namespace="authentik", pod=~"authentik-(server|worker)-.*", container=~"server|worker"}[15m]) > 2
+          for: 5m
+          labels:
+            severity: warning
+            team: security
+          annotations:
+            summary: "Authentik container restarting (authentik/{{ $labels.pod }})"
+            description: |
+              What's happening:
+                The {{ $labels.container }} container in {{ $labels.pod }} restarted more than twice in 15 minutes.
+              Impact/risk:
+                Login, provider, outpost reconciliation, or background task processing may be intermittent.
+              Likely causes:
+                Invalid configuration, database errors, media PVC mount issues, memory pressure, or failed startup migrations.
+              First actions:
+                Inspect the previous container logs, pod events, Authentik effective config, and authentik-db readiness.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/authentik"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/security-authentik/authentik-identity-provider"
+
+        - alert: AuthentikMediaStorageFilling
+          expr: |
+            100 * kubelet_volume_stats_used_bytes{namespace="authentik", persistentvolumeclaim="authentik-media"}
+              / clamp_min(kubelet_volume_stats_capacity_bytes{namespace="authentik", persistentvolumeclaim="authentik-media"}, 1) > 80
+          for: 30m
+          labels:
+            severity: warning
+            team: security
+          annotations:
+            summary: "Authentik media PVC over 80% full (authentik/authentik-media)"
+            description: |
+              What's happening:
+                The authentik-media PVC has been above 80% usage for at least 30 minutes.
+              Impact/risk:
+                Authentik may fail to save uploaded icons, reports, or other file-backed media.
+              Likely causes:
+                Normal media growth, large uploaded assets, retained reports, or an undersized Longhorn volume.
+              First actions:
+                Review PVC usage, expand authentik-media if needed, and consider moving media storage to S3 if growth continues.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/authentik"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/security-authentik/authentik-identity-provider"

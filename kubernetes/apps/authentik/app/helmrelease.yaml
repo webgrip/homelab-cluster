@@ -1,0 +1,149 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: authentik
+spec:
+  chart:
+    spec:
+      chart: authentik
+      version: 2026.5.2
+      sourceRef:
+        kind: HelmRepository
+        name: authentik
+        namespace: authentik
+  interval: 1h
+  install:
+    timeout: 15m
+    remediation:
+      retries: 3
+  upgrade:
+    timeout: 15m
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  rollback:
+    timeout: 15m
+  values:
+    global:
+      podAnnotations:
+        reloader.stakater.com/auto: "true"
+      nodeSelector:
+        nodegroup: fringe
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: fringe
+          effect: NoSchedule
+      affinity:
+        podAntiAffinity: soft
+        nodeAffinity:
+          type: hard
+          matchExpressions:
+            - key: nodegroup
+              operator: In
+              values:
+                - fringe
+      volumes:
+        - name: authentik-media
+          persistentVolumeClaim:
+            claimName: authentik-media
+      volumeMounts:
+        - name: authentik-media
+          mountPath: /data
+      env:
+        - name: AUTHENTIK_LOG_LEVEL
+          value: info
+        - name: AUTHENTIK_ERROR_REPORTING__ENABLED
+          value: "false"
+        - name: AUTHENTIK_DISABLE_UPDATE_CHECK
+          value: "true"
+        - name: AUTHENTIK_POSTGRESQL__HOST
+          value: authentik-db-rw.authentik.svc.cluster.local
+        - name: AUTHENTIK_POSTGRESQL__PORT
+          value: "5432"
+        - name: AUTHENTIK_POSTGRESQL__NAME
+          value: authentik
+        - name: AUTHENTIK_POSTGRESQL__USER
+          valueFrom:
+            secretKeyRef:
+              name: authentik-db-app
+              key: username
+        - name: AUTHENTIK_POSTGRESQL__PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: authentik-db-app
+              key: password
+        - name: AUTHENTIK_POSTGRESQL__SSLMODE
+          value: require
+        - name: AUTHENTIK_STORAGE__BACKEND
+          value: file
+        - name: AUTHENTIK_STORAGE__FILE__PATH
+          value: /data
+
+    authentik:
+      existingSecret:
+        secretName: authentik-secret
+
+    server:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      metrics:
+        enabled: true
+        serviceMonitor:
+          enabled: true
+          namespace: observability
+          labels:
+            release: kube-prometheus-stack
+      route:
+        main:
+          enabled: true
+          annotations:
+            external-dns.alpha.kubernetes.io/exclude: "true"
+            monitoring.webgrip.io/synthetic-check: k6-ingress-canary
+          hostnames:
+            - authentik.${SECRET_DOMAIN}
+          parentRefs:
+            - name: envoy-internal
+              namespace: network
+              sectionName: https
+
+    worker:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      metrics:
+        enabled: true
+        serviceMonitor:
+          enabled: true
+          namespace: observability
+          labels:
+            release: kube-prometheus-stack
+
+    serviceAccount:
+      create: true
+
+    geoip:
+      enabled: false
+
+    prometheus:
+      rules:
+        enabled: true
+        namespace: observability
+        labels:
+          release: kube-prometheus-stack
+
+    postgresql:
+      enabled: false

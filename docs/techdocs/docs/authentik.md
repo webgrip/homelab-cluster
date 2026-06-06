@@ -1,0 +1,86 @@
+# Authentik
+
+Authentik is deployed as the cluster identity provider in the `authentik` namespace.
+Flux installs the official `goauthentik/authentik` Helm chart, CloudNativePG owns the PostgreSQL database, and Envoy Gateway exposes the UI at `https://authentik.<SECRET_DOMAIN>`.
+
+## GitOps layout
+
+- App Flux Kustomization: `kubernetes/apps/authentik/ks.yaml`
+- Database Flux Kustomization: `kubernetes/apps/authentik/database/ks.yaml`
+- HelmRelease: `kubernetes/apps/authentik/app/helmrelease.yaml`
+- CNPG cluster: `kubernetes/apps/authentik/app/database/cluster.yaml`
+- Grafana dashboard: `kubernetes/apps/observability/grafana/app/dashboards/security-authentik.yaml`
+- Prometheus rules: `kubernetes/apps/observability/kube-prometheus-stack/app/prometheusrule-security-authentik.yaml`
+
+## Secrets
+
+SOPS secrets require human action in this repository. Create the Authentik application secret before reconciling the `authentik` Flux Kustomization.
+
+**Secret name:** `authentik-secret`
+**Namespace:** `authentik`
+**Required keys:** `AUTHENTIK_SECRET_KEY`
+**Recommended bootstrap keys:** `AUTHENTIK_BOOTSTRAP_PASSWORD_HASH`, `AUTHENTIK_BOOTSTRAP_TOKEN`, `AUTHENTIK_BOOTSTRAP_EMAIL`
+
+Plaintext template:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: authentik-secret
+  namespace: authentik
+type: Opaque
+stringData:
+  AUTHENTIK_SECRET_KEY: REPLACE_ME
+  AUTHENTIK_BOOTSTRAP_PASSWORD_HASH: REPLACE_ME
+  AUTHENTIK_BOOTSTRAP_TOKEN: REPLACE_ME
+  AUTHENTIK_BOOTSTRAP_EMAIL: admin@<SECRET_DOMAIN>
+```
+
+Generate values:
+
+```bash
+openssl rand -base64 60
+openssl rand -hex 32
+```
+
+`AUTHENTIK_BOOTSTRAP_PASSWORD_HASH` is preferred over `AUTHENTIK_BOOTSTRAP_PASSWORD`. Generate the hash with an Authentik container before first startup:
+
+```bash
+docker run --rm ghcr.io/goauthentik/server:2026.5.2 server hash_password 'REPLACE_ME'
+```
+
+Encrypt the secret after filling the template:
+
+```bash
+sops --encrypt --in-place kubernetes/apps/authentik/app/authentik-secret.sops.yaml
+```
+
+Then add `./authentik-secret.sops.yaml` to `kubernetes/apps/authentik/app/kustomization.yaml`.
+
+The database password does not need a human-managed secret. CloudNativePG generates `authentik-db-app`, and the HelmRelease injects its `username` and `password` keys into Authentik.
+
+## Operations
+
+Check Flux and Helm:
+
+```bash
+mise exec -- flux get kustomizations -n authentik authentik-db authentik
+mise exec -- flux get helmreleases -n authentik authentik
+```
+
+Check pods and database:
+
+```bash
+mise exec -- kubectl get pods -n authentik -l app.kubernetes.io/instance=authentik
+mise exec -- kubectl get cluster -n authentik authentik-db
+mise exec -- kubectl get secret -n authentik authentik-db-app
+```
+
+Dump Authentik's effective config:
+
+```bash
+mise exec -- kubectl exec -n authentik deploy/authentik-worker -- ak dump_config
+```
+
+The media PVC is `authentik-media`. If it approaches capacity, expand the PVC and let Longhorn grow the volume.
