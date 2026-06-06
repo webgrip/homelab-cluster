@@ -50,7 +50,7 @@ From the app's pod:
 kubectl exec -n <app-ns> deployment/<app-name> -- nslookup authentik.webgrip.dev
 ```
 
-Expected: resolves to `10.0.0.27` (Envoy Gateway LB IP).  
+Expected: resolves to `10.0.0.27` (Envoy Gateway LB IP).
 If NXDOMAIN: go to [dns-split-dns](dns-split-dns.md).
 
 ### 4) Verify Authentik provider credentials match
@@ -75,6 +75,7 @@ kubectl exec -n authentik deployment/authentik-server -- curl -s -H "Authorizati
 ```
 
 These MUST match. If they don't, either:
+
 - Update the Kubernetes secret with the correct value from Authentik
 - Or regenerate the client_secret in Authentik and update both sides
 
@@ -107,7 +108,7 @@ kubectl logs -n authentik deployment/authentik-server --tail=100 | grep -i error
 | DNS NXDOMAIN | Add `webgrip.dev` zone to CoreDNS → [dns-split-dns](dns-split-dns.md) |
 | Wrong client_id/secret | Copy from Authentik provider, update SOPS secret, reconcile |
 | Redirect URI mismatch | Update Authentik provider's `redirect_uris` to match the app |
-| Authentik not processing blueprints | Check ConfigMap `authentik-blueprints`, restart Authentik worker |
+| Authentik not processing new blueprints | Restart worker pod (`kubectl rollout restart deployment/authentik-worker -n authentik`), then check logs for `blueprints_discovery` and `apply_blueprint` tasks. If tasks were enqueued but never started (Dramatiq queue stall), a second restart resolves it. |
 | Token exchange fails after DNS fix | Restart app pod to pick up new DNS resolution |
 
 ## After a DNS fix
