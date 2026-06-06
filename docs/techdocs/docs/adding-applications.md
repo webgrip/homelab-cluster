@@ -199,7 +199,15 @@ Fill these into the SOPS secret template, encrypt, and commit.
 
 ### Apps that don't support native OIDC
 
-Some apps (FreshRSS, Invoice Ninja) don't have native OIDC support. For these, consider:
+Some apps don't have native OIDC support. Known apps in this repo:
+
+| App | Alternative |
+|---|---|
+| FreshRSS | Proxy provider or forward auth |
+| Invoice Ninja | Proxy provider or forward auth (could add via `socialiteproviders/oidc` Laravel package with custom image build) |
+| SearXNG | Proxy provider or forward auth — no OIDC env vars exist in the application |
+
+For these, consider:
 
 - **Proxy provider**: Place the app behind an Authentik outpost proxy with header-based auth
 - **Forward auth**: Use a reverse proxy to check Authentik session before forwarding requests
