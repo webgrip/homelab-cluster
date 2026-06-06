@@ -36,6 +36,7 @@ entries:
 - Multiple `metaapplyblueprint` entries can declare multiple dependencies.
 
 **This repo's dependency chain:**
+
 ```
 00-core-groups-users.yaml   (no deps)
 10-policies.yaml             (no deps, expressions are just strings)
@@ -109,6 +110,7 @@ entries:
 ```
 
 **Key decisions:**
+
 - The `slug` in the application identifier determines the well-known URL: `https://authentik.webgrip.dev/application/o/<slug>/.well-known/openid-configuration`
 - `redirect_path` must match the app's OAuth callback — look this up in the app's docs
 - For apps that need group membership (like Grafana's `role_attribute_path`), add a custom `scopemapping` as done in `30-oidc-grafana.yaml`

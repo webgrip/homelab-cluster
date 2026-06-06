@@ -9,14 +9,14 @@ Use this when a random workload is down (CrashLoopBackOff, `Unavailable`, readin
 - `kubectl get pods -A -o wide`
 - `kubectl get deploy,sts,ds -A -o wide | egrep -v ' 1/1 | 2/2 | 3/3 '`
 
-2) Inspect one failing pod
+1) Inspect one failing pod
 
 - `kubectl -n <ns> describe pod <pod>`
 - `kubectl -n <ns> logs <pod> -c <container> --tail=200`
 - If it’s crashlooping:
   - `kubectl -n <ns> logs <pod> -c <container> --previous --tail=200`
 
-3) Check events (often shows scheduling/image/PVC problems)
+1) Check events (often shows scheduling/image/PVC problems)
 
 - `kubectl -n <ns> get events --sort-by=.lastTimestamp | tail -n 50`
 

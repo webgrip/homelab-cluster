@@ -30,7 +30,7 @@ dig authentik.webgrip.dev +short
 
 If this fails, the problem is upstream (Cloudflare DNS, Envoy Gateway, or the HTTPRoute itself).
 
-2) **Can a pod resolve it?**
+1) **Can a pod resolve it?**
 
 ```bash
 kubectl run dns-test --rm -it --restart=Never --image=busybox:1.36 -- nslookup authentik.webgrip.dev
@@ -38,7 +38,7 @@ kubectl run dns-test --rm -it --restart=Never --image=busybox:1.36 -- nslookup a
 
 If this returns NXDOMAIN but step 1 works, the problem is **CoreDNS not forwarding to k8s-gateway**.
 
-3) **Can CoreDNS reach k8s-gateway directly?**
+1) **Can CoreDNS reach k8s-gateway directly?**
 
 ```bash
 kubectl exec -n observability deployment/grafana-deployment -- nslookup authentik.webgrip.dev 10.0.0.26
@@ -115,18 +115,23 @@ kubectl exec -n observability deployment/grafana-deployment -- nslookup authenti
 ## Related checks
 
 - **Is k8s-gateway running?**
+
   ```bash
   kubectl get pods -n network -l app.kubernetes.io/name=k8s-gateway
   ```
+
   It should show `1/1 Running`.
 
 - **Is k8s-gateway reachable from the node?**
+
   ```bash
   dig @10.0.0.26 authentik.webgrip.dev +short
   ```
+
   If not, check the LoadBalancer service and Cilium LB IPAM.
 
 - **Is the HTTPRoute for the target service healthy?**
+
   ```bash
   kubectl get httproute -A | grep <service>
   ```
