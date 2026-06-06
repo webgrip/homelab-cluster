@@ -60,6 +60,22 @@ spec:
           - name: log
             configBlock: |-
               class error
+      - zones:
+          - zone: webgrip.dev
+            scheme: dns://
+            use_tcp: true
+        port: 53
+        plugins:
+          - name: errors
+          - name: forward
+            parameters: . 10.0.0.26
+          - name: cache
+            configBlock: |-
+              prefetch 20
+              serve_stale
+          - name: log
+            configBlock: |-
+              class error
     affinity:
       nodeAffinity:
         requiredDuringSchedulingIgnoredDuringExecution:
