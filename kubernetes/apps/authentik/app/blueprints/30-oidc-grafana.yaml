@@ -11,6 +11,26 @@ context:
   app_host: grafana
   redirect_path: /login/generic_oauth
 entries:
+  # --- Dependencies: ensure prerequisite blueprints are applied first ---
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: Homelab - Core groups and users
+      required: true
+
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: Homelab - Policies
+      required: true
+
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: Homelab - Authentication and MFA flows
+      required: true
+
+  # --- OIDC provider and application ---
   - model: authentik_providers_oauth2.scopemapping
     id: grafana-oidc-groups-scope
     identifiers:
