@@ -9,6 +9,7 @@ The platform gives you a few standard building blocks:
   - Internal split DNS via `k8s-gateway` (answers `${SECRET_DOMAIN}` inside the LAN)
   - External DNS automation to Cloudflare via `cloudflare-dns` (ExternalDNS)
 - **TLS:** cert-manager issues certs used by Envoy gateways
+- **Authentication:** Authentik SSO with OIDC for apps that support it — see [Authentication (Authentik OIDC)](#authentication-authentik-oidc)
 - **Secrets:** SOPS (Age) encrypted secrets decrypted in-cluster by Flux
 - **Storage:** Longhorn (StorageClasses like `longhorn-general`, plus `longhorn` used by CNPG clusters)
 - **Databases:** CloudNativePG operator (CNPG) for in-cluster Postgres
@@ -21,15 +22,35 @@ Pick the simplest approach that fits:
 2. **Apps with bespoke manifests:** plain YAML + Kustomize (as in `invoiceninja`)
 3. **Apps needing Postgres:** add a CNPG `Cluster` in the app namespace
 4. **Apps needing Redis/Valkey:** add a small StatefulSet + Service in-namespace
+5. **Apps supporting OIDC login:** add an Authentik blueprint + SOPS secret — see [Authentication (Authentik OIDC)](#authentication-authentik-oidc)
 
 ## Standard repo pattern
 
 A typical app namespace looks like this:
 
-- `kubernetes/apps/<namespace>/namespace.yaml`
-- `kubernetes/apps/<namespace>/kustomization.yaml` (Kustomize root for that namespace)
-- `kubernetes/apps/<namespace>/<app>/ks.yaml` (Flux Kustomization pointing at `.../<app>/app`)
-- `kubernetes/apps/<namespace>/<app>/app/*` (actual Kubernetes resources)
+```
+kubernetes/apps/<namespace>/
+├── namespace.yaml
+├── kustomization.yaml                # Kustomize root for that namespace
+├── <app>/
+│   ├── ks.yaml                       # Flux Kustomization -> ./app
+│   └── app/
+│       ├── kustomization.yaml
+│       ├── helmrelease.yaml           # or deployment.yaml, service.yaml, etc.
+│       ├── httproute.yaml             # ingress via Envoy Gateway
+│       ├── <app>-secrets.sops.yaml    # SOPS-encrypted secrets (db, API keys)
+│       ├── <app>-oidc-secrets.template.yaml   # OIDC secret template (optional)
+│       └── database/
+│           └── cluster.yaml           # CNPG Postgres cluster (optional)
+```
+
+And if the app supports OIDC, a parallel entry goes in the Authentik blueprints directory:
+
+```
+kubernetes/apps/authentik/app/blueprints/
+├── 30-oidc-grafana.yaml              # example of existing blueprint
+└── <nn>-oidc-<app>.yaml              # add yours here
+```
 
 The Flux `Kustomization` usually includes:
 
@@ -102,6 +123,18 @@ Backups are optional and depend on having an S3-compatible endpoint configured; 
 - The cluster-wide values (like `${SECRET_DOMAIN}`) come from `cluster-secrets`.
 
 Important: do not commit any decrypted artifacts (for example `*.decrypted~*.yaml`).
+
+### OIDC secret template
+
+If the app supports OIDC (see next section), also create a **plaintext template** for the OIDC credentials file alongside your SOPS secrets:
+
+```bash
+cp <app>-oidc-secrets.template.yaml <app>-oidc-secrets.sops.yaml
+# Fill in client_id and client_secret from Authentik, then:
+sops -e -i <app>-oidc-secrets.sops.yaml
+```
+
+The template file (`*.template.yaml`) documents the required keys so the next person knows what to fill in — commit it as-is (no encryption). The encrypted copy (`*.sops.yaml`) is what goes in the Kustomize resources list.
 
 ## Authentication (Authentik OIDC)
 
@@ -185,13 +218,25 @@ Rules of thumb:
 
 ## Checklist for a new app PR
 
-- New namespace folder exists under `kubernetes/apps/<namespace>/`.
-- Namespace `kustomization.yaml` includes `../../components/sops`.
-- App `ks.yaml` uses `substituteFrom: cluster-secrets`.
-- Ingress is defined (either `HTTPRoute` or `route:` values) and points at the correct gateway.
-- PVCs specify the intended StorageClass.
-- Secrets are SOPS-encrypted and referenced via `envFrom` / `secretKeyRef`.
-- If the app supports OIDC, an Authentik blueprint is created, registered in the kustomization, and OIDC secrets are SOPS-encrypted. See [Authentication (Authentik OIDC)](#authentication-authentik-oidc).
+### Foundation
+- [ ] New namespace folder exists under `kubernetes/apps/<namespace>/`.
+- [ ] Namespace `kustomization.yaml` includes `../../components/sops`.
+- [ ] App `ks.yaml` uses `substituteFrom: cluster-secrets`.
+- [ ] Ingress is defined (either `HTTPRoute` or `route:` values) and points at the correct gateway (`envoy-internal` or `envoy-external`).
+- [ ] PVCs specify the intended StorageClass.
+- [ ] All secrets are SOPS-encrypted (`*.sops.yaml`) and referenced via `envFrom` / `secretKeyRef`.
+
+### If the app supports OIDC
+- [ ] **Authentik blueprint** created at `kubernetes/apps/authentik/app/blueprints/<nn>-oidc-<app>.yaml` (copy from existing `3x-oidc-*.yaml`).
+- [ ] Blueprint **registered** in the `configMapGenerator.files` list in `kubernetes/apps/authentik/app/kustomization.yaml`.
+- [ ] **OIDC env vars** (discovery URL, endpoint URLs) added to the app's ConfigMap or HelmRelease values.
+- [ ] **OIDC secret template** created at `<app>/<app>-oidc-secrets.template.yaml` documenting the required keys.
+- [ ] **OIDC secret ref** wired into the HelmRelease/Deployment via `envFrom` → `secretRef`.
+- [ ] **DNS check:** `authentik.webgrip.dev` resolves from the app namespace (or the CoreDNS zone forward is in place — see [dns-split-dns runbook](runbooks/dns-split-dns.md)).
+
+### If the app needs a database
+- [ ] CNPG `Cluster` resource added under `<app>/app/database/cluster.yaml` (or a separate Flux Kustomization for database-heavy apps).
+- [ ] Database credentials wired via the auto-generated `*-app` secret (not a SOPS secret).
 
 ## Observability checklist
 
