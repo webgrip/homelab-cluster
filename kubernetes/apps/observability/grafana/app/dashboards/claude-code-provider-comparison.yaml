@@ -15,84 +15,551 @@ spec:
       "title": "Claude Code / Provider Cost Comparison",
       "uid": "claude-code-provider-comparison",
       "timezone": "browser",
-      "tags": ["claude-code", "ai", "anthropic", "cost", "finops", "comparison"],
       "editable": true,
       "graphTooltip": 1,
       "refresh": "30s",
-      "time": {"from": "now-7d", "to": "now"},
+      "tags": [
+        "claude-code",
+        "ai",
+        "anthropic",
+        "cost",
+        "finops",
+        "comparison"
+      ],
+      "time": {
+        "from": "now/M",
+        "to": "now"
+      },
       "links": [
-        {"title": "Command Center", "url": "/d/claude-code-command-center", "type": "link", "icon": "external link"},
-        {"title": "Cost & Tokens", "url": "/d/claude-code-cost-tokens", "type": "link", "icon": "dollar"},
-        {"title": "Activity & Tools", "url": "/d/claude-code-activity-tools", "type": "link", "icon": "bolt"},
-        {"title": "Events, Logs & Traces", "url": "/d/claude-code-events-traces", "type": "link", "icon": "doc"},
-        {"title": "Provider Comparison", "url": "/d/claude-code-provider-comparison", "type": "link", "icon": "percentage"}
+        {
+          "title": "Command Center",
+          "url": "/d/claude-code-command-center",
+          "type": "link",
+          "icon": "external link"
+        },
+        {
+          "title": "Cost & Tokens",
+          "url": "/d/claude-code-cost-tokens",
+          "type": "link",
+          "icon": "dollar"
+        },
+        {
+          "title": "Cache Economics",
+          "url": "/d/claude-code-cache-economics",
+          "type": "link",
+          "icon": "apps"
+        },
+        {
+          "title": "Exec Summary",
+          "url": "/d/claude-code-exec-summary",
+          "type": "link",
+          "icon": "apps"
+        }
       ],
       "annotations": {
         "list": [
-          {"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard"}
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
         ]
       },
       "templating": {
         "list": [
-          {"name": "sub_monthly", "label": "Sub USD/mo", "type": "textbox", "query": "100", "current": {"selected": true, "text": "100", "value": "100"}}
+          {
+            "name": "sub_monthly",
+            "label": "Sub USD/mo",
+            "type": "textbox",
+            "query": "100",
+            "current": {
+              "selected": true,
+              "text": "100",
+              "value": "100"
+            }
+          },
+          {
+            "name": "days_in_month",
+            "label": "Days in month",
+            "type": "textbox",
+            "query": "30",
+            "current": {
+              "selected": true,
+              "text": "30",
+              "value": "30"
+            }
+          }
         ]
       },
       "panels": [
         {
-          "id": 1, "type": "text", "title": "", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
-          "options": {"mode": "markdown", "content": "## Provider Cost Comparison\nWhat your **actual Claude Code token usage** (input / output / cacheRead / cacheCreation) would cost on each provider's API at **current list rates (Jun 2026)**, cache-aware, vs your flat subscription. Your plan (per `/usage`): **Claude Max 5× ≈ 100 USD/mo** — set the **Sub USD/mo** variable to 200 for Max 20×.\n\n**Rates, USD per 1M tokens — in / out / cacheRead / cacheWrite:**\n| Provider | in | out | cacheRead | cacheWrite |\n|---|---|---|---|---|\n| Claude Opus 4.8 | 5 | 25 | 0.50 | 6.25 |\n| Claude Sonnet 4.6 | 3 | 15 | 0.30 | 3.75 |\n| OpenAI GPT-5.5 | 5 | 30 | 0.50 | 5 |\n| DeepSeek V4 Flash | 0.14 | 0.28 | 0.0028 | 0.14 |\n| DeepSeek V4 Pro | 1.74 | 3.48 | 0.0145 | 1.74 |\n\n_Caveats: GitHub Copilot is a flat per-seat product (reference bar only) and can't drive this agentic workload; cross-provider figures assume the identical token volume and ignore quality differences. Cache-write mapping: Claude 1.25×in, OpenAI = in (no write fee), DeepSeek = cache-miss. Edit this dashboard to refresh rates._"}
+          "id": 1,
+          "type": "text",
+          "title": "",
+          "gridPos": {
+            "h": 5,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "## Provider Cost Comparison \u2014 comprehensive\nYour **actual Claude Code token mix** (input / output / cacheRead / cacheCreation) priced on **18 models across 15+ providers** at current list rates (Jun 2026), cache-aware, vs your flat subscription and GitHub Copilot's metered billing. Option labels show the per-1M rates as **in/out/cacheRead/cacheWrite**.\n\n**Basis = month-to-date** (time range is set to *this month*): the **MTD so far** column is what you've incurred this month (LOW / floor); **Projected month** extrapolates your current daily run-rate to the full month (HIGH). Tune **Sub USD/mo** (100 = Max 5\u00d7, 200 = Max 20\u00d7) and **Days in month**.\n\n_Cost is API-EQUIVALENT (token \u00d7 list price) \u2014 on a Max subscription it is not real spend. Providers without published prompt-cache pricing are charged full input rate for cached tokens (upper bound). GitHub Copilot (post Jun 2026) meters tokens at the model's API rate minus a monthly credit allotment (shown metered on Claude Opus); for heavy agentic use it tracks raw API cost, not the sub fee._"
+          }
         },
-        {"id": 2, "type": "row", "title": "Projected monthly — your usage priced on every option (7-day run-rate × 30)", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 8}, "panels": []},
         {
-          "id": 3, "type": "bargauge", "title": "Projected monthly cost by option", "description": "Your last-7-day token mix, priced per provider, scaled to 30 days. Flat subscription/seat prices shown for reference.", "gridPos": {"h": 11, "w": 24, "x": 0, "y": 9},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "id": 2,
+          "type": "row",
+          "title": "This month so far \u2014 your situation",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 5
+          },
+          "panels": []
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Your Max sub (flat / mo)",
+          "description": "Your flat subscription fee. Tune via the Sub USD/mo variable.",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "targets": [
-            {"refId": "A", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[7d]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[7d]))*25 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[7d]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[7d]))*6.25) / 1e6 / 7 * 30 or vector(0)", "instant": true, "legendFormat": "Claude Opus 4.8 (API)"},
-            {"refId": "B", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[7d]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[7d]))*15 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[7d]))*0.3 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[7d]))*3.75) / 1e6 / 7 * 30 or vector(0)", "instant": true, "legendFormat": "Claude Sonnet 4.6 (API)"},
-            {"refId": "C", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[7d]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[7d]))*30 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[7d]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[7d]))*5) / 1e6 / 7 * 30 or vector(0)", "instant": true, "legendFormat": "OpenAI GPT-5.5 (API)"},
-            {"refId": "D", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[7d]))*0.14 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[7d]))*0.28 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[7d]))*0.0028 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[7d]))*0.14) / 1e6 / 7 * 30 or vector(0)", "instant": true, "legendFormat": "DeepSeek V4 Flash (API)"},
-            {"refId": "E", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[7d]))*1.74 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[7d]))*3.48 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[7d]))*0.0145 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[7d]))*1.74) / 1e6 / 7 * 30 or vector(0)", "instant": true, "legendFormat": "DeepSeek V4 Pro (API)"},
-            {"refId": "F", "expr": "vector($$sub_monthly)", "instant": true, "legendFormat": "Your Claude Max sub (flat)"},
-            {"refId": "G", "expr": "vector(10)", "instant": true, "legendFormat": "GitHub Copilot Pro (flat, ref)"}
+            {
+              "refId": "A",
+              "expr": "vector($$sub_monthly)",
+              "instant": true
+            }
           ],
-          "options": {"orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "displayMode": "gradient", "valueMode": "color"},
-          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "continuous-GrYlRd"}}, "overrides": [{"matcher": {"id": "byName", "options": "Your Claude Max sub (flat)"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "purple"}}]}, {"matcher": {"id": "byName", "options": "GitHub Copilot Pro (flat, ref)"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "blue"}}]}]}
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "auto",
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "purple"
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
         },
-        {"id": 4, "type": "row", "title": "Over the selected time range", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 20}, "panels": []},
         {
-          "id": 5, "type": "bargauge", "title": "API-equivalent cost over range", "description": "Your token mix over the dashboard time range, priced per provider (API-equivalent, not real spend).", "gridPos": {"h": 9, "w": 10, "x": 0, "y": 21},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "id": 4,
+          "type": "stat",
+          "title": "MTD API-equiv used (Opus, est.)",
+          "description": "Notional value of this month's tokens at Opus 4.8 list price. Not real spend on a subscription.",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "targets": [
-            {"refId": "A", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*25 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*6.25) / 1e6 or vector(0)", "instant": true, "legendFormat": "Claude Opus 4.8"},
-            {"refId": "B", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*15 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.3 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*3.75) / 1e6 or vector(0)", "instant": true, "legendFormat": "Claude Sonnet 4.6"},
-            {"refId": "C", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*30 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*5) / 1e6 or vector(0)", "instant": true, "legendFormat": "OpenAI GPT-5.5"},
-            {"refId": "D", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*0.14 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*0.28 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.0028 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*0.14) / 1e6 or vector(0)", "instant": true, "legendFormat": "DeepSeek V4 Flash"},
-            {"refId": "E", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*1.74 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*3.48 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.0145 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*1.74) / 1e6 or vector(0)", "instant": true, "legendFormat": "DeepSeek V4 Pro"}
+            {
+              "refId": "A",
+              "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*25 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*6.25)/1e6",
+              "instant": true
+            }
           ],
-          "options": {"orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "displayMode": "gradient", "valueMode": "color"},
-          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "continuous-GrYlRd"}}, "overrides": []}
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text"
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
         },
         {
-          "id": 6, "type": "timeseries", "title": "API-equivalent cost over time by provider", "gridPos": {"h": 9, "w": 14, "x": 10, "y": 21},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "id": 5,
+          "type": "stat",
+          "title": "Projected month (Opus, est., HIGH)",
+          "description": "MTD run-rate extrapolated to the full month at Opus 4.8 list price.",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 12,
+            "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "targets": [
-            {"refId": "A", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__rate_interval]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__rate_interval]))*25 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__rate_interval]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__rate_interval]))*6.25) / 1e6", "legendFormat": "Claude Opus 4.8"},
-            {"refId": "C", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__rate_interval]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__rate_interval]))*30 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__rate_interval]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__rate_interval]))*5) / 1e6", "legendFormat": "OpenAI GPT-5.5"},
-            {"refId": "D", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__rate_interval]))*0.14 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__rate_interval]))*0.28 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__rate_interval]))*0.0028 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__rate_interval]))*0.14) / 1e6", "legendFormat": "DeepSeek V4 Flash"},
-            {"refId": "B", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__rate_interval]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__rate_interval]))*15 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__rate_interval]))*0.3 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__rate_interval]))*3.75) / 1e6", "legendFormat": "Claude Sonnet 4.6"},
-            {"refId": "E", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__rate_interval]))*1.74 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__rate_interval]))*3.48 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__rate_interval]))*0.0145 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__rate_interval]))*1.74) / 1e6", "legendFormat": "DeepSeek V4 Pro"}
+            {
+              "refId": "A",
+              "expr": "((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*25 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*6.25)/1e6) * $$days_in_month * 86400 / $$__range_s",
+              "instant": true
+            }
           ],
-          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
-          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 4, "custom": {"lineWidth": 2, "fillOpacity": 10, "showPoints": "never"}}, "overrides": []}
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text"
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
         },
-        {"id": 7, "type": "row", "title": "Ranked verdict — cheapest way to run your usage", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 30}, "panels": []},
         {
-          "id": 8, "type": "table", "title": "Projected monthly cost, every option (cheapest first)", "description": "Your last-7-day token mix × 30. Rows ABOVE your Max sub (≈100 USD) cost more than your flat subscription for this usage; rows below cost less. Per-token API options are cache-aware; the sub is a flat fee.", "gridPos": {"h": 11, "w": 24, "x": 0, "y": 31},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "instant": true, "expr": "label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[7d]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[7d]))*25 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[7d]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[7d]))*6.25)/1e6/7*30, \"opt\", \"Claude Opus 4.8 (API)\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[7d]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[7d]))*15 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[7d]))*0.3 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[7d]))*3.75)/1e6/7*30, \"opt\", \"Claude Sonnet 4.6 (API)\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[7d]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[7d]))*30 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[7d]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[7d]))*5)/1e6/7*30, \"opt\", \"OpenAI GPT-5.5 (API)\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[7d]))*0.14 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[7d]))*0.28 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[7d]))*0.0028 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[7d]))*0.14)/1e6/7*30, \"opt\", \"DeepSeek V4 Flash (API)\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[7d]))*1.74 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[7d]))*3.48 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[7d]))*0.0145 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[7d]))*1.74)/1e6/7*30, \"opt\", \"DeepSeek V4 Pro (API)\", \"\", \"\") or label_replace(vector($$sub_monthly), \"opt\", \"Your Claude Max sub (FLAT)\", \"\", \"\")", "format": "table"}],
-          "transformations": [{"id": "organize", "options": {"excludeByName": {"Time": true}, "renameByName": {"opt": "Option", "Value": "Projected monthly (USD)"}}}],
-          "options": {"showHeader": true, "sortBy": [{"displayName": "Projected monthly (USD)", "desc": false}]},
-          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "custom": {"align": "auto", "filterable": false}}, "overrides": [{"matcher": {"id": "byName", "options": "Projected monthly (USD)"}, "properties": [{"id": "custom.cellOptions", "value": {"type": "gauge", "mode": "gradient"}}, {"id": "max", "value": 300}, {"id": "color", "value": {"mode": "continuous-GrYlRd"}}]}]}
+          "id": 6,
+          "type": "stat",
+          "title": "You save vs Opus-API / mo",
+          "description": "Projected Opus-API cost minus your flat sub. Positive (green) = the subscription saves you money vs pay-as-you-go Claude API.",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 18,
+            "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*25 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*6.25)/1e6) * $$days_in_month * 86400 / $$__range_s) - $$sub_monthly",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "auto",
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red"
+                  },
+                  {
+                    "color": "green",
+                    "value": 0
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 7,
+          "type": "row",
+          "title": "Comprehensive comparison \u2014 your usage priced on every provider",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 10
+          },
+          "panels": []
+        },
+        {
+          "id": 8,
+          "type": "table",
+          "title": "Every option, cheapest first \u2014 MTD so far (low) vs projected full month (high)",
+          "description": "One row per model/provider. Sorted by projected month ascending. Rows under your Max sub line cost less than your flat fee for this usage.",
+          "gridPos": {
+            "h": 24,
+            "w": 24,
+            "x": 0,
+            "y": 11
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "instant": true,
+              "format": "table",
+              "expr": "label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*25 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*6.25)/1e6, \"opt\", \"Claude Opus 4.8 \u00b7 5/25/0.5/6.25\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*15 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.3 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*3.75)/1e6, \"opt\", \"Claude Sonnet 4.6 \u00b7 3/15/0.3/3.75\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*1 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.1 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*1.25)/1e6, \"opt\", \"Claude Haiku 4.5 \u00b7 1/5/0.1/1.25\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*30 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*5)/1e6, \"opt\", \"OpenAI GPT-5.5 \u00b7 5/30/0.5/5\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.2 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*0.5)/1e6, \"opt\", \"Google Gemini 3 Flash \u00b7 0.5/3/0.2/0.5\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*0.2 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.2 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*0.2)/1e6, \"opt\", \"xAI Grok 4.1 \u00b7 0.2/0.5/0.2/0.2\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*0.14 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*0.28 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.0028 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*0.14)/1e6, \"opt\", \"DeepSeek V4 Flash \u00b7 0.14/0.28/0.0028/0.14\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*1.74 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*3.48 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.0145 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*1.74)/1e6, \"opt\", \"DeepSeek V4 Pro \u00b7 1.74/3.48/0.0145/1.74\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*2 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*6 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*2 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*2)/1e6, \"opt\", \"Mistral Large \u00b7 2/6/2/2\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*2.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*10 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*2.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*2.5)/1e6, \"opt\", \"Cohere Command R+ \u00b7 2.5/10/2.5/2.5\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*0.8 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*3.2 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.8 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*0.8)/1e6, \"opt\", \"Amazon Nova Pro \u00b7 0.8/3.2/0.8/0.8\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*0.4 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*1.2 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.4 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*0.4)/1e6, \"opt\", \"Alibaba Qwen Max \u00b7 0.4/1.2/0.4/0.4\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*1.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*0.5)/1e6, \"opt\", \"Moonshot Kimi K2.6 \u00b7 0.5/1.5/0.5/0.5\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*0.6 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*2 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.6 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*0.6)/1e6, \"opt\", \"Zhipu GLM-5.1 \u00b7 0.6/2/0.6/0.6\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*0.59 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*0.79 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.59 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*0.59)/1e6, \"opt\", \"Llama 3.3 70B (Groq) \u00b7 0.59/0.79/0.59/0.59\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*0.88 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*0.88 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.88 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*0.88)/1e6, \"opt\", \"Llama 3.3 70B (Together) \u00b7 0.88/0.88/0.88/0.88\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*3)/1e6, \"opt\", \"Llama 3.1 405B (Fireworks) \u00b7 3/3/3/3\", \"\", \"\") or label_replace((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*15 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*3)/1e6, \"opt\", \"Perplexity Sonar Pro \u00b7 3/15/3/3\", \"\", \"\") or label_replace(clamp_min(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*25 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*6.25)/1e6) + 39 - 70, 39), \"opt\", \"GitHub Copilot Pro+ (metered @ Opus)\", \"\", \"\") or label_replace(clamp_min(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*25 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*6.25)/1e6) + 10 - 15, 10), \"opt\", \"GitHub Copilot Pro (metered @ Opus)\", \"\", \"\") or label_replace(vector($$sub_monthly), \"opt\", \"\u2192 Your Claude Max sub (FLAT)\", \"\", \"\")"
+            },
+            {
+              "refId": "B",
+              "instant": true,
+              "format": "table",
+              "expr": "label_replace(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*25 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*6.25)/1e6) * $$days_in_month * 86400 / $$__range_s, \"opt\", \"Claude Opus 4.8 \u00b7 5/25/0.5/6.25\", \"\", \"\") or label_replace(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*15 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.3 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*3.75)/1e6) * $$days_in_month * 86400 / $$__range_s, \"opt\", \"Claude Sonnet 4.6 \u00b7 3/15/0.3/3.75\", \"\", \"\") or label_replace(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*1 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.1 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*1.25)/1e6) * $$days_in_month * 86400 / $$__range_s, \"opt\", \"Claude Haiku 4.5 \u00b7 1/5/0.1/1.25\", \"\", \"\") or label_replace(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*30 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*5)/1e6) * $$days_in_month * 86400 / $$__range_s, \"opt\", \"OpenAI GPT-5.5 \u00b7 5/30/0.5/5\", \"\", \"\") or label_replace(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.2 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*0.5)/1e6) * $$days_in_month * 86400 / $$__range_s, \"opt\", \"Google Gemini 3 Flash \u00b7 0.5/3/0.2/0.5\", \"\", \"\") or label_replace(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*0.2 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.2 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*0.2)/1e6) * $$days_in_month * 86400 / $$__range_s, \"opt\", \"xAI Grok 4.1 \u00b7 0.2/0.5/0.2/0.2\", \"\", \"\") or label_replace(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*0.14 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*0.28 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.0028 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*0.14)/1e6) * $$days_in_month * 86400 / $$__range_s, \"opt\", \"DeepSeek V4 Flash \u00b7 0.14/0.28/0.0028/0.14\", \"\", \"\") or label_replace(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*1.74 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*3.48 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.0145 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*1.74)/1e6) * $$days_in_month * 86400 / $$__range_s, \"opt\", \"DeepSeek V4 Pro \u00b7 1.74/3.48/0.0145/1.74\", \"\", \"\") or label_replace(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*2 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*6 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*2 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*2)/1e6) * $$days_in_month * 86400 / $$__range_s, \"opt\", \"Mistral Large \u00b7 2/6/2/2\", \"\", \"\") or label_replace(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*2.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*10 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*2.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*2.5)/1e6) * $$days_in_month * 86400 / $$__range_s, \"opt\", \"Cohere Command R+ \u00b7 2.5/10/2.5/2.5\", \"\", \"\") or label_replace(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*0.8 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*3.2 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.8 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*0.8)/1e6) * $$days_in_month * 86400 / $$__range_s, \"opt\", \"Amazon Nova Pro \u00b7 0.8/3.2/0.8/0.8\", \"\", \"\") or label_replace(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*0.4 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*1.2 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.4 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*0.4)/1e6) * $$days_in_month * 86400 / $$__range_s, \"opt\", \"Alibaba Qwen Max \u00b7 0.4/1.2/0.4/0.4\", \"\", \"\") or label_replace(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*1.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*0.5)/1e6) * $$days_in_month * 86400 / $$__range_s, \"opt\", \"Moonshot Kimi K2.6 \u00b7 0.5/1.5/0.5/0.5\", \"\", \"\") or label_replace(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*0.6 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*2 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.6 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*0.6)/1e6) * $$days_in_month * 86400 / $$__range_s, \"opt\", \"Zhipu GLM-5.1 \u00b7 0.6/2/0.6/0.6\", \"\", \"\") or label_replace(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*0.59 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*0.79 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.59 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*0.59)/1e6) * $$days_in_month * 86400 / $$__range_s, \"opt\", \"Llama 3.3 70B (Groq) \u00b7 0.59/0.79/0.59/0.59\", \"\", \"\") or label_replace(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*0.88 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*0.88 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.88 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*0.88)/1e6) * $$days_in_month * 86400 / $$__range_s, \"opt\", \"Llama 3.3 70B (Together) \u00b7 0.88/0.88/0.88/0.88\", \"\", \"\") or label_replace(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*3)/1e6) * $$days_in_month * 86400 / $$__range_s, \"opt\", \"Llama 3.1 405B (Fireworks) \u00b7 3/3/3/3\", \"\", \"\") or label_replace(((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*15 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*3)/1e6) * $$days_in_month * 86400 / $$__range_s, \"opt\", \"Perplexity Sonar Pro \u00b7 3/15/3/3\", \"\", \"\") or label_replace(clamp_min((((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*25 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*6.25)/1e6) * $$days_in_month * 86400 / $$__range_s) + 39 - 70, 39), \"opt\", \"GitHub Copilot Pro+ (metered @ Opus)\", \"\", \"\") or label_replace(clamp_min((((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*25 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*6.25)/1e6) * $$days_in_month * 86400 / $$__range_s) + 10 - 15, 10), \"opt\", \"GitHub Copilot Pro (metered @ Opus)\", \"\", \"\") or label_replace(vector($$sub_monthly), \"opt\", \"\u2192 Your Claude Max sub (FLAT)\", \"\", \"\")"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {
+                  "opt": 0,
+                  "Value #A": 1,
+                  "Value #B": 2
+                },
+                "renameByName": {
+                  "opt": "Option (rates in/out/cacheR/cacheW per 1M)",
+                  "Value #A": "MTD so far (USD)",
+                  "Value #B": "Projected month (USD)"
+                }
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "sortBy": [
+              {
+                "displayName": "Projected month (USD)",
+                "desc": false
+              }
+            ]
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "custom": {
+                "align": "auto",
+                "filterable": true
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Projected month (USD)"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "gauge",
+                      "mode": "gradient"
+                    }
+                  },
+                  {
+                    "id": "max",
+                    "value": 350
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "continuous-GrYlRd"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "MTD so far (USD)"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "continuous-GrYlRd"
+                    }
+                  },
+                  {
+                    "id": "max",
+                    "value": 120
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Option (rates in/out/cacheR/cacheW per 1M)"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 360
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 9,
+          "type": "row",
+          "title": "Trend (this month)",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 35
+          },
+          "panels": []
+        },
+        {
+          "id": 10,
+          "type": "timeseries",
+          "title": "API-equivalent cost over time \u2014 representative providers (bars)",
+          "description": "Per-bucket cost over the month for a few reference providers. Bars (not lines) because real usage is bursty.",
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 36
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__interval]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__interval]))*25 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__interval]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__interval]))*6.25)/1e6",
+              "legendFormat": "Claude Opus 4.8"
+            },
+            {
+              "refId": "B",
+              "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__interval]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__interval]))*30 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__interval]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__interval]))*5)/1e6",
+              "legendFormat": "OpenAI GPT-5.5"
+            },
+            {
+              "refId": "C",
+              "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__interval]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__interval]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__interval]))*0.2 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__interval]))*0.5)/1e6",
+              "legendFormat": "Gemini 3 Flash"
+            },
+            {
+              "refId": "D",
+              "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__interval]))*0.14 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__interval]))*0.28 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__interval]))*0.0028 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__interval]))*0.14)/1e6",
+              "legendFormat": "DeepSeek V4 Flash"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 3,
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 70,
+                "lineWidth": 1,
+                "stacking": {
+                  "mode": "none"
+                }
+              }
+            },
+            "overrides": []
+          }
         }
       ]
     }
