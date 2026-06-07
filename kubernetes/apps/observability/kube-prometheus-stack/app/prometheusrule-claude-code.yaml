@@ -1,0 +1,73 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: claude-code
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    # Recording rules — precompute the hot/reused series so dashboards are fast
+    # and SLO/alert inputs are consistent. Cost is an API-equivalent ESTIMATE
+    # (token x list price); on a Max subscription it is not real spend.
+    - name: claude-code.recording
+      interval: 1m
+      rules:
+        - record: claude_code:token_usage:rate5m
+          expr: sum by (type) (rate(claude_code_token_usage_tokens_total[5m]))
+
+        - record: claude_code:cost_usd:rate5m
+          expr: sum by (model) (rate(claude_code_cost_usage_USD_total[5m]))
+
+        - record: claude_code:cache_hit:ratio5m
+          expr: |
+            sum(rate(claude_code_token_usage_tokens_total{type="cacheRead"}[5m]))
+            /
+            clamp_min(sum(rate(claude_code_token_usage_tokens_total{type=~"input|cacheRead"}[5m])), 1)
+
+        - record: claude_code:cost_usd:increase24h
+          expr: sum(increase(claude_code_cost_usage_USD_total[24h]))
+
+        - record: claude_code:cost_usd:increase24h:by_model
+          expr: sum by (model) (increase(claude_code_cost_usage_USD_total[24h]))
+
+        - record: claude_code:active_sessions:24h
+          expr: count(count by (session_id) (max_over_time(claude_code_session_count_total[24h])))
+
+    # Alerts — deliberately conservative so they only fire on genuine anomalies,
+    # never on normal idle gaps. Thresholds are tunable in this file.
+    - name: claude-code.alerts
+      interval: 5m
+      rules:
+        # Runaway-spend guard. Notional only (API-equivalent). Generous threshold
+        # so it flags a real anomaly (e.g. a runaway agent loop), not routine use.
+        - alert: ClaudeCodeDailySpendEstimateHigh
+          expr: claude_code:cost_usd:increase24h > 500
+          for: 15m
+          labels:
+            severity: info
+            team: platform
+          annotations:
+            summary: "Claude Code 24h API-equivalent spend estimate is {{ $value | humanize }} USD"
+            description: >-
+              Notional token x list-price estimate over the last 24h exceeded 500 USD.
+              On a Max subscription this is NOT real spend — informational only, and
+              usually signals a runaway/automated loop worth a look. Tune the threshold
+              in prometheusrule-claude-code.yaml.
+            runbook_url: "https://grafana.webgrip.dev/d/claude-code-cost-tokens"
+
+        # Cache efficiency collapse — this workload is normally ~99% cache reads,
+        # so a sustained low ratio means prompt caching broke (cost balloons).
+        - alert: ClaudeCodeCacheEfficiencyLow
+          expr: claude_code:cache_hit:ratio5m < 0.5 and sum(rate(claude_code_token_usage_tokens_total[5m])) > 0
+          for: 30m
+          labels:
+            severity: info
+            team: platform
+          annotations:
+            summary: "Claude Code cache-hit ratio low ({{ $value | humanizePercentage }})"
+            description: >-
+              Prompt-cache hit ratio has been under 50% for 30m while actively running.
+              Normal for this workload is ~99%; a sustained drop inflates token cost.
+            runbook_url: "https://grafana.webgrip.dev/d/claude-code-cache-economics"
