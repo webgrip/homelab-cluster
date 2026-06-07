@@ -1,0 +1,152 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/fluxcd/helm-controller/main/docs/api/v2/helmrelease.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: forgejo
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: forgejo
+  interval: 30m
+  timeout: 20m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+      strategy: uninstall
+  values:
+    # Forgejo is NOT HA-capable: keep a single replica and recreate on upgrade.
+    strategy:
+      type: Recreate
+    replicaCount: 1
+
+    image:
+      rootless: true
+
+    podSecurityContext:
+      fsGroup: 1000
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - "ALL"
+
+    deployment:
+      annotations:
+        reloader.stakater.com/auto: "true"
+      terminationGracePeriodSeconds: 60
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        memory: 2Gi
+
+    service:
+      http:
+        type: ClusterIP
+        port: 3000
+      # git-over-SSH on a dedicated Cilium LoadBalancer IP (LAN).
+      ssh:
+        type: LoadBalancer
+        port: 22
+        externalTrafficPolicy: Cluster
+        annotations:
+          lbipam.cilium.io/ips: "10.0.0.31"
+          coredns.io/hostname: forgejo-ssh.${SECRET_DOMAIN}
+
+    # Repos / LFS / packages / attachments / avatars live on this Longhorn RWO claim.
+    persistence:
+      enabled: true
+      create: false
+      mount: true
+      claimName: forgejo-data
+
+    gitea:
+      # Break-glass local admin (gitea_admin). Credentials come from a SOPS Secret.
+      admin:
+        existingSecret: forgejo-admin-secret
+        passwordMode: keepUpdated
+
+      metrics:
+        enabled: true
+        serviceMonitor:
+          enabled: true
+          additionalLabels:
+            release: kube-prometheus-stack
+
+      # Authentik OIDC login source. client_id/secret come from a SOPS Secret
+      # (keys: key, secret) populated after the Authentik blueprint reconciles.
+      oauth:
+        - name: authentik
+          provider: openidConnect
+          existingSecret: forgejo-oidc-secret
+          autoDiscoverUrl: https://authentik.${SECRET_DOMAIN}/application/o/forgejo/.well-known/openid-configuration
+
+      # Database credentials are injected from the CNPG-managed Secret (forgejo-db-app)
+      # as app.ini overrides; non-secret DB settings live under config.database below.
+      additionalConfigFromEnvs:
+        - name: FORGEJO__database__USER
+          valueFrom:
+            secretKeyRef:
+              name: forgejo-db-app
+              key: username
+        - name: FORGEJO__database__PASSWD
+          valueFrom:
+            secretKeyRef:
+              name: forgejo-db-app
+              key: password
+
+      config:
+        APP_NAME: "Forgejo: Webgrip Homelab"
+        RUN_MODE: prod
+        server:
+          DOMAIN: forgejo.${SECRET_DOMAIN}
+          ROOT_URL: https://forgejo.${SECRET_DOMAIN}/
+          SSH_DOMAIN: forgejo-ssh.${SECRET_DOMAIN}
+          SSH_PORT: 22
+          SSH_LISTEN_PORT: 2222
+          START_SSH_SERVER: true
+          LANDING_PAGE: login
+          LFS_START_SERVER: true
+          OFFLINE_MODE: true
+        database:
+          DB_TYPE: postgres
+          HOST: forgejo-db-rw.forgejo.svc.cluster.local:5432
+          NAME: forgejo
+          SSL_MODE: require
+        # Sessions in Postgres so logins survive pod restarts (no Redis needed).
+        session:
+          PROVIDER: db
+        cache:
+          ADAPTER: memory
+        queue:
+          TYPE: level
+        # SSO-managed: hide local signup, auto-provision Authentik users on first login.
+        service:
+          DISABLE_REGISTRATION: false
+          ALLOW_ONLY_EXTERNAL_REGISTRATION: true
+          SHOW_REGISTRATION_BUTTON: false
+          ENABLE_NOTIFY_MAIL: false
+        openid:
+          ENABLE_OPENID_SIGNIN: false
+          ENABLE_OPENID_SIGNUP: false
+        oauth2_client:
+          ENABLE_AUTO_REGISTRATION: true
+          ACCOUNT_LINKING: auto
+          UPDATE_AVATAR: true
+          OPENID_CONNECT_SCOPES: "openid profile email"
+        # Forgejo Actions available; register a forgejo-runner later to execute jobs.
+        actions:
+          ENABLED: true
+        security:
+          INSTALL_LOCK: true
+        # Allow webhooks to in-cluster services (LAN-only instance).
+        webhook:
+          ALLOWED_HOST_LIST: "*"
+        metrics:
+          ENABLED: true

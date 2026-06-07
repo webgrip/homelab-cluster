@@ -74,14 +74,14 @@ spec:
         {
           "id": 8, "type": "logs", "title": "Recent API requests", "description": "Expand a line for model, cost_usd, duration_ms, input/output/cache tokens.", "gridPos": {"h": 10, "w": 12, "x": 0, "y": 13},
           "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"api_request\"} | json", "queryType": "range", "direction": "backward", "maxLines": 100}],
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"api_request\"} | json | line_format \"{{.attributes_model}} · ${{.attributes_cost_usd}} · {{.attributes_duration_ms}}ms · in {{.attributes_input_tokens}} / out {{.attributes_output_tokens}} / cacheR {{.attributes_cache_read_tokens}} / cacheW {{.attributes_cache_creation_tokens}} · {{.attributes_query_source}}\"", "queryType": "range", "direction": "backward", "maxLines": 100}],
           "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
           "fieldConfig": {"defaults": {}, "overrides": []}
         },
         {
           "id": 9, "type": "logs", "title": "Recent tool results", "description": "Expand a line for tool_name, success, duration_ms, error_type, file_path / full_command.", "gridPos": {"h": 10, "w": 12, "x": 12, "y": 13},
           "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"tool_result\"} | json", "queryType": "range", "direction": "backward", "maxLines": 200}],
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"tool_result\"} | json | line_format \"{{.attributes_tool_name}} · {{.attributes_success}} · {{.attributes_duration_ms}}ms\"", "queryType": "range", "direction": "backward", "maxLines": 200}],
           "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
           "fieldConfig": {"defaults": {}, "overrides": []}
         },
@@ -89,7 +89,7 @@ spec:
         {
           "id": 11, "type": "logs", "title": "Prompt search", "description": "Requires OTEL_LOG_USER_PROMPTS=1. Type in the Prompt search box to grep prompt text (empty = all).", "gridPos": {"h": 10, "w": 12, "x": 0, "y": 24},
           "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"user_prompt\"} |~ \"$$search\" | json", "queryType": "range", "direction": "backward", "maxLines": 300}],
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"user_prompt\"} |~ \"$$search\" | json | line_format \"{{.attributes_prompt}}\"", "queryType": "range", "direction": "backward", "maxLines": 300}],
           "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
           "fieldConfig": {"defaults": {}, "overrides": []}
         },

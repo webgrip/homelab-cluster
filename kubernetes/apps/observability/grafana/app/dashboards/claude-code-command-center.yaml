@@ -67,7 +67,7 @@ spec:
         {
           "id": 6, "type": "stat", "title": "Sessions (24h)", "description": "Claude Code CLI/VS Code sessions started in the last 24h.", "gridPos": {"h": 4, "w": 3, "x": 9, "y": 5},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "sum(increase(claude_code_session_count_total[24h])) or vector(0)", "instant": true}],
+          "targets": [{"refId": "A", "expr": "count(count by (session_id) (max_over_time(claude_code_session_count_total[24h]))) or vector(0)", "instant": true}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area"},
           "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "purple"}}, "overrides": []}
         },
@@ -86,11 +86,11 @@ spec:
           "fieldConfig": {"defaults": {"unit": "percentunit", "decimals": 1, "min": 0, "max": 1, "thresholds": {"mode": "absolute", "steps": [{"color": "red"}, {"color": "yellow", "value": 0.5}, {"color": "green", "value": 0.8}]}}, "overrides": []}
         },
         {
-          "id": 9, "type": "stat", "title": "API error rate", "description": "api_error ÷ (api_request + api_error) events over the range.", "gridPos": {"h": 4, "w": 3, "x": 18, "y": 5},
+          "id": 9, "type": "stat", "title": "API errors (range)", "description": "Count of api_error events over the range (0 = healthy).", "gridPos": {"h": 4, "w": 3, "x": 18, "y": 5},
           "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "(sum(count_over_time({service_name=\"claude-code\", event_name=\"api_error\"}[$$__range])) or vector(0)) / clamp_min(sum(count_over_time({service_name=\"claude-code\", event_name=~\"api_request|api_error\"}[$$__range])) or vector(0), 1)", "queryType": "instant"}],
+          "targets": [{"refId": "A", "expr": "sum(count_over_time({service_name=\"claude-code\", event_name=\"api_error\"}[$$__range])) or vector(0)", "queryType": "instant"}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "percentunit", "decimals": 2, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "yellow", "value": 0.02}, {"color": "red", "value": 0.05}]}}, "overrides": []}
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}, "overrides": []}
         },
         {
           "id": 10, "type": "stat", "title": "Request latency p90", "description": "p90 of api_request duration_ms over the range.", "gridPos": {"h": 4, "w": 3, "x": 21, "y": 5},
@@ -103,28 +103,28 @@ spec:
         {
           "id": 12, "type": "timeseries", "title": "Cost over time by model", "gridPos": {"h": 8, "w": 8, "x": 0, "y": 10},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "sum by (model) (increase(claude_code_cost_usage_USD_total{model=~\"$$model\",query_source=~\"$$query_source\"}[$$__rate_interval])) or sum by (model) (increase(claude_code_cost_usage_total{model=~\"$$model\",query_source=~\"$$query_source\"}[$$__rate_interval])) or vector(0)", "legendFormat": "{{model}}"}],
+          "targets": [{"refId": "A", "expr": "sum by (model) (increase(claude_code_cost_usage_USD_total{model=~\"$$model\",query_source=~\"$$query_source\"}[$$__rate_interval])) or sum by (model) (increase(claude_code_cost_usage_total{model=~\"$$model\",query_source=~\"$$query_source\"}[$$__rate_interval]))", "legendFormat": "{{model}}"}],
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "custom": {"lineWidth": 2, "fillOpacity": 20, "showPoints": "never", "stacking": {"mode": "normal", "group": "A"}}}, "overrides": []}
         },
         {
           "id": 13, "type": "timeseries", "title": "Token consumption by type", "gridPos": {"h": 8, "w": 8, "x": 8, "y": 10},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "sum by (type) (increase(claude_code_token_usage_tokens_total{model=~\"$$model\",query_source=~\"$$query_source\"}[$$__rate_interval])) or sum by (type) (increase(claude_code_token_usage_total{model=~\"$$model\",query_source=~\"$$query_source\"}[$$__rate_interval])) or vector(0)", "legendFormat": "{{type}}"}],
+          "targets": [{"refId": "A", "expr": "sum by (type) (increase(claude_code_token_usage_tokens_total{model=~\"$$model\",query_source=~\"$$query_source\"}[$$__rate_interval])) or sum by (type) (increase(claude_code_token_usage_total{model=~\"$$model\",query_source=~\"$$query_source\"}[$$__rate_interval]))", "legendFormat": "{{type}}"}],
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "fieldConfig": {"defaults": {"unit": "short", "custom": {"lineWidth": 2, "fillOpacity": 20, "showPoints": "never", "stacking": {"mode": "normal", "group": "A"}}}, "overrides": []}
         },
         {
           "id": 14, "type": "timeseries", "title": "Sessions by start type", "gridPos": {"h": 8, "w": 8, "x": 16, "y": 10},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "sum by (start_type) (increase(claude_code_session_count_total[$$__rate_interval])) or vector(0)", "legendFormat": "{{start_type}}"}],
+          "targets": [{"refId": "A", "expr": "count by (start_type) (max_over_time(claude_code_session_count_total[$$__rate_interval]))", "legendFormat": "{{start_type}}"}],
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
           "fieldConfig": {"defaults": {"unit": "short", "custom": {"lineWidth": 2, "fillOpacity": 10, "showPoints": "never"}}, "overrides": []}
         },
         {
           "id": 15, "type": "timeseries", "title": "Lines of code added / removed", "gridPos": {"h": 8, "w": 8, "x": 0, "y": 18},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "sum by (type) (increase(claude_code_lines_of_code_count_total[$$__rate_interval])) or vector(0)", "legendFormat": "{{type}}"}],
+          "targets": [{"refId": "A", "expr": "sum by (type) (increase(claude_code_lines_of_code_count_total[$$__rate_interval]))", "legendFormat": "{{type}}"}],
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
           "fieldConfig": {"defaults": {"unit": "short", "custom": {"lineWidth": 2, "fillOpacity": 10, "showPoints": "never"}}, "overrides": [{"matcher": {"id": "byName", "options": "removed"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]}, {"matcher": {"id": "byName", "options": "added"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]}]}
         },
@@ -132,8 +132,8 @@ spec:
           "id": 16, "type": "timeseries", "title": "Commits & pull requests", "gridPos": {"h": 8, "w": 8, "x": 8, "y": 18},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
-            {"refId": "A", "expr": "sum(increase(claude_code_commit_count_total[$$__rate_interval])) or vector(0)", "legendFormat": "commits"},
-            {"refId": "B", "expr": "sum(increase(claude_code_pull_request_count_total[$$__rate_interval])) or vector(0)", "legendFormat": "pull requests"}
+            {"refId": "A", "expr": "sum(increase(claude_code_commit_count_total[$$__rate_interval]))", "legendFormat": "commits"},
+            {"refId": "B", "expr": "sum(increase(claude_code_pull_request_count_total[$$__rate_interval]))", "legendFormat": "pull requests"}
           ],
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
           "fieldConfig": {"defaults": {"unit": "short", "custom": {"lineWidth": 2, "fillOpacity": 15, "showPoints": "auto", "drawStyle": "bars"}}, "overrides": []}
@@ -162,14 +162,14 @@ spec:
         {
           "id": 19, "type": "bargauge", "title": "Top models by cost", "gridPos": {"h": 8, "w": 6, "x": 12, "y": 26},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "topk(10, sort_desc(sum by (model) (increase(claude_code_cost_usage_USD_total[$$__range])) or sum by (model) (increase(claude_code_cost_usage_total[$$__range])) or vector(0)))", "instant": true, "legendFormat": "{{model}}"}],
+          "targets": [{"refId": "A", "expr": "topk(10, sort_desc(sum by (model) (increase(claude_code_cost_usage_USD_total[$$__range])) or sum by (model) (increase(claude_code_cost_usage_total[$$__range]))))", "instant": true, "legendFormat": "{{model}}"}],
           "options": {"orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "displayMode": "gradient", "valueMode": "color"},
           "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "continuous-BlYlRd"}}, "overrides": []}
         },
         {
           "id": 20, "type": "timeseries", "title": "Edit decisions: accept vs reject", "gridPos": {"h": 8, "w": 6, "x": 18, "y": 26},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "sum by (decision) (increase(claude_code_code_edit_tool_decision_total[$$__rate_interval])) or vector(0)", "legendFormat": "{{decision}}"}],
+          "targets": [{"refId": "A", "expr": "sum by (decision) (increase(claude_code_code_edit_tool_decision_total[$$__rate_interval]))", "legendFormat": "{{decision}}"}],
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
           "fieldConfig": {"defaults": {"unit": "short", "custom": {"lineWidth": 2, "fillOpacity": 15, "showPoints": "never", "stacking": {"mode": "normal", "group": "A"}}}, "overrides": [{"matcher": {"id": "byName", "options": "accept"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]}, {"matcher": {"id": "byName", "options": "reject"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]}]}
         }

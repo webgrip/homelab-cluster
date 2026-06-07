@@ -1,0 +1,25 @@
+---
+# yaml-language-server: $schema=../../../../../schemas/cnpg-cluster.schema.json
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: forgejo-db
+  namespace: forgejo
+spec:
+  instances: 1
+  inheritedMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
+  storage:
+    size: 10Gi
+    storageClass: longhorn
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: forgejo-db-store
+        serverName: forgejo-db
+  bootstrap:
+    initdb:
+      database: forgejo
+      owner: forgejo
