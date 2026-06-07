@@ -76,15 +76,31 @@ resolves to `10.0.0.31` (Cilium L2-announced LoadBalancer) for LAN clients using
 cluster DNS (`10.0.0.26`). The `forgejo` namespace is explicitly allow-listed for
 LoadBalancer Services in the kyverno `network-exposure-enforce` policy.
 
+## Observability
+
+- **Metrics:** `/metrics` is enabled and scraped via the chart `ServiceMonitor`
+  (`up{job="forgejo-http"}`). The DB is scraped by the shared CNPG PodMonitor; the
+  `forgejo-db` Cluster carries `monitoring.webgrip.io/enabled: "true"`.
+- **Dashboard:** `Forgejo` (uid `forgejo`) under the **Apps** folder
+  (`observability/grafana/app/dashboards/forgejo.yaml`).
+- **Alerts:** `app/prometheusrule.yaml` (`ForgejoDown`, `ForgejoDeploymentUnavailable`,
+  `ForgejoPodRestarting`), labelled `release: kube-prometheus-stack`.
+
 ## Operations
 
 - **Backups / restore:** standard CNPG flow — see [Backups](cnpg-backups.md) and the
-  [Restore Playbook](cnpg-restore-playbook.md). The restore-drill CronJob is shipped
-  but `suspend: true` by default.
+  [Restore Playbook](cnpg-restore-playbook.md). `forgejo-db` has a dedicated 5Gi
+  `walStorage`; the daily `ScheduledBackup` runs at 02:30. The restore-drill CronJob is
+  shipped but `suspend: true` by default.
 - **Upgrades:** Renovate bumps the chart tag/digest in `app/ocirepository.yaml`; the
   Forgejo app version tracks the chart `appVersion`.
 - **OIDC login failures:** see the [Authentik runbook](runbooks/authentik-oidc-login.md)
   — almost always pod DNS, credentials, or redirect URI (in that order).
+- **Recovering a stalled HelmRelease:** imperative `flux reconcile --force` is blocked
+  by the GitOps-only guardrail. If the HelmRelease is `Stalled`/`RetriesExceeded` (e.g.
+  it failed before a referenced Secret existed), make a **spec change to bump the
+  generation** (a `spec.maxHistory` tweak works) and commit — helm-controller resets the
+  failure count and re-attempts. Adding the missing Secret alone does not un-stall it.
 
 ## Follow-ups (not yet deployed)
 

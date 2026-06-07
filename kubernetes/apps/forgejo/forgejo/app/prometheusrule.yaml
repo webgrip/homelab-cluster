@@ -1,0 +1,95 @@
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/monitoring.coreos.com/prometheusrule_v1.json
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: forgejo
+  namespace: forgejo
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: forgejo.rules
+      rules:
+        - alert: ForgejoDown
+          expr: up{job="forgejo-http", namespace="forgejo"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            owner: platform
+            service: forgejo
+          annotations:
+            summary: "Forgejo is down (forgejo)"
+            description: |
+              What's happening:
+              - The Forgejo HTTP target has been unscrapable/down for at least 5m.
+
+              Impact/risk:
+              - Git over HTTPS, the web UI, the API, packages and LFS are unavailable.
+
+              Likely causes:
+              - Pod crashlooping or unschedulable
+              - Database (forgejo-db) unreachable
+              - Bad config/secret change
+
+              First actions:
+              - Check the forgejo Deployment/pod and events in namespace forgejo
+              - Review pod logs for DB or config errors
+              - Verify forgejo-db is Ready
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/forgejo/forgejo"
+
+        - alert: ForgejoDeploymentUnavailable
+          expr: kube_deployment_status_replicas_available{namespace="forgejo", deployment="forgejo"} < 1
+          for: 10m
+          labels:
+            severity: critical
+            owner: platform
+            service: forgejo
+          annotations:
+            summary: "Forgejo deployment has no available replicas (forgejo)"
+            description: |
+              What's happening:
+              - The forgejo Deployment has had zero available replicas for 10m.
+
+              Impact/risk:
+              - Forgejo is unavailable to users and CI.
+
+              Likely causes:
+              - CreateContainerConfigError (missing/invalid Secret)
+              - Failing readiness probe (DB connectivity)
+              - Node/resource pressure or volume mount failure
+
+              First actions:
+              - kubectl -n forgejo describe deploy/forgejo and the pod
+              - Check the forgejo-data PVC is Bound and mounted
+              - Review pod logs
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/forgejo/forgejo"
+
+        - alert: ForgejoPodRestarting
+          expr: increase(kube_pod_container_status_restarts_total{namespace="forgejo", container="forgejo"}[1h]) > 3
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: forgejo
+          annotations:
+            summary: "Forgejo pod restarting repeatedly (forgejo)"
+            description: |
+              What's happening:
+              - The forgejo container restarted more than 3 times in the last hour.
+
+              Impact/risk:
+              - Intermittent unavailability; sessions/queue churn.
+
+              Likely causes:
+              - OOMKill (raise memory limit)
+              - Liveness probe flapping under load
+              - Crash on a specific request or migration
+
+              First actions:
+              - kubectl -n forgejo logs deploy/forgejo --previous
+              - Check container restart reason (OOMKilled?) and resource limits
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/forgejo/forgejo"
