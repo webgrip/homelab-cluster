@@ -15,10 +15,13 @@ Operator lives in `cnpg-system`. One `Cluster` per app namespace; wire backups/m
    metadata: { name: <app>-db }
    spec:
      instances: 2
-     storage: { size: <N>Gi, storageClass: longhorn }   # CNPG uses 'longhorn', not longhorn-general
+     storage: { size: <N>Gi, storageClass: longhorn }       # CNPG uses 'longhorn', not longhorn-general
+     walStorage: { size: 5Gi, storageClass: longhorn }      # ALWAYS give pg_wal its own volume (see below)
      # ...
    ```
    The operator auto-creates credential secrets: `<app>-db-app` (app user), `<app>-db-rw` / `<app>-db-ro` (services). Reference these from the app's HelmRelease via `existingSecret`/`envFromSecret` — never inline credentials.
+
+   **Always set `walStorage`.** WAL is only recycled after it's archived to Garage S3; if Garage is unreachable, `pg_wal` grows unbounded. On a shared volume that fills the data disk and the database CrashLoops with `no free disk space for WALs` (this took Grafana + Dependency-Track down — see the [Garage runbook](../../../docs/techdocs/docs/runbooks/synthetic-probes-blackbox.md)). A dedicated WAL volume keeps that pressure off data and lets you resize WAL independently. Size 5Gi default; ~10Gi for heavy writers (Grafana, Dependency-Track). It can be **added to an existing cluster in-place** (rolling restart migrates `pg_wal`) but can **never be removed**.
 2. Add the `database/` dir (or `cluster.yaml`) to the app's `kustomization.yaml`.
 3. The app's `ks.yaml` should `dependsOn` the database so Flux orders them.
 

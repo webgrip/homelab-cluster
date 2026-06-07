@@ -84,6 +84,19 @@ spec:
               - key: barman-cloud.cloudnative-pg.io
                 operator: AnyNotIn
                 value: "{{ request.object.spec.plugins[].name || `[]` }}"
+    - name: audit-cnpg-walstorage
+      match:
+        any:
+          - resources:
+              kinds:
+                - Cluster
+      validate:
+        failureAction: Audit
+        message: "CNPG clusters should use a dedicated walStorage volume so pg_wal pressure (e.g. when WAL archiving to Garage S3 stalls) cannot fill the data volume."
+        pattern:
+          spec:
+            walStorage:
+              size: "?*"
     - name: audit-cnpg-scheduledbackup
       match:
         any:
