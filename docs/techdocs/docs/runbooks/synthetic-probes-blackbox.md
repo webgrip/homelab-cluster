@@ -46,6 +46,25 @@ From the same shell:
 - DNS outages (CoreDNS crashloop, upstream resolver changes).
 - App-level outage (Grafana/Prometheus down) misinterpreted as “probe failure”.
 
+## Garage S3 (CNPG backup / WAL target) unavailable
+
+Fires as `GarageDown` / `GarageProbeSlow` / `GarageS3Availability` when the blackbox probe to `http://10.0.0.110:3900` (endpoint `garage`) fails.
+
+**Why this matters:** Garage S3 is the barman-cloud WAL-archive and backup target for **every** CloudNativePG database, and it runs **outside** this cluster (no app/namespace; not Flux-managed). When it is unreachable, WAL archiving fails cluster-wide, Postgres cannot recycle `pg_wal`, and database data volumes fill until they CrashLoop with `no free disk space for WALs` (heavy writers like `grafana-db` / `dependency-track-db` fill first). See also [[cnpg-garage-wal-spof]].
+
+Triage:
+
+1. Confirm reachability (403 = healthy — it's an unsigned S3 request):
+   - From a pod: `curl -sS -o /dev/null -w '%{http_code}\n' http://10.0.0.110:3900/`
+   - `connection refused` / timeout ⇒ Garage host or process is down, or a network/firewall issue.
+2. Restore Garage on its host (`10.0.0.110:3900`) — this is the root fix and unblocks every database.
+3. Confirm recovery from inside the cluster: a healthy DB's barman sidecar should log `Archived WAL file`:
+   - `kubectl -n authentik logs authentik-db-1 -c plugin-barman-cloud --tail=20`
+4. Check for fallout — any CNPG instance `1/2 CrashLoopBackOff` with `no free disk space for WALs`:
+   - `kubectl get pods -A -l cnpg.io/podRole=instance`
+   - A 100%-full volume won't start even after Garage returns; give it headroom by bumping `spec.storage.size` in `<app>/app/database/cluster.yaml`, then `flux reconcile kustomization <app>-db -n flux-system --with-source`.
+
 ## Where it’s configured
 
 - [kubernetes/apps/observability/blackbox-exporter](../../../kubernetes/apps/observability/blackbox-exporter)
+- SLO: [kubernetes/apps/observability/sloth/slos/slo-garage-availability.yaml](../../../kubernetes/apps/observability/sloth/slos/slo-garage-availability.yaml)

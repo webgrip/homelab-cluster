@@ -1,0 +1,60 @@
+---
+apiVersion: sloth.slok.dev/v1
+kind: PrometheusServiceLevel
+metadata:
+  name: garage-availability
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: sloth
+spec:
+  service: "garage"
+  labels:
+    owner: platform
+  slos:
+    - name: garage-s3-availability
+      objective: 99.9
+      description: "Availability SLO based on blackbox probe_success for the Garage S3 endpoint (CNPG backup/WAL target)."
+      sli:
+        events:
+          errorQuery: |
+            sum(
+              count_over_time(probe_success{namespace="observability", endpoint="garage"}[{{.window}}])
+              -
+              sum_over_time(probe_success{namespace="observability", endpoint="garage"}[{{.window}}])
+            )
+          totalQuery: |
+            sum(
+              count_over_time(probe_success{namespace="observability", endpoint="garage"}[{{.window}}])
+            )
+      alerting:
+        name: GarageS3Availability
+        labels:
+          category: slo
+        annotations:
+          summary: "Garage S3 availability SLO burn rate"
+          description: |
+            What's happening:
+            - Fast burn indicates the Garage S3 endpoint is failing synthetic probes.
+
+            Impact/risk:
+            - CNPG WAL archiving and backups are failing cluster-wide; database data
+              volumes will fill and CrashLoop ("no free disk space for WALs") if this
+              persists. Restore/DR is blocked.
+
+            Likely causes:
+            - Garage host/process down or unreachable at 10.0.0.110:3900
+            - Network/firewall issue between the cluster and Garage
+            - Garage out of disk / unhealthy
+
+            First actions:
+            - Check the Garage host/service and :3900 reachability (403 = healthy)
+            - Check CNPG WAL archiving (barman sidecar logs, CNPGWALArchivingFailed)
+            - Watch CNPG PVC fullness; expand spec.storage.size for any near-full DB
+          runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#synthetic-probes-blackbox"
+          dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/synthetic-blackbox/synthetic-blackbox"
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning
