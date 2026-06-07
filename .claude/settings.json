@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(mise exec -- kubectl get*)",
+      "Bash(mise exec -- kubectl describe*)",
+      "Bash(mise exec -- kubectl logs*)",
+      "Bash(mise exec -- flux get*)",
+      "Bash(mise exec -- flux check*)",
+      "Bash(mise exec -- flux diff*)",
+      "Bash(./scripts/run-flux-local-test.sh*)",
+      "Bash(./scripts/run-flux-local-diff.sh*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Edit(/.claude/skills/add-app/**)",
+      "Edit(/.claude/skills/grafana-dashboard/**)",
+      "Edit(/.claude/skills/cnpg-database/**)",
+      "Edit(/.claude/skills/authentik-oidc/**)",
+      "Edit(/.claude/skills/flux-validate/**)",
+      "Bash(npm view *)",
+      "Bash(timeout 120 env KUBECONFIG=__TRACKED_VAR__/kubeconfig ALLOW_ONLY_NON_DESTRUCTIVE_TOOLS=true npx -y mcp-server-kubernetes@3.8.0)",
+      "Bash(echo \"exit: $?\")",
+      "mcp__grafana__list_datasources",
+      "Bash(claude mcp *)",
+      "Bash(mise --version)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(gh api *)",
+      "Bash(grep -vE '^\\\\s*$')"
+    ],
+    "deny": [
+      "Edit(**/*.sops.yaml)",
+      "Edit(**/*.sops.yml)",
+      "Write(**/*.sops.yaml)",
+      "Write(**/*.sops.yml)",
+      "Read(./age.key)",
+      "Read(**/*.key)",
+      "Read(./kubeconfig)",
+      "Read(./cloudflare-tunnel.json)",
+      "Read(./github-push-token.txt)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-secrets.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-destructive.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/validate-manifest.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
