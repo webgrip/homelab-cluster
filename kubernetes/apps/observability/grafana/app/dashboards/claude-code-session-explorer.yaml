@@ -1,0 +1,133 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: claude-code-session-explorer
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  allowCrossNamespaceImport: false
+  folder: "Claude Code"
+  json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Claude Code / Session Explorer",
+      "uid": "claude-code-session-explorer",
+      "timezone": "browser",
+      "tags": ["claude-code", "ai", "anthropic", "session", "drilldown"],
+      "editable": true,
+      "graphTooltip": 1,
+      "refresh": "30s",
+      "time": {"from": "now-24h", "to": "now"},
+      "links": [
+        {"title": "Command Center", "url": "/d/claude-code-command-center", "type": "link", "icon": "external link"},
+        {"title": "Cost & Tokens", "url": "/d/claude-code-cost-tokens", "type": "link", "icon": "dollar"},
+        {"title": "Activity & Tools", "url": "/d/claude-code-activity-tools", "type": "link", "icon": "bolt"},
+        {"title": "Events, Logs & Traces", "url": "/d/claude-code-events-traces", "type": "link", "icon": "doc"},
+        {"title": "Provider Comparison", "url": "/d/claude-code-provider-comparison", "type": "link", "icon": "percentage"}
+      ],
+      "annotations": {
+        "list": [
+          {"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard"}
+        ]
+      },
+      "templating": {
+        "list": [
+          {"name": "session", "label": "Session", "type": "query", "datasource": {"type": "prometheus", "uid": "prometheus"}, "query": {"query": "label_values(claude_code_cost_usage_USD_total, session_id)"}, "refresh": 2, "sort": 1, "multi": false, "includeAll": false, "current": {"selected": false, "text": "", "value": ""}, "options": []}
+        ]
+      },
+      "panels": [
+        {
+          "id": 1, "type": "text", "title": "", "gridPos": {"h": 3, "w": 24, "x": 0, "y": 0},
+          "options": {"mode": "markdown", "content": "## Claude Code Session Explorer\nPick a **Session** above. This dashboard drills into one selected `session_id`: totals, timeline, and a forensic detail row (tools, events, traces). **Cost = API-equivalent estimate**, not real spend."}
+        },
+        {"id": 2, "type": "row", "title": "Session totals", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 3}, "panels": []},
+        {
+          "id": 3, "type": "stat", "title": "Cost (API-equiv est.)", "description": "Estimated API-equivalent cost for this session over the dashboard range. Not real spend.", "gridPos": {"h": 4, "w": 4, "x": 0, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(increase(claude_code_cost_usage_USD_total{session_id=\"$$session\"}[$$__range])) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}, "overrides": []}
+        },
+        {
+          "id": 4, "type": "stat", "title": "Tokens total", "description": "Sum of all token types consumed by this session over the range.", "gridPos": {"h": 4, "w": 4, "x": 4, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(increase(claude_code_token_usage_tokens_total{session_id=\"$$session\"}[$$__range])) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "blue"}]}}, "overrides": []}
+        },
+        {
+          "id": 5, "type": "stat", "title": "Active time", "description": "Active time accumulated by this session over the range.", "gridPos": {"h": 4, "w": 4, "x": 8, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(increase(claude_code_active_time_seconds_total{session_id=\"$$session\"}[$$__range])) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "s", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "purple"}]}}, "overrides": []}
+        },
+        {
+          "id": 6, "type": "stat", "title": "Prompts", "description": "user_prompt events emitted by this session over the range.", "gridPos": {"h": 4, "w": 4, "x": 12, "y": 4},
+          "datasource": {"type": "loki", "uid": "loki"},
+          "targets": [{"refId": "A", "expr": "sum(count_over_time({service_name=\"claude-code\", event_name=\"user_prompt\"} | json session_id=\"attributes.session_id\" | session_id=\"$$session\" [$$__range])) or vector(0)", "queryType": "instant"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}]}}, "overrides": []}
+        },
+        {
+          "id": 7, "type": "stat", "title": "Tool calls", "description": "tool_result events emitted by this session over the range.", "gridPos": {"h": 4, "w": 4, "x": 16, "y": 4},
+          "datasource": {"type": "loki", "uid": "loki"},
+          "targets": [{"refId": "A", "expr": "sum(count_over_time({service_name=\"claude-code\", event_name=\"tool_result\"} | json session_id=\"attributes.session_id\" | session_id=\"$$session\" [$$__range])) or vector(0)", "queryType": "instant"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "orange"}]}}, "overrides": []}
+        },
+        {
+          "id": 8, "type": "stat", "title": "API requests", "description": "api_request events emitted by this session over the range.", "gridPos": {"h": 4, "w": 4, "x": 20, "y": 4},
+          "datasource": {"type": "loki", "uid": "loki"},
+          "targets": [{"refId": "A", "expr": "sum(count_over_time({service_name=\"claude-code\", event_name=\"api_request\"} | json session_id=\"attributes.session_id\" | session_id=\"$$session\" [$$__range])) or vector(0)", "queryType": "instant"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "blue"}]}}, "overrides": []}
+        },
+        {"id": 9, "type": "row", "title": "Timeline", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 8}, "panels": []},
+        {
+          "id": 10, "type": "timeseries", "title": "Cost over time (this session)", "description": "Estimated API-equivalent cost increase per interval for the selected session.", "gridPos": {"h": 8, "w": 8, "x": 0, "y": 9},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(increase(claude_code_cost_usage_USD_total{session_id=\"$$session\"}[$$__rate_interval]))", "legendFormat": "cost"}],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 4, "custom": {"lineWidth": 2, "fillOpacity": 15, "showPoints": "never", "drawStyle": "line"}, "color": {"mode": "fixed", "fixedColor": "green"}}, "overrides": []}
+        },
+        {
+          "id": 11, "type": "timeseries", "title": "Tokens by type (this session)", "description": "Per-interval token increase split by token type, stacked.", "gridPos": {"h": 8, "w": 8, "x": 8, "y": 9},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum by (type) (increase(claude_code_token_usage_tokens_total{session_id=\"$$session\"}[$$__rate_interval]))", "legendFormat": "{{type}}"}],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "fieldConfig": {"defaults": {"unit": "short", "custom": {"lineWidth": 1, "fillOpacity": 30, "showPoints": "never", "drawStyle": "bars", "stacking": {"mode": "normal", "group": "A"}}}, "overrides": []}
+        },
+        {
+          "id": 12, "type": "timeseries", "title": "Event volume by name (this session)", "description": "Per-interval count of Loki events for the selected session, split by event_name.", "gridPos": {"h": 8, "w": 8, "x": 16, "y": 9},
+          "datasource": {"type": "loki", "uid": "loki"},
+          "targets": [{"refId": "A", "expr": "sum by (event_name) (count_over_time({service_name=\"claude-code\"} | json session_id=\"attributes.session_id\" | session_id=\"$$session\" [$$__interval]))", "queryType": "range", "legendFormat": "{{event_name}}"}],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "fieldConfig": {"defaults": {"unit": "short", "custom": {"lineWidth": 2, "fillOpacity": 12, "showPoints": "never", "drawStyle": "line"}}, "overrides": []}
+        },
+        {"id": 13, "type": "row", "title": "Detail", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 17}, "panels": []},
+        {
+          "id": 14, "type": "bargauge", "title": "Tool calls by tool (this session)", "description": "Top 15 tools by tool_result count for the selected session over the range.", "gridPos": {"h": 10, "w": 8, "x": 0, "y": 18},
+          "datasource": {"type": "loki", "uid": "loki"},
+          "targets": [{"refId": "A", "expr": "topk(15, sum by (tool_name) (count_over_time({service_name=\"claude-code\", event_name=\"tool_result\"} | json session_id=\"attributes.session_id\", tool_name=\"attributes.tool_name\" | session_id=\"$$session\" [$$__range])))", "queryType": "instant", "legendFormat": "{{tool_name}}"}],
+          "options": {"displayMode": "gradient", "orientation": "horizontal", "showUnfilled": true, "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "continuous-GrYlRd"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}]}}, "overrides": []}
+        },
+        {
+          "id": 15, "type": "logs", "title": "Session events", "description": "All Loki events for the selected session. Expand a line for the full field set.", "gridPos": {"h": 10, "w": 16, "x": 8, "y": 18},
+          "datasource": {"type": "loki", "uid": "loki"},
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\"} | json | session_id=\"$$session\"", "queryType": "range", "direction": "backward", "maxLines": 300}],
+          "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
+          "fieldConfig": {"defaults": {}, "overrides": []}
+        },
+        {
+          "id": 16, "type": "traces", "title": "Session traces", "description": "Tempo spans for claude-code. Requires CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1 + OTEL_TRACES_EXPORTER=otlp.", "gridPos": {"h": 12, "w": 24, "x": 0, "y": 28},
+          "datasource": {"type": "tempo", "uid": "tempo"},
+          "targets": [{"refId": "A", "datasource": {"type": "tempo", "uid": "tempo"}, "queryType": "traceql", "query": "{resource.service.name=\"claude-code\"}", "limit": 30, "tableType": "traces"}],
+          "options": {},
+          "fieldConfig": {"defaults": {}, "overrides": []}
+        }
+      ]
+    }

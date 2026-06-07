@@ -1,0 +1,131 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: claude-code-exec-summary
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  allowCrossNamespaceImport: false
+  folder: "Claude Code"
+  json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Claude Code / Exec Summary",
+      "uid": "claude-code-exec-summary",
+      "timezone": "browser",
+      "tags": ["claude-code", "ai", "anthropic", "summary", "finops"],
+      "editable": true,
+      "graphTooltip": 1,
+      "refresh": "30s",
+      "time": {"from": "now-7d", "to": "now"},
+      "links": [
+        {"title": "Command Center", "url": "/d/claude-code-command-center", "type": "link", "icon": "external link"},
+        {"title": "Cost & Tokens", "url": "/d/claude-code-cost-tokens", "type": "link", "icon": "external link"},
+        {"title": "Activity & Tools", "url": "/d/claude-code-activity-tools", "type": "link", "icon": "external link"},
+        {"title": "Events/Logs/Traces", "url": "/d/claude-code-events-traces", "type": "link", "icon": "external link"},
+        {"title": "Provider Comparison", "url": "/d/claude-code-provider-comparison", "type": "link", "icon": "external link"}
+      ],
+      "annotations": {
+        "list": [
+          {"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard"}
+        ]
+      },
+      "templating": {"list": []},
+      "panels": [
+        {
+          "id": 1, "type": "text", "title": "", "gridPos": {"h": 3, "w": 24, "x": 0, "y": 0},
+          "options": {"mode": "markdown", "content": "## Claude Code — Executive Summary\nOne-screen overview of Claude Code usage. **All cost figures are an API-equivalent ESTIMATE** (token volume × API list price); on a Max subscription it is **not** real spend. Use it for relative trends, not billing. Drill into the linked dashboards above for detail."}
+        },
+        {"id": 2, "type": "row", "title": "Right now (24h)", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 3}, "panels": []},
+        {
+          "id": 3, "type": "stat", "title": "Cost 24h (API-equiv est.)", "description": "API-equivalent ESTIMATE of cost over the last 24h (token volume × API list price). Not real spend on a Max subscription.", "gridPos": {"h": 4, "w": 3, "x": 0, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(increase(claude_code_cost_usage_USD_total[24h])) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "fixed", "fixedColor": "green"}}, "overrides": []}
+        },
+        {
+          "id": 4, "type": "stat", "title": "Tokens 24h", "description": "Total tokens (input + output + cacheRead + cacheCreation) over the last 24h.", "gridPos": {"h": 4, "w": 3, "x": 3, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(increase(claude_code_token_usage_tokens_total[24h])) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
+        },
+        {
+          "id": 5, "type": "stat", "title": "Sessions 24h", "description": "Distinct Claude Code sessions active in the last 24h (counted by session_id).", "gridPos": {"h": 4, "w": 3, "x": 6, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "count(count by (session_id) (max_over_time(claude_code_session_count_total[24h]))) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "purple"}}, "overrides": []}
+        },
+        {
+          "id": 6, "type": "stat", "title": "Active time 24h", "description": "Active engagement time (user + CLI) over the last 24h.", "gridPos": {"h": 4, "w": 3, "x": 9, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(increase(claude_code_active_time_seconds_total[24h])) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area"},
+          "fieldConfig": {"defaults": {"unit": "s", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
+        },
+        {
+          "id": 7, "type": "stat", "title": "Cache-hit ratio (24h)", "description": "cacheRead tokens ÷ (input + cacheRead) tokens over the last 24h. Higher is cheaper.", "gridPos": {"h": 4, "w": 3, "x": 12, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[24h])) or vector(0)) / clamp_min(sum(increase(claude_code_token_usage_tokens_total{type=~\"input|cacheRead\"}[24h])) or vector(0), 1)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "percentunit", "decimals": 1, "min": 0, "max": 1, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 0.5}, {"color": "green", "value": 0.8}]}}, "overrides": []}
+        },
+        {
+          "id": 8, "type": "stat", "title": "Edit accept-rate (24h)", "description": "Accepted ÷ all code-edit (Edit/Write/NotebookEdit) permission decisions over the last 24h.", "gridPos": {"h": 4, "w": 3, "x": 15, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "(sum(increase(claude_code_code_edit_tool_decision_total{decision=\"accept\"}[24h])) or vector(0)) / clamp_min(sum(increase(claude_code_code_edit_tool_decision_total[24h])) or vector(0), 1)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "percentunit", "decimals": 1, "min": 0, "max": 1, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 0.5}, {"color": "green", "value": 0.8}]}}, "overrides": []}
+        },
+        {
+          "id": 9, "type": "stat", "title": "API errors 24h", "description": "Count of api_error events over the last 24h (0 = healthy).", "gridPos": {"h": 4, "w": 3, "x": 18, "y": 4},
+          "datasource": {"type": "loki", "uid": "loki"},
+          "targets": [{"refId": "A", "expr": "sum(count_over_time({service_name=\"claude-code\", event_name=\"api_error\"}[24h])) or vector(0)", "queryType": "instant"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []}
+        },
+        {
+          "id": 10, "type": "stat", "title": "Request p90 latency (24h)", "description": "p90 of api_request duration_ms over the last 24h.", "gridPos": {"h": 4, "w": 3, "x": 21, "y": 4},
+          "datasource": {"type": "loki", "uid": "loki"},
+          "targets": [{"refId": "A", "expr": "quantile_over_time(0.9, {service_name=\"claude-code\", event_name=\"api_request\"} | json duration_ms=\"attributes.duration_ms\" | unwrap duration_ms [24h])", "queryType": "instant"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "ms", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
+        },
+        {"id": 11, "type": "row", "title": "Trends (7d)", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 8}, "panels": []},
+        {
+          "id": 12, "type": "timeseries", "title": "Cost over time by model (API-equiv est.)", "description": "API-equivalent ESTIMATE of cost over time, stacked by model. Not real spend on a Max subscription.", "gridPos": {"h": 7, "w": 12, "x": 0, "y": 9},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum by (model) (increase(claude_code_cost_usage_USD_total[$$__rate_interval]))", "legendFormat": "{{model}}"}],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 4, "custom": {"lineWidth": 1, "fillOpacity": 25, "showPoints": "never", "stacking": {"mode": "normal", "group": "A"}}}, "overrides": []}
+        },
+        {
+          "id": 13, "type": "timeseries", "title": "Tokens over time by type", "description": "Tokens over time, stacked by type (input / output / cacheRead / cacheCreation).", "gridPos": {"h": 7, "w": 12, "x": 12, "y": 9},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum by (type) (increase(claude_code_token_usage_tokens_total[$$__rate_interval]))", "legendFormat": "{{type}}"}],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "custom": {"lineWidth": 1, "fillOpacity": 25, "showPoints": "never", "stacking": {"mode": "normal", "group": "A"}}}, "overrides": []}
+        },
+        {
+          "id": 14, "type": "timeseries", "title": "Request volume vs errors", "description": "api_request vs api_error event counts over time (from Loki).", "gridPos": {"h": 7, "w": 12, "x": 0, "y": 16},
+          "datasource": {"type": "loki", "uid": "loki"},
+          "targets": [
+            {"refId": "A", "expr": "sum(count_over_time({service_name=\"claude-code\", event_name=\"api_request\"}[$$__interval]))", "queryType": "range", "legendFormat": "api_request"},
+            {"refId": "B", "expr": "sum(count_over_time({service_name=\"claude-code\", event_name=\"api_error\"}[$$__interval]))", "queryType": "range", "legendFormat": "api_error"}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "custom": {"lineWidth": 1, "fillOpacity": 10, "showPoints": "never"}}, "overrides": [{"matcher": {"id": "byName", "options": "api_error"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]}, {"matcher": {"id": "byName", "options": "api_request"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]}]}
+        },
+        {
+          "id": 15, "type": "bargauge", "title": "Top models by cost (range, API-equiv est.)", "description": "Top 8 models by API-equivalent ESTIMATE of cost over the dashboard range. Not real spend on a Max subscription.", "gridPos": {"h": 7, "w": 12, "x": 12, "y": 16},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "topk(8, sum by (model) (increase(claude_code_cost_usage_USD_total[$$__range])))", "instant": true, "legendFormat": "{{model}}"}],
+          "options": {"orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "displayMode": "gradient", "valueMode": "color"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "continuous-GrYlRd"}}, "overrides": []}
+        }
+      ]
+    }
