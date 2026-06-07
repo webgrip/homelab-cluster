@@ -1,0 +1,87 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: claude-code-provider-comparison
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  allowCrossNamespaceImport: false
+  folder: "Claude Code"
+  json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Claude Code / Provider Cost Comparison",
+      "uid": "claude-code-provider-comparison",
+      "timezone": "browser",
+      "tags": ["claude-code", "ai", "anthropic", "cost", "finops", "comparison"],
+      "editable": true,
+      "graphTooltip": 1,
+      "refresh": "30s",
+      "time": {"from": "now-7d", "to": "now"},
+      "links": [
+        {"title": "Command Center", "url": "/d/claude-code-command-center", "type": "link", "icon": "external link"},
+        {"title": "Cost & Tokens", "url": "/d/claude-code-cost-tokens", "type": "link", "icon": "dollar"},
+        {"title": "Activity & Tools", "url": "/d/claude-code-activity-tools", "type": "link", "icon": "bolt"},
+        {"title": "Events, Logs & Traces", "url": "/d/claude-code-events-traces", "type": "link", "icon": "doc"},
+        {"title": "Provider Comparison", "url": "/d/claude-code-provider-comparison", "type": "link", "icon": "percentage"}
+      ],
+      "annotations": {
+        "list": [
+          {"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard"}
+        ]
+      },
+      "templating": {
+        "list": [
+          {"name": "sub_monthly", "label": "Sub USD/mo", "type": "textbox", "query": "100", "current": {"selected": true, "text": "100", "value": "100"}}
+        ]
+      },
+      "panels": [
+        {
+          "id": 1, "type": "text", "title": "", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+          "options": {"mode": "markdown", "content": "## Provider Cost Comparison\nWhat your **actual Claude Code token usage** (input / output / cacheRead / cacheCreation) would cost on each provider's API at **current list rates (Jun 2026)**, cache-aware, vs your flat subscription. Your plan (per `/usage`): **Claude Max 5× ≈ 100 USD/mo** — set the **Sub USD/mo** variable to 200 for Max 20×.\n\n**Rates, USD per 1M tokens — in / out / cacheRead / cacheWrite:**\n| Provider | in | out | cacheRead | cacheWrite |\n|---|---|---|---|---|\n| Claude Opus 4.8 | 5 | 25 | 0.50 | 6.25 |\n| Claude Sonnet 4.6 | 3 | 15 | 0.30 | 3.75 |\n| OpenAI GPT-5.5 | 5 | 30 | 0.50 | 5 |\n| DeepSeek V4 Flash | 0.14 | 0.28 | 0.0028 | 0.14 |\n| DeepSeek V4 Pro | 1.74 | 3.48 | 0.0145 | 1.74 |\n\n_Caveats: GitHub Copilot is a flat per-seat product (reference bar only) and can't drive this agentic workload; cross-provider figures assume the identical token volume and ignore quality differences. Cache-write mapping: Claude 1.25×in, OpenAI = in (no write fee), DeepSeek = cache-miss. Edit this dashboard to refresh rates._"}
+        },
+        {"id": 2, "type": "row", "title": "Projected monthly — your usage priced on every option (7-day run-rate × 30)", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 8}, "panels": []},
+        {
+          "id": 3, "type": "bargauge", "title": "Projected monthly cost by option", "description": "Your last-7-day token mix, priced per provider, scaled to 30 days. Flat subscription/seat prices shown for reference.", "gridPos": {"h": 11, "w": 24, "x": 0, "y": 9},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[7d]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[7d]))*25 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[7d]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[7d]))*6.25) / 1e6 / 7 * 30 or vector(0)", "instant": true, "legendFormat": "Claude Opus 4.8 (API)"},
+            {"refId": "B", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[7d]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[7d]))*15 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[7d]))*0.3 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[7d]))*3.75) / 1e6 / 7 * 30 or vector(0)", "instant": true, "legendFormat": "Claude Sonnet 4.6 (API)"},
+            {"refId": "C", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[7d]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[7d]))*30 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[7d]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[7d]))*5) / 1e6 / 7 * 30 or vector(0)", "instant": true, "legendFormat": "OpenAI GPT-5.5 (API)"},
+            {"refId": "D", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[7d]))*0.14 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[7d]))*0.28 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[7d]))*0.0028 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[7d]))*0.14) / 1e6 / 7 * 30 or vector(0)", "instant": true, "legendFormat": "DeepSeek V4 Flash (API)"},
+            {"refId": "E", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[7d]))*1.74 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[7d]))*3.48 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[7d]))*0.0145 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[7d]))*1.74) / 1e6 / 7 * 30 or vector(0)", "instant": true, "legendFormat": "DeepSeek V4 Pro (API)"},
+            {"refId": "F", "expr": "vector($$sub_monthly)", "instant": true, "legendFormat": "Your Claude Max sub (flat)"},
+            {"refId": "G", "expr": "vector(10)", "instant": true, "legendFormat": "GitHub Copilot Pro (flat, ref)"}
+          ],
+          "options": {"orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "displayMode": "gradient", "valueMode": "color"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "continuous-GrYlRd"}}, "overrides": [{"matcher": {"id": "byName", "options": "Your Claude Max sub (flat)"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "purple"}}]}, {"matcher": {"id": "byName", "options": "GitHub Copilot Pro (flat, ref)"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "blue"}}]}]}
+        },
+        {"id": 4, "type": "row", "title": "Over the selected time range", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 20}, "panels": []},
+        {
+          "id": 5, "type": "bargauge", "title": "API-equivalent cost over range", "description": "Your token mix over the dashboard time range, priced per provider (API-equivalent, not real spend).", "gridPos": {"h": 9, "w": 10, "x": 0, "y": 21},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*25 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*6.25) / 1e6 or vector(0)", "instant": true, "legendFormat": "Claude Opus 4.8"},
+            {"refId": "B", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*3 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*15 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.3 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*3.75) / 1e6 or vector(0)", "instant": true, "legendFormat": "Claude Sonnet 4.6"},
+            {"refId": "C", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*30 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*5) / 1e6 or vector(0)", "instant": true, "legendFormat": "OpenAI GPT-5.5"},
+            {"refId": "D", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*0.14 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*0.28 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.0028 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*0.14) / 1e6 or vector(0)", "instant": true, "legendFormat": "DeepSeek V4 Flash"},
+            {"refId": "E", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*1.74 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*3.48 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.0145 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*1.74) / 1e6 or vector(0)", "instant": true, "legendFormat": "DeepSeek V4 Pro"}
+          ],
+          "options": {"orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "displayMode": "gradient", "valueMode": "color"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "continuous-GrYlRd"}}, "overrides": []}
+        },
+        {
+          "id": 6, "type": "timeseries", "title": "API-equivalent cost over time by provider", "gridPos": {"h": 9, "w": 14, "x": 10, "y": 21},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__rate_interval]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__rate_interval]))*25 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__rate_interval]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__rate_interval]))*6.25) / 1e6", "legendFormat": "Claude Opus 4.8"},
+            {"refId": "C", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__rate_interval]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__rate_interval]))*30 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__rate_interval]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__rate_interval]))*5) / 1e6", "legendFormat": "OpenAI GPT-5.5"},
+            {"refId": "D", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__rate_interval]))*0.14 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__rate_interval]))*0.28 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__rate_interval]))*0.0028 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__rate_interval]))*0.14) / 1e6", "legendFormat": "DeepSeek V4 Flash"}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 4, "custom": {"lineWidth": 2, "fillOpacity": 10, "showPoints": "never"}}, "overrides": []}
+        }
+      ]
+    }
