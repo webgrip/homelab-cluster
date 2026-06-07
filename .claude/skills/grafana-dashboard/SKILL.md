@@ -60,6 +60,7 @@ Only if you must place a dashboard in a *different* namespace (discouraged), ref
 **Panel hygiene:**
 - Multi-series panels (timeseries / bargauge / table): **do not** append `or vector(0)` — it creates a phantom `Value=0` series. Only `stat` panels use `or vector(0)`.
 - Calendar **month-to-date**: set dashboard `time: {from: now/M, to: now}` → `$$__range` is MTD, days elapsed = `$$__range_s/86400`, full-month projection = `(<expr over $$__range>) * $$days_in_month * 86400 / $$__range_s`.
+- **Template-var "All":** for an `includeAll` query var filtered as `label=~"$$var"`, set `allValue: ".*"` (or omit `allValue` so Grafana auto-joins the values). **Never** `allValue: "$$__all"` — `$__all` is not a real all-value, so "All" interpolates to a literal `label=~"$__all"` → matches nothing → silent **No data**. The escaping grep won't catch this (it's a logic bug); spot-check rendered panels or query with the var.
 
 **Many near-identical series (e.g. an N-provider cost comparison):** generate the dashboard JSON from a small Python rate-table generator rather than hand-writing — far less error-prone, trivial to re-run when rates change. Table panel: two instant queries + a `merge` transform joins them by shared label into `Value #A` / `Value #B` columns; embed reference values (e.g. rates) directly in the series `label_replace` name to avoid extra columns.
 

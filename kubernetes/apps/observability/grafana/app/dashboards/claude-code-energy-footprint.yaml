@@ -1,0 +1,882 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: claude-code-energy-footprint
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  allowCrossNamespaceImport: false
+  folder: "Claude Code"
+  json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Claude Code / Energy & Environmental Footprint",
+      "uid": "claude-code-energy-footprint",
+      "timezone": "browser",
+      "editable": true,
+      "graphTooltip": 1,
+      "refresh": "30s",
+      "time": {
+        "from": "now/M",
+        "to": "now"
+      },
+      "tags": [
+        "claude-code",
+        "ai",
+        "anthropic",
+        "energy",
+        "sustainability",
+        "co2"
+      ],
+      "links": [
+        {
+          "title": "Command Center",
+          "url": "/d/claude-code-command-center",
+          "type": "link",
+          "icon": "external link"
+        },
+        {
+          "title": "Cost & Tokens",
+          "url": "/d/claude-code-cost-tokens",
+          "type": "link",
+          "icon": "dollar"
+        },
+        {
+          "title": "Cache Economics",
+          "url": "/d/claude-code-cache-economics",
+          "type": "link",
+          "icon": "apps"
+        },
+        {
+          "title": "Provider Comparison",
+          "url": "/d/claude-code-provider-comparison",
+          "type": "link",
+          "icon": "percentage"
+        }
+      ],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "wh_per_ktok",
+            "label": "Wh / 1k tokens",
+            "type": "textbox",
+            "query": "0.3",
+            "current": {
+              "selected": true,
+              "text": "0.3",
+              "value": "0.3"
+            }
+          },
+          {
+            "name": "pue",
+            "label": "Data-centre PUE",
+            "type": "textbox",
+            "query": "1.2",
+            "current": {
+              "selected": true,
+              "text": "1.2",
+              "value": "1.2"
+            }
+          },
+          {
+            "name": "gco2_per_kwh",
+            "label": "gCO\u2082e / kWh",
+            "type": "textbox",
+            "query": "400",
+            "current": {
+              "selected": true,
+              "text": "400",
+              "value": "400"
+            }
+          },
+          {
+            "name": "l_per_kwh",
+            "label": "Water L / kWh",
+            "type": "textbox",
+            "query": "1.8",
+            "current": {
+              "selected": true,
+              "text": "1.8",
+              "value": "1.8"
+            }
+          },
+          {
+            "name": "days_in_month",
+            "label": "Days in month",
+            "type": "textbox",
+            "query": "30",
+            "current": {
+              "selected": true,
+              "text": "30",
+              "value": "30"
+            }
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "text",
+          "title": "",
+          "gridPos": {
+            "h": 5,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "## Energy & Environmental Footprint\nRough **estimates** of the energy, carbon and water behind your Claude Code usage, derived from **token volume \u00d7 tunable coefficients** (top of dashboard). Anthropic publishes no official per-token figure, so treat these as order-of-magnitude, not measurements.\n\n**Model:** facility energy = tokens \u00d7 **Wh per 1k tokens** \u00f7 1000 \u00d7 **PUE** (data-centre overhead). CO\u2082e = energy \u00d7 **grid gCO\u2082e/kWh**. Water = energy \u00d7 **L/kWh** (cooling + generation). Equivalents: car \u2248 120 gCO\u2082e/km; phone charge \u2248 0.012 kWh.\n\n_This workload is ~99% cache reads, which are cheaper to serve than fresh generation \u2014 so the default Wh/1k is conservative; tune it if you have a better figure. Time range = this month; the Projected row extrapolates the month-to-date run-rate to the full month._"
+          }
+        },
+        {
+          "id": 2,
+          "type": "row",
+          "title": "This month so far",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 5
+          },
+          "panels": []
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Energy",
+          "description": "Estimated facility electricity (kWh) for this month's tokens.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(sum(increase(claude_code_token_usage_tokens_total[$$__range])) * $$wh_per_ktok / 1e6) * $$pue or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "kwatth",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text"
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "CO\u2082e",
+          "description": "Estimated carbon-dioxide-equivalent emissions.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "((sum(increase(claude_code_token_usage_tokens_total[$$__range])) * $$wh_per_ktok / 1e6) * $$pue) * $$gco2_per_kwh / 1000 or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "auto",
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "masskg",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 5,
+          "type": "stat",
+          "title": "Water",
+          "description": "Estimated water use (litres) for cooling + generation.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 8,
+            "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "((sum(increase(claude_code_token_usage_tokens_total[$$__range])) * $$wh_per_ktok / 1e6) * $$pue) * $$l_per_kwh or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text"
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 6,
+          "type": "stat",
+          "title": "\u2248 km driven",
+          "description": "Same CO\u2082e as driving an average car this far.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 12,
+            "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "((sum(increase(claude_code_token_usage_tokens_total[$$__range])) * $$wh_per_ktok / 1e6) * $$pue) * $$gco2_per_kwh / 120 or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "lengthkm",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text"
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 7,
+          "type": "stat",
+          "title": "\u2248 phone charges",
+          "description": "Same energy as fully charging a smartphone this many times.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 16,
+            "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "((sum(increase(claude_code_token_usage_tokens_total[$$__range])) * $$wh_per_ktok / 1e6) * $$pue) / 0.012 or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text"
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 8,
+          "type": "stat",
+          "title": "Tokens",
+          "description": "Total tokens this month (all types).",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 20,
+            "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(increase(claude_code_token_usage_tokens_total[$$__range])) or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text"
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 9,
+          "type": "row",
+          "title": "Projected full month (current run-rate)",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 10
+          },
+          "panels": []
+        },
+        {
+          "id": 10,
+          "type": "stat",
+          "title": "Projected energy",
+          "description": "",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 11
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "((sum(increase(claude_code_token_usage_tokens_total[$$__range])) * $$wh_per_ktok / 1e6) * $$pue) * $$days_in_month * 86400 / $$__range_s or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "kwatth",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text"
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 11,
+          "type": "stat",
+          "title": "Projected CO\u2082e",
+          "description": "",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 11
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(((sum(increase(claude_code_token_usage_tokens_total[$$__range])) * $$wh_per_ktok / 1e6) * $$pue) * $$gco2_per_kwh / 1000) * $$days_in_month * 86400 / $$__range_s or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "auto",
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "masskg",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 12,
+          "type": "stat",
+          "title": "Projected water",
+          "description": "",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 12,
+            "y": 11
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(((sum(increase(claude_code_token_usage_tokens_total[$$__range])) * $$wh_per_ktok / 1e6) * $$pue) * $$l_per_kwh) * $$days_in_month * 86400 / $$__range_s or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text"
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 13,
+          "type": "stat",
+          "title": "Projected \u2248 km driven",
+          "description": "",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 18,
+            "y": 11
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(((sum(increase(claude_code_token_usage_tokens_total[$$__range])) * $$wh_per_ktok / 1e6) * $$pue) * $$gco2_per_kwh / 120) * $$days_in_month * 86400 / $$__range_s or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "lengthkm",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text"
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 14,
+          "type": "row",
+          "title": "Over time & breakdown",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 15
+          },
+          "panels": []
+        },
+        {
+          "id": 15,
+          "type": "timeseries",
+          "title": "Energy over time (Wh per bucket)",
+          "description": "",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 16
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(sum(increase(claude_code_token_usage_tokens_total[$$__rate_interval])) * $$wh_per_ktok / 1000) * $$pue",
+              "legendFormat": "Wh"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "watth",
+              "decimals": 2,
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 70,
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 16,
+          "type": "timeseries",
+          "title": "CO\u2082e over time (g per bucket)",
+          "description": "",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 16
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(increase(claude_code_token_usage_tokens_total[$$__rate_interval])) * $$wh_per_ktok * $$pue * $$gco2_per_kwh / 1e6",
+              "legendFormat": "gCO\u2082e"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "massg",
+              "decimals": 1,
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 70,
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 17,
+          "type": "bargauge",
+          "title": "Energy by model (kWh)",
+          "description": "",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 24
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (model)(increase(claude_code_token_usage_tokens_total[$$__range])) * $$wh_per_ktok / 1e6 * $$pue",
+              "instant": true,
+              "legendFormat": "{{model}}"
+            }
+          ],
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "gradient",
+            "valueMode": "color",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "kwatth",
+              "decimals": 3,
+              "color": {
+                "mode": "continuous-GrYlRd"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 18,
+          "type": "bargauge",
+          "title": "Energy by query source (kWh)",
+          "description": "",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 24
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (query_source)(increase(claude_code_token_usage_tokens_total[$$__range])) * $$wh_per_ktok / 1e6 * $$pue",
+              "instant": true,
+              "legendFormat": "{{query_source}}"
+            }
+          ],
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "gradient",
+            "valueMode": "color",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "kwatth",
+              "decimals": 3,
+              "color": {
+                "mode": "continuous-GrYlRd"
+              }
+            },
+            "overrides": []
+          }
+        }
+      ]
+    }
