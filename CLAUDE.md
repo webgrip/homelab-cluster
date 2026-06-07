@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-GitOps homelab: Flux + HelmRelease + Kustomize, Talos nodes, SOPS secrets. Versions/nodes live in `talos/talenv.yaml`, `talos/talconfig.yaml`, `.mise.toml` — README/techdocs version numbers are stale, don't trust them.
+GitOps homelab: Flux + HelmRelease + Kustomize, Talos nodes, SOPS secrets.
 
 ## Rules
 
@@ -10,17 +10,12 @@ GitOps homelab: Flux + HelmRelease + Kustomize, Talos nodes, SOPS secrets. Versi
 - **Secrets need a human.** Never edit `*.sops.yaml` or print decoded values (hooks/permissions block this). Wire the non-secret parts, leave a `*.template.yaml`, and document Secret name/namespace/keys + external setup. Prefer `existingSecret`/`extraEnvFrom`/`envFromSecret`.
 - **Run tooling via mise** — `mise exec -- <cmd>`; PATH binaries aren't configured for this cluster.
 - **Validate before commit:** `./scripts/run-flux-local-test.sh`. Commit with `git -c commit.gpgsign=false commit`; if the `format-yaml` hook reformats, `git add -A` and recommit.
-- **Work trunk-based on `main`.** Commit and push changes directly to `main` — do NOT create feature branches or open PRs (the owner works directly on `main`, which is unprotected). Still validate first; keep commits scoped and reversible. Note: `claude-review.yml` only reviews PRs, so direct-to-`main` changes get no automated Claude review.
+- **Work trunk-based on `main`.** Commit and push changes directly to `main` — do NOT create feature branches or open PRs (the owner works directly on `main`, which is unprotected). Still validate first; keep commits scoped and reversible.
 - **Editing manifests:** Flux reconciles 3 layers — root `kubernetes/flux/cluster/ks.yaml` → per-app `kubernetes/apps/<ns>/<app>/ks.yaml` (wiring: `dependsOn`, `targetNamespace`, `postBuild.substituteFrom`) → `<app>/app/` (resources). Escape runtime shell vars in manifests as `$${...}`.
-
-## Don't break things
-
-- **Talos apply always reboots here** → `task talos:apply-node-safe IP=<ip> HOSTNAME=<name>` (drains first), never `apply-node`. talosconfig = `talos/clusterconfig/talosconfig`; address soyo-3 by IP `10.0.0.22`.
-- **Control-plane nodes soyo-1/2/3** (`10.0.0.20`–`.22`) share one disk for etcd + everything. Schedule write-heavy workloads on the worker **`fringe-workstation`** (`10.0.0.23`) via hard `requiredDuringScheduling` nodeAffinity `node-role.kubernetes.io/control-plane DoesNotExist`.
 
 ## Where things are
 
-- **Task recipes → skills** (auto-load when relevant): `add-app`, `grafana-dashboard`, `cnpg-database`, `authentik-oidc`, `flux-validate`.
+- **Task recipes → skills** (auto-load when relevant): `add-app`, `grafana-dashboard`, `cnpg-database`, `authentik-oidc`, `flux-validate`, `talos` (node ops, upgrades, scheduling/topology).
 - **Debug/health → `cluster-health` subagent**; trigger Renovate → `renovate-trigger` subagent.
 - **Live cluster (read-only) → MCP** (in-cluster, Flux-managed, connect over HTTP; committed `.mcp.json`): `grafana` (Prom/Loki/Tempo/Mimir) + `kubernetes` (read-only `view` role). LAN-only; see `.claude/README.md`.
 - **Safety is enforced** by hooks + permissions in `.claude/` (block SOPS edits, plaintext secrets, destructive cluster commands; validate manifests on edit).
