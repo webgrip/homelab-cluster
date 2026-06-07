@@ -10,6 +10,7 @@ GitOps homelab: Flux + HelmRelease + Kustomize, Talos nodes, SOPS secrets. Versi
 - **Secrets need a human.** Never edit `*.sops.yaml` or print decoded values (hooks/permissions block this). Wire the non-secret parts, leave a `*.template.yaml`, and document Secret name/namespace/keys + external setup. Prefer `existingSecret`/`extraEnvFrom`/`envFromSecret`.
 - **Run tooling via mise** — `mise exec -- <cmd>`; PATH binaries aren't configured for this cluster.
 - **Validate before commit:** `./scripts/run-flux-local-test.sh`. Commit with `git -c commit.gpgsign=false commit`; if the `format-yaml` hook reformats, `git add -A` and recommit.
+- **Work trunk-based on `main`.** Commit and push changes directly to `main` — do NOT create feature branches or open PRs (the owner works directly on `main`, which is unprotected). Still validate first; keep commits scoped and reversible. Note: `claude-review.yml` only reviews PRs, so direct-to-`main` changes get no automated Claude review.
 - **Editing manifests:** Flux reconciles 3 layers — root `kubernetes/flux/cluster/ks.yaml` → per-app `kubernetes/apps/<ns>/<app>/ks.yaml` (wiring: `dependsOn`, `targetNamespace`, `postBuild.substituteFrom`) → `<app>/app/` (resources). Escape runtime shell vars in manifests as `$${...}`.
 
 ## Don't break things
