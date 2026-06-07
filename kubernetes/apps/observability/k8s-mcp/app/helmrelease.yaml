@@ -1,0 +1,79 @@
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: kubernetes-mcp-server
+spec:
+  interval: 1h
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
+  url: oci://ghcr.io/containers/charts/kubernetes-mcp-server
+  ref:
+    tag: "0.1.0"
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: k8s-mcp
+spec:
+  interval: 1h
+  chartRef:
+    kind: OCIRepository
+    name: kubernetes-mcp-server
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  values:
+    image:
+      registry: quay.io
+      repository: containers/kubernetes_mcp_server
+      # renovate: datasource=docker depName=quay.io/containers/kubernetes_mcp_server
+      version: v0.0.62
+    # Read-only at the app layer (belt). The real guarantee is RBAC below.
+    config:
+      read_only: true
+      denied_resources:
+        - group: ""
+          version: v1
+          kind: Secret
+    serviceAccount:
+      create: true
+      automountToken: true
+    # Bind the pod's ServiceAccount to Kubernetes' built-in read-only `view`
+    # ClusterRole — it grants get/list/watch on standard resources and EXCLUDES
+    # Secrets by design. No custom role to maintain; no write access possible.
+    rbac:
+      create: true
+      extraClusterRoleBindings:
+        - name: view
+          roleRef:
+            kind: ClusterRole
+            name: view
+            external: true
+    ingress:
+      enabled: false
+    # Gateway API — LAN-only via envoy-internal, matching mcp-grafana.
+    httpRoute:
+      enabled: true
+      parentRefs:
+        - name: envoy-internal
+          namespace: network
+          sectionName: https
+      hostnames:
+        - "k8s-mcp.${SECRET_DOMAIN}"
+    # Keep off the shared etcd control-plane disk; run on the worker like mcp-grafana.
+    nodeSelector:
+      nodegroup: fringe
+    tolerations:
+      - key: dedicated
+        operator: Equal
+        value: fringe
+        effect: NoSchedule
+    podAnnotations:
+      reloader.stakater.com/auto: "true"
