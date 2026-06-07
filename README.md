@@ -11,8 +11,8 @@ _... managed with Flux, Renovate, GitHub Actions, and Talos_
 <div align="center">
 
 [![Discord](https://img.shields.io/discord/673534664354430999?style=for-the-badge&label=&logo=discord&logoColor=white&color=5865F2)](https://discord.gg/home-operations)&nbsp;&nbsp;
-[![Talos](https://img.shields.io/badge/Talos-v1.11.5-1E90FF?style=for-the-badge&logo=talos&logoColor=white)](https://talos.dev)&nbsp;&nbsp;
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-v1.34.2-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)](https://kubernetes.io)&nbsp;&nbsp;
+[![Talos](https://img.shields.io/badge/Talos-v1.13.3-1E90FF?style=for-the-badge&logo=talos&logoColor=white)](https://talos.dev)&nbsp;&nbsp;
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-v1.36.1-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)](https://kubernetes.io)&nbsp;&nbsp;
 [![Flux](https://img.shields.io/badge/Flux-GitOps-orange?style=for-the-badge&logo=flux&logoColor=white)](https://fluxcd.io)&nbsp;&nbsp;
 [![Renovate](https://img.shields.io/badge/Renovate-in%20cluster-1f8ceb?style=for-the-badge&logo=renovatebot)](docs/techdocs/docs/renovate.md)
 
@@ -20,9 +20,9 @@ _... managed with Flux, Renovate, GitHub Actions, and Talos_
 
 <div align="center">
 
-[![Status](https://img.shields.io/badge/Status%20Page-status.grippeling.net-brightgreen?style=for-the-badge&logo=statuspage)](https://status.grippeling.net)&nbsp;&nbsp;
+[![Status](https://img.shields.io/badge/Status%20Page-status.webgrip.dev-brightgreen?style=for-the-badge&logo=statuspage)](https://status.webgrip.dev)&nbsp;&nbsp;
 [![Gateway](https://img.shields.io/badge/Edge-Gateway-blue?style=for-the-badge&logo=ubiquiti&logoColor=white)](https://github.com/webgrip/homelab-cluster)&nbsp;&nbsp;
-[![Alertmanager](https://img.shields.io/badge/Alertmanager-Healthy-brightgreen?style=for-the-badge&logo=prometheus&logoColor=white)](https://status.grippeling.net)
+[![Alertmanager](https://img.shields.io/badge/Alertmanager-Healthy-brightgreen?style=for-the-badge&logo=prometheus&logoColor=white)](https://status.webgrip.dev)
 
 </div>
 
@@ -30,28 +30,28 @@ _... managed with Flux, Renovate, GitHub Actions, and Talos_
 
 [![Age](https://img.shields.io/badge/Age-3%20yrs-informational?style=flat-square&color=0f5fff)](https://github.com/webgrip/homelab-cluster)
 [![Uptime](https://img.shields.io/badge/Uptime-99.5%25-success?style=flat-square)](https://github.com/webgrip/homelab-cluster)
-[![Nodes](https://img.shields.io/badge/Nodes-3-lightgrey?style=flat-square&logo=kubernetes)](https://github.com/webgrip/homelab-cluster)
+[![Nodes](https://img.shields.io/badge/Nodes-4-lightgrey?style=flat-square&logo=kubernetes)](https://github.com/webgrip/homelab-cluster)
 [![Pods](https://img.shields.io/badge/Pods-40+-blue?style=flat-square&logo=kubernetes)](https://github.com/webgrip/homelab-cluster)
 [![CPU](https://img.shields.io/badge/CPU-45%25-orange?style=flat-square)](https://github.com/webgrip/homelab-cluster)
 [![Memory](https://img.shields.io/badge/Memory-60%25-orange?style=flat-square)](https://github.com/webgrip/homelab-cluster)
-[![Alerts](https://img.shields.io/badge/Alerts-0-brightgreen?style=flat-square&logo=prometheus)](https://status.grippeling.net)
+[![Alerts](https://img.shields.io/badge/Alerts-0-brightgreen?style=flat-square&logo=prometheus)](https://status.webgrip.dev)
 
 </div>
 
 ## 💡 Overview
 
-This is the living source of truth for the Talos-powered cluster behind `grippeling.net`. Flux owns every namespace under `kubernetes/apps`, Renovate watches the whole repo for drift, and GitHub Actions runs validation plus flux diffs before anything merges. TechDocs (in `docs/techdocs`) surface runtime inventory, Talos node state, and runbooks inside Backstage so docs ship with the manifests.
+This is the living source of truth for the Talos-powered cluster behind `webgrip.dev`. Flux owns every namespace under `kubernetes/apps`, Renovate watches the whole repo for drift, and GitHub Actions runs validation plus flux diffs before anything merges. TechDocs (in `docs/techdocs`) surface runtime inventory, Talos node state, and runbooks inside Backstage so docs ship with the manifests.
 
 ## <img src="https://raw.githubusercontent.com/kubernetes/kubernetes/refs/heads/master/logo/logo.svg" alt="🌱" width="20" height="20"> Kubernetes
 
-My cluster runs on three bare-metal Talos controllers (`soyo-1`..`3`) that also schedule workloads. Everything runs kube-proxy-free via Cilium, with split-DNS gateways and Cloudflare tunnels for ingress. GitOps keeps the manifests authoritative while just/Mise make local development reproducible.
+My cluster runs on three bare-metal Talos controllers (`soyo-1`..`3`) that also schedule workloads, plus a dedicated worker node (`fringe-workstation`, `10.0.0.23`) that takes write-heavy apps off the control-plane disk. Everything runs kube-proxy-free via Cilium, with split-DNS gateways and Cloudflare tunnels for ingress. GitOps keeps the manifests authoritative while just/Mise make local development reproducible.
 
 ### Core Components
 
 - [actions-runner-controller](https://github.com/actions/actions-runner-controller): GitHub Actions scale sets for CI bursts.
 - [cert-manager](https://github.com/cert-manager/cert-manager): ACME certificates for both envoy gateways.
 - [cilium](https://github.com/cilium/cilium): eBPF networking, kube-proxy-free dataplane.
-- [cloudflared](https://github.com/cloudflare/cloudflared) + [Cloudflare DNS](https://github.com/kubernetes-sigs/external-dns): tunnel and DNS automation for `*.grippeling.net`.
+- [cloudflared](https://github.com/cloudflare/cloudflared) + [Cloudflare DNS](https://github.com/kubernetes-sigs/external-dns): tunnel and DNS automation for `*.webgrip.dev`.
 - [envoy-gateway](https://github.com/envoyproxy/gateway): Provides `envoy-internal`/`envoy-external` Gateway API classes.
 - [flux](https://github.com/fluxcd/flux2): Source, Kustomize, Helm, and notification controllers.
 - [k8s-gateway](https://github.com/kubernetes-sigs/gateway-api): Split DNS responder for internal resolution.
@@ -140,14 +140,14 @@ Static infrastructure (Talos nodes, Proxmox host, Synology, Home Assistant) keep
 
 ### 🌎 DNS
 
-Three ExternalDNS deployments keep Cloudflare public records and `k8s-gateway` entries aligned. `envoy-internal` routes stay inside the LAN, while `envoy-external` hostnames are proxied through Cloudflare Tunnel. OPNsense runs split-horizon DNS—every `*.grippeling.net` lookup hits the router, which forwards internally to the `k8s-gateway` LoadBalancer (`10.0.0.26`) so services stay reachable on-LAN without touching Cloudflare.
+Three ExternalDNS deployments keep Cloudflare public records and `k8s-gateway` entries aligned. `envoy-internal` routes stay inside the LAN, while `envoy-external` hostnames are proxied through Cloudflare Tunnel. OPNsense runs split-horizon DNS—every `*.webgrip.dev` lookup hits the router, which forwards internally to the `k8s-gateway` LoadBalancer (`10.0.0.26`) so services stay reachable on-LAN without touching Cloudflare.
 
 ### 🏠 Home DNS
 
 ```mermaid
 graph TD
   Clients -->|Queries| Router[OPNsense split DNS]
-  Router -->|grippeling.net| K8sGW[k8s-gateway LB 10.0.0.26]
+  Router -->|webgrip.dev| K8sGW[k8s-gateway LB 10.0.0.26]
   Router -->|Other domains| WAN[Upstream DNS]
   K8sGW -->|Routes hostnames| Envoy[envoy-internal / envoy-external]
   Envoy -->|Publishes| Cloudflare
@@ -157,7 +157,7 @@ graph TD
 
 | Service | Use | Cost |
 |---------|-----|------|
-| Cloudflare | Authoritative DNS, Zero Trust tunnels for `*.grippeling.net` | ~$50/yr |
+| Cloudflare | Authoritative DNS, Zero Trust tunnels for `*.webgrip.dev` | ~$50/yr |
 | GitHub | Repo hosting, Actions, container registry | Free |
 | Healthchecks.io | Connectivity + job heartbeat monitoring | Free tier |
 | Fastmail | Email + identity provider for alerts | ~$56/yr |
@@ -166,8 +166,8 @@ graph TD
 
 | Num | Device | CPU | RAM | OS / Firmware | Function |
 |-----|--------|-----|-----|---------------|----------|
-| 3 | SOYO Mini PC M4 (Twin Lake N150) | Intel N150 | 12 GB DDR5 | Talos Linux v1.11.5 | Control-plane + workloads, each with 512 GB NVMe + Wi-Fi5/BT5 (disabled) |
-| 1 | Protectli V1410 | Intel i5 | 8 GB | OPNsense | Router/firewall, DHCP `10.0.0.50-150`, WireGuard, split DNS for `grippeling.net` |
+| 3 | SOYO Mini PC M4 (Twin Lake N150) | Intel N150 | 12 GB DDR5 | Talos Linux v1.13.3 | Control-plane + workloads, each with 512 GB NVMe + Wi-Fi5/BT5 (disabled) |
+| 1 | Protectli V1410 | Intel i5 | 8 GB | OPNsense | Router/firewall, DHCP `10.0.0.50-150`, WireGuard, split DNS for `webgrip.dev` |
 | 1 | TP-Link TL-SG108PE | — | — | Managed firmware | 8-port 1 GbE switch feeding downstream fan-out |
 | 1 | Q-Link 1 GbE switch | — | — | Unmanaged | Directly uplinks Talos nodes for east-west traffic |
 | 1 | Zyxel VMG8825-T50 | — | — | Bridge/AP firmware | Wi-Fi AP bridging onto the same flat LAN |

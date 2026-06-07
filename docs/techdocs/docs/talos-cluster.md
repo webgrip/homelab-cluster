@@ -1,43 +1,45 @@
 # Talos Cluster Reference
 
-_Last updated: 2025-12-08 using live `talosctl` and `kubectl` output._
+_Versions track `talos/talenv.yaml` (Talos v1.13.3 / Kubernetes v1.36.1). Service/etcd/health snapshots below were captured live on 2025-12-08 — re-run the shown commands to refresh._
 
 ## Node Inventory
 
 | Node | IP | Roles | Talos | Kubernetes | Kernel | Container Runtime |
 | --- | --- | --- | --- | --- | --- | --- |
-| soyo-1 | 10.0.0.20 | control-plane, schedulable | v1.11.5 | v1.34.2 | 6.12.57-talos | containerd 2.1.5 |
-| soyo-2 | 10.0.0.21 | control-plane, schedulable | v1.11.5 | v1.34.2 | 6.12.57-talos | containerd 2.1.5 |
-| soyo-3 | 10.0.0.22 | control-plane, schedulable | v1.11.5 | v1.34.2 | 6.12.57-talos | containerd 2.1.5 |
+| soyo-1 | 10.0.0.20 | control-plane, schedulable | v1.13.3 | v1.36.1 | 6.12.57-talos | containerd 2.1.5 |
+| soyo-2 | 10.0.0.21 | control-plane, schedulable | v1.13.3 | v1.36.1 | 6.12.57-talos | containerd 2.1.5 |
+| soyo-3 | 10.0.0.22 | control-plane, schedulable | v1.13.3 | v1.36.1 | 6.12.57-talos | containerd 2.1.5 |
+| fringe-workstation | 10.0.0.23 | worker, schedulable | v1.13.3 | v1.36.1 | 6.12.57-talos | containerd 2.1.5 |
 
 Captured via:
 
 ```bash
 $ kubectl get nodes -o wide
 NAME     STATUS   ROLES           VERSION   INTERNAL-IP   KERNEL-VERSION   CONTAINER-RUNTIME
-soyo-1   Ready    control-plane   v1.34.2   10.0.0.20     6.12.57-talos    containerd://2.1.5
-soyo-2   Ready    control-plane   v1.34.2   10.0.0.21     6.12.57-talos    containerd://2.1.5
-soyo-3   Ready    control-plane   v1.34.2   10.0.0.22     6.12.57-talos    containerd://2.1.5
+soyo-1   Ready    control-plane   v1.36.1   10.0.0.20     6.12.57-talos    containerd://2.1.5
+soyo-2   Ready    control-plane   v1.36.1   10.0.0.21     6.12.57-talos    containerd://2.1.5
+soyo-3   Ready    control-plane   v1.36.1   10.0.0.22     6.12.57-talos    containerd://2.1.5
+fringe-workstation   Ready    <none>          v1.36.1   10.0.0.23     6.12.57-talos    containerd://2.1.5
 ```
 
 ## Talos Versions
 
-`talosctl version` confirms every node runs Talos `v1.11.5`:
+`talosctl version` confirms every node runs Talos `v1.13.3`:
 
 ```bash
 $ talosctl version
 Client:
-   Tag:         v1.11.5
+   Tag:         v1.13.3
    SHA:         bc34de6e
 Server:
    NODE:        10.0.0.21
-   Tag:         v1.11.5
+   Tag:         v1.13.3
    Enabled:     RBAC
    NODE:        10.0.0.20
-   Tag:         v1.11.5
+   Tag:         v1.13.3
    Enabled:     RBAC
    NODE:        10.0.0.22
-   Tag:         v1.11.5
+   Tag:         v1.13.3
    Enabled:     RBAC
 ```
 
@@ -123,6 +125,7 @@ Update the table whenever the load-balancer IPs shift so downstream split-DNS in
 ## Hardware + Wiring
 
 - Three SOYO Mini PC M4 (Intel N150, 12 GB DDR5, 512 GB NVMe) act as Talos controllers/workers. Wi-Fi/Bluetooth radios remain disabled in firmware.
+- `fringe-workstation` (`10.0.0.23`) runs Talos as a dedicated **worker** (`controlPlane: false`) so write-heavy workloads stay off the shared control-plane disk.
 - Protectli V1410 running OPNsense terminates Odido fiber, WireGuard, and split-horizon DNS at `10.0.0.1`.
 - Switching path mirrors the README diagram: TP-Link TL-SG108PE (`10.0.0.2`) uplinks the Protectli and Zyxel VMG8825-T50 AP, while a downstream Q-Link switch fans out to the SOYO nodes, NAS, Proxmox, and Home Assistant.
 
@@ -143,4 +146,3 @@ Update the table whenever the load-balancer IPs shift so downstream split-DNS in
    - Port 2 → Raspberry Pi Home Assistant
 
 Replicate these assignments any time hardware is replaced so the TechDocs, README, and wiring closet labels stay synchronized.
-*** End Patch

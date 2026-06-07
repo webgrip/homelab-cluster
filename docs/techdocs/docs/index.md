@@ -98,13 +98,13 @@ Static infrastructure keeps IPs below `.50`, reserved in OPNsense so DHCP drift 
 ```mermaid
 graph TD
 	Clients -->|Queries| Router[OPNsense split DNS]
-	Router -->|grippeling.net| K8sGW[k8s-gateway LB 10.0.0.26]
+	Router -->|webgrip.dev| K8sGW[k8s-gateway LB 10.0.0.26]
 	Router -->|Other domains| WAN[Upstream DNS]
 	K8sGW -->|Routes hostnames| Envoy[envoy-internal / envoy-external]
 	Envoy -->|Publishes| Cloudflare
 ```
 
-`k8s-gateway` answers `*.grippeling.net` lookups inside the LAN while Cloudflare + tunnels continue to serve public DNS. This lets on-prem clients stay on-LAN without hairpinning through Cloudflare.
+`k8s-gateway` answers `*.webgrip.dev` lookups inside the LAN while Cloudflare + tunnels continue to serve public DNS. This lets on-prem clients stay on-LAN without hairpinning through Cloudflare.
 
 ## Maintenance Checklist
 
