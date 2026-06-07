@@ -74,7 +74,7 @@ spec:
         {
           "id": 7, "type": "stat", "title": "Active time (24h)", "description": "Active engagement time (user + CLI) in the last 24h.", "gridPos": {"h": 4, "w": 3, "x": 12, "y": 5},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "sum(increase(claude_code_active_time_total_seconds_total[24h])) or sum(increase(claude_code_active_time_total[24h])) or vector(0)", "instant": true}],
+          "targets": [{"refId": "A", "expr": "sum(increase(claude_code_active_time_seconds_total[24h])) or vector(0)", "instant": true}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
           "fieldConfig": {"defaults": {"unit": "s", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "green"}}, "overrides": []}
         },
@@ -95,7 +95,7 @@ spec:
         {
           "id": 10, "type": "stat", "title": "Request latency p90", "description": "p90 of api_request duration_ms over the range.", "gridPos": {"h": 4, "w": 3, "x": 21, "y": 5},
           "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "quantile_over_time(0.9, {service_name=\"claude-code\", event_name=\"api_request\"} | json | unwrap duration_ms [$$__range])", "queryType": "instant"}],
+          "targets": [{"refId": "A", "expr": "quantile_over_time(0.9, {service_name=\"claude-code\", event_name=\"api_request\"} | json duration_ms=\"attributes.duration_ms\" | unwrap duration_ms [$$__range])", "queryType": "instant"}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
           "fieldConfig": {"defaults": {"unit": "ms", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "yellow", "value": 8000}, {"color": "red", "value": 20000}]}}, "overrides": []}
         },
@@ -152,9 +152,9 @@ spec:
           "id": 18, "type": "timeseries", "title": "Request latency p50 / p90 / p99", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 26},
           "datasource": {"type": "loki", "uid": "loki"},
           "targets": [
-            {"refId": "A", "expr": "quantile_over_time(0.5, {service_name=\"claude-code\", event_name=\"api_request\"} | json | unwrap duration_ms [$$__interval])", "queryType": "range", "legendFormat": "p50"},
-            {"refId": "B", "expr": "quantile_over_time(0.9, {service_name=\"claude-code\", event_name=\"api_request\"} | json | unwrap duration_ms [$$__interval])", "queryType": "range", "legendFormat": "p90"},
-            {"refId": "C", "expr": "quantile_over_time(0.99, {service_name=\"claude-code\", event_name=\"api_request\"} | json | unwrap duration_ms [$$__interval])", "queryType": "range", "legendFormat": "p99"}
+            {"refId": "A", "expr": "quantile_over_time(0.5, {service_name=\"claude-code\", event_name=\"api_request\"} | json duration_ms=\"attributes.duration_ms\" | unwrap duration_ms [$$__interval])", "queryType": "range", "legendFormat": "p50"},
+            {"refId": "B", "expr": "quantile_over_time(0.9, {service_name=\"claude-code\", event_name=\"api_request\"} | json duration_ms=\"attributes.duration_ms\" | unwrap duration_ms [$$__interval])", "queryType": "range", "legendFormat": "p90"},
+            {"refId": "C", "expr": "quantile_over_time(0.99, {service_name=\"claude-code\", event_name=\"api_request\"} | json duration_ms=\"attributes.duration_ms\" | unwrap duration_ms [$$__interval])", "queryType": "range", "legendFormat": "p99"}
           ],
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
           "fieldConfig": {"defaults": {"unit": "ms", "custom": {"lineWidth": 2, "fillOpacity": 5, "showPoints": "never"}}, "overrides": []}

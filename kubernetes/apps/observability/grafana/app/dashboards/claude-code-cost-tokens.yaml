@@ -119,7 +119,7 @@ spec:
         {
           "id": 16, "type": "stat", "title": "Cost per active hour", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 31},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "(sum(increase(claude_code_cost_usage_USD_total{model=~\"$$model\"}[$$__range])) or sum(increase(claude_code_cost_usage_total{model=~\"$$model\"}[$$__range])) or vector(0)) / clamp_min((sum(increase(claude_code_active_time_total_seconds_total[$$__range])) or sum(increase(claude_code_active_time_total[$$__range])) or vector(0)) / 3600, 0.01)", "instant": true}],
+          "targets": [{"refId": "A", "expr": "(sum(increase(claude_code_cost_usage_USD_total{model=~\"$$model\"}[$$__range])) or sum(increase(claude_code_cost_usage_total{model=~\"$$model\"}[$$__range])) or vector(0)) / clamp_min((sum(increase(claude_code_active_time_seconds_total[$$__range])) or vector(0)) / 3600, 0.01)", "instant": true}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
           "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "fixed", "fixedColor": "yellow"}}, "overrides": []}
         },
@@ -155,9 +155,9 @@ spec:
           "id": 21, "type": "timeseries", "title": "Tokens per request (p50 / p90 / p99)", "description": "From api_request events. Works without content capture.", "gridPos": {"h": 8, "w": 8, "x": 16, "y": 35},
           "datasource": {"type": "loki", "uid": "loki"},
           "targets": [
-            {"refId": "A", "expr": "quantile_over_time(0.5, {service_name=\"claude-code\", event_name=\"api_request\"} | json | unwrap output_tokens [$$__interval])", "queryType": "range", "legendFormat": "output p50"},
-            {"refId": "B", "expr": "quantile_over_time(0.9, {service_name=\"claude-code\", event_name=\"api_request\"} | json | unwrap output_tokens [$$__interval])", "queryType": "range", "legendFormat": "output p90"},
-            {"refId": "C", "expr": "quantile_over_time(0.9, {service_name=\"claude-code\", event_name=\"api_request\"} | json | unwrap input_tokens [$$__interval])", "queryType": "range", "legendFormat": "input p90"}
+            {"refId": "A", "expr": "quantile_over_time(0.5, {service_name=\"claude-code\", event_name=\"api_request\"} | json output_tokens=\"attributes.output_tokens\" | unwrap output_tokens [$$__interval])", "queryType": "range", "legendFormat": "output p50"},
+            {"refId": "B", "expr": "quantile_over_time(0.9, {service_name=\"claude-code\", event_name=\"api_request\"} | json output_tokens=\"attributes.output_tokens\" | unwrap output_tokens [$$__interval])", "queryType": "range", "legendFormat": "output p90"},
+            {"refId": "C", "expr": "quantile_over_time(0.9, {service_name=\"claude-code\", event_name=\"api_request\"} | json input_tokens=\"attributes.input_tokens\" | unwrap input_tokens [$$__interval])", "queryType": "range", "legendFormat": "input p90"}
           ],
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
           "fieldConfig": {"defaults": {"unit": "short", "custom": {"lineWidth": 2, "fillOpacity": 5, "showPoints": "never"}}, "overrides": []}
