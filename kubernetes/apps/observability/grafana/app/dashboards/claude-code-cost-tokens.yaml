@@ -1,0 +1,166 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: claude-code-cost-tokens
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  allowCrossNamespaceImport: false
+  folder: "Claude Code"
+  json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Claude Code / Cost & Tokens",
+      "uid": "claude-code-cost-tokens",
+      "timezone": "browser",
+      "tags": ["claude-code", "ai", "anthropic", "cost", "tokens", "finops"],
+      "editable": true,
+      "graphTooltip": 1,
+      "refresh": "30s",
+      "time": {"from": "now-7d", "to": "now"},
+      "links": [
+        {"title": "Command Center", "url": "/d/claude-code-command-center", "type": "link", "icon": "external link"},
+        {"title": "Cost & Tokens", "url": "/d/claude-code-cost-tokens", "type": "link", "icon": "dollar"},
+        {"title": "Activity & Tools", "url": "/d/claude-code-activity-tools", "type": "link", "icon": "bolt"},
+        {"title": "Events, Logs & Traces", "url": "/d/claude-code-events-traces", "type": "link", "icon": "doc"}
+      ],
+      "annotations": {
+        "list": [
+          {"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard"}
+        ]
+      },
+      "templating": {
+        "list": [
+          {"name": "model", "label": "Model", "type": "query", "datasource": {"type": "prometheus", "uid": "prometheus"}, "query": {"query": "label_values(model)", "refId": "q-model"}, "refresh": 2, "sort": 1, "multi": true, "includeAll": true, "current": {"selected": true, "text": "All", "value": "$$__all"}},
+          {"name": "query_source", "label": "Query source", "type": "query", "datasource": {"type": "prometheus", "uid": "prometheus"}, "query": {"query": "label_values(query_source)", "refId": "q-qs"}, "refresh": 2, "sort": 1, "multi": true, "includeAll": true, "current": {"selected": true, "text": "All", "value": "$$__all"}}
+        ]
+      },
+      "panels": [
+        {
+          "id": 1, "type": "text", "title": "", "gridPos": {"h": 3, "w": 24, "x": 0, "y": 0},
+          "options": {"mode": "markdown", "content": "## Claude Code Cost & Tokens\nEconomics deep-dive: spend attribution by **model**, **query source**, **skill**, **agent** and **MCP server**; token mix and cache efficiency; unit economics (cost / session, cost / active-hour, projected monthly); effort and speed splits. Cost uses `claude_code_cost_usage_USD_total` with a `_total` fallback."}
+        },
+        {"id": 2, "type": "row", "title": "1. Spend attribution", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 3}, "panels": []},
+        {
+          "id": 3, "type": "bargauge", "title": "Cost by model", "gridPos": {"h": 8, "w": 8, "x": 0, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "topk(15, sort_desc(sum by (model) (increase(claude_code_cost_usage_USD_total{query_source=~\"$$query_source\"}[$$__range])) or sum by (model) (increase(claude_code_cost_usage_total{query_source=~\"$$query_source\"}[$$__range])) or vector(0)))", "instant": true, "legendFormat": "{{model}}"}],
+          "options": {"orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "displayMode": "gradient", "valueMode": "color"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "continuous-BlYlRd"}}, "overrides": []}
+        },
+        {
+          "id": 4, "type": "bargauge", "title": "Cost by query source", "description": "main = your prompts, subagent = spawned agents, auxiliary = background (titles, summaries, etc.).", "gridPos": {"h": 8, "w": 8, "x": 8, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sort_desc(sum by (query_source) (increase(claude_code_cost_usage_USD_total{model=~\"$$model\"}[$$__range])) or sum by (query_source) (increase(claude_code_cost_usage_total{model=~\"$$model\"}[$$__range])) or vector(0))", "instant": true, "legendFormat": "{{query_source}}"}],
+          "options": {"orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "displayMode": "gradient", "valueMode": "color"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "continuous-GrYlRd"}}, "overrides": []}
+        },
+        {
+          "id": 5, "type": "timeseries", "title": "Cost over time by query source", "gridPos": {"h": 8, "w": 8, "x": 16, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum by (query_source) (increase(claude_code_cost_usage_USD_total{model=~\"$$model\"}[$$__rate_interval])) or sum by (query_source) (increase(claude_code_cost_usage_total{model=~\"$$model\"}[$$__rate_interval])) or vector(0)", "legendFormat": "{{query_source}}"}],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "custom": {"lineWidth": 2, "fillOpacity": 20, "showPoints": "never", "stacking": {"mode": "normal", "group": "A"}}}, "overrides": []}
+        },
+        {"id": 6, "type": "row", "title": "2. Attribution by skill / agent / MCP", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 12}, "panels": []},
+        {
+          "id": 7, "type": "bargauge", "title": "Top skills by cost", "gridPos": {"h": 8, "w": 8, "x": 0, "y": 13},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "topk(10, sort_desc(sum by (skill_name) (increase(claude_code_cost_usage_USD_total{skill_name!=\"\"}[$$__range])) or sum by (skill_name) (increase(claude_code_cost_usage_total{skill_name!=\"\"}[$$__range])) or vector(0)))", "instant": true, "legendFormat": "{{skill_name}}"}],
+          "options": {"orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "displayMode": "gradient", "valueMode": "color"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 3, "color": {"mode": "continuous-BlYlRd"}}, "overrides": []}
+        },
+        {
+          "id": 8, "type": "bargauge", "title": "Top subagents by cost", "gridPos": {"h": 8, "w": 8, "x": 8, "y": 13},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "topk(10, sort_desc(sum by (agent_name) (increase(claude_code_cost_usage_USD_total{agent_name!=\"\"}[$$__range])) or sum by (agent_name) (increase(claude_code_cost_usage_total{agent_name!=\"\"}[$$__range])) or vector(0)))", "instant": true, "legendFormat": "{{agent_name}}"}],
+          "options": {"orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "displayMode": "gradient", "valueMode": "color"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 3, "color": {"mode": "continuous-BlYlRd"}}, "overrides": []}
+        },
+        {
+          "id": 9, "type": "bargauge", "title": "Top MCP servers by cost", "gridPos": {"h": 8, "w": 8, "x": 16, "y": 13},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "topk(10, sort_desc(sum by (mcp_server_name) (increase(claude_code_cost_usage_USD_total{mcp_server_name!=\"\"}[$$__range])) or sum by (mcp_server_name) (increase(claude_code_cost_usage_total{mcp_server_name!=\"\"}[$$__range])) or vector(0)))", "instant": true, "legendFormat": "{{mcp_server_name}}"}],
+          "options": {"orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "displayMode": "gradient", "valueMode": "color"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 3, "color": {"mode": "continuous-BlYlRd"}}, "overrides": []}
+        },
+        {"id": 10, "type": "row", "title": "3. Tokens & cache efficiency", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 21}, "panels": []},
+        {
+          "id": 11, "type": "timeseries", "title": "Token mix by type", "gridPos": {"h": 8, "w": 8, "x": 0, "y": 22},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum by (type) (increase(claude_code_token_usage_tokens_total{model=~\"$$model\",query_source=~\"$$query_source\"}[$$__rate_interval])) or sum by (type) (increase(claude_code_token_usage_total{model=~\"$$model\",query_source=~\"$$query_source\"}[$$__rate_interval])) or vector(0)", "legendFormat": "{{type}}"}],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "fieldConfig": {"defaults": {"unit": "short", "custom": {"lineWidth": 2, "fillOpacity": 20, "showPoints": "never", "stacking": {"mode": "normal", "group": "A"}}}, "overrides": []}
+        },
+        {
+          "id": 12, "type": "timeseries", "title": "Cache hit efficiency", "description": "cacheRead ÷ (input + cacheRead). Higher = more prompt reuse, lower cost.", "gridPos": {"h": 8, "w": 8, "x": 8, "y": 22},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\",model=~\"$$model\"}[$$__rate_interval])) or sum(increase(claude_code_token_usage_total{type=\"cacheRead\",model=~\"$$model\"}[$$__rate_interval])) or vector(0)) / clamp_min((sum(increase(claude_code_token_usage_tokens_total{type=~\"input|cacheRead\",model=~\"$$model\"}[$$__rate_interval])) or sum(increase(claude_code_token_usage_total{type=~\"input|cacheRead\",model=~\"$$model\"}[$$__rate_interval])) or vector(0)), 1)", "legendFormat": "cache hit ratio"}],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
+          "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1, "custom": {"lineWidth": 2, "fillOpacity": 10, "showPoints": "never", "gradientMode": "scheme"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red"}, {"color": "yellow", "value": 0.5}, {"color": "green", "value": 0.8}]}, "color": {"mode": "thresholds"}}, "overrides": []}
+        },
+        {
+          "id": 13, "type": "timeseries", "title": "Cache creation tokens by model", "gridPos": {"h": 8, "w": 8, "x": 16, "y": 22},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum by (model) (increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\",model=~\"$$model\"}[$$__rate_interval])) or sum by (model) (increase(claude_code_token_usage_total{type=\"cacheCreation\",model=~\"$$model\"}[$$__rate_interval])) or vector(0)", "legendFormat": "{{model}}"}],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+          "fieldConfig": {"defaults": {"unit": "short", "custom": {"lineWidth": 2, "fillOpacity": 10, "showPoints": "never"}}, "overrides": []}
+        },
+        {"id": 14, "type": "row", "title": "4. Unit economics & effort", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 30}, "panels": []},
+        {
+          "id": 15, "type": "stat", "title": "Cost per session", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 31},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "(sum(increase(claude_code_cost_usage_USD_total{model=~\"$$model\"}[$$__range])) or sum(increase(claude_code_cost_usage_total{model=~\"$$model\"}[$$__range])) or vector(0)) / clamp_min(sum(increase(claude_code_session_count_total[$$__range])) or vector(0), 1)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 3, "color": {"mode": "fixed", "fixedColor": "orange"}}, "overrides": []}
+        },
+        {
+          "id": 16, "type": "stat", "title": "Cost per active hour", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 31},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "(sum(increase(claude_code_cost_usage_USD_total{model=~\"$$model\"}[$$__range])) or sum(increase(claude_code_cost_usage_total{model=~\"$$model\"}[$$__range])) or vector(0)) / clamp_min((sum(increase(claude_code_active_time_total_seconds_total[$$__range])) or sum(increase(claude_code_active_time_total[$$__range])) or vector(0)) / 3600, 0.01)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "fixed", "fixedColor": "yellow"}}, "overrides": []}
+        },
+        {
+          "id": 17, "type": "stat", "title": "Projected monthly cost", "description": "Last-24h run-rate × 30.", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 31},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "(sum(increase(claude_code_cost_usage_USD_total{model=~\"$$model\"}[24h])) or sum(increase(claude_code_cost_usage_total{model=~\"$$model\"}[24h])) or vector(0)) * 30", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "fixed", "fixedColor": "red"}}, "overrides": []}
+        },
+        {
+          "id": 18, "type": "stat", "title": "Cache savings ratio", "description": "cacheRead ÷ (input + cacheRead) over the range.", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 31},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "(sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\",model=~\"$$model\"}[$$__range])) or sum(increase(claude_code_token_usage_total{type=\"cacheRead\",model=~\"$$model\"}[$$__range])) or vector(0)) / clamp_min((sum(increase(claude_code_token_usage_tokens_total{type=~\"input|cacheRead\",model=~\"$$model\"}[$$__range])) or sum(increase(claude_code_token_usage_total{type=~\"input|cacheRead\",model=~\"$$model\"}[$$__range])) or vector(0)), 1)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "percentunit", "decimals": 1, "min": 0, "max": 1, "thresholds": {"mode": "absolute", "steps": [{"color": "red"}, {"color": "yellow", "value": 0.5}, {"color": "green", "value": 0.8}]}}, "overrides": []}
+        },
+        {
+          "id": 19, "type": "timeseries", "title": "Cost by effort level", "gridPos": {"h": 8, "w": 8, "x": 0, "y": 35},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum by (effort) (increase(claude_code_cost_usage_USD_total{model=~\"$$model\"}[$$__rate_interval])) or sum by (effort) (increase(claude_code_cost_usage_total{model=~\"$$model\"}[$$__rate_interval])) or vector(0)", "legendFormat": "{{effort}}"}],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "custom": {"lineWidth": 2, "fillOpacity": 20, "showPoints": "never", "stacking": {"mode": "normal", "group": "A"}}}, "overrides": []}
+        },
+        {
+          "id": 20, "type": "timeseries", "title": "Cost: fast vs normal speed", "gridPos": {"h": 8, "w": 8, "x": 8, "y": 35},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum by (speed) (increase(claude_code_cost_usage_USD_total{model=~\"$$model\"}[$$__rate_interval])) or sum by (speed) (increase(claude_code_cost_usage_total{model=~\"$$model\"}[$$__rate_interval])) or vector(0)", "legendFormat": "{{speed}}"}],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "custom": {"lineWidth": 2, "fillOpacity": 20, "showPoints": "never", "stacking": {"mode": "normal", "group": "A"}}}, "overrides": []}
+        },
+        {
+          "id": 21, "type": "timeseries", "title": "Tokens per request (p50 / p90 / p99)", "description": "From api_request events. Works without content capture.", "gridPos": {"h": 8, "w": 8, "x": 16, "y": 35},
+          "datasource": {"type": "loki", "uid": "loki"},
+          "targets": [
+            {"refId": "A", "expr": "quantile_over_time(0.5, {service_name=\"claude-code\", event_name=\"api_request\"} | json | unwrap output_tokens [$$__interval])", "queryType": "range", "legendFormat": "output p50"},
+            {"refId": "B", "expr": "quantile_over_time(0.9, {service_name=\"claude-code\", event_name=\"api_request\"} | json | unwrap output_tokens [$$__interval])", "queryType": "range", "legendFormat": "output p90"},
+            {"refId": "C", "expr": "quantile_over_time(0.9, {service_name=\"claude-code\", event_name=\"api_request\"} | json | unwrap input_tokens [$$__interval])", "queryType": "range", "legendFormat": "input p90"}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+          "fieldConfig": {"defaults": {"unit": "short", "custom": {"lineWidth": 2, "fillOpacity": 5, "showPoints": "never"}}, "overrides": []}
+        }
+      ]
+    }
