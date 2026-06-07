@@ -52,7 +52,7 @@ spec:
         {
           "id": 4, "type": "timeseries", "title": "API errors by status & model", "gridPos": {"h": 8, "w": 8, "x": 12, "y": 4},
           "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "sum by (status_code, model) (count_over_time({service_name=\"claude-code\", event_name=\"api_error\"} | json [$$__interval]))", "queryType": "range", "legendFormat": "{{model}} / {{status_code}}"}],
+          "targets": [{"refId": "A", "expr": "sum by (status_code, model) (count_over_time({service_name=\"claude-code\", event_name=\"api_error\"} | json status_code=\"attributes.status_code\", model=\"attributes.model\" [$$__interval]))", "queryType": "range", "legendFormat": "{{model}} / {{status_code}}"}],
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
           "fieldConfig": {"defaults": {"unit": "short", "custom": {"lineWidth": 2, "fillOpacity": 10, "showPoints": "auto", "drawStyle": "bars"}, "color": {"mode": "fixed", "fixedColor": "red"}}, "overrides": []}
         },
@@ -103,7 +103,7 @@ spec:
         {
           "id": 13, "type": "table", "title": "MCP server connections", "description": "Connection outcomes by status & transport over the range.", "gridPos": {"h": 10, "w": 6, "x": 18, "y": 24},
           "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "sum by (status, transport_type) (count_over_time({service_name=\"claude-code\", event_name=\"mcp_server_connection\"} | json [$$__range]))", "queryType": "instant"}],
+          "targets": [{"refId": "A", "expr": "sum by (status, transport_type) (count_over_time({service_name=\"claude-code\", event_name=\"mcp_server_connection\"} | json status=\"attributes.status\", transport_type=\"attributes.transport_type\" [$$__range]))", "queryType": "instant"}],
           "transformations": [{"id": "organize", "options": {"excludeByName": {"Time": true}, "renameByName": {"status": "Status", "transport_type": "Transport", "Value": "Count"}}}],
           "options": {"showHeader": true, "sortBy": [{"displayName": "Count", "desc": true}]},
           "fieldConfig": {"defaults": {"decimals": 0, "custom": {"align": "auto"}}, "overrides": []}
