@@ -3,11 +3,12 @@
 #
 # Claude Code review for manifest PRs (incl. Renovate) + on-demand @claude.
 #
-# Runs as a normal GitHub Action authenticated with ANTHROPIC_API_KEY — so it
-# is NOT an "AI actor" and does not hit GitHub's approval gate. This replaced
+# Runs as a normal GitHub Action authenticated with CLAUDE_CODE_OAUTH_TOKEN — so
+# it is NOT an "AI actor" and does not hit GitHub's approval gate. This replaced
 # the former Copilot relay (renovate-review*.yml, now removed).
 #
-# Setup: add repository secret ANTHROPIC_API_KEY (Settings → Secrets → Actions).
+# Setup: add repository secret CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`;
+# Settings → Secrets → Actions).
 name: Claude Review
 
 on:
@@ -47,7 +48,7 @@ jobs:
           fetch-depth: 0
       - uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: '{"model":"claude-opus-4-8"}'
           prompt: |
             Review this pull request's changed Kubernetes/Flux/Talos manifests and post a concise PR review comment.
@@ -72,5 +73,5 @@ jobs:
           fetch-depth: 0
       - uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: '{"model":"claude-opus-4-8"}'
