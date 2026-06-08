@@ -134,7 +134,7 @@ spec:
           "description": "Your flat subscription fee. Tune via the Sub USD/mo variable.",
           "gridPos": {
             "h": 4,
-            "w": 6,
+            "w": 4,
             "x": 0,
             "y": 6
           },
@@ -179,14 +179,65 @@ spec:
           }
         },
         {
+          "id": 14,
+          "type": "stat",
+          "title": "Sessions (MTD)",
+          "description": "Distinct Claude Code sessions started this month.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(count by (session_id)(max_over_time(claude_code_session_count_total[$$__range]))) or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text"
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
           "id": 4,
           "type": "stat",
           "title": "MTD API-equiv used (Opus, est.)",
           "description": "Notional value of this month's tokens at Opus 4.8 list price. Not real spend on a subscription.",
           "gridPos": {
             "h": 4,
-            "w": 6,
-            "x": 6,
+            "w": 4,
+            "x": 8,
             "y": 6
           },
           "datasource": {
@@ -230,14 +281,65 @@ spec:
           }
         },
         {
+          "id": 15,
+          "type": "stat",
+          "title": "Opus-API cost / session (est.)",
+          "description": "MTD Opus-equivalent cost divided by distinct sessions this month \u2014 a per-session price.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 12,
+            "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "((sum(increase(claude_code_token_usage_tokens_total{type=\"input\"}[$$__range]))*5 + sum(increase(claude_code_token_usage_tokens_total{type=\"output\"}[$$__range]))*25 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__range]))*0.5 + sum(increase(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__range]))*6.25)/1e6) / clamp_min(count(count by (session_id)(max_over_time(claude_code_session_count_total[$$__range]))), 1) or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text"
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
           "id": 5,
           "type": "stat",
-          "title": "Projected month (Opus, est., HIGH)",
+          "title": "Projected month (Opus, HIGH)",
           "description": "MTD run-rate extrapolated to the full month at Opus 4.8 list price.",
           "gridPos": {
             "h": 4,
-            "w": 6,
-            "x": 12,
+            "w": 4,
+            "x": 16,
             "y": 6
           },
           "datasource": {
@@ -287,8 +389,8 @@ spec:
           "description": "Projected Opus-API cost minus your flat sub. Positive (green) = the subscription saves you money vs pay-as-you-go Claude API.",
           "gridPos": {
             "h": 4,
-            "w": 6,
-            "x": 18,
+            "w": 4,
+            "x": 20,
             "y": 6
           },
           "datasource": {
@@ -548,7 +650,7 @@ spec:
           "fieldConfig": {
             "defaults": {
               "unit": "currencyUSD",
-              "decimals": 3,
+              "decimals": 2,
               "custom": {
                 "drawStyle": "bars",
                 "fillOpacity": 70,
