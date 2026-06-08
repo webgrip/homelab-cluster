@@ -14,9 +14,13 @@ machine:
           - bind
           - rshared
           - rw
-  # Format + mount the idle 1TB SATA HDD (ST1000DM003, wwn-0x5000c50065ba67b4)
-  # as a Longhorn cold tier. WARNING: this formats the disk — it is currently
-  # empty/unused. Addressed by stable by-id path so it survives /dev/sdX renaming.
+  # Format + mount the 1TB SATA HDD (ST1000DM003, wwn-0x5000c50065ba67b4) as a
+  # Longhorn cold tier. Addressed by stable by-id path so it survives /dev/sdX
+  # renaming.
+  # ⚠️ DESTRUCTIVE: applying this WIPES the whole disk. It is unused by the
+  # cluster, but it currently holds a GPT layout resembling an old Windows
+  # install (EFI vfat + 16MB MSR + recovery + a ~930GB sdb4). VERIFY there is no
+  # wanted data on sdb4 BEFORE running task talos:apply-node-safe.
   disks:
     - device: /dev/disk/by-id/wwn-0x5000c50065ba67b4
       partitions:
