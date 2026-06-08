@@ -24,6 +24,10 @@ This page is intentionally a **links-only index**. Each runbook has its own dedi
 
 - cert-manager: [docs/techdocs/docs/runbooks/cert-manager.md](runbooks/cert-manager.md)
 
+## Secrets
+
+- External Secrets (ESO): [docs/techdocs/docs/runbooks/external-secrets.md](runbooks/external-secrets.md)
+
 ## Observability
 
 - Observability stack: [docs/techdocs/docs/runbooks/observability-stack.md](runbooks/observability-stack.md)

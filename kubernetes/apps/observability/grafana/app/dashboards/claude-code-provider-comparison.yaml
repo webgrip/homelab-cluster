@@ -560,6 +560,193 @@ spec:
             },
             "overrides": []
           }
+        },
+        {
+          "id": 11,
+          "type": "row",
+          "title": "Token usage \u2014 what's actually been done MTD & the run-rate behind the projection",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 45
+          },
+          "panels": []
+        },
+        {
+          "id": 12,
+          "type": "timeseries",
+          "title": "Token usage per hour, by type (log scale)",
+          "description": "Current run-rate in tokens/hour for input / output / cacheRead / cacheCreation. Log y-axis so all four are visible despite cacheRead dominating. This rate is what the projection extrapolates.",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 46
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(claude_code_token_usage_tokens_total{type=\"input\"}[$$__rate_interval])) * 3600",
+              "legendFormat": "input"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(rate(claude_code_token_usage_tokens_total{type=\"output\"}[$$__rate_interval])) * 3600",
+              "legendFormat": "output"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(rate(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[$$__rate_interval])) * 3600",
+              "legendFormat": "cacheRead"
+            },
+            {
+              "refId": "D",
+              "expr": "sum(rate(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[$$__rate_interval])) * 3600",
+              "legendFormat": "cacheCreation"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max",
+                "mean"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 8,
+                "lineWidth": 2,
+                "showPoints": "never",
+                "scaleDistribution": {
+                  "type": "log",
+                  "log": 10
+                }
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 13,
+          "type": "table",
+          "title": "Tokens by type \u2014 MTD so far \u00b7 avg per hour \u00b7 projected month",
+          "description": "Actual month-to-date tokens, the average tokens/hour over that window, and the full-month projection \u2014 per token type.",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 46
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "instant": true,
+              "format": "table",
+              "expr": "sum by (type)(increase(claude_code_token_usage_tokens_total[$$__range]))"
+            },
+            {
+              "refId": "B",
+              "instant": true,
+              "format": "table",
+              "expr": "sum by (type)(increase(claude_code_token_usage_tokens_total[$$__range])) / ($$__range_s / 3600)"
+            },
+            {
+              "refId": "C",
+              "instant": true,
+              "format": "table",
+              "expr": "sum by (type)(increase(claude_code_token_usage_tokens_total[$$__range])) * $$days_in_month * 86400 / $$__range_s"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {
+                  "type": 0,
+                  "Value #A": 1,
+                  "Value #B": 2,
+                  "Value #C": 3
+                },
+                "renameByName": {
+                  "type": "Token type",
+                  "Value #A": "MTD tokens",
+                  "Value #B": "Avg / hour",
+                  "Value #C": "Projected month"
+                }
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "sortBy": [
+              {
+                "displayName": "MTD tokens",
+                "desc": true
+              }
+            ]
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "MTD tokens"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "gauge",
+                      "mode": "gradient"
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "continuous-BlPu"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
         }
       ]
     }
