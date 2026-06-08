@@ -32,7 +32,7 @@ kc="$(resolve kubeconform || true)"
 if [ -n "$kc" ]; then
   out="$($kc -strict -ignore-missing-schemas \
     -schema-location default \
-    -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.Kind}}_{{.Version}}.json' \
+    -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
     "$file" 2>&1)" || problems+="[kubeconform]
 $out
 "
