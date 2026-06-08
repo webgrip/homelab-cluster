@@ -7,12 +7,18 @@ This directory configures Claude Code (claude.ai/code) for the homelab cluster. 
 | Path | Purpose |
 | --- | --- |
 | `../CLAUDE.md` | Always-loaded operating rules (kept deliberately minimal). |
-| `agents/` | Subagents: `cluster-health` (read-only audit), `renovate-trigger`. |
-| `skills/` | Task recipes that load only when relevant: `add-app`, `grafana-dashboard`, `cnpg-database`, `authentik-oidc`, `flux-validate`. |
-| `hooks/` | Safety + validation hooks (see below). |
-| `settings.json` | Permissions + hook wiring (committed, team-shared). |
-| `settings.local.json` | Personal/machine overrides + secrets (gitignored). |
+| `agents/` | Subagent: `cluster-health` (read-only audit). `renovate-trigger` now comes from the org `webgrip` plugin. |
+| `skills/` | Task recipes that load only when relevant: `add-app`, `grafana-dashboard`, `cnpg-database`, `authentik-oidc`, `flux-validate`, `talos`. |
+| `commands/` | Slash commands: `/cluster-status`, `/triage-renovate`, `/restore-drill`. |
+| `hooks/` | Safety + validation + `session-context` hooks (see below). |
+| `statusline.sh` | Cluster-aware statusline (model / git / kube-context / Flux not-ready / context%). |
+| `settings.json` | Permissions + hook + statusline wiring, and `enabledPlugins` for the org plugin (committed, team-shared). |
+| `settings.local.json` | Personal/machine overrides (gitignored). Secrets live in `../.mise.local.toml`. |
 | `../.mcp.json` | MCP servers: `grafana`, `kubernetes` (committed; secrets via env). |
+
+## Org plugin
+
+This repo enables the shared **`webgrip`** plugin from [`webgrip/claude-config`](https://github.com/webgrip/claude-config) via `extraKnownMarketplaces` + `enabledPlugins` in `settings.json`. It contributes org-wide guidelines (injected at session start), a SOPS secret guard, and the `renovate-trigger` agent. Repo-specific skills/agents stay here; org-generic ones live in the plugin.
 
 ## Hooks (enforced safety)
 
