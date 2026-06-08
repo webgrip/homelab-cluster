@@ -1,6 +1,23 @@
+---
 machine:
   nodeLabels:
     nodegroup: fringe
   kubelet:
     extraArgs:
       register-with-taints: dedicated=fringe:NoSchedule
+    # rshared bind mount so the longhorn-manager pod can see the extra HDD mount.
+    extraMounts:
+      - destination: /var/lib/longhorn-hdd
+        type: bind
+        source: /var/lib/longhorn-hdd
+        options:
+          - bind
+          - rshared
+          - rw
+  # Format + mount the idle 1TB SATA HDD (ST1000DM003, wwn-0x5000c50065ba67b4)
+  # as a Longhorn cold tier. WARNING: this formats the disk — it is currently
+  # empty/unused. Addressed by stable by-id path so it survives /dev/sdX renaming.
+  disks:
+    - device: /dev/disk/by-id/wwn-0x5000c50065ba67b4
+      partitions:
+        - mountpoint: /var/lib/longhorn-hdd
