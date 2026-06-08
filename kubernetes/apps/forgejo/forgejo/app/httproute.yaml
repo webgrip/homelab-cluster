@@ -5,13 +5,12 @@ metadata:
   name: forgejo
   namespace: forgejo
   annotations:
-    external-dns.alpha.kubernetes.io/exclude: "true"
     monitoring.webgrip.io/synthetic-check: k6-ingress-canary
 spec:
   hostnames:
     - forgejo.${SECRET_DOMAIN}
   parentRefs:
-    - name: envoy-internal
+    - name: envoy-external
       namespace: network
       sectionName: https
   rules:
@@ -19,6 +18,14 @@ spec:
         - path:
             type: PathPrefix
             value: /
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set:
+              - name: X-Forwarded-Port
+                value: "443"
+              - name: X-Forwarded-Proto
+                value: https
       backendRefs:
         - name: forgejo-http
           namespace: forgejo

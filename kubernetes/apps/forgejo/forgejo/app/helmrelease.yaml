@@ -148,7 +148,10 @@ spec:
           ENABLED: true
         security:
           INSTALL_LOCK: true
-        # Allow webhooks to in-cluster services (LAN-only instance).
+          # Trust X-Forwarded-* from the in-cluster Envoy proxy (pod CIDR) so client
+          # IPs are correct now that the web UI is exposed via envoy-external.
+          REVERSE_PROXY_TRUSTED_PROXIES: "10.42.0.0/16"
+        # Allow webhooks to in-cluster services.
         webhook:
           ALLOWED_HOST_LIST: "*"
         metrics:
