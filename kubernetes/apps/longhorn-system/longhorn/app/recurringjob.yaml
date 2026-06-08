@@ -1,0 +1,31 @@
+---
+# Daily cleanup of system-generated snapshots (rebuild/expand leftovers) + purge.
+# Applies to every volume in the "default" group — i.e. any volume that has no
+# explicit recurring-job label. This is the fix for snapshots accumulating
+# unbounded (there were 31 snapshots / ~164Gi single-copy with no cleanup job).
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: snapshot-cleanup
+spec:
+  cron: "0 3 * * *"
+  task: snapshot-cleanup
+  groups:
+    - default
+  retain: 0
+  concurrency: 1
+---
+# Weekly online fstrim to release blocks freed by deleted files back to Longhorn.
+# remove-snapshots-during-filesystem-trim is false cluster-wide, so this never
+# touches snapshots — it only reclaims space the filesystem has already freed.
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: filesystem-trim
+spec:
+  cron: "0 4 * * 0"
+  task: filesystem-trim
+  groups:
+    - default
+  retain: 0
+  concurrency: 1
