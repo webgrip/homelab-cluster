@@ -45,7 +45,9 @@ Only if you must place a dashboard in a *different* namespace (discouraged), ref
 **Flux `envsubst` runs on every dashboard.** Single `$` is consumed as a variable.
 - Double **every** Grafana macro/variable: `$$__rate_interval`, `$$__range`, `$$__range_s`, `$$__interval`, `$$myvar`, `$$__all`.
 - **Never put a single `$` immediately before `{`, `{{`, or `(`.** envsubst tries to parse it as a variable name and **the entire `grafana` Kustomization fails postBuild → no dashboard updates apply at all** (not just the bad panel). This bit us via a literal `${{.attributes_cost_usd}}` in a Loki `line_format`. Don't put a literal `$` in titles / `line_format` / text panels — write `USD`.
-- **Pre-commit gate:** `grep -rnP '(?<!\$)\$[{(]' dashboards/claude-code-*.yaml` must print nothing.
+- **Pre-commit gate — run BOTH greps, each must print nothing:**
+  - `grep -rnP '(?<!\$)\$[{(]' dashboards/*.yaml` — a single `$` before `{`/`(` (fails the whole Kustomization).
+  - `grep -rnP '(?<!\$)\$(__|[a-z])' dashboards/*.yaml` — a single-`$` macro/variable like `$model` or `$__range` that envsubst silently blanks → the query loses its filter/range → **No data**. (The first grep does **not** catch this — it bit us repeatedly.) Every Grafana token must be `$$`.
 - The `grafana` ks also `dependsOn` `grafana-db`; if that CNPG DB is unhealthy the ks won't reconcile and **nothing** updates — check `kubectl get kustomization -n observability grafana`.
 
 **LogQL (Loki):**
@@ -59,12 +61,18 @@ Only if you must place a dashboard in a *different* namespace (discouraged), ref
 
 **Panel hygiene:**
 - Multi-series panels (timeseries / bargauge / table): **do not** append `or vector(0)` — it creates a phantom `Value=0` series. Only `stat` panels use `or vector(0)`.
-- Calendar **month-to-date**: set dashboard `time: {from: now/M, to: now}` → `$$__range` is MTD, days elapsed = `$$__range_s/86400`, full-month projection = `(<expr over $$__range>) * $$days_in_month * 86400 / $$__range_s`.
+- Calendar **month-to-date**: set dashboard `time: {from: now/M, to: now}` → `$$__range` is MTD, days elapsed = `$$__range_s/86400`, full-month projection = `(<expr over $$__range>) * $$days_in_month * 86400 / $$__range_s`. Early in the month this projection is noisy (few days × a big multiplier) — label it an estimate and show the MTD actual alongside it.
 - **Template-var "All":** for an `includeAll` query var filtered as `label=~"$$var"`, set `allValue: ".*"` (or omit `allValue` so Grafana auto-joins the values). **Never** `allValue: "$$__all"` — `$__all` is not a real all-value, so "All" interpolates to a literal `label=~"$__all"` → matches nothing → silent **No data**. The escaping grep won't catch this (it's a logic bug); spot-check rendered panels or query with the var.
 
-**Many near-identical series (e.g. an N-provider cost comparison):** generate the dashboard JSON from a small Python rate-table generator rather than hand-writing — far less error-prone, trivial to re-run when rates change. Table panel: two instant queries + a `merge` transform joins them by shared label into `Value #A` / `Value #B` columns; embed reference values (e.g. rates) directly in the series `label_replace` name to avoid extra columns.
+**Visualization & formatting (house style):**
+- **Don't graph everything.** Use `stat` panels for single values (counts, totals, ratios) and `table` panels for many-row comparisons; reserve `timeseries` for data whose over-time *shape* is the point. A row of stats + a ranked table reads faster than a wall of charts.
+- **Money: `currencyUSD` with `decimals: 2`** everywhere — a 3-decimal axis like `$10.000` reads as ten-thousand and is ambiguous in a nl-NL locale.
+- **Make counts meaningful:** pair a raw count with a derived rate (e.g. *sessions* next to *cost per session*), not a bare number.
+- For values spanning orders of magnitude on one timeseries (e.g. cacheRead vs output tokens), use a **log y-axis** (`custom.scaleDistribution: {type: log, log: 10}`) so the small series stay visible.
 
-**Validation gate before every commit:** JSON parses (`json.loads(yaml.safe_load(f)['spec']['json'])`) → the `envsubst` grep above is empty → `mise exec -- kustomize build kubernetes/apps/observability/grafana/app` → live smoke-test a couple of queries via the read-only Grafana MCP (`query_prometheus` / `query_loki_logs`).
+**Many near-identical series (e.g. an N-provider cost comparison):** generate the dashboard JSON from a small Python rate-table generator rather than hand-writing — far less error-prone, trivial to re-run when rates change. Table panel: two+ instant queries + a `merge` transform join them by shared label into `Value #A` / `Value #B` columns (rename via an `organize` transform); embed reference values (e.g. rates) directly in the series `label_replace` name to avoid extra columns.
+
+**Validation gate before every commit:** JSON parses (`json.loads(yaml.safe_load(f)['spec']['json'])`) → **both** `envsubst` greps above are empty → `mise exec -- kustomize build kubernetes/apps/observability/grafana/app` → live smoke-test a couple of queries via the read-only Grafana MCP (`query_prometheus` / `query_loki_logs`). MCP can't test template-var interpolation or table transforms — spot-check those in the rendered UI after reconcile.
 
 ## Don't
 - Don't omit `editable: true` on datasources (operator may treat them read-only and reject updates).
