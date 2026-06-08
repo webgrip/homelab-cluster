@@ -1,0 +1,30 @@
+# forgejo-runner config for ephemeral one-job runners.
+# Jobs labelled `docker`/`default` run as containers against the DinD sidecar
+# (DOCKER_HOST=tcp://localhost:2376), which is what lets workflows build images.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: forgejo-runner-config
+  namespace: forgejo
+data:
+  config.yaml: |-
+    log:
+      level: info
+    runner:
+      # One job per ephemeral pod; KEDA spawns more pods for more pending jobs.
+      capacity: 1
+      timeout: 1h
+      labels:
+        - docker:docker://-
+        - default:docker://node:22-bookworm
+        - ubuntu-latest:docker://node:22-bookworm
+    cache:
+      enabled: false
+    container:
+      # Talk to the in-pod rootless/privileged DinD sidecar.
+      docker_host: tcp://localhost:2376
+      options: ""
+      network: ""
+      valid_volumes:
+        - "**"

@@ -1,0 +1,128 @@
+# KEDA ScaledJob: ARC-style autoscaling. The Forgejo scaler watches pending jobs
+# for the `docker` label and creates one ephemeral runner Job per pending job
+# (scale 0 -> maxReplicaCount). Each pod runs forgejo-runner `one-job` (registers,
+# runs exactly one job, exits) with a privileged DinD native-sidecar for image builds.
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: forgejo-runner
+  namespace: forgejo
+spec:
+  pollingInterval: 30
+  minReplicaCount: 0
+  maxReplicaCount: 6
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  scalingStrategy:
+    strategy: default
+  jobTargetRef:
+    parallelism: 1
+    completions: 1
+    backoffLimit: 0
+    activeDeadlineSeconds: 7200
+    template:
+      metadata:
+        labels:
+          app.kubernetes.io/name: forgejo-runner
+      spec:
+        restartPolicy: Never
+        terminationGracePeriodSeconds: 30
+        automountServiceAccountToken: false
+        nodeSelector:
+          nodegroup: fringe
+        tolerations:
+          - key: dedicated
+            operator: Equal
+            value: fringe
+            effect: NoSchedule
+        securityContext:
+          fsGroup: 1000
+        # Docker-in-Docker as a native sidecar: starts before the runner and is
+        # auto-terminated when the runner (main container) finishes its one job,
+        # so the Job completes cleanly.
+        initContainers:
+          - name: dind
+            image: docker:29.5.3-dind
+            restartPolicy: Always
+            securityContext:
+              privileged: true
+            env:
+              - name: DOCKER_TLS_CERTDIR
+                value: /certs
+            volumeMounts:
+              - name: docker-certs
+                mountPath: /certs
+              - name: docker-storage
+                mountPath: /var/lib/docker
+            startupProbe:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - docker --tlsverify --tlscacert=/certs/client/ca.pem --tlscert=/certs/client/cert.pem --tlskey=/certs/client/key.pem -H tcp://localhost:2376 info
+              initialDelaySeconds: 3
+              periodSeconds: 2
+              failureThreshold: 30
+            resources:
+              requests:
+                cpu: 100m
+                memory: 512Mi
+              limits:
+                memory: 4Gi
+        containers:
+          - name: runner
+            image: code.forgejo.org/forgejo/runner:12.10.2
+            command:
+              - sh
+              - -ec
+            # NOTE: verify this invocation on the first real job; `one-job` flags
+            # (`--uuid`/`--token-url`) and label routing may need a small tweak.
+            args:
+              - |
+                exec forgejo-runner --config /config/config.yaml one-job \
+                  --url "http://forgejo-http.forgejo.svc.cluster.local:3000" \
+                  --uuid "$(cat /run/forgejo-runner/uuid)" \
+                  --token-url "file:///run/forgejo-runner/token"
+            env:
+              - name: DOCKER_HOST
+                value: tcp://localhost:2376
+              - name: DOCKER_CERT_PATH
+                value: /certs/client
+              - name: DOCKER_TLS_VERIFY
+                value: "1"
+            volumeMounts:
+              - name: config
+                mountPath: /config
+              - name: registration
+                mountPath: /run/forgejo-runner
+                readOnly: true
+              - name: docker-certs
+                mountPath: /certs
+                readOnly: true
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                memory: 1Gi
+        volumes:
+          - name: config
+            configMap:
+              name: forgejo-runner-config
+          - name: registration
+            secret:
+              secretName: forgejo-runner-secret
+          - name: docker-certs
+            emptyDir: {}
+          - name: docker-storage
+            emptyDir: {}
+  triggers:
+    - type: forgejo-runner
+      metadata:
+        name: forgejo-runner-k8s
+        address: "http://forgejo-http.forgejo.svc.cluster.local:3000"
+        global: "true"
+        labels: "docker"
+      authenticationRef:
+        name: forgejo-runner-scaler
