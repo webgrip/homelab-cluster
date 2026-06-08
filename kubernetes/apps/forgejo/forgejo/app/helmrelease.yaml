@@ -103,6 +103,16 @@ spec:
             secretKeyRef:
               name: forgejo-db-app
               key: password
+        - name: FORGEJO__storage__MINIO_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: forgejo-s3-secret
+              key: MINIO_ACCESS_KEY_ID
+        - name: FORGEJO__storage__MINIO_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: forgejo-s3-secret
+              key: MINIO_SECRET_ACCESS_KEY
 
       config:
         APP_NAME: "Forgejo: Webgrip Homelab"
@@ -156,3 +166,13 @@ spec:
           ALLOWED_HOST_LIST: "*"
         metrics:
           ENABLED: true
+        # Bulk objects (LFS/packages/attachments/avatars/artifacts) on Garage S3 to
+        # keep the Longhorn PVC small; git repositories stay on the local PVC.
+        # Garage requires path-style addressing and plain HTTP.
+        storage:
+          STORAGE_TYPE: minio
+          MINIO_ENDPOINT: "10.0.0.110:3900"
+          MINIO_BUCKET: forgejo
+          MINIO_LOCATION: garage
+          MINIO_USE_SSL: false
+          MINIO_BUCKET_LOOKUP: path
