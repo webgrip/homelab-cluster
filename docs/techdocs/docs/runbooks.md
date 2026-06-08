@@ -18,6 +18,7 @@ This page is intentionally a **links-only index**. Each runbook has its own dedi
 ## Storage
 
 - Longhorn: [docs/techdocs/docs/runbooks/longhorn.md](runbooks/longhorn.md)
+- Longhorn capacity remediation (in progress): [docs/techdocs/docs/runbooks/longhorn-capacity-remediation.md](runbooks/longhorn-capacity-remediation.md)
 
 ## Certificates
 
