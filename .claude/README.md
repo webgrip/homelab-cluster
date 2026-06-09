@@ -25,6 +25,7 @@ This repo enables the shared **`webgrip`** plugin from [`webgrip/claude-config`]
 - **`guard-secrets.sh`** (PreToolUse Edit/Write) — blocks decrypted artifacts and plaintext written into `*.sops.yaml`; runs `gitleaks` on new content if installed. Editing `*.sops.yaml` is also blocked by `permissions.deny`.
 - **`guard-destructive.sh`** (PreToolUse Bash) — blocks direct cluster mutation (`kubectl apply/patch/scale/...`, protected `kubectl delete`, `helm install/upgrade`, `flux delete`, destructive `talosctl`). Allows read-only ops, `--dry-run`, recoverable `pod`/`job` deletes, and `task talos:apply-node-safe`.
 - **`validate-manifest.sh`** (PostToolUse Edit/Write) — runs `yamllint` + `kubeconform` (with the datreeio CRDs-catalog) on edited `kubernetes/**` manifests; failures are fed back to fix.
+- **`guard-skills.sh`** (PostToolUse Edit/Write) — enforces the mechanically-checkable invariants extracted from `skills/` so those skills stay terse (saves tokens): Grafana `$$`-escaping (both single-`$` greps) + `instanceSelector`/`editable`/`allValue`/ConfigMap-dashboard hygiene, CNPG `walStorage` + storageClass, `release: kube-prometheus-stack` on ServiceMonitor/PrometheusRule, Gateway-API-not-Ingress, app `ks.yaml` not re-declaring `decryption:`, and Authentik blueprint `<nn>-` ordering.
 
 Validation linters are **optional** — hooks skip them if absent. To enable enforcement, add to `.mise.toml`:
 

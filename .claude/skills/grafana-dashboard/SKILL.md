@@ -45,9 +45,7 @@ Only if you must place a dashboard in a *different* namespace (discouraged), ref
 **Flux `envsubst` runs on every dashboard.** Single `$` is consumed as a variable.
 - Double **every** Grafana macro/variable: `$$__rate_interval`, `$$__range`, `$$__range_s`, `$$__interval`, `$$myvar`, `$$__all`.
 - **Never put a single `$` immediately before `{`, `{{`, or `(`.** envsubst tries to parse it as a variable name and **the entire `grafana` Kustomization fails postBuild → no dashboard updates apply at all** (not just the bad panel). This bit us via a literal `${{.attributes_cost_usd}}` in a Loki `line_format`. Don't put a literal `$` in titles / `line_format` / text panels — write `USD`.
-- **Pre-commit gate — run BOTH greps, each must print nothing:**
-  - `grep -rnP '(?<!\$)\$[{(]' dashboards/*.yaml` — a single `$` before `{`/`(` (fails the whole Kustomization).
-  - `grep -rnP '(?<!\$)\$(__|[a-z])' dashboards/*.yaml` — a single-`$` macro/variable like `$model` or `$__range` that envsubst silently blanks → the query loses its filter/range → **No data**. (The first grep does **not** catch this — it bit us repeatedly.) Every Grafana token must be `$$`.
+- **Both single-`$` checks are auto-enforced** by `.claude/hooks/guard-skills.sh` on Edit/Write — the `$`-before-`{`/`(` whole-Kustomization breaker *and* the silent-blank `$model`/`$__range` case. You'll get a fix-up message if you slip; still double every token (`$$`) as you write so you don't loop.
 - The `grafana` ks also `dependsOn` `grafana-db`; if that CNPG DB is unhealthy the ks won't reconcile and **nothing** updates — check `kubectl get kustomization -n observability grafana`.
 
 **LogQL (Loki):**
@@ -72,7 +70,7 @@ Only if you must place a dashboard in a *different* namespace (discouraged), ref
 
 **Many near-identical series (e.g. an N-provider cost comparison):** generate the dashboard JSON from a small Python rate-table generator rather than hand-writing — far less error-prone, trivial to re-run when rates change. Table panel: two+ instant queries + a `merge` transform join them by shared label into `Value #A` / `Value #B` columns (rename via an `organize` transform); embed reference values (e.g. rates) directly in the series `label_replace` name to avoid extra columns.
 
-**Validation gate before every commit:** JSON parses (`json.loads(yaml.safe_load(f)['spec']['json'])`) → **both** `envsubst` greps above are empty → `mise exec -- kustomize build kubernetes/apps/observability/grafana/app` → live smoke-test a couple of queries via the read-only Grafana MCP (`query_prometheus` / `query_loki_logs`). MCP can't test template-var interpolation or table transforms — spot-check those in the rendered UI after reconcile.
+**Validation gate before every commit:** JSON parses (`json.loads(yaml.safe_load(f)['spec']['json'])`) → `mise exec -- kustomize build kubernetes/apps/observability/grafana/app` → live smoke-test a couple of queries via the read-only Grafana MCP (`query_prometheus` / `query_loki_logs`). (The `$$`-escaping, `instanceSelector`, `editable`, `allValue=$__all` and ConfigMap-dashboard checks run automatically in `guard-skills.sh`.) MCP can't test template-var interpolation or table transforms — spot-check those in the rendered UI after reconcile.
 
 ## Don't
 - Don't omit `editable: true` on datasources (operator may treat them read-only and reject updates).
