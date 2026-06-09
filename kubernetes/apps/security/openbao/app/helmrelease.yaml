@@ -1,0 +1,61 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: openbao
+spec:
+  interval: 1h
+  # OpenBao boots SEALED, so its pods stay 0/1 Ready until a human runs the unseal
+  # ceremony. disableWait lets Flux mark the release Ready on apply instead of
+  # blocking on pod readiness (which would never come pre-unseal).
+  install:
+    disableWait: true
+    remediation:
+      retries: 3
+  upgrade:
+    disableWait: true
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+  chart:
+    spec:
+      chart: openbao
+      version: 0.28.3
+      sourceRef:
+        kind: HelmRepository
+        name: openbao
+        namespace: security
+  values:
+    injector:
+      enabled: false # ESO reads via the API; no agent-injector needed
+    ui:
+      enabled: true
+    server:
+      dataStorage:
+        enabled: true
+        size: 3Gi
+        storageClass: longhorn-general
+        accessMode: ReadWriteOnce
+      ha:
+        enabled: true
+        replicas: 1 # single-node raft for the homelab (scale to 3 later)
+        raft:
+          enabled: true
+          setNodeId: true
+          config: |
+            ui = true
+            listener "tcp" {
+              tls_disable = 1
+              address = "[::]:8200"
+              cluster_address = "[::]:8201"
+            }
+            storage "raft" {
+              path = "/openbao/data"
+            }
+            service_registration "kubernetes" {}
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          memory: 512Mi
