@@ -34,7 +34,12 @@ spec:
       guaranteedReplicaManagerCPU: "20"
       nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
       orphanAutoDeletion: true
-      replicaAutoBalance: best-effort
+      # Disabled 2026-06-09: best-effort auto-balance generated a rebuild storm
+      # after the capacity cleanup that OOM-killed the (BestEffort-QoS)
+      # longhorn-manager under memory spikes, cascading into FailedRebuilding +
+      # a stuck WAL-PVC resize (dependency-track-db down). These nodes are RAM
+      # -tight; keep replica placement static and rebalance manually if needed.
+      replicaAutoBalance: disabled
       replicaReplenishmentWaitInterval: "120"
       concurrentReplicaRebuildPerNodeLimit: "1"
       rebuildConcurrentSyncLimit: "2"
@@ -51,7 +56,8 @@ spec:
         scrapeTimeout: 30s
         metricRelabelings:
           - action: drop
-            sourceLabels: [__name__]
+            sourceLabels:
+              - __name__
             regex: longhorn_rest_client_rate_limiter_latency_seconds_bucket
 
     # Allow the Longhorn manager DaemonSet to run on the tainted fringe node.
