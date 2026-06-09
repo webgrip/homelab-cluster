@@ -1,0 +1,72 @@
+---
+# Auto-unseal sidecar-as-Deployment: keeps openbao-0 unsealed after restarts/reboots.
+# OpenBao re-seals on every pod start; this watches the node (via its headless per-pod
+# address, reachable even while NotReady/sealed) and unseals it with the SOPS-managed key.
+# `bao status` exits 2 when sealed. Config + secrets persist in the raft PVC, so once
+# unsealed the cluster is fully functional with zero manual steps.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openbao-unsealer
+  labels:
+    app.kubernetes.io/name: openbao-unsealer
+    app.kubernetes.io/part-of: openbao
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: openbao-unsealer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openbao-unsealer
+        app.kubernetes.io/part-of: openbao
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: unsealer
+          image: docker.io/openbao/openbao:2.5.4
+          env:
+            - name: HOME
+              value: /tmp
+            - name: BAO_ADDR
+              value: http://openbao-0.openbao-internal.security.svc.cluster.local:8200
+            - name: OPENBAO_UNSEAL_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openbao-unseal
+                  key: unseal-key
+          command:
+            - /bin/sh
+            - -c
+            - |
+              while true; do
+                bao status >/dev/null 2>&1; rc=$?
+                if [ "$rc" = "2" ]; then
+                  echo "openbao is sealed -> unsealing"
+                  bao operator unseal "$OPENBAO_UNSEAL_KEY" >/dev/null 2>&1 || echo "unseal attempt failed"
+                fi
+                sleep 15
+              done
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
