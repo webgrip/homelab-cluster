@@ -95,19 +95,60 @@ Authentik re-mints on the next blueprint apply.
 
 ## Stand up Infisical + seed (Wave 4)
 
-1. Create `kubernetes/apps/security/infisical/` — CNPG `infisical-db` (with the `cnpg-backup`
-   component), a small Redis, the Infisical HelmRelease, an `httproute.yaml` for
-   `infisical.${SECRET_DOMAIN}`, and the two SOPS-floor secrets.
-   - `infisical-secret.sops.yaml`: `ENCRYPTION_KEY`, `AUTH_SECRET` (generate locally with
-     `openssl rand -hex 16` / per Infisical docs; encrypt with `sops`; **a human commits this**).
-   - DB creds come from CNPG's `infisical-db-app` — do **not** create them by hand.
-2. Validate, commit, push. Confirm Infisical and its DB are healthy.
-3. **One-time bootstrap (manual, via the UI at `https://infisical.${SECRET_DOMAIN}`):**
-   - Create the admin account, a project `homelab`, environment `prod`.
-   - Create a **machine identity** with Universal Auth, scoped read-only to `homelab/prod`.
-   - Put its `clientId` / `clientSecret` into `eso-auth.sops.yaml` (SOPS-encrypt; human commits).
-4. Add `app/clustersecretstore.yaml` (provider `infisical`). Validate, commit, push.
-   Confirm `kubectl get clustersecretstore infisical` → READY=True.
+The manifests are **already scaffolded** at `kubernetes/apps/security/infisical/` (CNPG
+`infisical-db` + ObjectStore, a valkey `redis.yaml`, the Infisical app via app-template, an
+`httproute.yaml` for `infisical.${SECRET_DOMAIN}`, the `clustersecretstore.yaml`, and two
+SOPS-floor **templates**). They are **UNWIRED** — not in `security/kustomization.yaml` — so
+nothing deploys until you complete step A. Infisical runs via app-template (bundled
+postgres/redis disabled); `DB_CONNECTION_URI` is sourced straight from the CNPG-generated
+`infisical-db-app` `uri` key.
+
+### Step A — bring up Infisical (human; the SOPS floor)
+
+1. Create the server's crypto secret from its template:
+
+   ```bash
+   cd kubernetes/apps/security/infisical/app
+   cp infisical-app-secret.template.yaml infisical-app-secret.sops.yaml
+   # set AUTH_SECRET=$(openssl rand -base64 32) and ENCRYPTION_KEY=$(openssl rand -hex 16)
+   sops --encrypt --in-place infisical-app-secret.sops.yaml
+   ```
+
+2. Reference it: add `- ./infisical-app-secret.sops.yaml` to
+   `kubernetes/apps/security/infisical/app/kustomization.yaml`.
+3. Wire the app in: add to `kubernetes/apps/security/kustomization.yaml`:
+
+   ```yaml
+   - ./infisical/database/ks.yaml
+   - ./infisical/ks.yaml
+   ```
+
+4. Validate (`./scripts/run-flux-local-test.sh`), commit, push. Confirm `infisical-db` is
+   healthy and the `infisical` HelmRelease is Ready.
+   - **If Infisical can't connect to Postgres** (TLS): the CNPG `uri` has no sslmode. Add
+     `?sslmode=no-verify` by switching `DB_CONNECTION_URI` to an assembled value, or set the
+     env directly. Verify on first boot.
+   - First boot runs DB migrations automatically; give it a minute before it's Ready.
+
+### Step B — machine identity + activate the store (human)
+
+1. Open `https://infisical.${SECRET_DOMAIN}`, create the admin account, a project **`homelab`**
+   and environment **`prod`**.
+2. Create a **Machine Identity** (Universal Auth), scoped **read-only** to `homelab/prod`.
+3. Seed its creds from the template and reference it:
+
+   ```bash
+   cd kubernetes/apps/security/infisical/app
+   cp eso-auth.template.yaml eso-auth.sops.yaml
+   # paste the machine identity's Client ID / Client Secret
+   sops --encrypt --in-place eso-auth.sops.yaml
+   # add `- ./eso-auth.sops.yaml` to ./kustomization.yaml
+   ```
+
+4. Commit, push. Confirm `kubectl get clustersecretstore infisical` → READY=True.
+
+After this, migrate external secrets with the recipe below (seed each value into Infisical's
+UI under `homelab/prod`, then add the matching `ExternalSecret`).
 
 ## Recipe: migrate an external secret
 

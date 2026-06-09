@@ -1,0 +1,89 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: infisical-redis
+  labels:
+    app.kubernetes.io/name: infisical-redis
+    app.kubernetes.io/part-of: infisical
+spec:
+  selector:
+    app.kubernetes.io/name: infisical-redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: infisical-redis
+  labels:
+    app.kubernetes.io/name: infisical-redis
+    app.kubernetes.io/part-of: infisical
+spec:
+  serviceName: infisical-redis
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: infisical-redis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: infisical-redis
+        app.kubernetes.io/part-of: infisical
+    spec:
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: valkey
+          image: docker.io/valkey/valkey:9.1.0@sha256:4963247afc4cd33c7d3b2d2816b9f7f8eeebab148d29056c2ca4d7cbc966f2d9
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: redis
+              containerPort: 6379
+          # Infisical uses Redis only as an ephemeral cache/queue, so persistence is off.
+          args:
+            - "--save"
+            - ""
+            - "--appendonly"
+            - "no"
+          livenessProbe:
+            tcpSocket:
+              port: redis
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+          readinessProbe:
+            tcpSocket:
+              port: redis
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+        storageClassName: longhorn-general

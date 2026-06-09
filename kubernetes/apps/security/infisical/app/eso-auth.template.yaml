@@ -1,0 +1,21 @@
+---
+# TEMPLATE — ESO's Infisical machine-identity (Universal Auth) credentials.
+# Created in the Infisical UI AFTER the server is up (Wave 4 step B), then encrypted.
+# A human must create the encrypted version — this plain template is never applied.
+#
+#   # In Infisical UI: create project "homelab" + env "prod", then a Machine Identity
+#   # with Universal Auth, scoped read-only to homelab/prod. Copy its Client ID/Secret.
+#   cd kubernetes/apps/security/infisical/app
+#   cp eso-auth.template.yaml eso-auth.sops.yaml
+#   sops --encrypt --in-place eso-auth.sops.yaml
+#   # then add `- ./eso-auth.sops.yaml` to ./kustomization.yaml
+#   # -> ClusterSecretStore "infisical" becomes Ready.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: eso-auth
+  namespace: security
+type: Opaque
+stringData:
+  clientId: "REPLACE_ME"
+  clientSecret: "REPLACE_ME"
