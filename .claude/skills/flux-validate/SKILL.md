@@ -6,32 +6,11 @@ allowed-tools: Bash(./scripts/run-flux-local-test.sh*), Bash(./scripts/run-flux-
 
 # Validate manifests
 
-Run these before committing manifest changes (CI runs the same checks).
+CI runs the same checks — run before committing.
 
-## Offline render + validate (primary gate)
-```bash
-./scripts/run-flux-local-test.sh
-```
-Renders every Flux Kustomization + HelmRelease the way the controllers would (via flux-local in Docker) and fails on broken builds. Requires Docker.
+- **Primary gate (offline render):** `./scripts/run-flux-local-test.sh` — renders every Kustomization + HelmRelease via flux-local in Docker; fails on broken builds. Needs Docker.
+- **Diff vs live:** `./scripts/run-flux-local-diff.sh <pull-dir> <default-dir> <output-file>`.
+- **Policy/supply-chain:** `just kyverno-test` · `just kyverno-chainsaw` (KinD) · `just verify-oci-digests`.
+- **After merge:** `just reconcile` then `mise exec -- flux get kustomizations -A` (READY=False = failure; SUSPENDED=False is normal).
 
-## Diff against the live cluster
-```bash
-./scripts/run-flux-local-diff.sh <pull-dir> <default-dir> <output-file>
-```
-
-## Policy / supply-chain checks
-```bash
-just kyverno-test         # Kyverno CLI policy regression (kubernetes/apps/kyverno/tests)
-just kyverno-chainsaw     # Chainsaw admission tests in a disposable KinD cluster
-just verify-oci-digests   # OCIRepository digest pins vs registry
-```
-
-## Force a reconcile after merge
-```bash
-just reconcile            # flux-system reconcile --with-source
-mise exec -- flux get kustomizations -A    # READY=False = failure; SUSPENDED=False is normal
-```
-
-## Notes
-- Per-file `kubeconform`/`yamllint` run automatically via the PostToolUse hook when those tools are installed (add them to `.mise.toml` to enable). This skill covers the whole-repo render which the hook intentionally doesn't do (too slow per-edit).
-- All cluster tooling runs through `mise exec --`.
+Per-file `kubeconform`/`yamllint` + skill guards run automatically on Edit/Write via the PostToolUse hooks; this skill is the whole-repo render the hooks skip (too slow per-edit). All tooling via `mise exec --`.

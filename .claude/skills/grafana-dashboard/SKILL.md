@@ -5,73 +5,40 @@ description: Add or edit Grafana dashboards, datasources, folders, or alert rule
 
 # Grafana resources (Operator-managed)
 
-Everything is a `grafana.integreatly.org/v1beta1` CRD. Never use dashboard ConfigMaps (`grafana_dashboard: "1"` — the sidecar was removed) or HelmRelease values.
+All `grafana.integreatly.org/v1beta1` CRDs — never dashboard ConfigMaps or HelmRelease values. Operator reconciles ~10m and **reverts UI edits** (Git is truth). Instance: `observability/grafana/app/grafana-instance.yaml` (no helmrelease). Inventory: `kubectl get grafanadashboards,grafanafolders,grafanadatasources -A`.
 
-## Universal rules
-- Every CRD needs:
-  ```yaml
-  spec:
-    instanceSelector:
-      matchLabels: { grafana.internal/instance: grafana }
-  ```
-- Resources **outside** the `observability` namespace also need `spec.allowCrossNamespaceImport: true`.
-- The Grafana instance itself is `observability/grafana/app/grafana-instance.yaml` (there is no `helmrelease.yaml` — don't look for one).
-- Datasources = `GrafanaDatasource` CRDs with `spec.datasource.editable: true` (not in the instance `spec.config`).
-- The operator reconciles ~every 10m and **reverts UI edits** — all changes must be in Git. Inventory: `kubectl get grafanadashboards -A`.
+**Shape** (enforced by `guard-skills.sh` — fix-up message if you miss one):
+- Every CRD: `spec.instanceSelector.matchLabels: {grafana.internal/instance: grafana}`; add `allowCrossNamespaceImport: true` outside `observability`.
+- Datasource = `GrafanaDatasource` with `spec.datasource.editable: true`.
 
 ## Add a dashboard
-1. Create `kubernetes/apps/observability/grafana/app/dashboards/<name>.yaml`:
-   ```yaml
-   apiVersion: grafana.integreatly.org/v1beta1
-   kind: GrafanaDashboard
-   metadata: { name: <name> }
-   spec:
-     instanceSelector: { matchLabels: { grafana.internal/instance: grafana } }
-     folder: "<Title>"        # by title — see Folders below
-     json: |
-       { "title": "...", "uid": "...", ... }
-   ```
-2. Add `- ./dashboards/<name>.yaml` to `observability/grafana/app/kustomization.yaml`.
-3. **Do NOT co-locate dashboards with their service.** Folder resolution is **namespace-scoped**: `folder:`/`folderRef:` resolve only within the dashboard's own namespace. `allowCrossNamespaceImport` controls instance targeting, NOT folder lookup. Cross-namespace dashboards must use `folderUID` instead of `folder:`.
+1. `observability/grafana/app/dashboards/<name>.yaml`: `kind: GrafanaDashboard`, `spec.folder: "<Title>"`, `spec.json: |`.
+2. Register in `observability/grafana/app/kustomization.yaml`.
+3. Keep dashboards in `observability` — `folder:` resolves only within the dashboard's own namespace. Cross-namespace → `folderUID` (`allowCrossNamespaceImport` is instance targeting, NOT folder lookup).
 
-## Folders
+Folder titles: Apps · Data · Kubernetes · Networking · Observability · Platform · Security · Storage · Synthetics · Claude Code.
 
-Dashboards in `observability/` (the convention) just set `folder: "<Title>"` by name. Valid titles and scope: **Apps** (user workloads) · **Data** (DBs/queues) · **Kubernetes** (cluster health) · **Networking** (Cilium/Envoy) · **Observability** (Prom/Alertmanager/Loki/Tempo/Mimir) · **Platform** (Flux/cert-manager/Renovate/etcd) · **Security** (Kyverno/Falco/Tetragon/Trivy/Cosign) · **Storage** (Longhorn) · **Synthetics** (blackbox/k6) · **Claude Code** (Claude Code usage/cost telemetry). List live folders with `kubectl get grafanafolders -A`.
+## Escaping (Flux envsubst) — enforced by `guard-skills.sh`
+Double **every** Grafana token (`$$__range`, `$$__rate_interval`, `$$var`, `$$__all`). Single `$` before `{`/`(` fails the *whole* grafana Kustomization; single `$model`/`$__range` is silently blanked → No data. Double as you write to avoid fix loops. No literal `$` in titles/`line_format` — write `USD`.
 
-Only if you must place a dashboard in a *different* namespace (discouraged), reference it by `folderUID` instead of `folder:` — titles resolve only within the dashboard's own namespace. Get the UID from `kubectl get grafanafolder <name> -o jsonpath='{.spec.uid}'`.
+## LogQL (not hook-checked)
+- Fields nest under `attributes.*`. Aggregation/`unwrap`/`quantile` → explicit `| json field="attributes.x"` then use `x`; never bare `| json` for aggregation (cardinality blowup). Bare `| json` ok for display-only `logs` panels.
+- `clamp_min`/most Prom funcs are invalid in LogQL; `vector(0)` is valid.
 
-## Query authoring & escaping (hard-won — these break things silently)
+## Claude Code metrics (Prom counters → `increase()`/`rate()`)
+`claude_code_token_usage_tokens_total{type=input|output|cacheRead|cacheCreation,model,query_source,session_id}`, `…cost_usage_USD_total` (same minus `type`), `…active_time_seconds_total{type=user|cli}`, `…session_count_total{start_type,session_id}`, `…{lines_of_code,commit,pull_request}_count_total`, `…code_edit_tool_decision_total{decision}`.
+- `session_id` is on every metric → count sessions via `count(count by (session_id)(max_over_time(claude_code_session_count_total[$$__range])))`, not `sum(increase(...))`.
+- Cost = tokens × list price (estimate; notional on Pro/Max — label it).
 
-**Flux `envsubst` runs on every dashboard.** Single `$` is consumed as a variable.
-- Double **every** Grafana macro/variable: `$$__rate_interval`, `$$__range`, `$$__range_s`, `$$__interval`, `$$myvar`, `$$__all`.
-- **Never put a single `$` immediately before `{`, `{{`, or `(`.** envsubst tries to parse it as a variable name and **the entire `grafana` Kustomization fails postBuild → no dashboard updates apply at all** (not just the bad panel). This bit us via a literal `${{.attributes_cost_usd}}` in a Loki `line_format`. Don't put a literal `$` in titles / `line_format` / text panels — write `USD`.
-- **Both single-`$` checks are auto-enforced** by `.claude/hooks/guard-skills.sh` on Edit/Write — the `$`-before-`{`/`(` whole-Kustomization breaker *and* the silent-blank `$model`/`$__range` case. You'll get a fix-up message if you slip; still double every token (`$$`) as you write so you don't loop.
-- The `grafana` ks also `dependsOn` `grafana-db`; if that CNPG DB is unhealthy the ks won't reconcile and **nothing** updates — check `kubectl get kustomization -n observability grafana`.
+## Panel hygiene (not hook-checked)
+- `or vector(0)` on `stat` panels only — on timeseries/table/bargauge it adds a phantom 0 series.
+- `allValue: ".*"` (or omit) for `includeAll` vars; never `$$__all` (logic bug → No data).
+- MTD: `time:{from:now/M,to:now}` → `$$__range`=MTD; projection `(<expr>)*$$days_in_month*86400/$$__range_s` (noisy early-month — label estimate + show MTD actual).
 
-**LogQL (Loki):**
-- Event fields are nested under `attributes.*`. For aggregation/`unwrap`/`quantile` use **explicit** extraction `| json field="attributes.field"`, then use `field`. **Never bare `| json` for aggregation** (cardinality explosion breaks quantile/unwrap). Bare `| json` is fine for display-only `logs` panels.
-- `clamp_min` and most Prometheus functions are **invalid in LogQL** (query error). `vector(0)` **is** valid in Loki.
+## House style
+- Don't graph everything: `stat` for single values, `table` for many-row comparison, `timeseries` only when over-time shape matters.
+- Money: `currencyUSD`, `decimals: 2` (nl-NL). Pair counts with a derived rate. Log y-axis (`custom.scaleDistribution:{type:log,log:10}`) for series spanning magnitudes.
+- N near-identical series → generate JSON from a small Python rate-table; table = instant queries + `merge` + `organize` rename.
 
-**Claude Code metrics (Prometheus, cumulative counters → `increase()`/`rate()`):**
-- `claude_code_token_usage_tokens_total{type=input|output|cacheRead|cacheCreation, model, query_source, session_id, ...}`, `claude_code_cost_usage_USD_total` (same labels minus `type`), `claude_code_active_time_seconds_total{type=user|cli}`, `claude_code_session_count_total{start_type, session_id}`, `claude_code_{lines_of_code,commit,pull_request}_count_total`, `claude_code_code_edit_tool_decision_total{decision}`.
-- **`session_id` is on every metric** → `sum(increase(claude_code_session_count_total))` is always ~0. Count sessions with `count(count by (session_id)(max_over_time(claude_code_session_count_total[$$__range])))`.
-- Cost is an **estimate** (token × API list price); on a Pro/Max subscription it is notional, not real spend — label panels accordingly.
-
-**Panel hygiene:**
-- Multi-series panels (timeseries / bargauge / table): **do not** append `or vector(0)` — it creates a phantom `Value=0` series. Only `stat` panels use `or vector(0)`.
-- Calendar **month-to-date**: set dashboard `time: {from: now/M, to: now}` → `$$__range` is MTD, days elapsed = `$$__range_s/86400`, full-month projection = `(<expr over $$__range>) * $$days_in_month * 86400 / $$__range_s`. Early in the month this projection is noisy (few days × a big multiplier) — label it an estimate and show the MTD actual alongside it.
-- **Template-var "All":** for an `includeAll` query var filtered as `label=~"$$var"`, set `allValue: ".*"` (or omit `allValue` so Grafana auto-joins the values). **Never** `allValue: "$$__all"` — `$__all` is not a real all-value, so "All" interpolates to a literal `label=~"$__all"` → matches nothing → silent **No data**. The escaping grep won't catch this (it's a logic bug); spot-check rendered panels or query with the var.
-
-**Visualization & formatting (house style):**
-- **Don't graph everything.** Use `stat` panels for single values (counts, totals, ratios) and `table` panels for many-row comparisons; reserve `timeseries` for data whose over-time *shape* is the point. A row of stats + a ranked table reads faster than a wall of charts.
-- **Money: `currencyUSD` with `decimals: 2`** everywhere — a 3-decimal axis like `$10.000` reads as ten-thousand and is ambiguous in a nl-NL locale.
-- **Make counts meaningful:** pair a raw count with a derived rate (e.g. *sessions* next to *cost per session*), not a bare number.
-- For values spanning orders of magnitude on one timeseries (e.g. cacheRead vs output tokens), use a **log y-axis** (`custom.scaleDistribution: {type: log, log: 10}`) so the small series stay visible.
-
-**Many near-identical series (e.g. an N-provider cost comparison):** generate the dashboard JSON from a small Python rate-table generator rather than hand-writing — far less error-prone, trivial to re-run when rates change. Table panel: two+ instant queries + a `merge` transform join them by shared label into `Value #A` / `Value #B` columns (rename via an `organize` transform); embed reference values (e.g. rates) directly in the series `label_replace` name to avoid extra columns.
-
-**Validation gate before every commit:** JSON parses (`json.loads(yaml.safe_load(f)['spec']['json'])`) → `mise exec -- kustomize build kubernetes/apps/observability/grafana/app` → live smoke-test a couple of queries via the read-only Grafana MCP (`query_prometheus` / `query_loki_logs`). (The `$$`-escaping, `instanceSelector`, `editable`, `allValue=$__all` and ConfigMap-dashboard checks run automatically in `guard-skills.sh`.) MCP can't test template-var interpolation or table transforms — spot-check those in the rendered UI after reconcile.
-
-## Don't
-- Don't omit `editable: true` on datasources (operator may treat them read-only and reject updates).
-- Don't edit dashboards in the Grafana UI expecting them to persist — they're reverted.
+## Validate
+JSON parses → `mise exec -- kustomize build kubernetes/apps/observability/grafana/app` → smoke-test queries via the read-only Grafana MCP. MCP can't test var interpolation/table transforms — spot-check in UI after reconcile. The `grafana` ks `dependsOn` `grafana-db`; if that CNPG DB is down nothing updates.
