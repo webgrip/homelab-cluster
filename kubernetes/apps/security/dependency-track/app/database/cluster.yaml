@@ -13,7 +13,11 @@ spec:
     size: 30Gi
     storageClass: longhorn
   walStorage:
-    size: 10Gi
+    # Heavy WAL writer (SBOM ingestion). A past Garage outage left a >10Gi WAL
+    # backlog in the data volume; CNPG could not migrate it into a 10Gi wal vol,
+    # crashlooping before Postgres started. Sized to hold the full backlog so the
+    # move completes, then archiving to Garage drains it and WAL recycles down.
+    size: 30Gi
     storageClass: longhorn
   plugins:
     - name: barman-cloud.cloudnative-pg.io
