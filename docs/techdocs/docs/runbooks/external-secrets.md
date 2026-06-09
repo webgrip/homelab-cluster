@@ -1,7 +1,7 @@
 # Runbook: External Secrets (ESO)
 
 Operational procedures for the [External Secrets migration](../external-secrets-plan.md):
-deploying ESO, migrating a secret per class, standing up and seeding Infisical, and
+deploying ESO, migrating a secret per class, standing up OpenBao, and
 recovering from failures. Read the plan first for the *why* and the full secret inventory.
 
 ## Dependency chain
@@ -10,13 +10,13 @@ recovering from failures. Read the plan first for the *why* and the full secret 
 Git (ExternalSecret / PushSecret) ──▶ ESO controller ──▶ writes real k8s Secret ──▶ App pod
                                           │                     ▲
                   ClusterGenerator (random) ┘                   │ (cached — no runtime dep)
-                  ClusterSecretStore: infisical ──▶ Infisical ──┘   needs CNPG infisical-db
+                  ClusterSecretStore: openbao   ──▶ OpenBao ───┘   (sealed until unsealed)
                   ClusterSecretStore: kube-store ──▶ writes into authentik ns (OIDC push)
 ```
 
 **Cached-Secret invariant:** once ESO has written a Secret, the pod no longer needs ESO or
-Infisical to *run*. A backend outage only blocks *create/rotate*. Diagnose accordingly: a
-broken app is almost never "Infisical is down" unless you just changed that secret.
+OpenBao to *run*. A backend outage (or a sealed OpenBao) only blocks *create/rotate*. Diagnose
+accordingly: a broken app is almost never "OpenBao is down" unless you just changed that secret.
 
 ## What lives where
 
@@ -24,10 +24,10 @@ broken app is almost never "Infisical is down" unless you just changed that secr
 | --- | --- |
 | ESO operator | `kubernetes/apps/security/external-secrets/` (namespace `security`) |
 | Random generator | `ClusterGenerator/password-generator` |
-| External backend | `kubernetes/apps/security/infisical/` + CNPG `infisical-db` |
-| Stores | `ClusterSecretStore/infisical`, `ClusterSecretStore/kube-store` |
+| External backend | `kubernetes/apps/security/openbao/` (single-node raft) |
+| Stores | `ClusterSecretStore/openbao`, `ClusterSecretStore/kube-store` |
 | SOPS floor (forever) | `bootstrap/{sops-age,github-deploy-key}.sops.yaml`, `kubernetes/components/sops/cluster-secrets.sops.yaml`, `talos/talsecret.sops.yaml` |
-| SOPS floor (backend) | `infisical/app/{infisical-secret,eso-auth}.sops.yaml` |
+| SOPS floor (backend) | none — ESO uses K8s ServiceAccount auth; OpenBao unseal key held offline (or optional auto-unseal SOPS) |
 
 ## Quick status checks
 
@@ -93,71 +93,82 @@ Order: grafana → forgejo → n8n → backstage. Per provider:
 Rollback: revert the blueprint `!Env` and `global.env` edits and restore the SOPS secret;
 Authentik re-mints on the next blueprint apply.
 
-## Stand up Infisical + seed (Wave 4)
+## Stand up OpenBao (Wave 4)
 
-The manifests are **already scaffolded** at `kubernetes/apps/security/infisical/` (CNPG
-`infisical-db` + ObjectStore, a valkey `redis.yaml`, the Infisical app via app-template, an
-`httproute.yaml` for `infisical.${SECRET_DOMAIN}`, the `clustersecretstore.yaml`, and two
-SOPS-floor **templates**). They are **UNWIRED** — not in `security/kustomization.yaml` — so
-nothing deploys until you complete step A. Infisical runs via app-template (bundled
-postgres/redis disabled); `DB_CONNECTION_URI` is sourced straight from the CNPG-generated
-`infisical-db-app` `uri` key.
+OpenBao is **already deployed** (`kubernetes/apps/security/openbao/`) — single-node
+integrated raft, fully OSS. It boots **sealed**, so `openbao-0` sits `0/1 Ready` until the
+one-time init/unseal ceremony below; `ClusterSecretStore/openbao` stays `NotReady` until the
+Kubernetes auth role + policy exist. ESO authenticates with its own ServiceAccount — **no
+static creds in SOPS**.
 
-### Step A — bring up Infisical (human; the SOPS floor)
+> The unseal key(s) and root token are generated at init and are **never** committed to Git.
+> Keep them in your password manager. Losing them = losing OpenBao's contents.
 
-1. Create the server's crypto secret from its template:
+### One-time init + unseal + configure (human)
 
-   ```bash
-   cd kubernetes/apps/security/infisical/app
-   cp infisical-app-secret.template.yaml infisical-app-secret.sops.yaml
-   # set AUTH_SECRET=$(openssl rand -base64 32) and ENCRYPTION_KEY=$(openssl rand -hex 16)
-   sops --encrypt --in-place infisical-app-secret.sops.yaml
-   ```
+Either `kubectl exec` into `openbao-0`, or `kubectl port-forward -n security svc/openbao
+8200:8200` and use a local `bao` with `BAO_ADDR=http://127.0.0.1:8200`.
 
-2. Reference it: add `- ./infisical-app-secret.sops.yaml` to
-   `kubernetes/apps/security/infisical/app/kustomization.yaml`.
-3. Wire the app in: add to `kubernetes/apps/security/kustomization.yaml`:
-
-   ```yaml
-   - ./infisical/database/ks.yaml
-   - ./infisical/ks.yaml
-   ```
-
-4. Validate (`./scripts/run-flux-local-test.sh`), commit, push. Confirm `infisical-db` is
-   healthy and the `infisical` HelmRelease is Ready.
-   - **If Infisical can't connect to Postgres** (TLS): the CNPG `uri` has no sslmode. Add
-     `?sslmode=no-verify` by switching `DB_CONNECTION_URI` to an assembled value, or set the
-     env directly. Verify on first boot.
-   - First boot runs DB migrations automatically; give it a minute before it's Ready.
-
-### Step B — machine identity + activate the store (human)
-
-1. Open `https://infisical.${SECRET_DOMAIN}`, create the admin account, a project **`homelab`**
-   and environment **`prod`**.
-2. Create a **Machine Identity** (Universal Auth), scoped **read-only** to `homelab/prod`.
-3. Seed its creds from the template and reference it:
+1. **Initialize** — saves the unseal key + root token; store the JSON **offline**:
 
    ```bash
-   cd kubernetes/apps/security/infisical/app
-   cp eso-auth.template.yaml eso-auth.sops.yaml
-   # paste the machine identity's Client ID / Client Secret
-   sops --encrypt --in-place eso-auth.sops.yaml
-   # add `- ./eso-auth.sops.yaml` to ./kustomization.yaml
+   kubectl exec -n security openbao-0 -- bao operator init \
+     -key-shares=1 -key-threshold=1 -format=json > ~/openbao-init.json
    ```
 
-4. Commit, push. Confirm `kubectl get clustersecretstore infisical` → READY=True.
+2. **Unseal** (pod goes `1/1`):
 
-After this, migrate external secrets with the recipe below (seed each value into Infisical's
-UI under `homelab/prod`, then add the matching `ExternalSecret`).
+   ```bash
+   kubectl exec -n security openbao-0 -- bao operator unseal \
+     "$(jq -r '.unseal_keys_b64[0]' ~/openbao-init.json)"
+   ```
+
+3. **Configure** the KV engine, Kubernetes auth, a read-only policy, and the ESO role
+   (export `BAO_TOKEN=$(jq -r .root_token ~/openbao-init.json)`):
+
+   ```bash
+   bao secrets enable -path=secret kv-v2
+
+   bao auth enable kubernetes
+   bao write auth/kubernetes/config kubernetes_host=https://kubernetes.default.svc
+
+   bao policy write external-secrets - <<'EOF'
+   path "secret/data/*"     { capabilities = ["read"] }
+   path "secret/metadata/*" { capabilities = ["read", "list"] }
+   EOF
+
+   bao write auth/kubernetes/role/external-secrets \
+     bound_service_account_names=external-secrets \
+     bound_service_account_namespaces=security \
+     policies=external-secrets ttl=1h
+   ```
+
+4. Confirm: `kubectl get clustersecretstore openbao` → **READY=True**.
+
+### Restarts — unseal each time, or auto-unseal
+
+OpenBao re-seals on every pod restart. Either **manually** re-run step 2 (break-glass), or
+set up **auto-unseal**: store the unseal key in a `*.sops.yaml` + a small init/Job that
+unseals on start (adds one SOPS secret, makes reboots unattended). Record the chosen approach
+here once decided.
+
+### (Optional) Authentik OIDC login to the UI
+
+OpenBao's OIDC auth is free. To log into `openbao.${SECRET_DOMAIN}` via Authentik: add an
+OIDC provider/app in Authentik, then `bao auth enable oidc` + `bao write auth/oidc/config …`
++ a role/group mapping. (Expand when wired.)
+
+After the store is Ready, migrate external secrets with the recipe below — put each value
+under `secret/<name>` (KV v2), then add the matching `ExternalSecret`.
 
 ## Recipe: migrate an external secret
 
-1. **Seed** the value into Infisical (UI/CLI) under the agreed key/properties (e.g.
+1. **Seed** the value into OpenBao (`secret/<name>`, KV v2) under the agreed key/properties (e.g.
    `garage-forgejo` → `access_key_id` / `secret_access_key`). Use the existing decrypted
    value for at-rest keys.
 2. Add `app/externalsecret.yaml` using the matching
    [shape](../external-secrets-plan.md#external-externalsecret-three-shapes) (existingSecret /
-   bulk env / per-key), `secretStoreRef: { kind: ClusterSecretStore, name: infisical }`,
+   bulk env / per-key), `secretStoreRef: { kind: ClusterSecretStore, name: openbao }`,
    preserving exact Secret name + key names.
 3. Add the `dependsOn`, validate, commit, push.
 4. Confirm sync + app health, then delete the `*.sops.yaml`.
