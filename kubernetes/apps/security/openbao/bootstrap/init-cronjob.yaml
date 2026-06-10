@@ -1,0 +1,65 @@
+---
+# Auto-init: initialises OpenBao on a fresh/wiped instance and stores the generated
+# unseal key + root token as the openbao-keys Secret. Idempotent (no-op once
+# initialised), so it safely self-heals and re-bootstraps after a recreation.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: openbao-init
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          serviceAccountName: openbao-bootstrap
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 100
+            runAsGroup: 1000
+          initContainers:
+            - name: init
+              image: docker.io/openbao/openbao:2.5.4
+              command:
+                - "/bin/sh"
+                - "/scripts/init.sh"
+              env:
+                - name: HOME
+                  value: /tmp
+              volumeMounts:
+                - {name: scripts, mountPath: /scripts}
+                - {name: shared, mountPath: /shared}
+                - {name: tmp, mountPath: /tmp}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+          containers:
+            - name: store
+              image: registry.k8s.io/kubectl:v1.33.1
+              command:
+                - "/bin/sh"
+                - "/scripts/store.sh"
+              env:
+                - name: HOME
+                  value: /tmp
+              volumeMounts:
+                - {name: scripts, mountPath: /scripts}
+                - {name: shared, mountPath: /shared}
+                - {name: tmp, mountPath: /tmp}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+          volumes:
+            - name: scripts
+              configMap: {name: openbao-bootstrap}
+            - name: shared
+              emptyDir: {}
+            - name: tmp
+              emptyDir: {}

@@ -1,0 +1,51 @@
+---
+# Auto-config: applies the full OpenBao configuration (KV, k8s auth, ESO role,
+# policies, identity) idempotently using the root token from openbao-keys. Self-heals
+# drift and re-converges after a fresh re-init. No human steps.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: openbao-config
+spec:
+  schedule: "2-59/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          serviceAccountName: openbao-bootstrap
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 100
+            runAsGroup: 1000
+          containers:
+            - name: config
+              image: docker.io/openbao/openbao:2.5.4
+              command:
+                - "/bin/sh"
+                - "/scripts/config.sh"
+              env:
+                - name: HOME
+                  value: /tmp
+                - name: ROOT_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: openbao-keys
+                      key: root-token
+                      optional: true
+              volumeMounts:
+                - {name: scripts, mountPath: /scripts}
+                - {name: tmp, mountPath: /tmp}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+          volumes:
+            - name: scripts
+              configMap: {name: openbao-bootstrap}
+            - name: tmp
+              emptyDir: {}

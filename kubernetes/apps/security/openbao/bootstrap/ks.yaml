@@ -3,15 +3,14 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: openbao-config
+  name: openbao-bootstrap
 spec:
-  # No postBuild.substituteFrom: apply.sh contains shell ${vars} that must NOT be
-  # substituted by Flux. The governance config needs no ${SECRET_DOMAIN}.
+  # No postBuild.substituteFrom: the scripts contain shell ${vars} Flux must not touch.
   dependsOn:
     - name: openbao
       namespace: security
   interval: 1h
-  path: ./kubernetes/apps/security/openbao/config
+  path: ./kubernetes/apps/security/openbao/bootstrap
   prune: true
   sourceRef:
     kind: GitRepository
