@@ -1,0 +1,34 @@
+---
+# TEMPLATE — OpenBao auto-unseal key. This becomes part of the bootstrap floor
+# (alongside the age key): with it + a surviving raft PVC, reboots are zero-touch.
+# A human creates the encrypted version; this plain template is never applied.
+#
+#   cd kubernetes/apps/security/openbao/app
+#   cp openbao-unseal.template.yaml openbao-unseal.sops.yaml
+#   # set unseal-key to:  jq -r '.unseal_keys_b64[0]' ~/openbao-init.json
+#   sops --encrypt --in-place openbao-unseal.sops.yaml
+#   # then uncomment BOTH ./openbao-unseal.sops.yaml and ./unsealer.yaml in ./kustomization.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openbao-unseal
+  namespace: security
+type: Opaque
+stringData:
+  unseal-key: ENC[AES256_GCM,data:h1olBwJRWg6lRmtpSnSGz7JQmQA7DYToOa0CKyOxKKYvfXnwePR46QvwUnM=,iv:PvI+/fna7UWjjzFrNlDD4S9PlsdefD9QoY31CYYzVXo=,tag:kMYj1exABWO5ewbi7+lLNw==,type:str]
+sops:
+  age:
+    - enc: |
+        -----BEGIN AGE ENCRYPTED FILE-----
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSAyN1dHQitZMjA2aHltb1BR
+        SHZWcW5ZaDQyL2kyVVJTNlVpcWw5aFFjMGo4Ck9yaU5WWkJVMWZ6MmlESTZVRUoy
+        c01Lc1djcUorZmhHNjJhSERhcEpFLzQKLS0tIG54SUF0ZXJyRHg2akFibGloQ3NV
+        ZzZGd1UyblVTNk5VNkluL3EwcFpvOUEKw1NYeJ2wMxYm2j06wrBpxRc8cjWYdQUz
+        WYeSRB+RWe5e1ho967St7gIQXEH6uKkLSWltkRm+7EvXTc/MPCnWKg==
+        -----END AGE ENCRYPTED FILE-----
+      recipient: age1wkk4mjs434f8e6z65vlmxlmfc4z6a9seekzwmm42c9tuxyfnp97s6vk25t
+  encrypted_regex: ^(data|stringData)$
+  lastmodified: "2026-06-10T04:27:21Z"
+  mac: ENC[AES256_GCM,data:WfL+hRROEDC2YkyNyzhyO6/0SR4SdIHeXbm4RrUroD3FPNru5R4wPsWoUrr1AcChwKVDl3dyqwoVbJ6RE6EzAGvqQfj2/rAgxKMjm2z9FjfV2einNvPjHbd+P4rE50cJ8IXp5EtCehIwEpLbjTt5sYXQG6KVei1jO+ilYUEV7Fg=,iv:KClY0Ma/RGNBCL9nzr2FmuwGZ7eaLSXIYakEjJ7jjUQ=,tag:fpEjAkaY4HSptLi+Gwikkg==,type:str]
+  mac_only_encrypted: true
+  version: 3.13.1
