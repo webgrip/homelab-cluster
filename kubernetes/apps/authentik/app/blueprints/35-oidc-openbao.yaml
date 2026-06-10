@@ -1,0 +1,115 @@
+---
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+version: 1
+metadata:
+  name: Homelab - OpenBao OIDC
+  labels:
+    blueprints.goauthentik.io/description: OpenBao OIDC provider and application.
+    blueprints.goauthentik.io/instantiate: "true"
+context:
+  domain: ${SECRET_DOMAIN}
+  app_host: openbao
+entries:
+  # --- Dependencies: ensure prerequisite blueprints are applied first ---
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: Homelab - Core groups and users
+      required: true
+
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: Homelab - Policies
+      required: true
+
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: Homelab - Authentication and MFA flows
+      required: true
+
+  # --- OIDC provider and application ---
+  # client_secret is intentionally NOT set here: Authentik generates it and it is
+  # copied into OpenBao's auth/oidc/config once (CLI ceremony). It never lives in Git.
+  - model: authentik_providers_oauth2.oauth2provider
+    id: openbao-oidc-provider
+    identifiers:
+      name: openbao-oidc
+    attrs:
+      name: OpenBao OIDC
+      client_type: confidential
+      client_id: openbao
+      grant_types:
+        - authorization_code
+        - refresh_token
+      redirect_uris:
+        - matching_mode: strict
+          url: !Format
+            - "https://%s.%s/ui/vault/auth/oidc/oidc/callback"
+            - !Context app_host
+            - !Context domain
+        - matching_mode: strict
+          url: "http://localhost:8250/oidc/callback"
+      authentication_flow: !Find
+        - authentik_flows.flow
+        - - slug
+          - homelab-authentication
+      authorization_flow: !Find
+        - authentik_flows.flow
+        - - slug
+          - default-provider-authorization-explicit-consent
+      invalidation_flow: !Find
+        - authentik_flows.flow
+        - - slug
+          - default-provider-invalidation-flow
+      property_mappings:
+        - !Find
+          - authentik_providers_oauth2.scopemapping
+          - - scope_name
+            - "openid"
+        - !Find
+          - authentik_providers_oauth2.scopemapping
+          - - scope_name
+            - "profile"
+        - !Find
+          - authentik_providers_oauth2.scopemapping
+          - - scope_name
+            - "email"
+
+  - model: authentik_core.application
+    id: openbao-oidc-app
+    identifiers:
+      slug: openbao
+    attrs:
+      name: OpenBao
+      provider: !KeyOf openbao-oidc-provider
+      meta_launch_url: !Format
+        - "https://%s.%s"
+        - !Context app_host
+        - !Context domain
+      meta_description: OpenBao secrets manager login via Authentik OIDC.
+      open_in_new_tab: true
+      policy_engine_mode: all
+
+  - model: authentik_policies.policybinding
+    identifiers:
+      order: 0
+      policy: !Find
+        - authentik_policies_expression.expressionpolicy
+        - - name
+          - homelab-users-only
+      target: !KeyOf openbao-oidc-app
+    attrs:
+      enabled: true
+
+  - model: authentik_policies.policybinding
+    identifiers:
+      order: 10
+      policy: !Find
+        - authentik_policies_expression.expressionpolicy
+        - - name
+          - homelab-mfa-required
+      target: !KeyOf openbao-oidc-app
+    attrs:
+      enabled: true
