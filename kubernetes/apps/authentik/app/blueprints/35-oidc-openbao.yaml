@@ -29,6 +29,20 @@ entries:
         name: Homelab - Authentication and MFA flows
       required: true
 
+  # --- Groups scope: OpenBao maps the 'homelab-admins' group to its admins policy ---
+  - model: authentik_providers_oauth2.scopemapping
+    id: openbao-oidc-groups-scope
+    identifiers:
+      name: openbao-groups
+    attrs:
+      name: openbao-groups
+      scope_name: groups
+      description: Group names for OpenBao policy mapping.
+      expression: |
+        return {
+            "groups": [group.name for group in request.user.ak_groups.all()],
+        }
+
   # --- OIDC provider and application ---
   # client_secret is intentionally NOT set here: Authentik generates it and it is
   # copied into OpenBao's auth/oidc/config once (CLI ceremony). It never lives in Git.
@@ -83,6 +97,7 @@ entries:
           - authentik_providers_oauth2.scopemapping
           - - scope_name
             - "email"
+        - !KeyOf openbao-oidc-groups-scope
 
   - model: authentik_core.application
     id: openbao-oidc-app
