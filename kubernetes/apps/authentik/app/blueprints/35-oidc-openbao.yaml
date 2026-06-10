@@ -40,6 +40,13 @@ entries:
       name: OpenBao OIDC
       client_type: confidential
       client_id: openbao
+      # OpenBao only accepts RS256-signed id_tokens. Without a signing_key Authentik
+      # falls back to HS256 (HMAC w/ client_secret), which OpenBao rejects
+      # ("unexpected signature algorithm HS256"). Pin the default RSA keypair.
+      signing_key: !Find
+        - authentik_crypto.certificatekeypair
+        - - name
+          - authentik Self-signed Certificate
       grant_types:
         - authorization_code
         - refresh_token
