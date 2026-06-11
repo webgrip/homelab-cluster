@@ -49,8 +49,6 @@ AK_RESP=""
 [ -n "${AK_TOKEN}" ] && AK_RESP="$(wget -qO- --header="Authorization: Bearer ${AK_TOKEN}" \
   'http://authentik-server.authentik.svc.cluster.local/api/v3/providers/oauth2/?search=openbao' 2>/dev/null)"
 CS="$(printf '%s' "${AK_RESP}" | grep -o '"client_secret": *"[^"]*"' | head -1 | sed 's/.*: *"//; s/"$//')"
-echo "   debug: k8s_resp_len=${#K8S_RESP} is_secret=$(printf '%s' "${K8S_RESP}" | grep -c '"kind":"Secret"') ak_token=$([ -n "${AK_TOKEN}" ] && echo set || echo EMPTY) ak_resp_len=${#AK_RESP} cs=$([ -n "${CS}" ] && echo set || echo EMPTY) domain=${SECRET_DOMAIN:-EMPTY}"
-printf '%s' "${K8S_RESP}" | grep -q '"kind":"Secret"' || echo "   debug-k8s-resp: $(printf '%s' "${K8S_RESP}" | head -c 400 | tr '\n' ' ')"
 if [ -n "${CS}" ] && [ -n "${SECRET_DOMAIN:-}" ]; then
   bao write auth/oidc/config \
     oidc_discovery_url="https://authentik.${SECRET_DOMAIN}/application/o/openbao/" \
