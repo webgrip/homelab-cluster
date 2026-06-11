@@ -47,7 +47,7 @@ AK_TOKEN="$(wget -qO- --no-check-certificate --header="Authorization: Bearer ${S
   | grep -o '"AUTHENTIK_BOOTSTRAP_TOKEN":"[^"]*"' | sed 's/.*:"//; s/"//' | base64 -d 2>/dev/null)"
 CS=""
 [ -n "${AK_TOKEN}" ] && CS="$(wget -qO- --header="Authorization: Bearer ${AK_TOKEN}" \
-  'http://authentik-server.authentik.svc.cluster.local/api/v3/providers/oauth2/?name=openbao-oidc' 2>/dev/null \
+  'http://authentik-server.authentik.svc.cluster.local/api/v3/providers/oauth2/?search=openbao' 2>/dev/null \
   | grep -o '"client_secret":"[^"]*"' | head -1 | sed 's/.*:"//; s/"//')"
 if [ -n "${CS}" ] && [ -n "${SECRET_DOMAIN:-}" ]; then
   bao write auth/oidc/config \
