@@ -36,6 +36,11 @@ bao write auth/kubernetes/role/external-secrets \
 bao write auth/kubernetes/role/openbao-snapshot \
   bound_service_account_names=openbao-snapshot bound_service_account_namespaces=security \
   policies=snapshot ttl=10m >/dev/null
+# Write access for the one-off migration (ESO PushSecret seeds existing Secrets into KV).
+bao policy write external-secrets-push /config/push.hcl
+bao write auth/kubernetes/role/external-secrets-push \
+  bound_service_account_names=external-secrets bound_service_account_namespaces=security \
+  policies=external-secrets-push ttl=1h >/dev/null
 
 echo "==> OIDC (client_secret read from Authentik; no SOPS)"
 SAT="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
