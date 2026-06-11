@@ -1,15 +1,17 @@
 #!/bin/sh
-# Auto-config: applies the full OpenBao configuration idempotently using the root
-# token from openbao-keys. Self-heals drift, re-converges after a fresh re-init.
-# SECRET_DOMAIN comes from the openbao-domain ConfigMap (envFrom); ${SECRET_DOMAIN}
-# below is shell env expansion (this ks has no Flux substituteFrom).
+# Ongoing reconcile — runs as the scoped config-admin role via Kubernetes auth (NO root).
+# Re-asserts policies, k8s auth roles, identity, and OIDC config idempotently. The one-time
+# root-only setup (KV mount, enabling auth methods, revoking root) is done by init.sh on a
+# fresh cluster, or by the one-time transition on an already-initialised instance.
 export BAO_ADDR="http://openbao.security.svc.cluster.local:8200"
 
-if [ -z "${ROOT_TOKEN:-}" ]; then
-  echo "openbao-keys not present yet (init not finished); will retry next run"
+JWT="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+BAO_TOKEN="$(bao write -field=token auth/kubernetes/login role=openbao-config jwt="${JWT}" 2>/dev/null)"
+if [ -z "${BAO_TOKEN}" ]; then
+  echo "config-admin role not present yet (run the one-time bootstrap); retry next run"
   exit 0
 fi
-export BAO_TOKEN="${ROOT_TOKEN}"
+export BAO_TOKEN
 
 n=0
 until bao status >/dev/null 2>&1; do
@@ -17,30 +19,26 @@ until bao status >/dev/null 2>&1; do
   sleep 3
 done
 
-echo "==> KV v2 at secret/"
-bao secrets list -format=json 2>/dev/null | grep -q '"secret/"' || bao secrets enable -path=secret kv-v2
-
-echo "==> kubernetes auth"
-bao auth list -format=json 2>/dev/null | grep -q '"kubernetes/"' || bao auth enable kubernetes
-bao write auth/kubernetes/config kubernetes_host="https://kubernetes.default.svc" >/dev/null
-
 echo "==> policies"
-bao policy write admins /config/admins.hcl
-bao policy write external-secrets /config/external-secrets.hcl
-bao policy write snapshot /config/snapshot.hcl
+bao policy write admins /scripts/admins.hcl
+bao policy write external-secrets /scripts/external-secrets.hcl
+bao policy write snapshot /scripts/snapshot.hcl
+bao policy write external-secrets-push /scripts/push.hcl
+bao policy write config-admin /scripts/config-admin.hcl
 
-echo "==> kubernetes roles (ESO read, raft snapshot)"
+echo "==> kubernetes roles"
 bao write auth/kubernetes/role/external-secrets \
   bound_service_account_names=external-secrets bound_service_account_namespaces=security \
   policies=external-secrets ttl=1h >/dev/null
-bao write auth/kubernetes/role/openbao-snapshot \
-  bound_service_account_names=openbao-snapshot bound_service_account_namespaces=security \
-  policies=snapshot ttl=10m >/dev/null
-# Write access for the one-off migration (ESO PushSecret seeds existing Secrets into KV).
-bao policy write external-secrets-push /config/push.hcl
 bao write auth/kubernetes/role/external-secrets-push \
   bound_service_account_names=external-secrets bound_service_account_namespaces=security \
   policies=external-secrets-push ttl=1h >/dev/null
+bao write auth/kubernetes/role/openbao-snapshot \
+  bound_service_account_names=openbao-snapshot bound_service_account_namespaces=security \
+  policies=snapshot ttl=10m >/dev/null
+bao write auth/kubernetes/role/openbao-config \
+  bound_service_account_names=openbao-config bound_service_account_namespaces=security \
+  policies=config-admin ttl=20m >/dev/null
 
 echo "==> OIDC (client_secret read from Authentik; no SOPS)"
 SAT="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
@@ -52,7 +50,6 @@ CS=""
   'http://authentik-server.authentik.svc.cluster.local/api/v3/providers/oauth2/?name=openbao-oidc' 2>/dev/null \
   | grep -o '"client_secret":"[^"]*"' | head -1 | sed 's/.*:"//; s/"//')"
 if [ -n "${CS}" ] && [ -n "${SECRET_DOMAIN:-}" ]; then
-  bao auth list 2>/dev/null | awk '{print $1}' | grep -q '^oidc/$' || bao auth enable oidc
   bao write auth/oidc/config \
     oidc_discovery_url="https://authentik.${SECRET_DOMAIN}/application/o/openbao/" \
     oidc_client_id=openbao oidc_client_secret="${CS}" default_role=default >/dev/null
@@ -62,7 +59,7 @@ if [ -n "${CS}" ] && [ -n "${SECRET_DOMAIN:-}" ]; then
     allowed_redirect_uris="https://openbao.${SECRET_DOMAIN}/ui/vault/auth/oidc/oidc/callback,http://localhost:8250/oidc/callback" >/dev/null
   echo "   oidc configured"
 else
-  echo "   oidc skipped (Authentik token/client_secret/domain unavailable)"
+  echo "   oidc skipped (Authentik token/client_secret/domain unavailable, or oidc not enabled)"
 fi
 
 echo "==> identity: external 'openbao-admins' group (policy admins) <- Authentik 'homelab-admins'"
@@ -76,4 +73,4 @@ else
   echo "   oidc not enabled yet; skipping group-alias"
 fi
 
-echo "==> config converged"
+echo "==> config converged (scoped config-admin; no root)"

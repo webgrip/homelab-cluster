@@ -1,7 +1,6 @@
 ---
-# Auto-config: applies the full OpenBao configuration (KV, k8s auth, ESO role,
-# policies, identity) idempotently using the root token from openbao-keys. Self-heals
-# drift and re-converges after a fresh re-init. No human steps.
+# Auto-config: reconciles policies, k8s auth roles, identity, and OIDC idempotently as the
+# scoped config-admin role (k8s auth, NOT root). Self-heals drift. No human steps, no root.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -16,7 +15,7 @@ spec:
       backoffLimit: 1
       template:
         spec:
-          serviceAccountName: openbao-bootstrap
+          serviceAccountName: openbao-config
           restartPolicy: Never
           securityContext:
             runAsNonRoot: true
@@ -31,12 +30,6 @@ spec:
               env:
                 - name: HOME
                   value: /tmp
-                - name: ROOT_TOKEN
-                  valueFrom:
-                    secretKeyRef:
-                      name: openbao-keys
-                      key: root-token
-                      optional: true
               envFrom:
                 - configMapRef:
                     name: openbao-domain

@@ -5,13 +5,21 @@ metadata:
   name: openbao-bootstrap
   namespace: security
 ---
+# Config job identity — binds to the OpenBao config-admin role via Kubernetes auth.
+# Needs no k8s RBAC (k8s auth uses the SA's projected token).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openbao-config
+  namespace: security
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: openbao-bootstrap
   namespace: security
 rules:
-  # Persist the generated unseal key + root token as the openbao-keys Secret.
+  # Persist the generated unseal key as the openbao-keys Secret.
   - apiGroups:
       - ""
     resources:

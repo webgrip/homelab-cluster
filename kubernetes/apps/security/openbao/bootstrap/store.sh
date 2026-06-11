@@ -1,13 +1,12 @@
 #!/bin/sh
-# Persist the freshly-generated keys as the openbao-keys Secret (idempotent apply).
-# Skips when init found OpenBao already initialized.
+# Persist ONLY the unseal key as the openbao-keys Secret (idempotent apply). The root
+# token is used + revoked by init.sh and is never stored. Skips when already initialized.
 if [ -f /shared/skip ]; then
   echo "init skipped (already initialized); leaving existing openbao-keys"
   exit 0
 fi
-[ -s /shared/root-token ] || { echo "no keys to store"; exit 1; }
+[ -s /shared/unseal-key ] || { echo "no unseal key to store"; exit 1; }
 kubectl create secret generic openbao-keys -n security \
   --from-file=unseal-key=/shared/unseal-key \
-  --from-file=root-token=/shared/root-token \
   --dry-run=client -o yaml | kubectl apply -f -
-echo "openbao-keys stored"
+echo "openbao-keys stored (unseal-key only; no root token)"
