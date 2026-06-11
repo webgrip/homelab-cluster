@@ -1,0 +1,32 @@
+---
+# Lets the openbao-config CronJob (security/openbao-bootstrap SA) read the Authentik
+# API token so it can fetch the OpenBao OIDC provider's client_secret and configure
+# OpenBao's oidc auth as code (keeps the secret out of Git).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openbao-bootstrap-reader
+  namespace: authentik
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    resourceNames:
+      - "authentik-secret"
+    verbs:
+      - "get"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openbao-bootstrap-reader
+  namespace: authentik
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: openbao-bootstrap-reader
+subjects:
+  - kind: ServiceAccount
+    name: openbao-bootstrap
+    namespace: security
