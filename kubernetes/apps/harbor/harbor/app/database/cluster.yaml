@@ -23,7 +23,10 @@ spec:
       isWALArchiver: true
       parameters:
         barmanObjectName: harbor-db-store
-        serverName: harbor-db
+        # Bumped after a clean DB re-init (the prior cluster left WALs at the old
+        # serverName path, tripping barman's "Expected empty archive" check). A fresh
+        # serverName gives the recreated cluster a clean archive lineage.
+        serverName: harbor-db-r2
   bootstrap:
     initdb:
       # Harbor's core database (chart default `database.external.coreDatabase`).
