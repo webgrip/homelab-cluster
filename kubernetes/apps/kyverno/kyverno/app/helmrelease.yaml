@@ -43,7 +43,11 @@ spec:
       backgroundScan:
         enabled: true
         backgroundScanWorkers: 4
-        backgroundScanInterval: 1h
+        # Daily instead of hourly: the hourly re-scan was re-emitting ~12k audit
+        # PolicyViolation events/hour (events have a 1h TTL), inflating etcd and the
+        # apiservers' watch caches (soyo apiserver was using 3.4Gi). Violations are
+        # still recorded in PolicyReports; only the redundant event churn shrinks.
+        backgroundScanInterval: 24h
         skipResourceFilters: false
       generateValidatingAdmissionPolicy:
         enabled: true
