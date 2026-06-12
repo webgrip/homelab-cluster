@@ -1,0 +1,33 @@
+---
+# yaml-language-server: $schema=../../../../../schemas/cnpg-cluster.schema.json
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: harbor-db
+  namespace: harbor
+  labels:
+    monitoring.webgrip.io/enabled: "true"
+spec:
+  instances: 1
+  inheritedMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
+  storage:
+    size: 20Gi
+    storageClass: longhorn
+  walStorage:
+    size: 10Gi
+    storageClass: longhorn
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: harbor-db-store
+        serverName: harbor-db
+  bootstrap:
+    initdb:
+      # Harbor's core database (chart default `database.external.coreDatabase`).
+      # No bootstrap secret: CNPG generates the `harbor-db-app` Secret for owner
+      # `harbor`, which the HelmRelease consumes via `database.external.existingSecret`.
+      database: registry
+      owner: harbor

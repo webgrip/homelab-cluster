@@ -1,0 +1,127 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/fluxcd/helm-controller/main/docs/api/v2/helmrelease.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: harbor
+spec:
+  chart:
+    spec:
+      chart: harbor
+      version: 1.19.1
+      sourceRef:
+        kind: HelmRepository
+        name: harbor
+        namespace: harbor
+  interval: 1h
+  timeout: 20m
+  maxHistory: 3
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  valuesFrom:
+    # Phase 2 (Authentik OIDC): a `core.configureUserSettings` fragment lives at
+    # OpenBao `secret/harbor/oidc` (key values.yaml) and is surfaced by the
+    # harbor-oidc-values ExternalSecret. `optional: true` lets Harbor boot in
+    # local `db_auth` until that secret exists.
+    - kind: Secret
+      name: harbor-oidc-values
+      valuesKey: values.yaml
+      optional: true
+  values:
+    externalURL: https://harbor.${SECRET_DOMAIN}
+    logLevel: info
+
+    # TLS terminates at the envoy gateway (wildcard cert); Harbor is fronted by an
+    # explicit HTTPRoute (httproute.yaml) on the `harbor` ClusterIP service.
+    expose:
+      type: clusterIP
+      tls:
+        enabled: false
+      clusterIP:
+        name: harbor
+        ports:
+          httpPort: 80
+
+    # Admin password + Harbor's internal secrets, all from OpenBao via the
+    # harbor-core ExternalSecret. NOTE: `secretKey` must be exactly 16 chars and
+    # `CSRF_KEY` exactly 32 — generate accordingly (see the harbor runbook).
+    existingSecretAdminPassword: harbor-core
+    existingSecretAdminPasswordKey: HARBOR_ADMIN_PASSWORD
+    existingSecretSecretKey: harbor-core # key: secretKey
+    core:
+      existingSecret: harbor-core # key: secret
+      existingXsrfSecret: harbor-core # key: CSRF_KEY
+    registry:
+      existingSecret: harbor-core # key: REGISTRY_HTTP_SECRET
+    jobservice:
+      existingSecret: harbor-core # key: JOBSERVICE_SECRET
+
+    persistence:
+      enabled: true
+      resourcePolicy: keep
+      imageChartStorage:
+        # Registry blobs live in Garage S3 (ADR-0002). disableredirect is REQUIRED
+        # for path-style S3 backends (Garage/MinIO) or clients hit redirect loops.
+        type: s3
+        disableredirect: true
+        s3:
+          existingSecret: harbor-s3 # keys REGISTRY_STORAGE_S3_ACCESSKEY / SECRETKEY
+          region: garage
+          bucket: harbor
+          regionendpoint: http://10.0.0.110:3900
+          secure: false
+          v4auth: true
+      # No cluster default StorageClass exists — every PVC sets storageClass and
+      # ReadWriteOnce explicitly (registry + database PVCs are ignored here since
+      # blobs are on S3 and Postgres is external, but kept valid for safety).
+      persistentVolumeClaim:
+        registry:
+          storageClass: longhorn-general
+          accessMode: ReadWriteOnce
+          size: 5Gi
+        jobservice:
+          jobLog:
+            storageClass: longhorn-general
+            accessMode: ReadWriteOnce
+            size: 2Gi
+        database:
+          storageClass: longhorn-general
+          accessMode: ReadWriteOnce
+          size: 1Gi
+        redis:
+          storageClass: longhorn-general
+          accessMode: ReadWriteOnce
+          size: 2Gi
+        trivy:
+          storageClass: longhorn-general
+          accessMode: ReadWriteOnce
+          size: 5Gi
+
+    database:
+      type: external
+      external:
+        host: harbor-db-rw.harbor.svc.cluster.local
+        port: "5432"
+        username: harbor
+        coreDatabase: registry
+        existingSecret: harbor-db-app # CNPG-generated; key: password
+        sslmode: require
+
+    redis:
+      type: internal
+
+    trivy:
+      enabled: true
+
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+        additionalLabels:
+          release: kube-prometheus-stack

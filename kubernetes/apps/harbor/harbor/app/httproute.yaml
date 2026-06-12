@@ -1,0 +1,31 @@
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: harbor
+  namespace: harbor
+  annotations:
+    external-dns.alpha.kubernetes.io/exclude: "true"
+    monitoring.webgrip.io/synthetic-check: k6-ingress-canary
+spec:
+  hostnames:
+    - harbor.${SECRET_DOMAIN}
+  parentRefs:
+    - name: envoy-internal
+      namespace: network
+      sectionName: https
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set:
+              - name: X-Forwarded-Proto
+                value: https
+      backendRefs:
+        - name: harbor
+          namespace: harbor
+          port: 80
