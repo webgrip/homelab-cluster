@@ -50,6 +50,18 @@ spec:
     kubeScheduler:
       enabled: false
 
+    # Drop high-cardinality apiserver histogram buckets that nothing here consumes
+    # (~40k active series, ~10% of the head). Kept: apiserver_request_duration_seconds_bucket
+    # and apiserver_request_sli_duration_seconds_bucket — the API-server SLO/burn-rate
+    # rules depend on those. See the observability runbook for the cardinality audit.
+    kubeApiServer:
+      serviceMonitor:
+        metricRelabelings:
+          - action: drop
+            sourceLabels:
+              - __name__
+            regex: "apiserver_request_body_size_bytes_bucket|apiserver_response_sizes_bucket|apiserver_watch_list_duration_seconds_bucket|apiserver_watch_cache_read_wait_seconds_bucket|apiserver_watch_events_sizes_bucket"
+
     prometheus:
       prometheusSpec:
         image:
