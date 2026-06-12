@@ -122,6 +122,9 @@ spec:
     metrics:
       enabled: true
       serviceMonitor:
+        # The Harbor chart already stamps `release: harbor` on its ServiceMonitor;
+        # adding `additionalLabels.release` here produced a duplicate YAML key that
+        # crashed the kustomize post-renderer. The cluster Prometheus uses an empty
+        # serviceMonitorSelector (scrapes ALL ServiceMonitors), so no release label
+        # is needed for discovery.
         enabled: true
-        additionalLabels:
-          release: kube-prometheus-stack
