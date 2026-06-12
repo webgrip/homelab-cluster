@@ -48,19 +48,15 @@ spec:
         ports:
           httpPort: 80
 
-    # Admin password + Harbor's internal secrets, all from OpenBao via the
-    # harbor-core ExternalSecret. NOTE: `secretKey` must be exactly 16 chars and
-    # `CSRF_KEY` exactly 32 — generate accordingly (see the harbor runbook).
-    existingSecretAdminPassword: harbor-core
+    # Pin ONLY the admin password and the at-rest secretKey (both generated in-cluster —
+    # see harbor-admin.externalsecret.yaml). Harbor's other internal secrets (CORE_SECRET,
+    # CSRF_KEY, registry/jobservice) AND the token-signing cert are generated and owned by
+    # the chart in its own `harbor-core` secret. Do NOT override core/registry/jobservice
+    # existingSecret with a partial secret — it displaces the token cert and 500s
+    # /service/token (docker login fails).
+    existingSecretAdminPassword: harbor-admin
     existingSecretAdminPasswordKey: HARBOR_ADMIN_PASSWORD
-    existingSecretSecretKey: harbor-core # key: secretKey
-    core:
-      existingSecret: harbor-core # key: secret
-      existingXsrfSecret: harbor-core # key: CSRF_KEY
-    registry:
-      existingSecret: harbor-core # key: REGISTRY_HTTP_SECRET
-    jobservice:
-      existingSecret: harbor-core # key: JOBSERVICE_SECRET
+    existingSecretSecretKey: harbor-admin # key: secretKey (16 chars)
 
     persistence:
       enabled: true
