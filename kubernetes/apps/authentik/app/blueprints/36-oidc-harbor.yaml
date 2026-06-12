@@ -51,6 +51,11 @@ entries:
     attrs:
       name: Harbor OIDC
       client_type: confidential
+      client_id: harbor
+      # Generated in-cluster (harbor-oidc-client ExternalSecret) and injected via
+      # global.env in the authentik HelmRelease; mirrored to OpenBao secret/harbor/oidc
+      # by the matching PushSecret for Harbor's side. No CLI ceremony.
+      client_secret: !Env HARBOR_OIDC_CLIENT_SECRET
       # Harbor only accepts RS256-signed id_tokens ("oidc: malformed jwt: unexpected
       # signature algorithm HS256"). Without a signing_key Authentik falls back to
       # HS256 (HMAC w/ client_secret). Pin the default RSA keypair — same fix as OpenBao.

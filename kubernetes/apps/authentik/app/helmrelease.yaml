@@ -81,6 +81,16 @@ spec:
           value: file
         - name: AUTHENTIK_STORAGE__FILE__PATH
           value: /data
+        # Consumed by blueprint 36-oidc-harbor via !Env; sourced from the
+        # generated harbor-oidc-client Secret (see its ExternalSecret).
+        # optional: pods must not wedge on ESO lag — the blueprint apply
+        # simply errors until the env exists, then reloader restarts us.
+        - name: HARBOR_OIDC_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: harbor-oidc-client
+              key: HARBOR_OIDC_CLIENT_SECRET
+              optional: true
 
     authentik:
       existingSecret:
