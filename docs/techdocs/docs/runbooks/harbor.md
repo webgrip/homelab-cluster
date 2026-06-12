@@ -12,8 +12,10 @@ Operational guide for the Harbor OCI registry. Design rationale lives in the
 - **Redis** chart-internal `redis-photon`.
 - **Blobs** Garage S3 bucket `harbor` (`10.0.0.110:3900`, path-style, `disableredirect`).
 - **Ingress** LAN-only `HTTPRoute` on `envoy-internal` → `https://harbor.${SECRET_DOMAIN}` (TLS at the gateway).
-- **Secrets**: `harbor-core` is **generated in-cluster** (ESO `password-generator-16/-32`, never manual);
-  `harbor-s3` and (phase 2) `harbor-oidc-values` come from OpenBao. See [External Secrets](../external-secrets-plan.md).
+- **Secrets**: `harbor-admin` (admin password + at-rest `secretKey`) is **generated in-cluster** (ESO
+  `password-generator-16/-32`, never manual); the **chart** owns its other internal secrets + the
+  token-signing cert in its own `harbor-core` secret. `harbor-s3` and (phase 2) `harbor-oidc-values`
+  come from OpenBao. See [External Secrets](../external-secrets-plan.md).
 
 ## First-time bring-up
 
@@ -33,13 +35,13 @@ Operational guide for the Harbor OCI registry. Design rationale lives in the
    ```
 
    This writes `secret/harbor/s3` with `REGISTRY_STORAGE_S3_ACCESSKEY` / `REGISTRY_STORAGE_S3_SECRETKEY`.
-   ESO syncs the `harbor-s3` Secret within ~1m. (`harbor-core` needs nothing — it self-generates.)
+   ESO syncs the `harbor-s3` Secret within ~1m. (`harbor-admin` needs nothing — it self-generates.)
 
 3. **Reconcile & watch**:
 
    ```
    flux -n flux-system reconcile kustomization cluster-apps --with-source
-   kubectl -n harbor get externalsecret          # harbor-core, harbor-s3, cnpg-backup-s3 → SecretSynced
+   kubectl -n harbor get externalsecret          # harbor-admin, harbor-s3, cnpg-backup-s3 → SecretSynced
    kubectl -n harbor get cluster harbor-db -w     # Cluster healthy; harbor-db-app minted
    flux -n harbor get helmrelease harbor
    kubectl -n harbor get pods -w                  # core, registry, portal, jobservice, trivy, redis, exporter
@@ -52,7 +54,7 @@ Operational guide for the Harbor OCI registry. Design rationale lives in the
 The `admin` password is generated (day-to-day login is Authentik OIDC once Phase 2 is on):
 
 ```
-kubectl -n harbor get secret harbor-core -o jsonpath='{.data.HARBOR_ADMIN_PASSWORD}' | base64 -d; echo
+kubectl -n harbor get secret harbor-admin -o jsonpath='{.data.HARBOR_ADMIN_PASSWORD}' | base64 -d; echo
 ```
 
 ## Phase 2 — Authentik OIDC SSO
@@ -86,7 +88,7 @@ kubectl -n harbor get secret harbor-core -o jsonpath='{.data.HARBOR_ADMIN_PASSWO
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| HelmRelease stuck `not ready`; `harbor-core`/`harbor-s3` not `SecretSynced` | OpenBao path missing or sealed | `kubectl -n harbor get externalsecret`; populate `secret/harbor/s3` (`just harbor-s3-cred`); check `ClusterSecretStore/openbao` Ready |
+| HelmRelease stuck `not ready`; `harbor-admin`/`harbor-s3` not `SecretSynced` | OpenBao path missing or sealed | `kubectl -n harbor get externalsecret`; populate `secret/harbor/s3` (`just harbor-s3-cred`); check `ClusterSecretStore/openbao` Ready |
 | PVC `Pending` | no default StorageClass | every PVC must set `storageClass` (`longhorn-general`) — already pinned in the HelmRelease |
 | `registry` pod errors talking to S3 / redirect loops | Garage path-style not honored | `disableredirect: true` + `secure: false` + HTTP `regionendpoint` are mandatory (set already); check Garage at `10.0.0.110:3900` |
 | Registry 5xx / blob I/O failing | Garage down | Garage is a hard dependency (ADR-0002 / [CNPG ↔ Garage](../cnpg-backups.md)); restore Garage |

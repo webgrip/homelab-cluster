@@ -105,13 +105,17 @@ only genuinely-external values come from OpenBao:
 
 | Secret | Source | Keys | Consumed by |
 |--------|--------|------|-------------|
-| `harbor-core` | **ESO generators** (`password-generator-16`/`-32`), generate-once + Retain — no OpenBao, no human | `HARBOR_ADMIN_PASSWORD`, `secretKey` (16), `CSRF_KEY` (32), `REGISTRY_HTTP_SECRET`, `JOBSERVICE_SECRET` | HelmRelease `existingSecret*` |
+| `harbor-admin` | **ESO generators** (`password-generator-16`/`-32`), generate-once + Retain — no OpenBao, no human | `HARBOR_ADMIN_PASSWORD`, `secretKey` (16) | HelmRelease `existingSecretAdminPassword` + `existingSecretSecretKey` |
 | `harbor-s3` | OpenBao `secret/harbor/s3` (one-time human entry — the Garage access key is external) | `REGISTRY_STORAGE_S3_ACCESSKEY`, `REGISTRY_STORAGE_S3_SECRETKEY` | registry blob storage |
 | `harbor-oidc-values` *(Phase 2)* | OpenBao `secret/harbor/oidc` (client secret is minted by Authentik) | `values.yaml` (a `core.configureUserSettings` fragment) | HelmRelease `valuesFrom` (`optional: true`) |
 
-`harbor-core` is pure internal entropy, so it is **generated** — never hand-entered. Note `secretKey`
-is Harbor's at-rest encryption key: generate-once + `deletionPolicy: Retain` keep it stable, but
-deleting the Secret on a populated Harbor mints a new key and orphans encrypted data.
+We pin **only** the admin password and the at-rest `secretKey` (the chart reads `secretKey` straight
+from `.Values` with no `lookup`, so it must be a stable, secure value). Harbor's other internal
+secrets (`CORE_SECRET`, `CSRF_KEY`, registry/jobservice) **and the token-signing cert** are generated
+and owned by the **chart** in its own `harbor-core` secret — overriding `core.existingSecret` with a
+partial secret displaces that token cert and 500s `/service/token` (a bug we hit and fixed during
+bring-up). `secretKey` is the at-rest encryption key: generate-once + `deletionPolicy: Retain` keep
+it stable; deleting the Secret on a populated Harbor mints a new key and orphans encrypted data.
 
 The CNPG database needs **no** ExternalSecret — CNPG emits `harbor-db-app` itself
 ([ADR-0003](adr-0003-external-cnpg-database.md)) — and backup credentials come from the shared
@@ -126,7 +130,7 @@ GitOps, in two phases under `kubernetes/apps/harbor/` (mirrors `kubernetes/apps/
 - `namespace.yaml` + namespace `kustomization.yaml` (`components: [sops, cnpg-backup]`).
 - `harbor/database/` — CNPG `Cluster` `harbor-db` + `ObjectStore` + `ScheduledBackup`.
 - `harbor/app/` — `HelmRepository` (`https://helm.goharbor.io`), `HelmRelease`, `HTTPRoute`
-  (`envoy-internal`), and the `harbor-core` / `harbor-s3` ExternalSecrets.
+  (`envoy-internal`), and the `harbor-admin` / `harbor-s3` ExternalSecrets.
 - Register `./harbor` in `kubernetes/apps/kustomization.yaml`.
 
 **Phase 2 — SSO:** Authentik blueprint `kubernetes/apps/authentik/app/blueprints/36-oidc-harbor.yaml`
@@ -155,7 +159,7 @@ requires `walStorage` and the `monitoring.webgrip.io/enabled` label. See
   ([ADR-0002](adr-0002-registry-blob-storage-garage-s3.md); analogous to the
   [CNPG ↔ Garage WAL risk](../cnpg-backups.md)).
 - **Pending PVCs** if any `storageClass` is omitted — the #1 silent failure given no cluster default.
-- **An un-synced ExternalSecret blocks the HelmRelease** — if `harbor-core` / `harbor-s3` are not
+- **An un-synced ExternalSecret blocks the HelmRelease** — if `harbor-admin` / `harbor-s3` are not
   `SecretSynced`, the OpenBao path/keys are missing; populate them before reconciling.
 - **OIDC first-boot loop** if SSO is wired before the Authentik app exists — hence the phased
   rollout with `optional: true` on the OIDC `valuesFrom`.
