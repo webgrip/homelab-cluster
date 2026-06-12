@@ -16,7 +16,9 @@ function prepare_flux_local_workspace() {
     if [[ -d "${source_dir}/.git" ]]; then
         cp -a "${source_dir}/.git" "${dest_dir}/.git"
     fi
-    chmod -R u+rwX "${dest_dir}"
+    # a+rwX, not u+rwX: the flux-local container runs as a non-host UID and
+    # must write *.original files into the mounted workspace.
+    chmod -R a+rwX "${dest_dir}"
 }
 
 function run_flux_local() {
@@ -63,9 +65,14 @@ function list_flux_kustomizations() {
 
     raw_output="$(mktemp)"
 
-    run_flux_local "${workspace}" \
+    if ! run_flux_local "${workspace}" \
         "flux-local get ks --all-namespaces --path ${FLUX_CLUSTER_PATH} -o wide" \
-        >"${raw_output}" 2>"${stderr_file}"
+        >"${raw_output}" 2>"${stderr_file}"; then
+        # set -e would otherwise abort with the error trapped in stderr_file,
+        # making the script fail with no output at all.
+        cat "${stderr_file}" >&2
+        return 1
+    fi
 
     awk 'NR > 1 && NF >= 2 { print $1 "\t" $2 }' "${raw_output}" | sort -u >"${output_file}"
     rm -f "${raw_output}"
