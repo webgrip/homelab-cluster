@@ -1,0 +1,20 @@
+---
+# Default REQUESTS (no limits!) for longhorn-system containers that declare none.
+# The CSI sidecars (attacher/provisioner/resizer/snapshotter) are created at
+# runtime by longhorn-driver-deployer — not Helm-rendered — so the chart can't
+# set resources on them and they run BestEffort: first OOM/eviction targets on
+# the RAM-tight soyo nodes (soyo-1's sidecars hit ~100 restarts; same defect
+# class as the 2026-06-09 longhorn-manager OOM SEV2, fixed via postRenderer).
+# Requests-only keeps QoS Burstable without adding any OOM-kill ceiling to
+# storage components. Applies on pod (re)creation only.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: default-requests
+  namespace: longhorn-system
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 10m
+        memory: 64Mi
