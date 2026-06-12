@@ -45,6 +45,8 @@ This is the repo's first ADR section; the conventions below apply to everything 
 | RFC | Status | Summary |
 |-----|--------|---------|
 | [Harbor Container Registry](rfc-harbor-registry.md) | Proposed | Deploy a feature-complete Harbor as the cluster's private OCI registry + artifact store. |
+| [Security Hardening — Closing the Loops](rfc-security-hardening.md) | Proposed | Finish the security loops already built: wire encryption, rootless CI, rotation, enforce mode. |
+| [Dynamic Database Credentials](rfc-dynamic-database-credentials.md) | Proposed | Short-lived, per-workload, auto-revoked Postgres creds via OpenBao's database engine. |
 
 ### ADRs
 
@@ -56,3 +58,7 @@ This is the repo's first ADR section; the conventions below apply to everything 
 | [ADR-0004](adr-0004-chart-internal-redis.md) | Accepted | Use the chart-bundled `redis-photon`, not an external Valkey. |
 | [ADR-0005](adr-0005-lan-only-exposure.md) | Accepted | Expose Harbor LAN-only via `envoy-internal`. |
 | [ADR-0006](adr-0006-authentik-oidc-phased.md) | Accepted | Authenticate via Authentik OIDC, layered in a second phase. |
+| [ADR-0007](adr-0007-cilium-wireguard-encryption.md) | Accepted | Encrypt pod-to-pod traffic with Cilium WireGuard (`nodeEncryption` off). |
+| [ADR-0008](adr-0008-rootless-ci-image-builds.md) | Proposed | Replace privileged DinD with rootless BuildKit for CI image builds. |
+| [ADR-0009](adr-0009-secret-rotation-model.md) | Accepted | Rotate via OpenBao write → ESO refresh → Reloader restart; at-rest keys excluded. |
+| [ADR-0010](adr-0010-openbao-dynamic-postgres-credentials.md) | Proposed | Mint short-lived per-workload Postgres creds via OpenBao's database engine. |
