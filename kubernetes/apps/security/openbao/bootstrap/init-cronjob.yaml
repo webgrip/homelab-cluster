@@ -10,7 +10,10 @@ spec:
   schedule: "*/5 * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
-  failedJobsHistoryLimit: 3
+  # 1, not 3: with the 6h TTL below, extra failed-job history only feeds stale
+  # KubeContainerWaiting/KubeJobFailed alerts (jobs created before the TTL change
+  # never expire on their own — the controller prunes them via this limit).
+  failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
       backoffLimit: 1
