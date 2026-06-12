@@ -19,6 +19,9 @@ resolve() {
 file="$(printf '%s' "$input" | jqx -r '.tool_input.file_path // empty' 2>/dev/null || true)"
 [ -n "$file" ] || exit 0
 case "$file" in *kubernetes/*.yaml|*kubernetes/*.yml) ;; *) exit 0;; esac
+# Authentik blueprints are configMapGenerator *data* (no kind:), not standalone
+# k8s manifests, so kubeconform's strict parse always fails on them — skip.
+case "$file" in */authentik/app/blueprints/*) exit 0;; esac
 [ -f "$file" ] || exit 0
 
 problems=""

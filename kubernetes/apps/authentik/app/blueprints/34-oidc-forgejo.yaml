@@ -30,6 +30,21 @@ entries:
         name: Homelab - Authentication and MFA flows
       required: true
 
+  # --- Groups scope: emit the user's Authentik group names so Forgejo can map
+  #     them to org teams + site-admin. ---
+  - model: authentik_providers_oauth2.scopemapping
+    id: forgejo-oidc-groups-scope
+    identifiers:
+      name: forgejo-groups
+    attrs:
+      name: forgejo-groups
+      scope_name: groups
+      description: Group names for Forgejo team + admin mapping.
+      expression: |
+        return {
+            "groups": [group.name for group in request.user.ak_groups.all()],
+        }
+
   # --- OIDC provider and application ---
   - model: authentik_providers_oauth2.oauth2provider
     id: forgejo-oidc-provider
@@ -73,6 +88,7 @@ entries:
           - authentik_providers_oauth2.scopemapping
           - - scope_name
             - "email"
+        - !KeyOf forgejo-oidc-groups-scope
 
   - model: authentik_core.application
     id: forgejo-oidc-app

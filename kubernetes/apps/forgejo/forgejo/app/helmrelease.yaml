@@ -89,6 +89,17 @@ spec:
           provider: openidConnect
           existingSecret: forgejo-oidc-secret
           autoDiscoverUrl: https://authentik.${SECRET_DOMAIN}/application/o/forgejo/.well-known/openid-configuration
+          # Request the groups claim and map Authentik groups -> Forgejo (replaces GitHub teams).
+          scopes: "openid email profile groups"
+          groupClaimName: groups
+          # homelab-admins -> Forgejo SITE admins (so your SSO account stays admin —
+          # make sure your user is in homelab-admins or login will demote it).
+          adminGroup: homelab-admins
+          # group -> {org: [teams]}. The "Developers" team must exist in the webgrip org
+          # (create it once in the UI) for homelab-users to be added; missing teams are skipped.
+          groupTeamMap: '{"homelab-admins":{"webgrip":["Owners"]},"homelab-users":{"webgrip":["Developers"]}}'
+          # Keep team membership strictly in sync with Authentik groups (removes stragglers).
+          groupTeamMapRemoval: true
 
       # Database credentials are injected from the CNPG-managed Secret (forgejo-db-app)
       # as app.ini overrides; non-secret DB settings live under config.database below.
