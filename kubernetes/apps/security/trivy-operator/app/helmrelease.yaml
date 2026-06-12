@@ -72,7 +72,8 @@ spec:
       endpointAdditionalProperties:
         metricRelabelings:
           - action: drop
-            sourceLabels: [__name__]
+            sourceLabels:
+              - __name__
             regex: trivy_(configaudits|exposedsecrets|rbacassessments)_info
 
     trivyOperator:
@@ -125,13 +126,16 @@ spec:
           memory: 1Gi
       server:
         replicas: 1
+        # Right-sized: the server idles at ~30Mi and only holds the Trivy DB
+        # cache while serving scans (scans run in separate job pods). The prior
+        # 1Gi request reserved ~970Mi it never used, jamming the fringe node.
         resources:
           requests:
-            cpu: 200m
-            memory: 1Gi
+            cpu: 100m
+            memory: 256Mi
           limits:
             cpu: "1"
-            memory: 2Gi
+            memory: 1Gi
 
     compliance:
       failEntriesLimit: 25
