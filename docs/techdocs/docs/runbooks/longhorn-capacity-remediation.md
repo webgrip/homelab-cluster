@@ -1,8 +1,34 @@
-# Runbook: Longhorn capacity remediation (in progress)
+# Runbook: Longhorn capacity remediation
 
 Tracks the multi-step effort to relieve Longhorn storage pressure. Started
-2026-06-08. **Resume point: after the first `snapshot-cleanup` RecurringJob run
-(daily 03:00), measure reclaim, then execute the staged actions below.**
+2026-06-08.
+
+> **Status 2026-06-12 — effectively complete.** Tier-1 deletes ✅, recurring
+> snapshot-cleanup ✅, **CNPG 3→2 ✅**. Result: reserved **87% → 69%**, used
+> **65% → 57%**, the chronically-maxed **fringe disk 212/212 → 82Gi**, 708Gi
+> free, `faulted=0`. **HDD (Step 3): skipped** — reservation pressure is resolved,
+> so the destructive reformat/reboot isn't justified; the Talos config stays
+> committed-but-inert as a future growth option. Step 4 (Garage S3 backup target)
+> remains optional. Related: the 2026-06-09 OOM incident
+> ([postmortem](../incidents/2026-06-09-longhorn-oom-cascade.md)).
+>
+> **GOTCHA — Longhorn does NOT auto-reap extra replicas on scale-down.** Lowering
+> `numberOfReplicas` (3→2) sets the spec but the volume controller loops
+> `cleanupExtraHealthyReplicas` as a **no-op** — the 3rd replica is never deleted,
+> so no reservation frees. Restarting the owner `longhorn-manager` makes it worse
+> (triggers replenishment → *more* replicas). Fix: set `numberOfReplicas=2`, then
+> **manually delete the surplus replica CR per volume**, fringe-first to relieve
+> the tight node (deletion sticks because CNPG db volumes have
+> `dataLocality=disabled`):
+>
+> ```bash
+> for V in $(kubectl get volumes.longhorn.io -n longhorn-system -o json \
+>   | jq -r '.items[]|select((.status.kubernetesStatus.pvcName//"")|test("-db-[0-9]+(-wal)?$|cnpg-disaster-recovery"))|select(.spec.numberOfReplicas==2)|.metadata.name'); do
+>   REPS=$(kubectl get replicas.longhorn.io -n longhorn-system -o json \
+>     | jq -r --arg v "$V" '[.items[]|select(.spec.volumeName==$v)]|sort_by(.spec.nodeID!="fringe-workstation")|.[].metadata.name')
+>   [ "$(printf '%s\n' "$REPS" | grep -c .)" -gt 2 ] && kubectl -n longhorn-system delete replicas.longhorn.io "$(printf '%s\n' "$REPS" | head -1)"
+> done
+> ```
 
 ## Why
 
