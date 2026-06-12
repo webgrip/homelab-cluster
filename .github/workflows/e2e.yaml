@@ -37,6 +37,14 @@ jobs:
       - name: Verify OCIRepository digests
         run: ./scripts/verify-oci-digests.sh "$GITHUB_WORKSPACE"
 
+      - name: Lint YAML (yamllint, relaxed)
+        run: |
+          python3 -m pip install --quiet yamllint==1.38.0
+          yamllint -d relaxed kubernetes
+
+      - name: Validate alert annotations
+        run: python3 scripts/validate_alert_annotations.py "$GITHUB_WORKSPACE"
+
       - name: Run flux-local test
         run: ./scripts/run-flux-local-test.sh "$GITHUB_WORKSPACE"
 
