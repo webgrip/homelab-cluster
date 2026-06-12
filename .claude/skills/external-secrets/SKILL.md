@@ -65,6 +65,7 @@ role (k8s auth, not root). Re-bootstrap: scale STS to 0 → delete PVC → scale
 `delete pod && delete pvc` fails — Longhorn re-grabs the PVC before the StatefulSet recreates it).
 
 ## Gotchas
+- **Generator + `refreshInterval: "0"` = truly generate-once.** Adding a NEW key to such an ExternalSecret is NOT picked up on a spec change (ESO sees the target Secret as fulfilled). To add/seed the key, delete the derived Secret once (`kubectl delete secret <name>` — ESO recreates it with all current `dataFrom` entries; safe only before the app stores at-rest data, since it also regenerates the existing values).
 - `dataFrom: [{extract: {key: <path>}}]` pulls ALL keys back (verified exact); the PushSecret still lists each.
 - **k8s API returns pretty-printed JSON** — shell parsers must tolerate whitespace: `grep '"k": *"[^"]*"'`, `sed 's/.*: *"//; s/"$//'`.
 - Don't generate manifests inside a bash function/pipeline here — `sed`/`cat`/`kubectl` hit PATH/empty issues; use Write/Edit tools. And never `rm` with broad globs (`*-secrets.*` deleted committed files; recovered via `git restore`).
