@@ -80,15 +80,15 @@ also did **not** catch this: archiving reported healthy while the WAL still fill
 
 ## Learnings & action items
 
-| # | Action | Type | Priority |
+| # | Action | Type | Status |
 |---|---|---|---|
-| 1 | Give `longhorn-manager` a **memory request (Guaranteed/Burstable QoS)** so it's not the first OOM target — or add node RAM. Investigate chart support. | prevention (root) | **P1** |
-| 2 | Finish **CNPG 3→2 replicas + add the HDD** — less rebuild memory + reservation headroom. Capacity work *is* stability work. | prevention | **P1** |
-| 3 | Keep **`replica-auto-balance: disabled`**; rebalance manually after deliberate changes. | done | — |
-| 4 | **De-spike `snapshot-cleanup`** — all 40 volumes at 03:00 is a synchronized load event; stagger or shrink blast radius on RAM-tight nodes. | prevention | P2 |
-| 5 | Document that **CNPG `walStorage` resize needs a manual PVC expand** (git size alone won't apply). Add to the CNPG runbook. | docs | P2 |
-| 6 | Add an alert on **`longhorn-system` OOMKills / container restart rate**; verify existing degraded/WAL alerts are routed and acted on. | detection | P2 |
-| 7 | Capture the **stuck-disk fix** as a reusable runbook step (below). | docs | done |
+| 1 | Give `longhorn-manager` **Guaranteed QoS** so it's not the first OOM target. | prevention (root) | ✅ done — `5fb9390` (postRenderer, both DS containers req==lim; applies on Flux reconcile) |
+| 2 | Finish **CNPG 3→2 replicas + add the HDD** — less rebuild memory + reservation headroom. Capacity work *is* stability work. | prevention | ⏳ open (P1) — imperative/human-gated, see [remediation runbook](../runbooks/longhorn-capacity-remediation.md) |
+| 3 | Keep **`replica-auto-balance: disabled`**; rebalance manually after deliberate changes. | prevention | ✅ done — `058ca9d` |
+| 4 | De-spike `snapshot-cleanup` so it isn't a synchronized 03:00 load event. | prevention | ✅ already gentle — RecurringJob runs `concurrency=1` (sequential); auto-balance was the real spike. No change needed. |
+| 5 | Document that **CNPG `walStorage` resize needs a manual PVC expand** (git size alone won't apply). Add to the CNPG runbook. | docs | ⏳ open (P2) |
+| 6 | Alert on **`longhorn-manager` OOMKills / restart rate** (ObservabilityOOMKills only covers `namespace=observability`). | detection | ✅ done — `498267e` (`LonghornManagerOOMKilled` + `LonghornManagerRestarting`) |
+| 7 | Capture the **stuck-disk fix** as a reusable runbook step (below). | docs | ✅ done |
 | 8 | **GitOps-only guard hook fences the agent out of `kubectl`** — recovery needed a human at the keyboard for every mutation. Decide: vetted break-glass allowlist vs. accept the tradeoff. | process | P3 |
 
 ## Reusable nuggets
