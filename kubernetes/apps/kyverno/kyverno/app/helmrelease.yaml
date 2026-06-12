@@ -92,9 +92,12 @@ spec:
         minAvailable: 2
         unhealthyPodEvictionPolicy: AlwaysAllow
       topologySpreadConstraints:
+        # DoNotSchedule, not ScheduleAnyway: the svc-fail webhooks make co-located
+        # replicas a cluster-wide Flux outage risk if that one node degrades
+        # (2026-06-12: 2 of 3 replicas sat on soyo-1 through a starvation wave).
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: ScheduleAnyway
+          whenUnsatisfiable: DoNotSchedule
           labelSelector:
             matchLabels:
               app.kubernetes.io/component: admission-controller
