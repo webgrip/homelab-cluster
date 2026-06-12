@@ -30,11 +30,21 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "Kyverno admission denied: {{ $labels.policy_name }}/{{ $labels.rule_name }}"
-            description: >-
-              Policy {{ $labels.policy_name }} rule {{ $labels.rule_name }} denied a
-              {{ $labels.resource_kind }} in namespace {{ $labels.resource_namespace }}
-              in the last 5 minutes. Check the admission webhook logs and PolicyReports.
+            summary: "Kyverno admission denied ({{ $labels.policy_name }}/{{ $labels.rule_name }})"
+            description: |
+              What's happening:
+              - Policy {{ $labels.policy_name }} rule {{ $labels.rule_name }} denied a
+                {{ $labels.resource_kind }} in namespace {{ $labels.resource_namespace }} (last 5m).
+
+              Impact/risk:
+              - A workload apply/update is being blocked at admission; a deploy may be stuck.
+
+              Likely causes:
+              - A genuine policy violation, or a legitimate workload needing a governed PolicyException.
+
+              First actions:
+              - Inspect PolicyReports and Kyverno admission webhook logs for the resource.
+              - Fix the resource or add a reviewed PolicyException.
             runbook_url: "https://kyverno.io/docs/troubleshooting/"
 
         # -------------------------------------------------------------------
@@ -53,11 +63,21 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "High Kyverno audit violations: {{ $labels.policy_name }}"
-            description: >-
-              Policy {{ $labels.policy_name }} has more than 20 audit-mode failures in
-              namespace {{ $labels.resource_namespace }} sustained over 15 minutes.
-              Review PolicyReports and resolve or add a governed PolicyException.
+            summary: "High Kyverno audit violations ({{ $labels.policy_name }})"
+            description: |
+              What's happening:
+              - Policy {{ $labels.policy_name }} has >20 audit-mode failures in
+                namespace {{ $labels.resource_namespace }}, sustained 15m.
+
+              Impact/risk:
+              - A backlog of audit violations blocks promoting the policy to enforce.
+
+              Likely causes:
+              - Non-compliant workloads accumulated, or the policy is stricter than the fleet.
+
+              First actions:
+              - Review PolicyReports for the policy/namespace.
+              - Remediate the resources or add a governed PolicyException.
             runbook_url: "https://kyverno.io/docs/policy-reports/"
 
         # -------------------------------------------------------------------
@@ -73,11 +93,21 @@ spec:
           labels:
             severity: critical
           annotations:
-            summary: "Kyverno policy error: {{ $labels.policy_name }}/{{ $labels.rule_name }}"
-            description: >-
-              Policy {{ $labels.policy_name }} rule {{ $labels.rule_name }} is producing
-              errors (not denials). This usually means a CEL/JMESPath expression is
-              broken or a referenced resource is missing. The rule is not enforcing.
+            summary: "Kyverno policy error ({{ $labels.policy_name }}/{{ $labels.rule_name }})"
+            description: |
+              What's happening:
+              - Policy {{ $labels.policy_name }} rule {{ $labels.rule_name }} is producing
+                errors (not denials) over 10m.
+
+              Impact/risk:
+              - The rule is NOT enforcing; whatever it should block can pass admission.
+
+              Likely causes:
+              - Broken CEL/JMESPath expression, or a referenced resource/context is missing.
+
+              First actions:
+              - Inspect Kyverno admission/controller logs for the policy error detail.
+              - Fix or roll back the policy; confirm results return to pass/fail (not error).
             runbook_url: "https://kyverno.io/docs/troubleshooting/"
 
     - name: kyverno.controllers
@@ -98,11 +128,21 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "Kyverno admission webhook p99 latency > 2s"
-            description: >-
-              The Kyverno admission controller p99 latency is {{ $value | humanizeDuration }}
-              over the last 5 minutes. High webhook latency degrades all API server
-              operations. Check controller resources and policy complexity.
+            summary: "Kyverno admission webhook p99 latency > 2s ({{ $labels.controller }})"
+            description: |
+              What's happening:
+              - Kyverno admission p99 latency is {{ $value | humanizeDuration }} over 5m.
+
+              Impact/risk:
+              - The admission webhook is on the API write path; slowness degrades ALL
+                create/update operations cluster-wide.
+
+              Likely causes:
+              - Controller CPU/memory pressure, complex policies, or large match scopes.
+
+              First actions:
+              - Check kyverno admission-controller resource usage and restarts.
+              - Reduce policy complexity/scope or raise resources; watch p99 recover.
             runbook_url: "https://kyverno.io/docs/installation/platform-notes/"
 
         # -------------------------------------------------------------------
@@ -116,11 +156,20 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "Kyverno background controller queue depth high"
-            description: >-
-              The Kyverno background controller queue depth is {{ $value }}, sustained
-              over 10 minutes. Background scans and report generation are falling behind.
-              Consider increasing backgroundScanWorkers or reducing scan scope.
+            summary: "Kyverno background controller queue depth high ({{ $labels.controller }})"
+            description: |
+              What's happening:
+              - The Kyverno background controller queue depth is {{ $value }}, sustained 10m.
+
+              Impact/risk:
+              - Background scans and report generation are falling behind; reports go stale.
+
+              Likely causes:
+              - Too few background workers, large scan scope, or controller resource pressure.
+
+              First actions:
+              - Check background-controller resource usage.
+              - Increase backgroundScanWorkers or reduce scan scope; watch the queue drain.
             runbook_url: "https://kyverno.io/docs/installation/customization/"
 
         # -------------------------------------------------------------------
@@ -133,8 +182,18 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "Kyverno reports controller queue depth high"
-            description: >-
-              The Kyverno reports controller queue depth is {{ $value }}. PolicyReports
-              are not being written promptly. Check reports-controller resources.
+            summary: "Kyverno reports controller queue depth high ({{ $labels.controller }})"
+            description: |
+              What's happening:
+              - The Kyverno reports controller queue depth is {{ $value }}, sustained 10m.
+
+              Impact/risk:
+              - PolicyReports are not written promptly; dashboards/alerts on reports lag reality.
+
+              Likely causes:
+              - reports-controller resource pressure or a large volume of report churn.
+
+              First actions:
+              - Check reports-controller resource usage and restarts.
+              - Raise resources or reduce report churn; watch the queue drain.
             runbook_url: "https://kyverno.io/docs/installation/customization/"

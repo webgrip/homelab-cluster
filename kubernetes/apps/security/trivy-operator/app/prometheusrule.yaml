@@ -21,11 +21,20 @@ spec:
             owner: platform
             service: trivy-operator
           annotations:
-            summary: "Critical image vulnerabilities detected in {{$labels.namespace}}/{{$labels.resource_name}}"
+            summary: "Critical image vulnerabilities detected ({{$labels.namespace}}/{{$labels.resource_name}})"
             description: |
-              Trivy reports one or more critical image vulnerabilities for this workload.
-              Review the VulnerabilityReport/SbomReport CRs, rebuild the image from a patched base,
-              and keep the image digest pinned after remediation.
+              What's happening:
+              - Trivy reports critical image vulnerabilities for {{$labels.namespace}}/{{$labels.resource_name}}.
+
+              Impact/risk:
+              - Known-exploitable CVEs in a running workload increase compromise risk.
+
+              Likely causes:
+              - Outdated base image or dependency with a published critical CVE.
+
+              First actions:
+              - Review the VulnerabilityReport CR for the workload.
+              - Rebuild from a patched base, re-pin the image digest, and confirm the finding clears.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/security-supply-chain/#trivy-operator"
 
         - alert: TrivyHighImageVulnerabilityBacklog
@@ -37,10 +46,20 @@ spec:
             owner: platform
             service: trivy-operator
           annotations:
-            summary: "High vulnerability backlog is growing"
+            summary: "High vulnerability backlog is growing (cluster-wide)"
             description: |
-              The cluster has more than 20 high or critical image vulnerability findings.
-              Prioritize internet-facing and privileged workloads first.
+              What's happening:
+              - More than 20 high/critical image vulnerability findings exist cluster-wide for 2h.
+
+              Impact/risk:
+              - A growing backlog erodes supply-chain posture and slows incident response.
+
+              Likely causes:
+              - Accumulated unpatched images, or a base-image CVE affecting many workloads.
+
+              First actions:
+              - Triage findings, prioritizing internet-facing and privileged workloads.
+              - Rebuild/patch the worst offenders; track the backlog trending back down.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/security-supply-chain/#trivy-operator"
 
         - alert: TrivyExposedSecretsDetected
@@ -54,10 +73,20 @@ spec:
             owner: platform
             service: trivy-operator
           annotations:
-            summary: "Potential exposed secret detected in {{$labels.namespace}}/{{$labels.resource_name}}"
+            summary: "Potential exposed secret in image ({{$labels.namespace}}/{{$labels.resource_name}})"
             description: |
-              Trivy detected a potential secret in a container image. Treat this as credential
-              exposure until the image and affected credential are reviewed and rotated.
+              What's happening:
+              - Trivy detected a potential embedded secret in the image for {{$labels.namespace}}/{{$labels.resource_name}}.
+
+              Impact/risk:
+              - A baked-in credential is effectively published wherever the image is stored.
+
+              Likely causes:
+              - Secret committed into the build context or copied into an image layer.
+
+              First actions:
+              - Review the ExposedSecretReport CR; treat the credential as compromised.
+              - Rotate the credential, rebuild without it, and re-pin the digest.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/security-supply-chain/#trivy-operator"
 
         - alert: TrivyClusterComplianceFailures
@@ -71,8 +100,18 @@ spec:
             owner: platform
             service: trivy-operator
           annotations:
-            summary: "Trivy compliance failures detected for {{$labels.title}}"
+            summary: "Trivy compliance failures detected ({{$labels.title}})"
             description: |
-              Trivy cluster compliance checks are failing. Review ClusterComplianceReport
-              details before promoting audit-only policies to enforce.
+              What's happening:
+              - Trivy cluster compliance check "{{$labels.title}}" is failing for 1h.
+
+              Impact/risk:
+              - The cluster deviates from the named compliance baseline (e.g. CIS/NSA).
+
+              Likely causes:
+              - New non-compliant workload, or a control regressed after a change.
+
+              First actions:
+              - Review the ClusterComplianceReport detail rows for the failing control.
+              - Remediate the offending resources before promoting audit policies to enforce.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/security-supply-chain/#trivy-operator"

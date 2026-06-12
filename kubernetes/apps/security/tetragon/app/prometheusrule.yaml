@@ -20,10 +20,20 @@ spec:
             owner: platform
             service: tetragon
           annotations:
-            summary: "Tetragon lost runtime events on {{$labels.pod}}"
+            summary: "Tetragon lost runtime events ({{$labels.pod}})"
             description: |
-              Tetragon is losing ring-buffer events. Increase resources or reduce exported
-              event volume before depending on process telemetry during investigations.
+              What's happening:
+              - Tetragon reports lost ring-buffer events on pod {{$labels.pod}} over 10m.
+
+              Impact/risk:
+              - Process/exec telemetry is incomplete; investigations may miss activity.
+
+              Likely causes:
+              - Tetragon CPU/memory pressure, ring-buffer too small, or excessive event volume.
+
+              First actions:
+              - Check Tetragon agent resource usage/restarts (namespace=security).
+              - Increase resources / buffer or reduce exported event volume; verify loss returns to 0.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/security-supply-chain/#tetragon"
 
         - alert: TetragonPolicyLoadErrors
@@ -37,8 +47,18 @@ spec:
             owner: platform
             service: tetragon
           annotations:
-            summary: "Tetragon tracing policy load errors"
+            summary: "Tetragon tracing policy load errors (state={{$labels.state}})"
             description: |
-              One or more Tetragon tracing policies failed to load. Inspect the Tetragon
-              operator logs and policy status before assuming coverage is active.
+              What's happening:
+              - One or more Tetragon tracing policies are in state {{$labels.state}} for 10m.
+
+              Impact/risk:
+              - The affected policy is not enforcing/observing; runtime coverage has a gap.
+
+              Likely causes:
+              - Invalid TracingPolicy spec, kernel/BTF incompatibility, or operator error.
+
+              First actions:
+              - Inspect Tetragon operator logs and `kubectl get tracingpolicies` status.
+              - Fix or roll back the offending policy; confirm it loads cleanly.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/security-supply-chain/#tetragon"

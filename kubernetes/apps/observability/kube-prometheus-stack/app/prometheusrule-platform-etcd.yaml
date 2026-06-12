@@ -47,7 +47,7 @@ spec:
             owner: platform
             service: etcd
           annotations:
-            summary: "etcd has no leader"
+            summary: "etcd has no leader (cluster-wide)"
             description: |
               What's happening:
               - No etcd member reports itself as leader.
@@ -222,6 +222,9 @@ spec:
               - Fragmentation causes fsync latency spikes → cascading controller restarts.
               - This was the root cause of the cluster-wide CrashLoop incident.
 
+              Likely causes:
+              - Large key churn/compaction without defrag reclaiming freed pages.
+
               First actions:
               - Run talosctl etcd defrag on each node sequentially (wait ~10s between)
               - Monitor WAL fsync latency post-defrag to confirm improvement
@@ -245,6 +248,9 @@ spec:
               Impact/risk:
               - If DB hits the quota, etcd will reject all write requests.
               - Kubernetes API becomes read-only; cluster management stops.
+
+              Likely causes:
+              - Unbounded object growth (Events, Leases, CRD objects) or missing compaction.
 
               First actions:
               - Run etcd compaction: talosctl etcd compact

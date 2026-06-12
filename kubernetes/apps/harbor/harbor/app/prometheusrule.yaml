@@ -47,7 +47,7 @@ spec:
             owner: platform
             service: harbor
           annotations:
-            summary: "A Harbor component is down: {{ $$labels.job }}"
+            summary: "A Harbor component is down ({{ $$labels.job }})"
             description: |
               What's happening:
               - {{ $$labels.job }} has been down/unscrapable for at least 10m.
@@ -55,6 +55,9 @@ spec:
               Impact/risk:
               - registry → blob push/pull fails; jobservice → scans/GC/replication stall;
                 trivy → vulnerability scans fail; exporter → metrics gaps only.
+
+              Likely causes:
+              - Component pod crashlooping/unschedulable, or its backend (Postgres/Garage S3) degraded.
 
               First actions:
               - kubectl -n harbor get pods -l 'app=harbor'
@@ -77,6 +80,9 @@ spec:
               What's happening:
               - More than 5% of Harbor core HTTP responses have been 5xx for 15m.
 
+              Impact/risk:
+              - Registry push/pull and portal operations are failing or degraded for clients.
+
               Likely causes:
               - Postgres pressure/errors, Garage S3 (blob backend) unavailable, or core overload.
 
@@ -88,14 +94,14 @@ spec:
 
         - alert: HarborExternalSecretNotSynced
           expr: |
-            external_secret_status_condition{namespace="harbor", condition="Ready", status="False"} == 1
+            externalsecret_status_condition{namespace="harbor", condition="Ready", status="False"} == 1
           for: 15m
           labels:
             severity: warning
             owner: platform
             service: harbor
           annotations:
-            summary: "Harbor ExternalSecret not synced: {{ $$labels.name }}"
+            summary: "Harbor ExternalSecret not synced ({{ $$labels.name }})"
             description: |
               What's happening:
               - ExternalSecret {{ $$labels.name }} has not been Ready for 15m, so its Secret is missing/stale.

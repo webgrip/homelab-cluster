@@ -20,10 +20,20 @@ spec:
             owner: platform
             service: falco
           annotations:
-            summary: "Falco runtime detection fired: {{$labels.rule_name}}"
+            summary: "Falco runtime detection fired ({{$labels.rule_name}})"
             description: |
-              Falco detected suspicious runtime behavior. Inspect Falco JSON logs in Loki
-              with labels namespace=security and app.kubernetes.io/name=falco.
+              What's happening:
+              - Falco matched a high-severity runtime rule ({{$labels.rule_name}}, source {{$labels.source}}).
+
+              Impact/risk:
+              - Possible container/host compromise or policy-violating runtime behavior.
+
+              Likely causes:
+              - Genuine malicious or unexpected activity, or a noisy rule needing tuning.
+
+              First actions:
+              - Inspect Falco JSON logs in Loki (namespace=security, app.kubernetes.io/name=falco).
+              - Correlate with the workload/namespace named in the event; contain if confirmed.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/security-supply-chain/#falco"
 
         - alert: FalcoEventDrops
@@ -35,8 +45,18 @@ spec:
             owner: platform
             service: falco
           annotations:
-            summary: "Falco is dropping kernel events"
+            summary: "Falco is dropping kernel events (security/falco)"
             description: |
-              Falco reports kernel event drops. Increase Falco resources, reduce rule volume,
-              or tune the eBPF buffer before relying on detections for incident response.
+              What's happening:
+              - Falco reports a non-zero kernel event drop percentage for 10m.
+
+              Impact/risk:
+              - Dropped syscalls mean detections can be missed; runtime visibility is incomplete.
+
+              Likely causes:
+              - Falco CPU/memory pressure, eBPF ring-buffer too small, or excessive rule/event volume.
+
+              First actions:
+              - Check Falco pod resource usage and restarts (namespace=security).
+              - Increase Falco resources / buffer size or reduce rule volume; verify drops return to 0.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/security-supply-chain/#falco"

@@ -49,12 +49,21 @@ spec:
             severity: info
             team: platform
           annotations:
-            summary: "Claude Code 24h API-equivalent spend estimate is {{ $value | humanize }} USD"
-            description: >-
-              Notional token x list-price estimate over the last 24h exceeded 500 USD.
-              On a Max subscription this is NOT real spend — informational only, and
-              usually signals a runaway/automated loop worth a look. Tune the threshold
-              in prometheusrule-claude-code.yaml.
+            summary: "Claude Code 24h spend estimate high ({{ $value | humanize }} USD)"
+            description: |
+              What's happening:
+              - Notional token x list-price estimate over the last 24h exceeded 500 USD.
+
+              Impact/risk:
+              - On a Max subscription this is NOT real spend — informational only. A spike
+                usually signals a runaway/automated loop worth a look.
+
+              Likely causes:
+              - A runaway agent/loop, a large batch job, or an unusually heavy session.
+
+              First actions:
+              - Check the Claude Code cost/tokens dashboard for the model/session driving it.
+              - Tune the threshold in prometheusrule-claude-code.yaml if this is expected.
             runbook_url: "https://grafana.webgrip.dev/d/claude-code-cost-tokens"
 
         # Cache efficiency collapse — this workload is normally ~99% cache reads,
@@ -67,7 +76,18 @@ spec:
             team: platform
           annotations:
             summary: "Claude Code cache-hit ratio low ({{ $value | humanizePercentage }})"
-            description: >-
-              Prompt-cache hit ratio has been under 50% for 30m while actively running.
-              Normal for this workload is ~99%; a sustained drop inflates token cost.
+            description: |
+              What's happening:
+              - Prompt-cache hit ratio has been under 50% for 30m while actively running.
+
+              Impact/risk:
+              - Normal for this workload is ~99%; a sustained drop inflates token cost.
+
+              Likely causes:
+              - Cache TTL expiry from long idle gaps, frequently changing prompt prefixes,
+                or a client/version change that broke cache reuse.
+
+              First actions:
+              - Check the cache-economics dashboard for which sessions/models regressed.
+              - Correlate with recent client/prompt changes; tune threshold if expected.
             runbook_url: "https://grafana.webgrip.dev/d/claude-code-cache-economics"

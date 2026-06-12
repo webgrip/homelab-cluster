@@ -18,8 +18,20 @@ spec:
             severity: warning
             team: security
           annotations:
-            summary: "DependencyTrack: {{ $value | humanize }} critical vulnerabilities"
-            description: "The portfolio has {{ $value | humanize }} critical severity vulnerabilities. Review at https://dependency-track.webgrip.dev"
+            summary: "DependencyTrack critical vulnerabilities ({{ $value | humanize }})"
+            description: |
+              What's happening:
+              - The portfolio has {{ $value | humanize }} critical-severity vulnerabilities (15m).
+
+              Impact/risk:
+              - Known-critical CVEs in tracked components raise the supply-chain risk surface.
+
+              Likely causes:
+              - A new dependency CVE was published, or a vulnerable component was added.
+
+              First actions:
+              - Review the affected projects in Dependency-Track.
+              - Patch/upgrade the offending components and re-analyze.
             runbook_url: "https://dependency-track.webgrip.dev/projects"
 
         - alert: DependencyTrackPolicyViolationsFail
@@ -29,8 +41,20 @@ spec:
             severity: warning
             team: security
           annotations:
-            summary: "DependencyTrack: {{ $value | humanize }} policy FAIL violations"
-            description: "{{ $value | humanize }} components have policy violations at FAIL severity. Review at https://dependency-track.webgrip.dev"
+            summary: "DependencyTrack policy FAIL violations ({{ $value | humanize }})"
+            description: |
+              What's happening:
+              - {{ $value | humanize }} components have policy violations at FAIL severity (15m).
+
+              Impact/risk:
+              - Components breach a defined supply-chain policy (license/CVE/age gate).
+
+              Likely causes:
+              - A new component violates policy, or a policy threshold was tightened.
+
+              First actions:
+              - Review the failing policy violations in Dependency-Track.
+              - Remediate the component or adjust the policy with justification.
             runbook_url: "https://dependency-track.webgrip.dev/projects"
 
         - alert: DependencyTrackHighRiskScore
@@ -40,8 +64,21 @@ spec:
             severity: warning
             team: security
           annotations:
-            summary: "DependencyTrack: portfolio risk score {{ $value | humanize }}"
-            description: "Inherited portfolio risk score is {{ $value | humanize }}, exceeding threshold of 2000. Review https://dependency-track.webgrip.dev/dashboard"
+            summary: "DependencyTrack portfolio risk score high ({{ $value | humanize }})"
+            description: |
+              What's happening:
+              - Inherited portfolio risk score is {{ $value | humanize }}, above the 2000 threshold (30m).
+
+              Impact/risk:
+              - Aggregate supply-chain risk across tracked projects is elevated.
+
+              Likely causes:
+              - Accumulated unaudited findings, or new high-risk components added.
+
+              First actions:
+              - Review the Dependency-Track dashboard for the projects driving the score.
+              - Audit/triage findings and remediate the highest-risk components.
+            runbook_url: "https://dependency-track.webgrip.dev/dashboard"
 
         - alert: DependencyTrackMetricsExporterDown
           expr: absent(dt_exporter_last_scrape_timestamp) or (time() - dt_exporter_last_scrape_timestamp > 1800)
@@ -50,8 +87,21 @@ spec:
             severity: warning
             team: platform
           annotations:
-            summary: "DependencyTrack metrics exporter is not reporting"
-            description: "The DT Prometheus metrics exporter has not successfully scraped DT in over 30 minutes."
+            summary: "DependencyTrack metrics exporter not reporting (observability)"
+            description: |
+              What's happening:
+              - The DT Prometheus metrics exporter has not scraped DT in over 30 minutes.
+
+              Impact/risk:
+              - DT vulnerability/policy alerts above are blind while the exporter is down.
+
+              Likely causes:
+              - Exporter pod down, DT API unreachable, or an auth/token issue.
+
+              First actions:
+              - Check the dt-exporter pod logs and DT API health.
+              - Restart the exporter; confirm dt_exporter_last_scrape_timestamp advances.
+            runbook_url: "https://dependency-track.webgrip.dev/projects"
 
     - name: dependency-track.recording
       interval: 5m
