@@ -1,0 +1,50 @@
+---
+# BREAK-GLASS (one-shot — REMOVE this manifest once it has completed once; prune: true cleans it).
+# Mounts the `database` secrets engine on the already-bootstrapped, no-live-root OpenBao by
+# generating a temporary root from the unseal key, enabling the engine, and revoking root.
+# Idempotent (no-op if already mounted). See breakglass-enable-database.sh + RFC: Dynamic DB Creds.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: openbao-breakglass-enable-database
+  namespace: security
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openbao-breakglass
+        app.kubernetes.io/part-of: openbao
+    spec:
+      serviceAccountName: openbao-bootstrap
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 1000
+      containers:
+        - name: breakglass
+          image: docker.io/openbao/openbao:2.5.4
+          command:
+            - "/bin/sh"
+            - "/scripts/breakglass-enable-database.sh"
+          env:
+            - name: HOME
+              value: /tmp
+            - name: OPENBAO_UNSEAL_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openbao-keys
+                  key: unseal-key
+          volumeMounts:
+            - {name: scripts, mountPath: /scripts}
+            - {name: tmp, mountPath: /tmp}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+      volumes:
+        - name: scripts
+          configMap: {name: openbao-bootstrap}
+        - name: tmp
+          emptyDir: {}
