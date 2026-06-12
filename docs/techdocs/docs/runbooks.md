@@ -41,6 +41,7 @@ This page is intentionally a **links-only index**. Each runbook has its own dedi
 ## Apps
 
 - Apps (baseline): [docs/techdocs/docs/runbooks/apps-baseline.md](runbooks/apps-baseline.md)
+- Harbor (container registry): [docs/techdocs/docs/runbooks/harbor.md](runbooks/harbor.md)
 
 ## Identity / Auth
 

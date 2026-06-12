@@ -42,6 +42,14 @@ OpenBao. The agent has no `bao` CLI/token and cannot write OpenBao — so a desi
   step, not the agent's), then `ExternalSecret` (store `openbao`, `creationPolicy: Owner`): per-key
   `data[].remoteRef{key,property}`, or `dataFrom: [{extract: {key: <app>/<name>}}]` for all keys.
 
+## CLI access (`bao`)
+The `bao` CLI is pinned in `.mise.toml` (`aqua:openbao/openbao/bao`, matched to the server version).
+There is **no static token / no root** — auth is Authentik OIDC. Helpers in the `justfile`:
+- `just bao-addr` — prints the OpenBao URL from the live HTTPRoute (no hardcoded domain).
+- `just bao-login` — `bao login -method=oidc` (browser); token caches in `~/.vault-token`.
+- `just harbor-s3-cred` — gum-prompted one-time write of `secret/harbor/s3` (value never hits history).
+The **agent can't run `bao`** (no token, OIDC is interactive) — entering a *provided* value is always a human step.
+
 ## Migrate a SOPS secret (proven recipe — value-preserving, reversible)
 1. **Seed:** add a `PushSecret` (`external-secrets.io/v1alpha1`, store `openbao-push`) with one `data[].match` per key → `secret/<app>/<name>`. Wait for `True/Synced`. (No "push all" shorthand — list every key.)
 2. **Swap (one commit):** swap the `.sops.yaml` ref in the kustomization for an `ExternalSecret` (use `dataFrom.extract` for multi-key), `git rm` the sops file. Verify Secret `ownerReferences→ExternalSecret`, key count exact, app healthy.

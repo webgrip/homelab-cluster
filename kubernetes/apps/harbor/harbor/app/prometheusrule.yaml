@@ -1,0 +1,113 @@
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/monitoring.coreos.com/prometheusrule_v1.json
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: harbor
+  namespace: harbor
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: harbor.rules
+      rules:
+        - alert: HarborCoreDown
+          expr: up{job="harbor-core", namespace="harbor"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            owner: platform
+            service: harbor
+          annotations:
+            summary: "Harbor core is down (harbor)"
+            description: |
+              What's happening:
+              - The Harbor core target has been unscrapable/down for at least 5m.
+
+              Impact/risk:
+              - The registry API, portal, login, push/pull and OCI chart operations are unavailable.
+
+              Likely causes:
+              - core pod crashlooping or unschedulable
+              - external Postgres (harbor-db) unreachable
+              - a missing/!Synced ExternalSecret (harbor-core / harbor-s3)
+
+              First actions:
+              - kubectl -n harbor get pods; kubectl -n harbor describe deploy harbor-core
+              - kubectl -n harbor get externalsecret; verify harbor-db is Ready
+              - See the Harbor runbook.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/harbor"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/harbor/harbor"
+
+        - alert: HarborComponentDown
+          expr: up{namespace="harbor", job=~"harbor-(registry|jobservice|trivy|exporter)"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+            service: harbor
+          annotations:
+            summary: "A Harbor component is down: {{ $$labels.job }}"
+            description: |
+              What's happening:
+              - {{ $$labels.job }} has been down/unscrapable for at least 10m.
+
+              Impact/risk:
+              - registry → blob push/pull fails; jobservice → scans/GC/replication stall;
+                trivy → vulnerability scans fail; exporter → metrics gaps only.
+
+              First actions:
+              - kubectl -n harbor get pods -l 'app=harbor'
+              - kubectl -n harbor logs deploy/{{ $$labels.job }} --tail=200
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/harbor"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/harbor/harbor"
+
+        - alert: HarborHighHTTP5xxRate
+          expr: |
+            sum(rate(harbor_core_http_request_total{namespace="harbor", code=~"5.."}[5m]))
+              / clamp_min(sum(rate(harbor_core_http_request_total{namespace="harbor"}[5m])), 1) > 0.05
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: harbor
+          annotations:
+            summary: "Harbor core 5xx rate above 5% (harbor)"
+            description: |
+              What's happening:
+              - More than 5% of Harbor core HTTP responses have been 5xx for 15m.
+
+              Likely causes:
+              - Postgres pressure/errors, Garage S3 (blob backend) unavailable, or core overload.
+
+              First actions:
+              - Check harbor-db health and Garage (10.0.0.110:3900) reachability.
+              - kubectl -n harbor logs deploy/harbor-core --tail=200 | grep -iE 'error|s3|panic'
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/harbor"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/harbor/harbor"
+
+        - alert: HarborExternalSecretNotSynced
+          expr: |
+            external_secret_status_condition{namespace="harbor", condition="Ready", status="False"} == 1
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: harbor
+          annotations:
+            summary: "Harbor ExternalSecret not synced: {{ $$labels.name }}"
+            description: |
+              What's happening:
+              - ExternalSecret {{ $$labels.name }} has not been Ready for 15m, so its Secret is missing/stale.
+
+              Impact/risk:
+              - harbor-s3 → registry cannot reach Garage (blob I/O fails); harbor-core → core won't start.
+
+              Likely causes:
+              - The OpenBao path (e.g. secret/harbor/s3) is not populated, or OpenBao is sealed/unreachable.
+
+              First actions:
+              - kubectl -n harbor get externalsecret {{ $$labels.name }} -o yaml | yq '.status'
+              - Populate the value: `just harbor-s3-cred` (S3); see the Harbor runbook.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/harbor"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/harbor/harbor"
