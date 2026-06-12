@@ -28,9 +28,13 @@ spec:
       clusterIP: "10.43.0.10"
     replicaCount: 2
     servers:
+      # Split-DNS stub zone: resolve <app>.${SECRET_DOMAIN} via internal k8s-gateway.
+      # Must appear exactly once — a second block for the same zone:port (e.g. a
+      # hardcoded literal duplicate) is a fatal Corefile error and crash-loops CoreDNS.
       - zones:
           - zone: ${SECRET_DOMAIN}
             scheme: dns://
+            use_tcp: true
         port: 53
         plugins:
           - name: errors
@@ -40,11 +44,6 @@ spec:
             configBlock: |-
               prefetch 20
               serve_stale
-          - name: loop
-          - name: reload
-          - name: loadbalance
-          - name: prometheus
-            parameters: 0.0.0.0:9153
           - name: log
             configBlock: |-
               class error
@@ -77,22 +76,6 @@ spec:
           - name: loadbalance
           - name: prometheus
             parameters: 0.0.0.0:9153
-          - name: log
-            configBlock: |-
-              class error
-      - zones:
-          - zone: webgrip.dev
-            scheme: dns://
-            use_tcp: true
-        port: 53
-        plugins:
-          - name: errors
-          - name: forward
-            parameters: . 10.0.0.26
-          - name: cache
-            configBlock: |-
-              prefetch 20
-              serve_stale
           - name: log
             configBlock: |-
               class error
