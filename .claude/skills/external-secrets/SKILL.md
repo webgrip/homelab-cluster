@@ -12,12 +12,35 @@ Full state/history + every gotcha: [[external-secrets-eso-openbao]]. Rollout pla
 ## Stores + generator (cluster-scoped)
 - `ClusterSecretStore/openbao` — **READ** (apps source secrets here). Vault provider, mount `secret`, v2, k8s-auth role `external-secrets`.
 - `ClusterSecretStore/openbao-push` — **WRITE, migration only** (PushSecret seeds existing Secrets in). Remove after migration.
-- `ClusterGenerator/password-generator` — random entropy (len 64).
+- `ClusterGenerator/password-generator` — random entropy (len 64). Length-exact variants
+  `password-generator-16` / `password-generator-32` for secrets that demand a precise length
+  (e.g. Harbor `secretKey`=16, `CSRF_KEY`=32). All in `…/external-secrets/stores/clustergenerator.yaml`.
 - KV path convention `secret/<app>/<purpose>`; `remoteRef.key` omits the mount → `<app>/<purpose>`.
 
 ## Add a NEW secret
-- **Random/session entropy** (no human value): `ExternalSecret` `dataFrom.sourceRef.generatorRef` → `password-generator`, `refreshInterval: "0"` (generate-once), `rewrite` to the env key.
-- **Provided value** (token/password/key): put it in OpenBao (`openbao.${SECRET_DOMAIN}` UI, or `bao kv put secret/<app>/<name> k=v`), then `ExternalSecret` (store `openbao`, `creationPolicy: Owner`): per-key `data[].remoteRef{key,property}`, or `dataFrom: [{extract: {key: <app>/<name>}}]` for all keys.
+
+**Decide by origin first.** If a human never has to *know* the value, it is entropy → **generate it
+in-cluster, never hand-enter it into OpenBao**. Only values that originate *outside* the cluster
+(provider API tokens, OIDC client secrets, S3 access keys from Garage/an external system) go through
+OpenBao. The agent has no `bao` CLI/token and cannot write OpenBao — so a design that needs manual
+`bao kv put` for entropy is wrong; convert it to generators.
+
+- **Random/internal entropy** (admin passwords, session/CSRF keys, app secret keys — no human value):
+  `ExternalSecret` `dataFrom.sourceRef.generatorRef` → `password-generator` (or the `-16`/`-32`
+  length-exact variant), `refreshInterval: "0"` (generate-once) + `target.deletionPolicy: Retain`,
+  `rewrite` `password` → the env key. **Multi-key:** add one `dataFrom` entry per key — each
+  `generatorRef` invocation yields an independent value (reference the same generator N times for N
+  distinct values). Example: `kubernetes/apps/harbor/harbor/app/harbor-core.externalsecret.yaml`
+  (admin pw + secretKey/CSRF/registry/jobservice, all generated). Simple single-key example:
+  `searxng/.../externalsecret.yaml`.
+  - **At-rest encryption keys** (Harbor `secretKey`, anything that decrypts stored data): generate-once
+    + `Retain` is safe on a *fresh* install, but **regenerating corrupts existing data** — never delete
+    the Secret on a populated app. (For pre-existing data you must preserve the *current* value: store
+    it in OpenBao once instead of generating.)
+- **Provided/external value** (token/password/key from outside): put it in OpenBao
+  (`openbao.${SECRET_DOMAIN}` UI via Authentik OIDC, or `bao kv put secret/<app>/<name> k=v` — a human
+  step, not the agent's), then `ExternalSecret` (store `openbao`, `creationPolicy: Owner`): per-key
+  `data[].remoteRef{key,property}`, or `dataFrom: [{extract: {key: <app>/<name>}}]` for all keys.
 
 ## Migrate a SOPS secret (proven recipe — value-preserving, reversible)
 1. **Seed:** add a `PushSecret` (`external-secrets.io/v1alpha1`, store `openbao-push`) with one `data[].match` per key → `secret/<app>/<name>`. Wait for `True/Synced`. (No "push all" shorthand — list every key.)

@@ -96,18 +96,22 @@ flowchart LR
 (for the ServiceMonitor CRD). TLS terminates at the gateway's wildcard `*.${SECRET_DOMAIN}`
 certificate, so Harbor itself runs `expose.type: clusterIP` with TLS disabled.
 
-## Secrets (ESO / OpenBao)
+## Secrets (ESO)
 
 Harbor is a **new** app, so there is no SOPS→OpenBao migration and **no `PushSecret`** (those only
 seed values out of pre-existing SOPS Secrets — see [External Secrets](../external-secrets-plan.md)).
-Its secrets are plain [ExternalSecret][eso]s reading paths the owner populates once in OpenBao
-(`bao kv put`), via `ClusterSecretStore/openbao`:
+Secrets split by **origin** — [ESO][eso] generates entropy in-cluster (no human ever types it);
+only genuinely-external values come from OpenBao:
 
-| OpenBao path | Surfaced Secret | Keys | Consumed by |
-|--------------|-----------------|------|-------------|
-| `secret/harbor/core` | `harbor-core` | `HARBOR_ADMIN_PASSWORD`, `secretKey` (16 chars), `CSRF_KEY` (32), `REGISTRY_HTTP_SECRET`, `JOBSERVICE_SECRET` | HelmRelease `existingSecret*` |
-| `secret/harbor/s3` | `harbor-s3` | `REGISTRY_STORAGE_S3_ACCESSKEY`, `REGISTRY_STORAGE_S3_SECRETKEY` | registry blob storage |
-| `secret/harbor/oidc` *(Phase 2)* | `harbor-oidc-values` | `values.yaml` (a `core.configureUserSettings` fragment) | HelmRelease `valuesFrom` (`optional: true`) |
+| Secret | Source | Keys | Consumed by |
+|--------|--------|------|-------------|
+| `harbor-core` | **ESO generators** (`password-generator-16`/`-32`), generate-once + Retain — no OpenBao, no human | `HARBOR_ADMIN_PASSWORD`, `secretKey` (16), `CSRF_KEY` (32), `REGISTRY_HTTP_SECRET`, `JOBSERVICE_SECRET` | HelmRelease `existingSecret*` |
+| `harbor-s3` | OpenBao `secret/harbor/s3` (one-time human entry — the Garage access key is external) | `REGISTRY_STORAGE_S3_ACCESSKEY`, `REGISTRY_STORAGE_S3_SECRETKEY` | registry blob storage |
+| `harbor-oidc-values` *(Phase 2)* | OpenBao `secret/harbor/oidc` (client secret is minted by Authentik) | `values.yaml` (a `core.configureUserSettings` fragment) | HelmRelease `valuesFrom` (`optional: true`) |
+
+`harbor-core` is pure internal entropy, so it is **generated** — never hand-entered. Note `secretKey`
+is Harbor's at-rest encryption key: generate-once + `deletionPolicy: Retain` keep it stable, but
+deleting the Secret on a populated Harbor mints a new key and orphans encrypted data.
 
 The CNPG database needs **no** ExternalSecret — CNPG emits `harbor-db-app` itself
 ([ADR-0003](adr-0003-external-cnpg-database.md)) — and backup credentials come from the shared

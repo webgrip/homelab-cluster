@@ -14,3 +14,35 @@ spec:
       symbols: 0 # keep values safe to paste into URLs / headers
       noUpper: false
       allowRepeat: true
+---
+# Length-specific variants for apps whose secrets require an EXACT length
+# (e.g. Harbor's secretKey must be 16 chars, CSRF_KEY 32). Same "random/internal"
+# class: consume with refreshInterval "0" (generate once, never rotate). Each
+# ExternalSecret dataFrom entry referencing one of these yields an independent value.
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: ClusterGenerator
+metadata:
+  name: password-generator-16
+spec:
+  kind: Password
+  generator:
+    passwordSpec:
+      length: 16
+      digits: 4
+      symbols: 0 # alphanumeric only — safe for keys/headers/passwords
+      noUpper: false
+      allowRepeat: true
+---
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: ClusterGenerator
+metadata:
+  name: password-generator-32
+spec:
+  kind: Password
+  generator:
+    passwordSpec:
+      length: 32
+      digits: 8
+      symbols: 0
+      noUpper: false
+      allowRepeat: true
