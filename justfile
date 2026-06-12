@@ -6,6 +6,33 @@ default:
 reconcile:
     flux --namespace flux-system reconcile kustomization flux-system --with-source
 
+# Print the OpenBao address, derived from the live in-cluster HTTPRoute (no hardcoded domain).
+bao-addr:
+    @echo "https://$(kubectl get httproute openbao -n security -o jsonpath='{.spec.hostnames[0]}')"
+
+# Log in to OpenBao via Authentik OIDC (opens a browser). Token caches in ~/.vault-token.
+bao-login:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
+    echo "OpenBao: ${BAO_ADDR}"
+    bao login -method=oidc
+    printf '\nFor further bao commands this shell:\n  export BAO_ADDR=%s\n' "${BAO_ADDR}"
+
+# One-time entry of Harbor's Garage S3 registry key into OpenBao (secret/harbor/s3).
+# Prompts via gum so the secret never lands in shell history; logs in if needed.
+harbor-s3-cred:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
+    bao token lookup >/dev/null 2>&1 || bao login -method=oidc
+    key_id="$(gum input --placeholder 'Garage access key ID  -> REGISTRY_STORAGE_S3_ACCESSKEY')"
+    secret="$(gum input --password --placeholder 'Garage secret key  -> REGISTRY_STORAGE_S3_SECRETKEY')"
+    bao kv put secret/harbor/s3 \
+        REGISTRY_STORAGE_S3_ACCESSKEY="${key_id}" \
+        REGISTRY_STORAGE_S3_SECRETKEY="${secret}"
+    echo "wrote secret/harbor/s3 — ESO syncs the harbor-s3 Secret within ~1m"
+
 verify-oci-digests:
     ./scripts/verify-oci-digests.sh {{ justfile_directory() }}
 
