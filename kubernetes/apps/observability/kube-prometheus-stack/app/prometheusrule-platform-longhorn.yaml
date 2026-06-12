@@ -95,6 +95,71 @@ spec:
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-longhorn"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-longhorn-health/longhorn-storage-health"
 
+        - alert: LonghornManagerOOMKilled
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="longhorn-system", container="longhorn-manager"}[15m]) > 0
+            and on (namespace, pod, container)
+            (kube_pod_container_status_last_terminated_reason{namespace="longhorn-system", container="longhorn-manager", reason="OOMKilled"} == 1)
+          for: 1m
+          labels:
+            severity: critical
+            owner: platform
+            service: longhorn
+          annotations:
+            summary: "Longhorn manager OOMKilled ({{$labels.pod}})"
+            description: |
+              What's happening:
+              - The longhorn-manager container on {{$labels.pod}} was OOMKilled.
+
+              Impact/risk:
+              - The storage control plane flaps; this is the root trigger of the
+                2026-06-09 rebuild-storm incident (degraded volumes, stuck disks,
+                blocked PVC resizes). Volume I/O survives (instance-manager) but
+                orchestration does not.
+
+              Likely causes:
+              - Node memory pressure (RAM-tight nodes) killing the manager
+              - A load spike (rebuild storm, mass snapshot purge) on a tight node
+
+              First actions:
+              - Check node memory (`kubectl top nodes`) and recent OOM events
+              - Confirm the manager has Guaranteed QoS (requests==limits); if it
+                reverted to BestEffort, the postRenderer in the HelmRelease is not
+                applying
+              - If volumes are degraded, see the incident runbook (pause rebuilds,
+                stabilise, then heal)
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/incidents/2026-06-09-longhorn-oom-cascade/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-longhorn-health/longhorn-storage-health"
+
+        - alert: LonghornManagerRestarting
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="longhorn-system", container="longhorn-manager"}[1h]) >= 3
+          for: 5m
+          labels:
+            severity: warning
+            owner: platform
+            service: longhorn
+          annotations:
+            summary: "Longhorn manager restarting ({{$labels.pod}})"
+            description: |
+              What's happening:
+              - longhorn-manager on {{$labels.pod}} restarted >=3 times in the last hour.
+
+              Impact/risk:
+              - Storage control-plane instability; precursor to rebuild/scheduling
+                problems even when individual restarts are not OOM.
+
+              Likely causes:
+              - OOM kills (see LonghornManagerOOMKilled), leader-election churn,
+                liveness-probe failures, or node pressure
+
+              First actions:
+              - `kubectl -n longhorn-system describe pod {{$labels.pod}}` for the
+                last-terminated reason
+              - Check node memory/CPU pressure and Longhorn node readiness
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/incidents/2026-06-09-longhorn-oom-cascade/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-longhorn-health/longhorn-storage-health"
+
         - alert: PVCVolumeAlmostFull
           expr: |
             (
