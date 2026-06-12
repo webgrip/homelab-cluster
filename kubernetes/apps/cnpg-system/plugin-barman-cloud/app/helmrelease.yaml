@@ -23,6 +23,12 @@ spec:
         name: cloudnative-pg
         namespace: cnpg-system
   values:
+    # Single replica (replicaCount: 1) → leader election is pure downside: a missed lease
+    # renewal during transient API-server latency makes the controller-runtime manager exit
+    # ("leader election lost") and restart, which can interrupt an in-progress backup. The
+    # chart hardcodes --leader-elect; appending --leader-elect=false wins (pflag: last value).
+    additionalArgs:
+      - --leader-elect=false
     resources:
       requests:
         cpu: 10m
