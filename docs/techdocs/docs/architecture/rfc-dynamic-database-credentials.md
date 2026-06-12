@@ -71,11 +71,36 @@ dynamic roles with TTLs; ESO wiring; a pilot → rollout sequence.
 
 ## Implementation (phased)
 
-**Phase 0 — engine + one admin connection.** Extend `openbao/bootstrap/config.sh` (which already
-reconciles engines/policies/roles as the scoped `config-admin`) to `bao secrets enable database` and
-register **one** CNPG cluster's `vault_admin` connection. The `vault_admin` Postgres role is created
-by a CNPG `managed.roles` entry (or an init SQL), its bootstrap password seeded once into
-`secret/db-admin/<cluster>`. No app touches dynamic creds yet.
+**Phase 0 — engine + one admin connection.** Enable the `database` engine, then register **one**
+CNPG cluster's `vault_admin` connection. No app touches dynamic creds yet. Implementation surfaced
+three realities the high-level design glossed (all now reflected here):
+
+> **Activation realities (discovered 2026-06-12, committed groundwork in `cfe9aab`):**
+>
+> 1. **Mounting the engine needs root, and there is no live root.** `init.sh` only runs the root
+>    setup on a *fresh* cluster and revokes root after; `config-admin` **deliberately cannot mount
+>    engines**. So `bao secrets enable database` is added to `init.sh` for future fresh clusters, but
+>    an **already-bootstrapped cluster needs a one-time break-glass `bao operator generate-root`**
+>    (using the unseal key in `openbao-keys`) to run that single mount, then revoke. *This is the one
+>    decision that gates live activation* — alternative: grant `config-admin` a narrowly-scoped
+>    `sys/mounts/database` (note: `config-admin` can already self-escalate via `sys/policies/acl/*`
+>    writes, so this is less of a new exposure than it looks, but it does contradict the deliberate
+>    "no mount" boundary).
+> 2. **`config-admin` cannot read KV** (`secret/data` is denied by design), so it can't pull the
+>    `vault_admin` password from `secret/db-admin/<cluster>` to build the connection string. The
+>    password must instead reach `config.sh` via a **k8s Secret mounted into the config job pod**
+>    (same namespace, `security`) — so the ESO-materialised `vault_admin` secret is needed in
+>    `security`, and the *same* value in the app namespace for CNPG. Generate it once into OpenBao,
+>    then `ExternalSecret` it into both namespaces.
+> 3. **`rotate-root` is off the table for an existing cluster.** Post-init SQL won't re-run on a
+>    live CNPG cluster, so `vault_admin` must come via `managed.roles` — which CNPG continuously
+>    reconciles, so OpenBao must **not** rotate the password out from under it. The shared random
+>    password (ESO-generated, never typed) stays the source of truth.
+>
+> Groundwork already shipped: `init.sh` enables the engine on fresh clusters; `config-admin.hcl`
+> gained `database/config|roles|rotate-root|reset` (not `sys/mounts`). The connection + role
+> reconcile in `config.sh`, the `vault_admin` CNPG role, and the ESO plumbing land **after** the
+> mount decision.
 
 **Phase 1 — pilot one app.** Pick a **low-connection, restart-tolerant, non-critical** app (a
 read-mostly internal tool — *not* Authentik, *not* Forgejo, *not* Dependency-Track). Define its role,
