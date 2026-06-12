@@ -51,6 +51,13 @@ entries:
     attrs:
       name: Harbor OIDC
       client_type: confidential
+      # Harbor only accepts RS256-signed id_tokens ("oidc: malformed jwt: unexpected
+      # signature algorithm HS256"). Without a signing_key Authentik falls back to
+      # HS256 (HMAC w/ client_secret). Pin the default RSA keypair — same fix as OpenBao.
+      signing_key: !Find
+        - authentik_crypto.certificatekeypair
+        - - name
+          - authentik Self-signed Certificate
       grant_types:
         - authorization_code
         - refresh_token
