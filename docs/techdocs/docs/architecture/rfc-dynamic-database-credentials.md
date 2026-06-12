@@ -77,15 +77,21 @@ three realities the high-level design glossed (all now reflected here):
 
 > **Activation realities (discovered 2026-06-12, committed groundwork in `cfe9aab`):**
 >
-> 1. **Mounting the engine needs root, and there is no live root.** `init.sh` only runs the root
->    setup on a *fresh* cluster and revokes root after; `config-admin` **deliberately cannot mount
->    engines**. So `bao secrets enable database` is added to `init.sh` for future fresh clusters, but
->    an **already-bootstrapped cluster needs a one-time break-glass `bao operator generate-root`**
->    (using the unseal key in `openbao-keys`) to run that single mount, then revoke. *This is the one
->    decision that gates live activation* — alternative: grant `config-admin` a narrowly-scoped
->    `sys/mounts/database` (note: `config-admin` can already self-escalate via `sys/policies/acl/*`
->    writes, so this is less of a new exposure than it looks, but it does contradict the deliberate
->    "no mount" boundary).
+> 1. **Mounting the engine needs root, there is no live root — and `generate-root` is UNSUPPORTED
+>    here.** `init.sh` only runs the root setup on a *fresh* cluster and revokes root after;
+>    `config-admin` **deliberately cannot mount engines**. So `bao secrets enable database` is added
+>    to `init.sh` for future fresh clusters. For an already-bootstrapped cluster the obvious recovery
+>    — a one-time break-glass `bao operator generate-root` with the unseal key — was tried and
+>    **fails: `GET sys/generate-root/attempt` returns `405 unsupported operation`** on this OpenBao
+>    (verified via both the Service and headless addresses; `openbao-0` is the active node, since
+>    `config-admin` writes succeed there). The documented "recover emergency root via generate-root"
+>    path is therefore **not available on this cluster.** That leaves two real options to mount the
+>    engine on the running cluster: **(a)** grant `config-admin` a narrowly-scoped `sys/mounts/database`
+>    so the reconcile loop mounts it — it contradicts the deliberate "no mount" boundary, but
+>    `config-admin` can *already* self-escalate via `sys/policies/acl/*` + `auth/+/role/*` writes, so
+>    the explicit grant is little real new exposure and is reversible; or **(b)** a destructive
+>    wipe+re-init (where `init.sh` now mounts it on fresh) — **rejected**, it would destroy every
+>    migrated secret. Option (a) is the pragmatic path; it gates live activation.
 > 2. **`config-admin` cannot read KV** (`secret/data` is denied by design), so it can't pull the
 >    `vault_admin` password from `secret/db-admin/<cluster>` to build the connection string. The
 >    password must instead reach `config.sh` via a **k8s Secret mounted into the config job pod**
