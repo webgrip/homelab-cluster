@@ -32,11 +32,13 @@ done
 
 bao operator generate-root -cancel >/dev/null 2>&1 || true   # clear any stale attempt
 
-echo "==> generate-root: init"
-INIT_JSON="$(bao operator generate-root -init -format=json 2>/dev/null)"
+# OpenBao 2.5.4: you must generate the OTP first, then start with -init -otp=<otp>.
+echo "==> generate-root: otp + init"
+OTP="$(bao operator generate-root -generate-otp 2>/dev/null | tr -d '[:space:]')"
+[ -n "$OTP" ] || { echo "generate-otp failed"; exit 1; }
+INIT_JSON="$(bao operator generate-root -init -otp="$OTP" -format=json 2>/dev/null)"
 NONCE="$(printf '%s' "$INIT_JSON" | grep -o '"nonce"[ ]*:[ ]*"[^"]*"' | head -1 | sed 's/.*"nonce"[ ]*:[ ]*"//; s/"$//')"
-OTP="$(printf '%s' "$INIT_JSON" | grep -o '"otp"[ ]*:[ ]*"[^"]*"' | head -1 | sed 's/.*"otp"[ ]*:[ ]*"//; s/"$//')"
-[ -n "$NONCE" ] && [ -n "$OTP" ] || { echo "generate-root init parse failed"; exit 1; }
+[ -n "$NONCE" ] || { echo "generate-root init failed (no nonce)"; exit 1; }
 
 echo "==> generate-root: submit unseal key share"
 UPD_JSON="$(bao operator generate-root -nonce="$NONCE" -format=json "$OPENBAO_UNSEAL_KEY" 2>/dev/null)"
