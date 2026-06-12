@@ -21,6 +21,11 @@ spec:
         name: cloudnative-pg
         namespace: cnpg-system
   values:
+    # Single replica (replicaCount: 1) → leader election only causes restarts: a missed lease
+    # renewal during transient API latency makes the manager exit ("leader election lost").
+    # Disable it (chart additionalArgs appends; last pflag value wins). Same fix as the plugin.
+    additionalArgs:
+      - --leader-elect=false
     config:
       clusterWide: true
     monitoring:
