@@ -46,6 +46,7 @@ This page is intentionally a **links-only index**. Each runbook has its own dedi
 ## Identity / Auth
 
 - Authentik OIDC login failures: [docs/techdocs/docs/runbooks/authentik-oidc-login.md](runbooks/authentik-oidc-login.md)
+- Authenticating Prometheus & Alertmanager (Envoy OIDC, design): [docs/techdocs/docs/runbooks/observability-auth.md](runbooks/observability-auth.md)
 
 ## Talos / Kubernetes
 
