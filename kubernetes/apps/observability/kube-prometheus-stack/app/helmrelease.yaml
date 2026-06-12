@@ -45,6 +45,12 @@ spec:
           - action: replace
             targetLabel: job
             replacement: talos-etcd
+          # Drop the etcd request-latency histogram (~13.6k series, unused by any
+          # dashboard/rule here — the etcd job is also renamed, so chart rules don't match).
+          - action: drop
+            sourceLabels:
+              - __name__
+            regex: "etcd_request_duration_seconds_bucket"
     kubeControllerManager:
       enabled: false
     kubeScheduler:
