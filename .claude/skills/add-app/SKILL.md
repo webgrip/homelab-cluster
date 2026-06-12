@@ -23,7 +23,10 @@ description: Scaffold a new application in the Flux GitOps tree. Use when adding
 - Metrics: expose `/metrics` + `ServiceMonitor`; Alerts: `PrometheusRule` (symptom-based; labels `severity`/`owner`/`service`; annotations `summary`/`description`/`runbook_url`/`dashboard_url`). Both **need label `release: kube-prometheus-stack`** (enforced) and low cardinality (`app.kubernetes.io/name`).
 
 ## Secrets
-Never write `*.sops.yaml`. Wire `existingSecret`/`envFromSecret`, leave a `<app>-secrets.template.yaml`, document Secret name/ns/keys for the human to encrypt.
+Cluster is migrating SOPS → **External Secrets Operator + OpenBao** — use the `external-secrets` skill. Don't write new `*.sops.yaml`. Quick path for a new app secret:
+- **Random/session entropy:** `ExternalSecret` `dataFrom.sourceRef.generatorRef` → `ClusterGenerator/password-generator`, `refreshInterval: "0"` (generate-once). No human, no SOPS.
+- **Provided value** (token/password/key): put it in OpenBao KV `secret/<app>/<name>` (UI `openbao.$${SECRET_DOMAIN}` or `bao kv put`), then an `ExternalSecret` (store `openbao`, `creationPolicy: Owner`, per-key `remoteRef` or `dataFrom: [{extract: {key: <path>}}]` for all keys).
+- Consume via `existingSecret`/`envFromSecret`/`secretKeyRef`. SOPS floor that stays: age key, `cluster-secrets`, `talsecret`, `github-deploy-key`, openbao unseal.
 
 ## Validate
 `./scripts/run-flux-local-test.sh` before committing.
