@@ -5,7 +5,10 @@
 # then REVOKES root. Idempotent: re-running is a harmless no-op (engine already mounted -> skip).
 # Never echoes the token or the encoded/otp material. Remove this Job from git once it has
 # completed once (prune: true). See RFC: Dynamic Database Credentials / ADR-0010.
-export BAO_ADDR="http://openbao-0.openbao-internal.security.svc.cluster.local:8200"
+# Use the regular Service (routes to the ACTIVE node) — generate-root is an active-node
+# operation and returns 405 "unsupported operation" if hit on a non-active path. (The unsealer
+# uses the headless per-pod address only because it must reach a SEALED/NotReady pod.)
+export BAO_ADDR="http://openbao.security.svc.cluster.local:8200"
 export HOME=/tmp
 
 # Always clean up: cancel any pending root generation, and revoke any root we obtained (retried).
