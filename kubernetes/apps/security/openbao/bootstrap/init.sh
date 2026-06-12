@@ -29,8 +29,14 @@ printf '%s' "$UNSEAL" > /shared/unseal-key
 bao operator unseal "$UNSEAL" >/dev/null
 export BAO_TOKEN="$ROOT"
 
-echo "==> one-time root setup (KV, auth methods, config-admin role)"
+echo "==> one-time root setup (KV, database engine, auth methods, config-admin role)"
 bao secrets enable -path=secret kv-v2
+# Dynamic database credentials (RFC: Dynamic Database Credentials / ADR-0010). Mounting a
+# secrets engine needs root, which only exists here, on a fresh cluster — config-admin
+# deliberately cannot mount. config.sh (config-admin) then owns the connections/roles.
+# NB: an ALREADY-bootstrapped cluster has no live root, so it needs a one-time break-glass
+# `generate-root` to run this same enable; see the RFC's activation note.
+bao secrets enable -path=database database
 bao auth enable kubernetes
 bao write auth/kubernetes/config kubernetes_host="https://kubernetes.default.svc" >/dev/null
 bao auth enable oidc 2>/dev/null || true
