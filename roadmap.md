@@ -48,7 +48,9 @@ Cheap, reversible, and either fixes a live exposure or stops silent drift.
 
 > **Execution status (2026-06-12):** P0 shipped. Done: #1, #2, #3, #5, #9, #10
 > (incl. fixing ~30 pre-existing alert-annotation violations + a Harbor metric-name
-> typo), #12, #39 (re-enabled staggered overnight 01:00–06:00 UTC), #41, #61.
+> typo), #12, #41, #61. **#39 reverted** at the owner's request — restore drills
+> stay suspended (too much storage/control-plane load for now); re-enable later,
+> ideally after the etcd defrag (#59).
 > #62 was already covered by the `cnpg-monitoring` component (no work needed).
 > **Deferred with reason:** #11 kubeconform — not viable as a blanket gate (26
 > false positives from `${SECRET_DOMAIN}` postBuild substitution; `flux-local`
