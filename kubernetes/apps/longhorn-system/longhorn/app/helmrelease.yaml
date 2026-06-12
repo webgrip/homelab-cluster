@@ -30,8 +30,12 @@ spec:
       defaultLonghornStaticStorageClass: longhorn
       defaultReplicaCount: "3"
       defaultSharedVolumeType: nfs
-      guaranteedEngineManagerCPU: "20"
-      guaranteedReplicaManagerCPU: "20"
+      # guaranteedEngineManagerCPU/guaranteedReplicaManagerCPU are ignored since the
+      # v1.5 instance-manager merge — the cluster was silently running the 12% default
+      # while starvation waves killed instance-managers (2026-06-12 cascade). 20% of
+      # node CPU as an explicit request keeps IMs schedulable-guaranteed under load.
+      # Danger-zone setting: applies per-node once its volumes detach, not immediately.
+      guaranteedInstanceManagerCPU: "20"
       nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
       orphanAutoDeletion: true
       # Disabled 2026-06-09: best-effort auto-balance generated a rebuild storm
