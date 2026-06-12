@@ -1,0 +1,15 @@
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: dependency-track-db-daily
+  namespace: security
+spec:
+  schedule: "0 35 2 * * *"
+  immediate: true # never backed up before — take one now, then daily
+  backupOwnerReference: cluster
+  cluster:
+    name: dependency-track-db
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
