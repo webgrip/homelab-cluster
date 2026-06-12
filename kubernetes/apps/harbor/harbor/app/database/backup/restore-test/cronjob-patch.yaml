@@ -4,10 +4,11 @@ kind: CronJob
 metadata:
   name: cnpg-restore-test
 spec:
-  # Disabled by default (matches the cluster default — reduces control-plane/storage
-  # pressure). Flip suspend to false to enable automated restore drills for harbor-db.
-  suspend: true
-  schedule: "*/10 * * * *"
+  # Re-enabled, staggered overnight (one app per hour) so at most one restore
+  # cluster exists at a time — bounds the control-plane/storage pressure that
+  # caused the original suspension. concurrencyPolicy=Forbid prevents overlap.
+  suspend: false
+  schedule: "0 3 * * *"
   jobTemplate:
     spec:
       template:

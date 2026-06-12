@@ -1,0 +1,90 @@
+---
+# Nightly logical backup of the InvoiceNinja MariaDB -> Garage (S3).
+# InvoiceNinja runs a single-replica MariaDB (not CNPG), so it has no WAL
+# archiving or barman backup. This CronJob is its only off-box backup path:
+#   init  : mariadb-dump the app DB -> gzip -> shared emptyDir
+#   upload: aws-cli copies the dump to s3://<bucket>/invoiceninja-mariadb/<date>.sql.gz
+# Restore: gunzip the object and `mariadb < dump.sql` into a fresh DB.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: invoiceninja-mariadb-backup
+  namespace: invoiceninja
+spec:
+  schedule: "0 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            - name: dump
+              image: docker.io/library/mariadb:12.2@sha256:6a4c4bbf0447c2247801309513fcc0dd17c3f35390368139ce419387fdd1144d
+              command:
+                - "/bin/sh"
+                - "-ceu"
+              args:
+                - |
+                  echo "[backup] dumping $${MARIADB_DATABASE} from $${DB_HOST}"
+                  mariadb-dump \
+                    --host="$${DB_HOST}" --user=root \
+                    --single-transaction --quick --routines --triggers --events \
+                    "$${MARIADB_DATABASE}" \
+                    | gzip -c > /shared/dump.sql.gz
+                  echo "[backup] dump complete: $$(ls -la /shared/dump.sql.gz)"
+              env:
+                - {name: DB_HOST, value: invoiceninja-mariadb}
+                - name: MARIADB_DATABASE
+                  valueFrom: {secretKeyRef: {name: invoiceninja-secrets, key: MARIADB_DATABASE}}
+                # mariadb-dump reads the password from MYSQL_PWD (keeps it out of argv/ps).
+                - name: MYSQL_PWD
+                  valueFrom: {secretKeyRef: {name: invoiceninja-secrets, key: MARIADB_ROOT_PASSWORD}}
+              volumeMounts:
+                - {name: shared, mountPath: /shared}
+                - {name: tmp, mountPath: /tmp}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+          containers:
+            - name: upload
+              image: docker.io/amazon/aws-cli:2.31.18
+              command:
+                - "/bin/sh"
+                - "-ceu"
+              args:
+                - |
+                  KEY="invoiceninja-mariadb/invoiceninja-$$(date -u +%Y%m%d).sql.gz"
+                  echo "[backup] uploading s3://$${S3_BUCKET}/$${KEY}"
+                  aws --endpoint-url "$${S3_ENDPOINT}" \
+                    s3 cp /shared/dump.sql.gz "s3://$${S3_BUCKET}/$${KEY}"
+                  echo "[backup] upload complete"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: AWS_ACCESS_KEY_ID, valueFrom: {secretKeyRef: {name: invoiceninja-backup-s3, key: S3_ACCESS_KEY_ID}}}
+                - {name: AWS_SECRET_ACCESS_KEY, valueFrom: {secretKeyRef: {name: invoiceninja-backup-s3, key: S3_SECRET_ACCESS_KEY}}}
+                - {name: AWS_DEFAULT_REGION, valueFrom: {secretKeyRef: {name: invoiceninja-backup-s3, key: S3_REGION}}}
+                - {name: S3_ENDPOINT, valueFrom: {secretKeyRef: {name: invoiceninja-backup-s3, key: S3_ENDPOINT}}}
+                - {name: S3_BUCKET, valueFrom: {secretKeyRef: {name: invoiceninja-backup-s3, key: S3_BUCKET}}}
+              volumeMounts:
+                - {name: shared, mountPath: /shared}
+                - {name: tmp, mountPath: /tmp}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+          volumes:
+            - {name: shared, emptyDir: {}}
+            - {name: tmp, emptyDir: {}}
