@@ -27,6 +27,9 @@ spec:
       name: kube-dns
       clusterIP: "10.43.0.10"
     replicaCount: 2
+    # Cluster DNS is critical-path: protect it from OOM eviction order
+    # (built-in class, always present so no admission-ordering risk).
+    priorityClassName: system-cluster-critical
     servers:
       # Split-DNS stub zone: resolve <app>.${SECRET_DOMAIN} via internal k8s-gateway.
       # Must appear exactly once — a second block for the same zone:port (e.g. a
