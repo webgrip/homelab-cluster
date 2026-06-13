@@ -21,36 +21,41 @@ that repo flips; `homelab-cluster` flips last, at the GitOps cutover. Full reaso
 
 ## Required Forgejo token scopes
 
-A **scoped access token** on the `renovate` bot user:
+The provisioner mints a **scoped access token** on the `renovate` bot user (Forgejo scope names;
+`write:` implies `read:`):
 
-| Scope | Permission |
+| Scope | Grants |
 | --- | --- |
-| `repo` | Read **and Write** |
-| `user` | Read |
-| `issue` | Read **and Write** |
-| `organization` | Read |
-| `read:packages` | Read (only if Forgejo packages become a datasource) |
+| `write:repository` | clone, push branches, open/manage PRs |
+| `read:user` | identify the bot |
+| `write:issue` | the Dependency Dashboard issue + PR comments |
+| `read:organization` | discover org repos (for the eventual `webgrip/*` rollout) |
 
 `platformAutomerge` needs **Forgejo ≥ v10.0.0** — confirm the running version, else Renovate falls
 back to branch automerge.
 
 ## Phased work
 
-### Phase 0 — Forgejo bot identity + token (manual, one-time)
+### Phase 0 — Forgejo bot + token (zero-touch, GitOps)
 
-- [ ] Create a local `renovate` bot user (`gitea_admin` break-glass / `forgejo admin user create` —
-      **not** an Authentik SSO login; the forge allows external registration only).
-- [ ] Generate the scoped PAT above for that user.
-- [ ] Store it in OpenBao at `renovate/forgejo` (key `RENOVATE_TOKEN`):
-      `bao kv put secret/renovate/forgejo RENOVATE_TOKEN=<forgejo-bot-pat>`. That is the **only**
-      manual OpenBao write for this migration.
+**Automated** by an idempotent provisioner CronJob — no manual Forgejo, token, or OpenBao steps.
+Manifests under `kubernetes/apps/renovate/renovate-operator/jobs/`:
 
-> **Follow-up (planned, after the pilot proves the loop): automate Phase 0 to zero-touch.** A
-> Flux-managed provisioning Job (modeled on the `renovate-github-app-token` minter) generates the bot
-> password via an ESO `password-generator`, calls the Forgejo **admin API** (using `forgejo-admin-secret`)
-> to create the `renovate` user + a scoped token idempotently, and **PushSecrets** the token into OpenBao
-> — removing every manual step here. Built after the pilot so it can be iterated against the live Forgejo
-> API rather than shipped blind.
+- `renovate-forgejo-admin.externalsecret.yaml` — replicates `forgejo/admin` from OpenBao (the only
+  input; already present).
+- `renovate-forgejo-bot-password.externalsecret.yaml` — ESO `password-generator` (generate-once +
+  Retain) — the bot's password, never human-typed.
+- `forgejo-bot-provisioner.{rbac,cronjob}.yaml` — the converging CronJob.
+
+On each run the CronJob: (1) ensures the `renovate` bot user exists (admin API), (2) reuses the stored
+token if it still authenticates — else resyncs the bot password and mints a fresh scoped token into
+Secret `renovate-forgejo-token`, and (3) ensures the throwaway pilot repo exists + is seeded. It only
+writes when something is missing/invalid, so re-runs are no-ops. All Forgejo calls go to the in-cluster
+Service (`forgejo-http.forgejo.svc:3000`).
+
+- [ ] Activate (uncomment the block in `kustomization.yaml`), then kick the first run:
+      `kubectl -n renovate create job --from=cronjob/renovate-forgejo-provisioner provision-now`.
+- [ ] Confirm `renovate-forgejo-token` exists and `renovate/forgejo-renovate-pilot` was created + seeded.
 
 ### Phase 1 — registry (GHCR) auth — nothing to do during dual-run
 
@@ -64,18 +69,18 @@ GitHub-path retirement (Phase 5).
 
 Under `kubernetes/apps/renovate/renovate-operator/jobs/` (**already scaffolded, dormant**):
 
-- [ ] `renovate-forgejo-token` **ExternalSecret** (`openbao` ClusterSecretStore) → `RENOVATE_TOKEN` +
-      `FORGEJO_TOKEN` (operator discovery), both from the single `renovate/forgejo` PAT.
-- [ ] `renovate-config-forgejo` **ConfigMap** — clone of `configmap-gitops.yaml` with
-      `"platform": "forgejo"`, the Forgejo `gitAuthor` (`Renovate <renovate@${SECRET_DOMAIN}>`), and
-      the `api.github.com` hostRules **kept** (version oracle).
-- [ ] `webgrip-forgejo.yaml` **RenovateJob** — `provider: {name: forgejo, endpoint:
-      https://forgejo.${SECRET_DOMAIN}/api/v1}`, `secretRef: renovate-forgejo-token`, same `fringe`
-      nodeSelector/tolerations + securityContext as `webgrip-gitops`. **Scope `discoveryFilters` to
-      the pilot repo only.**
-- [ ] Register the new files in the jobs `kustomization.yaml`. `${SECRET_DOMAIN}` is substituted by the
-      jobs Kustomization `postBuild.substituteFrom: cluster-secrets`.
-- [ ] Validate: `./scripts/run-flux-local-test.sh`.
+- `renovate-config-forgejo` **ConfigMap** — clone of `configmap-gitops.yaml` with
+  `"platform": "forgejo"`, the `/api/v1` endpoint, the Forgejo `gitAuthor`
+  (`Renovate Bot <renovate@${SECRET_DOMAIN}>`), and the `api.github.com` hostRules **kept** (version
+  oracle).
+- `webgrip-forgejo.yaml` **RenovateJob** — `provider: {name: forgejo, endpoint:
+  https://forgejo.${SECRET_DOMAIN}/api/v1}`, `secretRef: renovate-forgejo-token` (minted by the Phase-0
+  provisioner), `discoveryFilters: [renovate/forgejo-renovate-pilot]`, GHCR host-rules reused from
+  `renovate-runtime-token` via `extraEnv` `valueFrom`, same `fringe` placement/securityContext as
+  `webgrip-gitops`.
+
+`${SECRET_DOMAIN}` is substituted by the jobs Kustomization `postBuild.substituteFrom: cluster-secrets`.
+Validated via `./scripts/run-flux-local-test.sh`.
 
 ### Phase 3 — Forgejo-native webhook
 
@@ -106,11 +111,15 @@ Under `kubernetes/apps/renovate/renovate-operator/jobs/` (**already scaffolded, 
               key: token
       ```
 
-### Phase 4 — pilot on one authoritative repo
+### Phase 4 — pilot
 
-- [ ] De-mirror one low-stakes repo in `gitea-mirror` (make it Forgejo-authoritative).
-- [ ] Confirm the loop: *discovery → branch push → PR → Dependency Dashboard → webhook → automerge*,
-      with the Forgejo bot as PR author. This flips the RFC + ADRs to **Accepted**.
+The pilot repo is **bot-created** by the Phase-0 provisioner (`renovate/forgejo-renovate-pilot`,
+seeded with a deliberately-stale `FROM alpine:3.18`), so **no real repo is de-mirrored for the pilot** —
+zero risk to the live mirrors.
+
+- [ ] Confirm the loop: *discovery → branch push → PR (alpine bump) → Dependency Dashboard → automerge*,
+      with the Forgejo `renovate` bot as PR author. This flips the RFC + ADRs to **Accepted**.
+- [ ] (Real repos are de-mirrored later, as part of each repo's actual cutover — Phase 5.)
 
 ### Phase 5 — scale-out + GitHub retirement
 

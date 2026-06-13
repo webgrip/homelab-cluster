@@ -15,14 +15,17 @@ resources:
   - ./webgrip-gitops.yaml
 
   # --- Renovate → Forgejo migration (dual-run). RFC: architecture/rfc-renovate-forgejo.md ---
-  # Validated and ready, kept DORMANT until the human-only prerequisites are met:
-  #   1. Forgejo `renovate` bot user + scoped PAT; bot email = renovate@${SECRET_DOMAIN}.
-  #   2. GitHub read:packages PAT for ghcr.io/webgrip/*.
-  #   3. bao kv put secret/renovate/forgejo RENOVATE_TOKEN=… RENOVATE_HOST_RULES='[…]'
-  #      (exact command in renovate-forgejo-token.externalsecret.yaml).
-  #   4. De-mirror the pilot repo and set it in webgrip-forgejo.yaml discoveryFilters.
-  # Then uncomment to activate. See docs/techdocs/docs/renovate-forgejo-migration.md.
-  # - ./renovate-forgejo-token.externalsecret.yaml
+  # Zero-touch: the provisioner CronJob creates the bot user, mints the scoped token into
+  # renovate-forgejo-token, and seeds the throwaway pilot repo — all idempotently. The only
+  # prerequisite is OpenBao path forgejo/admin (already present, used by the forgejo app).
+  # GHCR auth reuses the GitHub-App minter's host-rules (renovate-runtime-token).
+  # Kept DORMANT to keep the cluster quiet; to activate: uncomment, then kick a one-off run:
+  #   kubectl -n renovate create job --from=cronjob/renovate-forgejo-provisioner provision-now
+  # See docs/techdocs/docs/renovate-forgejo-migration.md.
+  # - ./renovate-forgejo-admin.externalsecret.yaml
+  # - ./renovate-forgejo-bot-password.externalsecret.yaml
+  # - ./forgejo-bot-provisioner.rbac.yaml
+  # - ./forgejo-bot-provisioner.cronjob.yaml
   # - ./configmap-forgejo.yaml
   # - ./webgrip-forgejo.yaml
 
