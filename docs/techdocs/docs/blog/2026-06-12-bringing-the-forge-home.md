@@ -122,6 +122,14 @@ Dependency updates run through a self-hosted Renovate, driven by an operator. It
 
 In the post-GitHub world Renovate has to change employers wholesale: platform flipped from `github` to Forgejo's, the GitHub-App token dance replaced by a Forgejo token, the bot identity re-homed. The good news is that Renovate has supported Gitea/Forgejo as a first-class platform for a long time, so this is a configuration migration rather than a rewrite. The subtle part is the *datasources* — Renovate also reaches out to `api.github.com` to discover new versions of upstream dependencies, and that's legitimate; you can leave GitHub as your *source host* while still querying it as a *version oracle*. Telling those two roles apart — GitHub-as-employer (must leave) versus GitHub-as-public-data (fine to keep using) — is most of the work.
 
+Since that audit, this thread has gone from *named* to *designed* — and the shape it took turns on the same ouroboros that wedged the mirror. Renovate can only open a pull request against a repo it can *push branches to*, and you cannot push to a pull-mirror. Every `webgrip/*` repo in Forgejo is, right now, a read-only mirror of its GitHub original; Renovate's Forgejo autodiscover even skips them on sight. So the bot cannot simply be re-pointed at Forgejo and switched on. It can only act on a repo *after* that repo stops being a mirror and becomes authoritative — which is, once again, content-first, cutover-last.
+
+That dictated the design: not a flip, but a **dual-run**. The GitHub-employed Renovate keeps doing its job for every repo still living on GitHub, while a *second* Renovate — a new job, Forgejo-flavoured, committing as a Forgejo bot — comes online beside it and adopts each repo the moment it's de-mirrored. The two coexist for the whole transition; at the very end, when the last repo (you can guess which one) flips, the GitHub half is deleted in a single stroke rather than nervously cut over.
+
+And there's a small, satisfying inversion buried in it. Almost every other thread of this migration *adds* machinery — a runner autoscaler, a webhook bridge, an entire trust chain to re-anchor. Renovate's gets *simpler*. The GitHub employee needs a CronJob that, every thirty minutes, trades an app ID and a private key for a token that expires in an hour; the Forgejo employee just needs a long-lived bot token sitting in OpenBao. The whole token-minting apparatus — CronJob, RBAC, the PEM private key — doesn't get ported. It gets thrown away. Leaving GitHub, here, means *deleting* code.
+
+The honest caveat the audit demanded still holds: Renovate will leave GitHub as an **employer** well before it leaves as a **data oracle**. It keeps reading `api.github.com` for upstream release numbers (a public catalog, not a matter of sovereignty) and keeps pulling GHCR images through a read-only `read:packages` token until Harbor exists. Those are read paths; they retire on their own schedule. The write path — the part that actually matters — moves now. The full design is written up as [a dedicated RFC and three ADRs](../architecture/rfc-renovate-forgejo.md).
+
 ---
 
 ## The GitOps umbilical
@@ -176,7 +184,7 @@ Stripped of narrative, the honest status board:
 | Bulk mirror | — | gitea-mirror (continuous) | **~71/72; `homelab-cluster` wedged** |
 | Package registry | GHCR | Harbor | **Not started** |
 | Signing / trust | GitHub OIDC + GHCR + Kyverno | Authentik OIDC + Harbor | **Not started** |
-| Renovate | platform `github` + GitHub App | Forgejo platform | **Not started** |
+| Renovate | platform `github` + GitHub App | Forgejo platform (dual-run) | **Designed ([RFC](../architecture/rfc-renovate-forgejo.md) + ADRs); build pending** |
 | GitOps source | Flux ← GitHub (+ webhook Receiver) | Flux ← Forgejo | **Not started (cutover last)** |
 | Off-site mirrors | — | Codeberg + 2nd Forgejo + demoted GitHub | **Deferred (after cutover)** |
 | Docs hosting | in-cluster | Codeberg Pages | **Planned** |

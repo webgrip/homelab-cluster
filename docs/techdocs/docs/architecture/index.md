@@ -47,6 +47,7 @@ This is the repo's first ADR section; the conventions below apply to everything 
 | [Harbor Container Registry](rfc-harbor-registry.md) | Proposed | Deploy a feature-complete Harbor as the cluster's private OCI registry + artifact store. |
 | [Security Hardening — Closing the Loops](rfc-security-hardening.md) | Proposed | Finish the security loops already built: wire encryption, rootless CI, rotation, enforce mode. |
 | [Dynamic Database Credentials](rfc-dynamic-database-credentials.md) | Proposed | Short-lived, per-workload, auto-revoked Postgres creds via OpenBao's database engine. |
+| [Renovate on Forgejo](rfc-renovate-forgejo.md) | Proposed | Migrate Renovate off GitHub onto Forgejo via a second dual-run RenovateJob; cut repos over as each becomes authoritative. |
 
 ### ADRs
 
@@ -62,3 +63,6 @@ This is the repo's first ADR section; the conventions below apply to everything 
 | [ADR-0008](adr-0008-rootless-ci-image-builds.md) | Proposed | Replace privileged DinD with rootless BuildKit for CI image builds. |
 | [ADR-0009](adr-0009-secret-rotation-model.md) | Accepted | Rotate via OpenBao write → ESO refresh → Reloader restart; at-rest keys excluded. |
 | [ADR-0010](adr-0010-openbao-dynamic-postgres-credentials.md) | Proposed | Mint short-lived per-workload Postgres creds via OpenBao's database engine. |
+| [ADR-0011](adr-0011-dual-run-renovate-forgejo.md) | Proposed | Dual-run a second Forgejo RenovateJob beside the GitHub one; retire GitHub at cutover. |
+| [ADR-0012](adr-0012-forgejo-static-bot-pat.md) | Proposed | Authenticate Renovate to Forgejo with a static bot PAT; delete the GitHub-App token-minter. |
+| [ADR-0013](adr-0013-github-as-renovate-data-oracle.md) | Proposed | Keep GitHub as a read-only data oracle (datasources, presets, GHCR via read:packages PAT). |
