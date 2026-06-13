@@ -1,0 +1,67 @@
+---
+# Ensures Harbor's pull-through proxy-cache endpoints + projects exist (ADR-0018).
+# Idempotent + self-healing (re-establishes the config after a Harbor DB restore);
+# fail-soft so a missing credential or a restarting Harbor never crashloops or alerts.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: harbor-proxy-config
+  namespace: harbor
+spec:
+  schedule: "17 * * * *" # hourly, off the top of the hour
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 21600 # GC finished jobs after 6h (openbao-init lesson)
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false # only talks to Harbor's HTTP API, never the k8s API
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: configure
+              # alpine/k8s ships curl + jq + a shell (same image family as openbao-init).
+              image: docker.io/alpine/k8s:1.33.1
+              command:
+                - "/bin/sh"
+                - "/scripts/configure.sh"
+              env:
+                - name: HOME
+                  value: /tmp
+                - name: HARBOR_ADMIN_PASSWORD
+                  valueFrom:
+                    secretKeyRef: {name: harbor-admin, key: HARBOR_ADMIN_PASSWORD, optional: true}
+                - name: DOCKERHUB_USERNAME
+                  valueFrom:
+                    secretKeyRef: {name: harbor-registry-proxy, key: DOCKERHUB_USERNAME, optional: true}
+                - name: DOCKERHUB_TOKEN
+                  valueFrom:
+                    secretKeyRef: {name: harbor-registry-proxy, key: DOCKERHUB_TOKEN, optional: true}
+                - name: GHCR_USERNAME
+                  valueFrom:
+                    secretKeyRef: {name: harbor-registry-proxy, key: GHCR_USERNAME, optional: true}
+                - name: GHCR_TOKEN
+                  valueFrom:
+                    secretKeyRef: {name: harbor-registry-proxy, key: GHCR_TOKEN, optional: true}
+              resources:
+                requests: {cpu: 25m, memory: 64Mi}
+                limits: {cpu: 200m, memory: 128Mi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              volumeMounts:
+                - {name: scripts, mountPath: /scripts}
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: scripts
+              configMap: {name: harbor-proxy-config}
+            - name: tmp
+              emptyDir: {}

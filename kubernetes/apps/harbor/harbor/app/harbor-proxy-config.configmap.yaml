@@ -1,0 +1,93 @@
+---
+# Idempotent provisioner for Harbor pull-through proxy-cache (ADR-0018). Ensures the
+# upstream registry endpoints + proxy projects exist via the Harbor v2 API. Re-running
+# converges; fail-soft when Harbor is unreachable or upstream creds aren't populated yet.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: harbor-proxy-config
+  namespace: harbor
+data:
+  configure.sh: |-
+    #!/bin/sh
+    set -eu
+
+    HARBOR="${HARBOR_API:-http://harbor-core/api/v2.0}"
+    ADMIN_USER="admin"
+    log() { echo "[harbor-proxy-config] $*"; }
+
+    if [ -z "${HARBOR_ADMIN_PASSWORD:-}" ]; then
+      log "harbor-admin password not present; exiting 0 (will retry)"; exit 0
+    fi
+
+    # curl wrapper: hc METHOD PATH [JSON_BODY]
+    hc() {
+      _m="$1"; _p="$2"; _b="${3:-}"
+      if [ -n "$_b" ]; then
+        curl -fsS -u "$ADMIN_USER:$HARBOR_ADMIN_PASSWORD" -X "$_m" \
+          -H 'Content-Type: application/json' -d "$_b" "$HARBOR$_p"
+      else
+        curl -fsS -u "$ADMIN_USER:$HARBOR_ADMIN_PASSWORD" -X "$_m" "$HARBOR$_p"
+      fi
+    }
+
+    # Wait for Harbor core; fail-soft (exit 0) if it never comes up this tick.
+    _i=0
+    until curl -fsS "$HARBOR/health" >/dev/null 2>&1; do
+      _i=$((_i+1))
+      [ "$_i" -ge 30 ] && { log "harbor-core unreachable after 30 tries; exiting 0"; exit 0; }
+      log "waiting for harbor-core ($_i/30)..."; sleep 10
+    done
+
+    # registry_id NAME -> stdout (empty if absent)
+    registry_id() {
+      hc GET "/registries?q=name%3D$1" 2>/dev/null \
+        | jq -r ".[] | select(.name==\"$1\") | .id" 2>/dev/null | head -n1
+    }
+
+    # ensure_registry NAME TYPE URL USER PASS -> registry id on stdout (or empty)
+    ensure_registry() {
+      _name="$1"; _type="$2"; _url="$3"; _user="${4:-}"; _pass="${5:-}"
+      _id="$(registry_id "$_name")"
+      if [ -n "$_id" ] && [ "$_id" != "null" ]; then
+        log "registry '$_name' already exists (id=$_id)"; echo "$_id"; return 0
+      fi
+      if [ -z "$_user" ] || [ -z "$_pass" ]; then
+        log "registry '$_name': no upstream credentials in secret/harbor/registry-proxy — skipping"
+        return 0
+      fi
+      _body="{\"name\":\"$_name\",\"type\":\"$_type\",\"url\":\"$_url\",\"insecure\":false,\"credential\":{\"type\":\"basic\",\"access_key\":\"$_user\",\"access_secret\":\"$_pass\"}}"
+      if hc POST "/registries" "$_body" >/dev/null 2>&1; then
+        log "created registry endpoint '$_name' -> $_url"
+      else
+        log "WARN: failed to create registry endpoint '$_name'"; return 0
+      fi
+      registry_id "$_name"
+    }
+
+    # ensure_proxy_project NAME REGISTRY_ID
+    ensure_proxy_project() {
+      _name="$1"; _rid="$2"
+      if hc GET "/projects?name=$_name" 2>/dev/null \
+          | jq -e ".[] | select(.name==\"$_name\")" >/dev/null 2>&1; then
+        log "proxy project '$_name' already exists"; return 0
+      fi
+      _body="{\"project_name\":\"$_name\",\"public\":true,\"registry_id\":$_rid,\"storage_limit\":-1,\"metadata\":{\"public\":\"true\"}}"
+      if hc POST "/projects" "$_body" >/dev/null 2>&1; then
+        log "created proxy project '$_name' -> registry id $_rid"
+      else
+        log "WARN: failed to create proxy project '$_name'"
+      fi
+    }
+
+    # docker.io -> proxy project "dockerhub"
+    DH_ID="$(ensure_registry docker-hub docker-hub https://hub.docker.com \
+      "${DOCKERHUB_USERNAME:-}" "${DOCKERHUB_TOKEN:-}")"
+    [ -n "$DH_ID" ] && [ "$DH_ID" != "null" ] && ensure_proxy_project dockerhub "$DH_ID"
+
+    # ghcr.io -> proxy project "ghcr" (generic docker-registry provider; robust for pull-through)
+    GH_ID="$(ensure_registry ghcr docker-registry https://ghcr.io \
+      "${GHCR_USERNAME:-}" "${GHCR_TOKEN:-}")"
+    [ -n "$GH_ID" ] && [ "$GH_ID" != "null" ] && ensure_proxy_project ghcr "$GH_ID"
+
+    log "reconcile complete"
