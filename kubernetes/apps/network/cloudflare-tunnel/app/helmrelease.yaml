@@ -19,6 +19,9 @@ spec:
   values:
     controllers:
       cloudflare-tunnel:
+        # 2 replicas so a single pod/node loss doesn't sever external ingress.
+        # cloudflared opens independent tunnel connections; Cloudflare load-balances.
+        replicas: 2
         strategy: RollingUpdate
         annotations:
           reloader.stakater.com/auto: "true"
@@ -35,7 +38,9 @@ spec:
             envFrom:
               - secretRef:
                   name: cloudflare-tunnel-secret
-            args: ["tunnel", "run"]
+            args:
+              - "tunnel"
+              - "run"
             probes:
               liveness: &probes
                 enabled: true
@@ -52,13 +57,21 @@ spec:
             securityContext:
               allowPrivilegeEscalation: false
               readOnlyRootFilesystem: true
-              capabilities: { drop: ["ALL"] }
+              capabilities: {drop: ["ALL"]}
             resources:
               requests:
                 cpu: 10m
               limits:
                 memory: 256Mi
     defaultPodOptions:
+      # Soft-spread the 2 replicas across nodes; never block scheduling.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: cloudflare-tunnel
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534
