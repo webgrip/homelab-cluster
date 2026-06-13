@@ -1,0 +1,83 @@
+---
+# Forgejo-targeted RenovateJob — runs alongside webgrip-gitops (ADR-0011 dual-run).
+# Dormant until activated from kustomization.yaml; see the gated block there and
+# docs/techdocs/docs/renovate-forgejo-migration.md.
+apiVersion: renovate-operator.mogenius.com/v1alpha1
+kind: RenovateJob
+metadata:
+  name: webgrip-forgejo
+spec:
+  discoveryFilters:
+    # TODO(Phase 4): set to the single de-mirrored pilot repo (e.g. "webgrip/<pilot>").
+    # The operator skips mirror repos, so only Forgejo-authoritative repos are ever acted on.
+    # Widen to "webgrip/*" once the pilot proves the loop end-to-end.
+    - webgrip/forgejo-renovate-pilot
+  provider:
+    name: forgejo
+    endpoint: https://forgejo.${SECRET_DOMAIN}/api/v1
+  # Offset from webgrip-gitops (:17) to avoid overlapping executor runs on the fringe pool.
+  schedule: "47 */6 * * *"
+  parallelism: 1
+  image: docker.io/renovate/renovate:43.209.0-full@sha256:f5963ab360818459a856eb4bc3e1655f95e5d7031f1a9d57cdedaf04f3fa2954
+  secretRef: renovate-forgejo-token
+  webhook:
+    enabled: true
+    authentication:
+      enabled: true
+      secretRef:
+        name: renovate-webhook-auth
+        key: token
+        # Phase 3: operator auto-registers the Forgejo webhook on discovered repos.
+        # Confirm field names against the installed operator CRD (chart 4.10.1) before enabling;
+        # the bot PAT needs webhook-create rights on the target repo(s).
+        # forgejo:
+        #   sync:
+        #     enabled: true
+        #     webhookURL: https://renovate-webhook.${SECRET_DOMAIN}/webhook/v1/forgejo
+        #     topic: renovate
+        #     tokenSecretRef:
+        #       name: renovate-forgejo-token
+        #       key: FORGEJO_TOKEN
+        #     authTokenSecretRef:
+        #       name: renovate-webhook-auth
+        #       key: token
+  extraEnv:
+    - name: RENOVATE_CONFIG_FILE
+      value: /config/renovate.json
+    - name: RENOVATE_BASE_DIR
+      value: /tmp
+    - name: HOME
+      value: /tmp
+    - name: NODE_OPTIONS
+      value: --max-old-space-size=3000
+    - name: LOG_LEVEL
+      value: info
+  extraVolumes:
+    - name: config
+      configMap:
+        name: renovate-config-forgejo
+  extraVolumeMounts:
+    - name: config
+      mountPath: /config
+      readOnly: true
+  nodeSelector:
+    nodegroup: fringe
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: fringe
+      effect: NoSchedule
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      cpu: "1500m"
+      memory: 4Gi
+  securityContext:
+    pod:
+      runAsNonRoot: true
+      runAsUser: 12021
+      runAsGroup: 12021
+    container:
+      allowPrivilegeEscalation: false

@@ -1,0 +1,61 @@
+---
+# Admin/runtime Renovate config for the Forgejo path. Mirror of configmap-gitops.yaml with
+# platform=forgejo, the Forgejo endpoint + bot gitAuthor, and the same manager/throttle/queue
+# defaults. The api.github.com + docker.io hostRules stay — GitHub remains a read-only version
+# oracle (ADR-0013). ${SECRET_DOMAIN} is substituted by the jobs Kustomization postBuild.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: renovate-config-forgejo
+data:
+  renovate.json: |-
+    {
+      "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+      "platform": "forgejo",
+      "endpoint": "https://forgejo.${SECRET_DOMAIN}/api/v1",
+      "autodiscover": false,
+      "onboarding": true,
+      "requireConfig": "optional",
+
+      "timezone": "Europe/Amsterdam",
+      "gitAuthor": "Renovate Bot <renovate@${SECRET_DOMAIN}>",
+      "userAgent": "webgrip-homelab/renovate-operator-webgrip-forgejo",
+
+      "updateNotScheduled": true,
+      "prConcurrentLimit": 10,
+      "prHourlyLimit": 2,
+      "branchConcurrentLimit": 10,
+      "allowedCommands": ["^./scripts/update-oci-digests\\.sh$"],
+
+      "hostRules": [
+        {
+          "matchHost": "api.github.com",
+          "concurrentRequestLimit": 2,
+          "maxRequestsPerSecond": 1
+        },
+        {
+          "matchHost": "docker.io",
+          "hostType": "docker",
+          "concurrentRequestLimit": 1,
+          "maxRequestsPerSecond": 1
+        }
+      ],
+
+      "enabledManagers": [
+        "flux",
+        "kustomize",
+        "kubernetes",
+        "helm-values",
+        "helmfile",
+        "custom.regex",
+        "github-actions",
+        "renovate-config",
+        "mise",
+        "dockerfile",
+        "docker-compose"
+      ],
+
+      "renovate-config": {
+        "managerFilePatterns": ["/(^|/)\\.renovaterc\\.json5$/"]
+      }
+    }
