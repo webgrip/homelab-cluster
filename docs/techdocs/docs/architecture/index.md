@@ -49,6 +49,7 @@ This is the repo's first ADR section; the conventions below apply to everything 
 | [Dynamic Database Credentials](rfc-dynamic-database-credentials.md) | Proposed | Short-lived, per-workload, auto-revoked Postgres creds via OpenBao's database engine. |
 | [Renovate on Forgejo](rfc-renovate-forgejo.md) | Proposed | Migrate Renovate off GitHub onto Forgejo via a second dual-run RenovateJob; cut repos over as each becomes authoritative. |
 | [Cutting the GitOps umbilical](rfc-flux-forgejo-source.md) | Proposed | Repoint Flux's source from GitHub to in-cluster Forgejo; keep an external mirror for bootstrap + break-glass. |
+| [Harbor Pull-Through Proxy Cache](rfc-harbor-proxy-cache.md) | Proposed | Route docker.io/ghcr.io pulls through Harbor proxy-cache projects at the containerd-mirror layer, with upstream fallback. |
 
 ### ADRs
 
@@ -69,3 +70,6 @@ This is the repo's first ADR section; the conventions below apply to everything 
 | [ADR-0013](adr-0013-github-as-renovate-data-oracle.md) | Proposed | Keep GitHub as a read-only data oracle (datasources, presets, GHCR via the App-minter's host-rules). |
 | [ADR-0014](adr-0014-flux-source-forgejo.md) | Proposed | Make in-cluster Forgejo the authoritative Flux GitOps source via its internal Service URL. |
 | [ADR-0015](adr-0015-external-bootstrap-fallback-source.md) | Proposed | Keep GitHub (push-mirror) as the cold-bootstrap + break-glass GitOps source. |
+| [ADR-0016](adr-0016-harbor-pull-through-proxy-cache.md) | Proposed | Adopt two Harbor proxy-cache projects (dockerhub → docker.io, ghcr → ghcr.io). |
+| [ADR-0017](adr-0017-registry-mirror-talos-spegel.md) | Proposed | Inject the mirror via Talos `machine.registries.mirrors` + Spegel `prependExisting`; fail open to upstream. |
+| [ADR-0018](adr-0018-harbor-config-idempotent-job.md) | Proposed | Provision the proxy registries/projects via an idempotent Harbor-API CronJob (no operator). |
