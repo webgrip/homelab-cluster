@@ -45,6 +45,13 @@ back to branch automerge.
       `bao kv put secret/renovate/forgejo RENOVATE_TOKEN=<forgejo-bot-pat>`. That is the **only**
       manual OpenBao write for this migration.
 
+> **Follow-up (planned, after the pilot proves the loop): automate Phase 0 to zero-touch.** A
+> Flux-managed provisioning Job (modeled on the `renovate-github-app-token` minter) generates the bot
+> password via an ESO `password-generator`, calls the Forgejo **admin API** (using `forgejo-admin-secret`)
+> to create the `renovate` user + a scoped token idempotently, and **PushSecrets** the token into OpenBao
+> — removing every manual step here. Built after the pilot so it can be iterated against the live Forgejo
+> API rather than shipped blind.
+
 ### Phase 1 — registry (GHCR) auth — nothing to do during dual-run
 
 No separate GHCR PAT or OpenBao entry. The Forgejo RenovateJob **reuses the GitHub-App
