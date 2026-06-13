@@ -1,0 +1,135 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/policyexception_v2.json
+# Pod-level (base-rule) companion to exception-third-party-workloads.
+#
+# exception-third-party-workloads excepts the CONTROLLERS (Deployment/StatefulSet/
+# CronJob) via the autogen-* rules, which suppresses admission-time findings. But
+# Kyverno's background scan re-evaluates the live Pods against the BASE rules, which
+# the controller-scoped exception does not cover — so the same workloads keep
+# showing Pod-level findings. This exception closes that gap.
+#
+# Scope is deliberately narrow: ONLY the securityContext rules that are determined
+# by the third-party container image (which we cannot change) — run-as-non-root,
+# seccomp, privilege-escalation, drop-ALL capabilities, and explicit root user/group.
+# It intentionally does NOT except validate-resources, require-non-default-service
+# account, or validate-probes: those are our responsibility via HelmRelease values
+# and are fixed (or fixable) rather than excepted. Pods are matched by label selector
+# because their names are generated (governance forbids wildcard names).
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: exception-third-party-pods-base
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      Third-party application images (Excalidraw nginx on :80 as root, FreshRSS,
+      n8n, Searxng + Valkey, SparkyFitness frontend/server, InvoiceNinja +
+      MariaDB, drawio/PlantUML, gitea-mirror) hard-code their runtime user and
+      capability set; the chart cannot override them. These Pod-level base-rule
+      findings mirror the already-documented controller exceptions in
+      exception-third-party-workloads. Reviewed quarterly; remove per-app if the
+      upstream image gains a non-root/cap-drop variant.
+spec:
+  exceptions:
+    - policyName: workload-hardening-audit
+      ruleNames:
+        - run-as-non-root
+        - check-seccomp-strict
+        - privilege-escalation
+    - policyName: workload-advanced-hardening-audit
+      ruleNames:
+        - require-drop-all-capabilities
+        - disallow-explicit-root-user
+        - disallow-explicit-root-group
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - excalidraw
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: excalidraw
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - freshrss
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: freshrss
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - n8n
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: n8n
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - searxng
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: searxng
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - searxng
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: searxng-valkey
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - sparkyfitness
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: sparkyfitness
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - invoiceninja
+          selector:
+            matchLabels:
+              app: invoiceninja
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - invoiceninja
+          selector:
+            matchLabels:
+              app: invoiceninja-mariadb
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - drawio
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: drawio
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - drawio
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: plantuml-server
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - forgejo
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: gitea-mirror
