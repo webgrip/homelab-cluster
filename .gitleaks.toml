@@ -1,0 +1,25 @@
+# gitleaks config for homelab-cluster.
+# Used by the full-history scan and by .claude/hooks/guard-secrets.sh (which scans
+# edited-file CONTENT in a temp path, so the path allowlists below do NOT weaken it).
+#
+# Reviewed 2026-06-13 (roadmap #6): a full-history scan (1108 commits) found only the
+# false positives allowlisted here. The real sensitive files (age.key, kubeconfig,
+# cloudflare-tunnel.json, github-deploy.key) were never committed and are .gitignored.
+title = "homelab-cluster"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Reviewed false positives — not real secrets"
+regexTarget = "line"
+paths = [
+  # SOPS files are AES-encrypted ciphertext, not plaintext. Scanning them for
+  # secrets is meaningless; plaintext-in-SOPS is guarded separately by guard-secrets.sh.
+  '''.*\.sops\.yaml$''',
+]
+regexes = [
+  # PromQL label strings in the Authentik media-storage alert rule that the
+  # generic-api-key heuristic mis-flags (commit ad009ea).
+  '''namespace="authentik"''',
+]
