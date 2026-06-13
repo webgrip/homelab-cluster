@@ -1,0 +1,37 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/policyexception_v2.json
+# Exception for GitHub Actions runner-scale-set pods (arc-systems).
+# Matched by the gha-runner-scale-set part-of label rather than by name, since
+# ephemeral runner pods have generated names (governance forbids wildcard names).
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: exception-arc-runner-attestations
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      The arc runner image (ghcr.io/webgrip/github-runner) is a first-party
+      image, so image-attestations-audit correctly expects a CycloneDX SBOM and
+      SLSA provenance. The real fix is to emit those attestations from the image
+      build in webgrip/infrastructure (on_release_published workflow) — that
+      cannot be done from this cluster repo. Excepted here until the build
+      pipeline publishes the attestations, then remove. Tracking: infra runner
+      image SBOM/provenance.
+spec:
+  exceptions:
+    - policyName: image-attestations-audit
+      ruleNames:
+        - verify-cyclonedx-sbom
+        - verify-github-slsa-provenance
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - arc-systems
+          selector:
+            matchLabels:
+              app.kubernetes.io/part-of: gha-runner-scale-set

@@ -1,0 +1,33 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/policyexception_v2.json
+# Exception for the Flux bootstrap Kustomization.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: exception-flux-bootstrap-kustomization
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      The flux-system/flux-system Kustomization is created by `flux bootstrap`
+      and is not part of the in-repo app tree (no gotk-sync.yaml is committed),
+      so its sourceRef omits the explicit namespace that
+      require-kustomization-flux-source expects. It already reconciles from the
+      flux-system GitRepository in the flux-system namespace (the implicit
+      default) — this is the legitimately-special bootstrap root, not a tenant
+      Kustomization. The in-repo cluster-apps Kustomization is fully compliant.
+spec:
+  exceptions:
+    - policyName: flux-governance-enforce
+      ruleNames:
+        - require-kustomization-flux-source
+  match:
+    any:
+      - resources:
+          kinds:
+            - Kustomization
+          namespaces:
+            - flux-system
+          names:
+            - flux-system
