@@ -182,8 +182,8 @@ Use the [diagnostics](#diagnostics) below to inspect each symptom.
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `ExternalSecret` shows `SecretSyncedError` | Remote key/property missing in Infisical, or the store is `NotReady` | Seed the key in Infisical; if the store is down, see the next row. |
-| `ClusterSecretStore/infisical` `READY=False` | Infisical pod down, wrong `hostAPI`, or bad machine-identity creds | Check the Infisical pod and the `eso-auth` Secret values. |
+| `ExternalSecret` shows `SecretSyncedError` | Remote key/property missing in OpenBao, or the store is `NotReady` | Seed the key at `secret/<name>` (KV v2); if the store is down, see the next row. |
+| `ClusterSecretStore/openbao` `READY=False` | OpenBao sealed or down, or the Kubernetes auth role/policy is missing | `openbao-0` sits `0/1` while sealed — re-run unseal (step 2); verify the `external-secrets` k8s auth role + policy. |
 | Generator `ExternalSecret` never creates | `generators.external-secrets.io` CRDs absent | `ClusterGenerator` needs ESO ≥ v0.12 — bump the chart or fall back to a namespaced `Generator`. |
 | `PushSecret` reports `Failed` / forbidden | ESO ServiceAccount lacks write RBAC in `authentik` | Add the `Role` / `RoleBinding` for the ESO SA. |
 | App broke right after migration | ESO Secret key names differ from the old SOPS keys | Match them exactly — fix `target.template` / `data[].secretKey`. |
@@ -195,7 +195,7 @@ Use the [diagnostics](#diagnostics) below to inspect each symptom.
 ```bash
 # Inspect a failing ExternalSecret / store / PushSecret
 kubectl describe externalsecret NAME -n NS
-kubectl describe clustersecretstore infisical
+kubectl describe clustersecretstore openbao
 kubectl describe pushsecret NAME -n NS
 
 # Is the generator CRD installed?
@@ -215,25 +215,27 @@ kubectl annotate externalsecret NAME -n NS force-sync="$(date +%s)" --overwrite
 
 **Cluster rebuild order:** Talos (`talsecret`) → `scripts/bootstrap-apps.sh` (applies the
 SOPS floor: `sops-age`, `github-deploy-key`, `cluster-secrets`) → Flux → **ESO** → random +
-OIDC ExternalSecrets reconcile with no backend → **Infisical** (CNPG `infisical-db` +
-`ENCRYPTION_KEY` from SOPS) → machine identity exists / re-seeded → `infisical` store Ready →
+OIDC ExternalSecrets reconcile with no backend → **OpenBao** (`openbao-0` boots **sealed**) →
+init/unseal + Kubernetes auth role exist (or restored) → `openbao` store Ready →
 external-class ExternalSecrets reconcile.
 
-**Restoring Infisical contents:**
+**Restoring OpenBao contents:**
 
-- Infisical's data is in the CNPG `infisical-db` cluster, backed up to Garage like every other
-  DB. Restore it via the [CNPG restore playbook](../cnpg-restore-playbook.md).
-- The restored DB is unreadable without the SOPS `ENCRYPTION_KEY` — that key is the crown
-  jewel; keep the age key safe.
+- OpenBao stores its data in its **integrated-raft PVC**, not a database. The nightly
+  `openbao-snapshot` CronJob ships a raft snapshot to Garage S3. Restore with
+  `bao operator raft snapshot restore` after init+unseal.
+- A fresh/empty OpenBao **cannot be unsealed with a new key** to read old data — you need the
+  **original unseal key** (held offline) plus the snapshot. The unseal key is the crown jewel;
+  losing it means losing OpenBao's contents.
 
-**If Infisical contents are lost entirely:** re-seed from the original providers. Each external
+**If OpenBao contents are lost entirely:** re-seed from the original providers. Each external
 secret is one of:
 
 - *re-derivable at provider* — regenerate (Cloudflare tokens, GitHub PAT, Garage keys, Twitch,
   Discord webhook, ACME/DNS). Just mint new ones and seed.
-- *must-restore-from-backup* — at-rest encryption keys seeded into Infisical (n8n
+- *must-restore-from-backup* — at-rest encryption keys seeded into OpenBao (n8n
   `N8N_ENCRYPTION_KEY`, invoiceninja `APP_KEY`, etc.). Losing these corrupts data — they must
-  come from the CNPG backup or a separately-held copy.
+  come from the OpenBao raft snapshot or a separately-held copy.
 
 Tag each secret accordingly when seeding so this list stays accurate.
 
@@ -241,4 +243,4 @@ Tag each secret accordingly when seeding so this list stays accurate.
 
 - [External Secrets plan](../external-secrets-plan.md) — architecture, inventory, waves.
 - [Authentik OIDC login failures](authentik-oidc-login.md) — for OIDC-elimination debugging.
-- [CloudNativePG restore playbook](../cnpg-restore-playbook.md) — for Infisical DB recovery.
+- [CloudNativePG restore playbook](../cnpg-restore-playbook.md) — for app database recovery.

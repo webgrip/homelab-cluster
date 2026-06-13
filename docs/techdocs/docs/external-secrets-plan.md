@@ -1,13 +1,15 @@
 # External Secrets (ESO) migration
 
-> Status: **planned, ready to implement.** This is the feature-complete, executable plan
-> for replacing most SOPS-encrypted secrets with [External Secrets Operator][eso] (ESO),
-> driven by an in-cluster [Infisical][infisical] backend, while keeping a small SOPS
-> bootstrap floor. Operational procedures live in the
-> [External Secrets runbook](runbooks/external-secrets.md).
+> **⚠️ Historical / superseded.** This was the original migration plan, written when the
+> intended backend was **Infisical**. The cluster **pivoted to [OpenBao]** (OSS, native OIDC)
+> and the migration is **complete**. For *why*, see [The long goodbye to SOPS][blog]; for *how it
+> works today*, see the **[External Secrets runbook](runbooks/external-secrets.md)** — that is the
+> authoritative operational doc. The Infisical-specific architecture below is retained only as a
+> record of the plan: wherever it says "Infisical", read **OpenBao** (KV v2 at `secret/<name>`,
+> Kubernetes-auth ServiceAccount — no machine identity, `hostAPI`, or `ENCRYPTION_KEY`).
 
-[eso]: https://external-secrets.io/
-[infisical]: https://infisical.com/
+[openbao]: https://openbao.org/
+[blog]: blog/2026-06-12-the-long-goodbye-to-sops.md
 
 ## Why
 
