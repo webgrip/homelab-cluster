@@ -9,11 +9,34 @@ spec:
   template:
     spec:
       restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: psql
           image: docker.io/library/postgres:18.4-alpine3.23@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
           env:
+            - name: HOME
+              value: /tmp
             - name: PGHOST
               value: sparkyfitness-db-rw
             - name: PGPORT
@@ -61,3 +84,5 @@ spec:
               END;
               $pgstat$;
               SQL
+      volumes:
+        - {name: tmp, emptyDir: {}}
