@@ -67,17 +67,20 @@ the RFC's phase gates as the source of truth for this stream; the roadmap just t
 
 ## P1 — Next up (safe, unblocked, mostly fire-and-forget)
 
-These need no live-cluster babysitting and are individually reversible. Good batch to take now.
+> **P1 batch shipped 2026-06-13:** ✅ #6 (gitleaks history clean + `.gitleaks.toml`),
+> ✅ #55 (drift detection `warn`), ✅ #73 (ESO docs → OpenBao), ✅ #52 (cloudflared 2 replicas),
+> ✅ #53 (cert-manager/ESO/CoreDNS via built-in `system-cluster-critical`),
+> ✅ #51 (Authentik server 2 replicas — pod-level HA only; see note).
+> **#53-Longhorn:** already done by the chart — verified live that longhorn-manager runs
+> `priorityClassName: longhorn-critical` + Guaranteed QoS. No action needed.
+
+What's left in P1:
 
 | # | Item | Impact | Effort | Notes |
 |---|------|--------|--------|-------|
-| 73 | Rewrite `external-secrets-plan.md` + runbook from Infisical → OpenBao | High | M | 4 docs still describe a backend that doesn't exist; pure docs, zero cluster risk |
-| 6 | gitleaks/trufflehog scan of **full git history** for key files | High | S | Confirm age.key/kubeconfig/tunnel.json never committed historically |
-| 55 | Enable Flux HelmRelease `driftDetection` via the global Kustomization patch | High | S | 0 today; cheap insurance against silent drift |
-| 53 | PriorityClasses for Flux/Cilium/CoreDNS/cert-manager/ESO/Longhorn | High | M | 0 today; makes OOM-eviction order deliberate, not luck (matters at ~80% CP RAM) |
 | 54 | PodDisruptionBudgets for CoreDNS, envoy gateways, Authentik, CNPG | Med | M | 0 today (kyverno got anti-affinity only); protect against drain zeroing a service |
-| 51 | Authentik server → 2 replicas, hard anti-affinity | High | S | Still 1/1 — SSO is a login SPOF |
-| 52 | cloudflared → 2 replicas | High | S | Single tunnel pod = external access severed on one eviction |
+| 51b | Authentik **node-level** HA: media → Garage S3, then unpin from `fringe` | Med | M | #51 gave pod-level HA only; authentik is fringe-pinned with an RWO file-media PVC |
+| 53b | priorityClassName on envoy-gateway (and review cilium) | Low | S | cert-manager/ESO/CoreDNS done; Longhorn already protected; envoy still default |
 | 40 | Add restore-test components to authentik, grafana, guac, dependency-track | Med | M | Author now (kept suspended like the others until CP RAM frees) |
 
 ## P2 — Build (structural; real effort, deferred risk)
