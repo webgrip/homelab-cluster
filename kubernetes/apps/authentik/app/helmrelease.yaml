@@ -110,7 +110,13 @@ spec:
         - authentik-blueprints
 
     server:
-      replicas: 1
+      # 2 replicas → no SSO/OIDC blip on rollouts/reloads and survives a single
+      # server-pod crash. NOTE: authentik is pinned to the single `fringe` node
+      # (global nodeAffinity) with an RWO file-backed media PVC, so both pods
+      # share one node — this is pod-level HA + zero-downtime rollout, NOT
+      # node-level HA. Node-level HA needs media on Garage S3 first, then
+      # unpinning from fringe (tracked as a follow-up).
+      replicas: 2
       containerSecurityContext:
         allowPrivilegeEscalation: false
         capabilities:
