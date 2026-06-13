@@ -12,9 +12,11 @@ metadata:
   annotations:
     policies.kyverno.io/description: >-
       Auditing, not blocking. Several upstream Helm chart publishers (Grafana, Prometheus
-      Community, Longhorn, CNPG, Sloth, Policy Reporter) do not publish OCI chart
-      repositories. These HelmRepository resources are the only available source for
-      their charts. Exempt from audit-helmrepository-use until OCI alternatives exist.
+      Community, Longhorn, CNPG, Sloth, Policy Reporter, Authentik, Harbor, KEDA) do not
+      publish OCI chart repositories (verified 2026-06-13: goauthentik/goharbor ship only
+      HTTP; the kedacore OCI path is not resolvable). These HelmRepository resources are
+      the only available source for their charts. Exempt from audit-helmrepository-use
+      until OCI alternatives exist. grafana-operator was migrated to OCIRepository.
 spec:
   exceptions:
     - policyName: flux-governance-enforce
@@ -56,3 +58,24 @@ spec:
             - security
           names:
             - policy-reporter
+      - resources:
+          kinds:
+            - HelmRepository
+          namespaces:
+            - authentik
+          names:
+            - authentik
+      - resources:
+          kinds:
+            - HelmRepository
+          namespaces:
+            - harbor
+          names:
+            - harbor
+      - resources:
+          kinds:
+            - HelmRepository
+          namespaces:
+            - keda
+          names:
+            - keda
