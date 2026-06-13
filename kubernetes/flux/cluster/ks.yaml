@@ -34,6 +34,13 @@ spec:
                 metadata:
                   name: _
                 spec:
+                  # Detect (don't auto-correct) live drift from reconciled state.
+                  # 'warn' surfaces drift via events + the gotk DriftDetected metric
+                  # (FluxResourceDriftDetected alert) without fighting Kyverno mutate
+                  # webhooks. Promote to 'enabled' per-HR once benign-drift paths are
+                  # tuned out with spec.driftDetection.ignore.
+                  driftDetection:
+                    mode: warn
                   install:
                     crds: CreateReplace
                     strategy:
