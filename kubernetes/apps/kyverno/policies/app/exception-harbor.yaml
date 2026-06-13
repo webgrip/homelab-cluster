@@ -1,0 +1,48 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/policyexception_v2.json
+# Exception for the goharbor chart's components (app=harbor).
+# The chart already applies a hardened containerSecurityContext (runAsNonRoot,
+# RuntimeDefault seccomp, drop ALL) by default, and per-component resources are
+# now set in the HelmRelease. Two findings remain that the chart does not let us
+# fix cleanly — documented here.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: exception-harbor-components
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      goharbor components (core, jobservice, registry, portal, nginx, redis,
+      trivy, exporter) run under the chart's default ServiceAccount with
+      automountServiceAccountToken: false — the SA token is never mounted, so
+      the require-non-default-serviceaccount risk (token abuse) is already
+      mitigated; creating 8 dedicated SAs adds plumbing for no security gain.
+      Component images are official docker.io/goharbor/* pinned to the chart's
+      app version (tag, not digest); the chart provides no digest-pinning hook,
+      so require-image-digest cannot be satisfied without forking image refs.
+      Matched by the app=harbor label (CNPG harbor-db pods are excepted
+      separately in exception-cnpg-pods). Reviewed when the chart adds support.
+spec:
+  exceptions:
+    - policyName: workload-advanced-hardening-audit
+      ruleNames:
+        - require-non-default-serviceaccount
+        - autogen-require-non-default-serviceaccount
+    - policyName: image-supply-chain-audit
+      ruleNames:
+        - require-image-digest
+        - autogen-require-image-digest
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+            - Deployment
+            - StatefulSet
+          namespaces:
+            - harbor
+          selector:
+            matchLabels:
+              app: harbor
