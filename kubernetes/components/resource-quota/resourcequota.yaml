@@ -1,0 +1,21 @@
+---
+# Count-only ResourceQuota, applied per application namespace via the
+# components: field (kustomize stamps the namespace from the consuming
+# kustomization). It satisfies namespace-tenancy-audit/require-resourcequota
+# and caps object sprawl (pods, PVCs).
+#
+# It intentionally does NOT constrain cpu/memory. A compute quota would require
+# EVERY pod in the namespace — including the operator-managed CNPG database pods,
+# which set no requests/limits — to declare resources or be rejected at admission;
+# and the companion default LimitRange (1Gi default memory limit) would risk
+# OOM-killing those databases. Counts are set well above current usage so
+# admission is never blocked. Upgrade to a compute quota only after the CNPG
+# Cluster specs set .spec.resources.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: default-resourcequota
+spec:
+  hard:
+    pods: "60"
+    persistentvolumeclaims: "25"
