@@ -27,6 +27,15 @@ spec:
     timeout: 15m
   values:
     global:
+      # Pod-level hardening for all authentik components. The goauthentik image
+      # already runs as uid 1000 (verified live), so runAsNonRoot formalizes it.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       podAnnotations:
         reloader.stakater.com/auto: "true"
       nodeSelector:
@@ -102,6 +111,11 @@ spec:
 
     server:
       replicas: 1
+      containerSecurityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
       resources:
         requests:
           cpu: 100m
@@ -131,6 +145,11 @@ spec:
 
     worker:
       replicas: 1
+      containerSecurityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
       resources:
         requests:
           cpu: 100m
