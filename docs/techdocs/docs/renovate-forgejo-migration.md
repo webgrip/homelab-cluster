@@ -69,10 +69,32 @@ Under `kubernetes/apps/renovate/renovate-operator/jobs/`:
 
 ### Phase 3 — Forgejo-native webhook
 
-- [ ] Add the operator `webhook.forgejo.sync` block to the RenovateJob pointing at
-      `https://renovate-webhook.${SECRET_DOMAIN}/webhook/v1/forgejo`, reusing `renovate-webhook-auth`
-      and the bot PAT for registration. **Confirm the exact `webhook.forgejo.*` field names against
-      the installed operator CRD (chart 4.10.1) before committing.**
+- [ ] Add the operator `webhook.forgejo.sync` block to `webgrip-forgejo.yaml` (as a sibling of
+      `authentication:` under `webhook:`), pointing at `/webhook/v1/forgejo`, reusing
+      `renovate-webhook-auth` and the bot PAT for registration. **Confirm the exact
+      `webhook.forgejo.*` field names against the installed operator CRD (chart 4.10.1) first** —
+      the bot PAT also needs webhook-create rights on the target repo(s):
+
+      ```yaml
+      webhook:
+        enabled: true
+        authentication:
+          enabled: true
+          secretRef:
+            name: renovate-webhook-auth
+            key: token
+        forgejo:
+          sync:
+            enabled: true
+            webhookURL: https://renovate-webhook.${SECRET_DOMAIN}/webhook/v1/forgejo
+            topic: renovate
+            tokenSecretRef:
+              name: renovate-forgejo-token
+              key: FORGEJO_TOKEN
+            authTokenSecretRef:
+              name: renovate-webhook-auth
+              key: token
+      ```
 
 ### Phase 4 — pilot on one authoritative repo
 
