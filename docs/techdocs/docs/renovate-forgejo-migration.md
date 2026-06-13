@@ -41,21 +41,24 @@ back to branch automerge.
 - [ ] Create a local `renovate` bot user (`gitea_admin` break-glass / `forgejo admin user create` —
       **not** an Authentik SSO login; the forge allows external registration only).
 - [ ] Generate the scoped PAT above for that user.
-- [ ] Store it in OpenBao at `renovate/forgejo` (key `RENOVATE_TOKEN`).
+- [ ] Store it in OpenBao at `renovate/forgejo` (key `RENOVATE_TOKEN`):
+      `bao kv put secret/renovate/forgejo RENOVATE_TOKEN=<forgejo-bot-pat>`. That is the **only**
+      manual OpenBao write for this migration.
 
-### Phase 1 — decouple registry auth from the GitHub App
+### Phase 1 — registry (GHCR) auth — nothing to do during dual-run
 
-- [ ] Mint a fine-grained **GitHub PAT with `read:packages`** for `ghcr.io/webgrip/*`
-      ([ADR-0013](architecture/adr-0013-github-as-renovate-data-oracle.md)).
-- [ ] Assemble the static `RENOVATE_HOST_RULES` JSON (GHCR via that PAT + the existing Docker Hub
-      creds) and store it as one OpenBao key. No minting — the PAT is static.
+No separate GHCR PAT or OpenBao entry. The Forgejo RenovateJob **reuses the GitHub-App
+token-minter's `RENOVATE_HOST_RULES`** (`renovate-runtime-token`), which already runs for the
+GitHub path ([ADR-0013](architecture/adr-0013-github-as-renovate-data-oracle.md)) — wired as an
+`extraEnv` `valueFrom` (`optional: true`) in `webgrip-forgejo.yaml`. GHCR re-homes to Harbor at
+GitHub-path retirement (Phase 5).
 
 ### Phase 2 — manifests (dual-run, pilot-scoped)
 
-Under `kubernetes/apps/renovate/renovate-operator/jobs/`:
+Under `kubernetes/apps/renovate/renovate-operator/jobs/` (**already scaffolded, dormant**):
 
-- [ ] `renovate-forgejo-token` **ExternalSecret** (`openbao` ClusterSecretStore) → `RENOVATE_TOKEN`,
-      `FORGEJO_TOKEN` (operator discovery), `RENOVATE_HOST_RULES`.
+- [ ] `renovate-forgejo-token` **ExternalSecret** (`openbao` ClusterSecretStore) → `RENOVATE_TOKEN` +
+      `FORGEJO_TOKEN` (operator discovery), both from the single `renovate/forgejo` PAT.
 - [ ] `renovate-config-forgejo` **ConfigMap** — clone of `configmap-gitops.yaml` with
       `"platform": "forgejo"`, the Forgejo `gitAuthor` (`Renovate <renovate@${SECRET_DOMAIN}>`), and
       the `api.github.com` hostRules **kept** (version oracle).
