@@ -37,6 +37,15 @@ spec:
     externalURL: https://harbor.${SECRET_DOMAIN}
     logLevel: info
 
+    # Recreate, not RollingUpdate: jobservice and registry mount ReadWriteOnce
+    # Longhorn PVCs. RollingUpdate surges a new pod before the old releases the
+    # volume, which deadlocks on Longhorn's Multi-Attach guard (maxUnavailable
+    # rounds to 0 for single-replica components). Recreate terminates the old pod
+    # first, releasing the PVC, so the new pod can attach. Brief per-component
+    # downtime on chart upgrades is acceptable for a homelab registry.
+    updateStrategy:
+      type: Recreate
+
     # TLS terminates at the envoy gateway (wildcard cert); Harbor is fronted by an
     # explicit HTTPRoute (httproute.yaml) on the `harbor` ClusterIP service.
     expose:
