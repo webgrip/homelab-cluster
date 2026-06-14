@@ -1,0 +1,75 @@
+---
+# Zero-trust for sparkyfitness (W7). The namespace label generates default-deny
+# (ingress+egress) + allow-dns. Flow: gateway -> frontend:80 -> server:3010 ->
+# db:5432 (CNPG). The db archives WAL to Garage S3 and talks to the kube-apiserver.
+# sparkyfitness is internal — no internet egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sparkyfitness-allow-ingress
+  labels:
+    app.kubernetes.io/part-of: sparkyfitness
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    # intra-namespace: frontend -> server -> db (all ports)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: sparkyfitness
+    # gateway (network ns) + LAN (gateway traffic can masquerade to a node IP) -> frontend
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: network
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16
+        - ipBlock:
+            cidr: 127.0.0.0/8
+        - ipBlock:
+            cidr: fd00::/8
+        - ipBlock:
+            cidr: ::1/128
+      ports:
+        - protocol: TCP
+          port: 80
+    # Prometheus (observability ns) scraping pod/db metrics
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sparkyfitness-allow-egress
+  labels:
+    app.kubernetes.io/part-of: sparkyfitness
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # intra-namespace: server -> db, db replication
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: sparkyfitness
+    # LAN: Garage S3 (10.0.0.110:3900) for CNPG WAL/backups, nodes, API VIP.
+    # CRITICAL: blocking this breaks WAL archiving -> the Garage-WAL SPOF outage.
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/24
+    # kube-apiserver ClusterIP (CNPG instance manager needs the k8s API)
+    - to:
+        - ipBlock:
+            cidr: 10.43.0.1/32
+      ports:
+        - protocol: TCP
+          port: 443
