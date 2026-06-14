@@ -1,0 +1,71 @@
+---
+# Zero-trust for backstage (W7). default-deny + allow-dns generated. backstage is
+# CNPG-backed and needs egress to the kube-apiserver (kubernetes plugin), GitHub
+# and other external sources (catalog), and reaches Authentik for OIDC via the
+# gateway (LAN). Broad internet egress, cross-namespace cluster lateral blocked.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backstage-allow-ingress
+  labels:
+    app.kubernetes.io/part-of: backstage
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: backstage
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: network
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16
+        - ipBlock:
+            cidr: 127.0.0.0/8
+        - ipBlock:
+            cidr: fd00::/8
+        - ipBlock:
+            cidr: ::1/128
+      ports:
+        - protocol: TCP
+          port: 7007
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backstage-allow-egress
+  labels:
+    app.kubernetes.io/part-of: backstage
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: backstage
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.42.0.0/16
+              - 10.43.0.0/16
+    - to:
+        - ipBlock:
+            cidr: 10.43.0.1/32
+      ports:
+        - protocol: TCP
+          port: 443
