@@ -36,26 +36,31 @@ back to branch automerge.
 
 ## Phased work
 
-### Phase 0 — Forgejo bot + token (zero-touch, GitOps)
+### Phase 0 — Forgejo bot + token (zero-touch, GitOps — Tier-1 do-once Job per [ADR-0019](architecture/adr-0019-bootstrap-task-pattern.md))
 
-**Automated** by an idempotent provisioner CronJob — no manual Forgejo, token, or OpenBao steps.
-Manifests under `kubernetes/apps/renovate/renovate-operator/jobs/`:
+**Automated** by an idempotent bootstrap **Job** — no manual Forgejo, token, or OpenBao steps. It
+lives in its own **`force: true`** Flux Kustomization (`renovate-operator/ks-forgejo-provisioner.yaml`
+→ `renovate-operator/forgejo-provisioner/`), gated `dependsOn: forgejo` — kept out of the shared jobs
+Kustomization so the GitHub renovate path never depends on Forgejo. Files:
 
-- `renovate-forgejo-admin.externalsecret.yaml` — replicates `forgejo/admin` from OpenBao (the only
-  input; already present).
-- `renovate-forgejo-bot-password.externalsecret.yaml` — ESO `password-generator` (generate-once +
-  Retain) — the bot's password, never human-typed.
-- `forgejo-bot-provisioner.{rbac,cronjob}.yaml` — the converging CronJob.
+- `admin.externalsecret.yaml` — replicates `forgejo/admin` from OpenBao (the only input; already present).
+- `bot-password.externalsecret.yaml` — ESO `password-generator` (generate-once + Retain); never human-typed.
+- `rbac.yaml` + `job.yaml` — the converging bootstrap Job.
 
-On each run the CronJob: (1) ensures the `renovate` bot user exists (admin API), (2) reuses the stored
-token if it still authenticates — else resyncs the bot password and mints a fresh scoped token into
-Secret `renovate-forgejo-token`, and (3) ensures the throwaway pilot repo exists + is seeded. It only
-writes when something is missing/invalid, so re-runs are no-ops. All Forgejo calls go to the in-cluster
-Service (`forgejo-http.forgejo.svc:3000`).
+The Job: (1) ensures the `renovate` bot user exists (admin API), (2) reuses the stored token if it
+still authenticates — else resyncs the bot password and mints a fresh scoped token into Secret
+`renovate-forgejo-token`, and (3) ensures the throwaway pilot repo exists + is seeded. Writes only when
+something is missing/invalid. As a **Tier-1** task it runs on first apply and re-runs **only when its
+spec changes** (the completed Job is the "done" marker; `force: true` recreates it on change) — no
+timer, no recurring load. All Forgejo calls use the in-cluster Service (`forgejo-http.forgejo.svc:3000`).
 
-- [ ] Activate (uncomment the block in `kustomization.yaml`), then kick the first run:
-      `kubectl -n renovate create job --from=cronjob/renovate-forgejo-provisioner provision-now`.
+- [ ] Activate: uncomment `ks-forgejo-provisioner` in `renovate/kustomization.yaml` **and** the runtime
+      block in `renovate-operator/jobs/kustomization.yaml`, then commit. Flux runs the Job once.
 - [ ] Confirm `renovate-forgejo-token` exists and `renovate/forgejo-renovate-pilot` was created + seeded.
+- [ ] Re-run on demand (rare): `kubectl -n renovate delete job renovate-forgejo-provisioner` — Flux
+      recreates it. (No CronJob, so a Forgejo DB restore won't auto-heal it; you'd catch that via the
+      `RenovateProjectRunFailed` alert. Promote to a low-frequency Tier-2 CronJob if you want unattended
+      healing — same script.)
 
 ### Phase 1 — registry (GHCR) auth — nothing to do during dual-run
 

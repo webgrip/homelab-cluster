@@ -1,0 +1,29 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: renovate-forgejo-provisioner
+spec:
+  # Gated: Forgejo (cross-namespace) must be reconciled before the bootstrap Job runs, and the
+  # renovate-operator namespace/RBAC must exist.
+  dependsOn:
+    - name: renovate-operator
+    - name: forgejo
+      namespace: forgejo
+  # force: recreate the immutable bootstrap Job when its spec changes, so it re-runs on change only
+  # (no CronJob timer). The completed Job is the "done" marker; identical spec → Flux no-op. See ADR-0019.
+  force: true
+  interval: 1h
+  path: ./kubernetes/apps/renovate/renovate-operator/forgejo-provisioner
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-secrets
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: renovate
+  wait: false
