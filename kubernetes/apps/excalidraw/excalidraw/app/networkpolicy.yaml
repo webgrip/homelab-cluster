@@ -1,0 +1,44 @@
+---
+# Zero-trust ingress for excalidraw. The namespace label
+# kyverno.io/default-network-policies (on namespace.yaml) makes
+# namespace-defaults-generate create a default-deny (ingress+egress) plus an
+# allow-dns NetworkPolicy. excalidraw is a static nginx SPA: it needs ingress
+# from the gateway and DNS egress, nothing else. This policy re-opens ingress
+# (the gateway can arrive masqueraded as a node/LAN IP, so allow the network
+# namespace AND RFC1918/loopback ipBlocks — same proven shape as searxng).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: excalidraw-allow-ingress
+  labels:
+    app.kubernetes.io/name: excalidraw
+    app.kubernetes.io/part-of: excalidraw
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: excalidraw
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: excalidraw
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: network
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16
+        - ipBlock:
+            cidr: 127.0.0.0/8
+        - ipBlock:
+            cidr: fd00::/8
+        - ipBlock:
+            cidr: ::1/128
+      ports:
+        - protocol: TCP
+          port: 80
