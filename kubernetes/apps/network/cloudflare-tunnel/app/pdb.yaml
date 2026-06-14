@@ -1,0 +1,13 @@
+---
+# Keep ≥1 cloudflared tunnel pod during voluntary disruptions. Safe: the 2 replicas
+# are soft-spread across soyo nodes (not fringe-pinned) and can reschedule freely.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cloudflare-tunnel
+  namespace: network
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cloudflare-tunnel

@@ -1,0 +1,13 @@
+---
+# Keep ≥1 CoreDNS pod during voluntary disruptions (node drains/upgrades). Safe:
+# the 2 replicas run on different control-plane nodes and can reschedule freely.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: coredns
+  namespace: kube-system
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: coredns
