@@ -1,0 +1,75 @@
+---
+# Zero-trust for harbor (W7) — critical registry, 8 components, handled
+# conservatively (same posture as authentik). default-deny + allow-dns generated.
+# Components talk to each other intra-namespace (core, jobservice, registry,
+# portal, nginx, redis, trivy, db) and harbor needs broad outbound: Garage S3
+# (registry blobs + CNPG WAL), Trivy CVE-DB downloads, and proxy-cache pull-through
+# to upstream registries (docker.io/ghcr/...).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: harbor-allow-ingress
+  labels:
+    app.kubernetes.io/part-of: harbor
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    # intra-namespace component mesh (all ports)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: harbor
+    # gateway (network ns) + LAN — all ports (registry/core/portal; avoid
+    # port-guess breaking image push/pull)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: network
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16
+        - ipBlock:
+            cidr: 127.0.0.0/8
+        - ipBlock:
+            cidr: fd00::/8
+        - ipBlock:
+            cidr: ::1/128
+    # Prometheus metrics scraping
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: harbor-allow-egress
+  labels:
+    app.kubernetes.io/part-of: harbor
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # intra-namespace component mesh
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: harbor
+    # all in-cluster services (inter-component via ClusterIP + kube-apiserver)
+    - to:
+        - ipBlock:
+            cidr: 10.43.0.0/16
+    # internet + LAN (Garage S3 blobs/WAL, Trivy CVE feeds, proxy-cache upstream
+    # registries); blocks only direct cross-namespace pod IPs.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.42.0.0/16
+              - 10.43.0.0/16
