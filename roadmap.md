@@ -21,9 +21,13 @@
 
 ## ✅ Done log (recent)
 
+- **Headway batch (2026-06-14):** digest-pinned 9 unpinned images (#29 — openbao/aws-cli/alpine-k8s/
+  dind/forgejo-runner; harbor-proxy left to the owner); PDBs for CoreDNS + cloudflared (#44, the
+  reschedulable ones; authentik/envoy deferred — fringe-pinned, a PDB would deadlock fringe drains).
+  Also surfaced #77: the Flux alerting is dead (metric source missing, not just the PodMonitor).
 - **Alerts batch (2026-06-14):** node-memory pressure (#71); OpenBao snapshot staleness (#54);
-  **Flux PodMonitor** — no `gotk_*` metrics were scraped, so the Flux NotReady/Drift/Suspended
-  alerts were all silently dark — plus the suspended-Kustomization alert (#70).
+  **Flux PodMonitor** — but the controllers don't expose the condition/suspend metrics, so the Flux
+  NotReady/Drift/Suspended alerts are still dark (see #77) — plus the suspended-Kustomization alert (#70).
 - **Owner W6/W7 + Harbor + CNPG (2026-06-13/14):** per-namespace count-only ResourceQuotas (W6);
   zero-trust NetworkPolicies across 11 app namespaces (W7); Harbor pull-through proxy-cache + HR
   stall fix; CNPG backup tiering (DBs 1–5, WAL zstd compression, per-tier retention; guac+dtrack 30d→7d).
@@ -144,7 +148,12 @@
 74. GitOps-health dashboard (e2e status, commit-vs-reconciled, drift, suspended count) — `[P2 · Med · M]`
 75. Verify Claude Code telemetry metric names + enable pending settings.json wiring — `[P2 · Low · S]`
 76. Tune `spec.driftDetection.ignore` on HRs that warn on benign drift — `[P1 · Med · S]`
-77. Confirm the revived Flux alerts now fire (gotk_* flowing after the PodMonitor) — `[P1 · Low · S]`
+77. **Flux alerting is dead** — this Flux version's controllers expose `gotk_reconcile_duration`
+    but NOT `gotk_reconcile_condition`/`gotk_suspend_status`, so the 3 owner Flux alerts + the
+    suspended-ks alert never fire (the PodMonitor scrapes fine — `up{job=…flux-controllers}=4` —
+    but the metric source is missing). Fix: add a kube-state-metrics CustomResourceState config for
+    the Flux CRDs (generates `gotk_resource_info{ready,suspended,…}`) + RBAC, then rewrite the 4
+    alerts to it. Needs post-reconcile verification (KSM restart) — `[P1 · High · M]`
 
 ### CI / shift-left
 78. Add zizmor (Actions security lint) to e2e CI — `[P1 · Med · S]`
