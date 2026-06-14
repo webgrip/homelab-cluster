@@ -104,3 +104,36 @@ spec:
               - Reconcile or revert the live change through Git
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#flux"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/gitops-flux-health/flux-gitops-health"
+
+        - alert: FluxKustomizationSuspendedTooLong
+          # Excludes the 3 intentionally-parked Kustomizations (pyroscope/beyla
+          # documented; drawio unused) so this fires only on *forgotten* suspends.
+          expr: |
+            max by (name, namespace) (
+              gotk_suspend_status{kind="Kustomization", name!~"pyroscope|beyla|drawio"}
+            ) == 1
+          for: 24h
+          labels:
+            severity: info
+            owner: platform
+            service: flux
+          annotations:
+            summary: "Flux Kustomization suspended > 24h ({{$labels.namespace}}/{{$labels.name}})"
+            description: |
+              What's happening:
+              - Kustomization {{$labels.namespace}}/{{$labels.name}} has been suspended for over 24h.
+
+              Impact/risk:
+              - A suspended Kustomization stops reconciling, so its GitOps changes silently
+                never apply — easy to forget and let rot.
+
+              Likely causes:
+              - A debugging/maintenance suspend that was never lifted.
+              - An intentional park that should be documented and excluded from this alert.
+
+              First actions:
+              - Run: flux get kustomizations -A | grep -i suspend
+              - Resume it (flux resume ks NAME -n NS), or if intentional add it to the
+                exclusion list in this rule and note why.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#flux"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/gitops-flux-health/flux-gitops-health"

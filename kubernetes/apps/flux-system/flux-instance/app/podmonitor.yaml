@@ -1,0 +1,26 @@
+---
+# Scrape the Flux controllers' Prometheus metrics (:8080 http-prom). Without this
+# no gotk_* metrics exist, so the platform.flux alerts (NotReady / DriftDetected /
+# SuspendedTooLong) are silently dark. Pods carry app.kubernetes.io/part-of=flux.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: flux-controllers
+  namespace: flux-system
+  labels:
+    app.kubernetes.io/part-of: flux
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - flux-system
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: flux
+  podMetricsEndpoints:
+    - port: http-prom
+      interval: 60s
+      relabelings:
+        - sourceLabels:
+            - __meta_kubernetes_pod_label_app_kubernetes_io_component
+          targetLabel: component
