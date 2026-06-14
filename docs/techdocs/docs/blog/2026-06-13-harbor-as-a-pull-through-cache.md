@@ -61,6 +61,16 @@ Stack those and the resolved pull order on every node becomes:
 
 > **Spegel peers → Harbor proxy cache → upstream registry.**
 
+```mermaid
+flowchart TD
+    need["A node needs an image<br/>e.g. docker.io/library/postgres"]
+    need --> q1{"A neighbour node<br/>already has it?"}
+    q1 -->|yes| spegel["Spegel: served from the peer<br/>over the LAN — instant"]
+    q1 -->|no| q2{"Harbor reachable?"}
+    q2 -->|yes| harbor["Harbor proxy cache: a local,<br/>scanned copy. On a miss it fetches<br/>from the internet once and keeps it"]
+    q2 -->|"no — Harbor / Garage down"| up["Fallback: pulled straight from<br/>the internet (docker.io / ghcr.io)"]
+```
+
 A node that has the image gets it from a neighbor instantly. A cache miss goes to Harbor. And if
 Harbor — or Garage, or the Envoy gateway it routes through — is unreachable, containerd shrugs and
 pulls straight from `docker.io`. The same mechanism makes cold boot safe for free: at bootstrap
@@ -72,6 +82,69 @@ I verified all of this against the upstream docs before writing a line of node c
 "fails open" is a claim you have to *earn*: Talos leaves `skipFallback` off by default, and since
 1.9 it matches the CRI fallback behaviour (these nodes run 1.13.3). The full reasoning, with the
 exact config, is in [ADR-0017](../architecture/adr-0017-registry-mirror-talos-spegel.md).
+
+## Spegel and Harbor do different jobs
+
+It's tempting to lump Spegel and Harbor together as "the caching stuff," but they solve two
+*different* halves of the problem, and the whole design only works because they **stack** rather
+than compete.
+
+```mermaid
+flowchart LR
+    subgraph S["Spegel — peer sharing"]
+        direction TB
+        s1{"Is the image already<br/>on some node?"}
+        s1 -->|yes| s2["A neighbour hands it<br/>over the LAN — fast"]
+        s1 -->|no| s3["Cannot help — there is<br/>nothing to share yet"]
+    end
+    subgraph H["Harbor — pull-through cache"]
+        direction TB
+        h1["Image is nowhere<br/>in the cluster yet"]
+        h1 --> h2["Fetches from the internet once,<br/>scans it, keeps a durable copy"]
+    end
+    s3 -.->|"exactly the gap<br/>Harbor fills"| h1
+```
+
+**Spegel shares what the cluster already has.** Once any node has pulled an image, Spegel lets the
+others grab it from that neighbour over the LAN instead of going back out to the internet. It's
+instant — but it has a hard limit: it can only share an image *some node already holds*. Ask it for
+something brand-new that nobody has pulled yet and it has nothing to give.
+
+**Harbor fetches what the cluster doesn't have.** A proxy-cache project reaches out to the upstream
+registry, pulls the image once, scans it, and keeps a durable copy on Garage. That is precisely the
+gap Spegel can't fill — the *first* pull of an image nobody has seen.
+
+So they aren't redundant; they're a relay. Spegel is the fast inner ring (peers), Harbor is the
+durable, scanned middle ring (one local copy), and the public internet is the outer ring — the
+source of truth, and the fallback. That's the ordering in the first diagram: a pull walks outward
+only as far as it has to, and stops at the first ring that can answer.
+
+Why not just point Spegel *at* Harbor and skip the node-level config entirely? Because Spegel's own
+"additional mirror" setting is a single flat list applied to *every* registry identically — it
+can't send `docker.io` to Harbor's `dockerhub` project and `ghcr.io` to Harbor's `ghcr` project,
+which are two different URLs. Per-registry routing has to live one layer down, in the Talos node
+config; Spegel only needs the one flag that says "keep what's already here and put yourself in
+front of it."
+
+And the reason all three rings earn their keep shows up the moment something breaks. Harbor sitting
+on Garage was the dependency that worried me — so the question that actually matters is *what still
+works when a ring is missing*:
+
+```mermaid
+flowchart TD
+    q["A node needs an image"] --> d1{"Harbor up?"}
+    d1 -->|yes| ok1["Harbor serves it<br/>(or fetches + caches on a miss)"]
+    d1 -->|no| d2{"Does a neighbour<br/>already have it?"}
+    d2 -->|yes| ok2["Spegel serves it from a peer"]
+    d2 -->|no| d3{"Internet reachable?"}
+    d3 -->|yes| ok3["Pulled straight from upstream"]
+    d3 -->|no| fail["Only now does the pull fail —<br/>exactly as it would today, no worse"]
+```
+
+Harbor down? Pulls fall through to the internet. Harbor *and* the internet both down? A node can
+still get any image a neighbour already holds. The pull only fails in the one case where it would
+have failed anyway today — Harbor never makes things *worse*. That is the entire bargain that made
+it safe to add.
 
 ## The other half: Harbor has no operator
 
