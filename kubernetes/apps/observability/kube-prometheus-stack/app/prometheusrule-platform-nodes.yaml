@@ -1,0 +1,69 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-nodes-rules
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: nodes
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: platform.nodes
+      rules:
+        - alert: NodeMemoryHigh
+          expr: |
+            (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.85
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: nodes
+          annotations:
+            summary: "Node memory above 85% ({{ $labels.instance }})"
+            description: |
+              What's happening:
+              - Node {{ $labels.instance }} has used >85% of MemTotal for 15m.
+
+              Impact/risk:
+              - This cluster is RAM-tight; crossing this line risks OOM kills and
+                eviction of Burstable/BestEffort pods, and blocks re-enabling
+                resource-heavy work (e.g. CNPG restore drills).
+
+              Likely causes:
+              - A new/scaled workload, a memory leak, or scheduling concentration on one node.
+
+              First actions:
+              - Check the Talos-nodes dashboard and `kubectl top nodes`.
+              - Find the heaviest pods: `kubectl top pod -A --sort-by=memory | head`.
+              - Right-size limits or reschedule; confirm headroom returns.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-nodes/talos-nodes"
+
+        - alert: NodeMemoryCritical
+          expr: |
+            (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.92
+          for: 5m
+          labels:
+            severity: critical
+            owner: platform
+            service: nodes
+          annotations:
+            summary: "Node memory above 92% ({{ $labels.instance }})"
+            description: |
+              What's happening:
+              - Node {{ $labels.instance }} has used >92% of MemTotal for 5m — near OOM.
+
+              Impact/risk:
+              - Imminent OOM kills; on a control-plane node this can destabilise etcd
+                and the control plane (the cascade class we've hit before).
+
+              Likely causes:
+              - Runaway/leaking workload, or too much scheduled onto one node.
+
+              First actions:
+              - `kubectl top nodes` / `kubectl top pod -A --sort-by=memory | head`.
+              - Evict or reschedule the heaviest non-critical pod; right-size limits.
+              - If a control plane, prioritise — etcd fsync degrades under memory pressure.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-nodes/talos-nodes"
