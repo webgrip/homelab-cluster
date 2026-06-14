@@ -144,6 +144,20 @@ This is the homelab tax that enterprise writeups never mention. In a cloud clust
 
 ---
 
+## Lesson 6: the deadlock a "fix" caused
+
+This one we earned in full. Harbor — the container registry, eight components — was one of the "fix what we control" jobs: its chart shipped no resource limits, so several `validate-resources` findings pointed at it. Adding limits rolled the pods. And two of Harbor's components, jobservice and registry, mount **ReadWriteOnce** Longhorn volumes.
+
+A RollingUpdate wants to bring a *new* pod up before the *old* one is gone. But a ReadWriteOnce volume can only attach to one pod at a time, so Longhorn's Multi‑Attach guard refuses the new pod, which hangs in `ContainerCreating` forever. Delete the stuck old pod to break the tie and its ReplicaSet just recreates it and re‑grabs the volume. It's a genuine deadlock — for about ten minutes, until Longhorn force‑detaches the volume and the new pod finally attaches. Annoying, transient, self‑healing.
+
+So we "fixed" it: set the Deployment strategy to `Recreate`, which terminates the old pod before starting the new one — exactly right for a ReadWriteOnce volume. Except the goharbor chart **always** renders a `rollingUpdate` block in the Deployment spec, and Kubernetes rejects `rollingUpdate` alongside `type: Recreate` as mutually exclusive. Every Flux upgrade now failed server‑side apply, rolled back, and retried — and kept failing, for a full day, until we noticed the HelmRelease wedged in `RetriesExceeded`. (The registry served traffic the entire time on the rolled‑back config; only the GitOps loop was stuck. Small mercy.)
+
+> A 10‑minute self‑healing blip is strictly better than a 24‑hour stall. We traded the first for the second, in the name of a fix, and learned the difference the hard way.
+
+We reverted to RollingUpdate and let the deadlock go back to self‑healing. Two morals fell out of it. First: **a manifest that validates is not a manifest that applies.** `rollingUpdate` + `Recreate` passes every linter and `kubeconform` check we have; the API server rejects it at apply time. The only validation that counts is against a real cluster. Second: **before you "fix" an intermittent annoyance, price out the failure mode of the fix.** The deadlock cost ten minutes and healed itself. The fix cost a day and didn't.
+
+---
+
 ## Audit to enforce: the actual point
 
 None of this is about reaching zero. Zero is a vanity metric; a cluster with zero findings and a hundred blanket exceptions is less secure than one with fifty honest, owned, expiring exceptions and a clear burndown. The real objective is to move policies from **audit** to **enforce** — to let the cluster start saying "no" to the next root container, the next un‑pinned image, the next wildcard Role — and you can only do that safely once the existing drift is burned down and the exception process is mature enough that enforcement won't page you at 3am for something legitimate.
@@ -160,6 +174,28 @@ Steps 1 and 2 we did in an afternoon, with zero risk, and they cleared a startli
 
 ---
 
+## Postscript: walking the boundary, namespace by namespace
+
+*(updated 2026‑06‑14)*
+
+Lesson 4 promised that the NetworkPolicy work would be staged — one namespace at a time, tested, never a bulk label flip. Here is what that actually looked like, because the doing taught things the planning didn't.
+
+Nine namespaces now run under default‑deny, each one verified before the next. Three reusable shapes emerged, and naming them is most of the battle:
+
+1. **Static** — a thing that only serves HTTP (a diagram editor). Ingress from the gateway, DNS out, nothing else. Trivial, and the perfect first namespace to prove the machinery end to end.
+2. **CNPG‑internal** — an app plus its CloudNativePG database, no internet. Add intra‑namespace egress (app → db) and egress to the LAN for the one thing the database can't live without.
+3. **Internet + CNPG** — the same, but the app genuinely needs the open internet (an RSS reader fetching feeds, a workflow engine calling webhooks, a search proxy querying engines). Egress opens to `0.0.0.0/0` *except* the cluster's own pod and service ranges, so the app can reach the world but not pivot laterally to other namespaces.
+
+The gotcha Lesson 4 only gestured at, made concrete: **every namespace with a database must allow egress to Garage S3 and the Kubernetes API, or WAL archiving silently dies** — and a database that can't archive its write‑ahead log eventually fills its disk and takes itself down. That exact outage has happened to this cluster before. So the proof that a database namespace's policy is correct isn't "the app still loads." It's `ContinuousArchiving=True`, checked *after* the policy is enforced, on every single one.
+
+Cilium taught two things the YAML didn't predict. Gateway‑to‑backend traffic arrives **masqueraded as a node IP**, so a tight "allow the network namespace" ingress rule isn't enough on its own — you need the LAN address blocks too. (The cluster's pre‑existing searxng policy already knew this; we copied its shape rather than rediscover it.) But in the other direction, reassuringly, Cilium's socket‑level load balancing rewrites a Service's cluster IP to the backend pod *before* the egress policy is evaluated — which is why a plain "allow intra‑namespace" rule is enough for an app to reach its database through the database's Service. We confirmed that empirically on the first database app and trusted it thereafter.
+
+Then the two crown jewels made us slow down. **authentik is the single sign‑on front door**: get its egress wrong and you don't break one app, you lock yourself out of all of them at once. We went hunting for its Redis dependency to allowlist it — and couldn't find one. No redis pod, no redis Service, nothing in the environment, no redis connection in `/proc/net/tcp` from either the server or the worker. Just postgres. Rather than gamble a tight allowlist against an SSO outage, we did the deliberately conservative thing: allow the whole in‑cluster service range (so whatever authentik talks to stays reachable), keep blocking the internet and direct cross‑namespace pod traffic, and verify against the one endpoint that cannot lie — `/-/health/ready/`, which authentik returns `200` for *only* when its database and its cache are both reachable. It returned `200`. Harbor, the registry, got the same conservative posture for the same reason: a wrong egress rule on the thing that stores all your images is not a learning experience anyone wants.
+
+One namespace we deliberately left alone: **forgejo**, whose CI runner pulls and clones from arbitrary registries and git hosts, and may reach the in‑cluster registry by its cluster IP. A build runner is the single workload whose egress you genuinely cannot predict from a manifest — so it waits for a session where we can trigger a real CI job and watch what it actually reaches, rather than guess and find out at the worst time. Knowing which namespace *not* to automate is part of the discipline too.
+
+---
+
 ## Scars worth keeping
 
 - **A finding is a question, not a command.** "No NetworkPolicy" doesn't mean "add a NetworkPolicy"; it means "you never designed this boundary." Read what the instrument is actually telling you before you yank the lever — the same lesson the [SOPS migration](./2026-06-12-the-long-goodbye-to-sops.md) kept teaching about backups that weren't broken and OOMs that weren't OOMs.
@@ -167,7 +203,12 @@ Steps 1 and 2 we did in an afternoon, with zero risk, and they cleared a startli
 - **An exception must name its own death.** "Remove this once CI publishes attestations" is a promise. An exception with no expiry condition is permanent drift with good intentions.
 - **Autogen means two findings per problem.** Clear the controller *and* the pod, or it'll look like your exception is broken when it's only half‑applied.
 - **Your security improvements have a blast radius too.** On shared‑disk homelab nodes, the spacing of hardening commits is a reliability control, not a nicety.
+- **A manifest that validates is not a manifest that applies.** `rollingUpdate` next to `type: Recreate` passes every schema check and is rejected by the API server. Validate against a cluster, not a linter.
+- **Price the failure mode of the fix.** A ten‑minute self‑healing deadlock beat the day‑long stall we caused trying to "fix" it. Sometimes the right move is to let the transient thing be transient.
+- **The proof is the dependent signal, not the front door.** "The app loads" doesn't mean its database is archiving; `ContinuousArchiving=True` does. "The login page renders" doesn't mean SSO works; `/-/health/ready/` returning `200` does. When you change a boundary, verify the thing the boundary could have broken — not the thing that's easy to click.
 
 The `security` namespace started as somewhere to put External Secrets. It became a control plane with opinions — and the day it finally told us, in 191 numbered pieces, exactly what it thought of the rest of the cluster, the work wasn't to argue with it. It was to read carefully, sort honestly, and fix patiently. Audit mode was never the cluster being polite. It was the cluster handing us a map, and trusting us to walk it in the right order.
+
+We've now walked most of it. The findings are addressed at the source, the database namespaces are fenced without losing their backups, the front door still opens for the people who belong and no one else, and the one workload we couldn't safely guess about is waiting honestly for the test it needs. What's left is the last, most satisfying step — turning the highest‑confidence audits to **enforce**, so the cluster stops merely *noticing* the next root container and starts refusing it at the door.
 
 *— and the controls, slowly, are learning to say no.*
