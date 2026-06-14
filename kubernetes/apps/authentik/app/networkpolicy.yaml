@@ -47,6 +47,18 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: observability
+    # CNPG operator (cnpg-system) -> instance status (8000) + Postgres (5432).
+    # Without this the operator can't extract instance status, so the Cluster
+    # never reports Ready (CNPG-managed control-plane, not the app).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 5432
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
