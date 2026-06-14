@@ -1,7 +1,7 @@
 # SOPS → OpenBao/ESO migration — phased rollout
 
 Execution plan for migrating the remaining ~39 SOPS secrets into OpenBao via ESO.
-Supersedes the Infisical-era waves in `external-secrets-plan.md` (backend is OpenBao now).
+Complements the architecture + full inventory in the [external-secrets plan](../external-secrets-plan.md).
 Bootstrap, the no-live-root design, and the proven recipe live in the
 [external-secrets runbook](external-secrets.md) and project memory.
 

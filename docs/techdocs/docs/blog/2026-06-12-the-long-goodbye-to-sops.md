@@ -34,15 +34,13 @@ On top of ESO, secrets sort into two lanes:
 1. **Random/internal** → an ESO `Password` `ClusterGenerator` named `password-generator`. No backend at all. ESO mints the entropy directly, writes the Secret, and with `refreshInterval: "0"` never touches it again. This is the lane that finally killed the "human generates noise" anti‑pattern.
 2. **External / stateful / provider** → a real secrets store. Values that already exist (a Cloudflare token, a GitHub App key, a database password) live in a vault and are pulled by an `ExternalSecret`.
 
-For lane two we needed a vault. That choice turned into a small saga of its own.
+For lane two we needed a vault.
 
 ---
 
-## Choosing a vault: the Infisical detour
+## Choosing a vault: OpenBao
 
-The first backend we stood up was Infisical. It is genuinely pleasant — a clean UI, unattended operation, a tidy API. We scaffolded it, wired it to the existing CNPG Postgres, and started designing the migration around it.
-
-Then we read the licensing fine print. Infisical gates **OIDC and SAML single sign‑on behind an enterprise tier**. For a homelab whose entire identity story is "everything logs in through Authentik," a vault that can't itself speak OIDC without a commercial license is a vault that will always be slightly outside the tent. So we tore it down and pivoted to **[OpenBao](https://openbao.org/)** — the OSS, MPL‑2.0 fork of Vault — which does OIDC login for free and asks for no license to be a first‑class citizen of an SSO‑centric cluster.
+For lane two we chose **[OpenBao](https://openbao.org/)** — the OSS, MPL‑2.0 fork of Vault. In a homelab whose entire identity story is "everything logs in through Authentik," the deciding factor was that OpenBao speaks **OIDC login for free**, with no commercial license required to be a first‑class citizen of an SSO‑centric cluster. It runs as a single‑node raft instance — no external database, no extra moving parts.
 
 ESO authenticates to OpenBao through the **Kubernetes auth method**, using its own ServiceAccount. There are no static vault credentials sitting in a SOPS file bootstrapping the thing that's supposed to replace SOPS files. The chicken‑and‑egg problem that haunts every secrets migration is solved by Kubernetes itself vouching for ESO's identity.
 

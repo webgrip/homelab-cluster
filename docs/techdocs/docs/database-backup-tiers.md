@@ -60,17 +60,6 @@ e.g. `guac-db`'s actual data is ~1 GiB; the rest was WAL.
 | `guac-db` | security | **4** | 47 GiB | Graph is fully rebuilt from re-ingested SBOMs/attestations by the collectors. The single biggest WAL producer (~3.5 GiB/day). |
 | `freshrss-db` | freshrss | **4** | 0.11 GiB | Subscriptions re-importable (OPML), articles re-fetch; only read/favorite state is mildly precious. |
 
-### Decommissioned — backups eligible for deletion
-
-These prefixes exist in `cnpg-backups-bucket` but have **no** CNPG cluster in the
-repo — leftovers from removed apps. They are **Tier 5** (no backup) and the stored
-data can be deleted.
-
-| Prefix | Footprint | Status |
-| ------ | --------- | ------ |
-| `homelab-cluster/infisical-db/` | 6 MiB | App retired (migrated to OpenBao). |
-| `homelab-cluster/tandoor-db/` | ~0 (canary only) | No live cluster; only a canary object. |
-
 ## How to classify a new database
 
 Ask, in order:

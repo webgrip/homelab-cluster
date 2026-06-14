@@ -67,14 +67,6 @@ Notes:
 
 - CNPG will create objects under a subdirectory for the cluster name. For example, with the `destinationPath` above you will typically see objects under `homelab-cluster/backstage-db/backstage-db/...`.
 
-## Repo restore overlays
-
-This repo also contains app-scoped restore manifests that are not applied by default. For example, Tandoor has:
-
-- `kubernetes/apps/tandoor/tandoor/app/database/restore/`
-
-Those manifests restore into a new cluster named `tandoor-db-restore` in the `tandoor` namespace.
-
 ## Automated restore drill (recommended)
 
 This repo includes an automated restore drill CronJob (`cnpg-restore-test`) in each app namespace.

@@ -1,12 +1,13 @@
 # External Secrets (ESO) migration
 
-> **⚠️ Historical / superseded.** This was the original migration plan, written when the
-> intended backend was **Infisical**. The cluster **pivoted to [OpenBao]** (OSS, native OIDC)
-> and the migration is **complete**. For *why*, see [The long goodbye to SOPS][blog]; for *how it
-> works today*, see the **[External Secrets runbook](runbooks/external-secrets.md)** — that is the
-> authoritative operational doc. The Infisical-specific architecture below is retained only as a
-> record of the plan: wherever it says "Infisical", read **OpenBao** (KV v2 at `secret/<name>`,
-> Kubernetes-auth ServiceAccount — no machine identity, `hostAPI`, or `ENCRYPTION_KEY`).
+> **✅ Complete.** The SOPS → ESO migration is done; the external backend is
+> **[OpenBao]** (OSS, native OIDC, single-node raft). This page is the architecture +
+> full secret-inventory reference. For *why* SOPS was retired, see
+> [The long goodbye to SOPS][blog]; for *how to operate it day-to-day* (deploy, seed,
+> migrate, troubleshoot, DR), see the **[External Secrets runbook](runbooks/external-secrets.md)** —
+> that is the authoritative operational doc. OpenBao exposes **KV v2 at `secret/<app>/<name>`**
+> and ESO authenticates with a **Kubernetes-auth ServiceAccount** (no machine identity,
+> `hostAPI`, or `ENCRYPTION_KEY`).
 
 [openbao]: https://openbao.org/
 [blog]: blog/2026-06-12-the-long-goodbye-to-sops.md
@@ -29,7 +30,7 @@ centralize the genuinely-external secrets so they're entered once and synced eve
 
 | Decision | Choice | Rationale |
 | --- | --- | --- |
-| Backend | **Infisical** (self-hosted) | UI for the human-judgement secrets, runs unattended (no unseal ceremony), reuses CNPG Postgres + a small Redis. |
+| Backend | **OpenBao** (self-hosted) | OSS (MPL-2.0 Vault fork), native OIDC login via Authentik, single-node raft (no extra Postgres/Redis), Kubernetes-auth for ESO. |
 | OIDC client secrets | **Auto-eliminate** | Generate once → blueprint sets it via `!Env` → PushSecret. Removes the copy-paste for every OIDC app. |
 | Random generator | **ESO-native `Password` / `ClusterGenerator`** | No second operator (e.g. mittwald); unifies with the external class. |
 | At-rest encryption keys | **Never regenerate** | A fresh value corrupts data already encrypted. Seed the existing value once; never a generator. |
@@ -42,7 +43,8 @@ ESO is the single engine. It reconciles three **stores** plus a shrunk SOPS floo
 | Store | Kind | Backs which class | Auth |
 | --- | --- | --- | --- |
 | `password-generator` | `ClusterGenerator` (Password) | random / internal | none |
-| `infisical` | `ClusterSecretStore` (provider: `infisical`) | external / provider | machine identity (SOPS floor) |
+| `openbao` | `ClusterSecretStore` (provider: `vault`) | external / provider (read) | ESO ServiceAccount (Kubernetes auth) |
+| `openbao-push` | `ClusterSecretStore` (provider: `vault`) | migration seed (write) | ESO ServiceAccount (Kubernetes auth) |
 | `kube-store` | `ClusterSecretStore` (provider: `kubernetes`) | OIDC cross-namespace PushSecret | ESO ServiceAccount + RBAC |
 | SOPS (age) | n/a | bootstrap floor + at-rest keys (interim) | age key (bootstrap) |
 
@@ -53,22 +55,23 @@ flowchart LR
     sops[SOPS floor<br/>age, cluster-secrets, talsecret]
   end
   gen[ClusterGenerator<br/>Password]
-  infisical[(Infisical<br/>+ CNPG DB)]
+  openbao[(OpenBao<br/>raft · sealed)]
   eso[External Secrets Operator]
   k8ssec[k8s Secret<br/>cached, real]
   pod[App Pod]
 
   es --> eso
   gen --> eso
-  infisical --> eso
+  openbao --> eso
   eso --> k8ssec --> pod
   sops -. bootstrap .-> eso
 ```
 
 **Key property — ESO writes real, cached k8s Secrets.** Once written, a pod reads its
-Secret straight from the API server with **no runtime dependency** on ESO or Infisical. A
-backend outage blocks only *create/rotate*, never *runtime read* — a down Infisical never
-crashes running apps. This is the core argument for ESO over sidecar-injection models.
+Secret straight from the API server with **no runtime dependency** on ESO or OpenBao. A
+backend outage (or a sealed OpenBao) blocks only *create/rotate*, never *runtime read* — a
+down OpenBao never crashes running apps. This is the core argument for ESO over
+sidecar-injection models.
 
 ESO installs in the existing `security` namespace next to the other operators
 (kyverno / falco / tetragon / trivy / …), mirroring the cert-manager app layout.
@@ -82,7 +85,7 @@ Every `*.sops.yaml` is classified by this rule:
 - **At-rest encryption key** → never regenerate; seed the existing value once.
 - **Random / internal** (throwaway / session) → ESO generator, `refreshInterval: "0"`.
 - **OIDC `client_secret`** → auto-elimination (see [OIDC](#oidc-client_secret-auto-elimination)).
-- **External / provider** → Infisical `ExternalSecret`.
+- **External / provider** → OpenBao `ExternalSecret`.
 - **CNPG `*-db-app`** → already automated by CloudNativePG; leave alone.
 
 ### Stays SOPS — bootstrap floor (forever)
@@ -94,20 +97,21 @@ Every `*.sops.yaml` is classified by this rule:
 | `kubernetes/components/sops/cluster-secrets.sops.yaml` | `${SECRET_DOMAIN}` is `postBuild.substituteFrom`-substituted into ~48 `ks.yaml` at build time. ESO has no build-time substitution. |
 | `talos/talsecret.sops.yaml` | Talos cluster identity (pre-Kubernetes). |
 
-### New SOPS floor — Infisical's own bootstrap (added in Wave 4)
+### OpenBao's own bootstrap (no new SOPS floor)
 
-| Secret | Keys | Why SOPS |
-| --- | --- | --- |
-| `kubernetes/apps/security/infisical/app/infisical-secret.sops.yaml` | `ENCRYPTION_KEY`, `AUTH_SECRET` / JWT | Protects Infisical's own DB contents — losing it loses everything. |
-| `kubernetes/apps/security/infisical/app/eso-auth.sops.yaml` | `clientId`, `clientSecret` | ESO machine identity — chicken-and-egg: ESO can't fetch its own auth from the thing it authenticates to. |
+OpenBao adds **almost nothing** to the SOPS floor:
 
-Infisical's Postgres credentials are the **CNPG-generated** `infisical-db-app` Secret — *not* SOPS.
+| Concern | How OpenBao handles it |
+| --- | --- |
+| Backend storage | Single-node **raft** on a PVC — no external Postgres, no Redis. |
+| Seal / unseal | Sealed at rest; the `openbao-unsealer` Deployment auto-unseals from the unseal key. The unseal key + root token are the *only* OpenBao secrets that stay offline / on the minimal SOPS floor. |
+| ESO → OpenBao auth | **Kubernetes auth** — ESO's own ServiceAccount + the `external-secrets` role, created during the init ceremony. No machine identity, no `clientId`/`clientSecret`, no `ENCRYPTION_KEY`. |
 
 ### At-rest encryption keys — never regenerate
 
-Seed the existing decrypted value into Infisical **once** (manual, runbook), then read it
-with a normal `ExternalSecret` (`remoteRef`, not a generator). Until Infisical lands, these
-stay as tiny SOPS secrets. **Never** a generator — a fresh value corrupts encrypted data.
+Seed the existing decrypted value into OpenBao **once** (via a `PushSecret`, runbook), then
+read it with a normal `ExternalSecret` (`remoteRef`, not a generator). **Never** a
+generator — a fresh value corrupts encrypted data.
 
 | App | Key | Notes |
 | --- | --- | --- |
@@ -132,7 +136,7 @@ with the old `*.sops.yaml`, and each key gets independent entropy).
 
 `grafana-oauth`, `forgejo-oidc-secret`, `n8n-oidc-secrets`, `backstage-oidc-secrets`.
 
-### External / provider → Infisical `ExternalSecret`
+### External / provider → OpenBao `ExternalSecret`
 
 | Area | Secrets |
 | --- | --- |
@@ -172,20 +176,23 @@ kubernetes/apps/security/
 │       ├── clustergenerator.yaml           # Password generator (random class)
 │       ├── clustersecretstore-kube.yaml    # provider: kubernetes (OIDC cross-ns push)
 │       └── rbac-authentik-push.yaml        # ESO SA → write Secrets in authentik ns
-└── infisical/                              # Wave 4
-    ├── ks.yaml                              # dependsOn external-secrets + cnpg-system
+└── openbao/                                # external backend
+    ├── ks.yaml                              # dependsOn external-secrets
     ├── app/
-    │   ├── helmrepository.yaml + helmrelease.yaml   # Infisical standalone chart
-    │   ├── redis.yaml                       # small in-namespace Redis/Valkey
-    │   ├── infisical-secret.sops.yaml      # ENCRYPTION_KEY/AUTH_SECRET (SOPS floor)
-    │   ├── eso-auth.sops.yaml              # ESO machine identity (SOPS floor)
-    │   ├── clustersecretstore.yaml         # provider: infisical
-    │   ├── httproute.yaml                  # UI at infisical.${SECRET_DOMAIN}
+    │   ├── helmrepository.yaml + helmrelease.yaml   # OpenBao chart (single-node raft)
+    │   ├── clustersecretstore.yaml         # provider: vault (read)  — name: openbao
+    │   ├── clustersecretstore-push.yaml    # provider: vault (write) — name: openbao-push (migration)
+    │   ├── unsealer.yaml                   # auto-unseal Deployment
+    │   ├── rbac.yaml                       # token-review / auth-delegator
+    │   ├── domain-configmap.yaml           # UI hostname
+    │   ├── httproute.yaml                  # UI at openbao.${SECRET_DOMAIN}
+    │   ├── prometheusrule.yaml             # raft-snapshot staleness / sealed alerts
     │   └── kustomization.yaml
-    └── database/
-        ├── cluster.yaml                    # CNPG infisical-db (+ cnpg-backup component)
-        ├── objectstore.yaml
-        └── kustomization.yaml
+    └── bootstrap/                           # one-time init/config + ongoing snapshots
+        ├── init-cronjob.yaml + init.sh     # operator-init, write unseal/root to shared
+        ├── config-cronjob.yaml + config.sh # enable KV, kubernetes auth, policies/roles
+        ├── snapshot-cronjob.yaml + snapshot.sh + upload.sh   # raft snapshots → S3
+        └── *.hcl                            # admins / external-secrets / push policies
 ```
 
 Wiring rules:
@@ -197,7 +204,7 @@ Wiring rules:
   delete the file **only after** the ESO-produced Secret is confirmed present.
 - **Renovate** already auto-covers `kubernetes/apps/security/**` (prPriority 10) and any
   `ocirepository.yaml` (digest-pinned, patch-automerged). **No `.renovaterc.json5` change
-  needed** for the ESO OCIRepository; the Infisical HelmRepository chart is covered by the
+  needed** for the ESO OCIRepository; the OpenBao HelmRepository chart is covered by the
   `flux`/`helm` managers.
 
 ## Manifest patterns
@@ -327,31 +334,35 @@ spec:
         generatorRef: { apiVersion: generators.external-secrets.io/v1alpha1, kind: ClusterGenerator, name: password-generator }
       rewrite:
         - regexp: { source: "^password$", target: "BETTER_AUTH_SECRET" }
-    # ENCRYPTION_SECRET is at-rest → stays SOPS (or seed-once into Infisical), NOT here.
+    # ENCRYPTION_SECRET is at-rest → stays SOPS (or seed-once into OpenBao), NOT here.
 ```
 
-### Infisical `ClusterSecretStore`
+### OpenBao `ClusterSecretStore`
 
 ```yaml
 ---
 apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
-  name: infisical
+  name: openbao
 spec:
   provider:
-    infisical:
-      hostAPI: http://infisical-backend.security.svc.cluster.local:8080
+    vault:
+      server: http://openbao.security.svc.cluster.local:8200
+      path: secret
+      version: v2
       auth:
-        universalAuthCredentials:
-          clientId:     { name: eso-auth, namespace: security, key: clientId }
-          clientSecret: { name: eso-auth, namespace: security, key: clientSecret }
-      secretsScope:
-        projectSlug: homelab
-        environmentSlug: prod
-        secretsPath: "/"
-        recursive: true
+        kubernetes:
+          mountPath: kubernetes
+          role: external-secrets
+          serviceAccountRef:
+            name: external-secrets
+            namespace: security
 ```
+
+A second write-capable store, `openbao-push` (role `external-secrets-push`), is used **only**
+by `PushSecret` to seed existing Secret values into OpenBao during migration; it can be
+removed once seeding is done.
 
 ### External `ExternalSecret` — three shapes
 
@@ -360,7 +371,7 @@ spec:
 ```yaml
 spec:
   refreshInterval: "1h"
-  secretStoreRef: { kind: ClusterSecretStore, name: infisical }
+  secretStoreRef: { kind: ClusterSecretStore, name: openbao }
   target:
     name: forgejo-oidc-secret
     template:
@@ -375,7 +386,7 @@ spec:
 
 ```yaml
 spec:
-  secretStoreRef: { kind: ClusterSecretStore, name: infisical }
+  secretStoreRef: { kind: ClusterSecretStore, name: openbao }
   target:
     name: grafana-oauth
     template:
@@ -391,7 +402,7 @@ spec:
 
 ```yaml
 spec:
-  secretStoreRef: { kind: ClusterSecretStore, name: infisical }
+  secretStoreRef: { kind: ClusterSecretStore, name: openbao }
   target: { name: forgejo-s3-secret }
   data:
     - { secretKey: MINIO_ACCESS_KEY_ID,     remoteRef: { key: garage-forgejo, property: access_key_id } }
@@ -402,7 +413,7 @@ spec:
 
 The Kustomize **Components** under `kubernetes/components/{cnpg-backup,observability-s3,
 security-s3}/` are rendered into ~9 namespaces. Replace each `*.sops.yaml` in the component
-with an `externalsecret.yaml` that references the **cluster-scoped** `infisical` store and
+with an `externalsecret.yaml` that references the **cluster-scoped** `openbao` store and
 emits the **same Secret name + keys** (`cnpg-backup-s3` with `S3_ACCESS_KEY_ID` /
 `S3_SECRET_ACCESS_KEY` / `S3_REGION` / `S3_ENDPOINT` / `S3_BUCKET`, etc.). ESO writes one
 copy per target namespace; every CNPG `ObjectStore` keeps referencing it unchanged. A
@@ -501,34 +512,34 @@ git-revertible commit set.
 | **1 — Pilot** | gitea-mirror `BETTER_AUTH_SECRET` → generator (keep `ENCRYPTION_SECRET`) | Proves the generator path end-to-end. |
 | **2 — Random class** | forgejo-runner secret (+ register Job), searxng, zomboid, backstage session keys | Excludes all at-rest keys + Forgejo chart-autogen keys. |
 | **3 — OIDC elimination** | grafana → forgejo → n8n → backstage | Real login E2E each before deleting SOPS. |
-| **4 — Infisical + external class** | stand up `infisical/**` (CNPG DB + Redis + SOPS floor) → seed secrets → `forgejo-s3-secret` pilot → S3 components → cloudflare / cert-manager / github / twitch / discord / renovate / flux / arc | Seeding is manual (runbook). |
+| **4 — OpenBao + external class** | stand up `openbao/**` (single-node raft + init/config ceremony) → seed secrets via `PushSecret` → `forgejo-s3-secret` pilot → S3 components → cloudflare / cert-manager / github / twitch / discord / renovate / flux / arc | Seeding is `PushSecret`-driven (runbook). |
 | **5 — CNPG initdb / DB secrets** | dependency-track / backstage / freshrss / sparkyfitness / guac / n8n / grafana DB secrets | Seed existing values; verify against a CNPG restore drill (`cnpg-restore-test`) before deleting SOPS. |
 
 ## Bootstrap & disaster recovery
 
 - **`scripts/bootstrap-apps.sh` is effectively unchanged.** Its three pre-Flux SOPS applies
-  (`github-deploy-key`, `sops-age`, `cluster-secrets`) stay. ESO and Infisical install
-  *after* Flux (like cert-manager); their SOPS-floor secrets are Flux-applied in `security`,
-  not by the bootstrap script.
+  (`github-deploy-key`, `sops-age`, `cluster-secrets`) stay. ESO and OpenBao install
+  *after* Flux (like cert-manager).
 - **New from-zero rebuild order:** Talos (`talsecret`) → `bootstrap-apps.sh` (SOPS floor +
   CRDs + helmfile/Flux) → Flux installs **ESO** → random + OIDC ExternalSecrets reconcile
-  (no backend needed) → Flux installs **Infisical** (CNPG `infisical-db` + Redis + SOPS
-  `ENCRYPTION_KEY`) → one-time Infisical bootstrap (project/env + ESO machine identity, seed
-  `eso-auth.sops.yaml`) → `infisical` store Ready → external-class ExternalSecrets reconcile.
+  (no backend needed) → Flux installs **OpenBao** (single-node raft) → one-time init/unseal +
+  config ceremony (enable KV v2, kubernetes auth, the `external-secrets` role/policy) →
+  `openbao` store Ready → external-class ExternalSecrets reconcile.
 - **Irreducible SOPS floor (forever):** `talsecret`, `sops-age`, `github-deploy-key`,
-  `cluster-secrets`, plus Infisical `ENCRYPTION_KEY`/`AUTH_SECRET` and the ESO machine
-  identity. At-rest keys stay SOPS until explicitly seeded into Infisical.
-- **DR for Infisical's contents:** recovered via the CNPG backup of `infisical-db` (Garage),
-  readable only with the SOPS `ENCRYPTION_KEY`. The runbook tags each external secret as
-  *re-derivable at provider* vs *must-restore-from-backup*.
+  `cluster-secrets`, plus the OpenBao **unseal key + root token** (held offline). At-rest
+  keys stay SOPS until explicitly seeded into OpenBao.
+- **DR for OpenBao's contents:** recovered from a **raft snapshot** (taken by the
+  `openbao-snapshot` CronJob and uploaded to Garage S3), restored into a freshly-initialized
+  OpenBao. The runbook tags each external secret as *re-derivable at provider* vs
+  *must-restore-from-snapshot*.
 
 ## Risks & rollback
 
-- **Blast radius:** Infisical becomes a high-value target. Mitigate with a least-privilege
-  ESO machine identity, a NetworkPolicy limiting Infisical to ESO + admin, audit logging, and
-  the CNPG backup of its DB.
+- **Blast radius:** OpenBao becomes a high-value target. Mitigate with a least-privilege
+  Kubernetes-auth role (`external-secrets`, read-only on `secret/`), a NetworkPolicy limiting
+  OpenBao to ESO + admin, audit logging, sealed-at-rest storage, and offline unseal keys.
 - **Runtime dependency:** none for running pods (cached Secrets). Only create/rotate needs
-  Infisical up.
+  OpenBao unsealed and up.
 - **Data corruption:** prevented by the at-rest rule — those keys are never regenerated.
 - **Rollback (uniform per wave):** git-revert the wave's commits. That restores the
   `*.sops.yaml` (deleted only in the wave's final commit) and removes the

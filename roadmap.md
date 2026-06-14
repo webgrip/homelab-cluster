@@ -24,7 +24,7 @@
   on push; ~30 alert-annotation fixes + Harbor metric-name bug; ESO not-ready alerts; InvoiceNinja
   DB backup; etcd defrag (resolved). flux-local fixed to run locally.
 - **P1 batch (2026-06-13):** gitleaks history scan clean + `.gitleaks.toml`; Flux drift-detection
-  `warn`; ESO docs Infisical→OpenBao; cloudflared 2 replicas; priorityClassName on
+  `warn`; ESO docs corrected to OpenBao backend; cloudflared 2 replicas; priorityClassName on
   cert-manager/ESO/CoreDNS (Longhorn already `longhorn-critical`+Guaranteed); Authentik server
   2 replicas (pod-level).
 - **Owner hardening sprint (W3–W5):** pod+container hardening of first-party workloads (authentik,
