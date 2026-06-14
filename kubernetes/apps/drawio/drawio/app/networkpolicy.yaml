@@ -1,0 +1,59 @@
+---
+# Zero-trust for drawio. The namespace label kyverno.io/default-network-policies
+# generates default-deny (ingress+egress) + allow-dns. drawio is two components —
+# the editor and a plantuml-server it calls intra-namespace — both on :8080 and
+# fully self-contained (DRAWIO_SELF_CONTAINED=1), so beyond DNS the only egress
+# they need is to each other.
+#
+# Ingress: gateway (network ns) + RFC1918/loopback (masquerade) + intra-namespace
+# (drawio -> plantuml) on 8080. Egress: intra-namespace (drawio -> plantuml);
+# DNS is covered by the generated allow-dns.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: drawio-allow-ingress
+  labels:
+    app.kubernetes.io/part-of: drawio
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: drawio
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: network
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16
+        - ipBlock:
+            cidr: 127.0.0.0/8
+        - ipBlock:
+            cidr: fd00::/8
+        - ipBlock:
+            cidr: ::1/128
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: drawio-allow-egress-intra-namespace
+  labels:
+    app.kubernetes.io/part-of: drawio
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: drawio
