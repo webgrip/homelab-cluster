@@ -1,0 +1,75 @@
+---
+# Zero-trust for authentik (W7) — SSO front door, handled conservatively.
+# default-deny + allow-dns generated. authentik's only observed dependency is its
+# CNPG postgres (via the in-cluster service); no redis pod/service/env was found
+# (it appears postgres-backed here). Because breaking authentik breaks SSO for the
+# whole cluster, egress is deliberately NOT tightened to a per-IP allowlist:
+# instead it permits the cluster SERVICE CIDR (any in-cluster service, incl
+# postgres + any cache it may use + the kube-apiserver) plus the LAN (Garage S3
+# for db WAL archiving). It still blocks internet egress and direct cross-namespace
+# POD-to-pod lateral movement (10.42.0.0/16), and ingress is restricted to the
+# gateway. Tighten egress later once authentik's cache backend is confirmed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: authentik-allow-ingress
+  labels:
+    app.kubernetes.io/part-of: authentik
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    # intra-namespace (server <-> worker <-> db) — all ports
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: authentik
+    # gateway (network ns) + LAN — all ports (avoid port-guess breaking SSO)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: network
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16
+        - ipBlock:
+            cidr: 127.0.0.0/8
+        - ipBlock:
+            cidr: fd00::/8
+        - ipBlock:
+            cidr: ::1/128
+    # Prometheus metrics scraping
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: authentik-allow-egress
+  labels:
+    app.kubernetes.io/part-of: authentik
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # intra-namespace (server/worker -> db pod)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: authentik
+    # All in-cluster services: postgres, any cache backend, kube-apiserver.
+    # (Deliberately broad for SSO safety; still excludes direct pod IPs + internet.)
+    - to:
+        - ipBlock:
+            cidr: 10.43.0.0/16
+    # LAN: Garage S3 (10.0.0.110:3900) for CNPG WAL archiving + nodes/API VIP.
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/24
