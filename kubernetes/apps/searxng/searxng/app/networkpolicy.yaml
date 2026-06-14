@@ -35,3 +35,51 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+---
+# W7 zero-trust: complement the private-ingress above (which covers searxng:8080
+# from LAN) once the namespace opts into default-deny. Allow intra-namespace
+# (searxng -> valkey:6379) and Prometheus metrics scraping for all pods.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: searxng-allow-internal
+  labels:
+    app.kubernetes.io/part-of: searxng
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: searxng
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+---
+# Egress: searxng -> valkey (intra-ns) and out to the internet (search engines).
+# Cross-namespace cluster pods/services stay blocked. DNS via the generated
+# allow-dns.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: searxng-allow-egress
+  labels:
+    app.kubernetes.io/part-of: searxng
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: searxng
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.42.0.0/16
+              - 10.43.0.0/16
