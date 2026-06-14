@@ -1,0 +1,46 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: security-openbao-rules
+  namespace: security
+  labels:
+    app.kubernetes.io/name: openbao
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: security.openbao
+      rules:
+        - alert: OpenBaoSnapshotStale
+          # The openbao-snapshot CronJob ships a raft snapshot to Garage nightly (0 3 * * *).
+          # Fires if it has never succeeded (==0) or last success is older than 48h.
+          expr: |
+            (kube_cronjob_status_last_successful_time{namespace="security", cronjob="openbao-snapshot"} == 0)
+            or
+            (time() - kube_cronjob_status_last_successful_time{namespace="security", cronjob="openbao-snapshot"} > 172800)
+          for: 1h
+          labels:
+            severity: warning
+            owner: platform
+            service: openbao
+          annotations:
+            summary: "OpenBao raft snapshot is stale (security/openbao)"
+            description: |
+              What's happening:
+              - No successful openbao-snapshot run in over 48h (or it has never succeeded).
+
+              Impact/risk:
+              - OpenBao stores all ESO-backed secrets in its integrated-raft volume. Without a
+                fresh off-box snapshot, a storage loss means losing OpenBao's contents — and the
+                snapshot is the only DR path besides re-seeding every secret from its provider.
+
+              Likely causes:
+              - Snapshot Job failing (Garage S3 unreachable/auth), OpenBao sealed, or the
+                CronJob suspended/misscheduled.
+
+              First actions:
+              - kubectl -n security get cronjob openbao-snapshot; check recent Jobs/pods + logs.
+              - Verify openbao-0 is unsealed (1/1) and Garage (10.0.0.110:3900) is reachable.
+              - Confirm the snapshot object lands in the Garage bucket.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#external-secrets"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=openbao"
