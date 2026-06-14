@@ -19,7 +19,9 @@ data:
     HARBOR="$${HARBOR_API:-http://harbor-core/api/v2.0}"
     ADMIN_USER="admin"
     AUTH="$$ADMIN_USER:$$HARBOR_ADMIN_PASSWORD"
-    log() { echo "[harbor-proxy-config] $$*"; }
+    # log to stderr: ensure_registry is called via $(...), so logging to stdout would be
+    # captured into the returned registry id and corrupt it (the project-create bug).
+    log() { echo "[harbor-proxy-config] $$*" >&2; }
 
     if [ -z "$${HARBOR_ADMIN_PASSWORD:-}" ]; then
       log "harbor-admin password not present; exiting 0 (will retry)"; exit 0
@@ -62,10 +64,10 @@ data:
         return 0
       fi
       _body="{\"name\":\"$$_name\",\"type\":\"$$_type\",\"url\":\"$$_url\",\"insecure\":false,\"credential\":{\"type\":\"basic\",\"access_key\":\"$$_user\",\"access_secret\":\"$$_pass\"}}"
-      if hc POST "/registries" "$$_body" >/dev/null 2>&1; then
+      if _out="$$(hc POST "/registries" "$$_body" 2>&1)"; then
         log "created registry endpoint '$$_name' -> $$_url"
       else
-        log "WARN: failed to create registry endpoint '$$_name'"; return 0
+        log "WARN: failed to create registry endpoint '$$_name': $$_out"; return 0
       fi
       registry_id "$$_name"
     }
@@ -78,10 +80,10 @@ data:
         log "proxy project '$$_name' already exists"; return 0
       fi
       _body="{\"project_name\":\"$$_name\",\"public\":true,\"registry_id\":$$_rid,\"storage_limit\":-1,\"metadata\":{\"public\":\"true\"}}"
-      if hc POST "/projects" "$$_body" >/dev/null 2>&1; then
+      if _out="$$(hc POST "/projects" "$$_body" 2>&1)"; then
         log "created proxy project '$$_name' -> registry id $$_rid"
       else
-        log "WARN: failed to create proxy project '$$_name'"
+        log "WARN: failed to create proxy project '$$_name' (id=$$_rid): $$_out"
       fi
     }
 
