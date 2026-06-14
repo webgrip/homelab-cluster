@@ -19,6 +19,14 @@ spec:
     # move completes, then archiving to Garage drains it and WAL recycles down.
     size: 30Gi
     storageClass: longhorn
+  postgresql:
+    parameters:
+      # Tier 3, heavy WAL writer (SBOM ingestion). Compress WAL FPIs and widen
+      # checkpoints; the 30Gi WAL PVC has headroom for a larger max_wal_size.
+      # See docs/techdocs/docs/database-backup-tiers.md
+      wal_compression: "zstd"
+      max_wal_size: "4GB"
+      checkpoint_timeout: "15min"
   plugins:
     - name: barman-cloud.cloudnative-pg.io
       isWALArchiver: true

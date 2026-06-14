@@ -2,6 +2,9 @@
 
 This page documents how PostgreSQL is provided as a platform service via CloudNativePG (CNPG) and how this repo models S3-compatible backups.
 
+> **Retention is set per database by tier.** How long each cluster's backups and
+> WAL are kept — and why — is defined in [Database Backup Tiers](database-backup-tiers.md).
+
 - CNPG operator is installed cluster-wide in the `cnpg-system` namespace via Helm + Flux.
 - Application databases are created as namespace-scoped CNPG `Cluster` resources (one cluster per app).
 - Backup credentials (if/when enabled) are provided via a reusable Secret named `cnpg-backup-s3` (S3-compatible, not provider-specific).

@@ -15,6 +15,15 @@ spec:
   walStorage:
     size: 5Gi
     storageClass: longhorn
+  postgresql:
+    parameters:
+      # Tier 4, heaviest WAL writer (~3.5 GiB/day, graph fully rebuilt from
+      # re-ingested SBOMs). Compress WAL FPIs and widen checkpoints to cut FPI
+      # frequency; max_wal_size kept modest for the 5Gi WAL PVC.
+      # See docs/techdocs/docs/database-backup-tiers.md
+      wal_compression: "zstd"
+      max_wal_size: "2GB"
+      checkpoint_timeout: "15min"
   plugins:
     - name: barman-cloud.cloudnative-pg.io
       isWALArchiver: true
