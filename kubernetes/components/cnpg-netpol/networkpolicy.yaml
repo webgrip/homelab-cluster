@@ -1,0 +1,28 @@
+---
+# Allow the CloudNativePG operator (ns cnpg-system) to reach this namespace's CNPG
+# instance pods — status/liveness on 8000 and Postgres on 5432.
+#
+# This lives in the DATABASE layer (the <app>-db Kustomization, which only dependsOn
+# cloudnative-pg) so it applies BEFORE the cluster health-gate. A cnpg-system allow placed
+# in the app layer instead deadlocks: that Kustomization dependsOn the DB being ready, but
+# the DB can't become ready until the operator can poll it — i.e. until this rule exists.
+# Namespaces with a default-deny (W7 zero-trust) REQUIRE this explicit allow; where there is
+# no default-deny it is a harmless no-op. See ADR-0017 / the W7 netpol regression.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cnpg-operator
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/podRole: instance
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+      ports:
+        - {protocol: TCP, port: 8000}
+        - {protocol: TCP, port: 5432}
