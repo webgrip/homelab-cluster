@@ -1,6 +1,6 @@
 # ADR-0013: Keep GitHub as a read-only data oracle during the Renovate cutover
 
-> Status: **Proposed** · Date: 2026-06-13 · Part of [RFC: Renovate on Forgejo](rfc-renovate-forgejo.md)
+> Status: **Accepted** (2026-06-16) · Date: 2026-06-13 · Part of [RFC: Renovate on Forgejo](rfc-renovate-forgejo.md)
 
 ## Context
 

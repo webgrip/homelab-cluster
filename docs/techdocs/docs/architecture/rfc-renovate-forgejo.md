@@ -1,13 +1,14 @@
 # RFC: Renovate on Forgejo
 
-> Status: **Proposed.** This RFC proposes migrating the self-hosted Renovate off GitHub and onto
+> Status: **Accepted** (2026-06-16). Migrate the self-hosted Renovate off GitHub and onto
 > the in-cluster [Forgejo](../forgejo.md) — one thread of the [forge migration](../blog/2026-06-12-bringing-the-forge-home.md).
 > It does so by standing up a **second, Forgejo-targeted RenovateJob alongside the existing GitHub
 > one** (dual-run) and cutting repos over as each becomes Forgejo-authoritative. The individual
 > choices are recorded as [ADR-0011](adr-0011-dual-run-renovate-forgejo.md) …
-> [ADR-0013](adr-0013-github-as-renovate-data-oracle.md). This document is the umbrella; it flips to
-> **Accepted** when the Forgejo RenovateJob opens its first real PR on a pilot repo. The step-by-step
-> execution checklist lives in [Renovate → Forgejo migration](../renovate-forgejo-migration.md); how
+> [ADR-0013](adr-0013-github-as-renovate-data-oracle.md). **Accepted** on 2026-06-16, when the
+> `webgrip-forgejo` RenovateJob opened its first real PR (PR #1, alpine `3.x`) on the pilot repo
+> `renovate/forgejo-renovate-pilot` — provisioned zero-touch by the bot/token Job ([ADR-0019](adr-0019-bootstrap-task-pattern.md)).
+> The step-by-step execution checklist lives in [Renovate → Forgejo migration](../renovate-forgejo-migration.md); how
 > Renovate runs today is in [Renovate](../renovate.md).
 
 ## Why

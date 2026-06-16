@@ -1,6 +1,6 @@
 # ADR-0011: Dual-run Renovate across GitHub and Forgejo during the transition
 
-> Status: **Proposed** · Date: 2026-06-13 · Part of [RFC: Renovate on Forgejo](rfc-renovate-forgejo.md)
+> Status: **Accepted** (2026-06-16) · Date: 2026-06-13 · Part of [RFC: Renovate on Forgejo](rfc-renovate-forgejo.md)
 
 ## Context
 

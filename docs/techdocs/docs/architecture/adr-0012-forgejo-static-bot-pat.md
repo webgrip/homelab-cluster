@@ -1,6 +1,11 @@
 # ADR-0012: Authenticate Renovate to Forgejo with a static bot PAT
 
-> Status: **Proposed** · Date: 2026-06-13 · Part of [RFC: Renovate on Forgejo](rfc-renovate-forgejo.md)
+> Status: **Accepted** (2026-06-16) · Date: 2026-06-13 · Part of [RFC: Renovate on Forgejo](rfc-renovate-forgejo.md)
+>
+> **Refinement (2026-06-16):** the static bot PAT is now **minted in-cluster by an idempotent
+> provisioner Job** ([ADR-0019](adr-0019-bootstrap-task-pattern.md)) — which also creates the bot user
+> — rather than hand-entered into OpenBao. The decision (a long-lived, scoped Forgejo bot token, not a
+> GitHub-App-style rotating token) is unchanged; the *sourcing* is now zero-touch.
 
 ## Context
 

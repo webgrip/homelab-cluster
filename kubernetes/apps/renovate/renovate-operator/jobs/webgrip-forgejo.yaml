@@ -20,9 +20,6 @@ spec:
   parallelism: 1
   image: docker.io/renovate/renovate:43.209.0-full@sha256:f5963ab360818459a856eb4bc3e1655f95e5d7031f1a9d57cdedaf04f3fa2954
   secretRef: renovate-forgejo-token
-  # Webhook receiver auth only. The Phase-3 forgejo.sync block (auto-registers the Forgejo
-  # webhook on discovered repos) is documented in renovate-forgejo-migration.md — add it here
-  # once the operator CRD fields are confirmed against chart 4.10.1.
   webhook:
     enabled: true
     authentication:
@@ -30,6 +27,24 @@ spec:
       secretRef:
         name: renovate-webhook-auth
         key: token
+    # The operator auto-registers a Forgejo repo webhook → the receiver endpoint, so Dependency
+    # Dashboard / PR-checkbox actions trigger an immediate run instead of waiting for the cron.
+    # Uses the bot token (admin on the repos it owns) to create the hook; CRD fields confirmed
+    # against renovate-operator chart 4.10.1.
+    forgejo:
+      sync:
+        enabled: true
+        webhookURL: https://renovate-webhook.${SECRET_DOMAIN}/webhook/v1/forgejo
+        topic: renovate
+        events:
+          - "issues"
+          - "pull_request"
+        tokenSecretRef:
+          name: renovate-forgejo-token
+          key: FORGEJO_TOKEN
+        authTokenSecretRef:
+          name: renovate-webhook-auth
+          key: token
   extraEnv:
     - name: RENOVATE_CONFIG_FILE
       value: /config/renovate.json
