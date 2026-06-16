@@ -102,31 +102,27 @@ data:
       fi
     }
 
-    # Ensure the webgrip CI robot exists (push+pull on the webgrip project) and its secret
-    # matches our vaulted token. Robot login name comes from env (holds the literal
-    # robot$webgrip+ci) to avoid building a '$' in-script. Idempotent; tolerates rotation.
+    # Ensure the webgrip CI robot exists (push+pull on webgrip) and its secret matches our
+    # vaulted token. Match by permission NAMESPACE (robust to Harbor's robot name format),
+    # and re-resolve after the POST so a 409 (already exists) still leads to a secret PATCH.
     ensure_webgrip_robot() {
-      [ -n "$${WEBGRIP_CI_USER:-}" ] && [ -n "$${WEBGRIP_CI_TOKEN:-}" ] || {
+      [ -n "$${WEBGRIP_CI_TOKEN:-}" ] || {
         log "no webgrip robot token (secret/harbor/robot-webgrip) — skipping robot"; return 0; }
-      _rid="$$(hc GET "/robots?page_size=100" 2>/dev/null \
-        | jq -r --arg n "$$WEBGRIP_CI_USER" '.[] | select(.name==$$n) | .id' 2>/dev/null | head -n1)"
+      _find='.[] | select((.permissions // []) | any(.namespace=="webgrip")) | .id'
+      _rid="$$(hc GET "/robots?page_size=100" 2>/dev/null | jq -r "$$_find" 2>/dev/null | head -n1)"
       if [ -z "$$_rid" ] || [ "$$_rid" = "null" ]; then
-        _body="{\"name\":\"ci\",\"description\":\"webgrip CI push/pull (managed)\",\"duration\":-1,\"level\":\"project\",\"disable\":false,\"permissions\":[{\"kind\":\"project\",\"namespace\":\"webgrip\",\"access\":[{\"resource\":\"repository\",\"action\":\"push\"},{\"resource\":\"repository\",\"action\":\"pull\"}]}]}"
-        if _out="$$(hc POST "/robots" "$$_body" 2>&1)"; then
-          _rid="$$(hc GET "/robots?page_size=100" 2>/dev/null \
-            | jq -r --arg n "$$WEBGRIP_CI_USER" '.[] | select(.name==$$n) | .id' 2>/dev/null | head -n1)"
-          log "created robot '$$WEBGRIP_CI_USER' (id=$$_rid)"
-        else
-          log "WARN: failed to create webgrip robot: $$_out"; return 0
-        fi
-      else
-        log "robot '$$WEBGRIP_CI_USER' exists (id=$$_rid)"
+        _body='{"name":"ci","description":"webgrip CI push/pull (managed)","duration":-1,"level":"project","disable":false,"permissions":[{"kind":"project","namespace":"webgrip","access":[{"resource":"repository","action":"push"},{"resource":"repository","action":"pull"}]}]}'
+        hc POST "/robots" "$$_body" >/dev/null 2>&1 || true
+        _rid="$$(hc GET "/robots?page_size=100" 2>/dev/null | jq -r "$$_find" 2>/dev/null | head -n1)"
       fi
-      [ -n "$$_rid" ] && [ "$$_rid" != "null" ] || return 0
-      if _out="$$(hc PATCH "/robots/$$_rid" "{\"secret\":\"$$WEBGRIP_CI_TOKEN\"}" 2>&1)"; then
-        log "robot '$$WEBGRIP_CI_USER' secret ensured"
+      if [ -z "$$_rid" ] || [ "$$_rid" = "null" ]; then
+        log "WARN: webgrip robot not resolvable; robots seen: $$(hc GET "/robots?page_size=100" 2>/dev/null | jq -rc '[.[] | {name, ns: [.permissions[]?.namespace]}]' 2>/dev/null)"
+        return 0
+      fi
+      if _out="$$(hc PATCH "/robots/$$_rid" "{\"secret\":\"$${WEBGRIP_CI_TOKEN}\"}" 2>&1)"; then
+        log "webgrip robot (id=$$_rid) secret ensured"
       else
-        log "WARN: failed to set webgrip robot secret: $$_out"
+        log "WARN: failed to set webgrip robot secret (id=$$_rid): $$_out"
       fi
     }
 
