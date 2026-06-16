@@ -56,51 +56,51 @@ spec:
             - /bin/sh
             - -ceu
             - |
-              # ${...} of container env vars are escaped as $${...} so Flux postBuild substitution
-              # (substituteFrom cluster-secrets) does NOT blank them — it only defines SECRET_DOMAIN,
-              # and an undefined braced reference would otherwise render empty. Unbraced $api/$admin/$(...)
-              # are left for the shell. See ADR-0019 / CLAUDE.md ($${...} escaping rule).
-              api="$${FORGEJO_URL}/api/v1"
-              admin="$${ADMIN_USERNAME}:$${ADMIN_PASSWORD}"
-              bot="$${BOT_USERNAME}:$${BOT_PASSWORD}"
+              # Container env vars are referenced UNBRACED ($FORGEJO_URL) on purpose: Flux postBuild
+              # substitution (substituteFrom cluster-secrets — only SECRET_DOMAIN is defined) blanks a
+              # braced reference to an undefined var, while the unbraced form is left for the shell to
+              # expand. (Dollar-dollar escaping is rejected by Flux's envsubst here.) See ADR-0019.
+              api="$FORGEJO_URL/api/v1"
+              admin="$ADMIN_USERNAME:$ADMIN_PASSWORD"
+              bot="$BOT_USERNAME:$BOT_PASSWORD"
 
               # 1) Ensure the bot user exists.
-              code="$(curl -sS -o /dev/null -w '%{http_code}' -u "$admin" "$api/users/$${BOT_USERNAME}")"
+              code="$(curl -sS -o /dev/null -w '%{http_code}' -u "$admin" "$api/users/$BOT_USERNAME")"
               if [ "$code" = "404" ]; then
-                echo "creating bot user $${BOT_USERNAME}"
+                echo "creating bot user $BOT_USERNAME"
                 curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST "$api/admin/users" \
-                  -d "{\"username\":\"$${BOT_USERNAME}\",\"email\":\"$${BOT_EMAIL}\",\"password\":\"$${BOT_PASSWORD}\",\"must_change_password\":false}" >/dev/null
+                  -d "{\"username\":\"$BOT_USERNAME\",\"email\":\"$BOT_EMAIL\",\"password\":\"$BOT_PASSWORD\",\"must_change_password\":false}" >/dev/null
               elif [ "$code" != "200" ]; then
                 echo "unexpected status probing bot user: $code" >&2; exit 1
               fi
 
               # 2) Reuse the stored token if it still authenticates; else (re)mint.
-              tok="$(kubectl -n "$${NAMESPACE}" get secret "$${TOKEN_SECRET}" -o jsonpath='{.data.RENOVATE_TOKEN}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+              tok="$(kubectl -n "$NAMESPACE" get secret "$TOKEN_SECRET" -o jsonpath='{.data.RENOVATE_TOKEN}' 2>/dev/null | base64 -d 2>/dev/null || true)"
               if [ -n "$tok" ] && curl -fsS -o /dev/null -H "Authorization: token $tok" "$api/user"; then
                 echo "existing token still valid — no change"
               else
                 echo "minting a fresh token"
                 # resync the bot password so basic auth works, then rotate the named token
-                curl -fsS -u "$admin" -H 'Content-Type: application/json' -X PATCH "$api/admin/users/$${BOT_USERNAME}" \
-                  -d "{\"login_name\":\"$${BOT_USERNAME}\",\"source_id\":0,\"password\":\"$${BOT_PASSWORD}\",\"must_change_password\":false}" >/dev/null
-                curl -sS -o /dev/null -u "$bot" -X DELETE "$api/users/$${BOT_USERNAME}/tokens/$${TOKEN_NAME}" || true
-                tok="$(curl -fsS -u "$bot" -H 'Content-Type: application/json' -X POST "$api/users/$${BOT_USERNAME}/tokens" \
-                  -d "{\"name\":\"$${TOKEN_NAME}\",\"scopes\":[\"write:repository\",\"read:user\",\"write:issue\",\"read:organization\"]}" | jq -r '.sha1')"
+                curl -fsS -u "$admin" -H 'Content-Type: application/json' -X PATCH "$api/admin/users/$BOT_USERNAME" \
+                  -d "{\"login_name\":\"$BOT_USERNAME\",\"source_id\":0,\"password\":\"$BOT_PASSWORD\",\"must_change_password\":false}" >/dev/null
+                curl -sS -o /dev/null -u "$bot" -X DELETE "$api/users/$BOT_USERNAME/tokens/$TOKEN_NAME" || true
+                tok="$(curl -fsS -u "$bot" -H 'Content-Type: application/json' -X POST "$api/users/$BOT_USERNAME/tokens" \
+                  -d "{\"name\":\"$TOKEN_NAME\",\"scopes\":[\"write:repository\",\"read:user\",\"write:issue\",\"read:organization\"]}" | jq -r '.sha1')"
                 [ -n "$tok" ] && [ "$tok" != "null" ] || { echo "token mint failed" >&2; exit 1; }
-                kubectl -n "$${NAMESPACE}" create secret generic "$${TOKEN_SECRET}" \
+                kubectl -n "$NAMESPACE" create secret generic "$TOKEN_SECRET" \
                   --from-literal="RENOVATE_TOKEN=$tok" \
                   --from-literal="FORGEJO_TOKEN=$tok" \
                   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-                echo "wrote Secret $${TOKEN_SECRET}"
+                echo "wrote Secret $TOKEN_SECRET"
               fi
 
               # 3) Ensure the throwaway pilot repo exists + is seeded (idempotent; safe to delete the repo anytime).
               curl -sS -o /dev/null -u "$bot" -H 'Content-Type: application/json' -X POST "$api/user/repos" \
-                -d "{\"name\":\"$${PILOT_REPO}\",\"default_branch\":\"main\",\"auto_init\":true,\"private\":false,\"description\":\"Renovate-on-Forgejo pilot — safe to delete\"}" || true
-              seed() { # $1=path  $2=commit message ; file body on stdin
+                -d "{\"name\":\"$PILOT_REPO\",\"default_branch\":\"main\",\"auto_init\":true,\"private\":false,\"description\":\"Renovate-on-Forgejo pilot — safe to delete\"}" || true
+              seed() { # path=$1  message=$2 ; file body on stdin
                 body="$(jq -nc --arg m "$2" --arg c "$(base64 | tr -d '\n')" '{branch:"main",message:$m,content:$c}')"
                 curl -sS -o /dev/null -u "$bot" -H 'Content-Type: application/json' \
-                  -X POST "$api/repos/$${BOT_USERNAME}/$${PILOT_REPO}/contents/$1" -d "$body" || true
+                  -X POST "$api/repos/$BOT_USERNAME/$PILOT_REPO/contents/$1" -d "$body" || true
               }
               printf 'FROM alpine:3.18\nRUN echo "renovate-on-forgejo pilot"\n' \
                 | seed "Dockerfile" "seed: pilot Dockerfile (alpine pinned old on purpose)"
