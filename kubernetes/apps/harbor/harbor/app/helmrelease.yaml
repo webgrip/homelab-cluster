@@ -4,6 +4,13 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: harbor
+  annotations:
+    # One-shot forced Helm upgrade: the outage left harbor-registry + harbor-jobservice
+    # Deployments deleted, and driftDetection is `warn` (won't restore them). These force
+    # a re-apply of the chart (recreating the missing Deployments). Bump the timestamp to
+    # force again. 2026-06-16: recover from the CNPG-outage aftermath.
+    reconcile.fluxcd.io/requestedAt: "2026-06-16T07:00:00Z"
+    reconcile.fluxcd.io/forceAt: "2026-06-16T07:00:00Z"
 spec:
   chart:
     spec:
