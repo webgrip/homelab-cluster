@@ -1,0 +1,22 @@
+---
+# Allow CNPG instance pods to reach the Kubernetes API server.
+#
+# The instance manager (wait-for-get-cluster) and the barman-cloud plugin both call the
+# API server; without it the instance crashloops and the cluster never goes Ready. Under a
+# W7 default-deny this MUST be an explicit allow — and it has to be a CiliumNetworkPolicy
+# `toEntities: kube-apiserver`, NOT a CIDR rule: Cilium matches the API server by a reserved
+# identity, so even an `ipBlock: 0.0.0.0/0` egress does not cover it (the app-layer egress
+# allow looked permissive but the DBs still timed out on 10.43.0.1:443). Lives in the DB
+# layer (non-gated <app>-db ks) for the same reason as the ingress policy — see
+# components/cnpg-netpol/networkpolicy.yaml.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-cnpg-apiserver
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/podRole: instance
+  egress:
+    - toEntities:
+        - kube-apiserver
