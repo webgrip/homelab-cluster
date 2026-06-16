@@ -4,13 +4,6 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: harbor
-  annotations:
-    # One-shot forced Helm upgrade: the outage left harbor-registry + harbor-jobservice
-    # Deployments deleted, and driftDetection is `warn` (won't restore them). These force
-    # a re-apply of the chart (recreating the missing Deployments). Bump the timestamp to
-    # force again. 2026-06-16: recover from the CNPG-outage aftermath.
-    reconcile.fluxcd.io/requestedAt: "2026-06-16T07:00:00Z"
-    reconcile.fluxcd.io/forceAt: "2026-06-16T07:00:00Z"
 spec:
   chart:
     spec:
@@ -148,6 +141,12 @@ spec:
           memory: 768Mi
 
     jobservice:
+      # The CNPG outage left this Deployment deleted; Helm's no-op upgrade won't
+      # recreate a resource that's unchanged in the chart manifest. This stable
+      # annotation gives the Deployment a real (secret-free) diff so the next upgrade
+      # re-creates it. Safe to remove once Harbor is confirmed whole.
+      podAnnotations:
+        harbor.webgrip.io/restored-at: "2026-06-16"
       resources:
         requests:
           cpu: 50m
@@ -156,6 +155,9 @@ spec:
           memory: 512Mi
 
     registry:
+      # Same as jobservice above — force re-creation of the deleted registry Deployment.
+      podAnnotations:
+        harbor.webgrip.io/restored-at: "2026-06-16"
       registry:
         resources:
           requests:
