@@ -17,19 +17,12 @@ spec:
     storageClass: longhorn
   postgresql:
     parameters:
-      # Tier 4, heaviest WAL writer (~3.5 GiB/day, graph fully rebuilt from
-      # re-ingested SBOMs). Compress WAL FPIs and widen checkpoints to cut FPI
-      # frequency; max_wal_size kept modest for the 5Gi WAL PVC.
-      # See docs/techdocs/docs/database-backup-tiers.md
+      # Tier 4 (no WAL archiving — nightly pg_dump instead; the graph rebuilds
+      # from re-ingested SBOMs). Compress WAL + widen checkpoints to keep the
+      # LOCAL WAL volume small. See docs/techdocs/docs/database-backup-tiers.md
       wal_compression: "zstd"
       max_wal_size: "2GB"
       checkpoint_timeout: "15min"
-  plugins:
-    - name: barman-cloud.cloudnative-pg.io
-      isWALArchiver: true
-      parameters:
-        barmanObjectName: guac-db-store
-        serverName: guac-db
   bootstrap:
     initdb:
       database: guac

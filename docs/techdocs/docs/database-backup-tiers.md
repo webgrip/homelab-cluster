@@ -57,7 +57,7 @@ e.g. `guac-db`'s actual data is ~1 GiB; the rest was WAL.
 | `backstage-db` | backstage | **3** | 2.3 GiB | Catalog largely re-discovered from SCM, but holds local TechDocs/state. |
 | `grafana-db` | observability | **4** | 0.5 GiB | Dashboards/datasources/alerts are Grafana Operator CRDs in git. DB = sessions/prefs/annotations — regenerable. |
 | `harbor-db` | harbor | **4** | 0.02 GiB | Registry metadata; blobs live in Garage S3, images are re-pushable from CI. |
-| `guac-db` | security | **4** | 47 GiB | Graph is fully rebuilt from re-ingested SBOMs/attestations by the collectors. The single biggest WAL producer (~3.5 GiB/day). |
+| `guac-db` | security | **4** | <1 GiB | Graph is fully rebuilt from re-ingested SBOMs/attestations by the collectors. Was the single biggest WAL producer (~4 GiB/day), so it's the one DB moved off WAL archiving to a **nightly `pg_dump`** (no PITR) — see Trade-offs below. |
 | `freshrss-db` | freshrss | **4** | 0.11 GiB | Subscriptions re-importable (OPML), articles re-fetch; only read/favorite state is mildly precious. |
 
 ## How to classify a new database
@@ -79,13 +79,16 @@ and only add checkpoint tuning if it proves to be a heavy WAL writer.
 
 ## Trade-offs and what we deliberately did *not* do
 
-- **We kept Barman physical backups for every live DB** rather than ripping out
-  WAL archiving in favour of logical `pg_dump` for the regenerable tiers. Physical
-  PITR is already wired, validated by the restore-drill tooling, and reversible.
-  Tier-appropriate **retention** captures the bulk of the savings (e.g. `guac-db`
-  at 3d instead of 30d) without introducing a new backup pipeline and its failure
-  modes. If a database becomes truly throwaway, the cleaner end-state is a nightly
-  logical dump (or nothing) — promote it to Tier 5 and document the rebuild path.
+- **We kept Barman physical backups for most live DBs** rather than ripping out
+  WAL archiving in favour of logical `pg_dump`. Physical PITR is already wired,
+  validated by the restore-drill tooling, and reversible. Tier-appropriate
+  **retention** captures the bulk of the savings without a new backup pipeline.
+  **The exception is `guac-db`**: at ~4 GiB/day of WAL for a graph that rebuilds
+  from re-ingested SBOMs, continuous PITR was pure waste, so it was moved to a
+  nightly `pg_dump` (`guac-db-backup` CronJob → `s3://guac/_db-backups/`, keep 7)
+  with the barman plugin/ObjectStore/ScheduledBackup removed. Restore path: redeploy
+  the cluster and `psql -d guac -f` the latest dump (or just let the collectors
+  re-ingest). This is the template for promoting any DB to logical-only.
 - **We did not enlarge WAL PVCs** to push checkpoint distance further, because
   Longhorn is capacity-constrained and an undrainable WAL backlog is exactly what
   caused a prior outage.

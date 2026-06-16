@@ -1,0 +1,102 @@
+---
+# Nightly LOGICAL backup of the GUAC Postgres DB -> Garage (S3).
+# guac-db is Tier 4: the graph is fully rebuilt from re-ingested SBOMs, so it no
+# longer runs barman WAL archiving / PITR (dropped to stop a ~4 GiB/day WAL
+# firehose into Garage — see docs/techdocs/docs/database-backup-tiers.md).
+# This pg_dump is its only off-box backup path:
+#   dump   : pg_dump the guac DB -> gzip -> shared emptyDir
+#   upload : aws-cli copies the dump to s3://<guac-bucket>/_db-backups/guac-<date>.sql.gz
+#            and keeps only the most recent 7.
+# Restore: gunzip the object and `psql -d guac -f dump.sql` into a fresh cluster.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: guac-db-backup
+  namespace: security
+spec:
+  schedule: "40 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            - name: dump
+              # Reuse the cluster's own Postgres image: exact server version + already approved.
+              image: ghcr.io/cloudnative-pg/postgresql:18.3-system-trixie
+              command:
+                - "/bin/sh"
+                - "-ceu"
+              args:
+                - |
+                  echo "[backup] dumping $${PGDATABASE} from $${PGHOST}"
+                  pg_dump --no-owner --no-privileges "$${PGDATABASE}" | gzip -c > /shared/dump.sql.gz
+                  echo "[backup] dump complete: $$(ls -la /shared/dump.sql.gz)"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PGHOST, value: guac-db-rw}
+                - {name: PGPORT, value: "5432"}
+                - {name: PGDATABASE, value: guac}
+                - name: PGUSER
+                  valueFrom: {secretKeyRef: {name: guac-secrets, key: username}}
+                - name: PGPASSWORD
+                  valueFrom: {secretKeyRef: {name: guac-secrets, key: password}}
+              volumeMounts:
+                - {name: shared, mountPath: /shared}
+                - {name: tmp, mountPath: /tmp}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 50m, memory: 128Mi}
+                limits: {memory: 512Mi}
+          containers:
+            - name: upload
+              image: docker.io/amazon/aws-cli:2.31.18@sha256:1a491b258590cc66866cd550f592edff80082f44daf1d903820daeca2f4954de
+              command:
+                - "/bin/sh"
+                - "-ceu"
+              args:
+                - |
+                  KEY="_db-backups/guac-$$(date -u +%Y%m%d).sql.gz"
+                  echo "[backup] uploading s3://$${S3_BUCKET}/$${KEY}"
+                  aws --endpoint-url "$${S3_ENDPOINT}" s3 cp /shared/dump.sql.gz "s3://$${S3_BUCKET}/$${KEY}"
+                  echo "[backup] keeping only the most recent 7 dumps"
+                  aws --endpoint-url "$${S3_ENDPOINT}" s3 ls "s3://$${S3_BUCKET}/_db-backups/" \
+                    | awk '{print $$4}' | sort | head -n -7 | while read -r f; do
+                        [ -n "$$f" ] && aws --endpoint-url "$${S3_ENDPOINT}" s3 rm "s3://$${S3_BUCKET}/_db-backups/$$f" || true
+                      done || true
+                  echo "[backup] done"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: AWS_ACCESS_KEY_ID, valueFrom: {secretKeyRef: {name: security-s3, key: S3_ACCESS_KEY_ID}}}
+                - {name: AWS_SECRET_ACCESS_KEY, valueFrom: {secretKeyRef: {name: security-s3, key: S3_SECRET_ACCESS_KEY}}}
+                - {name: AWS_DEFAULT_REGION, valueFrom: {secretKeyRef: {name: security-s3, key: S3_REGION}}}
+                - {name: S3_ENDPOINT, valueFrom: {secretKeyRef: {name: security-s3, key: S3_ENDPOINT}}}
+                - {name: S3_BUCKET, valueFrom: {secretKeyRef: {name: security-s3, key: S3_GUAC_BUCKET}}}
+              volumeMounts:
+                - {name: shared, mountPath: /shared}
+                - {name: tmp, mountPath: /tmp}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 25m, memory: 64Mi}
+                limits: {memory: 256Mi}
+          volumes:
+            - {name: shared, emptyDir: {}}
+            - {name: tmp, emptyDir: {}}
