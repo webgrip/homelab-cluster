@@ -87,6 +87,49 @@ data:
       fi
     }
 
+    # ensure_private_project NAME (private project for our own images)
+    ensure_private_project() {
+      _name="$$1"
+      if hc GET "/projects?name=$$_name" 2>/dev/null \
+          | jq -e ".[] | select(.name==\"$$_name\")" >/dev/null 2>&1; then
+        log "project '$$_name' already exists"; return 0
+      fi
+      _body="{\"project_name\":\"$$_name\",\"public\":false,\"storage_limit\":-1,\"metadata\":{\"public\":\"false\"}}"
+      if _out="$$(hc POST "/projects" "$$_body" 2>&1)"; then
+        log "created private project '$$_name'"
+      else
+        log "WARN: failed to create project '$$_name': $$_out"
+      fi
+    }
+
+    # Ensure the webgrip CI robot exists (push+pull on the webgrip project) and its secret
+    # matches our vaulted token. Robot login name comes from env (holds the literal
+    # robot$webgrip+ci) to avoid building a '$' in-script. Idempotent; tolerates rotation.
+    ensure_webgrip_robot() {
+      [ -n "$${WEBGRIP_CI_USER:-}" ] && [ -n "$${WEBGRIP_CI_TOKEN:-}" ] || {
+        log "no webgrip robot token (secret/harbor/robot-webgrip) — skipping robot"; return 0; }
+      _rid="$$(hc GET "/robots?page_size=100" 2>/dev/null \
+        | jq -r --arg n "$$WEBGRIP_CI_USER" '.[] | select(.name==$$n) | .id' 2>/dev/null | head -n1)"
+      if [ -z "$$_rid" ] || [ "$$_rid" = "null" ]; then
+        _body="{\"name\":\"ci\",\"description\":\"webgrip CI push/pull (managed)\",\"duration\":-1,\"level\":\"project\",\"disable\":false,\"permissions\":[{\"kind\":\"project\",\"namespace\":\"webgrip\",\"access\":[{\"resource\":\"repository\",\"action\":\"push\"},{\"resource\":\"repository\",\"action\":\"pull\"}]}]}"
+        if _out="$$(hc POST "/robots" "$$_body" 2>&1)"; then
+          _rid="$$(hc GET "/robots?page_size=100" 2>/dev/null \
+            | jq -r --arg n "$$WEBGRIP_CI_USER" '.[] | select(.name==$$n) | .id' 2>/dev/null | head -n1)"
+          log "created robot '$$WEBGRIP_CI_USER' (id=$$_rid)"
+        else
+          log "WARN: failed to create webgrip robot: $$_out"; return 0
+        fi
+      else
+        log "robot '$$WEBGRIP_CI_USER' exists (id=$$_rid)"
+      fi
+      [ -n "$$_rid" ] && [ "$$_rid" != "null" ] || return 0
+      if _out="$$(hc PATCH "/robots/$$_rid" "{\"secret\":\"$$WEBGRIP_CI_TOKEN\"}" 2>&1)"; then
+        log "robot '$$WEBGRIP_CI_USER' secret ensured"
+      else
+        log "WARN: failed to set webgrip robot secret: $$_out"
+      fi
+    }
+
     # docker.io -> proxy project "dockerhub"
     DH_ID="$$(ensure_registry docker-hub docker-hub https://hub.docker.com \
       "$${DOCKERHUB_USERNAME:-}" "$${DOCKERHUB_TOKEN:-}")"
@@ -96,5 +139,9 @@ data:
     GH_ID="$$(ensure_registry ghcr docker-registry https://ghcr.io \
       "$${GHCR_USERNAME:-}" "$${GHCR_TOKEN:-}")"
     [ -n "$$GH_ID" ] && [ "$$GH_ID" != "null" ] && ensure_proxy_project ghcr "$$GH_ID"
+
+    # Own-image hosting: private project + CI robot (webgrip/{infrastructure,workflows} handoffs)
+    ensure_private_project webgrip
+    ensure_webgrip_robot
 
     log "reconcile complete"
