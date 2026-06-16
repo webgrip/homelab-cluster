@@ -187,10 +187,33 @@ deliberately:
   pulls.** If fallback doesn't work, you find out with one volume drained, not with the whole
   cluster wedged.
 
-Hosting my *own* images — the `ghcr.io/webgrip/*` publish target — is a different project entirely,
-and it lands in the `webgrip/workflows` repo where the CI lives, not here. Harbor is LAN-only by
-[deliberate design](../architecture/adr-0005-lan-only-exposure.md), so GitHub-hosted runners can't
-push to it anyway. One thing at a time.
+## Living with it: the happy path
+
+Once Phase 1 lands, *using* the cache is the most boring part of the whole story — which is the
+point. Your manifests never change. A pod that pulls `docker.io/library/postgres` just gets it,
+transparently, from the nearest of three places: a neighbour node, Harbor's cache, or (if both are
+cold or down) `docker.io` itself. The only thing you *notice* is that Docker Hub's rate-limit `429`s
+stop and cold pulls speed up as the cache warms. There is no "it's all imported now" moment — the
+cache only ever holds what something has actually pulled at least once. (The explicit form,
+`docker pull harbor.$SECRET_DOMAIN/dockerhub/library/<repo>`, works today; the transparent form waits
+on the Phase-1 mirror cutover.)
+
+Publishing *my own* images is the deliberately-separate other half, and Harbor being
+[LAN-only by design](../architecture/adr-0005-lan-only-exposure.md) turns out to quietly answer "who's
+allowed to push": only something already inside the perimeter. So the build-and-push runs on an
+**in-cluster runner** (the ARC / Forgejo runners already on the LAN), authenticated as a scoped Harbor
+*robot account*, into a private `webgrip` project:
+
+```bash
+docker login harbor.$SECRET_DOMAIN -u 'robot$webgrip+ci' -p "$TOKEN"
+docker push  harbor.$SECRET_DOMAIN/webgrip/twitch-exporter:1.2.3
+```
+
+Workloads then pull `harbor.$SECRET_DOMAIN/webgrip/…` with a pull secret, like any private registry.
+GitHub-hosted runners can't reach Harbor at all — which is the correct answer, not a workaround — so
+that pipeline lives in the `webgrip/workflows` repo, while the Harbor side (the private project and the
+robot's token, generated and vaulted in OpenBao) stays GitOps here. The step-by-step is in
+[Runbook: Harbor](../runbooks/harbor.md#using-harbor-day-to-day-the-happy-path).
 
 ## What I actually learned
 

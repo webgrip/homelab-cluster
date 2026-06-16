@@ -84,6 +84,54 @@ kubectl -n harbor get secret harbor-admin -o jsonpath='{.data.HARBOR_ADMIN_PASSW
 - **Backups**: trigger an on-demand `Backup` for `harbor-db`; confirm an object under
   `s3://cnpg-backups-bucket/homelab-cluster/harbor-db/`. Restore drills: see below.
 
+## Using Harbor day-to-day (the happy path)
+
+Two distinct flows — pulling *third-party* images through the cache, and publishing *your own*.
+Design: [RFC: Harbor Pull-Through Proxy Cache](../architecture/rfc-harbor-proxy-cache.md) and
+[ADR-0016–0018](../architecture/index.md).
+
+### Pull third-party images through the proxy cache
+
+The two proxy-cache projects — `dockerhub` → `docker.io`, `ghcr` → `ghcr.io` — are created
+idempotently by the `harbor-proxy-config` CronJob (creds from OpenBao `secret/harbor/registry-proxy`,
+[ADR-0018](../architecture/adr-0018-harbor-config-idempotent-job.md)). Two ways to consume them:
+
+- **Explicit** (works now): pull through the project path —
+  `docker pull harbor.${SECRET_DOMAIN}/dockerhub/library/<repo>:<tag>` (or `.../ghcr/<owner>/<repo>`).
+  Harbor fetches from upstream once, scans, and caches; later pulls are local.
+- **Transparent** (after Phase 1): your manifests keep their `docker.io/…` / `ghcr.io/…` references and
+  containerd routes them through Harbor automatically — **Spegel peers → Harbor proxy → upstream**, with
+  containerd falling back to upstream if Harbor is down. This is the Talos `machine.registries.mirrors`
+  + Spegel `prependExisting` cutover in [ADR-0017](../architecture/adr-0017-registry-mirror-talos-spegel.md);
+  **gate it on the fallback drill** (scale Harbor to zero, confirm an uncached pull still succeeds).
+
+> Status: proxy projects are provisioned; the transparent-mirror cutover (Phase 1) is pending.
+
+### Publish & consume your own private images
+
+Harbor is **LAN-only** ([ADR-0005](../architecture/adr-0005-lan-only-exposure.md)), so the push must come
+from a host that can reach `envoy-internal` — i.e. an **in-cluster runner** (`arc-systems` / `forgejo-runner`).
+GitHub-hosted Actions cannot reach it. The build-and-push therefore lives in **`webgrip/workflows`**, not here.
+
+1. **One-time Harbor-side setup (GitOps, this repo):** a private project (default: `webgrip`) and a
+   push/pull **robot account**, provisioned the same idempotent-API way as the proxy projects; the robot
+   token is generated and stored in OpenBao, surfaced to the runner via ESO.
+2. **Push (on an in-cluster runner):**
+
+   ```
+   docker login harbor.${SECRET_DOMAIN} -u 'robot$webgrip+ci' -p "$HARBOR_ROBOT_TOKEN"
+   docker push harbor.${SECRET_DOMAIN}/webgrip/<image>:<tag>
+   ```
+
+3. **Consume in-cluster:** reference `harbor.${SECRET_DOMAIN}/webgrip/<image>:<tag>` with an
+   `imagePullSecret` built from a pull-only robot (or make the project public for anonymous in-cluster pulls).
+4. **Migrate existing `ghcr.io/webgrip/*`** (optional, one-time): `skopeo copy --all
+   docker://ghcr.io/webgrip/<image>:<tag> docker://harbor.${SECRET_DOMAIN}/webgrip/<image>:<tag>`, or a
+   Harbor *replication* pull-rule from the `ghcr` registry endpoint.
+
+> Status: designed; the Harbor-side project + robot are not yet provisioned, and the CI lives in
+> `webgrip/workflows`.
+
 ## Common problems
 
 | Symptom | Cause | Fix |
