@@ -103,20 +103,22 @@ data:
     }
 
     # Ensure the webgrip CI robot exists (push+pull on webgrip) and its secret matches our
-    # vaulted token. Match by permission NAMESPACE (robust to Harbor's robot name format),
-    # and re-resolve after the POST so a 409 (already exists) still leads to a secret PATCH.
+    # vaulted token. GET /robots lists only SYSTEM robots, so PROJECT robots must be queried
+    # with q=Level=project,ProjectID=<id>; re-resolve after POST so a 409 still leads to PATCH.
     ensure_webgrip_robot() {
       [ -n "$${WEBGRIP_CI_TOKEN:-}" ] || {
         log "no webgrip robot token (secret/harbor/robot-webgrip) — skipping robot"; return 0; }
-      _find='.[] | select((.permissions // []) | any(.namespace=="webgrip")) | .id'
-      _rid="$$(hc GET "/robots?page_size=100" 2>/dev/null | jq -r "$$_find" 2>/dev/null | head -n1)"
+      _pid="$$(hc GET "/projects?name=webgrip" 2>/dev/null | jq -r '.[] | select(.name=="webgrip") | .project_id' 2>/dev/null | head -n1)"
+      [ -n "$$_pid" ] && [ "$$_pid" != "null" ] || { log "WARN: webgrip project id not found; skipping robot"; return 0; }
+      _q="Level%3Dproject%2CProjectID%3D$$_pid"
+      _rid="$$(hc GET "/robots?q=$$_q&page_size=100" 2>/dev/null | jq -r '.[0].id' 2>/dev/null)"
       if [ -z "$$_rid" ] || [ "$$_rid" = "null" ]; then
         _body='{"name":"ci","description":"webgrip CI push/pull (managed)","duration":-1,"level":"project","disable":false,"permissions":[{"kind":"project","namespace":"webgrip","access":[{"resource":"repository","action":"push"},{"resource":"repository","action":"pull"}]}]}'
         hc POST "/robots" "$$_body" >/dev/null 2>&1 || true
-        _rid="$$(hc GET "/robots?page_size=100" 2>/dev/null | jq -r "$$_find" 2>/dev/null | head -n1)"
+        _rid="$$(hc GET "/robots?q=$$_q&page_size=100" 2>/dev/null | jq -r '.[0].id' 2>/dev/null)"
       fi
       if [ -z "$$_rid" ] || [ "$$_rid" = "null" ]; then
-        log "WARN: webgrip robot not resolvable; robots seen: $$(hc GET "/robots?page_size=100" 2>/dev/null | jq -rc '[.[] | {name, ns: [.permissions[]?.namespace]}]' 2>/dev/null)"
+        log "WARN: webgrip robot not resolvable (pid=$$_pid); robots seen: $$(hc GET "/robots?q=$$_q&page_size=100" 2>/dev/null | jq -rc '[.[].name]' 2>/dev/null)"
         return 0
       fi
       if _out="$$(hc PATCH "/robots/$$_rid" "{\"secret\":\"$${WEBGRIP_CI_TOKEN}\"}" 2>&1)"; then
