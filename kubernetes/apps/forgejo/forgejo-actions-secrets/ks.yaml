@@ -15,8 +15,10 @@ spec:
       namespace: harbor
     - name: dependency-track
       namespace: security
-  # No postBuild.substituteFrom: the CronJob script contains shell ${vars} Flux must not touch
-  # (it needs no cluster-secrets substitution — the Forgejo URL is the in-cluster Service).
+  # No postBuild.substituteFrom: the scripts contain shell ${vars} Flux must not touch (no
+  # cluster-secrets substitution — URLs/emails are in-cluster Service / literals).
+  # force: recreate the immutable forgejo-ci-provisioner Job when its spec changes so it re-runs.
+  force: true
   interval: 1h
   retryInterval: 5m
   path: ./kubernetes/apps/forgejo/forgejo-actions-secrets/app
