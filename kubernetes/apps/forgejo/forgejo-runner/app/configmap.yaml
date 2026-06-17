@@ -19,6 +19,12 @@ data:
         - docker:docker://-
         - default:docker://node:22-bookworm
         - ubuntu-latest:docker://node:22-bookworm
+        # Host/dind backend (same as `docker`) so jobs that run `docker build` (semantic-release
+        # verifyReleaseCmd) work. Used by the webgrip/workflows reusable workflows
+        # (determine-changed-directories, semantic-release) and the .forgejo orchestration jobs.
+        # NOTE: host mode (`-`) may not honor a workflow-level `container:`; techdocs jobs that set
+        # one may need a container-backed label — verify on first techdocs run.
+        - arc-runner-set:docker://-
     cache:
       enabled: false
     container:

@@ -127,3 +127,13 @@ spec:
         labels: "docker"
       authenticationRef:
         name: forgejo-runner-scaler
+    # Separate trigger so pending `arc-runner-set` jobs also scale from zero (one-job runners
+    # don't multiplex labels, so each label that should trigger a pod needs to be counted).
+    - type: forgejo-runner
+      metadata:
+        name: forgejo-runner-arc
+        address: "http://forgejo-http.forgejo.svc.cluster.local:3000"
+        global: "true"
+        labels: "arc-runner-set"
+      authenticationRef:
+        name: forgejo-runner-scaler
