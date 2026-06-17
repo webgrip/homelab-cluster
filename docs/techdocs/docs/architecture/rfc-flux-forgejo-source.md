@@ -61,6 +61,7 @@ steady-state source (Forgejo) from the disaster-recovery / bootstrap source (an 
 |---|----------|--------|
 | [ADR-0014](adr-0014-flux-source-forgejo.md) | Steady-state GitOps source | **Forgejo**, via the **in-cluster Service URL** (`http://forgejo-http.forgejo.svc.cluster.local:3000/...`) — no dependency on public DNS/ingress/TLS for the reconcile loop. |
 | [ADR-0015](adr-0015-external-bootstrap-fallback-source.md) | Bootstrap + break-glass source | **Keep GitHub** (demoted to a Forgejo→GitHub **push-mirror**) as the cold-bootstrap and break-glass source. Codeberg later as a second off-site mirror. |
+| [ADR-0020](adr-0020-codeberg-offsite-push-mirror.md) | Second off-site mirror (Codeberg) | **Forgejo→Codeberg** via native push-mirror for all `webgrip` org repos, reconciled by a Tier-2 CronJob. Decided now, **built after cutover**; gated on Codeberg's usage policy. |
 
 Two settled sub-choices folded in:
 

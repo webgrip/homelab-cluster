@@ -74,3 +74,4 @@ This is the repo's first ADR section; the conventions below apply to everything 
 | [ADR-0017](adr-0017-registry-mirror-talos-spegel.md) | Proposed | Inject the mirror via Talos `machine.registries.mirrors` + Spegel `prependExisting`; fail open to upstream. |
 | [ADR-0018](adr-0018-harbor-config-idempotent-job.md) | Proposed | Provision the proxy registries/projects via an idempotent Harbor-API CronJob (no operator). |
 | [ADR-0019](adr-0019-bootstrap-task-pattern.md) | Accepted | Bootstrap/one-shot tasks: pick the lowest trigger tier (controller > change-triggered Job > timer CronJob), gated by Flux. |
+| [ADR-0020](adr-0020-codeberg-offsite-push-mirror.md) | Proposed | Fan Forgejo out to Codeberg as a second off-site mirror via native push-mirror, reconciled by a Tier-2 CronJob; built after cutover. |
