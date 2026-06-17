@@ -77,6 +77,18 @@ spec:
     - to:
         - ipBlock:
             cidr: 10.43.0.0/16
+    # envoy gateway (network ns) for harbor-core server-side OIDC discovery +
+    # token/userinfo to authentik.webgrip.dev. The LAN VIP (10.0.0.27:443) DNATs
+    # to envoy pods at 10.42.x.x, which the 0.0.0.0/0 except 10.42.0.0/16 rule
+    # below would otherwise drop (Cilium enforces egress on the post-DNAT
+    # backend identity) -> "i/o timeout" -> OIDC login 500.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: network
+      ports:
+        - protocol: TCP
+          port: 443
     # internet + LAN (Garage S3 blobs/WAL, Trivy CVE feeds, proxy-cache upstream
     # registries); blocks only direct cross-namespace pod IPs.
     - to:
