@@ -389,6 +389,52 @@ A few more threads, each shorter but real:
 
 ---
 
+## Field notes: standing it up, and every trap in the way
+
+The sections above are the *map* — what moved, and why. This is the *field guide*: the order you bring the hardest path (keyed image signing) up in, and the specific traps that cost hours each. Every one of them passed `kubeconform` and a `flux-local` render and only failed at runtime. If you're reading this as a how-to, this is the part to keep.
+
+**Bring-up order.** Flux reconciles all the manifests green on its own — `wait: false`, fail-soft jobs — but the machinery is *inert* until a one-time activation:
+
+1. **Break-glass the OpenBao mounts.** On an already-running cluster the bootstrap `init.sh` short-circuits, so the Transit engine, the signing key, and the `auth/forgejo` JWT method must be created once by hand — and you do **not** need a root token (see trap 3):
+   ```sh
+   SA_JWT=$(kubectl -n security create token openbao-config)
+   export BAO_ADDR=http://127.0.0.1:8200   # kubectl -n security port-forward svc/openbao 8200:8200
+   export BAO_TOKEN=$(bao write -field=token auth/kubernetes/login role=openbao-config jwt="$SA_JWT")
+   bao policy read config-admin > /tmp/ca.hcl
+   cat >> /tmp/ca.hcl <<'EOF'
+   path "sys/mounts/*"   { capabilities = ["create","read","update","delete","sudo"] }
+   path "sys/auth/*"     { capabilities = ["create","read","update","delete","sudo"] }
+   path "transit/keys/*" { capabilities = ["create","read","update"] }
+   EOF
+   bao policy write config-admin /tmp/ca.hcl
+   bao secrets enable -path=transit transit
+   bao write transit/keys/cosign-webgrip type=ecdsa-p256
+   bao auth enable -path=forgejo jwt
+   kubectl -n security create job obc --from=cronjob/openbao-config   # writes the signer role + reverts the policy
+   ```
+2. **Let the reconcile finish the rest.** `openbao-config` writes `auth/forgejo/config` + the `cosign-signer` role (claims: repo `webgrip/infrastructure`, event `release`, ref `refs/tags/*`); the publisher mirrors the public key into the `cosign-webgrip-pub` ConfigMap; the org-secrets CronJob pushes the CI credentials to the `webgrip` Forgejo org. Verify the chain:
+   ```sh
+   bao read auth/forgejo/role/cosign-signer
+   kubectl -n security get cm cosign-webgrip-pub -o jsonpath='{.data.cosign\.pub}' | grep -c 'BEGIN PUBLIC KEY'  # 1
+   kubectl -n forgejo create job fga --from=cronjob/forgejo-actions-secrets && kubectl -n forgejo logs job/fga -f  # "reconcile complete"
+   ```
+3. **Sign for real.** Cut a release tag on `webgrip/infrastructure`; the runner mints a Forgejo OIDC token (audience `openbao-cosign`), exchanges it for a sign-only Transit token, signs the Harbor image and attaches a CycloneDX SBOM. The Kyverno audit policy then reports that image as verified.
+
+**The traps, collected.** Each passed every static check; each only showed up live:
+
+- **`could not resolve registry digest for code.forgejo.org/...`** — the CI guard that pins every `OCIRepository` to a digest only spoke `ghcr.io`/`docker.io` token auth. *Fix:* teach it the registry's anonymous-token flow (the `WWW-Authenticate: Bearer realm=…` it advertises). Any chart off the beaten registry path needs this.
+- **OIDC login returns 500; the log says `dial tcp 10.0.0.27:443: i/o timeout`** — an app doing *server-side* OIDC discovery hairpins out through the gateway VIP. Under a Cilium default-deny, egress is enforced on the **post-DNAT backend identity and target port**, not the VIP — so a `0.0.0.0/0`-except-pod-CIDR rule *drops* it and a `port: 443` rule *misses* it (the real backend port is `10443`). *Fix:* an identity-based (`namespaceSelector`) egress allow with **no port filter**. Bit Harbor; would silently have bitten Backstage and n8n.
+- **`bao operator generate-root` returns 405** — OpenBao 2.5.x disabled the unauthenticated `sys/generate-root/*` endpoints by default (re-enable with `disable_unauthed_generate_root_endpoints=false` on the tcp listener + a restart). And there's no live root token anyway — the bootstrap revokes it. *Fix:* skip root entirely. The `config-admin` identity holds `sys/policies/acl/*`, so it can grant *itself* the mount permission, do the mounts, and let the next reconcile revert it — no restart, no root. Which surfaces an uncomfortable truth worth stating plainly: **any identity that can write ACL policies is already root-equivalent.** "config-admin cannot mount engines" was never a real boundary; if you want one, scope its policy-write away from its own policy.
+- **`error converting input for field "bound_claims": expected map, got string`** — the OpenBao CLI won't turn an inline `key={"a":"b"}` argument into a map. *Fix:* send the whole role payload as JSON on stdin (`bao write <path> - <<'JSON' … JSON`).
+- **Forgejo org secret/variable write returns 400 (secret) / 404 (var)** — Forgejo Actions reserves the `GITHUB_`, `GITEA_`, and `FORGEJO_` name prefixes for built-ins. A secret named `FORGEJO_TOKEN` is rejected — and would shadow the built-in per-job token even if it weren't. *Fix:* publish under any other name (`WEBGRIP_CI_TOKEN`, `WEBGRIP_FORGEJO_URL`), and point the consuming workflows at it (a workflow's `secrets.FORGEJO_TOKEN` is always the built-in, *not* your org bot token).
+- **A missing ConfigMap can fail-close every pod admission** — the Kyverno image-verify policy reads its trusted key from a ConfigMap published *asynchronously* by a CronJob, and pulls from a *LAN-only* registry. With `failurePolicy: Fail`, a not-yet-published ConfigMap (fresh cluster) or an unreachable Harbor could block *unrelated* admissions for an audit-only check. *Fix:* `failurePolicy: Ignore` while in Audit; flip to `Fail` only when you promote that rule to Enforce.
+- **`flux reconcile kustomization <name>` → not found** — here the Flux `Kustomization` objects live in their **app** namespace, not `flux-system` (the CLI default). *Fix:* `-n <app-ns>`; `flux get kustomizations -A` prints the namespace in column one.
+- **Over-broad provisioner RBAC** — a Job that only `kubectl apply`s one Secret does not need `secrets: ["*"]`. Scope `get/update/patch` to that one `resourceName` and put `create` in its own rule (RBAC can't name-scope `create`). And note `secretKeyRef` env is injected by the **kubelet**, not via the pod's ServiceAccount — consuming a Secret as env needs *zero* RBAC.
+
+None of these are exotic. They're the ordinary tax of *owning* the stack instead of renting it — each one a thing GitHub, or a managed registry, or a hosted Vault quietly did for you. The migration, in the end, is mostly this: paying that tax one runtime surprise at a time, and writing down the receipt so the next person doesn't pay it twice.
+
+---
+
 ## Where we actually are
 
 Stripped of narrative, the honest status board:
@@ -405,7 +451,7 @@ Stripped of narrative, the honest status board:
 | Image pipeline (`webgrip/infrastructure`) | `.github`→GHCR | `.forgejo`→Harbor (two-tree; shared `webgrip/workflows`) | **Built; pending first signed release** |
 | Bulk mirror | — | gitea-mirror (continuous) | **~71/72; `homelab-cluster` wedged** |
 | Package registry | GHCR | Harbor (`harbor.webgrip.dev`) | **Live** — pull-through cache + first-party registry; GHCR still in parallel |
-| Signing / trust | GitHub OIDC + GHCR + Kyverno | Cosign via OpenBao Transit, authorized by Forgejo Actions OIDC; Kyverno verify | **Live, in Audit** — break-glass done (key + signer role up); awaiting first signed release |
+| Signing / trust | GitHub OIDC + GHCR + Kyverno | Cosign via OpenBao Transit, authorized by Forgejo Actions OIDC; Kyverno verify | **Live, in Audit** — key + signer role + published org CI creds all up; awaiting first signed release |
 | Renovate | platform `github` + GitHub App | Forgejo platform (dual-run) | **Designed ([RFC](../architecture/rfc-renovate-forgejo.md) + ADRs); build pending** |
 | GitOps source | Flux ← GitHub (+ webhook Receiver) | Flux ← Forgejo | **Not started (cutover last)** |
 | Off-site mirrors | — | Codeberg + 2nd Forgejo + demoted GitHub | **Deferred (after cutover)** |
