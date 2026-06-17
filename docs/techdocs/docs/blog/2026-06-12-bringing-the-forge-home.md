@@ -6,6 +6,8 @@
 
 ---
 
+> **Update — 2026-06-17.** Two threads this post filed under *"not started"* have moved a long way since it was written. **Harbor is live**, and the **supply-chain trust chain is built (in audit)** — though it didn't land where the first draft guessed. The *registry* and *trust boundary* sections below, and the status board near the end, are revised to match; everything else stands as written.
+
 ## Prologue: the north star
 
 The goal is easy to say and surprisingly hard to finish: **leave GitHub.**
@@ -83,17 +85,17 @@ Against all that, the Forgejo side currently holds a single file — a nine-line
 
 ---
 
-## The registry: GHCR, and the Harbor-shaped hole
+## The registry: the Harbor-shaped hole, filled
 
-Every image this platform builds lands in **GHCR** — `ghcr.io/webgrip/*`. The plan is to replace it with a self-hosted **Harbor**, so that container images, like source code, live on infrastructure we own.
+Every image this platform builds used to land in **GHCR** — `ghcr.io/webgrip/*`. The plan was to replace it with a self-hosted **Harbor**, so that container images, like source code, live on infrastructure we own. When this post first went up, that was pure intention: Harbor had **zero footprint in the cluster** — not a namespace, not a manifest, not so much as a stray reference in a values file.
 
-In the interest of honesty — and this is exactly the kind of thing "go look" is for — Harbor currently has **zero footprint in the cluster.** No manifests, no namespace, no plan document, not so much as a stray reference in a values file. It is, at this moment, purely a box on the architecture diagram and an intention in the operator's head. GHCR is still doing the job.
+That box on the diagram is now a running service. **Harbor is live at `harbor.webgrip.dev`**, reconciled by Flux like everything else, and it earns its keep two ways at once: as a **pull-through cache** in front of the upstream registries (its own [story](2026-06-13-harbor-as-a-pull-through-cache.md)), and as the **first-party registry** that `webgrip` images are built to and pulled from. It is private and LAN-only — a detail that turns out to matter enormously to the section right after this one.
 
-That's fine; it's just worth naming precisely, because Harbor is not a small domino. The moment images move off GHCR, three other things have to move with them: the CI workflows that `docker push`, the BuildKit registry cache they pull from, and — far more delicately — the entire supply-chain trust chain described next, which currently assumes images live in GHCR and were signed by GitHub. Harbor is the registry, but it's also the keystone of the hardest section of this whole migration.
+GHCR hasn't vanished. `ghcr.io/webgrip/*` still hosts what the GitHub path builds during the transition, still keyless-signed by GitHub's OIDC, still verified by its own Kyverno policy. So the registry now runs in two lanes — GHCR for what GitHub builds, Harbor for what the home forge builds — the same side-by-side shape every thread in this migration passes through on its way across. The registry itself was never the hard part, though. The keystone is the trust chain anchored to it: the instant images move to Harbor, the whole supply-chain trust boundary — the signature, the SBOM, the admission policy that believes them — has to move with them. That's the section that just went from *"not started"* to *built, in audit, and honest about the rest.*
 
 ---
 
-## The trust boundary: from GitHub's OIDC to Authentik's
+## The trust boundary: re-anchored — and not where we guessed
 
 If there is a part of this migration that will demand real care, it is this one, and it's the part the short brief gestured at with five words — *"GitHub's OIDC → Authentik."* Those five words hide the deepest GitHub dependency in the building.
 
@@ -105,14 +107,23 @@ That signature is not decorative. A **Kyverno admission policy** verifies it at 
 
 Meanwhile **GUAC**, the supply-chain graph, runs an `oci-collector` that continuously polls `ghcr.io/webgrip/*` for exactly these attestations to build its picture of what's running and where it came from. The cluster's whole notion of "is this image trustworthy?" is, right now, a sentence that contains the words *github.com*, *githubusercontent.com*, and *ghcr.io* — three times over, in a security policy.
 
-Leaving GitHub means re-anchoring every clause of that sentence:
+The plan, when this post first described it, was to re-anchor every clause of that sentence by moving the **keyless signing identity from GitHub's OIDC issuer to Authentik's** — Authentik playing the Fulcio-style certificate authority that vouches for "our CI built this." Worth leaving the guess on the page, because the destination changed, and the *why* is the interesting part.
 
-- The **keyless signing identity** moves from GitHub's OIDC issuer to **Authentik's** — Authentik becomes the Fulcio-style identity that vouches for "this was built by our CI."
-- The **Kyverno subject pattern** is rewritten from a GitHub workflow path to the equivalent Forgejo Actions identity.
-- **GHCR → Harbor** for where the image and its attestations live.
-- **GUAC's collector** re-points from polling GHCR to polling Harbor.
+For a private, LAN-only registry with no public transparency log to lean on, keyless-via-Authentik was the wrong tool. What actually got built is **keyed, not keyless**. The trust root is a single asymmetric key whose private half is generated inside **OpenBao's Transit engine** (`cosign-webgrip`, ECDSA-P256) and **never leaves it** — cosign signs by calling `transit/sign` over OpenBao's API; the runner only ever holds a short-lived token, never the key.
 
-None of this is started, and it shouldn't be — it depends on Harbor existing and on Forgejo Actions producing a verifiable build identity, both of which are downstream. But it's the reason "leave GitHub" can't be finished by a checkbox. The most security-critical assumption in the cluster is currently the sentence "GitHub built this," and rewriting that sentence is the real boss fight, still ahead of us.
+What replaces the keyless "who built this" proof is **per-workflow Forgejo Actions OIDC**. Forgejo mints a fresh OIDC token for each job, and OpenBao's JWT auth method (`auth/forgejo`, role `cosign-signer`) will only exchange it for a sign-only Transit token when its claims match exactly:
+
+> `repository: webgrip/infrastructure`, `event_name: release`, `ref: refs/tags/*`.
+
+That is the keyed-path equivalent of the old GitHub subject regex — the authorization to sign lives *at sign time*, in OpenBao, gated on claims only a genuine release-on-a-tag can present. A push build, a PR build, a different repo, a branch ref: each fails the binding and cannot sign, even on the same runner. And the load-bearing corollary — **Forgejo Actions OIDC is disabled for fork PRs** — means a fork cannot mint a signer token at all. The privileged DinD runner's blast radius does not include the signing key, because the key is in OpenBao and only a tag-event token unlocks it.
+
+The verify side moved with it. A second Kyverno policy, **`image-verify-harbor-audit`**, checks every `harbor.webgrip.dev/webgrip/*` image for a Cosign signature **and** a CycloneDX SBOM attestation, both against the Transit **public** key — which it reads from a ConfigMap a small CronJob **publishes straight from OpenBao**. No human ever pastes a PEM; the publisher even emits every still-trusted key version, so a key rotation overlaps with zero downtime. Because Harbor is private, Kyverno authenticates with a robot pull credential to fetch the signatures. And every credential CI needs to do its half — the Harbor robot, the Dependency-Track SBOM-upload key, the bot's own Forgejo token — is **published to the `webgrip` org as Forgejo Actions secrets by an in-cluster job reading OpenBao**, so even the secrets that make signing possible are GitOps, never hand-typed.
+
+Two honest caveats, because this is the section most likely to sound more finished than it is. First, it runs in **Audit, not Enforce**: Kyverno *reports* unsigned Harbor images, it does not block them, and it will keep reporting until the in-cluster images are re-released through the signing workflow. Promotion to Enforce is a deliberate, gated, per-policy move still down the road. Second, the whole keyed path rests on a **one-time break-glass**: OpenBao deliberately keeps *no live root token*, and its day-to-day automation cannot mount engines, so the Transit key and the `auth/forgejo` method must be created once, by hand, through a `generate-root` ceremony. Until that happens on the live cluster, the machinery reconciles cleanly and signs nothing — exactly the half-done-and-saying-so this migration runs on.
+
+So the boss fight named at the end of the first draft — *"GitHub built this"* as the cluster's most security-critical assumption — is now joined rather than purely ahead of us. For new home-forge images the sentence is being rewritten to read *"a tagged release of `webgrip/infrastructure` signed this, with a key only OpenBao holds,"* and a Kyverno policy is already watching — quietly, in audit — to see whether it's true. The GHCR clause still reads the old way, and will until those images age out. Two lanes again; but this one, at last, points at trust we issue.
+
+(One small scar from getting here, in the spirit of "go look": Harbor does its *own* OIDC discovery to Authentik server-side, and that call hairpins back out through the gateway VIP. Under the cluster's zero-trust default-deny, Cilium enforces egress on the post-NAT *backend* identity, not the VIP address or port — so a CIDR/port rule silently dropped it and Harbor login returned a 500 until an identity-based egress allow went in. The fix became its own [ADR](../architecture/adr-0021-cilium-gateway-egress-for-oidc.md). Leaving the managed world means meeting, in person, the networking a managed gateway used to hide.)
 
 ---
 
@@ -182,14 +193,14 @@ Stripped of narrative, the honest status board:
 | Runners | ARC scale sets (normal+heavy) | KEDA `ScaledJob` (ephemeral, DinD) | **Live, unproven on a real job** |
 | CI workflows | 7× `.github/workflows` | Forgejo Actions | **1 smoke test; 7 to port** |
 | Bulk mirror | — | gitea-mirror (continuous) | **~71/72; `homelab-cluster` wedged** |
-| Package registry | GHCR | Harbor | **Not started** |
-| Signing / trust | GitHub OIDC + GHCR + Kyverno | Authentik OIDC + Harbor | **Not started** |
+| Package registry | GHCR | Harbor (`harbor.webgrip.dev`) | **Live** — pull-through cache + first-party registry; GHCR still in parallel |
+| Signing / trust | GitHub OIDC + GHCR + Kyverno | Cosign via OpenBao Transit, authorized by Forgejo Actions OIDC; Kyverno verify | **Built, in Audit** — needs one-time OpenBao break-glass; images not yet re-signed |
 | Renovate | platform `github` + GitHub App | Forgejo platform (dual-run) | **Designed ([RFC](../architecture/rfc-renovate-forgejo.md) + ADRs); build pending** |
 | GitOps source | Flux ← GitHub (+ webhook Receiver) | Flux ← Forgejo | **Not started (cutover last)** |
 | Off-site mirrors | — | Codeberg + 2nd Forgejo + demoted GitHub | **Deferred (after cutover)** |
 | Docs hosting | in-cluster | Codeberg Pages | **Planned** |
 
-The shape of it: **the forge is home, and people and machines can already live in it.** What remains is the harder, less glamorous half — re-pointing the things that *believe in GitHub* (the registry, the image signatures, the dependency bot, and finally the GitOps controller itself) at the new world, in the right order, with the cutover last so the platform never loses its footing.
+The shape of it: **the forge is home, and people and machines can already live in it.** What remains is the harder, less glamorous half — re-pointing the things that *believe in GitHub*. Two of them have now moved: the **registry** stands, and the **image-signing trust chain** is built (in audit, pending its one break-glass). Still ahead are the **dependency bot** and, last of all, the **GitOps controller itself** — re-pointed in the right order, cutover last, so the platform never loses its footing.
 
 ---
 
