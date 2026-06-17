@@ -28,9 +28,13 @@ webgrip Harbor images · **Related:** [supply-chain-enforcement-roadmap.md](../s
   old **and** new within one tick (≤30 min). Retiring the old version is just raising
   `min_decryption_version` — the next tick drops its PEM from the ConfigMap. **You never edit
   the ConfigMap by hand**, and there is no committed manifest for it.
-- Rotation and `min_decryption_version` changes need elevated Transit access that `config-admin`
-  does **not** have — perform them via the one-time **break-glass `generate-root`** ceremony
-  (roadmap §1.4) or a dedicated, audited rotation policy.
+- Rotation and `min_decryption_version` changes need Transit access `config-admin` does **not**
+  hold by default. The simplest elevation needs **no root token**: temporarily widen the
+  `config-admin` policy (it holds `sys/policies/acl/*`, so it can grant itself `transit/keys/*`),
+  do the op, and let the next `openbao-config` reconcile re-assert the narrow policy (§2.1). A
+  `generate-root` ceremony also works, but on OpenBao **2.5.x** the unauthenticated endpoint is
+  disabled by default — you must first set `disable_unauthed_generate_root_endpoints=false` on
+  the tcp listener (and restart the pod) before it stops returning 405 (see roadmap §1.4).
 
 ## 1. When to rotate
 
@@ -45,17 +49,20 @@ Run from a shell with `bao` + `jq`, `BAO_ADDR` pointed at OpenBao (e.g.
 `kubectl -n security port-forward svc/openbao 8200:8200`).
 
 ```bash
-# --- 2.1 Elevate (break-glass generate-root; see roadmap §1.4) ---
-UNSEAL=$(kubectl -n security get secret openbao-keys -o jsonpath='{.data.unseal-key}' | base64 -d)
-init=$(bao operator generate-root -init -format=json)
-ENC=$(bao operator generate-root -nonce="$(jq -r .nonce <<<"$init")" -format=json "$UNSEAL" | jq -r .encoded_token)
-export BAO_TOKEN=$(bao operator generate-root -decode="$ENC" -otp="$(jq -r .otp <<<"$init")" -format=json | jq -r .token)
+# --- 2.1 Elevate via config-admin (NO root token needed; see roadmap §1.4) ---
+# config-admin can rewrite its own ACL policy, so grant it transit access, then revert.
+SA_JWT=$(kubectl -n security create token openbao-config)
+export BAO_TOKEN=$(bao write -field=token auth/kubernetes/login role=openbao-config jwt="$SA_JWT")
+bao policy read config-admin > /tmp/ca.hcl
+printf '\npath "transit/keys/*" { capabilities = ["create","read","update"] }\n' >> /tmp/ca.hcl
+bao policy write config-admin /tmp/ca.hcl      # effective immediately for the current token
 
 # --- 2.2 Rotate (adds the next version; the old one stays trusted) ---
 bao write -f transit/keys/cosign-webgrip/rotate
-bao read transit/keys/cosign-webgrip   # note latest_version and min_decryption_version
+bao read transit/keys/cosign-webgrip           # note latest_version and min_decryption_version
 
-bao token revoke -self                  # drop root again
+# revert the widening (or let the openbao-config CronJob re-assert the narrow policy within 5 min):
+kubectl -n security create job openbao-config-revert --from=cronjob/openbao-config
 ```
 
 ```text

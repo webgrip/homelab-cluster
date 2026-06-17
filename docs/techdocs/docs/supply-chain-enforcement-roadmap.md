@@ -96,21 +96,51 @@ all fail the claim binding and cannot sign — even though they run on the same 
 
 ### 1.4 One-time break-glass prerequisites (blocks the entire Harbor path)
 
-OpenBao runs with **no live root token** (`generate-root` is a break-glass ceremony). The
-`config-admin` identity used by day-to-day automation **cannot mount secret engines or auth
-methods**. Therefore the following are one-time, break-glass `generate-root` operations and are
-hard prerequisites for *any* Harbor-side enforcement:
+On a **fresh cluster** `init.sh` does this automatically: while it still holds the one-time root
+token it enables the Transit + `forgejo` JWT engines and creates key `cosign-webgrip`, then
+revokes root. On an **already-initialised cluster** `init.sh` short-circuits, so these mounts
+must be created once by hand:
 
 1. Enable the **Transit** secrets engine and create key `cosign-webgrip` (ECDSA-P256).
-2. Enable the **JWT** auth method at `auth/forgejo`, pointed at Forgejo's OIDC discovery, and
-   create role `cosign-signer` with the bound claims above and a policy granting
-   `transit/sign` (sign-only) on the key.
-3. (Automatic — no manual paste) the `cosign-pubkey` CronJob reads the Transit public key and
-   publishes it to the `cosign-webgrip-pub` ConfigMap. On a fresh rebuild this is fully hands-off
-   (init.sh creates the key, the CronJob publishes it); on the existing cluster it publishes once
-   the break-glass (steps 1-2) has created the key.
+2. Enable the **JWT** auth method at `auth/forgejo`. `config.sh` (config-admin) then writes
+   `auth/forgejo/config` + role `cosign-signer` (bound claims repo/event/ref) and the
+   `cosign-signer` sign-only policy — no break-glass needed for those, they fall within
+   config-admin's `auth/+/role/*` + `sys/policies/acl/*` grants. *(The role write must send
+   `bound_claims` as JSON via stdin — an inline kv arg 400s with "expected map, got string".)*
+3. (Automatic — no manual paste) the `cosign-pubkey` CronJob publishes the Transit public key to
+   the `cosign-webgrip-pub` ConfigMap once the key exists.
 
-Until all three are done, the Harbor signing path produces nothing verifiable and
+**How to perform steps 1–2 without a root token (recommended).** OpenBao keeps no live root
+in-cluster, and `generate-root` is disabled by default on **2.5.x** (it 405s until you set
+`disable_unauthed_generate_root_endpoints=false` on the tcp listener and restart the pod). The
+simpler path uses the `config-admin` identity itself: it holds `sys/policies/acl/*`, so it can
+rewrite its own policy to grant `sys/mounts/*` + `sys/auth/*` (sudo), perform the two mounts, and
+let the next `openbao-config` reconcile re-assert the narrow policy (within 5 min):
+
+```sh
+SA_JWT=$(kubectl -n security create token openbao-config)
+export BAO_TOKEN=$(bao write -field=token auth/kubernetes/login role=openbao-config jwt="$SA_JWT")
+bao policy read config-admin > /tmp/ca.hcl
+cat >> /tmp/ca.hcl <<'EOF'
+path "sys/mounts/*"   { capabilities = ["create","read","update","delete","sudo"] }
+path "sys/auth/*"     { capabilities = ["create","read","update","delete","sudo"] }
+path "transit/keys/*" { capabilities = ["create","read","update"] }
+EOF
+bao policy write config-admin /tmp/ca.hcl
+bao secrets enable -path=transit transit
+bao write transit/keys/cosign-webgrip type=ecdsa-p256
+bao auth enable -path=forgejo jwt
+kubectl -n security create job openbao-config-now --from=cronjob/openbao-config   # creates the role + reverts the policy
+```
+
+> **Security note (accepted reality, not a bug we introduced).** That this works at all means
+> `config-admin` is **effectively root-equivalent**: any identity holding `sys/policies/acl/*`
+> write can grant itself anything, so "config-admin cannot mount engines" is *not* a real
+> boundary. If a genuine boundary is wanted, scope config-admin's policy-write to specific policy
+> names (not `sys/policies/acl/*`, and never its own policy) — then `generate-root` becomes the
+> only mount path. For now this is **accepted**: `config-admin` is the privileged operator identity.
+
+Until steps 1–3 are done, the Harbor signing path produces nothing verifiable and
 `image-verify-harbor-audit` will (correctly) report failures in Audit mode.
 
 ---

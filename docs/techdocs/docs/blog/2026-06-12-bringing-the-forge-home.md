@@ -18,6 +18,127 @@ It sounds like one move. It is not. "GitHub," it turns out, is not a website you
 
 This is the story of finding every one of those threads and, one at a time, re-tying it to something we own. Some are done. Some are half-done and honest about it. One is wedged in the most poetic way possible. The map we're working from looks like this: a **Forge** (Forgejo) at the centre; **GitOps** (Flux) and **CI** (Forgejo Actions + runners) hanging off it; a **Package Registry** (Harbor) feeding deployments; **Identity** (Authentik) vouching for everyone; a constellation of **peripheral applications** that log in through that identity; and a ring of **public mirrors** — Codeberg, a second Forgejo, and a demoted GitHub — for redundancy. Let's walk the map.
 
+```mermaid
+%%{init: {'theme':'base','fontFamily':'Inter, Segoe UI, system-ui, sans-serif','themeVariables':{'fontSize':'13px','lineColor':'#78909c','primaryTextColor':'#102027'},'flowchart':{'curve':'basis','padding':14,'nodeSpacing':45,'rankSpacing':55}}}%%
+flowchart TB
+  dev(["👤 Developer / Renovate"])
+
+  subgraph FORGE["🪵 FORGE — Forgejo v15+ (in-cluster, LAN)"]
+    repo["webgrip/* repos<br/><i>builds 10 images</i>"]
+    fjoidc["OIDC issuer · /api/actions<br/><i>per-job token: repo, event, ref</i>"]
+  end
+
+  subgraph CI["⚙️ CI — in-cluster Runner (KEDA · DinD · runs-on docker)"]
+    srel["semantic-release<br/><i>cut release tag per image</i>"]
+    build["build + push<br/><i>publish image</i>"]
+    syft["Syft → CycloneDX/SPDX SBOM"]
+    sign["cosign sign + attest by digest"]
+  end
+
+  subgraph IDS["🔐 IDENTITY & SECRETS"]
+    authentik["Authentik — <b>humans</b><br/><i>SSO</i>"]
+    subgraph OB["OpenBao — <b>machines</b>"]
+      jwtauth["JWT auth · auth/forgejo<br/><i>role claim-bound: only release@tag signs</i>"]
+      transit["Transit key · cosign-webgrip<br/><i>private key never leaves</i>"]
+      kv["KV: Harbor robot, DT key<br/><i>+ dynamic PKI/SSH/cloud later</i>"]
+      oidcp["OIDC provider · identity/oidc<br/><i>mint tokens for cloud (future)</i>"]
+    end
+  end
+
+  subgraph REG["📦 REGISTRY"]
+    harbor["Harbor · private/LAN<br/>harbor.webgrip.dev/webgrip/*"]
+    ghcr["ghcr.io/webgrip/*<br/><i>dual-publish during migration</i>"]
+    dhproxy["Docker Hub pull-through cache"]
+  end
+
+  subgraph GITOPS["🔄 GITOPS — Flux"]
+    flux["source · kustomize · helm"]
+    fluxverify["spec.verify cosign on OCI charts<br/><i>future</i>"]
+  end
+
+  subgraph ADM["🛡️ ADMISSION — Kyverno (Audit→Enforce)"]
+    kverify["verify image sig + require SBOM<br/><i>only signed first-party images run</i>"]
+  end
+
+  subgraph SCA["🔎 SUPPLY-CHAIN ANALYSIS"]
+    trivyop["Trivy Operator"]
+    dt["Dependency-Track"]
+    guac["GUAC graph"]
+  end
+
+  subgraph APPS["🚀 PERIPHERAL APPS"]
+    apps["Grafana · SearxNG · Backstage · n8n · …"]
+  end
+
+  subgraph MIRR["🌐 OFF-SITE MIRRORS & DOCS"]
+    gh["GitHub<br/><i>push-mirror = break-glass source</i>"]
+    codeberg["Codeberg<br/><i>2nd off-site mirror · ADR-0020</i>"]
+    docs["TechDocs → pages"]
+  end
+
+  dev -->|push / PR| repo
+  repo -->|ops/docker/** changed| srel
+  srel -->|release published| build
+  build -->|push image| harbor
+  build --> syft --> sign
+  sign -->|attach sig + SBOM| harbor
+
+  sign ==>|"1 · per-job OIDC token"| fjoidc
+  fjoidc ==>|"2 · present JWT"| jwtauth
+  jwtauth ==>|"3a · scoped token"| transit
+  jwtauth -.->|"3b · target: fetch CI creds"| kv
+  sign ==>|cosign --key hashivault| transit
+
+  flux -->|reconcile · in-cluster URL| repo
+  flux -->|deploy| apps
+  apps -->|pull| harbor
+  flux --> fluxverify
+  fluxverify -.->|verify chart sig| harbor
+
+  transit -.->|public key → ConfigMap| kverify
+  kverify -.->|verify sig + SBOM at admission| harbor
+
+  trivyop --> dt
+  trivyop --> guac
+  harbor -.->|attestations · planned| guac
+  dt <--> guac
+  dhproxy --> harbor
+
+  authentik -->|SSO| apps
+  authentik -->|SSO| harbor
+  authentik -->|SSO| repo
+  oidcp -.->|machine OIDC → cloud · future| ghcr
+
+  repo -->|push-mirror| gh
+  repo -->|push-mirror| codeberg
+  gh -->|.github CI| ghcr
+  docs --> codeberg
+
+  classDef forge fill:#e8eaf6,stroke:#3949ab,color:#102027;
+  classDef ci fill:#e3f2fd,stroke:#1565c0,color:#102027;
+  classDef sec fill:#fff8e1,stroke:#f57f17,color:#102027;
+  classDef reg fill:#e8f5e9,stroke:#2e7d32,color:#102027;
+  classDef gitops fill:#e0f7fa,stroke:#00838f,color:#102027;
+  classDef adm fill:#f3e5f5,stroke:#7b1fa2,color:#102027;
+  classDef sca fill:#e0f2f1,stroke:#00897b,color:#102027;
+  classDef apps fill:#eceff1,stroke:#546e7a,color:#102027;
+  classDef mirr fill:#efebe9,stroke:#6d4c41,color:#102027;
+  classDef person fill:#ffffff,stroke:#37474f,color:#102027;
+  class dev person;
+  class repo,fjoidc forge;
+  class srel,build,syft,sign ci;
+  class authentik,jwtauth,transit,kv,oidcp sec;
+  class harbor,ghcr,dhproxy reg;
+  class flux,fluxverify gitops;
+  class kverify adm;
+  class trivyop,dt,guac sca;
+  class apps apps;
+  class gh,codeberg,docs mirr;
+  style OB fill:#fffdf5,stroke:#f9a825,stroke-dasharray:4 3;
+```
+
+*The map, literally. Thick arrows `1→2→3` are the signing spine; dotted arrows are trust / verify / planned; solid arrows are built-and-active flow. Gold is identity and secrets — humans authenticate through **Authentik**, machines through **OpenBao**. Several nodes are marked* future*/*planned *and are honest about it; the prose below says which.*
+
 ---
 
 ## The forge itself
@@ -85,6 +206,24 @@ Against all that, the Forgejo side currently holds a single file — a nine-line
 
 ---
 
+## CI, act four: the image pipeline, in two trees
+
+Everything above is about *this* repo's CI — the Flux validators and helpers in `homelab-cluster/.github/workflows`. But the cluster also *consumes* CI it doesn't author: the container images it runs are built by a sibling repo, **`webgrip/infrastructure`**, which holds ten Dockerfiles under `ops/docker/<image>/` and its own release pipeline. Leaving GitHub means porting that pipeline too — and porting it surfaced a pattern worth naming, because it's the shape the whole supply chain below depends on.
+
+The pipeline isn't rewritten in place; it's **mirrored into a parallel tree**. `webgrip/infrastructure` now carries a `.forgejo/` directory beside its `.github/` at deliberate parity — `on_source_change`, `on_release_published`, `on_docs_change`, each the Forgejo dialect of its GitHub twin. The same release-tag format (`<image>-v<version>`, e.g. `helm-deploy-v1.2.3`) triggers both, and both build from the *same* Dockerfiles. The `.github` tree keeps pushing to GHCR, untouched; the `.forgejo` tree pushes to Harbor. That's **dual-publish expressed as two trees** that never diverge in *what* they build — only in *where* it lands and *who* signs it.
+
+Three Forgejo-specific substitutions carry the whole diff between the trees:
+
+- **semantic-release changes plugins.** The release-cutting step swaps `@semantic-release/github` for `@saithodev/semantic-release-gitea`, driven by a parallel `.releaserc.forgejo.js` pointed at the in-cluster forge. It authenticates as a Forgejo bot, not a GitHub App. (It lives in a local composite action, `semantic-release-monorepo`, checked out with `actions/checkout@v5` — not `@v6`, for a reason that's about to matter.)
+- **The runner answers to a second label.** The release-cutting and parse jobs declare `runs-on: arc-runner-set` — they never touch Harbor — while only the build/push and the sign/attest jobs pin `runs-on: docker`, the one label that reaches the LAN-only registry and DinD. So the in-cluster runner now advertises **both** `docker` and `arc-runner-set`, with a KEDA scaler trigger per label: the act-two `ScaledJob`, taught to watch two queues at once.
+- **The bot is provisioned, not pasted.** A do-once Job mints the `webgrip-ci` bot, drops it in the `webgrip` org's `ci` team (write, all repos), and stores a scoped token in OpenBao. The same OpenBao-reading CronJob that publishes the Harbor robot and Dependency-Track keys also publishes that token as the org Actions secret `FORGEJO_TOKEN`, plus org *variables* (`FORGEJO_INSTANCE_URL`, `WEBGRIP_CI_BOT_NAME`). The pipeline's identity and config are GitOps, end to end — nothing hand-entered in a Forgejo settings page.
+
+And the reusable workflows it calls come from a **third repo, `webgrip/workflows`** — the shared library of composite actions and callable workflows, which keeps the *same* `.github`/`.forgejo` two-tree discipline internally. `webgrip/infrastructure` calls its `.forgejo` side: `determine-changed-directories` (which `ops/docker/**` changed), `docker-build-and-push-harbor` (multi-arch buildx → Harbor, itself pinned `runs-on: docker`), and the `techdocs-*` pair. A CI **parity check** guards the discipline mechanically: it fails the build if anything under a `.forgejo` tree so much as *mentions* `ghcr.io`, `actions/checkout@v6`, `create-github-app-token`, or `@semantic-release/github` — comments included. The circular-dependency joke from act three — *depending on GitHub to run the CI that's supposed to free you from GitHub* — is, on this path, caught by a linter.
+
+The one genuinely Forgejo-only step with no GitHub twin at all is the local composite action `cosign-sign-attest` — and that's where this story hands off to the registry and the trust boundary below.
+
+---
+
 ## The registry: the Harbor-shaped hole, filled
 
 Every image this platform builds used to land in **GHCR** — `ghcr.io/webgrip/*`. The plan was to replace it with a self-hosted **Harbor**, so that container images, like source code, live on infrastructure we own. When this post first went up, that was pure intention: Harbor had **zero footprint in the cluster** — not a namespace, not a manifest, not so much as a stray reference in a values file.
@@ -117,11 +256,82 @@ What replaces the keyless "who built this" proof is **per-workflow Forgejo Actio
 
 That is the keyed-path equivalent of the old GitHub subject regex — the authorization to sign lives *at sign time*, in OpenBao, gated on claims only a genuine release-on-a-tag can present. A push build, a PR build, a different repo, a branch ref: each fails the binding and cannot sign, even on the same runner. And the load-bearing corollary — **Forgejo Actions OIDC is disabled for fork PRs** — means a fork cannot mint a signer token at all. The privileged DinD runner's blast radius does not include the signing key, because the key is in OpenBao and only a tag-event token unlocks it.
 
+Here is that whole release job end to end. Build and sign run as *separate* ephemeral runner pods; they're drawn as one "Runner" lane for readability. The security-critical moments are steps 6–11 (the runner proves a per-job identity; OpenBao independently re-verifies it against Forgejo's JWKS and the bound claims before issuing a 10-minute, sign-only token) and 16–19 (signing calls `transit/sign` — the key material never reaches the runner):
+
+```mermaid
+%%{init: {'theme':'base','fontFamily':'Inter, Segoe UI, system-ui, sans-serif','themeVariables':{'fontSize':'13px','actorBkg':'#e8eaf6','actorBorder':'#3949ab','actorTextColor':'#102027','actorLineColor':'#90a4ae','signalColor':'#455a64','signalTextColor':'#102027','labelBoxBkgColor':'#eceff1','labelTextColor':'#102027','noteBkgColor':'#fff8e1','noteBorderColor':'#f9a825','noteTextColor':'#5d4037','activationBkgColor':'#cfd8dc','sequenceNumberColor':'#ffffff'}}}%%
+sequenceDiagram
+    autonumber
+    box rgb(232,234,246) People & Forge
+      actor dev as Dev / semantic-release
+      participant fj as Forgejo · OIDC issuer
+    end
+    box rgb(227,242,253) CI
+      participant run as Runner · DinD
+    end
+    box rgb(255,248,225) Identity & Secrets
+      participant bao as OpenBao · auth/forgejo + Transit
+    end
+    box rgb(232,245,233) Registry & analysis
+      participant harbor as Harbor
+      participant dt as Dependency-Track / GUAC
+    end
+    box rgb(224,247,250) Cluster · deploy
+      participant flux as Flux
+      participant kyv as Kyverno
+    end
+
+    Note over dev,fj: Source change → release
+    dev->>fj: push to ops/docker/** (on_source_change)
+    fj->>run: schedule semantic-release job
+    run->>fj: create release tag IMG-vVER
+    fj-->>run: release published → trigger on_release_published
+
+    rect rgb(237,243,251)
+    Note over run,harbor: Job 1 — build + push (release-distribute-harbor)
+    run->>run: parse tag → IMG, VER
+    run->>harbor: docker login (HARBOR_ROBOT, target via OpenBao)
+    run->>harbor: buildx build + push harbor.webgrip.dev/webgrip/IMG:VER
+    harbor-->>run: pushed (digest sha256 …)
+    end
+
+    rect rgb(237,247,239)
+    Note over run,bao: Job 2 — sign + attest (enable-openid-connect)
+    run->>fj: GET ACTIONS_ID_TOKEN_REQUEST_URL?audience=openbao-cosign
+    fj-->>run: per-job OIDC JWT (claims repository, event_name=release, ref=refs/tags/*)
+    run->>bao: POST auth/forgejo/login {role cosign-signer, jwt}
+    bao->>fj: fetch OIDC discovery + JWKS
+    fj-->>bao: JWKS
+    bao->>bao: verify iss + bound_claims (repo / event / tag)
+    bao-->>run: scoped token (TTL 10m, Transit sign-only)
+    run->>harbor: docker login + resolve digest (imagetools inspect)
+    run->>run: syft → CycloneDX + SPDX SBOM
+    run->>bao: cosign sign --key hashivault (transit/sign)
+    bao-->>run: signature (private key never leaves OpenBao)
+    run->>harbor: push cosign signature (by digest)
+    run->>bao: cosign attest CycloneDX (transit/sign)
+    bao-->>run: signed attestation
+    run->>harbor: push SBOM attestation
+    run->>dt: POST /api/v1/bom (CycloneDX, autoCreate) — fail-soft
+    dt-->>run: 200
+    end
+
+    rect rgb(252,247,237)
+    Note over flux,kyv: Later — deploy / admission
+    flux->>harbor: pull image (GitOps deploy)
+    kyv->>harbor: fetch image + signature + SBOM attestation
+    kyv->>kyv: verify sig vs Transit pubkey (ConfigMap) + require CycloneDX SBOM
+    kyv-->>flux: admit (Audit now → Enforce later)
+    end
+```
+
 The verify side moved with it. A second Kyverno policy, **`image-verify-harbor-audit`**, checks every `harbor.webgrip.dev/webgrip/*` image for a Cosign signature **and** a CycloneDX SBOM attestation, both against the Transit **public** key — which it reads from a ConfigMap a small CronJob **publishes straight from OpenBao**. No human ever pastes a PEM; the publisher even emits every still-trusted key version, so a key rotation overlaps with zero downtime. Because Harbor is private, Kyverno authenticates with a robot pull credential to fetch the signatures. And every credential CI needs to do its half — the Harbor robot, the Dependency-Track SBOM-upload key, the bot's own Forgejo token — is **published to the `webgrip` org as Forgejo Actions secrets by an in-cluster job reading OpenBao**, so even the secrets that make signing possible are GitOps, never hand-typed.
 
-Two honest caveats, because this is the section most likely to sound more finished than it is. First, it runs in **Audit, not Enforce**: Kyverno *reports* unsigned Harbor images, it does not block them, and it will keep reporting until the in-cluster images are re-released through the signing workflow. Promotion to Enforce is a deliberate, gated, per-policy move still down the road. Second, the whole keyed path rests on a **one-time break-glass**: OpenBao deliberately keeps *no live root token*, and its day-to-day automation cannot mount engines, so the Transit key and the `auth/forgejo` method must be created once, by hand, through a `generate-root` ceremony. Until that happens on the live cluster, the machinery reconciles cleanly and signs nothing — exactly the half-done-and-saying-so this migration runs on.
+Two honest caveats, because this is the section most likely to sound more finished than it is. First, it runs in **Audit, not Enforce**: Kyverno *reports* unsigned Harbor images, it does not block them, and it will keep reporting until the in-cluster images are re-released through the signing workflow. Promotion to Enforce is a deliberate, gated, per-policy move still down the road. Second, standing the keyed path up needed a **one-time break-glass** — and that turned into its own small lesson. OpenBao keeps *no live root token* in-cluster, so the textbook move was a `generate-root` ceremony; on OpenBao 2.5.x that endpoint is disabled by default and 405s until a listener flag is flipped and the pod restarted. The path that actually worked needed no root at all: the `config-admin` identity that runs the day-to-day reconcile can rewrite its *own* ACL policy, so it can grant itself the mount permission, do the one-time mounts, and let the next reconcile revert it. Tidy — and an uncomfortable reminder that an identity holding `sys/policies/acl/*` is *already* root-equivalent, design intentions notwithstanding. With the engine mounted and the signer role created (after a `bound_claims`-as-JSON fix in the bootstrap script), the verify side is now live in audit: armed, watching, and waiting for the first signed release.
 
 So the boss fight named at the end of the first draft — *"GitHub built this"* as the cluster's most security-critical assumption — is now joined rather than purely ahead of us. For new home-forge images the sentence is being rewritten to read *"a tagged release of `webgrip/infrastructure` signed this, with a key only OpenBao holds,"* and a Kyverno policy is already watching — quietly, in audit — to see whether it's true. The GHCR clause still reads the old way, and will until those images age out. Two lanes again; but this one, at last, points at trust we issue.
+
+The full picture is written up next door, for when prose stops being enough: a [supply-chain architecture overview](../architecture/supply-chain-overview.md) (the system map and this sequence diagram, with the read-the-arrows notes), an [enforcement roadmap](../supply-chain-enforcement-roadmap.md) that enumerates every gate between Audit and Enforce, and a [Transit key-rotation runbook](../runbooks/cosign-transit-key-rotation.md) for the day the key turns over.
 
 (One small scar from getting here, in the spirit of "go look": Harbor does its *own* OIDC discovery to Authentik server-side, and that call hairpins back out through the gateway VIP. Under the cluster's zero-trust default-deny, Cilium enforces egress on the post-NAT *backend* identity, not the VIP address or port — so a CIDR/port rule silently dropped it and Harbor login returned a 500 until an identity-based egress allow went in. The fix became its own [ADR](../architecture/adr-0021-cilium-gateway-egress-for-oidc.md). Leaving the managed world means meeting, in person, the networking a managed gateway used to hide.)
 
@@ -190,17 +400,18 @@ Stripped of narrative, the honest status board:
 | Bulk storage | — | Git on Longhorn, LFS/packages on Garage S3 | **Live** |
 | SSO / identity | GitHub accounts & teams | Authentik OIDC (`Ryangr0`) | **Live** (groups→teams pending) |
 | Runner autoscaler | ARC | KEDA | **Live** |
-| Runners | ARC scale sets (normal+heavy) | KEDA `ScaledJob` (ephemeral, DinD) | **Live, unproven on a real job** |
-| CI workflows | 7× `.github/workflows` | Forgejo Actions | **1 smoke test; 7 to port** |
+| Runners | ARC scale sets (normal+heavy) | KEDA `ScaledJob` (ephemeral, DinD; `docker` + `arc-runner-set`) | **Live, unproven on a real job** |
+| CI workflows (this repo) | 7× `.github/workflows` | Forgejo Actions | **1 smoke test; 7 to port** |
+| Image pipeline (`webgrip/infrastructure`) | `.github`→GHCR | `.forgejo`→Harbor (two-tree; shared `webgrip/workflows`) | **Built; pending first signed release** |
 | Bulk mirror | — | gitea-mirror (continuous) | **~71/72; `homelab-cluster` wedged** |
 | Package registry | GHCR | Harbor (`harbor.webgrip.dev`) | **Live** — pull-through cache + first-party registry; GHCR still in parallel |
-| Signing / trust | GitHub OIDC + GHCR + Kyverno | Cosign via OpenBao Transit, authorized by Forgejo Actions OIDC; Kyverno verify | **Built, in Audit** — needs one-time OpenBao break-glass; images not yet re-signed |
+| Signing / trust | GitHub OIDC + GHCR + Kyverno | Cosign via OpenBao Transit, authorized by Forgejo Actions OIDC; Kyverno verify | **Live, in Audit** — break-glass done (key + signer role up); awaiting first signed release |
 | Renovate | platform `github` + GitHub App | Forgejo platform (dual-run) | **Designed ([RFC](../architecture/rfc-renovate-forgejo.md) + ADRs); build pending** |
 | GitOps source | Flux ← GitHub (+ webhook Receiver) | Flux ← Forgejo | **Not started (cutover last)** |
 | Off-site mirrors | — | Codeberg + 2nd Forgejo + demoted GitHub | **Deferred (after cutover)** |
 | Docs hosting | in-cluster | Codeberg Pages | **Planned** |
 
-The shape of it: **the forge is home, and people and machines can already live in it.** What remains is the harder, less glamorous half — re-pointing the things that *believe in GitHub*. Two of them have now moved: the **registry** stands, and the **image-signing trust chain** is built (in audit, pending its one break-glass). Still ahead are the **dependency bot** and, last of all, the **GitOps controller itself** — re-pointed in the right order, cutover last, so the platform never loses its footing.
+The shape of it: **the forge is home, and people and machines can already live in it.** What remains is the harder, less glamorous half — re-pointing the things that *believe in GitHub*. Two of them have now moved: the **registry** stands, and the **image-signing trust chain** is live in audit (key minted, signer role bound, waiting on the first signed release). Still ahead are the **dependency bot** and, last of all, the **GitOps controller itself** — re-pointed in the right order, cutover last, so the platform never loses its footing.
 
 ---
 
