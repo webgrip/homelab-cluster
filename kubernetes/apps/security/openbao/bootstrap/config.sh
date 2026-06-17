@@ -25,6 +25,7 @@ bao policy write external-secrets /scripts/external-secrets.hcl
 bao policy write snapshot /scripts/snapshot.hcl
 bao policy write external-secrets-push /scripts/push.hcl
 bao policy write config-admin /scripts/config-admin.hcl
+bao policy write cosign-signer /scripts/cosign-signer.hcl
 
 echo "==> kubernetes roles"
 bao write auth/kubernetes/role/external-secrets \
@@ -39,6 +40,27 @@ bao write auth/kubernetes/role/openbao-snapshot \
 bao write auth/kubernetes/role/openbao-config \
   bound_service_account_names=openbao-config bound_service_account_namespaces=security \
   policies=config-admin ttl=20m >/dev/null
+
+# Forgejo Actions OIDC -> Transit signing (JWT auth). Per-workflow identity: ONLY the
+# infrastructure release workflow on a tag (event=release, ref=refs/tags/*) can mint a
+# sign-only token — tighter than a shared runner ServiceAccount, and fork PRs can't get a
+# token at all. Token iss is https://forgejo.<domain>/api/actions. Configuring the mount
+# config needs it enabled first (root/break-glass: bao auth enable -path=forgejo jwt).
+if [ -n "${SECRET_DOMAIN:-}" ]; then
+  if bao write auth/forgejo/config \
+       oidc_discovery_url="https://forgejo.${SECRET_DOMAIN}/api/actions" \
+       default_role="cosign-signer" >/dev/null 2>&1; then
+    bao write auth/forgejo/role/cosign-signer \
+      role_type=jwt user_claim=sub \
+      bound_audiences=openbao-cosign \
+      bound_claims_type=glob \
+      bound_claims='{"repository":"webgrip/infrastructure","event_name":"release","ref":"refs/tags/*"}' \
+      token_policies=cosign-signer token_ttl=10m >/dev/null
+    echo "   forgejo jwt auth configured"
+  else
+    echo "   forgejo jwt auth mount not present yet (break-glass: bao auth enable -path=forgejo jwt)"
+  fi
+fi
 
 echo "==> OIDC (client_secret read from Authentik; no SOPS)"
 SAT="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"

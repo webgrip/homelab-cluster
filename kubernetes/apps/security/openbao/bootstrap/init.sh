@@ -37,9 +37,20 @@ bao secrets enable -path=secret kv-v2
 # NB: an ALREADY-bootstrapped cluster has no live root, so it needs a one-time break-glass
 # `generate-root` to run this same enable; see the RFC's activation note.
 bao secrets enable -path=database database
+# Transit engine for keyless-to-CI image signing: the cosign private key is generated in
+# OpenBao and never leaves it (the Forgejo runner calls transit/sign via the cosign-signer
+# policy). Mounting needs root — fresh-cluster only here. An ALREADY-bootstrapped cluster
+# has no live root, so enabling Transit + creating this key is a one-time break-glass
+# `generate-root` op (same as the database engine above).
+bao secrets enable -path=transit transit
+bao write transit/keys/cosign-webgrip type=ecdsa-p256 >/dev/null
 bao auth enable kubernetes
 bao write auth/kubernetes/config kubernetes_host="https://kubernetes.default.svc" >/dev/null
 bao auth enable oidc 2>/dev/null || true
+# JWT auth for Forgejo Actions OIDC tokens — gives CI a per-workflow identity for image
+# signing (config + role are owned by config.sh). Mounting needs root: fresh-cluster here;
+# an already-bootstrapped cluster enables it via the same one-time break-glass generate-root.
+bao auth enable -path=forgejo jwt 2>/dev/null || true
 bao policy write config-admin /scripts/config-admin.hcl
 bao write auth/kubernetes/role/openbao-config \
   bound_service_account_names=openbao-config bound_service_account_namespaces=security \
