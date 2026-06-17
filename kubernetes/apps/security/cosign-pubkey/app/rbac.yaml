@@ -1,0 +1,40 @@
+---
+# Identity for the publisher that mirrors the OpenBao Transit public key into the
+# cosign-webgrip-pub ConfigMap. It authenticates to OpenBao via this SA's k8s token
+# (role cosign-pub-publisher → cosign-pub-reader policy = read the public key only) and
+# writes a single ConfigMap. No other authority.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cosign-pub-publisher
+  namespace: security
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cosign-pub-publisher
+  namespace: security
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "configmaps"
+    verbs:
+      - "get"
+      - "create"
+      - "update"
+      - "patch"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cosign-pub-publisher
+  namespace: security
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cosign-pub-publisher
+subjects:
+  - kind: ServiceAccount
+    name: cosign-pub-publisher
+    namespace: security

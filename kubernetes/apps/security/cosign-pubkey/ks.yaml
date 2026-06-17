@@ -1,0 +1,19 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cosign-pubkey
+spec:
+  dependsOn:
+    - name: openbao # Transit key + the cosign-pub-publisher k8s-auth role
+  interval: 1h
+  retryInterval: 5m
+  path: ./kubernetes/apps/security/cosign-pubkey/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: security
+  wait: false

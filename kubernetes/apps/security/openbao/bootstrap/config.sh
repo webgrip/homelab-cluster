@@ -26,6 +26,7 @@ bao policy write snapshot /scripts/snapshot.hcl
 bao policy write external-secrets-push /scripts/push.hcl
 bao policy write config-admin /scripts/config-admin.hcl
 bao policy write cosign-signer /scripts/cosign-signer.hcl
+bao policy write cosign-pub-reader /scripts/cosign-pub-reader.hcl
 
 echo "==> kubernetes roles"
 bao write auth/kubernetes/role/external-secrets \
@@ -40,6 +41,10 @@ bao write auth/kubernetes/role/openbao-snapshot \
 bao write auth/kubernetes/role/openbao-config \
   bound_service_account_names=openbao-config bound_service_account_namespaces=security \
   policies=config-admin ttl=20m >/dev/null
+# Read-only role for the publisher that mirrors the cosign Transit public key into a ConfigMap.
+bao write auth/kubernetes/role/cosign-pub-publisher \
+  bound_service_account_names=cosign-pub-publisher bound_service_account_namespaces=security \
+  policies=cosign-pub-reader ttl=10m >/dev/null
 
 # Forgejo Actions OIDC -> Transit signing (JWT auth). Per-workflow identity: ONLY the
 # infrastructure release workflow on a tag (event=release, ref=refs/tags/*) can mint a

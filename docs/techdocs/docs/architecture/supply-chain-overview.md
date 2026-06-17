@@ -221,7 +221,8 @@ sequenceDiagram
 ## 3. Prerequisites to go live
 
 See the [enforcement roadmap §1.4](../supply-chain-enforcement-roadmap.md) for the full gate list.
-In short: Forgejo server ≥ v15 (for `enable-openid-connect`); a one-time OpenBao break-glass to
-enable Transit + the `forgejo` jwt auth and create the key; the Transit public key pasted into the
-`cosign-webgrip-pub` ConfigMap; runner→OpenBao/Harbor/Dependency-Track and OpenBao→Forgejo
+In short: Forgejo server ≥ v15 (for `enable-openid-connect`); a one-time OpenBao break-glass on the
+*existing* cluster to enable Transit + the `forgejo` jwt auth and create the key (a fresh rebuild does
+this automatically via init.sh); the `cosign-pubkey` CronJob then publishes the public key to the
+`cosign-webgrip-pub` ConfigMap — no manual paste; runner→OpenBao/Harbor/Dependency-Track and OpenBao→Forgejo
 network reachability.

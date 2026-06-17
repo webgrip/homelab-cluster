@@ -104,8 +104,10 @@ hard prerequisites for *any* Harbor-side enforcement:
 2. Enable the **JWT** auth method at `auth/forgejo`, pointed at Forgejo's OIDC discovery, and
    create role `cosign-signer` with the bound claims above and a policy granting
    `transit/sign` (sign-only) on the key.
-3. Read the public key and paste it into `cosign-webgrip-pub.configmap.yaml` (it currently
-   holds the placeholder `REPLACE_WITH_TRANSIT_PUBLIC_KEY_FROM_BREAK_GLASS`).
+3. (Automatic — no manual paste) the `cosign-pubkey` CronJob reads the Transit public key and
+   publishes it to the `cosign-webgrip-pub` ConfigMap. On a fresh rebuild this is fully hands-off
+   (init.sh creates the key, the CronJob publishes it); on the existing cluster it publishes once
+   the break-glass (steps 1-2) has created the key.
 
 Until all three are done, the Harbor signing path produces nothing verifiable and
 `image-verify-harbor-audit` will (correctly) report failures in Audit mode.
@@ -549,8 +551,10 @@ later.
 4. **Kyverno keyless verification depends on public Sigstore reachability.** Phase A/B/C (GHCR)
    require Kyverno egress to Fulcio root + Rekor. If that egress is ever filtered, keyless
    verification under Enforce fails closed. **Verify and document this dependency.**
-5. **`cosign-webgrip-pub` is a placeholder today.** Until break-glass + paste, the entire Harbor
-   trust chain is non-functional and Audit-only is the *only* safe mode.
+5. **`cosign-webgrip-pub` is reconciled, not pasted.** The `cosign-pubkey` CronJob publishes it
+   from OpenBao Transit; until the Transit key exists (break-glass on the live cluster, automatic on
+   a fresh rebuild) the ConfigMap is absent and the Harbor verify policy reports errors (Audit-only,
+   non-blocking).
 6. **Dependency-Track upload is fail-soft.** The Forgejo action uploads SBOMs to DT
    "fail-soft" (never fails the build). So a green release does **not** guarantee DT has the
    SBOM — don't treat DT presence as an enforcement signal; it's posture, not a gate.
