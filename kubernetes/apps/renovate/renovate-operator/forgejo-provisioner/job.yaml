@@ -114,7 +114,7 @@ spec:
               tid="$(curl -fsS -u "$admin" "$api/orgs/$org/teams" 2>/dev/null | jq -r --arg t "$team" '.[] | select(.name==$t) | .id' | head -1)"
               if [ -z "$tid" ]; then
                 tid="$(curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST "$api/orgs/$org/teams" \
-                  -d "{\"name\":\"$team\",\"description\":\"Renovate bot — write, all repos\",\"permission\":\"write\",\"includes_all_repositories\":true,\"can_create_org_repo\":false}" | jq -r '.id // empty')"
+                  -d "{\"name\":\"$team\",\"description\":\"Renovate bot — write, all repos\",\"permission\":\"write\",\"includes_all_repositories\":true,\"can_create_org_repo\":false,\"units\":[\"repo.code\",\"repo.issues\",\"repo.pulls\"]}" | jq -r '.id // empty')"
               fi
               if [ -n "$tid" ]; then
                 curl -sS -o /dev/null -u "$admin" -X PUT "$api/orgs/$org/teams/$tid/members/$BOT_USERNAME" && echo "bot in $org/$team (id $tid)"
