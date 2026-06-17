@@ -28,5 +28,12 @@ Cluster is migrating SOPS → **External Secrets Operator + OpenBao** — use th
 - **Provided value** (token/password/key): put it in OpenBao KV `secret/<app>/<name>` (UI `openbao.$${SECRET_DOMAIN}` or `bao kv put`), then an `ExternalSecret` (store `openbao`, `creationPolicy: Owner`, per-key `remoteRef` or `dataFrom: [{extract: {key: <path>}}]` for all keys).
 - Consume via `existingSecret`/`envFromSecret`/`secretKeyRef`. SOPS floor that stays: age key, `cluster-secrets`, `talsecret`, `github-deploy-key`, openbao unseal.
 
+## In-cluster provisioner Job/CronJob (optional)
+For an app that needs a Job/CronJob hitting an admin API or writing a Secret/ConfigMap (e.g. `forgejo-ci-provisioner`, `cosign-pubkey`):
+- **Least-privilege RBAC:** if it only `kubectl get` + `kubectl apply`s ONE object, scope `get,update,patch` with `resourceNames: [<that-object>]` and put `create` in a **separate** rule (RBAC can't scope `create` by name) — not blanket `secrets`/`configmaps`.
+- **`secretKeyRef` env is injected by the kubelet, not the SA** — consuming a Secret via env needs **zero** RBAC; only direct API calls (`kubectl`) do. Set `automountServiceAccountToken: false` if it never calls the k8s API.
+- **Fail-soft + idempotent:** mark inputs `optional: true`, guard missing values (`exit 0`, retry next tick), and make writes create-or-update so re-runs converge.
+- Harden the pod: `runAsNonRoot`, `seccompProfile: {type: RuntimeDefault}`, `readOnlyRootFilesystem: true`, `capabilities: {drop: [ALL]}`.
+
 ## Validate
 `./scripts/run-flux-local-test.sh` before committing.
