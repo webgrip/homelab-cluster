@@ -1,0 +1,49 @@
+---
+# EXAMPLE: a scheduled (cron) Forgejo Actions workflow, to show the shape.
+# Forgejo Actions support `on: schedule` with POSIX cron, and `workflow_dispatch` for
+# manual runs from the UI/API. Schedules run on the default branch only.
+#
+# This one is deliberately harmless (read-only echoes). Replace the "real task" steps with
+# whatever cluster hygiene you want on a timer — e.g. report stale images, prune caches,
+# nightly cosign re-verification, etc. Runs on the in-cluster runner (runs-on: docker).
+name: '[Scheduled] Maintenance (example)'
+
+on:
+  # The schedule is intentionally COMMENTED OUT: while the job is a no-op it would only
+  # spawn an empty nightly/weekly runner pod. Uncomment once the "real task" below is filled
+  # in. Forgejo Actions supports POSIX cron, and schedules run on the default branch only.
+  # schedule:
+  #   - cron: '0 3 * * *' # nightly 03:00 UTC
+  #   - cron: '0 6 * * 1' # weekly Monday 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Log only; do not change anything'
+        type: boolean
+        required: false
+        default: true
+
+concurrency:
+  group: scheduled-maintenance
+  cancel-in-progress: false
+
+jobs:
+  maintenance:
+    name: 'Nightly/weekly maintenance'
+    runs-on: docker
+    steps:
+      - name: Show trigger context
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "event=${GITHUB_EVENT_NAME:-?}  ref=${GITHUB_REF:-?}  dry-run=${{ inputs.dry-run }}"
+          date -u +'now=%Y-%m-%dT%H:%M:%SZ'
+
+      # ── Real task goes here ──────────────────────────────────────────────
+      # Example placeholder: a read-only check. Swap for actual maintenance and
+      # gate destructive actions behind the dry-run input, e.g.:
+      #   if [ "${{ inputs.dry-run }}" = "true" ]; then echo "would prune X"; else prune X; fi
+      - name: Example task (no-op)
+        shell: bash
+        run: |-
+          echo "TODO replace with the scheduled maintenance task"

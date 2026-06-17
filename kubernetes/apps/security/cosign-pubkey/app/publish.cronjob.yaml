@@ -1,0 +1,81 @@
+---
+# Mirrors the OpenBao Transit public key (cosign-webgrip) into the cosign-webgrip-pub
+# ConfigMap that the Kyverno image-verify-harbor-audit policy reads. Reconciler, not a
+# hand-pasted value: on any (re)build the key may differ, so we read whatever OpenBao
+# currently holds and converge the ConfigMap. Idempotent + fail-soft — if Transit/the key
+# isn't up yet it exits 0 and retries next tick. This is what makes the verify side
+# statelessly rebuildable (no human pastes a PEM).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cosign-pubkey-publish
+  namespace: security
+spec:
+  schedule: "*/30 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 3600
+      template:
+        spec:
+          serviceAccountName: cosign-pub-publisher
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: publish
+              image: docker.io/alpine/k8s:1.36.1@sha256:692239d739589247c4a791205ed9619c28ae85a21286e19a6211c04a62c56668
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: HOME
+                  value: /tmp
+                - name: BAO_ADDR
+                  value: http://openbao.security.svc.cluster.local:8200
+              command:
+                - /bin/sh
+                - -ceu
+                - |
+                  jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+                  tok="$(curl -fsS --request POST \
+                    --data "$(jq -nc --arg j "$jwt" '{jwt:$j, role:"cosign-pub-publisher"}')" \
+                    "$BAO_ADDR/v1/auth/kubernetes/login" | jq -r '.auth.client_token' 2>/dev/null || true)"
+                  [ -n "$tok" ] && [ "$tok" != "null" ] || { echo "[cosign-pubkey] OpenBao login not ready; retry next tick"; exit 0; }
+                  # Publish EVERY still-trusted key version (version >= transit min_decryption_version),
+                  # newest first. cosign signs with the latest version; Kyverno's publicKeys accepts
+                  # multiple newline-separated PEMs and verifies against ANY of them — so a rotation
+                  # overlaps automatically (old + new both trusted, zero downtime) and retiring a
+                  # version is just raising transit min_decryption_version (the next tick drops its
+                  # PEM). No hand-edited ConfigMap. See runbooks/cosign-transit-key-rotation.md.
+                  resp="$(curl -fsS -H "X-Vault-Token: $tok" "$BAO_ADDR/v1/transit/keys/cosign-webgrip" 2>/dev/null || true)"
+                  pub="$(printf '%s' "$resp" | jq -r '
+                    (.data.min_decryption_version // 0) as $min
+                    | [ .data.keys | to_entries[] | select((.key | tonumber) >= $min) ]
+                    | sort_by(.key | tonumber) | reverse | .[].value.public_key' 2>/dev/null || true)"
+                  case "$pub" in
+                    -----BEGIN*) : ;;
+                    *) echo "[cosign-pubkey] Transit key not present yet; retry next tick"; exit 0 ;;
+                  esac
+                  count="$(printf '%s\n' "$pub" | grep -c 'BEGIN PUBLIC KEY' || true)"
+                  printf '%s\n' "$pub" > /tmp/cosign.pub
+                  kubectl -n security create configmap cosign-webgrip-pub \
+                    --from-file=cosign.pub=/tmp/cosign.pub \
+                    --dry-run=client -o yaml | kubectl apply -f -
+                  echo "[cosign-pubkey] published cosign-webgrip-pub ($count trusted key version(s))"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 25m, memory: 64Mi}
+                limits: {cpu: 200m, memory: 128Mi}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: tmp
+              emptyDir: {}

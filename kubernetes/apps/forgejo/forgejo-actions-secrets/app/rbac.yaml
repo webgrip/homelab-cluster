@@ -1,0 +1,50 @@
+---
+# Identity for the CI-bot provisioner Job. The admin + bot-password Secrets it consumes are
+# injected as env vars by the kubelet (secretKeyRef) — that path does NOT use this Role — so the
+# only k8s API access it needs is over the ONE Secret it owns, forgejo-ci-token: read it back (to
+# reuse a still-valid token) and create-or-update it (kubectl apply). No other authority.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: forgejo-ci-provisioner
+  namespace: forgejo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: forgejo-ci-provisioner
+  namespace: forgejo
+rules:
+  # Read-back + update of the token Secret this Job owns (kubectl get; kubectl apply patch).
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    resourceNames:
+      - "forgejo-ci-token"
+    verbs:
+      - "get"
+      - "update"
+      - "patch"
+  # First-run creation only. RBAC cannot scope `create` by resourceName, so this is
+  # namespace-wide on the type — the narrowest grant the API allows.
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    verbs:
+      - "create"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: forgejo-ci-provisioner
+  namespace: forgejo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: forgejo-ci-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: forgejo-ci-provisioner
+    namespace: forgejo

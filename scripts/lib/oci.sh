@@ -32,6 +32,11 @@ fetch_digest() {
       token="$(curl -fsSL "https://auth.docker.io/token?service=registry.docker.io&scope=repository:${path}:pull" | jq -r .token)"
       auth_header=(-H "Authorization: Bearer ${token}")
       ;;
+    code.forgejo.org)
+      local token
+      token="$(curl -fsSL "https://code.forgejo.org/v2/token?service=container_registry&scope=repository:${path}:pull" | jq -r .token)"
+      auth_header=(-H "Authorization: Bearer ${token}")
+      ;;
   esac
 
   headers_file="$(mktemp)"

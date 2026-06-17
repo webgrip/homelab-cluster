@@ -1,0 +1,31 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: forgejo-actions-secrets
+spec:
+  # Gated: Forgejo must be up (admin API + admin Secret); Harbor must have seeded
+  # secret/harbor/robot-webgrip and dependency-track its api-key into OpenBao before the
+  # provisioner can publish them. (Cosign signing uses OpenBao Transit directly from the
+  # runner — no cosign secret is synced into Forgejo.)
+  dependsOn:
+    - name: forgejo
+    - name: harbor
+      namespace: harbor
+    - name: dependency-track
+      namespace: security
+  # No postBuild.substituteFrom: the scripts contain shell ${vars} Flux must not touch (no
+  # cluster-secrets substitution — URLs/emails are in-cluster Service / literals).
+  # force: recreate the immutable forgejo-ci-provisioner Job when its spec changes so it re-runs.
+  force: true
+  interval: 1h
+  retryInterval: 5m
+  path: ./kubernetes/apps/forgejo/forgejo-actions-secrets/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: forgejo
+  wait: false

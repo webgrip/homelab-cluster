@@ -1,0 +1,112 @@
+---
+# Tier-1 "do-once, gated, idempotent" bootstrap Job (ADR-0019), mirroring
+# renovate-forgejo-provisioner. Ensures the `webgrip-ci` CI bot exists, gives it org-wide write in
+# `webgrip`, and mints a scoped token into Secret forgejo-ci-token. The forgejo-actions-secrets
+# CronJob then publishes that token as the org Actions secret FORGEJO_TOKEN (consumed by
+# semantic-release + techdocs). Re-runs only on spec change (Flux force: true). All Forgejo calls go
+# to the in-cluster Service. This app's Kustomization has NO postBuild.substituteFrom, so braced
+# ${VARS} are left for the shell (BOT_EMAIL is a literal to avoid needing SECRET_DOMAIN).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: forgejo-ci-provisioner
+  namespace: forgejo
+spec:
+  backoffLimit: 4
+  template:
+    spec:
+      serviceAccountName: forgejo-ci-provisioner
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: provision
+          image: docker.io/alpine/k8s:1.36.1@sha256:692239d739589247c4a791205ed9619c28ae85a21286e19a6211c04a62c56668
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: HOME
+              value: /tmp
+            - name: FORGEJO_URL
+              value: http://forgejo-http.forgejo.svc.cluster.local:3000
+            - name: NAMESPACE
+              value: forgejo
+            - name: ORG
+              value: webgrip
+            - name: TOKEN_SECRET
+              value: forgejo-ci-token
+            - name: TOKEN_NAME
+              value: webgrip-ci-actions
+            - name: BOT_USERNAME
+              value: webgrip-ci
+            - name: BOT_EMAIL
+              value: webgrip-ci@webgrip.dev
+            - name: ADMIN_USERNAME
+              valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: username}}
+            - name: ADMIN_PASSWORD
+              valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: password}}
+            - name: BOT_PASSWORD
+              valueFrom: {secretKeyRef: {name: forgejo-ci-bot-password, key: password}}
+          command:
+            - /bin/sh
+            - -ceu
+            - |
+              api="${FORGEJO_URL}/api/v1"
+              admin="${ADMIN_USERNAME}:${ADMIN_PASSWORD}"
+              bot="${BOT_USERNAME}:${BOT_PASSWORD}"
+
+              # 1) Ensure the bot user exists.
+              code="$(curl -sS -o /dev/null -w '%{http_code}' -u "$admin" "$api/users/${BOT_USERNAME}")"
+              if [ "$code" = "404" ]; then
+                echo "creating bot user ${BOT_USERNAME}"
+                curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST "$api/admin/users" \
+                  -d "{\"username\":\"${BOT_USERNAME}\",\"email\":\"${BOT_EMAIL}\",\"password\":\"${BOT_PASSWORD}\",\"must_change_password\":false}" >/dev/null
+              elif [ "$code" != "200" ]; then
+                echo "unexpected status probing bot user: $code" >&2; exit 1
+              fi
+
+              # 2) Reuse the stored token if it still authenticates; else (re)mint.
+              tok="$(kubectl -n "$NAMESPACE" get secret "$TOKEN_SECRET" -o jsonpath='{.data.FORGEJO_TOKEN}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+              if [ -n "$tok" ] && curl -fsS -o /dev/null -H "Authorization: token $tok" "$api/user"; then
+                echo "existing token still valid — no change"
+              else
+                echo "minting a fresh token"
+                curl -fsS -u "$admin" -H 'Content-Type: application/json' -X PATCH "$api/admin/users/${BOT_USERNAME}" \
+                  -d "{\"login_name\":\"${BOT_USERNAME}\",\"source_id\":0,\"password\":\"${BOT_PASSWORD}\",\"must_change_password\":false}" >/dev/null
+                curl -sS -o /dev/null -u "$bot" -X DELETE "$api/users/${BOT_USERNAME}/tokens/${TOKEN_NAME}" || true
+                tok="$(curl -fsS -u "$bot" -H 'Content-Type: application/json' -X POST "$api/users/${BOT_USERNAME}/tokens" \
+                  -d "{\"name\":\"${TOKEN_NAME}\",\"scopes\":[\"write:repository\",\"read:user\",\"write:issue\",\"read:organization\"]}" | jq -r '.sha1')"
+                [ -n "$tok" ] && [ "$tok" != "null" ] || { echo "token mint failed" >&2; exit 1; }
+                kubectl -n "$NAMESPACE" create secret generic "$TOKEN_SECRET" \
+                  --from-literal="FORGEJO_TOKEN=$tok" \
+                  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+                echo "wrote Secret $TOKEN_SECRET"
+              fi
+
+              # 3) Give the bot org-wide write in webgrip (team 'ci', write, all repos) so
+              #    semantic-release can create releases/tags and techdocs can push. Idempotent.
+              tid="$(curl -fsS -u "$admin" "$api/orgs/${ORG}/teams" 2>/dev/null | jq -r '.[] | select(.name=="ci") | .id' | head -1)"
+              if [ -z "$tid" ]; then
+                tid="$(curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST "$api/orgs/${ORG}/teams" \
+                  -d '{"name":"ci","description":"webgrip CI bot — write, all repos","permission":"write","includes_all_repositories":true,"can_create_org_repo":false,"units":["repo.code","repo.issues","repo.pulls"]}' | jq -r '.id // empty')"
+              fi
+              if [ -n "$tid" ]; then
+                curl -sS -o /dev/null -u "$admin" -X PUT "$api/orgs/${ORG}/teams/$tid/members/${BOT_USERNAME}" && echo "bot in ${ORG}/ci (id $tid)"
+              else
+                echo "WARN: could not ensure ${ORG}/ci membership" >&2
+              fi
+              echo "ci provisioner converged"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}

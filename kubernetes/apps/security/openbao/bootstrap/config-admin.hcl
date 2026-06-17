@@ -13,6 +13,12 @@ path "auth/+/role/*" {
 path "auth/oidc/config" {
   capabilities = ["create", "read", "update"]
 }
+# Forgejo Actions OIDC (JWT auth method mounted at auth/forgejo). config-admin configures
+# it but does not mount it (root/break-glass enables the mount); roles are covered by
+# auth/+/role/* above.
+path "auth/forgejo/config" {
+  capabilities = ["create", "read", "update"]
+}
 path "sys/auth" {
   capabilities = ["read"]
 }

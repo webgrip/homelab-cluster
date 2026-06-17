@@ -26,6 +26,9 @@ spec:
       spec:
         restartPolicy: Never
         terminationGracePeriodSeconds: 30
+        # No ambient ServiceAccount token: CI signs via Forgejo Actions OIDC (a per-workflow
+        # token exchanged at OpenBao's JWT auth) — it never needs the k8s SA token, so we
+        # don't expose one to untrusted workflow code.
         automountServiceAccountToken: false
         nodeSelector:
           nodegroup: fringe
@@ -122,5 +125,15 @@ spec:
         address: "http://forgejo-http.forgejo.svc.cluster.local:3000"
         global: "true"
         labels: "docker"
+      authenticationRef:
+        name: forgejo-runner-scaler
+    # Separate trigger so pending `arc-runner-set` jobs also scale from zero (one-job runners
+    # don't multiplex labels, so each label that should trigger a pod needs to be counted).
+    - type: forgejo-runner
+      metadata:
+        name: forgejo-runner-arc
+        address: "http://forgejo-http.forgejo.svc.cluster.local:3000"
+        global: "true"
+        labels: "arc-runner-set"
       authenticationRef:
         name: forgejo-runner-scaler
