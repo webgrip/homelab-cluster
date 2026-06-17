@@ -66,7 +66,8 @@ workflow, not a branch build.
 half lives in OpenBao and never leaves it*. cosign calls `transit/sign` over the OpenBao API
 (`hashivault://cosign-webgrip`); the runner only ever holds a short-lived OpenBao token, never
 the key. Kyverno (`image-verify-harbor-audit`) trusts the **public half**, read from the
-committed `cosign-webgrip-pub` ConfigMap (`security` namespace, `cosign.pub` PEM).
+`cosign-webgrip-pub` ConfigMap (`security` namespace, `cosign.pub` PEM) that the `cosign-pubkey`
+CronJob publishes from OpenBao — not a committed/hand-pasted file.
 
 The keyed path has no Fulcio and **no Rekor / transparency log** — there is no independent
 record that a signature happened. The "who is allowed to sign" guarantee is therefore *not* in
@@ -145,7 +146,9 @@ image trust, and are out of scope here except where noted.)
 
 Supporting objects (not policies, but required for the Harbor policy to function):
 
-- `cosign-webgrip-pub.configmap.yaml` — public key (currently a **placeholder**).
+- `cosign-webgrip-pub` ConfigMap — the trusted public key(s). **Generated, not committed:** the
+  `cosign-pubkey` CronJob publishes every still-trusted Transit key version into it (empty until
+  the break-glass in §1.4 creates the key and the CronJob first runs).
 - `harbor-pull.externalsecret.yaml` — `ExternalSecret` rendering a `kubernetes.io/dockerconfigjson`
   Secret `harbor-pull` in `security` from OpenBao `harbor/robot-webgrip` (so Kyverno can pull
   manifests + signatures from the private registry).
@@ -165,8 +168,12 @@ third-party workload).
 - Audit findings for the rule are **zero** for in-scope images for a sustained window (≥ 7 days,
   ideally one full Renovate cycle), confirmed from PolicyReports (§3.7).
 - A documented **rollback** is one revert commit away and Flux can reconcile it in minutes.
-- `failurePolicy: Fail` + `webhookTimeoutSeconds: 30` are already set on the verify policies — be
-  aware that under Enforce a Kyverno outage or a slow registry now blocks admission (see §3.8).
+- `webhookTimeoutSeconds: 30` is set on the verify policies. The GHCR verify policies run
+  `failurePolicy: Fail`; **`image-verify-harbor-audit` runs `failurePolicy: Ignore` while it is
+  Audit** (a not-yet-published `cosign-webgrip-pub` ConfigMap or an unreachable LAN Harbor must
+  not block unrelated admissions for an audit-only check). **Flipping it to Enforce must also flip
+  `failurePolicy` to `Fail`** — and be aware that under Enforce a Kyverno outage or a slow registry
+  then blocks admission (see §3.8).
 
 ### Phase A — Signature required (GHCR)
 
@@ -206,7 +213,10 @@ verify exactly what was deployed, and digests should already be pinned.
 **Gates — Harbor side (all of these block):**
 
 - [ ] **Break-glass complete** (§1.4): Transit engine + key + `auth/forgejo` JWT role exist.
-- [ ] `cosign-webgrip-pub` ConfigMap **populated** with the real PEM (placeholder removed).
+- [ ] `cosign-webgrip-pub` ConfigMap **populated** — confirm the `cosign-pubkey` CronJob has
+      published the real PEM (`kubectl -n security get cm cosign-webgrip-pub -o jsonpath='{.data.cosign\.pub}' | grep -c 'BEGIN PUBLIC KEY'` ≥ 1), not empty.
+- [ ] **Flip `image-verify-harbor-audit` `failurePolicy` from `Ignore` to `Fail`** as part of the
+      Enforce promotion.
 - [ ] `harbor-pull` ExternalSecret successfully rendering — Kyverno can authenticate to
       `harbor.webgrip.dev` (LAN-only) and pull manifests/signatures. Confirm the
       `harbor/robot-webgrip` creds in OpenBao and the ESO sync status.
@@ -537,13 +547,14 @@ later.
    (both in place / planned), but the property "I can prove after the fact that this signature
    existed at time T without trusting our own infra" does **not** hold for Harbor. Accept, or
    stand up a private Rekor instance (large effort; out of scope).
-2. **Transit key rotation has no documented story.** `cosign-webgrip` is a single ECDSA-P256 key
-   created by break-glass. There is no rotation runbook, and `cosign-webgrip-pub` is a single-key
-   ConfigMap. On rotation: OpenBao Transit supports key versions, but Kyverno verifies against a
-   *static* public key — rotating requires (a) bumping the Transit key version, (b) updating the
-   ConfigMap PEM (and any Flux mirror), (c) deciding whether old signatures (old key version)
-   should still verify. **TODO: write the rotation runbook before enforcing**, otherwise a future
-   rotation is a cluster-wide admission outage.
+2. **Transit key rotation — now documented and overlap-safe.** `cosign-webgrip` is an ECDSA-P256
+   key created by break-glass. Rotation is covered by
+   [runbooks/cosign-transit-key-rotation.md](runbooks/cosign-transit-key-rotation.md), and the
+   `cosign-pubkey` CronJob publishes **every still-trusted key version** (every version
+   `>= min_decryption_version`) into `cosign-webgrip-pub`, so old + new overlap automatically and
+   retirement is just raising `min_decryption_version`. Residual: the rotation/retirement steps
+   still require a break-glass `generate-root` (no dedicated audited rotation policy yet), and a
+   Flux-mirror of the key (§6) would need its own update path if added.
 3. **No SLSA provenance on the Forgejo/Harbor path.** Documented in §3 Phase C — Harbor images
    have signature + CycloneDX SBOM but **no build provenance**. There is no "who/where/which-commit
    built this" attestation for Harbor artifacts. Closing it needs a Forgejo-native provenance
@@ -580,7 +591,7 @@ Effort: **S** ≈ < ½ day, **M** ≈ ½–2 days, **L** ≈ multi-day / cross-s
 | # | Measure | Effort | File(s) / system |
 |---|---|---|---|
 | 1 | **Break-glass**: enable OpenBao Transit engine, create `cosign-webgrip` key, enable `auth/forgejo` JWT method + `cosign-signer` role with bound claims. | M | OpenBao (one-time `generate-root` ceremony) |
-| 2 | Populate `cosign-webgrip-pub` with the real Transit public PEM (remove placeholder). | S | `kyverno/policies/app/cosign-webgrip-pub.configmap.yaml` |
+| 2 | Confirm the `cosign-pubkey` CronJob has published the real PEM into `cosign-webgrip-pub` (it auto-publishes from OpenBao once the break-glass key exists — no file to edit). | S | `security/cosign-pubkey` CronJob (verify) |
 | 3 | Confirm `harbor-pull` ExternalSecret renders and Kyverno can pull from Harbor on the LAN. | S | `kyverno/policies/app/harbor-pull.externalsecret.yaml` (verify) |
 | 4 | Configure **Forgejo protected tags** on `*-v*`; confirm fork-PR OIDC is disabled. | S | Forgejo project settings |
 | 5 | Harbor project: **tag immutability** + **robot least-privilege** (split push vs pull robots) + **storage quota**. | M | Harbor project settings (capture as IaC, TODO) |
