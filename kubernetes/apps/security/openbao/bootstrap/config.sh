@@ -55,13 +55,25 @@ if [ -n "${SECRET_DOMAIN:-}" ]; then
   if bao write auth/forgejo/config \
        oidc_discovery_url="https://forgejo.${SECRET_DOMAIN}/api/actions" \
        default_role="cosign-signer" >/dev/null 2>&1; then
-    bao write auth/forgejo/role/cosign-signer \
-      role_type=jwt user_claim=sub \
-      bound_audiences=openbao-cosign \
-      bound_claims_type=glob \
-      bound_claims='{"repository":"webgrip/infrastructure","event_name":"release","ref":"refs/tags/*"}' \
-      token_policies=cosign-signer token_ttl=10m >/dev/null
-    echo "   forgejo jwt auth configured"
+    # bound_claims is a MAP. The CLI won't convert an inline `bound_claims={...}` kv arg into
+    # one ("expected map, got string"), so write the whole role as JSON via stdin. list fields
+    # (bound_audiences, token_policies) are arrays for the same reason.
+    if bao write auth/forgejo/role/cosign-signer - >/dev/null <<'JSON'
+{
+  "role_type": "jwt",
+  "user_claim": "sub",
+  "bound_audiences": ["openbao-cosign"],
+  "bound_claims_type": "glob",
+  "bound_claims": {"repository": "webgrip/infrastructure", "event_name": "release", "ref": "refs/tags/*"},
+  "token_policies": ["cosign-signer"],
+  "token_ttl": "10m"
+}
+JSON
+    then
+      echo "   forgejo jwt auth + cosign-signer role configured"
+    else
+      echo "   WARN: forgejo cosign-signer role write FAILED (auth/forgejo mount present, role not created)"
+    fi
   else
     echo "   forgejo jwt auth mount not present yet (break-glass: bao auth enable -path=forgejo jwt)"
   fi
