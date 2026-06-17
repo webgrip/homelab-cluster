@@ -1,0 +1,31 @@
+---
+# Allow this namespace's pods to reach the cluster ingress gateways (ns network)
+# for SERVER-SIDE calls that hairpin through a gateway VIP — most notably OIDC
+# discovery/token/userinfo to authentik.${SECRET_DOMAIN}: the app fetches
+# .well-known/openid-configuration from inside the pod, and that hostname
+# resolves to the envoy-internal LAN VIP (10.0.0.27).
+#
+# Under a W7 default-deny this MUST be an explicit allow, it MUST be an identity
+# (namespaceSelector) rule, and it MUST NOT carry a port filter — NOT a CIDR or
+# port rule. Cilium translates the gateway Service/LB-VIP to the backend envoy
+# pod (ns network) and enforces egress on that POST-DNAT identity and targetPort
+# (443 -> 10443, 80 -> 10080), so:
+#   * `ipBlock: 0.0.0.0/0 except 10.42.0.0/16` DROPS it (backend is in 10.42/16),
+#   * a `port: 443` allow MISSES it (the real backend port is 10443, and Envoy
+#     Gateway reassigns target ports on listener changes — pinning is fragile).
+# Same Cilium identity-vs-CIDR gotcha as components/cnpg-netpol's kube-apiserver
+# rule. Symptom when missing: "dial tcp 10.0.0.27:443: i/o timeout" -> the app's
+# OIDC login returns 500. See ADR-0021.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-egress
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: network
