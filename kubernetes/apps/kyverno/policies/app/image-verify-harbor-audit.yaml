@@ -1,0 +1,71 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/clusterpolicy_v1.json
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: image-verify-harbor-audit
+  annotations:
+    pod-policies.kyverno.io/autogen-controllers: DaemonSet,Deployment,StatefulSet
+    policies.kyverno.io/title: Harbor Image Signature Verification (Audit)
+    policies.kyverno.io/category: Software Supply Chain
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Audit that first-party WebGrip images published to the in-cluster Harbor are
+      signed with cosign using the webgrip OpenBao Transit key (the private key never
+      leaves OpenBao), and carry a CycloneDX SBOM attestation from the same key. This is
+      the Forgejo/Harbor counterpart of image-verify-audit (which covers ghcr.io keyless).
+      The public key is read from the cosign-webgrip-pub ConfigMap (security ns), which
+      holds the Transit public key. Audit mode: surfaces unsigned Harbor images in
+      PolicyReports without blocking. Promote to Enforce once all Harbor images in scope
+      are signed.
+spec:
+  validationFailureAction: Audit
+  background: false # verifyImages requires admission context
+  webhookTimeoutSeconds: 30
+  failurePolicy: Fail
+  rules:
+    - name: verify-webgrip-harbor-images
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      context:
+        # Public half of the OpenBao Transit cosign key (committed ConfigMap).
+        # Kyverno runs in `security`, so this is an in-namespace read.
+        - name: cosignpub
+          configMap:
+            name: cosign-webgrip-pub
+            namespace: security
+      verifyImages:
+        - imageReferences:
+            - "harbor.webgrip.dev/webgrip/*"
+          # Harbor is private + LAN-only: Kyverno needs the robot pull credential to
+          # fetch the manifest, signatures and attestations.
+          imageRegistryCredentials:
+            allowInsecureRegistry: false
+            secrets:
+              - harbor-pull
+          required: true
+          mutateDigest: false
+          verifyDigest: true
+          attestors:
+            - count: 1
+              entries:
+                - keys:
+                    publicKeys: '{{ cosignpub.data."cosign.pub" }}'
+          attestations:
+            - predicateType: https://cyclonedx.org/bom
+              attestors:
+                - count: 1
+                  entries:
+                    - keys:
+                        publicKeys: '{{ cosignpub.data."cosign.pub" }}'
+              # Require at least one component in the SBOM (sanity check).
+              conditions:
+                - all:
+                    - key: "{{ components | length(@) }}"
+                      operator: GreaterThan
+                      value: 0
