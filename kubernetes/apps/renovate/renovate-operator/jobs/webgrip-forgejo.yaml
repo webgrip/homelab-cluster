@@ -8,9 +8,12 @@ metadata:
   name: webgrip-forgejo
 spec:
   discoveryFilters:
-    # The provisioner creates this repo under the bot's own account, so the pilot needs no org/team
-    # plumbing. The operator skips mirror repos, so only Forgejo-authoritative repos are ever acted on.
-    # For the org-wide rollout: add the bot to the webgrip org/team, then widen to "webgrip/*".
+    # Org-wide. The provisioner adds the bot to the webgrip org (renovate team, write + all repos).
+    # Renovate AUTODISCOVER SKIPS MIRROR repos and can't push to them, so today this acts only on the
+    # bot-owned pilot (a non-mirror canary); each webgrip repo starts getting PRs as it is de-mirrored
+    # (Forgejo-authoritative). homelab-cluster stays a mirror until the Flux source cutover, so it's
+    # skipped — intentionally. Discovery runs at parallelism:1 (serial), bounded by pr/branch limits.
+    - webgrip/*
     - renovate/forgejo-renovate-pilot
   provider:
     name: forgejo

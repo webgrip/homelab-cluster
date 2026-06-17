@@ -106,6 +106,21 @@ spec:
                 | seed "Dockerfile" "seed: pilot Dockerfile (alpine pinned old on purpose)"
               printf '%s\n' '{' '  "$schema": "https://docs.renovatebot.com/renovate-schema.json",' '  "extends": ["config:recommended"]' '}' \
                 | seed ".renovaterc.json5" "seed: pilot renovate config"
+
+              # 4) Ensure the bot has org-wide WRITE in the webgrip org (a 'renovate' team, write +
+              #    all repos) so org-wide discovery can push branches/PRs. Idempotent; non-fatal.
+              #    NB: Renovate still skips MIRROR repos — real PRs start as each repo is de-mirrored.
+              org=webgrip; team=renovate
+              tid="$(curl -fsS -u "$admin" "$api/orgs/$org/teams" 2>/dev/null | jq -r --arg t "$team" '.[] | select(.name==$t) | .id' | head -1)"
+              if [ -z "$tid" ]; then
+                tid="$(curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST "$api/orgs/$org/teams" \
+                  -d "{\"name\":\"$team\",\"description\":\"Renovate bot — write, all repos\",\"permission\":\"write\",\"includes_all_repositories\":true,\"can_create_org_repo\":false}" | jq -r '.id // empty')"
+              fi
+              if [ -n "$tid" ]; then
+                curl -sS -o /dev/null -u "$admin" -X PUT "$api/orgs/$org/teams/$tid/members/$BOT_USERNAME" && echo "bot in $org/$team (id $tid)"
+              else
+                echo "WARN: could not ensure $org/$team membership (org-wide push will not work yet)" >&2
+              fi
               echo "provisioner converged"
           securityContext:
             allowPrivilegeEscalation: false
