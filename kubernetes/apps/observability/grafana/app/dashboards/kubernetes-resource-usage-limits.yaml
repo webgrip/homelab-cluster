@@ -1,0 +1,384 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: kubernetes-resource-usage-limits
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  allowCrossNamespaceImport: false
+  folder: "Kubernetes"
+  json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Kubernetes / Resource Usage & Limits",
+      "uid": "k8s-resource-usage-limits",
+      "description": "Per-workload and per-namespace CPU, memory, network and PVC usage compared against requests and limits. Source: kube-state-metrics, cAdvisor and kubelet via kube-prometheus-stack.",
+      "timezone": "browser",
+      "tags": ["kubernetes", "capacity", "resources"],
+      "editable": false,
+      "graphTooltip": 1,
+      "refresh": "30s",
+      "time": {"from": "now-6h", "to": "now"},
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "namespace",
+            "label": "Namespace",
+            "type": "query",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "query": {"query": "label_values(kube_namespace_labels, namespace)", "refId": "A"},
+            "refresh": 2,
+            "sort": 1,
+            "includeAll": true,
+            "allValue": ".*",
+            "multi": true,
+            "current": {"selected": true, "text": "All", "value": "$$__all"}
+          },
+          {
+            "name": "workload",
+            "label": "Workload",
+            "type": "query",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "query": {"query": "label_values(namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\"}, workload)", "refId": "A"},
+            "refresh": 2,
+            "sort": 1,
+            "includeAll": true,
+            "allValue": ".*",
+            "multi": true,
+            "current": {"selected": true, "text": "All", "value": "$$__all"}
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "CPU used",
+          "gridPos": {"h": 4, "w": 3, "x": 0, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$$namespace\",container!=\"\"}[$$__rate_interval])) or vector(0)"}
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "graphMode": "none", "colorMode": "none", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"unit": "cores", "decimals": 2}, "overrides": []}
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "CPU requests",
+          "gridPos": {"h": 4, "w": 3, "x": 3, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"cpu\"}) or vector(0)"}
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "graphMode": "none", "colorMode": "none", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"unit": "cores", "decimals": 2}, "overrides": []}
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "CPU limits",
+          "gridPos": {"h": 4, "w": 3, "x": 6, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"cpu\"}) or vector(0)"}
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "graphMode": "none", "colorMode": "none", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"unit": "cores", "decimals": 2}, "overrides": []}
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Memory used",
+          "gridPos": {"h": 4, "w": 3, "x": 9, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(container_memory_working_set_bytes{namespace=~\"$$namespace\",container!=\"\"}) or vector(0)"}
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "graphMode": "none", "colorMode": "none", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"unit": "bytes", "decimals": 2}, "overrides": []}
+        },
+        {
+          "id": 5,
+          "type": "stat",
+          "title": "Memory requests",
+          "gridPos": {"h": 4, "w": 3, "x": 12, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"memory\"}) or vector(0)"}
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "graphMode": "none", "colorMode": "none", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"unit": "bytes", "decimals": 2}, "overrides": []}
+        },
+        {
+          "id": 6,
+          "type": "stat",
+          "title": "Memory limits",
+          "gridPos": {"h": 4, "w": 3, "x": 15, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"memory\"}) or vector(0)"}
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "graphMode": "none", "colorMode": "none", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"unit": "bytes", "decimals": 2}, "overrides": []}
+        },
+        {
+          "id": 7,
+          "type": "stat",
+          "title": "PVC used",
+          "gridPos": {"h": 4, "w": 3, "x": 18, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\"}) or vector(0)"}
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "graphMode": "none", "colorMode": "none", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"unit": "bytes", "decimals": 2}, "overrides": []}
+        },
+        {
+          "id": 8,
+          "type": "stat",
+          "title": "Network I/O (rx+tx)",
+          "gridPos": {"h": 4, "w": 3, "x": 21, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "(sum(rate(container_network_receive_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval])) + sum(rate(container_network_transmit_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]))) or vector(0)"}
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "graphMode": "none", "colorMode": "none", "textMode": "auto"},
+          "fieldConfig": {"defaults": {"unit": "Bps", "decimals": 2}, "overrides": []}
+        },
+        {
+          "id": 10,
+          "type": "row",
+          "title": "By namespace",
+          "collapsed": false,
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 4},
+          "panels": []
+        },
+        {
+          "id": 11,
+          "type": "table",
+          "title": "Namespace resources — usage vs requests vs limits",
+          "description": "Per-namespace CPU/memory usage against requests and limits, plus network throughput and PVC consumption. Sorted by CPU used.",
+          "gridPos": {"h": 11, "w": 24, "x": 0, "y": 5},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "instant": true, "format": "table", "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{namespace=~\"$$namespace\",container!=\"\"}[$$__rate_interval]))"},
+            {"refId": "B", "instant": true, "format": "table", "expr": "sum by (namespace) (kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"cpu\"})"},
+            {"refId": "C", "instant": true, "format": "table", "expr": "sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"cpu\"})"},
+            {"refId": "D", "instant": true, "format": "table", "expr": "sum by (namespace) (container_memory_working_set_bytes{namespace=~\"$$namespace\",container!=\"\"})"},
+            {"refId": "E", "instant": true, "format": "table", "expr": "sum by (namespace) (kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"memory\"})"},
+            {"refId": "F", "instant": true, "format": "table", "expr": "sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"memory\"})"},
+            {"refId": "G", "instant": true, "format": "table", "expr": "sum by (namespace) (rate(container_network_receive_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]))"},
+            {"refId": "H", "instant": true, "format": "table", "expr": "sum by (namespace) (rate(container_network_transmit_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]))"},
+            {"refId": "I", "instant": true, "format": "table", "expr": "sum by (namespace) (kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\"})"},
+            {"refId": "J", "instant": true, "format": "table", "expr": "sum by (namespace) (kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\"})"}
+          ],
+          "transformations": [
+            {"id": "merge", "options": {}},
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true},
+                "indexByName": {"namespace": 0, "Value #A": 1, "Value #B": 2, "Value #C": 3, "Value #D": 4, "Value #E": 5, "Value #F": 6, "Value #G": 7, "Value #H": 8, "Value #I": 9, "Value #J": 10},
+                "renameByName": {"namespace": "Namespace", "Value #A": "CPU used", "Value #B": "CPU req", "Value #C": "CPU lim", "Value #D": "Mem used", "Value #E": "Mem req", "Value #F": "Mem lim", "Value #G": "Net RX", "Value #H": "Net TX", "Value #I": "PVC used", "Value #J": "PVC cap"}
+              }
+            }
+          ],
+          "options": {"showHeader": true, "cellHeight": "sm", "sortBy": [{"displayName": "CPU used", "desc": true}], "footer": {"show": false}},
+          "fieldConfig": {
+            "defaults": {"unit": "short", "decimals": 2, "custom": {"align": "auto"}},
+            "overrides": [
+              {"matcher": {"id": "byName", "options": "CPU used"}, "properties": [{"id": "unit", "value": "cores"}]},
+              {"matcher": {"id": "byName", "options": "CPU req"}, "properties": [{"id": "unit", "value": "cores"}]},
+              {"matcher": {"id": "byName", "options": "CPU lim"}, "properties": [{"id": "unit", "value": "cores"}]},
+              {"matcher": {"id": "byName", "options": "Mem used"}, "properties": [{"id": "unit", "value": "bytes"}]},
+              {"matcher": {"id": "byName", "options": "Mem req"}, "properties": [{"id": "unit", "value": "bytes"}]},
+              {"matcher": {"id": "byName", "options": "Mem lim"}, "properties": [{"id": "unit", "value": "bytes"}]},
+              {"matcher": {"id": "byName", "options": "Net RX"}, "properties": [{"id": "unit", "value": "Bps"}]},
+              {"matcher": {"id": "byName", "options": "Net TX"}, "properties": [{"id": "unit", "value": "Bps"}]},
+              {"matcher": {"id": "byName", "options": "PVC used"}, "properties": [{"id": "unit", "value": "bytes"}]},
+              {"matcher": {"id": "byName", "options": "PVC cap"}, "properties": [{"id": "unit", "value": "bytes"}]}
+            ]
+          }
+        },
+        {
+          "id": 20,
+          "type": "row",
+          "title": "By workload",
+          "collapsed": false,
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 16},
+          "panels": []
+        },
+        {
+          "id": 21,
+          "type": "table",
+          "title": "Workload resources — usage vs requests vs limits",
+          "description": "Per-workload (Deployment/StatefulSet/DaemonSet/Job/etc.) CPU and memory usage against requests and limits, plus network throughput. Pods are mapped to their owning workload via namespace_workload_pod:kube_pod_owner:relabel. Sorted by CPU used.",
+          "gridPos": {"h": 12, "w": 24, "x": 0, "y": 17},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "instant": true, "format": "table", "expr": "sum by (namespace, workload, workload_type) (rate(container_cpu_usage_seconds_total{namespace=~\"$$namespace\",container!=\"\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload,workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})"},
+            {"refId": "B", "instant": true, "format": "table", "expr": "sum by (namespace, workload, workload_type) (kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"cpu\"} * on(namespace,pod) group_left(workload,workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})"},
+            {"refId": "C", "instant": true, "format": "table", "expr": "sum by (namespace, workload, workload_type) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"cpu\"} * on(namespace,pod) group_left(workload,workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})"},
+            {"refId": "D", "instant": true, "format": "table", "expr": "sum by (namespace, workload, workload_type) (container_memory_working_set_bytes{namespace=~\"$$namespace\",container!=\"\"} * on(namespace,pod) group_left(workload,workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})"},
+            {"refId": "E", "instant": true, "format": "table", "expr": "sum by (namespace, workload, workload_type) (kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"memory\"} * on(namespace,pod) group_left(workload,workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})"},
+            {"refId": "F", "instant": true, "format": "table", "expr": "sum by (namespace, workload, workload_type) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"memory\"} * on(namespace,pod) group_left(workload,workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})"},
+            {"refId": "G", "instant": true, "format": "table", "expr": "sum by (namespace, workload, workload_type) (rate(container_network_receive_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload,workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})"},
+            {"refId": "H", "instant": true, "format": "table", "expr": "sum by (namespace, workload, workload_type) (rate(container_network_transmit_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload,workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})"}
+          ],
+          "transformations": [
+            {"id": "merge", "options": {}},
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true},
+                "indexByName": {"namespace": 0, "workload": 1, "workload_type": 2, "Value #A": 3, "Value #B": 4, "Value #C": 5, "Value #D": 6, "Value #E": 7, "Value #F": 8, "Value #G": 9, "Value #H": 10},
+                "renameByName": {"namespace": "Namespace", "workload": "Workload", "workload_type": "Type", "Value #A": "CPU used", "Value #B": "CPU req", "Value #C": "CPU lim", "Value #D": "Mem used", "Value #E": "Mem req", "Value #F": "Mem lim", "Value #G": "Net RX", "Value #H": "Net TX"}
+              }
+            }
+          ],
+          "options": {"showHeader": true, "cellHeight": "sm", "sortBy": [{"displayName": "CPU used", "desc": true}], "footer": {"show": false}},
+          "fieldConfig": {
+            "defaults": {"unit": "short", "decimals": 2, "custom": {"align": "auto"}},
+            "overrides": [
+              {"matcher": {"id": "byName", "options": "CPU used"}, "properties": [{"id": "unit", "value": "cores"}]},
+              {"matcher": {"id": "byName", "options": "CPU req"}, "properties": [{"id": "unit", "value": "cores"}]},
+              {"matcher": {"id": "byName", "options": "CPU lim"}, "properties": [{"id": "unit", "value": "cores"}]},
+              {"matcher": {"id": "byName", "options": "Mem used"}, "properties": [{"id": "unit", "value": "bytes"}]},
+              {"matcher": {"id": "byName", "options": "Mem req"}, "properties": [{"id": "unit", "value": "bytes"}]},
+              {"matcher": {"id": "byName", "options": "Mem lim"}, "properties": [{"id": "unit", "value": "bytes"}]},
+              {"matcher": {"id": "byName", "options": "Net RX"}, "properties": [{"id": "unit", "value": "Bps"}]},
+              {"matcher": {"id": "byName", "options": "Net TX"}, "properties": [{"id": "unit", "value": "Bps"}]}
+            ]
+          }
+        },
+        {
+          "id": 22,
+          "type": "timeseries",
+          "title": "CPU usage by workload (top 15)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 29},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "topk(15, sum by (workload) (rate(container_cpu_usage_seconds_total{namespace=~\"$$namespace\",container!=\"\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"}))", "legendFormat": "{{workload}}"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "cores", "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right", "calcs": []}, "tooltip": {"mode": "multi", "sort": "desc"}}
+        },
+        {
+          "id": 23,
+          "type": "timeseries",
+          "title": "Memory usage by workload (top 15)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 29},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "topk(15, sum by (workload) (container_memory_working_set_bytes{namespace=~\"$$namespace\",container!=\"\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"}))", "legendFormat": "{{workload}}"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "bytes", "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right", "calcs": []}, "tooltip": {"mode": "multi", "sort": "desc"}}
+        },
+        {
+          "id": 24,
+          "type": "timeseries",
+          "title": "Network receive by workload (top 15)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 37},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "topk(15, sum by (workload) (rate(container_network_receive_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"}))", "legendFormat": "{{workload}}"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "Bps", "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right", "calcs": []}, "tooltip": {"mode": "multi", "sort": "desc"}}
+        },
+        {
+          "id": 25,
+          "type": "timeseries",
+          "title": "Network transmit by workload (top 15)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 37},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "topk(15, sum by (workload) (rate(container_network_transmit_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"}))", "legendFormat": "{{workload}}"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "Bps", "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right", "calcs": []}, "tooltip": {"mode": "multi", "sort": "desc"}}
+        },
+        {
+          "id": 30,
+          "type": "row",
+          "title": "Persistent volume claims",
+          "collapsed": false,
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 45},
+          "panels": []
+        },
+        {
+          "id": 31,
+          "type": "table",
+          "title": "PVC usage vs capacity",
+          "description": "Per-PVC used/capacity/available bytes and fill ratio (used / capacity is the effective limit). Source: kubelet_volume_stats_*.",
+          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 46},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "instant": true, "format": "table", "expr": "sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\"})"},
+            {"refId": "B", "instant": true, "format": "table", "expr": "sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\"})"},
+            {"refId": "C", "instant": true, "format": "table", "expr": "sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_available_bytes{namespace=~\"$$namespace\"})"},
+            {"refId": "D", "instant": true, "format": "table", "expr": "sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\"}) / sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\"})"}
+          ],
+          "transformations": [
+            {"id": "merge", "options": {}},
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true},
+                "indexByName": {"namespace": 0, "persistentvolumeclaim": 1, "Value #A": 2, "Value #B": 3, "Value #C": 4, "Value #D": 5},
+                "renameByName": {"namespace": "Namespace", "persistentvolumeclaim": "PVC", "Value #A": "Used", "Value #B": "Capacity", "Value #C": "Available", "Value #D": "Used %"}
+              }
+            }
+          ],
+          "options": {"showHeader": true, "cellHeight": "sm", "sortBy": [{"displayName": "Used %", "desc": true}], "footer": {"show": false}},
+          "fieldConfig": {
+            "defaults": {"unit": "short", "decimals": 2, "custom": {"align": "auto"}},
+            "overrides": [
+              {"matcher": {"id": "byName", "options": "Used"}, "properties": [{"id": "unit", "value": "bytes"}]},
+              {"matcher": {"id": "byName", "options": "Capacity"}, "properties": [{"id": "unit", "value": "bytes"}]},
+              {"matcher": {"id": "byName", "options": "Available"}, "properties": [{"id": "unit", "value": "bytes"}]},
+              {
+                "matcher": {"id": "byName", "options": "Used %"},
+                "properties": [
+                  {"id": "unit", "value": "percentunit"},
+                  {"id": "decimals", "value": 1},
+                  {"id": "min", "value": 0},
+                  {"id": "max", "value": 1},
+                  {"id": "custom.cellOptions", "value": {"type": "gauge", "mode": "gradient"}},
+                  {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.75}, {"color": "red", "value": 0.9}]}}
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 32,
+          "type": "timeseries",
+          "title": "PVC fill ratio over time (top 15)",
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 56},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "topk(15, sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\"}) / sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\"}))", "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1, "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "right", "calcs": []}, "tooltip": {"mode": "multi", "sort": "desc"}}
+        }
+      ]
+    }
