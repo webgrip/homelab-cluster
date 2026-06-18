@@ -1,7 +1,9 @@
-# KEDA ScaledJob: ARC-style autoscaling. The Forgejo scaler watches pending jobs
-# for the `docker` label and creates one ephemeral runner Job per pending job
-# (scale 0 -> maxReplicaCount). Each pod runs forgejo-runner `one-job` (registers,
-# runs exactly one job, exits) with a privileged DinD native-sidecar for image builds.
+# KEDA ScaledJob: ARC-style autoscaling. The Forgejo scaler watches pending jobs for the
+# `docker` label. minReplicaCount keeps a WARM POOL of runners blocked on `one-job --wait`
+# (ready to grab a job with no cold-start); the scaler adds more — up to maxReplicaCount —
+# when pending jobs exceed the pool. Each pod runs forgejo-runner `one-job` (registers, runs
+# exactly one job, exits; KEDA backfills to maintain the floor) with a privileged DinD
+# native-sidecar for image builds.
 #
 # Topology A, host-mode (ADR-0008 step 1, "prove the runner first"). The MAIN container is the
 # webgrip github-runner toolchain image (docker CLI + buildx plugin, git, php, dotnet); workflow
@@ -16,7 +18,11 @@ metadata:
   namespace: forgejo
 spec:
   pollingInterval: 30
-  minReplicaCount: 0
+  # Warm pool: keep 2 runners always blocked on `one-job --wait` so routine jobs start with no
+  # cold-start, then burst up to maxReplicaCount under load. KEDA backfills as warm runners take
+  # jobs and exit. NOTE: 2 pods (each with a privileged dind sidecar) run 24/7 on the fringe nodes
+  # — ~200m CPU / ~768Mi memory requests each. Set back to 0 for pure scale-from-zero.
+  minReplicaCount: 2
   maxReplicaCount: 6
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 5
@@ -115,7 +121,12 @@ spec:
                 # "Cannot find: node in PATH". node20 (glibc, v20.x) matches actions/checkout@v4's
                 # declared runtime; node24 is also bundled at externals/node24/bin if needed.
                 export PATH="/home/runner/externals/node20/bin:$PATH"
+                # --wait blocks until Forgejo assigns a task. Required for the warm pool
+                # (minReplicaCount): these pods start with no pending job, so without --wait they'd
+                # exit immediately and KEDA would hot-loop respawning them. Harmless for burst pods
+                # (a task is already pending, so it returns at once).
                 exec /dist/forgejo-runner --config /config/config.yaml one-job \
+                  --wait \
                   --url "http://forgejo-http.forgejo.svc.cluster.local:3000" \
                   --uuid "$(cat /run/forgejo-runner/uuid)" \
                   --token-url "file:///run/forgejo-runner/token"
