@@ -7,3 +7,14 @@ metadata:
     webgrip.io/owner: platform
     webgrip.io/tier: app
     webgrip.io/exposure: external
+    # The KEDA-scaled forgejo-runner needs a privileged docker:dind sidecar
+    # (ADR-0008). Built-in Pod Security Admission can only be relaxed per-namespace,
+    # not per-pod, so enforce must be `privileged` here. Kyverno's
+    # pod-security-baseline-enforce (with the runner-only exception-forgejo-runner
+    # PolicyException) remains the real baseline gate for every other pod in this
+    # namespace. Without this, namespace-tenancy-audit's `+()` mutate defaults
+    # enforce to `baseline` and PSA rejects every runner pod. warn/audit stay at
+    # `restricted` so non-runner workloads are still surfaced.
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
