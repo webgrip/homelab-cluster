@@ -1,0 +1,104 @@
+---
+# Tier-1 "do-once, gated, idempotent" bootstrap Job (ADR-0019), mirroring forgejo-ci-provisioner.
+# Registers ONE persistent global Actions runner with Forgejo and writes its server-issued
+# (uuid, token) into Secret forgejo-runner-secret. The KEDA ScaledJob's ephemeral one-job pods all
+# reuse that single static identity (`--uuid`/`--token-url`) — this is the documented KEDA Forgejo
+# autoscaling pattern (a reused global runner, NOT a fresh ephemeral registration per pod), so the
+# runner is registered ephemeral:false (an ephemeral:true runner is deleted by Forgejo after one
+# job, which would invalidate the shared identity).
+#
+# Why this Job exists: the old forgejo-runner-secret was seeded (PushSecret) from the retired SOPS
+# secret, whose `uuid` was a 16-hex string, not a 36-char runner UUID — so `forgejo-runner one-job`
+# died with `malformed uuid ... invalid UUID length: 16` and KEDA never picked up any job. This
+# provisioner now OWNS the Secret (the ESO ExternalSecret + migration PushSecret were removed), the
+# same way forgejo-ci-provisioner owns forgejo-ci-token: a minted, re-mintable credential.
+#
+# This app's Kustomization has NO postBuild.substituteFrom, so braced ${VARS} are left for the shell.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: forgejo-runner-provisioner
+  namespace: forgejo
+spec:
+  backoffLimit: 4
+  template:
+    spec:
+      serviceAccountName: forgejo-runner-provisioner
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: provision
+          image: docker.io/alpine/k8s:1.36.1@sha256:692239d739589247c4a791205ed9619c28ae85a21286e19a6211c04a62c56668
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: HOME
+              value: /tmp
+            - name: FORGEJO_URL
+              value: http://forgejo-http.forgejo.svc.cluster.local:3000
+            - name: NAMESPACE
+              value: forgejo
+            - name: SECRET_NAME
+              value: forgejo-runner-secret
+            - name: RUNNER_NAME
+              value: keda-global-docker
+            - name: ADMIN_USERNAME
+              valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: username}}
+            - name: ADMIN_PASSWORD
+              valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: password}}
+          command:
+            - /bin/sh
+            - -ceu
+            - |
+              api="${FORGEJO_URL}/api/v1"
+              admin="${ADMIN_USERNAME}:${ADMIN_PASSWORD}"
+              uuid_re='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+
+              # 1) Idempotent: skip if the stored uuid is already a well-formed runner UUID.
+              cur="$(kubectl -n "$NAMESPACE" get secret "$SECRET_NAME" \
+                -o jsonpath='{.data.uuid}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+              if printf '%s' "$cur" | grep -qiE "$uuid_re"; then
+                echo "stored runner uuid is well-formed ($cur) — no change"
+                exit 0
+              fi
+              echo "stored uuid missing/malformed ('${cur}') — (re)registering global runner"
+
+              # 2) Drop any prior registration with our name so we don't accumulate dead runners.
+              #    Best-effort: tolerate either {runners:[...]} or a bare array, and parse misses.
+              ids="$(curl -fsS -u "$admin" "$api/admin/actions/runners?limit=50" 2>/dev/null \
+                | jq -r --arg n "$RUNNER_NAME" '(.runners // .)[]? | select(.name==$n) | .id' 2>/dev/null || true)"
+              for id in $ids; do
+                curl -sS -o /dev/null -u "$admin" -X DELETE "$api/admin/actions/runners/$id" \
+                  && echo "deleted stale runner id=$id" || true
+              done
+
+              # 3) Register a fresh persistent global runner; capture server-issued uuid + token.
+              resp="$(curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST \
+                "$api/admin/actions/runners" \
+                -d "{\"name\":\"${RUNNER_NAME}\",\"ephemeral\":false}")"
+              uuid="$(printf '%s' "$resp" | jq -r '.uuid // empty')"
+              token="$(printf '%s' "$resp" | jq -r '.token // empty')"
+              printf '%s' "$uuid" | grep -qiE "$uuid_re" || { echo "register returned bad uuid: '${uuid}'" >&2; exit 1; }
+              [ -n "$token" ] || { echo "register returned empty token" >&2; exit 1; }
+
+              # 4) Write the identity the ScaledJob's one-job pods consume (keys: uuid, token).
+              kubectl -n "$NAMESPACE" create secret generic "$SECRET_NAME" \
+                --from-literal="uuid=$uuid" \
+                --from-literal="token=$token" \
+                --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+              echo "registered global runner ${RUNNER_NAME} (uuid ${uuid}) and wrote $SECRET_NAME"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}
