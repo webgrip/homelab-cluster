@@ -1,8 +1,8 @@
 # Runbook: Harbor (container registry)
 
 Operational guide for the Harbor OCI registry. Design rationale lives in the
-[RFC](../architecture/rfc-harbor-registry.md) and ADRs
-[0001–0006](../architecture/index.md). Manifests: `kubernetes/apps/harbor/`.
+[RFC](../rfc/rfc-harbor-registry.md) and ADRs
+[0001–0006](../adr/index.md). Manifests: `kubernetes/apps/harbor/`.
 
 ## Architecture at a glance
 
@@ -15,7 +15,7 @@ Operational guide for the Harbor OCI registry. Design rationale lives in the
 - **Secrets**: `harbor-admin` (admin password + at-rest `secretKey`) is **generated in-cluster** (ESO
   `password-generator-16/-32`, never manual); the **chart** owns its other internal secrets + the
   token-signing cert in its own `harbor-core` secret. `harbor-s3` and (phase 2) `harbor-oidc-values`
-  come from OpenBao. See [External Secrets](../external-secrets-plan.md).
+  come from OpenBao. See [External Secrets](../rfc/external-secrets-plan.md).
 
 ## First-time bring-up
 
@@ -87,14 +87,14 @@ kubectl -n harbor get secret harbor-admin -o jsonpath='{.data.HARBOR_ADMIN_PASSW
 ## Using Harbor day-to-day (the happy path)
 
 Two distinct flows — pulling *third-party* images through the cache, and publishing *your own*.
-Design: [RFC: Harbor Pull-Through Proxy Cache](../architecture/rfc-harbor-proxy-cache.md) and
-[ADR-0016–0018](../architecture/index.md).
+Design: [RFC: Harbor Pull-Through Proxy Cache](../rfc/rfc-harbor-proxy-cache.md) and
+[ADR-0016–0018](../adr/index.md).
 
 ### Pull third-party images through the proxy cache
 
 The two proxy-cache projects — `dockerhub` → `docker.io`, `ghcr` → `ghcr.io` — are created
 idempotently by the `harbor-proxy-config` CronJob (creds from OpenBao `secret/harbor/registry-proxy`,
-[ADR-0018](../architecture/adr-0018-harbor-config-idempotent-job.md)). Two ways to consume them:
+[ADR-0018](../adr/adr-0018-harbor-config-idempotent-job.md)). Two ways to consume them:
 
 - **Explicit** (works now): pull through the project path —
   `docker pull harbor.${SECRET_DOMAIN}/dockerhub/library/<repo>:<tag>` (or `.../ghcr/<owner>/<repo>`).
@@ -102,14 +102,14 @@ idempotently by the `harbor-proxy-config` CronJob (creds from OpenBao `secret/ha
 - **Transparent** (after Phase 1): your manifests keep their `docker.io/…` / `ghcr.io/…` references and
   containerd routes them through Harbor automatically — **Spegel peers → Harbor proxy → upstream**, with
   containerd falling back to upstream if Harbor is down. This is the Talos `machine.registries.mirrors`
-  + Spegel `prependExisting` cutover in [ADR-0017](../architecture/adr-0017-registry-mirror-talos-spegel.md);
+  + Spegel `prependExisting` cutover in [ADR-0017](../adr/adr-0017-registry-mirror-talos-spegel.md);
   **gate it on the fallback drill** (scale Harbor to zero, confirm an uncached pull still succeeds).
 
 > Status: proxy projects are provisioned; the transparent-mirror cutover (Phase 1) is pending.
 
 ### Publish & consume your own private images
 
-Harbor is **LAN-only** ([ADR-0005](../architecture/adr-0005-lan-only-exposure.md)), so the push must come
+Harbor is **LAN-only** ([ADR-0005](../adr/adr-0005-lan-only-exposure.md)), so the push must come
 from a host that can reach `envoy-internal` — i.e. an **in-cluster runner** (`arc-systems` / `forgejo-runner`).
 GitHub-hosted Actions cannot reach it. The build-and-push therefore lives in **`webgrip/workflows`**, not here.
 
@@ -139,7 +139,7 @@ GitHub-hosted Actions cannot reach it. The build-and-push therefore lives in **`
 | HelmRelease stuck `not ready`; `harbor-admin`/`harbor-s3` not `SecretSynced` | OpenBao path missing or sealed | `kubectl -n harbor get externalsecret`; populate `secret/harbor/s3` (`just harbor-s3-cred`); check `ClusterSecretStore/openbao` Ready |
 | PVC `Pending` | no default StorageClass | every PVC must set `storageClass` (`longhorn-general`) — already pinned in the HelmRelease |
 | `registry` pod errors talking to S3 / redirect loops | Garage path-style not honored | `disableredirect: true` + `secure: false` + HTTP `regionendpoint` are mandatory (set already); check Garage at `10.0.0.110:3900` |
-| Registry 5xx / blob I/O failing | Garage down | Garage is a hard dependency (ADR-0002 / [CNPG ↔ Garage](../cnpg-backups.md)); restore Garage |
+| Registry 5xx / blob I/O failing | Garage down | Garage is a hard dependency (ADR-0002 / [CNPG ↔ Garage](cnpg-backups.md)); restore Garage |
 | OIDC login fails | redirect URI / RS256 | redirect must equal `https://harbor.${SECRET_DOMAIN}/c/oidc/callback`; see [Authentik OIDC login](authentik-oidc-login.md) |
 
 ## Backup & disaster recovery
@@ -148,5 +148,5 @@ GitHub-hosted Actions cannot reach it. The build-and-push therefore lives in **`
 - An automated restore drill is wired via the `cnpg-restore-test` component
   (`kubernetes/apps/harbor/harbor/app/database/backup/restore-test/cronjob-patch.yaml`), **suspended by
   default** (cluster default to limit storage pressure). Flip `suspend: false` to enable.
-- Full restore: follow the [CNPG Restore Playbook](../cnpg-restore-playbook.md). The registry **blobs** live
+- Full restore: follow the [CNPG Restore Playbook](cnpg-restore-playbook.md). The registry **blobs** live
   in Garage S3 (the source of truth) — restoring `harbor-db` recovers metadata; blobs are untouched by the DB restore.

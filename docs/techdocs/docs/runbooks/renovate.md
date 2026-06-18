@@ -26,4 +26,4 @@ Use this when Renovate alerts are firing (for example `RenovateOperatorDeploymen
 
 ## More detail
 
-- Full Renovate docs/config: [docs/techdocs/docs/renovate.md](../renovate.md)
+- Full Renovate docs/config: [docs/techdocs/docs/renovate.md](../general/renovate.md)

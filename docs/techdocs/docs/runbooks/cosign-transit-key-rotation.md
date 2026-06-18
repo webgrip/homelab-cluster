@@ -1,7 +1,7 @@
 # Runbook: Rotating the `cosign-webgrip` OpenBao Transit signing key
 
 **Status:** active · **Scope:** OpenBao Transit key `cosign-webgrip` used to sign + attest
-webgrip Harbor images · **Related:** [supply-chain-enforcement-roadmap.md](../supply-chain-enforcement-roadmap.md)
+webgrip Harbor images · **Related:** [supply-chain-enforcement-roadmap.md](../rfc/supply-chain-enforcement-roadmap.md)
 
 > ⚠️ **Why this is delicate.** Kyverno (`image-verify-harbor-audit`) verifies Harbor images
 > against the public key(s) held in the `cosign-webgrip-pub` ConfigMap (namespace `security`).

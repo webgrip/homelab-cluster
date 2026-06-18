@@ -18,4 +18,4 @@ Use this when k6 canary results look bad (errors/latency) in dashboards.
 
 ## Where it’s configured
 
-- [kubernetes/apps/observability/k6-canaries](../../../kubernetes/apps/observability/k6-canaries)
+- [kubernetes/apps/observability/k6-canaries](../../../../kubernetes/apps/observability/k6-canaries)

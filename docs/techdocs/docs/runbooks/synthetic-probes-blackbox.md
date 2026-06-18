@@ -66,5 +66,5 @@ Triage:
 
 ## Where it’s configured
 
-- [kubernetes/apps/observability/blackbox-exporter](../../../kubernetes/apps/observability/blackbox-exporter)
-- SLO: [kubernetes/apps/observability/sloth/slos/slo-garage-availability.yaml](../../../kubernetes/apps/observability/sloth/slos/slo-garage-availability.yaml)
+- [kubernetes/apps/observability/blackbox-exporter](../../../../kubernetes/apps/observability/blackbox-exporter)
+- SLO: [kubernetes/apps/observability/sloth/slos/slo-garage-availability.yaml](../../../../kubernetes/apps/observability/sloth/slos/slo-garage-availability.yaml)

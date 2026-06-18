@@ -3,7 +3,7 @@
 Paste the block below into a Claude Code session in `webgrip/workflows`. Harbor-side coordinates and
 the runbook live in `webgrip/homelab-cluster`
 ([Runbook: Harbor](../runbooks/harbor.md#using-harbor-day-to-day-the-happy-path),
-[ADR-0005](../architecture/adr-0005-lan-only-exposure.md)).
+[ADR-0005](../adr/adr-0005-lan-only-exposure.md)).
 
 ---
 

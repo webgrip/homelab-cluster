@@ -1,6 +1,6 @@
 # Runbook: External Secrets (ESO)
 
-Operational procedures for the [External Secrets migration](../external-secrets-plan.md):
+Operational procedures for the [External Secrets migration](../rfc/external-secrets-plan.md):
 deploying ESO, migrating a secret per class, standing up OpenBao, and
 recovering from failures. Read the plan first for the *why* and the full secret inventory.
 
@@ -50,7 +50,7 @@ kubectl get secret <name> -n <ns> -o jsonpath='{.metadata.ownerReferences[0].kin
 
 GitOps only — never `kubectl apply` the manifests by hand.
 
-1. Scaffold `kubernetes/apps/security/external-secrets/` per the [plan](../external-secrets-plan.md#eso-install)
+1. Scaffold `kubernetes/apps/security/external-secrets/` per the [plan](../rfc/external-secrets-plan.md#eso-install)
    (`ks.yaml` + `app/{ocirepository,helmrelease,kustomization,clustergenerator,clustersecretstore-kube,rbac-authentik-push}.yaml`).
 2. Add `- ./external-secrets/ks.yaml` to `kubernetes/apps/security/kustomization.yaml`.
 3. Validate: `./scripts/run-flux-local-test.sh` then `./scripts/run-flux-local-diff.sh`.
@@ -61,10 +61,10 @@ GitOps only — never `kubectl apply` the manifests by hand.
 ## Recipe: migrate a random secret
 
 For throwaway/session entropy only. **Never** for at-rest encryption keys (see
-[the at-rest list](../external-secrets-plan.md#at-rest-encryption-keys-never-regenerate)).
+[the at-rest list](../rfc/external-secrets-plan.md#at-rest-encryption-keys-never-regenerate)).
 
 1. Add `app/externalsecret.yaml` using the
-   [generator pattern](../external-secrets-plan.md#random-generator-clustergenerator-per-secret-externalsecret):
+   [generator pattern](../rfc/external-secrets-plan.md#random-generator-clustergenerator-per-secret-externalsecret):
    one `dataFrom` entry per key, `refreshInterval: "0"`, `target.name` = the **exact** old
    Secret name, `deletionPolicy: Retain`.
 2. Add `dependsOn: [{name: external-secrets, namespace: security}]` to the app's `ks.yaml`.
@@ -81,7 +81,7 @@ Order: grafana → forgejo → n8n → backstage. Per provider:
 1. **Generate** the shared secret in the app's namespace (generator `ExternalSecret`,
    key `client_secret`, `refreshInterval: "0"`).
 2. **PushSecret** it into `authentik` as `oidc-<app>-shared` via `kube-store`
-   (see the [OIDC pattern](../external-secrets-plan.md#oidc-client_secret-auto-elimination)).
+   (see the [OIDC pattern](../rfc/external-secrets-plan.md#oidc-client_secret-auto-elimination)).
 3. **Mount** into Authentik: add the env var to `global.env` in the Authentik HelmRelease.
 4. **Set** `client_secret: !Env OIDC_<APP>_CLIENT_SECRET` (and pin `client_id`) in the
    provider blueprint `attrs`.
@@ -167,7 +167,7 @@ under `secret/<name>` (KV v2), then add the matching `ExternalSecret`.
    `garage-forgejo` → `access_key_id` / `secret_access_key`). Use the existing decrypted
    value for at-rest keys.
 2. Add `app/externalsecret.yaml` using the matching
-   [shape](../external-secrets-plan.md#external-externalsecret-three-shapes) (existingSecret /
+   [shape](../rfc/external-secrets-plan.md#external-externalsecret-three-shapes) (existingSecret /
    bulk env / per-key), `secretStoreRef: { kind: ClusterSecretStore, name: openbao }`,
    preserving exact Secret name + key names.
 3. Add the `dependsOn`, validate, commit, push.
@@ -241,6 +241,6 @@ Tag each secret accordingly when seeding so this list stays accurate.
 
 ## See also
 
-- [External Secrets plan](../external-secrets-plan.md) — architecture, inventory, waves.
+- [External Secrets plan](../rfc/external-secrets-plan.md) — architecture, inventory, waves.
 - [Authentik OIDC login failures](authentik-oidc-login.md) — for OIDC-elimination debugging.
-- [CloudNativePG restore playbook](../cnpg-restore-playbook.md) — for app database recovery.
+- [CloudNativePG restore playbook](cnpg-restore-playbook.md) — for app database recovery.
