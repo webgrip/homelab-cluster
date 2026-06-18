@@ -100,15 +100,21 @@ spec:
             # Host-mode toolchain image: docker CLI + buildx plugin, git, php, dotnet; runs as the
             # image's non-root `runner` user. The forgejo-runner agent is injected at /dist by the
             # runner-bin init container. Steps execute IN this container.
-            # NOTE: verify on the first real job — (1) the static forgejo-runner binary runs on this
-            # glibc image, (2) /certs/client is readable by the runner user, (3) JS actions find
-            # node (not on PATH here; the actions-runner base bundles it under externals/).
+            # Proven on the first real job (run #4): the static forgejo-runner binary runs on this
+            # glibc image and the dind sidecar is reachable. JS actions (actions/checkout,
+            # tj-actions/changed-files) run on Node, which the actions-runner base bundles under
+            # externals/ but does NOT put on PATH — so the args below prepend it (see there).
             image: ghcr.io/webgrip/github-runner@sha256:87be5b6502926b9fc128ab8804fe38672dbaf28f0f72fe63c791f9df88c2b5e9
             command:
               - bash
               - -ec
             args:
               - |
+                # Host mode runs steps in THIS toolchain container. JS actions need `node`, which the
+                # image bundles under externals/ but not on PATH — without this forgejo-runner dies
+                # "Cannot find: node in PATH". node20 (glibc, v20.x) matches actions/checkout@v4's
+                # declared runtime; node24 is also bundled at externals/node24/bin if needed.
+                export PATH="/home/runner/externals/node20/bin:$PATH"
                 exec /dist/forgejo-runner --config /config/config.yaml one-job \
                   --url "http://forgejo-http.forgejo.svc.cluster.local:3000" \
                   --uuid "$(cat /run/forgejo-runner/uuid)" \
