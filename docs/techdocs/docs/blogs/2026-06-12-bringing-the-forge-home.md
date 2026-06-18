@@ -7,6 +7,8 @@
 ---
 
 > **Update — 2026-06-17.** Two threads this post filed under *"not started"* have moved a long way since it was written. **Harbor is live**, and the **supply-chain trust chain is built (in audit)** — though it didn't land where the first draft guessed. The *registry* and *trust boundary* sections below, and the status board near the end, are revised to match; everything else stands as written.
+>
+> **Update — 2026-06-18.** The CI runner — *"Live, unproven on a real job"* below — is now **proven**, after clearing four sequential admission/runtime gates; it also gained a warm pool, and `webgrip/infrastructure` has begun de-mirroring to become Forgejo-authoritative. The new chapter is its own post: [The Runner Runs](2026-06-18-the-runner-runs.md).
 
 ## Prologue: the north star
 
@@ -452,7 +454,7 @@ Stripped of narrative, the honest status board:
 | Bulk storage | — | Git on Longhorn, LFS/packages on Garage S3 | **Live** |
 | SSO / identity | GitHub accounts & teams | Authentik OIDC (`Ryangr0`) | **Live** (groups→teams pending) |
 | Runner autoscaler | ARC | KEDA | **Live** |
-| Runners | ARC scale sets (normal+heavy) | KEDA `ScaledJob` (ephemeral, DinD; `docker` + `arc-runner-set`) | **Live, unproven on a real job** |
+| Runners | ARC scale sets (normal+heavy) | KEDA `ScaledJob` (ephemeral, DinD, warm pool; `docker`) | **Live, proven** — [The Runner Runs](2026-06-18-the-runner-runs.md) |
 | CI workflows (this repo) | 7× `.github/workflows` | Forgejo Actions | **1 smoke test; 7 to port** |
 | Image pipeline (`webgrip/infrastructure`) | `.github`→GHCR | `.forgejo`→Harbor (two-tree; shared `webgrip/workflows`) | **Built; pending first signed release** |
 | Bulk mirror | — | gitea-mirror (continuous) | **~71/72; `homelab-cluster` wedged** |

@@ -102,11 +102,24 @@ LoadBalancer Services in the kyverno `network-exposure-enforce` policy.
   generation** (a `spec.maxHistory` tweak works) and commit — helm-controller resets the
   failure count and re-attempts. Adding the missing Secret alone does not un-stall it.
 
+## Actions runner (CI)
+
+Forgejo Actions is enabled server-side and the runner is **deployed and proven on a real job**
+(2026-06-18): a KEDA `ScaledJob` of ephemeral `forgejo-runner one-job` pods with a privileged
+Docker-in-Docker sidecar (host-mode, `runs-on: docker`), a **warm pool** (`minReplicaCount` +
+`one-job --wait`), and a provisioner-minted runner identity. The privileged sidecar needs **two**
+admission gates opened on this namespace — a Kyverno `PolicyException` **and**
+`pod-security.kubernetes.io/enforce: privileged` (a plain kyverno hardening exception is not
+enough). Full architecture, scaling knobs, and the runtime troubleshooting table:
+[Forgejo runner runbook](../runbooks/forgejo-runner.md); the destination (rootless BuildKit, drop
+the privilege) is [ADR-0008](../adr/adr-0008-rootless-ci-image-builds.md).
+
+**Repo authority.** `webgrip/infrastructure` is being de-mirrored and made Forgejo-authoritative so
+its in-cluster CI can cut releases — a read-only pull-mirror can't be pushed to, which blocks
+`semantic-release`. See [ADR-0024](../adr/adr-0024-forgejo-leading-application-repos.md).
+
 ## Follow-ups (not yet deployed)
 
-- **Forgejo Actions runner** — Actions is enabled server-side, but no `forgejo-runner`
-  is deployed yet. A runner needs a privileged/DinD container and therefore a kyverno
-  hardening exception for the `forgejo` namespace.
 - **Public exposure** — currently LAN-only. To publish, move the `HTTPRoute` to
   `envoy-external` and add `forgejo` to the external-gateway allow-list in the kyverno
   `network-exposure-enforce` policy.

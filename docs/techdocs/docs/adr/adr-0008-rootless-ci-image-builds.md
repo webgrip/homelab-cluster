@@ -1,6 +1,21 @@
 # ADR-0008: Rootless CI image builds (drop privileged Docker-in-Docker)
 
 > Status: **Proposed** · Date: 2026-06-12 · Part of [RFC: Security Hardening](../rfc/rfc-security-hardening.md)
+>
+> **Update — 2026-06-18: step 1 is done.** The runner is **proven on a real job** — it registered,
+> scheduled, and ran `webgrip/infrastructure` workflows end to end on topology A (privileged DinD,
+> host-mode). Getting there meant clearing **four sequential gates**, each only visible once the
+> prior was cleared: (1) Kyverno `pod-security-baseline-enforce` denied the privileged **Job**
+> (a PolicyException now waives only `privileged-containers` for the runner); (2) the built-in Pod
+> Security Admission denied the **Pod** (the `forgejo` namespace is now pinned
+> `pod-security.kubernetes.io/enforce: privileged`); (3) the runner's stored registration `uuid` was
+> a malformed 16-hex string — a new idempotent `forgejo-runner-provisioner` now mints a real global
+> runner identity; (4) host-mode JS actions couldn't find `node` (the args prepend the toolchain
+> image's bundled `externals/node20/bin` to `PATH`). It also gained a **warm pool**
+> (`minReplicaCount` + `one-job --wait`). Operations + the full failure table:
+> [Forgejo runner runbook](../runbooks/forgejo-runner.md). The decision below — converge on
+> **topology C** (rootless BuildKit) and drop the one `privileged: true` — is unchanged; only the
+> "prove the runner first" prerequisite has now actually happened.
 
 ## Context
 

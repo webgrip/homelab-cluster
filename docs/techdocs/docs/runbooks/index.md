@@ -12,6 +12,10 @@ This page is intentionally a **links-only index**. Each runbook has its own dedi
 - Flux: [docs/techdocs/docs/runbooks/flux.md](flux.md)
 - Renovate: [docs/techdocs/docs/runbooks/renovate.md](renovate.md)
 
+## CI / Forge
+
+- Forgejo Actions runner (KEDA `ScaledJob`, warm pool, registration, troubleshooting): [docs/techdocs/docs/runbooks/forgejo-runner.md](forgejo-runner.md)
+
 ## Networking / Ingress
 
 - Synthetic probes (blackbox): [docs/techdocs/docs/runbooks/synthetic-probes-blackbox.md](synthetic-probes-blackbox.md)
