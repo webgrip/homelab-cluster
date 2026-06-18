@@ -164,15 +164,25 @@ image trust, and are out of scope here except where noted.)
 | `image-attestations-audit` — rule `verify-cyclonedx-sbom` | `ghcr.io/webgrip/*` | CycloneDX SBOM attestation (`https://cyclonedx.org/bom`); requires `Data.bomFormat == CycloneDX` | keyless (same subject regex) | **Audit** |
 | `image-supply-chain-audit` — `require-image-digest` | application namespaces (NotIn system list) | every container/init/ephemeral image pinned `*@sha256:*` | n/a (hygiene) | **Audit** |
 | `image-supply-chain-audit` — `disallow-latest-tag-even-with-digest` | application namespaces | reject `*:latest@*` even when digest-pinned | n/a | **Audit** |
-| `image-supply-chain-audit` — `require-approved-registries` | application namespaces | image must match an allowlisted registry (ghcr.io, docker.io, quay.io, registry.k8s.io, mirror.gcr.io, gcr.io, public.ecr.aws, mcr.microsoft.com) | n/a (allowlist) | **Audit** |
+| `image-supply-chain-audit` — `require-approved-registries` | application namespaces | image must come from **`harbor.webgrip.dev/*` only** — Harbor is the sole approved OCI host. Every other registry (docker.io, ghcr.io, quay.io, registry.k8s.io, gcr.io, public.ecr.aws, mcr.microsoft.com) now reports an audit violation. | n/a (allowlist) | **Audit** |
 | `image-supply-chain-audit` — `require-fully-qualified-images` | application namespaces | reject bare/short image names with no registry host | n/a | **Audit** |
 | `image-hygiene-audit` — `require-image-tag` | application namespaces | every image carries a tag | n/a | **Audit** |
 | `image-hygiene-audit` — `validate-image-tag` | application namespaces | reject mutable `:latest` | n/a | **Audit** |
 
-> **Note on `require-approved-registries`:** the allowlist **does not yet include
-> `harbor.webgrip.dev`.** As soon as a real workload pulls from Harbor in an application
-> namespace, this rule will report an audit failure. Adding Harbor to the allowlist is a
-> prerequisite for the Harbor registry-allowlist phase (§3, Phase E) — see the checklist.
+> **Note on `require-approved-registries` (Harbor-only, audit-first):** the allowlist has been
+> **narrowed to `harbor.webgrip.dev/*` as the sole approved OCI host** (2026-06-18). Because the
+> policy is still `validationFailureAction: Audit`, nothing is blocked — instead every workload
+> that pulls from docker.io / ghcr.io / quay.io / registry.k8s.io / gcr.io / public.ecr.aws /
+> mcr.microsoft.com now surfaces as an audit violation in PolicyReports (admission-time **and**
+> via background scan). That report **is** the blast-radius inventory for Phase E: each violating
+> image must be mirrored/proxied through Harbor before this rule can move to Enforce. Use Harbor's
+> Docker Hub / ECR proxy-cache projects (already configured) to mirror on first pull.
+>
+> **Scope:** this covers **runtime container images in application namespaces only**. System
+> namespaces (kube-system, flux-system, longhorn-system, cnpg-system, …) are excluded by the
+> shared `*applicationNamespaces` selector and keep pulling upstream infra images. Restricting
+> Flux's `OCIRepository` Helm-chart sources to Harbor is a **separate, not-yet-done follow-up**
+> — see §5.
 
 Supporting objects (not policies, but required for the Harbor policy to function):
 
@@ -300,23 +310,32 @@ This phase is **independent of signing** and can be promoted early — it is pur
 exception inventory already exists. Good candidate to enforce *before* Phase A if you want a
 low-risk first win.
 
-### Phase E — Registry allowlist enforced
+### Phase E — Harbor-only registry enforced
 
 **Promote:** `image-supply-chain-audit` rules `require-approved-registries`,
 `require-fully-qualified-images` → Enforce; and `image-hygiene-audit` rules → Enforce.
 
+**Already done (2026-06-18):** `require-approved-registries` has been narrowed to a single
+allowed pattern — `harbor.webgrip.dev/*` — so the rule already expresses "Harbor is the only
+approved OCI host." It remains in **Audit**, so today it only *reports* every non-Harbor pull.
+Phase E is now simply: drive those audit violations to zero (by mirroring), then flip to Enforce.
+
 **Gates:**
 
-- [ ] **Add `harbor.webgrip.dev` to the `require-approved-registries` anyPattern list** —
-      currently absent. Without this, the first real Harbor workload in an app namespace is
-      rejected under Enforce.
-- [ ] Inventory every registry in use cluster-wide (Trivy Operator's running-image list or the
-      `trivy-sbom-uploader` output is the source of truth) and confirm each is either on the
-      allowlist or covered by an exception.
-- [ ] Exceptions for third-party charts that hardcode Docker Hub are in place and reviewed.
+- [ ] Inventory every non-Harbor image in use across application namespaces — the
+      `require-approved-registries` PolicyReports are now the authoritative blast-radius list
+      (cross-check with Trivy Operator's running-image list / `trivy-sbom-uploader` output).
+- [ ] **Mirror/proxy every one of those images through Harbor** and repoint the manifests
+      (e.g. `docker.io/alpine` → a Harbor Docker Hub proxy-cache project; first-party stays
+      `harbor.webgrip.dev/webgrip/*`). Harbor's Docker Hub + ECR proxy-cache projects are already
+      configured for pull-through.
+- [ ] Drive `require-approved-registries` audit failures to **zero** in all non-excepted
+      application namespaces.
+- [ ] Time-boxed PolicyExceptions (with rationale + expiry) for any workload that genuinely
+      cannot move to Harbor yet, so the Enforce flip doesn't brick it.
 
-This is **last** because it has the widest blast radius — it touches every workload's image
-reference, including operator/system images, and the allowlist is easy to get subtly wrong.
+This is **last** because it has the widest blast radius — under Harbor-only, *every* workload's
+image reference must resolve to Harbor, so nothing flips to Enforce until mirroring is complete.
 
 ### 3.6 Recommended ordering (TL;DR)
 
@@ -325,7 +344,7 @@ Phase D (digest pinning) ─► Phase A (GHCR signature) ─► Phase C (GHCR SL
                                     │                          │
                                     └► Phase B (GHCR SBOM) ─────┘
 Harbor break-glass ─► Phase B-Harbor (signature + SBOM, coupled)
-Phase E (registry allowlist) ── last, after Harbor is on the allowlist
+Phase E (Harbor-only registry) ── last, after every image is mirrored through Harbor
 ```
 
 ### 3.7 Detecting readiness from PolicyReports
@@ -489,6 +508,29 @@ spec:
 - This is a §8/roadmap item, not part of the Audit→Enforce flips — there are no charts to sign
   yet.
 
+### 5.1 Restricting `OCIRepository` chart *sources* to Harbor (deferred follow-up)
+
+The Harbor-only registry control landed in `require-approved-registries` (2026-06-18) governs
+**runtime container images only** — Kyverno never sees Flux's chart pulls. Making Harbor the only
+OCI host for *charts* too is a **separate, deliberately-deferred follow-up** (the "chart sources
+later" decision). Today Flux pulls Helm charts via `OCIRepository` from several upstream hosts:
+
+- `oci://ghcr.io/...` — external-secrets, bjw-s app-template, grafana operator/pyroscope, kyverno, ARC
+- `oci://quay.io/jetstack/charts/...` — trust-manager
+
+To make Harbor the only chart host, two pieces are needed and neither exists yet:
+
+1. **Mirror each upstream chart into Harbor** (Harbor can proxy-cache OCI Helm charts the same way
+   it proxies images) and repoint every `OCIRepository.spec.url` to `oci://harbor.webgrip.dev/...`.
+2. **Guard it** so a new `oci://` source outside Harbor can't be reintroduced — extend the
+   existing `flux-governance-enforce` Kyverno policy (it already governs Flux sources) with a rule
+   that `OCIRepository.spec.url` must start with `oci://harbor.webgrip.dev/`. Run it Audit-first,
+   same as the image policy, then flip to Enforce once all sources are mirrored.
+
+Sequence this **after** Phase E (Harbor-only images) is stable — chart-source migration depends on
+Harbor proxy-cache being proven reliable for the cluster's reconcile path, and a broken chart
+source fails Flux reconciliation hard (`Ready=False`), which is higher-stakes than an audit report.
+
 ---
 
 ## 6. Harbor-side controls to layer in
@@ -636,7 +678,7 @@ Effort: **S** ≈ < ½ day, **M** ≈ ½–2 days, **L** ≈ multi-day / cross-s
 | 9 | **Phase A**: enforce `image-verify-audit/verify-webgrip-images` (GHCR signature). | S | `kyverno/policies/app/image-verify-audit.yaml` |
 | 10 | **Phase B-GHCR**: enforce `verify-cyclonedx-sbom`. | S | `kyverno/policies/app/image-attestations-audit.yaml` |
 | 11 | **Phase B-Harbor**: enforce `image-verify-harbor-audit` (signature + CycloneDX, coupled) — only after P0 #1–3 + Harbor re-releases. | S | `kyverno/policies/app/image-verify-harbor-audit.yaml` |
-| 12 | **Add `harbor.webgrip.dev` to `require-approved-registries`** (prereq for Phase E and for any Harbor app workload). | S | `kyverno/policies/app/image-supply-chain-audit.yaml` |
+| 12 | **Harbor-only allowlist** — ✅ DONE (2026-06-18): `require-approved-registries` narrowed to `harbor.webgrip.dev/*` as the sole approved OCI host, kept in Audit. Remaining work to Enforce = mirror every non-Harbor image (now item #15). | S | `kyverno/policies/app/image-supply-chain-audit.yaml` |
 | 13 | Re-confirm / re-date the `exception-third-party-image-supply-chain` inventory before Phase D/E. | S | `kyverno/policies/app/exception-third-party-images.yaml` |
 
 ### P2 — deeper hardening and gap-closing
@@ -644,7 +686,7 @@ Effort: **S** ≈ < ½ day, **M** ≈ ½–2 days, **L** ≈ multi-day / cross-s
 | # | Measure | Effort | File(s) / system |
 |---|---|---|---|
 | 14 | **Phase C**: enforce `verify-github-slsa-provenance` (GHCR). | S | `kyverno/policies/app/image-attestations-audit.yaml` |
-| 15 | **Phase E**: enforce registry allowlist + fully-qualified + image-hygiene rules (last; widest blast radius). | M | `image-supply-chain-audit.yaml`, `image-hygiene-audit.yaml` |
+| 15 | **Phase E**: drive `require-approved-registries` (Harbor-only) audit violations to zero by mirroring/proxying every non-Harbor image through Harbor, then enforce it + fully-qualified + image-hygiene rules (last; widest blast radius). | L | `image-supply-chain-audit.yaml`, `image-hygiene-audit.yaml`, Harbor proxy-cache |
 | 16 | Harbor **CVE-severity pull-gating** (start in observe/warn). | M | Harbor project settings |
 | 17 | **Transit key rotation runbook** — ✅ DONE: zero-downtime dual-key overlap, emergency path, rollback. | — | [`runbooks/cosign-transit-key-rotation.md`](runbooks/cosign-transit-key-rotation.md) |
 | 18 | Move runner **off privileged DinD** (rootless/sysbox/buildkitd or LXC/VM). | L | `forgejo-runner` config + `ops/docker/*-runner` |
@@ -652,6 +694,7 @@ Effort: **S** ≈ < ½ day, **M** ≈ ½–2 days, **L** ≈ multi-day / cross-s
 | 20 | **Forgejo-native SLSA provenance** for the Harbor path (research → implement). | L | `.forgejo/actions/cosign-sign-attest` + a new attestation step |
 | 21 | **Flux `spec.verify` cosign** on first-party OCI Helm charts — Kyverno can't gate charts (they're not Pod images). ⚠️ Flux verify is **enforce-only**: a failed verify sets `Ready=False` + alerts + withholds the artifact; there is **no audit mode**. So for an *audit* phase, run a **side-channel CronJob** that `cosign verify`s the charts → Alertmanager, and add `spec.verify` to the source only when ready to enforce. | M | side-channel CronJob + PrometheusRule (audit); `OCIRepository`/`HelmRelease` `spec.verify` + `flux-system` pubkey Secret (enforce) |
 | 22 | Capture Harbor project config (immutability, retention, robots, quotas, CVE gate) as IaC. | M | new Harbor Terraform/automation |
+| 23 | **Harbor-only chart sources** (§5.1) — mirror upstream OCI Helm charts into Harbor, repoint every `OCIRepository.spec.url` to `oci://harbor.webgrip.dev/...`, and add a `flux-governance-enforce` rule pinning chart hosts to Harbor (Audit→Enforce). Sequence after Phase E. | L | `OCIRepository` sources + `kyverno/policies/app/flux-governance-enforce.yaml` |
 
 ---
 

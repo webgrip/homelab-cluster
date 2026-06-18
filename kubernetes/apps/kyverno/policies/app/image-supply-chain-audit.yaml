@@ -66,6 +66,14 @@ spec:
             pattern:
               image: "!*:latest@*"
     - name: require-approved-registries
+      # Harbor is the ONLY approved OCI host. Every other registry (docker.io,
+      # ghcr.io, quay.io, registry.k8s.io, gcr.io, public.ecr.aws, mcr...) must
+      # be mirrored/proxied through Harbor before this can move to Enforce.
+      # Kept at validationFailureAction: Audit (policy level) so this observes
+      # the blast radius via PolicyReports without blocking pulls yet.
+      # NOTE: this covers runtime container images in application namespaces only.
+      # Flux OCIRepository Helm-chart sources are NOT yet restricted to Harbor —
+      # tracked as a follow-up (see supply-chain-enforcement-roadmap.md).
       match:
         any:
           - resources:
@@ -74,19 +82,11 @@ spec:
               namespaceSelector:
                 matchExpressions: *applicationNamespaces
       validate:
-        message: "Images should come from explicitly approved registries."
+        message: "Images must come from the in-cluster Harbor registry (harbor.${SECRET_DOMAIN}); no other OCI hosts are approved."
         foreach:
           - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
-            anyPattern:
-              - image: "ghcr.io/*"
-              - image: "harbor.${SECRET_DOMAIN}/*" # in-cluster Harbor (first-party webgrip images)
-              - image: "docker.io/*"
-              - image: "quay.io/*"
-              - image: "registry.k8s.io/*"
-              - image: "mirror.gcr.io/*"
-              - image: "gcr.io/*"
-              - image: "public.ecr.aws/*"
-              - image: "mcr.microsoft.com/*"
+            pattern:
+              image: "harbor.${SECRET_DOMAIN}/*"
     - name: require-fully-qualified-images
       match:
         any:
