@@ -2,6 +2,12 @@
 # for the `docker` label and creates one ephemeral runner Job per pending job
 # (scale 0 -> maxReplicaCount). Each pod runs forgejo-runner `one-job` (registers,
 # runs exactly one job, exits) with a privileged DinD native-sidecar for image builds.
+#
+# Topology A, host-mode (ADR-0008 step 1, "prove the runner first"). The MAIN container is the
+# webgrip github-runner toolchain image (docker CLI + buildx plugin, git, php, dotnet); workflow
+# steps run inside it (config.yaml maps `docker` -> host). It shares the pod netns with the dind
+# sidecar, so DOCKER_HOST=tcp://localhost:2376 reaches the daemon directly. The github-runner image
+# doesn't ship forgejo-runner, so the `runner-bin` init container injects the static binary.
 ---
 apiVersion: keda.sh/v1alpha1
 kind: ScaledJob
@@ -43,6 +49,24 @@ spec:
         # auto-terminated when the runner (main container) finishes its one job,
         # so the Job completes cleanly.
         initContainers:
+          # Inject the forgejo-runner agent into the toolchain image: copy the static binary out
+          # of the pinned forgejo/runner image into a shared volume the main container execs from.
+          # No bespoke image rebuild needed to prove the runner (ADR-0008).
+          - name: runner-bin
+            image: code.forgejo.org/forgejo/runner:12.10.2@sha256:379b324d6942824b7487706c0a06be4d63e546c17b62bece4ae18c74364a8fae
+            command:
+              - sh
+              - -ec
+            args:
+              - |
+                cp "$(command -v forgejo-runner)" /dist/forgejo-runner
+                chmod 0755 /dist/forgejo-runner
+            volumeMounts:
+              - name: runner-bin
+                mountPath: /dist
+            resources:
+              requests: {cpu: 10m, memory: 32Mi}
+              limits: {memory: 64Mi}
           - name: dind
             image: docker:29.5.3-dind@sha256:ad68e89b675740867a3bb96488a93fea9209ad36c6305bfba2664912d6dcf11a
             restartPolicy: Always
@@ -73,15 +97,19 @@ spec:
                 memory: 4Gi
         containers:
           - name: runner
-            image: code.forgejo.org/forgejo/runner:12.10.2@sha256:379b324d6942824b7487706c0a06be4d63e546c17b62bece4ae18c74364a8fae
+            # Host-mode toolchain image: docker CLI + buildx plugin, git, php, dotnet; runs as the
+            # image's non-root `runner` user. The forgejo-runner agent is injected at /dist by the
+            # runner-bin init container. Steps execute IN this container.
+            # NOTE: verify on the first real job — (1) the static forgejo-runner binary runs on this
+            # glibc image, (2) /certs/client is readable by the runner user, (3) JS actions find
+            # node (not on PATH here; the actions-runner base bundles it under externals/).
+            image: ghcr.io/webgrip/github-runner@sha256:87be5b6502926b9fc128ab8804fe38672dbaf28f0f72fe63c791f9df88c2b5e9
             command:
-              - sh
+              - bash
               - -ec
-            # NOTE: verify this invocation on the first real job; `one-job` flags
-            # (`--uuid`/`--token-url`) and label routing may need a small tweak.
             args:
               - |
-                exec forgejo-runner --config /config/config.yaml one-job \
+                exec /dist/forgejo-runner --config /config/config.yaml one-job \
                   --url "http://forgejo-http.forgejo.svc.cluster.local:3000" \
                   --uuid "$(cat /run/forgejo-runner/uuid)" \
                   --token-url "file:///run/forgejo-runner/token"
@@ -93,6 +121,9 @@ spec:
               - name: DOCKER_TLS_VERIFY
                 value: "1"
             volumeMounts:
+              - name: runner-bin
+                mountPath: /dist
+                readOnly: true
               - name: config
                 mountPath: /config
               - name: registration
@@ -118,6 +149,8 @@ spec:
             emptyDir: {}
           - name: docker-storage
             emptyDir: {}
+          - name: runner-bin
+            emptyDir: {}
   triggers:
     - type: forgejo-runner
       metadata:
@@ -125,15 +158,5 @@ spec:
         address: "http://forgejo-http.forgejo.svc.cluster.local:3000"
         global: "true"
         labels: "docker"
-      authenticationRef:
-        name: forgejo-runner-scaler
-    # Separate trigger so pending `arc-runner-set` jobs also scale from zero (one-job runners
-    # don't multiplex labels, so each label that should trigger a pod needs to be counted).
-    - type: forgejo-runner
-      metadata:
-        name: forgejo-runner-arc
-        address: "http://forgejo-http.forgejo.svc.cluster.local:3000"
-        global: "true"
-        labels: "arc-runner-set"
       authenticationRef:
         name: forgejo-runner-scaler

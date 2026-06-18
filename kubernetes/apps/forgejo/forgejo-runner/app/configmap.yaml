@@ -1,6 +1,9 @@
 # forgejo-runner config for ephemeral one-job runners.
-# Jobs labelled `docker`/`default` run as containers against the DinD sidecar
-# (DOCKER_HOST=tcp://localhost:2376), which is what lets workflows build images.
+# This runner is exactly one thing: an in-cluster privileged DinD runner. It advertises ONE
+# honest label, `docker` — no GitHub-ARC (`arc-runner-set`) or `ubuntu-latest` aliases that
+# pretend to be something they aren't. Workflows that need a specific toolchain declare their
+# own `container:` (e.g. techdocs). All `.forgejo` workflows target `runs-on: docker`.
+# Jobs reach the DinD sidecar via DOCKER_HOST=tcp://localhost:2376.
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -16,15 +19,12 @@ data:
       capacity: 1
       timeout: 1h
       labels:
-        - docker:docker://-
-        - default:docker://node:22-bookworm
-        - ubuntu-latest:docker://node:22-bookworm
-        # Host/dind backend (same as `docker`) so jobs that run `docker build` (semantic-release
-        # verifyReleaseCmd) work. Used by the webgrip/workflows reusable workflows
-        # (determine-changed-directories, semantic-release) and the .forgejo orchestration jobs.
-        # NOTE: host mode (`-`) may not honor a workflow-level `container:`; techdocs jobs that set
-        # one may need a container-backed label — verify on first techdocs run.
-        - arc-runner-set:docker://-
+        # The one honest label for this runner. `host` = steps run in the MAIN pod container, which
+        # IS the github-runner toolchain image (docker CLI + buildx plugin, git, php, dotnet). That
+        # container shares the pod netns with the dind sidecar, so `docker build` reaches the daemon
+        # at DOCKER_HOST=tcp://localhost:2376 with no cross-container networking. Workflows needing a
+        # different toolchain set their own job-level `container:` (e.g. techdocs).
+        - docker:host
     cache:
       enabled: false
     container:
