@@ -12,20 +12,30 @@ spec:
   json: |-
     {
       "schemaVersion": 39,
-      "title": "Kubernetes / Resource Usage & Limits",
+      "title": "Kubernetes / Capacity, Limits & Right-Sizing",
       "uid": "k8s-resource-usage-limits",
-      "description": "Per-workload and per-namespace CPU, memory, network and PVC usage compared against requests and limits. Source: kube-state-metrics, cAdvisor and kubelet via kube-prometheus-stack.",
+      "description": "Top-down cluster capacity: node allocatable vs requests/limits/usage, namespace and per-workload right-sizing (usage vs requests & limits), live throttling/OOM/restart/pending signals, and PVC fill. Source: kube-state-metrics, cAdvisor, kubelet and node-exporter via kube-prometheus-stack.",
       "timezone": "browser",
-      "tags": ["kubernetes", "capacity", "resources"],
+      "tags": [
+        "kubernetes",
+        "capacity",
+        "resources"
+      ],
       "editable": false,
       "graphTooltip": 1,
       "refresh": "30s",
-      "time": {"from": "now-6h", "to": "now"},
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
       "annotations": {
         "list": [
           {
             "builtIn": 1,
-            "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
             "enable": true,
             "hide": true,
             "iconColor": "rgba(0, 211, 255, 1)",
@@ -37,30 +47,73 @@ spec:
       "templating": {
         "list": [
           {
-            "name": "namespace",
-            "label": "Namespace",
+            "name": "node",
+            "label": "Node",
             "type": "query",
-            "datasource": {"type": "prometheus", "uid": "prometheus"},
-            "query": {"query": "label_values(kube_namespace_labels, namespace)", "refId": "A"},
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "query": {
+              "query": "label_values(kube_node_status_allocatable, node)",
+              "refId": "A"
+            },
             "refresh": 2,
             "sort": 1,
             "includeAll": true,
             "allValue": ".*",
             "multi": true,
-            "current": {"selected": true, "text": "All", "value": "$$__all"}
+            "current": {
+              "selected": true,
+              "text": "All",
+              "value": "$$__all"
+            }
+          },
+          {
+            "name": "namespace",
+            "label": "Namespace",
+            "type": "query",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "query": {
+              "query": "label_values(kube_namespace_labels, namespace)",
+              "refId": "A"
+            },
+            "refresh": 2,
+            "sort": 1,
+            "includeAll": true,
+            "allValue": ".*",
+            "multi": true,
+            "current": {
+              "selected": true,
+              "text": "All",
+              "value": "$$__all"
+            }
           },
           {
             "name": "workload",
             "label": "Workload",
             "type": "query",
-            "datasource": {"type": "prometheus", "uid": "prometheus"},
-            "query": {"query": "label_values(namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\"}, workload)", "refId": "A"},
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "query": {
+              "query": "label_values(namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\"}, workload)",
+              "refId": "A"
+            },
             "refresh": 2,
             "sort": 1,
             "includeAll": true,
             "allValue": ".*",
             "multi": true,
-            "current": {"selected": true, "text": "All", "value": "$$__all"}
+            "current": {
+              "selected": true,
+              "text": "All",
+              "value": "$$__all"
+            }
           }
         ]
       },
@@ -68,317 +121,3269 @@ spec:
         {
           "id": 1,
           "type": "stat",
-          "title": "CPU used",
-          "gridPos": {"h": 4, "w": 3, "x": 0, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "title": "Nodes Ready",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "targets": [
-            {"refId": "A", "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$$namespace\",container!=\"\"}[$$__rate_interval])) or vector(0)"}
+            {
+              "refId": "A",
+              "expr": "sum(kube_node_status_condition{condition=\"Ready\",status=\"true\",node=~\"$$node\"}) or vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
           ],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "graphMode": "none", "colorMode": "none", "textMode": "auto"},
-          "fieldConfig": {"defaults": {"unit": "cores", "decimals": 2}, "overrides": []}
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "graphMode": "none",
+            "colorMode": "none",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "description": "Nodes reporting Ready (respects the Node filter)."
         },
         {
           "id": 2,
           "type": "stat",
-          "title": "CPU requests",
-          "gridPos": {"h": 4, "w": 3, "x": 3, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "title": "Pods Running",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "targets": [
-            {"refId": "A", "expr": "sum(kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"cpu\"}) or vector(0)"}
+            {
+              "refId": "A",
+              "expr": "sum(kube_pod_status_phase{namespace=~\"$$namespace\",phase=\"Running\"} == 1) or vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
           ],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "graphMode": "none", "colorMode": "none", "textMode": "auto"},
-          "fieldConfig": {"defaults": {"unit": "cores", "decimals": 2}, "overrides": []}
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "graphMode": "none",
+            "colorMode": "none",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0
+            },
+            "overrides": []
+          }
         },
         {
           "id": 3,
           "type": "stat",
-          "title": "CPU limits",
-          "gridPos": {"h": 4, "w": 3, "x": 6, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "title": "Pods Pending",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 8,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "targets": [
-            {"refId": "A", "expr": "sum(kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"cpu\"}) or vector(0)"}
+            {
+              "refId": "A",
+              "expr": "sum(kube_pod_status_phase{namespace=~\"$$namespace\",phase=\"Pending\"} == 1) or vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
           ],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "graphMode": "none", "colorMode": "none", "textMode": "auto"},
-          "fieldConfig": {"defaults": {"unit": "cores", "decimals": 2}, "overrides": []}
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "graphMode": "none",
+            "colorMode": "background",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "description": "Pods stuck Pending \u2014 usually unschedulable (insufficient CPU/mem requests fit no node)."
         },
         {
           "id": 4,
           "type": "stat",
-          "title": "Memory used",
-          "gridPos": {"h": 4, "w": 3, "x": 9, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "title": "Restarts (1h)",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 12,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "targets": [
-            {"refId": "A", "expr": "sum(container_memory_working_set_bytes{namespace=~\"$$namespace\",container!=\"\"}) or vector(0)"}
+            {
+              "refId": "A",
+              "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=~\"$$namespace\"}[1h])) or vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
           ],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "graphMode": "none", "colorMode": "none", "textMode": "auto"},
-          "fieldConfig": {"defaults": {"unit": "bytes", "decimals": 2}, "overrides": []}
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "graphMode": "none",
+            "colorMode": "value",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 10
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          }
         },
         {
           "id": 5,
           "type": "stat",
-          "title": "Memory requests",
-          "gridPos": {"h": 4, "w": 3, "x": 12, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "title": "OOMKilled (current)",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 16,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "targets": [
-            {"refId": "A", "expr": "sum(kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"memory\"}) or vector(0)"}
+            {
+              "refId": "A",
+              "expr": "sum(kube_pod_container_status_last_terminated_reason{namespace=~\"$$namespace\",reason=\"OOMKilled\"} == 1) or vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
           ],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "graphMode": "none", "colorMode": "none", "textMode": "auto"},
-          "fieldConfig": {"defaults": {"unit": "bytes", "decimals": 2}, "overrides": []}
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "graphMode": "none",
+            "colorMode": "background",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "description": "Containers whose last termination reason was OOMKilled \u2014 raise the memory limit."
         },
         {
           "id": 6,
           "type": "stat",
-          "title": "Memory limits",
-          "gridPos": {"h": 4, "w": 3, "x": 15, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "title": "PVCs > 80% full",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 20,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "targets": [
-            {"refId": "A", "expr": "sum(kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"memory\"}) or vector(0)"}
-          ],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "graphMode": "none", "colorMode": "none", "textMode": "auto"},
-          "fieldConfig": {"defaults": {"unit": "bytes", "decimals": 2}, "overrides": []}
-        },
-        {
-          "id": 7,
-          "type": "stat",
-          "title": "PVC used",
-          "gridPos": {"h": 4, "w": 3, "x": 18, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [
-            {"refId": "A", "expr": "sum(kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\"}) or vector(0)"}
-          ],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "graphMode": "none", "colorMode": "none", "textMode": "auto"},
-          "fieldConfig": {"defaults": {"unit": "bytes", "decimals": 2}, "overrides": []}
-        },
-        {
-          "id": 8,
-          "type": "stat",
-          "title": "Network I/O (rx+tx)",
-          "gridPos": {"h": 4, "w": 3, "x": 21, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [
-            {"refId": "A", "expr": "(sum(rate(container_network_receive_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval])) + sum(rate(container_network_transmit_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]))) or vector(0)"}
-          ],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "graphMode": "none", "colorMode": "none", "textMode": "auto"},
-          "fieldConfig": {"defaults": {"unit": "Bps", "decimals": 2}, "overrides": []}
-        },
-        {
-          "id": 10,
-          "type": "row",
-          "title": "By namespace",
-          "collapsed": false,
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 4},
-          "panels": []
-        },
-        {
-          "id": 11,
-          "type": "table",
-          "title": "Namespace resources — usage vs requests vs limits",
-          "description": "Per-namespace CPU/memory usage against requests and limits, plus network throughput and PVC consumption. Sorted by CPU used.",
-          "gridPos": {"h": 11, "w": 24, "x": 0, "y": 5},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [
-            {"refId": "A", "instant": true, "format": "table", "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{namespace=~\"$$namespace\",container!=\"\"}[$$__rate_interval]))"},
-            {"refId": "B", "instant": true, "format": "table", "expr": "sum by (namespace) (kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"cpu\"})"},
-            {"refId": "C", "instant": true, "format": "table", "expr": "sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"cpu\"})"},
-            {"refId": "D", "instant": true, "format": "table", "expr": "sum by (namespace) (container_memory_working_set_bytes{namespace=~\"$$namespace\",container!=\"\"})"},
-            {"refId": "E", "instant": true, "format": "table", "expr": "sum by (namespace) (kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"memory\"})"},
-            {"refId": "F", "instant": true, "format": "table", "expr": "sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"memory\"})"},
-            {"refId": "G", "instant": true, "format": "table", "expr": "sum by (namespace) (rate(container_network_receive_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]))"},
-            {"refId": "H", "instant": true, "format": "table", "expr": "sum by (namespace) (rate(container_network_transmit_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]))"},
-            {"refId": "I", "instant": true, "format": "table", "expr": "sum by (namespace) (kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\"})"},
-            {"refId": "J", "instant": true, "format": "table", "expr": "sum by (namespace) (kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\"})"}
-          ],
-          "transformations": [
-            {"id": "merge", "options": {}},
             {
-              "id": "organize",
-              "options": {
-                "excludeByName": {"Time": true},
-                "indexByName": {"namespace": 0, "Value #A": 1, "Value #B": 2, "Value #C": 3, "Value #D": 4, "Value #E": 5, "Value #F": 6, "Value #G": 7, "Value #H": 8, "Value #I": 9, "Value #J": 10},
-                "renameByName": {"namespace": "Namespace", "Value #A": "CPU used", "Value #B": "CPU req", "Value #C": "CPU lim", "Value #D": "Mem used", "Value #E": "Mem req", "Value #F": "Mem lim", "Value #G": "Net RX", "Value #H": "Net TX", "Value #I": "PVC used", "Value #J": "PVC cap"}
+              "refId": "A",
+              "expr": "count((kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\"} / kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\"}) > 0.8) or vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
               }
             }
           ],
-          "options": {"showHeader": true, "cellHeight": "sm", "sortBy": [{"displayName": "CPU used", "desc": true}], "footer": {"show": false}},
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "graphMode": "none",
+            "colorMode": "background",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
           "fieldConfig": {
-            "defaults": {"unit": "short", "decimals": 2, "custom": {"align": "auto"}},
-            "overrides": [
-              {"matcher": {"id": "byName", "options": "CPU used"}, "properties": [{"id": "unit", "value": "cores"}]},
-              {"matcher": {"id": "byName", "options": "CPU req"}, "properties": [{"id": "unit", "value": "cores"}]},
-              {"matcher": {"id": "byName", "options": "CPU lim"}, "properties": [{"id": "unit", "value": "cores"}]},
-              {"matcher": {"id": "byName", "options": "Mem used"}, "properties": [{"id": "unit", "value": "bytes"}]},
-              {"matcher": {"id": "byName", "options": "Mem req"}, "properties": [{"id": "unit", "value": "bytes"}]},
-              {"matcher": {"id": "byName", "options": "Mem lim"}, "properties": [{"id": "unit", "value": "bytes"}]},
-              {"matcher": {"id": "byName", "options": "Net RX"}, "properties": [{"id": "unit", "value": "Bps"}]},
-              {"matcher": {"id": "byName", "options": "Net TX"}, "properties": [{"id": "unit", "value": "Bps"}]},
-              {"matcher": {"id": "byName", "options": "PVC used"}, "properties": [{"id": "unit", "value": "bytes"}]},
-              {"matcher": {"id": "byName", "options": "PVC cap"}, "properties": [{"id": "unit", "value": "bytes"}]}
-            ]
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 10,
+          "type": "gauge",
+          "title": "CPU used",
+          "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 0,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "Actual CPU usage as a share of node allocatable CPU.",
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{node=~\"$$node\",container!=\"\"}[$$__rate_interval])) / sum(kube_node_status_allocatable{node=~\"$$node\",resource=\"cpu\"}) or vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true,
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "max": 1.0,
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.75
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.9
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 11,
+          "type": "gauge",
+          "title": "CPU requested",
+          "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 4,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "Sum of CPU requests vs allocatable \u2014 the scheduler's view. >100% = no schedulable headroom.",
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(kube_pod_container_resource_requests{node=~\"$$node\",resource=\"cpu\"}) / sum(kube_node_status_allocatable{node=~\"$$node\",resource=\"cpu\"}) or vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true,
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "max": 1.25,
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.85
+                  },
+                  {
+                    "color": "red",
+                    "value": 1.0
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 12,
+          "type": "gauge",
+          "title": "CPU limits",
+          "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 8,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "Sum of CPU limits vs allocatable. >100% = overcommitted (normal for CPU).",
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(kube_pod_container_resource_limits{node=~\"$$node\",resource=\"cpu\"}) / sum(kube_node_status_allocatable{node=~\"$$node\",resource=\"cpu\"}) or vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true,
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "max": 2.0,
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1.0
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1.5
+                  },
+                  {
+                    "color": "red",
+                    "value": 2.0
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 13,
+          "type": "gauge",
+          "title": "Memory used",
+          "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 12,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "Actual working-set memory as a share of node allocatable memory.",
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(container_memory_working_set_bytes{node=~\"$$node\",container!=\"\"}) / sum(kube_node_status_allocatable{node=~\"$$node\",resource=\"memory\"}) or vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true,
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "max": 1.0,
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.75
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.9
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 14,
+          "type": "gauge",
+          "title": "Memory requested",
+          "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 16,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "Sum of memory requests vs allocatable. >100% = no schedulable headroom.",
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(kube_pod_container_resource_requests{node=~\"$$node\",resource=\"memory\"}) / sum(kube_node_status_allocatable{node=~\"$$node\",resource=\"memory\"}) or vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true,
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "max": 1.25,
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.85
+                  },
+                  {
+                    "color": "red",
+                    "value": 1.0
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 15,
+          "type": "gauge",
+          "title": "Memory limits",
+          "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 20,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "Sum of memory limits vs allocatable. >100% = overcommitted (risky for memory).",
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(kube_pod_container_resource_limits{node=~\"$$node\",resource=\"memory\"}) / sum(kube_node_status_allocatable{node=~\"$$node\",resource=\"memory\"}) or vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true,
+            "orientation": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "max": 2.0,
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1.0
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1.5
+                  },
+                  {
+                    "color": "red",
+                    "value": 2.0
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
           }
         },
         {
           "id": 20,
           "type": "row",
-          "title": "By workload",
+          "title": "Nodes \u2014 capacity, commitment & headroom",
           "collapsed": false,
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 16},
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 10
+          },
           "panels": []
         },
         {
           "id": 21,
-          "type": "table",
-          "title": "Workload resources — usage vs requests vs limits",
-          "description": "Per-workload (Deployment/StatefulSet/DaemonSet/Job/etc.) CPU and memory usage against requests and limits, plus network throughput. Pods are mapped to their owning workload via namespace_workload_pod:kube_pod_owner:relabel. Sorted by CPU used.",
-          "gridPos": {"h": 12, "w": 24, "x": 0, "y": 17},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "type": "bargauge",
+          "title": "Node CPU used (% of allocatable)",
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 11
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "",
           "targets": [
-            {"refId": "A", "instant": true, "format": "table", "expr": "sum by (namespace, workload, workload_type) (rate(container_cpu_usage_seconds_total{namespace=~\"$$namespace\",container!=\"\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload,workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})"},
-            {"refId": "B", "instant": true, "format": "table", "expr": "sum by (namespace, workload, workload_type) (kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"cpu\"} * on(namespace,pod) group_left(workload,workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})"},
-            {"refId": "C", "instant": true, "format": "table", "expr": "sum by (namespace, workload, workload_type) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"cpu\"} * on(namespace,pod) group_left(workload,workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})"},
-            {"refId": "D", "instant": true, "format": "table", "expr": "sum by (namespace, workload, workload_type) (container_memory_working_set_bytes{namespace=~\"$$namespace\",container!=\"\"} * on(namespace,pod) group_left(workload,workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})"},
-            {"refId": "E", "instant": true, "format": "table", "expr": "sum by (namespace, workload, workload_type) (kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"memory\"} * on(namespace,pod) group_left(workload,workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})"},
-            {"refId": "F", "instant": true, "format": "table", "expr": "sum by (namespace, workload, workload_type) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"memory\"} * on(namespace,pod) group_left(workload,workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})"},
-            {"refId": "G", "instant": true, "format": "table", "expr": "sum by (namespace, workload, workload_type) (rate(container_network_receive_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload,workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})"},
-            {"refId": "H", "instant": true, "format": "table", "expr": "sum by (namespace, workload, workload_type) (rate(container_network_transmit_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload,workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})"}
-          ],
-          "transformations": [
-            {"id": "merge", "options": {}},
             {
-              "id": "organize",
-              "options": {
-                "excludeByName": {"Time": true},
-                "indexByName": {"namespace": 0, "workload": 1, "workload_type": 2, "Value #A": 3, "Value #B": 4, "Value #C": 5, "Value #D": 6, "Value #E": 7, "Value #F": 8, "Value #G": 9, "Value #H": 10},
-                "renameByName": {"namespace": "Namespace", "workload": "Workload", "workload_type": "Type", "Value #A": "CPU used", "Value #B": "CPU req", "Value #C": "CPU lim", "Value #D": "Mem used", "Value #E": "Mem req", "Value #F": "Mem lim", "Value #G": "Net RX", "Value #H": "Net TX"}
-              }
+              "refId": "A",
+              "expr": "sum by (node) (rate(container_cpu_usage_seconds_total{node=~\"$$node\",container!=\"\"}[$$__rate_interval])) / sum by (node) (kube_node_status_allocatable{node=~\"$$node\",resource=\"cpu\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{node}}"
             }
           ],
-          "options": {"showHeader": true, "cellHeight": "sm", "sortBy": [{"displayName": "CPU used", "desc": true}], "footer": {"show": false}},
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "displayMode": "gradient",
+            "orientation": "horizontal",
+            "showUnfilled": true,
+            "valueMode": "color"
+          },
           "fieldConfig": {
-            "defaults": {"unit": "short", "decimals": 2, "custom": {"align": "auto"}},
-            "overrides": [
-              {"matcher": {"id": "byName", "options": "CPU used"}, "properties": [{"id": "unit", "value": "cores"}]},
-              {"matcher": {"id": "byName", "options": "CPU req"}, "properties": [{"id": "unit", "value": "cores"}]},
-              {"matcher": {"id": "byName", "options": "CPU lim"}, "properties": [{"id": "unit", "value": "cores"}]},
-              {"matcher": {"id": "byName", "options": "Mem used"}, "properties": [{"id": "unit", "value": "bytes"}]},
-              {"matcher": {"id": "byName", "options": "Mem req"}, "properties": [{"id": "unit", "value": "bytes"}]},
-              {"matcher": {"id": "byName", "options": "Mem lim"}, "properties": [{"id": "unit", "value": "bytes"}]},
-              {"matcher": {"id": "byName", "options": "Net RX"}, "properties": [{"id": "unit", "value": "Bps"}]},
-              {"matcher": {"id": "byName", "options": "Net TX"}, "properties": [{"id": "unit", "value": "Bps"}]}
-            ]
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "max": 1.0,
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.75
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.9
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
           }
         },
         {
           "id": 22,
-          "type": "timeseries",
-          "title": "CPU usage by workload (top 15)",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 29},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "type": "bargauge",
+          "title": "Node memory used (% of allocatable)",
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 11
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "",
           "targets": [
-            {"refId": "A", "expr": "topk(15, sum by (workload) (rate(container_cpu_usage_seconds_total{namespace=~\"$$namespace\",container!=\"\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"}))", "legendFormat": "{{workload}}"}
+            {
+              "refId": "A",
+              "expr": "sum by (node) (container_memory_working_set_bytes{node=~\"$$node\",container!=\"\"}) / sum by (node) (kube_node_status_allocatable{node=~\"$$node\",resource=\"memory\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{node}}"
+            }
           ],
-          "fieldConfig": {"defaults": {"unit": "cores", "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": []},
-          "options": {"legend": {"displayMode": "list", "placement": "right", "calcs": []}, "tooltip": {"mode": "multi", "sort": "desc"}}
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "displayMode": "gradient",
+            "orientation": "horizontal",
+            "showUnfilled": true,
+            "valueMode": "color"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "max": 1.0,
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.75
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.9
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          }
         },
         {
           "id": 23,
-          "type": "timeseries",
-          "title": "Memory usage by workload (top 15)",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 29},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "type": "table",
+          "title": "Per-node detail \u2014 usage, commitment (% of allocatable) & pod count",
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 18
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "targets": [
-            {"refId": "A", "expr": "topk(15, sum by (workload) (container_memory_working_set_bytes{namespace=~\"$$namespace\",container!=\"\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"}))", "legendFormat": "{{workload}}"}
+            {
+              "refId": "A",
+              "expr": "sum by (node) (rate(container_cpu_usage_seconds_total{node=~\"$$node\",container!=\"\"}[$$__rate_interval]))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "sum by (node) (rate(container_cpu_usage_seconds_total{node=~\"$$node\",container!=\"\"}[$$__rate_interval])) / sum by (node) (kube_node_status_allocatable{node=~\"$$node\",resource=\"cpu\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "expr": "sum by (node) (kube_pod_container_resource_requests{node=~\"$$node\",resource=\"cpu\"}) / sum by (node) (kube_node_status_allocatable{node=~\"$$node\",resource=\"cpu\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "D",
+              "expr": "sum by (node) (kube_pod_container_resource_limits{node=~\"$$node\",resource=\"cpu\"}) / sum by (node) (kube_node_status_allocatable{node=~\"$$node\",resource=\"cpu\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "E",
+              "expr": "sum by (node) (container_memory_working_set_bytes{node=~\"$$node\",container!=\"\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "F",
+              "expr": "sum by (node) (container_memory_working_set_bytes{node=~\"$$node\",container!=\"\"}) / sum by (node) (kube_node_status_allocatable{node=~\"$$node\",resource=\"memory\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "G",
+              "expr": "sum by (node) (kube_pod_container_resource_requests{node=~\"$$node\",resource=\"memory\"}) / sum by (node) (kube_node_status_allocatable{node=~\"$$node\",resource=\"memory\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "H",
+              "expr": "sum by (node) (kube_pod_container_resource_limits{node=~\"$$node\",resource=\"memory\"}) / sum by (node) (kube_node_status_allocatable{node=~\"$$node\",resource=\"memory\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "I",
+              "expr": "count by (node) (kube_pod_info{node=~\"$$node\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            }
           ],
-          "fieldConfig": {"defaults": {"unit": "bytes", "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": []},
-          "options": {"legend": {"displayMode": "list", "placement": "right", "calcs": []}, "tooltip": {"mode": "multi", "sort": "desc"}}
-        },
-        {
-          "id": 24,
-          "type": "timeseries",
-          "title": "Network receive by workload (top 15)",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 37},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [
-            {"refId": "A", "expr": "topk(15, sum by (workload) (rate(container_network_receive_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"}))", "legendFormat": "{{workload}}"}
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "node": "Node",
+                  "Value #A": "CPU used",
+                  "Value #B": "CPU used %",
+                  "Value #C": "CPU req %",
+                  "Value #D": "CPU lim %",
+                  "Value #E": "Mem used",
+                  "Value #F": "Mem used %",
+                  "Value #G": "Mem req %",
+                  "Value #H": "Mem lim %",
+                  "Value #I": "Pods"
+                },
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {
+                  "node": 0,
+                  "Value #A": 1,
+                  "Value #B": 2,
+                  "Value #C": 3,
+                  "Value #D": 4,
+                  "Value #E": 5,
+                  "Value #F": 6,
+                  "Value #G": 7,
+                  "Value #H": 8,
+                  "Value #I": 9
+                }
+              }
+            }
           ],
-          "fieldConfig": {"defaults": {"unit": "Bps", "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": []},
-          "options": {"legend": {"displayMode": "list", "placement": "right", "calcs": []}, "tooltip": {"mode": "multi", "sort": "desc"}}
-        },
-        {
-          "id": 25,
-          "type": "timeseries",
-          "title": "Network transmit by workload (top 15)",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 37},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [
-            {"refId": "A", "expr": "topk(15, sum by (workload) (rate(container_network_transmit_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"}))", "legendFormat": "{{workload}}"}
-          ],
-          "fieldConfig": {"defaults": {"unit": "Bps", "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": []},
-          "options": {"legend": {"displayMode": "list", "placement": "right", "calcs": []}, "tooltip": {"mode": "multi", "sort": "desc"}}
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "sortBy": [
+              {
+                "displayName": "Mem used %",
+                "desc": true
+              }
+            ]
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 2,
+              "custom": {
+                "align": "auto",
+                "filterable": true
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU used"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "cores"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Mem used"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU used %"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "gradient"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0.75
+                        },
+                        {
+                          "color": "red",
+                          "value": 0.9
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "max",
+                    "value": 1.0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU req %"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "gradient"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0.85
+                        },
+                        {
+                          "color": "red",
+                          "value": 1.0
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "max",
+                    "value": 1.5
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU lim %"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "gradient"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 1.0
+                        },
+                        {
+                          "color": "orange",
+                          "value": 1.5
+                        },
+                        {
+                          "color": "red",
+                          "value": 2.0
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "max",
+                    "value": 2.0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Mem used %"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "gradient"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0.75
+                        },
+                        {
+                          "color": "red",
+                          "value": 0.9
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "max",
+                    "value": 1.0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Mem req %"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "gradient"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0.85
+                        },
+                        {
+                          "color": "red",
+                          "value": 1.0
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "max",
+                    "value": 1.5
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Mem lim %"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "gradient"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 1.0
+                        },
+                        {
+                          "color": "orange",
+                          "value": 1.5
+                        },
+                        {
+                          "color": "red",
+                          "value": 2.0
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "max",
+                    "value": 2.0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Pods"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "short"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              }
+            ]
+          },
+          "description": "Per node: actual CPU/mem usage, plus requests & limits as a % of that node's allocatable. Red % = at/over capacity. 'req %' is what the scheduler has reserved; 'lim %' >100% is overcommit."
         },
         {
           "id": 30,
           "type": "row",
-          "title": "Persistent volume claims",
+          "title": "Namespaces \u2014 where the consumption is",
           "collapsed": false,
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 45},
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 27
+          },
           "panels": []
         },
         {
           "id": 31,
           "type": "table",
-          "title": "PVC usage vs capacity",
-          "description": "Per-PVC used/capacity/available bytes and fill ratio (used / capacity is the effective limit). Source: kubelet_volume_stats_*.",
-          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 46},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "title": "Per-namespace \u2014 usage vs requests vs limits, network & storage",
+          "gridPos": {
+            "h": 10,
+            "w": 24,
+            "x": 0,
+            "y": 28
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "targets": [
-            {"refId": "A", "instant": true, "format": "table", "expr": "sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\"})"},
-            {"refId": "B", "instant": true, "format": "table", "expr": "sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\"})"},
-            {"refId": "C", "instant": true, "format": "table", "expr": "sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_available_bytes{namespace=~\"$$namespace\"})"},
-            {"refId": "D", "instant": true, "format": "table", "expr": "sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\"}) / sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\"})"}
+            {
+              "refId": "A",
+              "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{namespace=~\"$$namespace\",container!=\"\"}[$$__rate_interval]))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "sum by (namespace) (kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"cpu\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "expr": "sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"cpu\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "D",
+              "expr": "sum by (namespace) (container_memory_working_set_bytes{namespace=~\"$$namespace\",container!=\"\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "E",
+              "expr": "sum by (namespace) (kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"memory\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "F",
+              "expr": "sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"memory\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "G",
+              "expr": "sum by (namespace) (rate(container_network_receive_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "H",
+              "expr": "sum by (namespace) (rate(container_network_transmit_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "I",
+              "expr": "sum by (namespace) (kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            }
           ],
           "transformations": [
-            {"id": "merge", "options": {}},
+            {
+              "id": "merge",
+              "options": {}
+            },
             {
               "id": "organize",
               "options": {
-                "excludeByName": {"Time": true},
-                "indexByName": {"namespace": 0, "persistentvolumeclaim": 1, "Value #A": 2, "Value #B": 3, "Value #C": 4, "Value #D": 5},
-                "renameByName": {"namespace": "Namespace", "persistentvolumeclaim": "PVC", "Value #A": "Used", "Value #B": "Capacity", "Value #C": "Available", "Value #D": "Used %"}
+                "renameByName": {
+                  "namespace": "Namespace",
+                  "Value #A": "CPU used",
+                  "Value #B": "CPU req",
+                  "Value #C": "CPU lim",
+                  "Value #D": "Mem used",
+                  "Value #E": "Mem req",
+                  "Value #F": "Mem lim",
+                  "Value #G": "Net RX",
+                  "Value #H": "Net TX",
+                  "Value #I": "PVC used"
+                },
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {
+                  "namespace": 0,
+                  "Value #A": 1,
+                  "Value #B": 2,
+                  "Value #C": 3,
+                  "Value #D": 4,
+                  "Value #E": 5,
+                  "Value #F": 6,
+                  "Value #G": 7,
+                  "Value #H": 8,
+                  "Value #I": 9
+                }
               }
             }
           ],
-          "options": {"showHeader": true, "cellHeight": "sm", "sortBy": [{"displayName": "Used %", "desc": true}], "footer": {"show": false}},
-          "fieldConfig": {
-            "defaults": {"unit": "short", "decimals": 2, "custom": {"align": "auto"}},
-            "overrides": [
-              {"matcher": {"id": "byName", "options": "Used"}, "properties": [{"id": "unit", "value": "bytes"}]},
-              {"matcher": {"id": "byName", "options": "Capacity"}, "properties": [{"id": "unit", "value": "bytes"}]},
-              {"matcher": {"id": "byName", "options": "Available"}, "properties": [{"id": "unit", "value": "bytes"}]},
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "sortBy": [
               {
-                "matcher": {"id": "byName", "options": "Used %"},
+                "displayName": "CPU used",
+                "desc": true
+              }
+            ]
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 2,
+              "custom": {
+                "align": "auto",
+                "filterable": true
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU used"
+                },
                 "properties": [
-                  {"id": "unit", "value": "percentunit"},
-                  {"id": "decimals", "value": 1},
-                  {"id": "min", "value": 0},
-                  {"id": "max", "value": 1},
-                  {"id": "custom.cellOptions", "value": {"type": "gauge", "mode": "gradient"}},
-                  {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.75}, {"color": "red", "value": 0.9}]}}
+                  {
+                    "id": "unit",
+                    "value": "cores"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU req"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "cores"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU lim"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "cores"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Mem used"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Mem req"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Mem lim"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Net RX"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "Bps"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Net TX"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "Bps"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "PVC used"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  }
                 ]
               }
             ]
+          },
+          "description": "Per-namespace CPU/memory usage against requests and limits, plus network throughput and PVC consumption. Sorted by CPU used."
+        },
+        {
+          "id": 40,
+          "type": "row",
+          "title": "Workloads \u2014 right-sizing (usage vs requests & limits)",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 38
+          },
+          "panels": []
+        },
+        {
+          "id": 41,
+          "type": "table",
+          "title": "Per-workload right-sizing",
+          "gridPos": {
+            "h": 13,
+            "w": 24,
+            "x": 0,
+            "y": 39
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (namespace, workload) (rate(container_cpu_usage_seconds_total{namespace=~\"$$namespace\",container!=\"\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "sum by (namespace, workload) (kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"cpu\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "expr": "sum by (namespace, workload) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"cpu\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "D",
+              "expr": "sum by (namespace, workload) (rate(container_cpu_usage_seconds_total{namespace=~\"$$namespace\",container!=\"\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"}) / sum by (namespace, workload) (kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"cpu\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "E",
+              "expr": "sum by (namespace, workload) (rate(container_cpu_usage_seconds_total{namespace=~\"$$namespace\",container!=\"\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"}) / sum by (namespace, workload) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"cpu\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "F",
+              "expr": "sum by (namespace, workload) (container_memory_working_set_bytes{namespace=~\"$$namespace\",container!=\"\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "G",
+              "expr": "sum by (namespace, workload) (kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"memory\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "H",
+              "expr": "sum by (namespace, workload) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"memory\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "I",
+              "expr": "sum by (namespace, workload) (container_memory_working_set_bytes{namespace=~\"$$namespace\",container!=\"\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"}) / sum by (namespace, workload) (kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"memory\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "J",
+              "expr": "sum by (namespace, workload) (container_memory_working_set_bytes{namespace=~\"$$namespace\",container!=\"\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"}) / sum by (namespace, workload) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"memory\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "namespace": "Namespace",
+                  "workload": "Workload",
+                  "Value #A": "CPU used",
+                  "Value #B": "CPU req",
+                  "Value #C": "CPU lim",
+                  "Value #D": "CPU use/req",
+                  "Value #E": "CPU use/lim",
+                  "Value #F": "Mem used",
+                  "Value #G": "Mem req",
+                  "Value #H": "Mem lim",
+                  "Value #I": "Mem use/req",
+                  "Value #J": "Mem use/lim"
+                },
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {
+                  "namespace": 0,
+                  "workload": 1,
+                  "Value #A": 2,
+                  "Value #B": 3,
+                  "Value #C": 4,
+                  "Value #D": 5,
+                  "Value #E": 6,
+                  "Value #F": 7,
+                  "Value #G": 8,
+                  "Value #H": 9,
+                  "Value #I": 10,
+                  "Value #J": 11
+                }
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "sortBy": [
+              {
+                "displayName": "CPU used",
+                "desc": true
+              }
+            ]
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 2,
+              "custom": {
+                "align": "auto",
+                "filterable": true
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU used"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "cores"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU req"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "cores"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU lim"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "cores"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Mem used"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Mem req"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Mem lim"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU use/req"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "gradient"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": null
+                        },
+                        {
+                          "color": "orange",
+                          "value": 0.25
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0.5
+                        },
+                        {
+                          "color": "green",
+                          "value": 0.8
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Mem use/req"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "gradient"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": null
+                        },
+                        {
+                          "color": "orange",
+                          "value": 0.25
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0.5
+                        },
+                        {
+                          "color": "green",
+                          "value": 0.8
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU use/lim"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "gradient"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0.8
+                        },
+                        {
+                          "color": "orange",
+                          "value": 0.95
+                        },
+                        {
+                          "color": "red",
+                          "value": 1.0
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Mem use/lim"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "gradient"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0.8
+                        },
+                        {
+                          "color": "orange",
+                          "value": 0.95
+                        },
+                        {
+                          "color": "red",
+                          "value": 1.0
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "description": "Per workload: usage vs requests vs limits. 'use/req' low (red) = over-provisioned, wasting reserved capacity. 'use/lim' high (red) = near throttle (CPU) or OOM (memory). Blank limit columns = no limit set."
+        },
+        {
+          "id": 50,
+          "type": "row",
+          "title": "Problems & risk \u2014 act on these",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 51
+          },
+          "panels": []
+        },
+        {
+          "id": 51,
+          "type": "table",
+          "title": "Pending pods",
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 52
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (namespace, pod) (kube_pod_status_phase{namespace=~\"$$namespace\",phase=\"Pending\"} == 1)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "namespace": "Namespace",
+                  "pod": "Pod",
+                  "Value": "Pending"
+                },
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {
+                  "namespace": 0,
+                  "pod": 1,
+                  "Value": 2
+                }
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "sortBy": [
+              {
+                "displayName": "Pod",
+                "desc": false
+              }
+            ]
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 2,
+              "custom": {
+                "align": "auto",
+                "filterable": true
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Pending"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              }
+            ]
+          },
+          "description": "Pods that cannot be scheduled \u2014 empty is good."
+        },
+        {
+          "id": 52,
+          "type": "table",
+          "title": "Top container restarts (1h)",
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 52
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(15, (sum by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$$namespace\"}[1h]))) > 0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "namespace": "Namespace",
+                  "pod": "Pod",
+                  "container": "Container",
+                  "Value": "Restarts"
+                },
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {
+                  "namespace": 0,
+                  "pod": 1,
+                  "container": 2,
+                  "Value": 3
+                }
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "sortBy": [
+              {
+                "displayName": "Restarts",
+                "desc": true
+              }
+            ]
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 2,
+              "custom": {
+                "align": "auto",
+                "filterable": true
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Restarts"
+                },
+                "properties": [
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "gradient"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 1
+                        },
+                        {
+                          "color": "red",
+                          "value": 5
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "description": "Containers restarting most in the last hour \u2014 crash loops / OOM churn."
+        },
+        {
+          "id": 53,
+          "type": "table",
+          "title": "Top CPU throttling",
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 52
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(15, (sum by (namespace, workload) (rate(container_cpu_cfs_throttled_periods_total{namespace=~\"$$namespace\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\"}) / sum by (namespace, workload) (rate(container_cpu_cfs_periods_total{namespace=~\"$$namespace\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\"})) > 0.01)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "namespace": "Namespace",
+                  "workload": "Workload",
+                  "Value": "Throttled"
+                },
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {
+                  "namespace": 0,
+                  "workload": 1,
+                  "Value": 2
+                }
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "sortBy": [
+              {
+                "displayName": "Throttled",
+                "desc": true
+              }
+            ]
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 2,
+              "custom": {
+                "align": "auto",
+                "filterable": true
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Throttled"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "gradient"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0.8
+                        },
+                        {
+                          "color": "orange",
+                          "value": 0.95
+                        },
+                        {
+                          "color": "red",
+                          "value": 1.0
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "max",
+                    "value": 1.0
+                  }
+                ]
+              }
+            ]
+          },
+          "description": "Share of CPU scheduler periods that were throttled \u2014 these workloads want more CPU than their limit allows. Raise the CPU limit."
+        },
+        {
+          "id": 54,
+          "type": "table",
+          "title": "Memory pressure \u2014 usage vs limit (OOM risk)",
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 60
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(20, (sum by (namespace, workload) (container_memory_working_set_bytes{namespace=~\"$$namespace\",container!=\"\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"}) / sum by (namespace, workload) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"memory\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})) > 0.5)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "namespace": "Namespace",
+                  "workload": "Workload",
+                  "Value": "Mem used/limit"
+                },
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {
+                  "namespace": 0,
+                  "workload": 1,
+                  "Value": 2
+                }
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "sortBy": [
+              {
+                "displayName": "Mem used/limit",
+                "desc": true
+              }
+            ]
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 2,
+              "custom": {
+                "align": "auto",
+                "filterable": true
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Mem used/limit"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "gradient"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0.8
+                        },
+                        {
+                          "color": "orange",
+                          "value": 0.95
+                        },
+                        {
+                          "color": "red",
+                          "value": 1.0
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "max",
+                    "value": 1.0
+                  }
+                ]
+              }
+            ]
+          },
+          "description": "Workloads whose memory working-set is closest to their limit (>50% shown). Red = imminent OOMKill; raise the limit or fix the leak."
+        },
+        {
+          "id": 60,
+          "type": "row",
+          "title": "Storage \u2014 persistent volume claims",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 68
+          },
+          "panels": []
+        },
+        {
+          "id": 61,
+          "type": "bargauge",
+          "title": "PVC fill (% of capacity)",
+          "gridPos": {
+            "h": 9,
+            "w": 10,
+            "x": 0,
+            "y": 69
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "How full each PVC is. Capacity is the effective storage limit.",
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\"}) / sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "displayMode": "gradient",
+            "orientation": "horizontal",
+            "showUnfilled": true,
+            "valueMode": "color"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "max": 1.0,
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.75
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.9
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
           }
         },
         {
-          "id": 32,
-          "type": "timeseries",
-          "title": "PVC fill ratio over time (top 15)",
-          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 56},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "id": 62,
+          "type": "table",
+          "title": "PVC usage vs capacity",
+          "gridPos": {
+            "h": 9,
+            "w": 14,
+            "x": 10,
+            "y": 69
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "targets": [
-            {"refId": "A", "expr": "topk(15, sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\"}) / sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\"}))", "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"}
+            {
+              "refId": "A",
+              "expr": "sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "expr": "sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_available_bytes{namespace=~\"$$namespace\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "D",
+              "expr": "sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\"}) / sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            }
           ],
-          "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1, "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": []},
-          "options": {"legend": {"displayMode": "list", "placement": "right", "calcs": []}, "tooltip": {"mode": "multi", "sort": "desc"}}
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "namespace": "Namespace",
+                  "persistentvolumeclaim": "PVC",
+                  "Value #A": "Used",
+                  "Value #B": "Capacity",
+                  "Value #C": "Available",
+                  "Value #D": "Used %"
+                },
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {
+                  "namespace": 0,
+                  "persistentvolumeclaim": 1,
+                  "Value #A": 2,
+                  "Value #B": 3,
+                  "Value #C": 4,
+                  "Value #D": 5
+                }
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "sortBy": [
+              {
+                "displayName": "Used %",
+                "desc": true
+              }
+            ]
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 2,
+              "custom": {
+                "align": "auto",
+                "filterable": true
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Used"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Capacity"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Available"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Used %"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "gradient"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0.75
+                        },
+                        {
+                          "color": "red",
+                          "value": 0.9
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "max",
+                    "value": 1.0
+                  }
+                ]
+              }
+            ]
+          },
+          "description": "Per-PVC used / capacity / available and fill ratio. Source: kubelet_volume_stats_*."
+        },
+        {
+          "id": 70,
+          "type": "row",
+          "title": "Trends over time (expand)",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 78
+          },
+          "panels": [
+            {
+              "id": 71,
+              "type": "timeseries",
+              "title": "CPU usage by workload (top 15)",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 0
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "topk(15, sum by (namespace, workload) (rate(container_cpu_usage_seconds_total{namespace=~\"$$namespace\",container!=\"\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"}))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{workload}}"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "cores",
+                  "custom": {
+                    "drawStyle": "line",
+                    "fillOpacity": 10,
+                    "showPoints": "never",
+                    "lineWidth": 1,
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "right",
+                  "calcs": []
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            },
+            {
+              "id": 72,
+              "type": "timeseries",
+              "title": "Memory usage by workload (top 15)",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 0
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "topk(15, sum by (namespace, workload) (container_memory_working_set_bytes{namespace=~\"$$namespace\",container!=\"\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"}))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{workload}}"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "bytes",
+                  "custom": {
+                    "drawStyle": "line",
+                    "fillOpacity": 10,
+                    "showPoints": "never",
+                    "lineWidth": 1,
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "right",
+                  "calcs": []
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            },
+            {
+              "id": 73,
+              "type": "timeseries",
+              "title": "Network receive by workload (top 15)",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 8
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "topk(15, sum by (namespace, workload) (rate(container_network_receive_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"}))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{workload}}"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "Bps",
+                  "custom": {
+                    "drawStyle": "line",
+                    "fillOpacity": 10,
+                    "showPoints": "never",
+                    "lineWidth": 1,
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "right",
+                  "calcs": []
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            },
+            {
+              "id": 74,
+              "type": "timeseries",
+              "title": "Network transmit by workload (top 15)",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 8
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "topk(15, sum by (namespace, workload) (rate(container_network_transmit_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"}))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{workload}}"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "Bps",
+                  "custom": {
+                    "drawStyle": "line",
+                    "fillOpacity": 10,
+                    "showPoints": "never",
+                    "lineWidth": 1,
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "right",
+                  "calcs": []
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            },
+            {
+              "id": 75,
+              "type": "timeseries",
+              "title": "PVC fill ratio over time (top 15)",
+              "gridPos": {
+                "h": 8,
+                "w": 24,
+                "x": 0,
+                "y": 16
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "topk(15, sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\"}) / sum by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\"}))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "percentunit",
+                  "custom": {
+                    "drawStyle": "line",
+                    "fillOpacity": 10,
+                    "showPoints": "never",
+                    "lineWidth": 1,
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0,
+                  "max": 1
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "right",
+                  "calcs": []
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          ]
         }
       ]
     }
