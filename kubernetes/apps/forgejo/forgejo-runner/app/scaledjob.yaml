@@ -18,11 +18,13 @@ metadata:
   namespace: forgejo
 spec:
   pollingInterval: 30
-  # Warm pool: keep 2 runners always blocked on `one-job --wait` so routine jobs start with no
-  # cold-start, then burst up to maxReplicaCount under load. KEDA backfills as warm runners take
-  # jobs and exit. NOTE: 2 pods (each with a privileged dind sidecar) run 24/7 on the fringe nodes
-  # — ~200m CPU / ~768Mi memory requests each. Set back to 0 for pure scale-from-zero.
-  minReplicaCount: 2
+  # Warm pool: keep 1 runner always blocked on `one-job --wait` so routine jobs start with no
+  # cold-start, then burst up to maxReplicaCount under load. KEDA backfills as the warm runner
+  # takes a job and exits. Each pod (a privileged dind sidecar) requests ~200m CPU / ~768Mi and
+  # runs 24/7 on the fringe nodes. Was 2, but the single fringe node only had memory headroom for
+  # one warm runner (the 2nd stayed Pending: Insufficient memory) — bump back up once fringe
+  # capacity grows. Set to 0 for pure scale-from-zero.
+  minReplicaCount: 1
   maxReplicaCount: 6
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 5
