@@ -1573,9 +1573,9 @@ spec:
         {
           "id": 31,
           "type": "table",
-          "title": "Per-namespace \u2014 usage vs requests vs limits, network (expand \u2192 apps)",
+          "title": "Per-namespace cost \u2014 expand a namespace to see each app's CPU/RAM (absolute & % of cluster)",
           "gridPos": {
-            "h": 11,
+            "h": 12,
             "w": 24,
             "x": 0,
             "y": 28
@@ -1597,7 +1597,7 @@ spec:
             },
             {
               "refId": "B",
-              "expr": "sum by (namespace, workload) (kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"cpu\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
+              "expr": "sum by (namespace, workload) (rate(container_cpu_usage_seconds_total{namespace=~\"$$namespace\",container!=\"\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"}) / scalar(sum(rate(container_cpu_usage_seconds_total{container!=\"\"}[$$__rate_interval])))",
               "datasource": {
                 "type": "prometheus",
                 "uid": "prometheus"
@@ -1607,16 +1607,6 @@ spec:
             },
             {
               "refId": "C",
-              "expr": "sum by (namespace, workload) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"cpu\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              },
-              "instant": true,
-              "format": "table"
-            },
-            {
-              "refId": "D",
               "expr": "sum by (namespace, workload) (container_memory_working_set_bytes{namespace=~\"$$namespace\",container!=\"\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
               "datasource": {
                 "type": "prometheus",
@@ -1626,27 +1616,17 @@ spec:
               "format": "table"
             },
             {
+              "refId": "D",
+              "expr": "sum by (namespace, workload) (container_memory_working_set_bytes{namespace=~\"$$namespace\",container!=\"\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"}) / scalar(sum(container_memory_working_set_bytes{container!=\"\"}))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
               "refId": "E",
-              "expr": "sum by (namespace, workload) (kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"memory\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              },
-              "instant": true,
-              "format": "table"
-            },
-            {
-              "refId": "F",
-              "expr": "sum by (namespace, workload) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"memory\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              },
-              "instant": true,
-              "format": "table"
-            },
-            {
-              "refId": "G",
               "expr": "sum by (namespace, workload) (rate(container_network_receive_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
               "datasource": {
                 "type": "prometheus",
@@ -1656,7 +1636,47 @@ spec:
               "format": "table"
             },
             {
+              "refId": "F",
+              "expr": "sum by (namespace, workload) (rate(container_network_transmit_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "G",
+              "expr": "sum by (namespace, workload) (rate(container_cpu_usage_seconds_total{namespace=~\"$$namespace\",container!=\"\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
               "refId": "H",
+              "expr": "sum by (namespace, workload) (container_memory_working_set_bytes{namespace=~\"$$namespace\",container!=\"\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "I",
+              "expr": "sum by (namespace, workload) (rate(container_network_receive_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "J",
               "expr": "sum by (namespace, workload) (rate(container_network_transmit_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
               "datasource": {
                 "type": "prometheus",
@@ -1678,13 +1698,15 @@ spec:
                   "namespace": "Namespace",
                   "workload": "Workload",
                   "Value #A": "CPU used",
-                  "Value #B": "CPU req",
-                  "Value #C": "CPU lim",
-                  "Value #D": "Mem used",
-                  "Value #E": "Mem req",
-                  "Value #F": "Mem lim",
-                  "Value #G": "Net RX",
-                  "Value #H": "Net TX"
+                  "Value #B": "CPU %",
+                  "Value #C": "Mem used",
+                  "Value #D": "Mem %",
+                  "Value #E": "Net RX",
+                  "Value #F": "Net TX",
+                  "Value #G": "CPU",
+                  "Value #H": "Mem",
+                  "Value #I": "RX",
+                  "Value #J": "TX"
                 },
                 "excludeByName": {
                   "Time": true
@@ -1699,8 +1721,22 @@ spec:
                   "Value #E": 6,
                   "Value #F": 7,
                   "Value #G": 8,
-                  "Value #H": 9
+                  "Value #H": 9,
+                  "Value #I": 10,
+                  "Value #J": 11
                 }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "fields": {},
+                "sort": [
+                  {
+                    "field": "CPU used",
+                    "desc": true
+                  }
+                ]
               }
             },
             {
@@ -1712,49 +1748,25 @@ spec:
                     "aggregations": [],
                     "operation": "groupby"
                   },
-                  "CPU used": {
+                  "CPU": {
                     "aggregations": [
                       "sum"
                     ],
                     "operation": "aggregate"
                   },
-                  "CPU req": {
+                  "Mem": {
                     "aggregations": [
                       "sum"
                     ],
                     "operation": "aggregate"
                   },
-                  "CPU lim": {
+                  "RX": {
                     "aggregations": [
                       "sum"
                     ],
                     "operation": "aggregate"
                   },
-                  "Mem used": {
-                    "aggregations": [
-                      "sum"
-                    ],
-                    "operation": "aggregate"
-                  },
-                  "Mem req": {
-                    "aggregations": [
-                      "sum"
-                    ],
-                    "operation": "aggregate"
-                  },
-                  "Mem lim": {
-                    "aggregations": [
-                      "sum"
-                    ],
-                    "operation": "aggregate"
-                  },
-                  "Net RX": {
-                    "aggregations": [
-                      "sum"
-                    ],
-                    "operation": "aggregate"
-                  },
-                  "Net TX": {
+                  "TX": {
                     "aggregations": [
                       "sum"
                     ],
@@ -1772,7 +1784,7 @@ spec:
             },
             "sortBy": [
               {
-                "displayName": "CPU used (sum)",
+                "displayName": "CPU (sum)",
                 "desc": true
               }
             ]
@@ -1790,6 +1802,30 @@ spec:
               {
                 "matcher": {
                   "id": "byName",
+                  "options": "CPU"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "cores"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU (sum)"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "cores"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
                   "options": "CPU used"
                 },
                 "properties": [
@@ -1802,60 +1838,24 @@ spec:
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "CPU used (sum)"
+                  "options": "Mem"
                 },
                 "properties": [
                   {
                     "id": "unit",
-                    "value": "cores"
+                    "value": "bytes"
                   }
                 ]
               },
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "CPU req"
+                  "options": "Mem (sum)"
                 },
                 "properties": [
                   {
                     "id": "unit",
-                    "value": "cores"
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "CPU req (sum)"
-                },
-                "properties": [
-                  {
-                    "id": "unit",
-                    "value": "cores"
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "CPU lim"
-                },
-                "properties": [
-                  {
-                    "id": "unit",
-                    "value": "cores"
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "CPU lim (sum)"
-                },
-                "properties": [
-                  {
-                    "id": "unit",
-                    "value": "cores"
+                    "value": "bytes"
                   }
                 ]
               },
@@ -1874,67 +1874,7 @@ spec:
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "Mem used (sum)"
-                },
-                "properties": [
-                  {
-                    "id": "unit",
-                    "value": "bytes"
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Mem req"
-                },
-                "properties": [
-                  {
-                    "id": "unit",
-                    "value": "bytes"
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Mem req (sum)"
-                },
-                "properties": [
-                  {
-                    "id": "unit",
-                    "value": "bytes"
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Mem lim"
-                },
-                "properties": [
-                  {
-                    "id": "unit",
-                    "value": "bytes"
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Mem lim (sum)"
-                },
-                "properties": [
-                  {
-                    "id": "unit",
-                    "value": "bytes"
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Net RX"
+                  "options": "RX"
                 },
                 "properties": [
                   {
@@ -1946,7 +1886,43 @@ spec:
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "Net RX (sum)"
+                  "options": "RX (sum)"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "Bps"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "TX"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "Bps"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "TX (sum)"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "Bps"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Net RX"
                 },
                 "properties": [
                   {
@@ -1970,18 +1946,112 @@ spec:
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "Net TX (sum)"
+                  "options": "CPU %"
                 },
                 "properties": [
                   {
                     "id": "unit",
-                    "value": "Bps"
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "gradient"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0.05
+                        },
+                        {
+                          "color": "orange",
+                          "value": 0.1
+                        },
+                        {
+                          "color": "red",
+                          "value": 0.2
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Mem %"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "gradient"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0.05
+                        },
+                        {
+                          "color": "orange",
+                          "value": 0.1
+                        },
+                        {
+                          "color": "red",
+                          "value": 0.2
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
                   }
                 ]
               }
             ]
           },
-          "description": "Top row per namespace shows the summed CPU/memory usage vs requests/limits and network. Click the chevron on the left to expand a namespace into its individual applications (workloads). Sorted by CPU used. (PVC is per-namespace/per-PVC only \u2014 see the Storage section.)"
+          "description": "Parent row = namespace totals (CPU cores, RAM, network). Click the chevron to expand into the apps (workloads) running there, each with absolute CPU/RAM/network AND its share of total cluster CPU/RAM (CPU % / Mem %). Apps sorted costliest-first. (PVC is per-namespace/per-PVC only \u2014 see the Storage section; requests vs limits are in the Workloads right-sizing table below.)"
         },
         {
           "id": 40,
