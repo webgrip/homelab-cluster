@@ -42,6 +42,17 @@ spec:
                               operator: In
                               values:
                                 - worker
+          # api-server has a RWO Longhorn PVC; RollingUpdate deadlocks on
+          # rollout (old pod holds the volume, new pod can't multi-attach).
+          # Recreate = terminate-then-start, so the volume detaches first.
+          - target:
+              kind: Deployment
+              name: "dependency-track-api-server"
+            patch: |
+              - op: add
+                path: /spec/strategy
+                value:
+                  type: Recreate
   values:
     common:
       fullnameOverride: dependency-track
