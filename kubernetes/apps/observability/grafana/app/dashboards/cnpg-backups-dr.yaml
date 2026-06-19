@@ -50,7 +50,7 @@ spec:
           "title": "DBs with failing backups",
           "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "count(cnpg_collector_last_failed_backup_timestamp > 0 and cnpg_collector_last_failed_backup_timestamp >= cnpg_collector_last_available_backup_timestamp) or on() vector(0)", "legendFormat": "failing"}],
+          "targets": [{"refId": "A", "expr": "count(barman_cloud_cloudnative_pg_io_last_failed_backup_timestamp > 0 and barman_cloud_cloudnative_pg_io_last_failed_backup_timestamp >= barman_cloud_cloudnative_pg_io_last_available_backup_timestamp) or on() vector(0)", "legendFormat": "failing"}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
           "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
         },
@@ -73,7 +73,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "time() - (cnpg_collector_last_available_backup_timestamp > 0)",
+              "expr": "time() - (barman_cloud_cloudnative_pg_io_last_available_backup_timestamp > 0)",
               "legendFormat": "{{namespace}}"
             }
           ],
@@ -83,11 +83,11 @@ spec:
         {
           "id": 5,
           "type": "timeseries",
-          "title": "Databases never backed up",
+          "title": "DBs with stale backup (>24h)",
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
-            {"refId": "A", "expr": "count(cnpg_collector_last_available_backup_timestamp == 0) or on() vector(0)", "legendFormat": "never backed up"}
+            {"refId": "A", "expr": "count((time() - barman_cloud_cloudnative_pg_io_last_available_backup_timestamp) > 86400) or on() vector(0)", "legendFormat": "stale (>24h)"}
           ],
           "options": {"legend": {"displayMode": "list", "placement": "right"}},
           "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}
