@@ -40,10 +40,14 @@ Stateful apps are covered by the same rule (the worker pool is exactly the stora
 
 **Control-plane-critical infra stays unconstrained** — coredns, cilium, the operators and DaemonSets
 that must run everywhere (including the soyos) get **no** worker-pool affinity. The split is "apps →
-worker pool; platform that must tolerate the control plane → unconstrained."
+worker pool; platform that must tolerate the control plane → unconstrained." Critically, the infra on
+the **cluster-recovery critical path** (kyverno admission, external-secrets, openbao-unsealer,
+trust-manager, cnpg-operator, flux/cilium/cert-manager) stays `unconstrained` so a both-worker outage
+can still be *recovered* (admission control + secret delivery keep working on a soyo).
 
-**forgejo (exception):** its affinity *permits* the designated soyo and *prefers* the workers, matching
-its 3-replica `longhorn-gitops` storage (ADR-0026), so it keeps serving git in a both-worker outage:
+**gitops-critical exceptions:** **forgejo** (the Flux source) and **openbao** (the secrets backend)
+keep a storage replica on one designated soyo (`longhorn-gitops`, 3 replicas — ADR-0026) **and** an
+affinity that *permits* that soyo while *preferring* the workers, so both survive a both-worker outage:
 
 ```yaml
 # required: workers OR the designated soyo ; preferred: workers
@@ -51,10 +55,34 @@ requiredDuringScheduling…: [ pool In (worker) , kubernetes.io/hostname In (<de
 preferredDuringScheduling…: [ weight 100 → pool In (worker) ]
 ```
 
-This replaces the four current `workload-tier=apps` **soft** affinities and the ~11 `nodegroup=fringe`
-**hard pins**, converging every app onto one model. An alert fires if an app sits `Pending` for lack of
-a worker (so the trade-off is visible). Roll out one app/namespace at a time; the fringe taint is
-removed only after no app depends on it (RFC Phase D).
+### Placement reference (every workload resolves to one of these)
+
+| Class | Examples | Runs on |
+|---|---|---|
+| Control-plane | apiserver/etcd/scheduler/controller-manager, coredns | soyos |
+| Node DaemonSet | cilium, longhorn-manager/csi, node-exporter, alloy-agent, spegel | all nodes |
+| Infra / operators (incl. recovery critical-path) | flux, cert-manager, cnpg-operator, external-secrets, kyverno, keda*, longhorn csi-controllers, network gateways, observability operators, mcp servers | unconstrained (soyos + workers) |
+| **Apps** (stateless + stateful) | authentik, harbor, n8n, sparkyfitness, dependency-track, guac, grafana/prometheus/loki/alertmanager, all CNPG DBs, invoiceninja, freshrss, searxng, minecraft, drawio, excalidraw, backstage, trivy-server, **observability stack**, **ARC runners** | **worker pool (hard)** |
+| **gitops-critical** | **forgejo (+forgejo-db), openbao** | **worker pool + 1 designated soyo** |
+
+\* KEDA is part of the forgejo-runner autoscaling path → worker pool. `echo` and the stale `default/envoy-*`
+duplicates are deleted, not placed.
+
+This **retires the `fringe` scheme entirely** — every `nodegroup=fringe` nodeSelector + the
+`dedicated=fringe:NoSchedule` taint are removed (ADR-0025); apps that were pinned to fringe move to the
+worker pool. It also replaces the four `workload-tier=apps` soft affinities. An alert fires if an app
+sits `Pending` for lack of a worker. Roll out one namespace at a time; the fringe taint is removed last.
+
+### Mechanism — DRY via a shared component
+
+Placement is applied through one reusable kustomize component,
+[`components/placement/worker-pool`](../../../../kubernetes/components/placement/worker-pool/kustomization.yaml)
+(house style, like `components/gateway-egress`). An app opts in with one line in its
+`app/kustomization.yaml`. The component injects the hard `pool=worker` affinity into HelmRelease-rendered
+Deployments/StatefulSets (via a post-render patch — chart-agnostic), raw Deploy/StatefulSet manifests,
+and CNPG `Cluster`s (`spec.affinity.nodeSelector`). Apps that already define their own `postRenderers`
+(dependency-track) set the same affinity inline instead; forgejo/openbao use the gitops-critical
+placement, not this component.
 
 ## Consequences
 
@@ -62,10 +90,12 @@ removed only after no app depends on it (RFC Phase D).
   free — completing the etcd-protection goal of ADR-0026.
 - Losing both workers pauses the apps (`Pending`) rather than melting the soyos — the conscious trade.
   forgejo is the exception, so GitOps reconciliation survives.
-- Every app manifest gains the same affinity block; a shared kustomize component (à la
-  `components/gateway-egress`) is the natural way to avoid drift and is a likely follow-up.
-- Charts that don't expose `affinity` need a post-render patch (as already used for dependency-track) —
-  a known, small cost per such chart.
+- Placement policy lives in **one component + this ADR**, not scattered across ~40 manifests; an app is
+  pinned by adding one line to its `app/kustomization.yaml`.
+- The component is chart-agnostic (post-render patch), so charts that don't expose `affinity` are
+  handled uniformly — no per-chart values archaeology, except the few with their own `postRenderers`.
+- Retiring the fringe scheme removes a node taint + ~11 per-app tolerations/selectors, net-simplifying
+  the tree.
 
 ## Alternatives considered
 

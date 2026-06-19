@@ -1,0 +1,110 @@
+---
+# components/placement/worker-pool — hard-pin a workload to the worker pool
+# (ADR-0028). Workloads run only on node.webgrip.io/pool=worker and go Pending if
+# both workers are down, rather than crushing the RAM-tight soyo control-planes.
+#
+# Include from an app's app/kustomization.yaml:
+#   components:
+#     - ../../../../components/placement/worker-pool
+#
+# It covers all three workload shapes the cluster uses:
+#   - HelmRelease  → adds a post-render patch injecting the affinity into every
+#                    rendered Deployment + StatefulSet (chart-agnostic).
+#   - raw Deployment / StatefulSet → patched directly.
+#   - CNPG Cluster → spec.affinity.nodeSelector (hard).
+#
+# ⚠️ Do NOT use this on a HelmRelease that already defines spec.postRenderers
+# (e.g. dependency-track) — the strategic merge would replace that list; set the
+# same affinity inline there instead. forgejo + openbao use the gitops-critical
+# placement (ADR-0026), not this component.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+patches:
+  - target:
+      kind: HelmRelease
+      group: helm.toolkit.fluxcd.io
+    patch: |
+      apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      metadata:
+        name: not-matched-by-name
+      spec:
+        postRenderers:
+          - kustomize:
+              patches:
+                - target:
+                    kind: Deployment
+                  patch: |
+                    - op: add
+                      path: /spec/template/spec/affinity
+                      value:
+                        nodeAffinity:
+                          requiredDuringSchedulingIgnoredDuringExecution:
+                            nodeSelectorTerms:
+                              - matchExpressions:
+                                  - key: node.webgrip.io/pool
+                                    operator: In
+                                    values: ["worker"]
+                - target:
+                    kind: StatefulSet
+                  patch: |
+                    - op: add
+                      path: /spec/template/spec/affinity
+                      value:
+                        nodeAffinity:
+                          requiredDuringSchedulingIgnoredDuringExecution:
+                            nodeSelectorTerms:
+                              - matchExpressions:
+                                  - key: node.webgrip.io/pool
+                                    operator: In
+                                    values: ["worker"]
+  - target:
+      kind: Deployment
+      group: apps
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: not-matched-by-name
+      spec:
+        template:
+          spec:
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                    - matchExpressions:
+                        - key: node.webgrip.io/pool
+                          operator: In
+                          values: ["worker"]
+  - target:
+      kind: StatefulSet
+      group: apps
+    patch: |
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: not-matched-by-name
+      spec:
+        template:
+          spec:
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                    - matchExpressions:
+                        - key: node.webgrip.io/pool
+                          operator: In
+                          values: ["worker"]
+  - target:
+      kind: Cluster
+      group: postgresql.cnpg.io
+    patch: |-
+      apiVersion: postgresql.cnpg.io/v1
+      kind: Cluster
+      metadata:
+        name: not-matched-by-name
+      spec:
+        affinity:
+          nodeSelector:
+            node.webgrip.io/pool: worker

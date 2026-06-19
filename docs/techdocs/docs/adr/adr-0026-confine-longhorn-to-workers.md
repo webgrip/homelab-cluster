@@ -28,11 +28,13 @@ attachments are on Garage S3). With storage confined to the two workers, forgejo
 taints. Two storage nodes + hard anti-affinity ⇒ a **2-replica ceiling**; the 11 current 3-replica
 volumes drop to 2. Accept it now and over-provision (115 GiB actual fits fringe's 236 GiB SSD).
 
-**forgejo exception:** one designated soyo keeps a small Longhorn disk tagged `gitops-critical`. A
-dedicated `longhorn-gitops` StorageClass (numberOfReplicas **3**, disks tagged `hot` **or**
-`gitops-critical`) is used **only** by `forgejo-data` and `forgejo-db`, so those two volumes get a
-replica on each worker **and** on the designated soyo. forgejo's pods are allowed to run on that soyo
-([ADR-0028](adr-0028-application-workload-placement.md)), so it serves git even if both workers fail.
+**gitops-critical exception:** one designated soyo keeps a small Longhorn disk tagged `gitops-critical`.
+A dedicated `longhorn-gitops` StorageClass (numberOfReplicas **3**, disks tagged `gitops`) is used
+**only** by the two GitOps/bootstrap-critical workloads — **forgejo** (`forgejo-data` + `forgejo-db`,
+the Flux source) and **openbao** (the secrets backend) — so each of those volumes gets a replica on
+both workers **and** on the designated soyo. Their pods are allowed to run on that soyo
+([ADR-0028](adr-0028-application-workload-placement.md)), so forgejo keeps serving git and openbao keeps
+serving secrets even if both workers fail.
 
 Migration is phased and evictive (not a drain — etcd quorum is untouched): open worker-1, GC `slab`,
 reduce 3-replica volumes → 2, then evict soyos **one at a time** (`allowScheduling=false` +
@@ -52,6 +54,12 @@ no soyo runs instance-managers under load.
   worker-only pool) when a 3rd storage node arrives.
 - fringe's 236 GiB SSD is the binding constraint; depends on over-provisioning + active cold-tiering
   ([ADR-0027](adr-0027-longhorn-hot-cold-tiers.md)) and a usage alert.
+- **Follow-up — make the soyos fully storage-free.** Once replicas + stateful pods are off the soyos,
+  the Longhorn DaemonSets (`longhorn-manager`, `longhorn-csi-plugin`, `engine-image`) still run there by
+  default. Restrict them to the storage nodes (`storage.webgrip.io/longhorn=true` via the chart's
+  `longhornManager`/`longhornDriver` nodeSelector) so the soyos run *no* Longhorn components at all —
+  except on the one designated `gitops-critical` soyo, which must keep them for the forgejo/openbao
+  replicas.
 
 ## Alternatives considered
 
