@@ -39,6 +39,8 @@ kubectl get httproute -A
 kubectl get gateway -A
 ```
 
+For per-node **physical** hardware (CPU, RAM modules, disks) rather than scheduling capacity, see [Talos Cluster Reference → Hardware](talos-cluster.md#hardware).
+
 If you need to validate ingress end-to-end, focus on:
 
 ```bash
