@@ -5,7 +5,7 @@
 > lives in a layer that was never isolated — and that "extremely fast" is only worth buying where
 > speed is actually scarce (storage and east-west network). It draws **four end-state paths (A–D) as
 > equals** rather than picking one, and commits to a single **migration spine** that reaches any of
-> them. Individual choices become **candidate ADRs** (next free number ADR-0025), assigned as each is
+> them. Individual choices become **candidate ADRs** (next free number ADR-0029 — 0025–0028 are taken by [RFC: Node taxonomy & storage placement](rfc-node-taxonomy-and-storage-placement.md)), assigned as each is
 > ratified. **Phase 0 ("stop the bleeding") is actionable now** and maps to existing roadmap
 > reliability items. It flips to **Accepted** as a target path is chosen and each layer's ADR lands.
 
@@ -256,8 +256,9 @@ cluster (B), or TrueNAS HA pair (C). Migrate via **CNPG replica failover + PVC c
 ## Decisions (candidate future ADRs)
 
 Nothing here is ratified, so per the [ADR conventions](../adr/index.md) these are **candidate ADRs
-without numbers** — each takes the next free number (starting **ADR-0025**) when it is actually
-decided. The RFC's job is to enumerate the decisions and what gates them.
+without numbers** — each takes the next free number (starting **ADR-0029**; 0025–0028 are taken by
+[RFC: Node taxonomy & storage placement](rfc-node-taxonomy-and-storage-placement.md)) when it is
+actually decided. The RFC's job is to enumerate the decisions and what gates them.
 
 | Decision | Options | Gated on |
 |---|---|---|
@@ -288,7 +289,7 @@ Because the posture is a **menu**, this RFC ends with criteria rather than a sin
 > choice — default to **A**, or **C** for enterprise-grade storage at moderate power.
 
 When the answers converge, ratify the matching rows in
-[Decisions](#decisions-candidate-future-adrs) as ADR-0025+.
+[Decisions](#decisions-candidate-future-adrs) as ADR-0029+.
 
 ## Risks & open questions
 

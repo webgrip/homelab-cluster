@@ -51,6 +51,7 @@ This is the repo's first ADR section; the conventions below apply to everything 
 | [Renovate on Forgejo](../rfc/rfc-renovate-forgejo.md) | Accepted | Migrate Renovate off GitHub onto Forgejo via a second dual-run RenovateJob; cut repos over as each becomes authoritative. |
 | [Cutting the GitOps umbilical](../rfc/rfc-flux-forgejo-source.md) | Proposed | Repoint Flux's source from GitHub to in-cluster Forgejo; keep an external mirror for bootstrap + break-glass. |
 | [Harbor Pull-Through Proxy Cache](../rfc/rfc-harbor-proxy-cache.md) | Proposed | Route docker.io/ghcr.io pulls through Harbor proxy-cache projects at the containerd-mirror layer, with upstream fallback. |
+| [Node taxonomy & storage placement](../rfc/rfc-node-taxonomy-and-storage-placement.md) | Proposed | Capability node taxonomy + move Longhorn off the control-planes onto the workers; apps hard-pin to workers; scoped forgejo storage exception. |
 
 ### ADRs
 
@@ -76,4 +77,11 @@ This is the repo's first ADR section; the conventions below apply to everything 
 | [ADR-0018](adr-0018-harbor-config-idempotent-job.md) | Proposed | Provision the proxy registries/projects via an idempotent Harbor-API CronJob (no operator). |
 | [ADR-0019](adr-0019-bootstrap-task-pattern.md) | Accepted | Bootstrap/one-shot tasks: pick the lowest trigger tier (controller > change-triggered Job > timer CronJob), gated by Flux. |
 | [ADR-0020](adr-0020-codeberg-offsite-push-mirror.md) | Proposed | Fan Forgejo out to Codeberg as a second off-site mirror via native push-mirror, reconciled by a Tier-2 CronJob; built after cutover. |
+| [ADR-0021](adr-0021-cilium-gateway-egress-for-oidc.md) | Accepted | Identity-based egress to the gateway for server-side OIDC under default-deny. |
+| [ADR-0022](adr-0022-codeberg-pages-techdocs.md) | Accepted | Serve TechDocs from Codeberg Pages as the interim host. |
+| [ADR-0023](adr-0023-backstage-techdocs.md) | Proposed | Serve TechDocs from Backstage as the target host. |
 | [ADR-0024](adr-0024-forgejo-leading-application-repos.md) | Accepted | Application repos that run write-back CI become Forgejo-authoritative (de-mirrored), not read-only pull-mirrors; `webgrip/infrastructure` first. |
+| [ADR-0025](adr-0025-node-taxonomy.md) | Proposed | Capability-based node taxonomy (labels); retire the `fringe` taint/`nodegroup` scheme. |
+| [ADR-0026](adr-0026-confine-longhorn-to-workers.md) | Proposed | Confine Longhorn replicas to the workers (protect etcd); scoped forgejo storage exception. |
+| [ADR-0027](adr-0027-longhorn-hot-cold-tiers.md) | Proposed | Longhorn hot/cold tiers (SSD/HDD), configured declaratively from node annotations. |
+| [ADR-0028](adr-0028-application-workload-placement.md) | Proposed | Hard-pin application workloads to the worker pool; forgejo excepted. |
