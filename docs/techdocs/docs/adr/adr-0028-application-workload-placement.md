@@ -73,12 +73,24 @@ This **retires the `fringe` scheme entirely** — every `nodegroup=fringe` nodeS
 worker pool. It also replaces the four `workload-tier=apps` soft affinities. An alert fires if an app
 sits `Pending` for lack of a worker. Roll out one namespace at a time; the fringe taint is removed last.
 
-> **Sequencing (learned the hard way — 2026-06-19).** Existing Longhorn PVs created before `worker-1`
-> joined have a `nodeAffinity` that excludes it, so a **stateful** pod pinned to the worker pool can't
-> attach on `worker-1` until a replica is placed there. Therefore **eviction ([ADR-0026](adr-0026-confine-longhorn-to-workers.md)
-> Phase E) must precede stateful worker-pinning.** Phase D splits: **D1 = stateless apps now** (no PVC →
-> reach any worker), **D2 = stateful apps after Phase E** opens the PV affinity. Also: the
-> `dedicated=fringe` taint can only be removed by re-registering fringe (reboot) or manually
+> **Sequencing (learned the hard way — 2026-06-19, refined after the n8n canary).** The PV-exclusion
+> blocker is **StorageClass-specific, keyed on `volumeBindingMode`** — not all volumes:
+>
+> - **`longhorn` (`Immediate`)** → PV has **no** `nodeAffinity` → attaches anywhere incl. `worker-1`. So
+>   `longhorn`-backed apps — **stateless and stateful, including all CNPG DBs** — pin to the worker pool
+>   **now**, no eviction required. (Proven: `dependency-track-apiserver` rescheduled soyo-2 → `worker-1`.)
+> - **`longhorn-general` (`WaitForFirstConsumer`)** → PV bakes in the storage nodes present at first bind
+>   and never refreshes → **excludes `worker-1`** (this is what left n8n `Pending`). These reach the older
+>   workers (fringe) once its taint is gone, but to use `worker-1` they must be **migrated to the
+>   `longhorn` SC** ([ADR-0029](adr-0029-storageclass-consolidation.md)); **eviction does not help** — it
+>   can't rewrite the immutable PV `nodeAffinity`.
+>
+> So Phase D splits by **binding mode, not statefulness**: **D1 = everything on `longhorn`/Immediate now**;
+> **D2 = the `longhorn-general`/WFFC apps** (after the fringe taint is retired, or after SC migration).
+> Eviction ([ADR-0026](adr-0026-confine-longhorn-to-workers.md) Phase E) is about getting *replicas* off
+> the soyos to protect etcd — independent of pod pinning. Two more traps: a single-replica RWO
+> **Deployment** that the pin relocates needs `strategy: Recreate` (else a Multi-Attach rollout deadlock);
+> and the `dedicated=fringe` taint can only be removed by re-registering fringe (reboot) or manually
 > (`kubectl taint … -`) — `register-with-taints` applies only at node registration.
 
 ### Mechanism — DRY via a shared component

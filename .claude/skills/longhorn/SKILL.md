@@ -35,13 +35,24 @@ nodes + HARD anti-affinity).
 - **Rebuild wedge:** many volumes `degraded` but **0 rebuilding** = zombie replicas (`running`,
   `healthyAt=""`, not in the engine `replicaModeMap`) holding the per-node slot. Fix:
   [longhorn-rebuild-wedge runbook](docs/techdocs/docs/runbooks/longhorn-rebuild-wedge.md).
-- **Existing PVs exclude newly-added nodes.** A PV's `spec.nodeAffinity` is set at creation and **not
-  refreshed** when a node joins — so existing stateful volumes can't attach on a new node until Longhorn
-  places a **replica** there. **Evict/migrate replicas onto the new node before pinning stateful
-  workloads to it** ([ADR-0028](docs/techdocs/docs/adr/adr-0028-application-workload-placement.md) D2).
+- **`WaitForFirstConsumer` PVs exclude newly-added nodes — `Immediate` ones don't.** The split is the SC's
+  `volumeBindingMode`: **`longhorn` = `Immediate`** → PV gets **no** `spec.nodeAffinity` → attaches on any
+  node incl. a later-added one, so `longhorn`-backed stateful apps (incl. **all CNPG DBs**) pin to the
+  worker pool freely. **`longhorn-general` = `WaitForFirstConsumer`** → the PV bakes in the storage nodes
+  present at first bind and **never refreshes**, permanently excluding worker-1 (joined 06-19). Verify per
+  volume: `kubectl get pv <pv> -o jsonpath='{.spec.nodeAffinity}'` (empty = free; lists nodes = locked).
+  A WFFC volume can still reach the *older* workers it does list (e.g. fringe) but not worker-1; the
+  durable fix is **migrating it to the `longhorn` (Immediate) SC** (ADR-0029 consolidation) — **eviction
+  does NOT help**, it can't rewrite the immutable PV `nodeAffinity`
+  ([ADR-0028](docs/techdocs/docs/adr/adr-0028-application-workload-placement.md) D2).
 - **Deleting a `nodes.longhorn.io` CR** is rejected while `allowScheduling=true` — patch it `false` first.
 - **`faulted` ≠ recoverable.** `auto-salvage` can log `no data exists` when no replica has valid data;
   recovery is then a *logical* restore (pg_dump/S3), not a block salvage. Check `replica.spec.healthyAt`.
+- **RWO + `RollingUpdate` = Multi-Attach deadlock when a pod moves nodes.** A single-replica Deployment
+  with a RWO PVC, relocated to another node (e.g. by a `pool=worker` pin), hangs `ContainerCreating` with
+  `Multi-Attach error … Volume is already used by pod(s) …` — the old pod holds the volume because
+  `maxUnavailable` rounds to 0. Fix = **`strategy: Recreate`** on that Deployment (StatefulSets/CNPG are
+  immune). See the `workload-placement` skill.
 - **Storage-node reboots churn Longhorn** (detach/re-attach + IM restart → degraded waves + zombie
   replicas). Reboot replica-holding nodes deliberately, drained, expecting a wave.
 - **Don't ship a Talos `machine.disks` entry over a disk that still has a filesystem** — Talos won't

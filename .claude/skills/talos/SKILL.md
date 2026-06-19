@@ -37,10 +37,12 @@ skill); prefer `MODE=no-reboot` and reboot deliberately when unavoidable.
 **Version bump:** edit `talenv.yaml` → `generate-config` → `upgrade-node` per node (one at a time) and/or `upgrade-k8s`.
 
 ## ⚠️ Gotchas (learned the hard way)
-- **Adding a node ≠ existing stateful workloads can use it.** Longhorn sets each PV's `nodeAffinity` at
-  creation and never refreshes it, so existing volumes **exclude** a newly-added node until a replica is
-  placed there. Pin stateful apps to a new node only **after** evicting/migrating a replica onto it (see
-  `workload-placement` + `longhorn` skills). New volumes are fine.
+- **Adding a node ≠ existing stateful workloads can use it — but only for `WaitForFirstConsumer` SCs.**
+  `longhorn-general` (WFFC) bakes each PV's `nodeAffinity` at first bind and never refreshes it, so those
+  volumes **exclude** a newly-added node (worker-1). `longhorn` (`Immediate` binding) sets no PV
+  `nodeAffinity` → fine anywhere. So `longhorn`-backed stateful apps pin to a new node immediately;
+  `longhorn-general` ones need migrating to `longhorn` first (see `workload-placement` + `longhorn`
+  skills). New volumes are always fine.
 - **`machine.disks` over a non-empty disk wedges boot.** Talos refuses `mkfs` without `--force`; the
   `block.VolumeManagerController` loops `failed` and the kubelet never starts (fringe HDD held NTFS,
   06-19). Wipe the disk before adding it as a Longhorn disk.

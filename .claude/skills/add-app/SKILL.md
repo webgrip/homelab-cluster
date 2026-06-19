@@ -18,8 +18,8 @@ description: Scaffold a new application in the Flux GitOps tree. Use when adding
 ## Placement
 Apps **hard-pin to the worker pool** — add one line to `app/kustomization.yaml`:
 `components: [../../../../components/placement/worker-pool]`. See the `workload-placement` skill for the
-tier model + the stateful sequencing gotcha (existing Longhorn PVs exclude newly-added nodes → pin
-stateful apps only after the storage migration).
+tier model + the stateful sequencing gotcha (only `WaitForFirstConsumer` volumes like `longhorn-general`
+are node-locked to pre-worker-1 nodes; `longhorn`/`Immediate` volumes — incl. CNPG DBs — pin freely).
 
 ## Storage (Longhorn)
 `longhorn` = default SSD/general (2-replica; reserved for CNPG too) · `longhorn-general` = current app RWO (folding into `longhorn`) · `longhorn-rwx` = shared RWX (rarely) · `longhorn-cold` = HDD bulk (not for DBs) · `longhorn-gitops` = forgejo/openbao only. See the `longhorn` skill / [ADR-0029](docs/techdocs/docs/adr/adr-0029-storageclass-consolidation.md).

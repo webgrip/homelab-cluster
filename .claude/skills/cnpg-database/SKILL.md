@@ -17,9 +17,10 @@ Operator in `cnpg-system`. One `Cluster` per app namespace; wire backups/monitor
 A CNPG DB is a stateful app → **worker pool**. The `components/placement/worker-pool` component patches
 `Cluster.spec.affinity.nodeSelector: {node.webgrip.io/pool: worker}` (include it in the kustomization
 that builds the `database/`). **forgejo-db + openbao** are the gitops-critical exception → `longhorn-gitops`
-(3 replicas incl. one soyo) so they survive a both-worker outage. ⚠️ Pin an *existing* DB to the worker
-pool **only after** the Longhorn eviction places a replica on the new worker — existing PVs exclude
-later-added nodes (see the `workload-placement` / `longhorn` skills), else the pod goes `Pending`.
+(3 replicas incl. one soyo) so they survive a both-worker outage. ✅ CNPG DBs use the `longhorn` SC
+(`Immediate` binding → PVs carry no node lock), so an *existing* DB pins to the worker pool **immediately**
+— no need to wait for the Longhorn eviction. (Only `WaitForFirstConsumer` volumes like `longhorn-general`
+are node-locked to pre-worker-1 nodes — see the `workload-placement` / `longhorn` skills.)
 
 ## Backups & DR — TWO parts, both required
 1. **Destination** (components): `components: [../../../components/cnpg-backup]` — also `cnpg-monitoring`,

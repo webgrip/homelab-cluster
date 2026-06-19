@@ -20,32 +20,61 @@ this file as phases complete.
   (the component correctly injects the hard `pool=worker` affinity), then **un-pinned** — see the blocker
   below.
 - **Storage:** the rebuild wedge was cleared and the cluster is back to baseline-healthy.
+- **Phase D1 started:** sparkyfitness-server (`f10693a`) and dependency-track api-server+frontend
+  (`70dff79`) hard-pinned to `pool=worker` — both `longhorn`-backed, so they moved/stayed on the worker
+  pool with no eviction needed (proves the `Immediate`-binding path).
 
 ## The two blockers the n8n canary exposed (read before resuming)
 
-1. **Existing Longhorn PVs exclude `worker-1`.** Volumes created before `worker-1` joined have a PV
-   `nodeAffinity` listing only the older nodes, so a **stateful** pod pinned to `pool=worker` can attach
-   only on `fringe`, never `worker-1`, until Longhorn places a replica on `worker-1` (eviction). →
-   **eviction (Phase E) must precede stateful worker-pinning.**
+1. **Only `WaitForFirstConsumer` volumes exclude `worker-1` — not all PVs** (corrected 06-19 after the n8n
+   canary). The split is the StorageClass `volumeBindingMode`:
+   - **`longhorn` = `Immediate`** → PV carries **no** `nodeAffinity` → attaches on any node incl.
+     `worker-1`. So **`longhorn`-backed stateful apps pin to the worker pool now**, no eviction needed.
+     This includes **all CNPG DBs**, `dependency-track-apiserver`, authentik-media, the observability
+     TSDBs, etc. (Verified: DT api-server hard-pinned and rescheduled cleanly onto `worker-1` — commit
+     `70dff79`; sparkyfitness-server already there — `f10693a`.)
+   - **`longhorn-general` = `WaitForFirstConsumer`** → PV bakes in the storage nodes present at first bind
+     and never refreshes → **permanently excludes `worker-1`**. n8n's 111-day-old `longhorn-general`
+     volume listed soyo-2/soyo-3/fringe but not `worker-1`, so pinning it to `pool=worker` left it
+     `Pending`. These can still reach `fringe` (once its taint is gone); to reach `worker-1` they must be
+     **migrated to the `longhorn` SC** (ADR-0029) — **eviction does NOT help**, it can't rewrite the
+     immutable PV `nodeAffinity`. The 16 `longhorn-general` PVCs: n8n, freshrss, searxng, invoiceninja
+     (×2), minecraft, forgejo-data, gitea-mirror, openbao, harbor redis/trivy/jobservice, sparkyfitness
+     backup/uploads, infisical-redis, searxng-valkey.
+   - Check any volume: `kubectl get pv <pv> -o jsonpath='{.spec.nodeAffinity}'` (empty = free to move).
 2. **The fringe taint can't be removed via GitOps.** `register-with-taints` only applies at registration;
    editing Talos config won't drop the live taint, and `kubectl taint` is hook-blocked. Removal needs a
    **fringe re-register (reboot)** or a manual `kubectl taint nodes fringe-workstation dedicated=fringe:NoSchedule-`.
+   Retiring it lets the `longhorn-general` (WFFC) apps schedule on `fringe` without an SC migration.
 
 ## Remaining steps (corrected order)
 
-1. **Phase D1 — pin stateless apps now.** Apps with **no** PVC can hard-pin to `pool=worker` immediately
-   (they reach `worker-1` or `fringe` freely). Add `components/placement/worker-pool` to each app's
-   `app/kustomization.yaml` (one line). Candidates: drawio/plantuml, excalidraw, backstage,
-   dependency-track frontend, the GUAC web/collectors, harbor web tier, grafana, etc. See the
-   `workload-placement` skill and the [ADR-0028](../adr/adr-0028-application-workload-placement.md) tier table.
+The D1/D2 split is no longer "stateless vs stateful" — it's **`longhorn`/Immediate (now) vs
+`longhorn-general`/WFFC (after SC migration or fringe-taint retirement)**. Most stateful apps are on
+`longhorn` and move now.
+
+1. **Phase D1 — pin everything backed by `longhorn` (Immediate) now.** Stateless apps **and**
+   `longhorn`-backed stateful apps can hard-pin to `pool=worker` immediately. Add
+   `components/placement/worker-pool` to each app's `app/kustomization.yaml` (one line), **one app per
+   commit, spaced** (batched reconciles have collapsed storage). Done so far: sparkyfitness-server
+   (`f10693a`), dependency-track api-server+frontend (`70dff79`). Remaining candidates: stateless web
+   tiers (drawio/plantuml, excalidraw, backstage, GUAC web/collectors, harbor core/portal, grafana) +
+   `longhorn`-backed ones (the CNPG DBs, trivy-server, loki, the kube-prometheus TSDBs, authentik). Skip
+   any app whose volume is `longhorn-general` (see step 3). Verify each: `kubectl get pv <pv> -o
+   jsonpath='{.spec.nodeAffinity}'` empty before pinning.
 2. **Retire the fringe taint** — owner removes it manually, or do a controlled fringe re-register; then
    drop `register-with-taints` from `talos/patches/worker/fringe-dedicated.yaml`. After that, `fringe` is
-   a normal worker and apps can use both workers.
-3. **Phase E — evict Longhorn off the soyos** onto `worker-1`: set `allowScheduling=false` +
-   `evictionRequested=true` per soyo, one at a time, wait for 0 replicas + healthy before the next. This also **opens the PV affinity** for `worker-1`, unblocking stateful
-   pinning. Keep one designated soyo's `gitops-critical` disk for forgejo/openbao.
-4. **Phase D2 — pin stateful apps + CNPG** to `pool=worker` (now that their volumes can reach
-   `worker-1`). Same component; CNPG `Cluster`s get `spec.affinity.nodeSelector`.
+   a normal worker **and the `longhorn-general` (WFFC) apps can schedule on `fringe`** even before their
+   volumes migrate — so this unblocks most of step 3's apps for the worker pool immediately.
+3. **Phase D2 — the `longhorn-general` (WFFC) apps.** Their PVs exclude `worker-1`. Two paths: (a) after
+   the fringe taint is gone they pin to `pool=worker` and land on `fringe`; (b) to actually use `worker-1`
+   capacity, **migrate the volume to the `longhorn` SC** (ADR-0029 consolidation — clone/restore into a
+   new `longhorn` PVC, or back up→restore). Eviction does **not** fix these (immutable PV `nodeAffinity`).
+4. **Phase E — evict Longhorn replicas off the soyos** onto the workers (protects etcd — the original
+   goal): `allowScheduling=false` + `evictionRequested=true` per soyo, one at a time, waiting for both
+   0 replicas and healthy volumes before the next. This is about **replica placement**, independent of
+   the PV-pinning above.
+   Keep one designated soyo's `gitops-critical` disk for forgejo/openbao.
 5. **gitops-critical exception** — forgejo + openbao to `longhorn-gitops` (3 replicas incl. the designated
    soyo) and a worker-preferred / soyo-permitted affinity, so they survive a both-worker outage.
 6. **Cleanup** — remove `nodegroup`/`workload-tier` labels once nothing references them; delete `echo` +
