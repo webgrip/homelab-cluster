@@ -18,5 +18,11 @@ resources:
   - ./dependency-track/database/ks.yaml
   - ./dependency-track/ks.yaml
   - ./trivy-operator/ks.yaml
-  - ./falco/ks.yaml
-  - ./tetragon/ks.yaml
+  # ./falco and ./tetragon suspended on request 2026-06-19 — repeated cluster
+  # outages were attributed to these runtime-security agents. Commenting them out
+  # makes Flux (cluster-apps, prune:true) garbage-collect the falco/tetragon
+  # Kustomizations and Helm-uninstall their DaemonSets, so neither runs in the
+  # cluster anymore. All manifests under ./falco and ./tetragon are retained;
+  # re-add these two lines to restore.
+  # - ./falco/ks.yaml
+  # - ./tetragon/ks.yaml
