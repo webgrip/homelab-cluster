@@ -78,19 +78,18 @@ spec:
         annotations:
           reloader.stakater.com/auto: "true"
         pod:
-          # Prefer the apps-tier node (worker-1) off the RAM-tight soyos; soft so
-          # it falls back to a soyo if that node is unavailable. (frontend stays
-          # pinned to fringe above.)
+          # Hard-pin to the worker pool (ADR-0028): runs only on workers, Pending
+          # if both workers are down. (frontend stays pinned to fringe above; it
+          # moves to the worker pool when the fringe scheme is retired.)
           affinity:
             nodeAffinity:
-              preferredDuringSchedulingIgnoredDuringExecution:
-                - weight: 100
-                  preference:
-                    matchExpressions:
-                      - key: workload-tier
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: node.webgrip.io/pool
                         operator: In
                         values:
-                          - apps
+                          - worker
         containers:
           app:
             image:
