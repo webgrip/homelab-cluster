@@ -120,14 +120,21 @@ One reversible change per commit, **spaced apart** (batched reconciles have caus
   Longhorn disk-config annotations via Talos patches; apply per node (no reboot).
 - **C — Hot/cold tiers** (ADR-0027): `createDefaultDiskLabeledNodes=true`; create
   `longhorn-hot`/`longhorn-cold`/`longhorn-gitops`; verify disks/tags; move bulk volumes to cold.
-- **D — App pin + forgejo** (ADR-0028 / ADR-0026 exception): per app, swap `nodegroup=fringe`
-  selectors → worker-pool affinity; convert the 4 `workload-tier=apps` soft affinities to hard; point
-  forgejo's two volumes at `longhorn-gitops` and give forgejo its worker-preferred/soyo-permitted
-  affinity. Remove the fringe taint from the node **last**.
+- **D1 — Pin stateless apps** (ADR-0028): add `components/placement/worker-pool` to each no-PVC app's
+  `app/kustomization.yaml`; convert the `workload-tier=apps` soft affinities to hard. Stateless apps
+  reach either worker freely, so this is safe before eviction.
+- **Retire the fringe taint** — owner removes it manually or via a controlled fringe re-register
+  (`register-with-taints` applies only at registration; `kubectl taint` is hook-blocked), then drop it
+  from the Talos patch. fringe becomes a normal worker.
 - **E — Soyo eviction** (ADR-0026): open worker-1 in Longhorn + GC the orphan `slab` node; reduce
   3-replica volumes → 2; **evict soyos one at a time** (`allowScheduling=false` + `evictionRequested`,
   waiting for 0 replicas + all-healthy before the next); lock soyos storage-free and lower
-  `guaranteedInstanceManagerCPU`.
+  `guaranteedInstanceManagerCPU`. This also **opens the PV node-affinity for worker-1** (existing PVs
+  exclude later-added nodes), which D2 depends on.
+- **D2 — Pin stateful apps + forgejo/openbao** (after E): worker-pool affinity + CNPG
+  `spec.affinity.nodeSelector`; point forgejo/openbao volumes at `longhorn-gitops` (3 replicas incl. the
+  designated soyo) with worker-preferred/soyo-permitted affinity. Stateful pinning only works once E has
+  placed a replica on worker-1.
 
 ## Risks & open questions
 

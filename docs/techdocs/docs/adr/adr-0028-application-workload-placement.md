@@ -73,6 +73,14 @@ This **retires the `fringe` scheme entirely** — every `nodegroup=fringe` nodeS
 worker pool. It also replaces the four `workload-tier=apps` soft affinities. An alert fires if an app
 sits `Pending` for lack of a worker. Roll out one namespace at a time; the fringe taint is removed last.
 
+> **Sequencing (learned the hard way — 2026-06-19).** Existing Longhorn PVs created before `worker-1`
+> joined have a `nodeAffinity` that excludes it, so a **stateful** pod pinned to the worker pool can't
+> attach on `worker-1` until a replica is placed there. Therefore **eviction ([ADR-0026](adr-0026-confine-longhorn-to-workers.md)
+> Phase E) must precede stateful worker-pinning.** Phase D splits: **D1 = stateless apps now** (no PVC →
+> reach any worker), **D2 = stateful apps after Phase E** opens the PV affinity. Also: the
+> `dedicated=fringe` taint can only be removed by re-registering fringe (reboot) or manually
+> (`kubectl taint … -`) — `register-with-taints` applies only at node registration.
+
 ### Mechanism — DRY via a shared component
 
 Placement is applied through one reusable kustomize component,

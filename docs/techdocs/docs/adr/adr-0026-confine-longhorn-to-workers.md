@@ -50,6 +50,10 @@ no soyo runs instance-managers under load.
   excepted). A 3rd storage node or a bigger fringe SSD (RFC follow-up) restores a 3-replica ceiling.
 - The eviction **also resolves the current 38-degraded rebuild storm** by rebuilding onto worker-1's
   large empty SSD instead of wedging on the soyos' single rebuild slot.
+- **Eviction is a prerequisite for stateful worker-pinning, not just a cleanup.** Existing Longhorn PVs
+  created before `worker-1` joined have a `nodeAffinity` that excludes it ([incident 2026-06-19](../incidents/2026-06-19-node-taxonomy-migration-storage-churn.md));
+  placing a replica on `worker-1` (what eviction does) is what *opens* the PV affinity so a stateful pod
+  can attach there. So **Phase E precedes stateful pinning** ([ADR-0028](adr-0028-application-workload-placement.md) D2).
 - The forgejo exception puts bounded Longhorn I/O back on one soyo; revisit (fold forgejo into the
   worker-only pool) when a 3rd storage node arrives.
 - fringe's 236 GiB SSD is the binding constraint; depends on over-provisioning + active cold-tiering

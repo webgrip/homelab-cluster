@@ -284,3 +284,37 @@ When a node is in maintenance mode:
 - You also want `--endpoints=<node-ip>` to ensure the command doesn’t try to use cluster endpoints from `talosconfig` that the new node doesn’t trust yet.
 
 This repository wires that behavior into the `talos-apply-node` recipe.
+
+---
+
+## Gotchas after the node has joined
+
+### Later config changes: `apply-node` only reboots on reboot-requiring drift
+
+A **label/annotation-only** change (e.g. adding `node.webgrip.io/*` capability labels) applies **live**
+on a freshly-added node — but on an *older* node whose stored `install.image` has drifted from
+`talenv.yaml`, `--mode=auto` will **reboot** to reconcile it. For label-only changes on etcd/control-plane
+nodes, force the live path:
+
+```bash
+mise exec -- task talos:apply-node IP=<ip> MODE=no-reboot
+```
+
+`no-reboot` applies what it can live and **stages** any reboot-requiring drift (it refuses, never
+reboots). Rebooting a storage node also churns Longhorn (degraded waves) — see
+[incident 2026-06-19](../incidents/2026-06-19-node-taxonomy-migration-storage-churn.md).
+
+### Existing Longhorn PVs do **not** include the new node
+
+Longhorn writes each PV's `spec.nodeAffinity` from the nodes that existed when the volume was created and
+**does not refresh it** when a node joins. So **existing stateful volumes cannot attach on the new node**
+— a pod with such a PVC, hard-pinned to a pool that resolves only to the new node, goes `Pending`
+(`didn't match PersistentVolume's node affinity`). The new node becomes a valid attach point for an
+existing volume only once Longhorn places a **replica** there (e.g. via eviction from another node, or a
+new replica scheduled to it). Practically: **migrate/evict replicas onto the new node before pinning
+existing stateful workloads to it.** New volumes created after the node joined are unaffected.
+
+```bash
+# inspect a volume's PV node affinity (which nodes it may attach to)
+mise exec -- kubectl get pv <pv-name> -o jsonpath='{.spec.nodeAffinity}{"\n"}'
+```
