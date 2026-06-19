@@ -1,0 +1,24 @@
+---
+# ADR-0026 forgejo exception: 3 replicas across both worker SSDs AND a small disk
+# on one designated soyo (all tagged "gitops"), so `forgejo-data` + `forgejo-db`
+# survive a both-worker outage and Flux can still reconcile from forgejo. ONLY
+# forgejo's two volumes use this class — it is the single, scoped place where
+# Longhorn is allowed back onto a control-plane node.
+# ⚠️ INERT until the three disks are tagged `gitops` (deferred to the supervised
+# disk step). dataLocality best-effort so the forgejo engine prefers a local
+# replica wherever it runs.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: longhorn-gitops
+provisioner: driver.longhorn.io
+parameters:
+  dataEngine: v1
+  dataLocality: best-effort
+  diskSelector: "gitops"
+  numberOfReplicas: "3"
+  replicaAutoBalance: best-effort
+  staleReplicaTimeout: "30"
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer

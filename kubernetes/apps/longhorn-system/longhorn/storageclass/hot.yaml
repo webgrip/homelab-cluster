@@ -1,0 +1,22 @@
+---
+# ADR-0027 HOT tier: SSD-backed (worker-1 SSD + fringe SSD, Longhorn disk tag
+# "hot"). Intended to become the default class for IOPS-sensitive volumes (DBs,
+# app state), eventually replacing the untagged `longhorn`/`longhorn-general`.
+# ⚠️ INERT until the worker SSDs are tagged `hot` (the disk-tagging + soyo
+# eviction is a separate supervised step). Do NOT set this default or point PVCs
+# at it until the `hot` tag exists, or volumes will fail to schedule.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: longhorn-hot
+provisioner: driver.longhorn.io
+parameters:
+  dataEngine: v1
+  dataLocality: disabled
+  diskSelector: "hot"
+  numberOfReplicas: "2"
+  replicaAutoBalance: best-effort
+  staleReplicaTimeout: "30"
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer

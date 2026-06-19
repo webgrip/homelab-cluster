@@ -1,0 +1,25 @@
+---
+# ADR-0027 COLD tier: HDD-backed (fringe's 1 TB HDD, Longhorn disk tag "cold").
+# For bulk, low-IOPS volumes (backups, archives) to relieve the 236 GiB SSD.
+# Single replica — only fringe has an HDD. NEVER put Postgres/WAL or hot data
+# here (synchronous replica writes would run at HDD speed). Supersedes the older
+# `longhorn-hdd` class (diskSelector "hdd"), which is kept only until nothing
+# references it.
+# ⚠️ INERT until the fringe HDD is wiped (it currently holds NTFS — see the
+# fringe Talos patch note), formatted, mounted and tagged `cold`. Deferred to
+# the supervised disk step.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: longhorn-cold
+provisioner: driver.longhorn.io
+parameters:
+  dataEngine: v1
+  dataLocality: disabled
+  diskSelector: "cold"
+  numberOfReplicas: "1"
+  replicaAutoBalance: best-effort
+  staleReplicaTimeout: "30"
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
