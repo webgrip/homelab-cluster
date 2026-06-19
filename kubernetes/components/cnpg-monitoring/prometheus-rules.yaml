@@ -1,3 +1,4 @@
+---
 # yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/monitoring.coreos.com/prometheusrule_v1.json
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
@@ -7,6 +8,7 @@ metadata:
   labels:
     prometheus: k8s
     role: alert-rules
+    release: kube-prometheus-stack
 spec:
   groups:
     - name: cnpg-backup.rules
@@ -45,8 +47,12 @@ spec:
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"
 
         - alert: CNPGBackupFailed
-          expr: rate(postgresql_backup_errors_total[5m]) > 0
-          for: 5m
+          expr: |
+            max by (namespace) (cnpg_collector_last_failed_backup_timestamp) > 0
+            and
+            max by (namespace) (cnpg_collector_last_failed_backup_timestamp)
+              >= max by (namespace) (cnpg_collector_last_available_backup_timestamp)
+          for: 15m
           labels:
             severity: warning
             owner: platform
@@ -73,7 +79,7 @@ spec:
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"
 
         - alert: CNPGNoRecentBackup
-          expr: time() - max_over_time(postgresql_last_backup_timestamp_seconds[30d]) > 86400
+          expr: time() - max by (namespace) (cnpg_collector_last_available_backup_timestamp) > 86400
           for: 10m
           labels:
             severity: warning
@@ -101,7 +107,7 @@ spec:
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"
 
         - alert: CNPGWALArchivingFailed
-          expr: rate(postgresql_wal_archive_errors_total[10m]) > 0
+          expr: max by (namespace) (increase(cnpg_pg_stat_archiver_failed_count[10m])) > 0
           for: 10m
           labels:
             severity: critical
@@ -128,33 +134,8 @@ spec:
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/cnpg-backups"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"
 
-        - alert: CNPGRestoreFailed
-          expr: rate(postgresql_restore_errors_total[1h]) > 0
-          for: 30m
-          labels:
-            severity: warning
-            owner: platform
-            service: cnpg
-          annotations:
-            summary: "CNPG restore failures (cnpg-system)"
-            description: |
-              What's happening:
-              - One or more restore attempts failed in the last hour.
-
-              Impact/risk:
-              - Restores may be unreliable when needed; DR readiness reduced.
-
-              Likely causes:
-              - Object store/repository connectivity/auth issues
-              - Missing/corrupt backups or WAL segments
-              - Misconfigured recovery/restore settings
-
-              First actions:
-              - Review restore job/pod logs for the failing reason
-              - Verify the referenced backup and required WAL segments exist
-              - Validate credentials and network path to the repository
-            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/cnpg-restore-playbook"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"
+      # NOTE: CNPG exposes no restore-error counter metric. Restore readiness is
+      # verified by the Job-based CNPGRestoreTestFailed alert (cnpg-restore-test.rules).
 
     - name: cnpg-disaster-recovery.rules
       rules:
