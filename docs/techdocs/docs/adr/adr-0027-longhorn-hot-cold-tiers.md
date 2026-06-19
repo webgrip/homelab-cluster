@@ -31,13 +31,14 @@ configuration declaratively from **Kubernetes node annotations** set in Talos ma
 - **soyos get no default disk config** (other than the one `gitops-critical` disk) → no schedulable
   Longhorn disk → the GitOps-clean enforcement of ADR-0026.
 
-StorageClasses:
+StorageClasses (the "hot" tier is the **default `longhorn` class itself** — there is no separate
+`longhorn-hot`; see [ADR-0029](adr-0029-storageclass-consolidation.md)):
 
 | StorageClass | `diskSelector` | replicas | use |
 |---|---|---|---|
-| `longhorn-hot` (default) | `hot` | 2 | databases, app state — anything needing IOPS |
-| `longhorn-cold` | `cold` | 1–2 | backups, archives, large low-IOPS/bulk volumes |
-| `longhorn-gitops` | `hot,gitops-critical` | 3 | **only** `forgejo-data` + `forgejo-db` (ADR-0026) |
+| `longhorn` (default) | `hot` | 2 | databases, app state — anything needing IOPS (the hot/SSD tier) |
+| `longhorn-cold` | `cold` | 1 | backups, archives, large low-IOPS/bulk volumes |
+| `longhorn-gitops` | `gitops` | 3 | **only** `forgejo-data` + `forgejo-db` (ADR-0026) |
 
 **A volume's replicas never span tiers** (a hot SC selects only `hot` disks). Migrate identified
 bulk/cold volumes off the SSD onto `longhorn-cold` to keep fringe's 236 GiB SSD within over-provisioned

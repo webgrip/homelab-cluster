@@ -28,7 +28,14 @@ spec:
       createDefaultDiskLabeledNodes: false
       defaultDataLocality: best-effort
       defaultLonghornStaticStorageClass: longhorn
-      defaultReplicaCount: "3"
+      # 2-replica ceiling (ADR-0026): only 2 storage nodes (worker-1 + fringe)
+      # with HARD anti-affinity, so 2 is the max anyway. NOTE: the chart-created
+      # default `longhorn` StorageClass still carries numberOfReplicas=3 from
+      # persistence.defaultClassReplicaCount (an immutable SC param — not changed
+      # here to avoid breaking the HR upgrade). The proper fix is migrating volumes
+      # onto the `longhorn-hot` class (2 replicas, ADR-0027); existing 3-replica
+      # volumes were already reduced to 2 at runtime on 2026-06-19.
+      defaultReplicaCount: "2"
       defaultSharedVolumeType: nfs
       # guaranteedEngineManagerCPU/guaranteedReplicaManagerCPU are ignored since the
       # v1.5 instance-manager merge — the cluster was silently running the 12% default

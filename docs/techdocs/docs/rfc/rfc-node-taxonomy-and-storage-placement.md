@@ -109,6 +109,7 @@ Measured today: 47 Longhorn volumes · **541 GiB provisioned / 115 GiB actual** 
 | Confine Longhorn storage to the workers (protect etcd) + forgejo exception | [ADR-0026](../adr/adr-0026-confine-longhorn-to-workers.md) | Proposed |
 | Longhorn hot/cold storage tiers (SSD/HDD) via node-annotation disk config | [ADR-0027](../adr/adr-0027-longhorn-hot-cold-tiers.md) | Proposed |
 | Pin application workloads to the worker pool (hard; forgejo excepted) | [ADR-0028](../adr/adr-0028-application-workload-placement.md) | Proposed |
+| Consolidate Longhorn StorageClasses to a minimal intent-named set (one 2-replica default) | [ADR-0029](../adr/adr-0029-storageclass-consolidation.md) | Proposed |
 
 ## Phased migration
 

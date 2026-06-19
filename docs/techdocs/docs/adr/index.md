@@ -85,3 +85,4 @@ This is the repo's first ADR section; the conventions below apply to everything 
 | [ADR-0026](adr-0026-confine-longhorn-to-workers.md) | Proposed | Confine Longhorn replicas to the workers (protect etcd); scoped forgejo storage exception. |
 | [ADR-0027](adr-0027-longhorn-hot-cold-tiers.md) | Proposed | Longhorn hot/cold tiers (SSD/HDD), configured declaratively from node annotations. |
 | [ADR-0028](adr-0028-application-workload-placement.md) | Proposed | Hard-pin application workloads to the worker pool; forgejo excepted. |
+| [ADR-0029](adr-0029-storageclass-consolidation.md) | Proposed | Consolidate Longhorn StorageClasses to a minimal intent-named set; one 2-replica default. |
