@@ -21,6 +21,29 @@ spec:
     remediation:
       retries: 3
       remediateLastFailure: true
+  # The dependency-track@1.0.0 chart exposes nodeSelector/tolerations but NOT
+  # affinity, so we inject a soft nodeAffinity preference for the apps tier
+  # (worker-1) via a post-render patch — soft so it falls back to a soyo if
+  # worker-1 is unavailable, matching the other apps-tier workloads.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: Deployment
+              name: "dependency-track-(apiserver|frontend)"
+            patch: |
+              - op: add
+                path: /spec/template/spec/affinity
+                value:
+                  nodeAffinity:
+                    preferredDuringSchedulingIgnoredDuringExecution:
+                      - weight: 100
+                        preference:
+                          matchExpressions:
+                            - key: workload-tier
+                              operator: In
+                              values:
+                                - apps
   values:
     common:
       fullnameOverride: dependency-track
@@ -30,18 +53,6 @@ spec:
 
     apiServer:
       deploymentType: Deployment
-      # Prefer the apps-tier node (worker-1) off the RAM-tight soyos; soft so it
-      # falls back to a soyo if that node is unavailable.
-      affinity:
-        nodeAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              preference:
-                matchExpressions:
-                  - key: workload-tier
-                    operator: In
-                    values:
-                      - apps
       resources:
         requests:
           cpu: 500m
@@ -84,17 +95,6 @@ spec:
 
     frontend:
       apiBaseUrl: https://dependency-track.${SECRET_DOMAIN}
-      # Keep the frontend with the api-server on the apps-tier node (soft).
-      affinity:
-        nodeAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              preference:
-                matchExpressions:
-                  - key: workload-tier
-                    operator: In
-                    values:
-                      - apps
       resources:
         requests:
           cpu: 50m
