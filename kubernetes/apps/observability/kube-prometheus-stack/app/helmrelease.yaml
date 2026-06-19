@@ -45,28 +45,34 @@ spec:
           - action: replace
             targetLabel: job
             replacement: talos-etcd
-          # Drop the etcd request-latency histogram (~13.6k series, unused by any
-          # dashboard/rule here — the etcd job is also renamed, so chart rules don't match).
+          # Drop the etcd request-latency histogram + per-method gRPC handled counters
+          # (~16k series total, unused by any dashboard/rule here — the etcd job is also
+          # renamed, so chart rules don't match).
           - action: drop
             sourceLabels:
               - __name__
-            regex: "etcd_request_duration_seconds_bucket"
+            regex: "etcd_request_duration_seconds_bucket|grpc_server_handled_total"
     kubeControllerManager:
       enabled: false
     kubeScheduler:
       enabled: false
 
-    # Drop high-cardinality apiserver histogram buckets that nothing here consumes
-    # (~40k active series, ~10% of the head). Kept: apiserver_request_duration_seconds_bucket
-    # and apiserver_request_sli_duration_seconds_bucket — the API-server SLO/burn-rate
-    # rules depend on those. See the observability runbook for the cardinality audit.
+    # Drop high-cardinality series nothing here consumes (~74k active series, ~23% of
+    # the head — see the observability runbook cardinality audit):
+    #  - apiserver write/watch histograms (original set)
+    #  - etcd_request_duration_seconds_bucket (~30k): the apiserver re-exposes its
+    #    etcd-client latency histogram; the talos-etcd copy is dropped separately, but
+    #    that rule is job-scoped so this path slipped through. Nothing graphs/alerts it.
+    #  - kubernetes_feature_enabled (feature-gate gauges) + apiserver workqueue histograms
+    # Kept: apiserver_request_duration_seconds_bucket + apiserver_request_sli_duration_seconds_bucket
+    # — the built-in API-server SLO/burn-rate rules depend on those (verified: still in use).
     kubeApiServer:
       serviceMonitor:
         metricRelabelings:
           - action: drop
             sourceLabels:
               - __name__
-            regex: "apiserver_request_body_size_bytes_bucket|apiserver_response_sizes_bucket|apiserver_watch_list_duration_seconds_bucket|apiserver_watch_cache_read_wait_seconds_bucket|apiserver_watch_events_sizes_bucket"
+            regex: "apiserver_request_body_size_bytes_bucket|apiserver_response_sizes_bucket|apiserver_watch_list_duration_seconds_bucket|apiserver_watch_cache_read_wait_seconds_bucket|apiserver_watch_events_sizes_bucket|etcd_request_duration_seconds_bucket|kubernetes_feature_enabled|workqueue_work_duration_seconds_bucket|workqueue_queue_duration_seconds_bucket"
 
     prometheus:
       prometheusSpec:
@@ -76,6 +82,9 @@ spec:
           tag: v3.11.3
           sha: c0b857aead0d5793aa566adb8f49a9983d6f6031652098759d521a330cfa050f
         retention: 15d
+        # 60s scrape halves ingest (~11k -> ~5.5k samples/s) — a CPU/WAL win, fine for
+        # homelab graph resolution. Per-ServiceMonitor overrides (e.g. kubeEtcd 30s) win.
+        scrapeInterval: 60s
         externalUrl: https://prometheus.${SECRET_DOMAIN}
         externalLabels:
           cluster: homelab-cluster
@@ -115,6 +124,14 @@ spec:
               resources:
                 requests:
                   storage: 50Gi
+        # Cap the Go heap so GC reclaims aggressively and RSS tracks the ~3Gi request
+        # instead of ballooning toward 2x live heap (GOGC=100 default). Set below the
+        # 6Gi limit, which stays as headroom for the WAL-replay spike on restart.
+        containers:
+          - name: prometheus
+            env:
+              - name: GOMEMLIMIT
+                value: "3GiB"
         resources:
           requests:
             cpu: 400m
@@ -153,6 +170,9 @@ spec:
           effect: NoSchedule
 
     kube-state-metrics:
+      # kube_pod_status_reason (~1.6k series) is unused by any dashboard/rule here.
+      metricDenylist:
+        - kube_pod_status_reason
       podAnnotations:
         reloader.stakater.com/auto: "true"
       resources:
