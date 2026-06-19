@@ -26,6 +26,19 @@ spec:
       type: Recreate
     replicaCount: 1
 
+    # Prefer the apps-tier node (worker-1) to keep load off the RAM-tight soyo
+    # control-planes; soft so it falls back to a soyo if that node is unavailable.
+    affinity:
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+                - key: workload-tier
+                  operator: In
+                  values:
+                    - apps
+
     image:
       rootless: true
 

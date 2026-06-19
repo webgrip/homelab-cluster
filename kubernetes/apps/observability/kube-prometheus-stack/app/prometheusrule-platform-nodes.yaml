@@ -67,3 +67,53 @@ spec:
               - If a control plane, prioritise — etcd fsync degrades under memory pressure.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-nodes/talos-nodes"
+
+    - name: platform.scheduling
+      rules:
+        # Apps-tier workloads (forgejo, n8n, sparkyfitness-server, dependency-track)
+        # carry a soft nodeAffinity preference for workload-tier=apps (worker-1). The
+        # only untainted fallback target is a soyo control-plane, so an apps-tier pod
+        # landing on a control-plane node means it SPILLED off the apps tier — usually
+        # because worker-1 was unavailable or full. Soft fallback keeps the app up;
+        # this alert tells you it happened so you can restore worker-1 / add headroom.
+        - alert: AppsTierWorkloadSpilledToControlPlane
+          expr: |
+            kube_pod_info{
+              namespace=~"forgejo|n8n|sparkyfitness|security",
+              pod=~"forgejo-.*|n8n-.*|sparkyfitness-server-.*|dependency-track-.*",
+              pod!~".*-db-.*",
+              pod!~".*-(runner|metrics-exporter|sbom-uploader|policy-bootstrap)-.*"
+            }
+            * on (node) group_left (role)
+            kube_node_role{role="control-plane"}
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: scheduling
+          annotations:
+            summary: "Apps-tier workload spilled onto a control-plane node ({{ $labels.pod }} on {{ $labels.node }})"
+            description: |
+              What's happening:
+              - Pod {{ $labels.namespace }}/{{ $labels.pod }} is running on control-plane
+                node {{ $labels.node }} instead of the apps tier (worker-1).
+
+              Impact/risk:
+              - The soft affinity worked as designed (the app stayed up via fallback),
+                but it's now adding memory pressure to a RAM-tight soyo, which is the
+                condition that has triggered control-plane cascades before.
+
+              Likely causes:
+              - worker-1 (workload-tier=apps) is NotReady, cordoned, or out of capacity
+                — e.g. a Talos reboot/upgrade, a node fault, or too much packed onto it.
+
+              First actions:
+              - `kubectl get nodes` — is worker-1 Ready and schedulable?
+              - If it's a planned worker-1 drain/upgrade, this is expected; it clears
+                when worker-1 returns and the pod is rescheduled.
+              - If unplanned: restore worker-1, then `kubectl delete pod {{ $labels.pod }}
+                -n {{ $labels.namespace }}` to let it reschedule onto the apps tier.
+              - If worker-1 is simply full, add a second apps-tier node (label it
+                workload-tier=apps) or right-size what's on it.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-nodes/talos-nodes"

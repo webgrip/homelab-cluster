@@ -30,6 +30,18 @@ spec:
 
     apiServer:
       deploymentType: Deployment
+      # Prefer the apps-tier node (worker-1) off the RAM-tight soyos; soft so it
+      # falls back to a soyo if that node is unavailable.
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: workload-tier
+                    operator: In
+                    values:
+                      - apps
       resources:
         requests:
           cpu: 500m
@@ -72,6 +84,17 @@ spec:
 
     frontend:
       apiBaseUrl: https://dependency-track.${SECRET_DOMAIN}
+      # Keep the frontend with the api-server on the apps-tier node (soft).
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: workload-tier
+                    operator: In
+                    values:
+                      - apps
       resources:
         requests:
           cpu: 50m
