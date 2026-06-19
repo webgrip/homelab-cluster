@@ -27,18 +27,8 @@ spec:
           securityContext:
             fsGroup: 1000
             fsGroupChangePolicy: OnRootMismatch
-          # Prefer the apps-tier node (worker-1) off the RAM-tight soyos; soft so
-          # it falls back to a soyo if that node is unavailable.
-          affinity:
-            nodeAffinity:
-              preferredDuringSchedulingIgnoredDuringExecution:
-                - weight: 100
-                  preference:
-                    matchExpressions:
-                      - key: workload-tier
-                        operator: In
-                        values:
-                          - apps
+            # worker-pool affinity is injected by components/placement/worker-pool
+            # (ADR-0028) — see kustomization.yaml.
         containers:
           app:
             image:
