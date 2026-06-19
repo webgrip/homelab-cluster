@@ -46,6 +46,7 @@ This is the repo's first ADR section; the conventions below apply to everything 
 |-----|--------|---------|
 | [Harbor Container Registry](../rfc/rfc-harbor-registry.md) | Proposed | Deploy a feature-complete Harbor as the cluster's private OCI registry + artifact store. |
 | [Security Hardening — Closing the Loops](../rfc/rfc-security-hardening.md) | Proposed | Finish the security loops already built: wire encryption, rootless CI, rotation, enforce mode. |
+| [Layered Hardware Architecture](../rfc/rfc-layered-hardware-architecture.md) | Proposed | Resilient, layered HW architecture: isolate failure domains per layer, put speed where it's scarce; four end-state paths + one migration spine. |
 | [Dynamic Database Credentials](../rfc/rfc-dynamic-database-credentials.md) | Proposed | Short-lived, per-workload, auto-revoked Postgres creds via OpenBao's database engine. |
 | [Renovate on Forgejo](../rfc/rfc-renovate-forgejo.md) | Accepted | Migrate Renovate off GitHub onto Forgejo via a second dual-run RenovateJob; cut repos over as each becomes authoritative. |
 | [Cutting the GitOps umbilical](../rfc/rfc-flux-forgejo-source.md) | Proposed | Repoint Flux's source from GitHub to in-cluster Forgejo; keep an external mirror for bootstrap + break-glass. |

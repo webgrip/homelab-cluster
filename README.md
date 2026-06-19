@@ -168,6 +168,7 @@ graph TD
 |-----|--------|-----|-----|---------------|----------|
 | 3 | SOYO Mini PC M4 (Twin Lake N150) | Intel N150 (4C/4T) | 12 GB LPDDR5 | Talos Linux v1.13.3 | Control-plane + workloads; one 512 GB SATA SSD each, shared by etcd + OS + Longhorn; Wi-Fi5/BT5 disabled |
 | 1 | HP Z230 Tower Workstation | Intel Core i7-4770 (4C/8T, 3.4 GHz) | 16 GB DDR3 (1 slot free) | Talos Linux v1.13.3 | Dedicated worker `fringe-workstation` (`10.0.0.23`) for write-heavy apps; 256 GB SATA SSD (OS) + 1 TB HDD |
+| 1 | Gigabyte Z87X-D3H desktop | Intel Core i5-4670K (4C/4T, 3.4 GHz) | 24 GB DDR3-1600 | Talos Linux v1.13.3 | Worker `worker-1` (`10.0.0.24`), added 2026-06-19; most RAM in the cluster; 960 GB SATA SSD |
 | 1 | Protectli V1410 | Intel i5 | 8 GB | OPNsense | Router/firewall, DHCP `10.0.0.50-150`, WireGuard, split DNS for `webgrip.dev` |
 | 1 | TP-Link TL-SG108PE | — | — | Managed firmware | 8-port 1 GbE switch feeding downstream fan-out |
 | 1 | Q-Link 1 GbE switch | — | — | Unmanaged | Directly uplinks Talos nodes for east-west traffic |
