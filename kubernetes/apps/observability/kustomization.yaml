@@ -20,16 +20,24 @@ resources:
   # Re-enable by uncommenting the line below.
   # - ./mimir-distributed/ks.yaml
   - ./loki/ks.yaml
-  - ./tempo/ks.yaml
+  # Tempo (tracing) suspended 2026-06-19 to free ~1Gi on the overcommitted fringe
+  # node. Flux (cluster-apps, prune:true) garbage-collects it and Helm-uninstalls
+  # the StatefulSet. Grafana's tempo datasource will show no-data until restored.
+  # Re-enable by uncommenting the line below.
+  # - ./tempo/ks.yaml
   - ./pyroscope/ks.yaml
   - ./alloy-agent/ks.yaml
   - ./alloy-gateway/ks.yaml
   # Beyla disabled temporarily for stability.
   # Re-enable by uncommenting the line below.
   # - ./beyla/ks.yaml
-  - ./k6-operator/ks.yaml
+  # k6 (load/synthetic testing) suspended 2026-06-19 to free fringe resources.
+  # Both the operator and the canary tests are removed; re-enable by uncommenting
+  # both lines (k6-canaries dependsOn k6-operator). Synthetic-check annotations on
+  # ingress routes become no-ops until restored.
+  # - ./k6-operator/ks.yaml
   - ./sloth/ks.yaml
   - ./sloth/slos/ks.yaml
   - ./blackbox-exporter/ks.yaml
-  - ./k6-canaries/ks.yaml
+  # - ./k6-canaries/ks.yaml
   - ./k8s-mcp/ks.yaml
