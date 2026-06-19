@@ -13,11 +13,6 @@ spec:
         name: dependency-track
         namespace: security
   interval: 1h
-  # Generous timeout: api-server uses strategy:Recreate (RWO volume), so a
-  # rollout has inherent detach+Java-startup downtime; the RAM-tight soyo API
-  # can also be slow to sync. Do NOT auto-rollback on a slow upgrade — that
-  # created an endless rollback loop that reverted the worker-pool pin.
-  timeout: 15m
   install:
     remediation:
       retries: 3
@@ -25,10 +20,11 @@ spec:
     cleanupOnFail: true
     remediation:
       retries: 3
-      remediateLastFailure: false
+      remediateLastFailure: true
   # The dependency-track@1.0.0 chart exposes nodeSelector/tolerations but NOT
-  # affinity, so we inject the hard worker-pool nodeAffinity (ADR-0028) via a
-  # post-render patch: runs only on workers, Pending if both workers are down.
+  # affinity, so we inject a soft nodeAffinity preference for the apps tier
+  # (worker-1) via a post-render patch — soft so it falls back to a soyo if
+  # worker-1 is unavailable, matching the other apps-tier workloads.
   postRenderers:
     - kustomize:
         patches:
@@ -40,24 +36,14 @@ spec:
                 path: /spec/template/spec/affinity
                 value:
                   nodeAffinity:
-                    requiredDuringSchedulingIgnoredDuringExecution:
-                      nodeSelectorTerms:
-                        - matchExpressions:
-                            - key: node.webgrip.io/pool
+                    preferredDuringSchedulingIgnoredDuringExecution:
+                      - weight: 100
+                        preference:
+                          matchExpressions:
+                            - key: workload-tier
                               operator: In
                               values:
-                                - worker
-          # api-server has a RWO Longhorn PVC; RollingUpdate deadlocks on
-          # rollout (old pod holds the volume, new pod can't multi-attach).
-          # Recreate = terminate-then-start, so the volume detaches first.
-          - target:
-              kind: Deployment
-              name: "dependency-track-api-server"
-            patch: |
-              - op: add
-                path: /spec/strategy
-                value:
-                  type: Recreate
+                                - apps
   values:
     common:
       fullnameOverride: dependency-track
