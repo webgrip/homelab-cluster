@@ -1560,7 +1560,7 @@ spec:
         {
           "id": 30,
           "type": "row",
-          "title": "Namespaces \u2014 where the consumption is",
+          "title": "Namespaces \u2014 where the consumption is (expand a row for its apps)",
           "collapsed": false,
           "gridPos": {
             "h": 1,
@@ -1573,9 +1573,9 @@ spec:
         {
           "id": 31,
           "type": "table",
-          "title": "Per-namespace \u2014 usage vs requests vs limits, network & storage",
+          "title": "Per-namespace \u2014 usage vs requests vs limits, network (expand \u2192 apps)",
           "gridPos": {
-            "h": 10,
+            "h": 11,
             "w": 24,
             "x": 0,
             "y": 28
@@ -1587,7 +1587,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{namespace=~\"$$namespace\",container!=\"\"}[$$__rate_interval]))",
+              "expr": "sum by (namespace, workload) (rate(container_cpu_usage_seconds_total{namespace=~\"$$namespace\",container!=\"\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
               "datasource": {
                 "type": "prometheus",
                 "uid": "prometheus"
@@ -1597,7 +1597,7 @@ spec:
             },
             {
               "refId": "B",
-              "expr": "sum by (namespace) (kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"cpu\"})",
+              "expr": "sum by (namespace, workload) (kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"cpu\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
               "datasource": {
                 "type": "prometheus",
                 "uid": "prometheus"
@@ -1607,7 +1607,7 @@ spec:
             },
             {
               "refId": "C",
-              "expr": "sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"cpu\"})",
+              "expr": "sum by (namespace, workload) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"cpu\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
               "datasource": {
                 "type": "prometheus",
                 "uid": "prometheus"
@@ -1617,7 +1617,7 @@ spec:
             },
             {
               "refId": "D",
-              "expr": "sum by (namespace) (container_memory_working_set_bytes{namespace=~\"$$namespace\",container!=\"\"})",
+              "expr": "sum by (namespace, workload) (container_memory_working_set_bytes{namespace=~\"$$namespace\",container!=\"\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
               "datasource": {
                 "type": "prometheus",
                 "uid": "prometheus"
@@ -1627,7 +1627,7 @@ spec:
             },
             {
               "refId": "E",
-              "expr": "sum by (namespace) (kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"memory\"})",
+              "expr": "sum by (namespace, workload) (kube_pod_container_resource_requests{namespace=~\"$$namespace\",resource=\"memory\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
               "datasource": {
                 "type": "prometheus",
                 "uid": "prometheus"
@@ -1637,7 +1637,7 @@ spec:
             },
             {
               "refId": "F",
-              "expr": "sum by (namespace) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"memory\"})",
+              "expr": "sum by (namespace, workload) (kube_pod_container_resource_limits{namespace=~\"$$namespace\",resource=\"memory\"} * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
               "datasource": {
                 "type": "prometheus",
                 "uid": "prometheus"
@@ -1647,7 +1647,7 @@ spec:
             },
             {
               "refId": "G",
-              "expr": "sum by (namespace) (rate(container_network_receive_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]))",
+              "expr": "sum by (namespace, workload) (rate(container_network_receive_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
               "datasource": {
                 "type": "prometheus",
                 "uid": "prometheus"
@@ -1657,17 +1657,7 @@ spec:
             },
             {
               "refId": "H",
-              "expr": "sum by (namespace) (rate(container_network_transmit_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]))",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              },
-              "instant": true,
-              "format": "table"
-            },
-            {
-              "refId": "I",
-              "expr": "sum by (namespace) (kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\"})",
+              "expr": "sum by (namespace, workload) (rate(container_network_transmit_bytes_total{namespace=~\"$$namespace\"}[$$__rate_interval]) * on(namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$$namespace\",workload=~\"$$workload\"})",
               "datasource": {
                 "type": "prometheus",
                 "uid": "prometheus"
@@ -1686,6 +1676,7 @@ spec:
               "options": {
                 "renameByName": {
                   "namespace": "Namespace",
+                  "workload": "Workload",
                   "Value #A": "CPU used",
                   "Value #B": "CPU req",
                   "Value #C": "CPU lim",
@@ -1693,23 +1684,82 @@ spec:
                   "Value #E": "Mem req",
                   "Value #F": "Mem lim",
                   "Value #G": "Net RX",
-                  "Value #H": "Net TX",
-                  "Value #I": "PVC used"
+                  "Value #H": "Net TX"
                 },
                 "excludeByName": {
                   "Time": true
                 },
                 "indexByName": {
                   "namespace": 0,
-                  "Value #A": 1,
-                  "Value #B": 2,
-                  "Value #C": 3,
-                  "Value #D": 4,
-                  "Value #E": 5,
-                  "Value #F": 6,
-                  "Value #G": 7,
-                  "Value #H": 8,
-                  "Value #I": 9
+                  "workload": 1,
+                  "Value #A": 2,
+                  "Value #B": 3,
+                  "Value #C": 4,
+                  "Value #D": 5,
+                  "Value #E": 6,
+                  "Value #F": 7,
+                  "Value #G": 8,
+                  "Value #H": 9
+                }
+              }
+            },
+            {
+              "id": "groupToNestedTable",
+              "options": {
+                "showSubframeHeaders": true,
+                "fields": {
+                  "Namespace": {
+                    "aggregations": [],
+                    "operation": "groupby"
+                  },
+                  "CPU used": {
+                    "aggregations": [
+                      "sum"
+                    ],
+                    "operation": "aggregate"
+                  },
+                  "CPU req": {
+                    "aggregations": [
+                      "sum"
+                    ],
+                    "operation": "aggregate"
+                  },
+                  "CPU lim": {
+                    "aggregations": [
+                      "sum"
+                    ],
+                    "operation": "aggregate"
+                  },
+                  "Mem used": {
+                    "aggregations": [
+                      "sum"
+                    ],
+                    "operation": "aggregate"
+                  },
+                  "Mem req": {
+                    "aggregations": [
+                      "sum"
+                    ],
+                    "operation": "aggregate"
+                  },
+                  "Mem lim": {
+                    "aggregations": [
+                      "sum"
+                    ],
+                    "operation": "aggregate"
+                  },
+                  "Net RX": {
+                    "aggregations": [
+                      "sum"
+                    ],
+                    "operation": "aggregate"
+                  },
+                  "Net TX": {
+                    "aggregations": [
+                      "sum"
+                    ],
+                    "operation": "aggregate"
+                  }
                 }
               }
             }
@@ -1832,22 +1882,10 @@ spec:
                     "value": "Bps"
                   }
                 ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "PVC used"
-                },
-                "properties": [
-                  {
-                    "id": "unit",
-                    "value": "bytes"
-                  }
-                ]
               }
             ]
           },
-          "description": "Per-namespace CPU/memory usage against requests and limits, plus network throughput and PVC consumption. Sorted by CPU used."
+          "description": "Top row per namespace shows the summed CPU/memory usage vs requests/limits and network. Click the chevron on the left to expand a namespace into its individual applications (workloads). Sorted by CPU used. (PVC is per-namespace/per-PVC only \u2014 see the Storage section.)"
         },
         {
           "id": 40,
