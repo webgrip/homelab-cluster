@@ -33,6 +33,8 @@ Double **every** Grafana token (`$$__range`, `$$__rate_interval`, `$$var`, `$$__
 ## Panel hygiene (not hook-checked)
 - `or vector(0)` on `stat` panels only — on timeseries/table/bargauge it adds a phantom 0 series.
 - `allValue: ".*"` (or omit) for `includeAll` vars; never `$$__all` (logic bug → No data).
+- Filters that actually work: variable queries must scope to a **real, existing** metric — `label_values(<metric>, <label>)`, never bare `label_values(<label>)` (that scans every series, so e.g. `model` picks up node-exporter disk models → polluted dropdown). Verify the metric exists first via MCP — our kube-state-metrics has no `kube_namespace_labels`; use `kube_namespace_status_phase`.
+- Datasource: hardcode `"uid": "prometheus"`/`"loki"` on panels and variable `datasource` fields. No `${datasource}` picker var — Flux blanks braced `${…}`, so it silently falls back to the *default* datasource (Loki panels then query Prometheus), and a one-option picker isn't a meaningful filter.
 - MTD: `time:{from:now/M,to:now}` → `$$__range`=MTD; projection `(<expr>)*$$days_in_month*86400/$$__range_s` (noisy early-month — label estimate + show MTD actual).
 
 ## House style
