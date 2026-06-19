@@ -13,6 +13,14 @@ Operator in `cnpg-system`. One `Cluster` per app namespace; wire backups/monitor
    - Operator auto-creates `<app>-db-app` / `<app>-db-rw` / `<app>-db-ro` secrets — reference via `existingSecret`/`envFromSecret`, never inline.
 2. Add `database/` to the app `kustomization.yaml`; app `ks.yaml` `dependsOn` the DB.
 
+## Placement
+A CNPG DB is a stateful app → **worker pool**. The `components/placement/worker-pool` component patches
+`Cluster.spec.affinity.nodeSelector: {node.webgrip.io/pool: worker}` (include it in the kustomization
+that builds the `database/`). **forgejo-db + openbao** are the gitops-critical exception → `longhorn-gitops`
+(3 replicas incl. one soyo) so they survive a both-worker outage. ⚠️ Pin an *existing* DB to the worker
+pool **only after** the Longhorn eviction places a replica on the new worker — existing PVs exclude
+later-added nodes (see the `workload-placement` / `longhorn` skills), else the pod goes `Pending`.
+
 ## Backups & DR — TWO parts, both required
 1. **Destination** (components): `components: [../../../components/cnpg-backup]` — also `cnpg-monitoring`,
    `cnpg-disaster-recovery`, `cnpg-restore-test`. Provides the `ObjectStore` + `cnpg-backup-s3` creds.

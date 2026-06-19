@@ -15,8 +15,14 @@ description: Scaffold a new application in the Flux GitOps tree. Use when adding
 6. **New namespace?** add `namespace.yaml` + ensure the ns `kustomization.yaml` includes `../../components/sops`.
 7. **Register** the app in `kubernetes/apps/<ns>/kustomization.yaml`.
 
+## Placement
+Apps **hard-pin to the worker pool** — add one line to `app/kustomization.yaml`:
+`components: [../../../../components/placement/worker-pool]`. See the `workload-placement` skill for the
+tier model + the stateful sequencing gotcha (existing Longhorn PVs exclude newly-added nodes → pin
+stateful apps only after the storage migration).
+
 ## Storage (Longhorn)
-`longhorn-general` = default RWO · `longhorn-rwx` = shared RWX (rarely) · `longhorn` = reserved for CNPG.
+`longhorn` = default SSD/general (2-replica; reserved for CNPG too) · `longhorn-general` = current app RWO (folding into `longhorn`) · `longhorn-rwx` = shared RWX (rarely) · `longhorn-cold` = HDD bulk (not for DBs) · `longhorn-gitops` = forgejo/openbao only. See the `longhorn` skill / [ADR-0029](docs/techdocs/docs/adr/adr-0029-storageclass-consolidation.md).
 
 ## Observability
 - Logs: stdout/stderr (JSON) → Loki automatically. Traces: OTLP/HTTP → `http://alloy-gateway.observability.svc.cluster.local:4318`.

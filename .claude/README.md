@@ -8,7 +8,7 @@ This directory configures Claude Code (claude.ai/code) for the homelab cluster. 
 | --- | --- |
 | `../CLAUDE.md` | Always-loaded operating rules (kept deliberately minimal). |
 | `agents/` | Subagent: `cluster-health` (read-only audit). `renovate-trigger` now comes from the org `webgrip` plugin. |
-| `skills/` | Task recipes that load only when relevant: `add-app`, `grafana-dashboard`, `cnpg-database`, `authentik-oidc`, `flux-validate`, `talos`. |
+| `skills/` | Task recipes that load only when relevant: `add-app`, `grafana-dashboard`, `cnpg-database`, `authentik-oidc`, `flux-validate`, `talos`, `longhorn`, `workload-placement`. |
 | `commands/` | Slash commands: `/cluster-status`, `/triage-renovate`, `/restore-drill`. |
 | `hooks/` | Safety + validation + `session-context` hooks (see below). |
 | `statusline.sh` | Cluster-aware statusline (model / git / kube-context / Flux not-ready / context%). |
