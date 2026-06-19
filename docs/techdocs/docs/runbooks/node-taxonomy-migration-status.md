@@ -46,6 +46,18 @@ this file as phases complete.
    editing Talos config won't drop the live taint, and `kubectl taint` is hook-blocked. Removal needs a
    **fringe re-register (reboot)** or a manual `kubectl taint nodes fringe-workstation dedicated=fringe:NoSchedule-`.
    Retiring it lets the `longhorn-general` (WFFC) apps schedule on `fringe` without an SC migration.
+3. **🚧 CAPACITY BLOCKS a full soyo eviction (found 2026-06-19).** Getting *all* Longhorn replicas off the
+   soyos means each 2-replica volume keeps one copy on `fringe` and one on `worker-1` (hard anti-affinity,
+   `replicaSoftAntiAffinity: false`). But **`fringe`'s SSD is only ~253 GiB (~139 GiB free)** while one
+   full copy of the working set is **~640 GiB** (47 volumes). `worker-1` (957 GiB) has room; `fringe` does
+   not — so a full eviction is **infeasible as-is**. Unblock first, one of:
+   - **Wipe + tag `fringe`'s 1 TB HDD** as a Longhorn disk (ADR-0027 cold tier) — the real fix, adds the
+     capacity. (The disk holds NTFS; wipe before Talos will use it — see the [incident](../incidents/2026-06-19-node-taxonomy-migration-storage-churn.md).)
+   - **Shrink the working set** — delete reproducible PVCs (the observability TSDBs: loki, prometheus,
+     mimir, tempo, pyroscope are the big ones) — loses history.
+   Until then, only a **partial** move is safe (disable scheduling on soyos so *new*/rebuilt replicas
+   prefer the workers, and evict the small `longhorn` volumes) — don't `evictionRequested` all three soyos
+   or `fringe` fills and storage collapses (the documented failure mode).
 
 ## Remaining steps (corrected order)
 
