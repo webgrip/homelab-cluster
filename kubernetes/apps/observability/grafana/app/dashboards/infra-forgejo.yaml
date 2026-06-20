@@ -2,22 +2,23 @@
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
-  name: apps-freshrss
+  name: infra-forgejo
 spec:
   instanceSelector:
     matchLabels:
       grafana.internal/instance: grafana
   allowCrossNamespaceImport: false
-  folder: "Apps"
+  folder: "Infrastructure"
   json: |-
     {
       "schemaVersion": 39,
-      "title": "FreshRSS / Runtime Health",
-      "uid": "apps-freshrss",
+      "title": "Forgejo / Runtime Health",
+      "uid": "infra-forgejo",
       "timezone": "browser",
       "tags": [
-        "apps",
-        "freshrss"
+        "infrastructure",
+        "forgejo",
+        "git"
       ],
       "editable": false,
       "graphTooltip": 1,
@@ -68,7 +69,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(kube_pod_status_phase{namespace=\"freshrss\",phase=\"Running\"}) or vector(0)",
+              "expr": "sum(kube_pod_status_phase{namespace=\"forgejo\",phase=\"Running\"}) or vector(0)",
               "legendFormat": ""
             }
           ],
@@ -125,7 +126,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(kube_pod_status_phase{namespace=\"freshrss\",phase=~\"Pending|Failed|Unknown\"}) or vector(0)",
+              "expr": "sum(kube_pod_status_phase{namespace=\"forgejo\",phase=~\"Pending|Failed|Unknown\"}) or vector(0)",
               "legendFormat": ""
             }
           ],
@@ -182,7 +183,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"freshrss\"}[1h])) or vector(0)",
+              "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"forgejo\"}[1h])) or vector(0)",
               "legendFormat": ""
             }
           ],
@@ -243,7 +244,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(increase(container_oom_events_total{namespace=\"freshrss\"}[24h])) or vector(0)",
+              "expr": "sum(increase(container_oom_events_total{namespace=\"forgejo\"}[24h])) or vector(0)",
               "legendFormat": ""
             }
           ],
@@ -300,7 +301,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(kube_pod_container_status_waiting{namespace=\"freshrss\"}) or vector(0)",
+              "expr": "sum(kube_pod_container_status_waiting{namespace=\"forgejo\"}) or vector(0)",
               "legendFormat": ""
             }
           ],
@@ -357,7 +358,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"freshrss\",image!=\"\"}[$$__rate_interval])) or vector(0)",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"forgejo\",image!=\"\"}[$$__rate_interval])) or vector(0)",
               "legendFormat": ""
             }
           ],
@@ -399,7 +400,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(container_memory_working_set_bytes{namespace=\"freshrss\",image!=\"\"}) or vector(0)",
+              "expr": "sum(container_memory_working_set_bytes{namespace=\"forgejo\",image!=\"\"}) or vector(0)",
               "legendFormat": ""
             }
           ],
@@ -441,7 +442,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "max((kubelet_volume_stats_used_bytes{namespace=\"freshrss\"} / kubelet_volume_stats_capacity_bytes{namespace=\"freshrss\"}) * 100) or vector(0)",
+              "expr": "max((kubelet_volume_stats_used_bytes{namespace=\"forgejo\"} / kubelet_volume_stats_capacity_bytes{namespace=\"forgejo\"}) * 100) or vector(0)",
               "legendFormat": ""
             }
           ],
@@ -496,7 +497,7 @@ spec:
         {
           "id": 10,
           "type": "row",
-          "title": "Workload & pods",
+          "title": "Forgejo \u2014 service",
           "collapsed": false,
           "gridPos": {
             "h": 1,
@@ -506,943 +507,8 @@ spec:
           }
         },
         {
-          "type": "timeseries",
-          "title": "Pod phase over time",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum by (phase) (kube_pod_status_phase{namespace=\"freshrss\"})",
-              "legendFormat": "{{phase}}"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "right",
-              "calcs": [
-                "last",
-                "max"
-              ]
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "decimals": 0,
-              "custom": {
-                "fillOpacity": 30,
-                "showPoints": "never",
-                "lineWidth": 1,
-                "stacking": {
-                  "mode": "normal"
-                }
-              }
-            },
-            "overrides": []
-          },
-          "id": 11,
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 6
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "Pod restarts (top 10, 30m)",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "topk(10, sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"freshrss\"}[30m])))",
-              "legendFormat": "{{pod}}"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "right",
-              "calcs": [
-                "last",
-                "max"
-              ]
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "decimals": 0,
-              "custom": {
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "lineWidth": 1
-              }
-            },
-            "overrides": []
-          },
-          "id": 12,
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 6
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "Container waiting reasons",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum by (reason) (kube_pod_container_status_waiting_reason{namespace=\"freshrss\"})",
-              "legendFormat": "{{reason}}"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "right",
-              "calcs": [
-                "last",
-                "max"
-              ]
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "decimals": 0,
-              "custom": {
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "lineWidth": 1
-              }
-            },
-            "overrides": []
-          },
-          "description": "CrashLoopBackOff, ImagePullBackOff, etc. Empty when all containers are running.",
-          "id": 13,
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 14
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "Replicas: desired vs ready",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum(kube_deployment_spec_replicas{namespace=\"freshrss\"})",
-              "legendFormat": "deploy desired"
-            },
-            {
-              "refId": "B",
-              "expr": "sum(kube_deployment_status_replicas_available{namespace=\"freshrss\"})",
-              "legendFormat": "deploy ready"
-            },
-            {
-              "refId": "C",
-              "expr": "sum(kube_statefulset_replicas{namespace=\"freshrss\"})",
-              "legendFormat": "sts desired"
-            },
-            {
-              "refId": "D",
-              "expr": "sum(kube_statefulset_status_replicas_ready{namespace=\"freshrss\"})",
-              "legendFormat": "sts ready"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "right",
-              "calcs": [
-                "last",
-                "max"
-              ]
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "decimals": 0,
-              "custom": {
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "lineWidth": 1
-              }
-            },
-            "overrides": []
-          },
-          "id": 14,
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 14
-          }
-        },
-        {
-          "id": 15,
-          "type": "row",
-          "title": "CPU",
-          "collapsed": false,
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 22
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "CPU \u2014 usage vs requests vs limits",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"freshrss\",image!=\"\"}[$$__rate_interval]))",
-              "legendFormat": "usage"
-            },
-            {
-              "refId": "B",
-              "expr": "sum(kube_pod_container_resource_requests{namespace=\"freshrss\",resource=\"cpu\"})",
-              "legendFormat": "requests"
-            },
-            {
-              "refId": "C",
-              "expr": "sum(kube_pod_container_resource_limits{namespace=\"freshrss\",resource=\"cpu\"})",
-              "legendFormat": "limits"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "calcs": [
-                "last",
-                "max"
-              ]
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "cores",
-              "decimals": 3,
-              "custom": {
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "lineWidth": 1
-              }
-            },
-            "overrides": []
-          },
-          "id": 16,
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 23
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "CPU usage by pod",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"freshrss\",image!=\"\"}[$$__rate_interval]))",
-              "legendFormat": "{{pod}}"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "right",
-              "calcs": [
-                "last",
-                "max"
-              ]
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "cores",
-              "decimals": 3,
-              "custom": {
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "lineWidth": 1
-              }
-            },
-            "overrides": []
-          },
-          "id": 17,
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 23
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "CPU throttling % by pod",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum by (pod) (rate(container_cpu_cfs_throttled_periods_total{namespace=\"freshrss\"}[$$__rate_interval])) / clamp_min(sum by (pod) (rate(container_cpu_cfs_periods_total{namespace=\"freshrss\"}[$$__rate_interval])), 1) * 100",
-              "legendFormat": "{{pod}}"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "right",
-              "calcs": [
-                "last",
-                "max"
-              ]
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "percent",
-              "decimals": 1,
-              "custom": {
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "lineWidth": 1
-              }
-            },
-            "overrides": []
-          },
-          "description": "Share of CFS periods the container was throttled. Sustained >25% means the CPU limit is too low.",
-          "id": 18,
-          "gridPos": {
-            "h": 7,
-            "w": 24,
-            "x": 0,
-            "y": 31
-          }
-        },
-        {
-          "id": 19,
-          "type": "row",
-          "title": "Memory",
-          "collapsed": false,
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 38
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "Memory \u2014 usage vs requests vs limits",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum(container_memory_working_set_bytes{namespace=\"freshrss\",image!=\"\"})",
-              "legendFormat": "working set"
-            },
-            {
-              "refId": "B",
-              "expr": "sum(kube_pod_container_resource_requests{namespace=\"freshrss\",resource=\"memory\"})",
-              "legendFormat": "requests"
-            },
-            {
-              "refId": "C",
-              "expr": "sum(kube_pod_container_resource_limits{namespace=\"freshrss\",resource=\"memory\"})",
-              "legendFormat": "limits"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "calcs": [
-                "last",
-                "max"
-              ]
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "bytes",
-              "custom": {
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "lineWidth": 1
-              }
-            },
-            "overrides": []
-          },
-          "id": 20,
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 39
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "Memory by pod",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"freshrss\",image!=\"\"})",
-              "legendFormat": "{{pod}}"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "right",
-              "calcs": [
-                "last",
-                "max"
-              ]
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "bytes",
-              "custom": {
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "lineWidth": 1
-              }
-            },
-            "overrides": []
-          },
-          "id": 21,
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 39
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "Memory % of limit by pod (OOM risk)",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"freshrss\",image!=\"\"}) / sum by (pod) (kube_pod_container_resource_limits{namespace=\"freshrss\",resource=\"memory\"}) * 100",
-              "legendFormat": "{{pod}}"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "right",
-              "calcs": [
-                "last",
-                "max"
-              ]
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "percent",
-              "decimals": 1,
-              "custom": {
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "lineWidth": 1
-              }
-            },
-            "overrides": []
-          },
-          "description": "Working set as a share of the memory limit. Approaching 100% risks an OOM kill.",
-          "id": 22,
-          "gridPos": {
-            "h": 7,
-            "w": 24,
-            "x": 0,
-            "y": 47
-          }
-        },
-        {
-          "id": 23,
-          "type": "row",
-          "title": "Network",
-          "collapsed": false,
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 54
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "Network throughput (RX up / TX down)",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum(rate(container_network_receive_bytes_total{namespace=\"freshrss\"}[$$__rate_interval]))",
-              "legendFormat": "rx"
-            },
-            {
-              "refId": "B",
-              "expr": "sum(rate(container_network_transmit_bytes_total{namespace=\"freshrss\"}[$$__rate_interval])) * -1",
-              "legendFormat": "tx"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "calcs": [
-                "last",
-                "max"
-              ]
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "Bps",
-              "custom": {
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "lineWidth": 1
-              }
-            },
-            "overrides": []
-          },
-          "id": 24,
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 55
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "Receive by pod",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum by (pod) (rate(container_network_receive_bytes_total{namespace=\"freshrss\"}[$$__rate_interval]))",
-              "legendFormat": "{{pod}}"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "right",
-              "calcs": [
-                "last",
-                "max"
-              ]
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "Bps",
-              "custom": {
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "lineWidth": 1
-              }
-            },
-            "overrides": []
-          },
-          "id": 25,
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 55
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "Packet drops & errors",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum(rate(container_network_receive_packets_dropped_total{namespace=\"freshrss\"}[$$__rate_interval]))",
-              "legendFormat": "rx drop"
-            },
-            {
-              "refId": "B",
-              "expr": "sum(rate(container_network_transmit_packets_dropped_total{namespace=\"freshrss\"}[$$__rate_interval]))",
-              "legendFormat": "tx drop"
-            },
-            {
-              "refId": "C",
-              "expr": "sum(rate(container_network_receive_errors_total{namespace=\"freshrss\"}[$$__rate_interval]))",
-              "legendFormat": "rx err"
-            },
-            {
-              "refId": "D",
-              "expr": "sum(rate(container_network_transmit_errors_total{namespace=\"freshrss\"}[$$__rate_interval]))",
-              "legendFormat": "tx err"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "calcs": [
-                "last",
-                "max"
-              ]
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "pps",
-              "decimals": 2,
-              "custom": {
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "lineWidth": 1
-              }
-            },
-            "overrides": []
-          },
-          "id": 26,
-          "gridPos": {
-            "h": 7,
-            "w": 24,
-            "x": 0,
-            "y": 63
-          }
-        },
-        {
-          "id": 27,
-          "type": "row",
-          "title": "Storage",
-          "collapsed": false,
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 70
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "PVC usage %",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "(kubelet_volume_stats_used_bytes{namespace=\"freshrss\"} / kubelet_volume_stats_capacity_bytes{namespace=\"freshrss\"}) * 100",
-              "legendFormat": "{{persistentvolumeclaim}}"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "right",
-              "calcs": [
-                "last",
-                "max"
-              ]
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "percent",
-              "decimals": 1,
-              "custom": {
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "lineWidth": 1
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "{{persistentvolumeclaim}}"
-                },
-                "properties": []
-              }
-            ]
-          },
-          "id": 28,
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 71
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "PVC used bytes",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum by (persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace=\"freshrss\"})",
-              "legendFormat": "{{persistentvolumeclaim}}"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "right",
-              "calcs": [
-                "last",
-                "max"
-              ]
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "bytes",
-              "custom": {
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "lineWidth": 1
-              }
-            },
-            "overrides": []
-          },
-          "id": 29,
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 71
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "PVC available bytes",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum by (persistentvolumeclaim) (kubelet_volume_stats_available_bytes{namespace=\"freshrss\"})",
-              "legendFormat": "{{persistentvolumeclaim}}"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "right",
-              "calcs": [
-                "last",
-                "max"
-              ]
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "bytes",
-              "custom": {
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "lineWidth": 1
-              }
-            },
-            "overrides": []
-          },
-          "id": 30,
-          "gridPos": {
-            "h": 7,
-            "w": 12,
-            "x": 0,
-            "y": 79
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "Inodes used %",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "(1 - kubelet_volume_stats_inodes_free{namespace=\"freshrss\"} / kubelet_volume_stats_inodes{namespace=\"freshrss\"}) * 100",
-              "legendFormat": "{{persistentvolumeclaim}}"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "right",
-              "calcs": [
-                "last",
-                "max"
-              ]
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "percent",
-              "decimals": 1,
-              "custom": {
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "lineWidth": 1
-              }
-            },
-            "overrides": []
-          },
-          "id": 31,
-          "gridPos": {
-            "h": 7,
-            "w": 12,
-            "x": 12,
-            "y": 79
-          }
-        },
-        {
-          "id": 32,
-          "type": "row",
-          "title": "Database (CloudNativePG)",
-          "collapsed": false,
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 86
-          }
-        },
-        {
           "type": "stat",
-          "title": "DB up",
+          "title": "Forgejo up",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -1450,7 +516,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "max(cnpg_collector_up{namespace=\"freshrss\"}) or vector(0)",
+              "expr": "max(up{job=\"forgejo-http\",namespace=\"forgejo\"}) or vector(0)",
               "legendFormat": ""
             }
           ],
@@ -1504,12 +570,1507 @@ spec:
             },
             "overrides": []
           },
-          "id": 33,
+          "id": 11,
           "gridPos": {
             "h": 4,
             "w": 4,
             "x": 0,
-            "y": 87
+            "y": 6
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Version",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "gitea_build_info{namespace=\"forgejo\"}",
+              "legendFormat": "{{version}}"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "/^version$$/"
+            },
+            "textMode": "name",
+            "colorMode": "none",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
+          "id": 12,
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 6
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Repositories",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max(gitea_repositories{namespace=\"forgejo\"}) or vector(0)",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "id": 13,
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 8,
+            "y": 6
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Users",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max(gitea_users{namespace=\"forgejo\"}) or vector(0)",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "id": 14,
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 12,
+            "y": 6
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Organizations",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max(gitea_organizations{namespace=\"forgejo\"}) or vector(0)",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "id": 15,
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 16,
+            "y": 6
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Goroutines",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max(go_goroutines{job=\"forgejo-http\",namespace=\"forgejo\"}) or vector(0)",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "id": 16,
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 20,
+            "y": 6
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Issues (open vs closed)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "gitea_issues_open{namespace=\"forgejo\"}",
+              "legendFormat": "open"
+            },
+            {
+              "refId": "B",
+              "expr": "gitea_issues_closed{namespace=\"forgejo\"}",
+              "legendFormat": "closed"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 17,
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 10
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Repos / Mirrors / Releases",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "gitea_repositories{namespace=\"forgejo\"}",
+              "legendFormat": "repositories"
+            },
+            {
+              "refId": "B",
+              "expr": "gitea_mirrors{namespace=\"forgejo\"}",
+              "legendFormat": "mirrors"
+            },
+            {
+              "refId": "C",
+              "expr": "gitea_releases{namespace=\"forgejo\"}",
+              "legendFormat": "releases"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 18,
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 10
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Users / Orgs / Teams",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "gitea_users{namespace=\"forgejo\"}",
+              "legendFormat": "users"
+            },
+            {
+              "refId": "B",
+              "expr": "gitea_organizations{namespace=\"forgejo\"}",
+              "legendFormat": "orgs"
+            },
+            {
+              "refId": "C",
+              "expr": "gitea_teams{namespace=\"forgejo\"}",
+              "legendFormat": "teams"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 19,
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 10
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Webhooks / Hooktasks / Accesses",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "gitea_webhooks{namespace=\"forgejo\"}",
+              "legendFormat": "webhooks"
+            },
+            {
+              "refId": "B",
+              "expr": "gitea_hooktasks{namespace=\"forgejo\"}",
+              "legendFormat": "hooktasks"
+            },
+            {
+              "refId": "C",
+              "expr": "gitea_accesses{namespace=\"forgejo\"}",
+              "legendFormat": "accesses"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 20,
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 18
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Process \u2014 goroutines & open FDs",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "go_goroutines{job=\"forgejo-http\",namespace=\"forgejo\"}",
+              "legendFormat": "goroutines"
+            },
+            {
+              "refId": "B",
+              "expr": "process_open_fds{job=\"forgejo-http\",namespace=\"forgejo\"}",
+              "legendFormat": "open fds"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 21,
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 18
+          }
+        },
+        {
+          "id": 22,
+          "type": "row",
+          "title": "Workload & pods",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 25
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Pod phase over time",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (phase) (kube_pod_status_phase{namespace=\"forgejo\"})",
+              "legendFormat": "{{phase}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 30,
+                "showPoints": "never",
+                "lineWidth": 1,
+                "stacking": {
+                  "mode": "normal"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "id": 23,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 26
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Pod restarts (top 10, 30m)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(10, sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"forgejo\"}[30m])))",
+              "legendFormat": "{{pod}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 24,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 26
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Container waiting reasons",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (reason) (kube_pod_container_status_waiting_reason{namespace=\"forgejo\"})",
+              "legendFormat": "{{reason}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "description": "CrashLoopBackOff, ImagePullBackOff, etc. Empty when all containers are running.",
+          "id": 25,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 34
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Replicas: desired vs ready",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(kube_deployment_spec_replicas{namespace=\"forgejo\"})",
+              "legendFormat": "deploy desired"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(kube_deployment_status_replicas_available{namespace=\"forgejo\"})",
+              "legendFormat": "deploy ready"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(kube_statefulset_replicas{namespace=\"forgejo\"})",
+              "legendFormat": "sts desired"
+            },
+            {
+              "refId": "D",
+              "expr": "sum(kube_statefulset_status_replicas_ready{namespace=\"forgejo\"})",
+              "legendFormat": "sts ready"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 26,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 34
+          }
+        },
+        {
+          "id": 27,
+          "type": "row",
+          "title": "CPU",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 42
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "CPU \u2014 usage vs requests vs limits",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"forgejo\",image!=\"\"}[$$__rate_interval]))",
+              "legendFormat": "usage"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(kube_pod_container_resource_requests{namespace=\"forgejo\",resource=\"cpu\"})",
+              "legendFormat": "requests"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(kube_pod_container_resource_limits{namespace=\"forgejo\",resource=\"cpu\"})",
+              "legendFormat": "limits"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "cores",
+              "decimals": 3,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 28,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 43
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "CPU usage by pod",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"forgejo\",image!=\"\"}[$$__rate_interval]))",
+              "legendFormat": "{{pod}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "cores",
+              "decimals": 3,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 29,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 43
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "CPU throttling % by pod",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod) (rate(container_cpu_cfs_throttled_periods_total{namespace=\"forgejo\"}[$$__rate_interval])) / clamp_min(sum by (pod) (rate(container_cpu_cfs_periods_total{namespace=\"forgejo\"}[$$__rate_interval])), 1) * 100",
+              "legendFormat": "{{pod}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 1,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "description": "Share of CFS periods the container was throttled. Sustained >25% means the CPU limit is too low.",
+          "id": 30,
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 51
+          }
+        },
+        {
+          "id": 31,
+          "type": "row",
+          "title": "Memory",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 58
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Memory \u2014 usage vs requests vs limits",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(container_memory_working_set_bytes{namespace=\"forgejo\",image!=\"\"})",
+              "legendFormat": "working set"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(kube_pod_container_resource_requests{namespace=\"forgejo\",resource=\"memory\"})",
+              "legendFormat": "requests"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(kube_pod_container_resource_limits{namespace=\"forgejo\",resource=\"memory\"})",
+              "legendFormat": "limits"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 32,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 59
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Memory by pod",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"forgejo\",image!=\"\"})",
+              "legendFormat": "{{pod}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 33,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 59
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Memory % of limit by pod (OOM risk)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"forgejo\",image!=\"\"}) / sum by (pod) (kube_pod_container_resource_limits{namespace=\"forgejo\",resource=\"memory\"}) * 100",
+              "legendFormat": "{{pod}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 1,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "description": "Working set as a share of the memory limit. Approaching 100% risks an OOM kill.",
+          "id": 34,
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 67
+          }
+        },
+        {
+          "id": 35,
+          "type": "row",
+          "title": "Network",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 74
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Network throughput (RX up / TX down)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(container_network_receive_bytes_total{namespace=\"forgejo\"}[$$__rate_interval]))",
+              "legendFormat": "rx"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(rate(container_network_transmit_bytes_total{namespace=\"forgejo\"}[$$__rate_interval])) * -1",
+              "legendFormat": "tx"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "Bps",
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 36,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 75
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Receive by pod",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod) (rate(container_network_receive_bytes_total{namespace=\"forgejo\"}[$$__rate_interval]))",
+              "legendFormat": "{{pod}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "Bps",
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 37,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 75
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Packet drops & errors",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(container_network_receive_packets_dropped_total{namespace=\"forgejo\"}[$$__rate_interval]))",
+              "legendFormat": "rx drop"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(rate(container_network_transmit_packets_dropped_total{namespace=\"forgejo\"}[$$__rate_interval]))",
+              "legendFormat": "tx drop"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(rate(container_network_receive_errors_total{namespace=\"forgejo\"}[$$__rate_interval]))",
+              "legendFormat": "rx err"
+            },
+            {
+              "refId": "D",
+              "expr": "sum(rate(container_network_transmit_errors_total{namespace=\"forgejo\"}[$$__rate_interval]))",
+              "legendFormat": "tx err"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "pps",
+              "decimals": 2,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 38,
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 83
+          }
+        },
+        {
+          "id": 39,
+          "type": "row",
+          "title": "Storage",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 90
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "PVC usage %",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(kubelet_volume_stats_used_bytes{namespace=\"forgejo\"} / kubelet_volume_stats_capacity_bytes{namespace=\"forgejo\"}) * 100",
+              "legendFormat": "{{persistentvolumeclaim}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 1,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "{{persistentvolumeclaim}}"
+                },
+                "properties": []
+              }
+            ]
+          },
+          "id": 40,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 91
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "PVC used bytes",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace=\"forgejo\"})",
+              "legendFormat": "{{persistentvolumeclaim}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 41,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 91
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "PVC available bytes",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (persistentvolumeclaim) (kubelet_volume_stats_available_bytes{namespace=\"forgejo\"})",
+              "legendFormat": "{{persistentvolumeclaim}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 42,
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 99
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Inodes used %",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(1 - kubelet_volume_stats_inodes_free{namespace=\"forgejo\"} / kubelet_volume_stats_inodes{namespace=\"forgejo\"}) * 100",
+              "legendFormat": "{{persistentvolumeclaim}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 1,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 43,
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 99
+          }
+        },
+        {
+          "id": 44,
+          "type": "row",
+          "title": "Database (CloudNativePG)",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 106
+          }
+        },
+        {
+          "type": "stat",
+          "title": "DB up",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max(cnpg_collector_up{namespace=\"forgejo\"}) or vector(0)",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "Down",
+                      "color": "red"
+                    },
+                    "1": {
+                      "text": "Up",
+                      "color": "green"
+                    }
+                  }
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "id": 45,
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 107
           }
         },
         {
@@ -1522,7 +2083,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(cnpg_pg_database_size_bytes{namespace=\"freshrss\"}) or vector(0)",
+              "expr": "sum(cnpg_pg_database_size_bytes{namespace=\"forgejo\"}) or vector(0)",
               "legendFormat": ""
             }
           ],
@@ -1546,12 +2107,12 @@ spec:
             },
             "overrides": []
           },
-          "id": 34,
+          "id": 46,
           "gridPos": {
             "h": 4,
             "w": 4,
             "x": 4,
-            "y": 87
+            "y": 107
           }
         },
         {
@@ -1564,7 +2125,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(cnpg_backends_total{namespace=\"freshrss\"}) or vector(0)",
+              "expr": "sum(cnpg_backends_total{namespace=\"forgejo\"}) or vector(0)",
               "legendFormat": ""
             }
           ],
@@ -1587,12 +2148,12 @@ spec:
             },
             "overrides": []
           },
-          "id": 35,
+          "id": 47,
           "gridPos": {
             "h": 4,
             "w": 4,
             "x": 8,
-            "y": 87
+            "y": 107
           }
         },
         {
@@ -1605,7 +2166,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(increase(cnpg_pg_stat_database_deadlocks{namespace=\"freshrss\"}[1h])) or vector(0)",
+              "expr": "sum(increase(cnpg_pg_stat_database_deadlocks{namespace=\"forgejo\"}[1h])) or vector(0)",
               "legendFormat": ""
             }
           ],
@@ -1644,12 +2205,12 @@ spec:
             },
             "overrides": []
           },
-          "id": 36,
+          "id": 48,
           "gridPos": {
             "h": 4,
             "w": 4,
             "x": 12,
-            "y": 87
+            "y": 107
           }
         },
         {
@@ -1662,7 +2223,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(increase(cnpg_pg_stat_archiver_failed_count{namespace=\"freshrss\"}[1h])) or vector(0)",
+              "expr": "sum(increase(cnpg_pg_stat_archiver_failed_count{namespace=\"forgejo\"}[1h])) or vector(0)",
               "legendFormat": ""
             }
           ],
@@ -1701,12 +2262,12 @@ spec:
             },
             "overrides": []
           },
-          "id": 37,
+          "id": 49,
           "gridPos": {
             "h": 4,
             "w": 4,
             "x": 16,
-            "y": 87
+            "y": 107
           }
         },
         {
@@ -1719,7 +2280,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "max(cnpg_pg_replication_lag{namespace=\"freshrss\"}) or vector(0)",
+              "expr": "max(cnpg_pg_replication_lag{namespace=\"forgejo\"}) or vector(0)",
               "legendFormat": ""
             }
           ],
@@ -1743,12 +2304,12 @@ spec:
             },
             "overrides": []
           },
-          "id": 38,
+          "id": 50,
           "gridPos": {
             "h": 4,
             "w": 4,
             "x": 20,
-            "y": 87
+            "y": 107
           }
         },
         {
@@ -1761,12 +2322,12 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(cnpg_pg_stat_database_xact_commit{namespace=\"freshrss\"}[$$__rate_interval]))",
+              "expr": "sum(rate(cnpg_pg_stat_database_xact_commit{namespace=\"forgejo\"}[$$__rate_interval]))",
               "legendFormat": "commit"
             },
             {
               "refId": "B",
-              "expr": "sum(rate(cnpg_pg_stat_database_xact_rollback{namespace=\"freshrss\"}[$$__rate_interval]))",
+              "expr": "sum(rate(cnpg_pg_stat_database_xact_rollback{namespace=\"forgejo\"}[$$__rate_interval]))",
               "legendFormat": "rollback"
             }
           ],
@@ -1796,12 +2357,12 @@ spec:
             },
             "overrides": []
           },
-          "id": 39,
+          "id": 51,
           "gridPos": {
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 91
+            "y": 111
           }
         },
         {
@@ -1814,27 +2375,27 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(cnpg_pg_stat_database_tup_returned{namespace=\"freshrss\"}[$$__rate_interval]))",
+              "expr": "sum(rate(cnpg_pg_stat_database_tup_returned{namespace=\"forgejo\"}[$$__rate_interval]))",
               "legendFormat": "returned"
             },
             {
               "refId": "B",
-              "expr": "sum(rate(cnpg_pg_stat_database_tup_fetched{namespace=\"freshrss\"}[$$__rate_interval]))",
+              "expr": "sum(rate(cnpg_pg_stat_database_tup_fetched{namespace=\"forgejo\"}[$$__rate_interval]))",
               "legendFormat": "fetched"
             },
             {
               "refId": "C",
-              "expr": "sum(rate(cnpg_pg_stat_database_tup_inserted{namespace=\"freshrss\"}[$$__rate_interval]))",
+              "expr": "sum(rate(cnpg_pg_stat_database_tup_inserted{namespace=\"forgejo\"}[$$__rate_interval]))",
               "legendFormat": "inserted"
             },
             {
               "refId": "D",
-              "expr": "sum(rate(cnpg_pg_stat_database_tup_updated{namespace=\"freshrss\"}[$$__rate_interval]))",
+              "expr": "sum(rate(cnpg_pg_stat_database_tup_updated{namespace=\"forgejo\"}[$$__rate_interval]))",
               "legendFormat": "updated"
             },
             {
               "refId": "E",
-              "expr": "sum(rate(cnpg_pg_stat_database_tup_deleted{namespace=\"freshrss\"}[$$__rate_interval]))",
+              "expr": "sum(rate(cnpg_pg_stat_database_tup_deleted{namespace=\"forgejo\"}[$$__rate_interval]))",
               "legendFormat": "deleted"
             }
           ],
@@ -1864,12 +2425,12 @@ spec:
             },
             "overrides": []
           },
-          "id": 40,
+          "id": 52,
           "gridPos": {
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 91
+            "y": 111
           }
         },
         {
@@ -1882,7 +2443,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(cnpg_pg_stat_database_blks_hit{namespace=\"freshrss\"}[$$__rate_interval])) / clamp_min(sum(rate(cnpg_pg_stat_database_blks_hit{namespace=\"freshrss\"}[$$__rate_interval])) + sum(rate(cnpg_pg_stat_database_blks_read{namespace=\"freshrss\"}[$$__rate_interval])), 1) * 100",
+              "expr": "sum(rate(cnpg_pg_stat_database_blks_hit{namespace=\"forgejo\"}[$$__rate_interval])) / clamp_min(sum(rate(cnpg_pg_stat_database_blks_hit{namespace=\"forgejo\"}[$$__rate_interval])) + sum(rate(cnpg_pg_stat_database_blks_read{namespace=\"forgejo\"}[$$__rate_interval])), 1) * 100",
               "legendFormat": "hit %"
             }
           ],
@@ -1912,12 +2473,12 @@ spec:
             },
             "overrides": []
           },
-          "id": 41,
+          "id": 53,
           "gridPos": {
             "h": 7,
             "w": 8,
             "x": 0,
-            "y": 99
+            "y": 119
           }
         },
         {
@@ -1930,12 +2491,12 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(cnpg_backends_total{namespace=\"freshrss\"})",
+              "expr": "sum(cnpg_backends_total{namespace=\"forgejo\"})",
               "legendFormat": "total"
             },
             {
               "refId": "B",
-              "expr": "sum(cnpg_backends_waiting_total{namespace=\"freshrss\"})",
+              "expr": "sum(cnpg_backends_waiting_total{namespace=\"forgejo\"})",
               "legendFormat": "waiting"
             }
           ],
@@ -1964,12 +2525,12 @@ spec:
             },
             "overrides": []
           },
-          "id": 42,
+          "id": 54,
           "gridPos": {
             "h": 7,
             "w": 8,
             "x": 8,
-            "y": 99
+            "y": 119
           }
         },
         {
@@ -1982,12 +2543,12 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(cnpg_pg_stat_archiver_archived_count{namespace=\"freshrss\"}[$$__rate_interval]))",
+              "expr": "sum(rate(cnpg_pg_stat_archiver_archived_count{namespace=\"forgejo\"}[$$__rate_interval]))",
               "legendFormat": "archived"
             },
             {
               "refId": "B",
-              "expr": "sum(rate(cnpg_pg_stat_archiver_failed_count{namespace=\"freshrss\"}[$$__rate_interval]))",
+              "expr": "sum(rate(cnpg_pg_stat_archiver_failed_count{namespace=\"forgejo\"}[$$__rate_interval]))",
               "legendFormat": "failed"
             }
           ],
@@ -2017,12 +2578,12 @@ spec:
             },
             "overrides": []
           },
-          "id": 43,
+          "id": 55,
           "gridPos": {
             "h": 7,
             "w": 8,
             "x": 16,
-            "y": 99
+            "y": 119
           }
         }
       ]

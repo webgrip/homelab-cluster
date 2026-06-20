@@ -15,22 +15,1848 @@ spec:
       "title": "ARC Systems / Runtime Health",
       "uid": "apps-arc-systems",
       "timezone": "browser",
-      "tags": ["apps", "arc-systems"],
+      "tags": [
+        "apps",
+        "arc-systems"
+      ],
       "editable": false,
-      "graphTooltip": 0,
+      "graphTooltip": 1,
       "refresh": "30s",
-      "time": {"from": "now-6h", "to": "now"},
-      "annotations": {"list": [{"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard"}]},
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "templating": {
+        "list": []
+      },
       "panels": [
-        {"id": 1, "type": "stat", "title": "Up targets (arc-systems)", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "sum(up{namespace=\"arc-systems\"} == 1)", "legendFormat": "up"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}},
-        {"id": 2, "type": "stat", "title": "Pods not Running", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "sum(kube_pod_status_phase{namespace=\"arc-systems\", phase=~\"Pending|Failed|Unknown\"} == 1)", "legendFormat": "not_running"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}},
-        {"id": 3, "type": "stat", "title": "Deployment replicas missing", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "clamp_min(sum(kube_deployment_spec_replicas{namespace=\"arc-systems\"}) - sum(kube_deployment_status_replicas_available{namespace=\"arc-systems\"}), 0)", "legendFormat": "missing"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []}},
-        {"id": 8, "type": "stat", "title": "ARC runner utilization", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "(100 * sum(gha_busy_runners{namespace=\"arc-systems\"}) / clamp_min(sum(gha_registered_runners{namespace=\"arc-systems\"}), 1)) or vector(0)", "legendFormat": "utilization"}], "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"}, "fieldConfig": {"defaults": {"unit": "percent", "decimals": 1, "max": 100, "min": 0}, "overrides": []}},
-        {"id": 4, "type": "timeseries", "title": "Pod restarts (top 10, 30m)", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "topk(10, sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"arc-systems\"}[30m])))", "legendFormat": "{{pod}}"}], "options": {"legend": {"displayMode": "list", "placement": "right"}}, "fieldConfig": {"defaults": {}, "overrides": []}},
-        {"id": 5, "type": "timeseries", "title": "CPU usage (cores)", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"arc-systems\", image!=\"\"}[5m]))", "legendFormat": "cpu"}], "options": {"legend": {"displayMode": "list", "placement": "right"}}, "fieldConfig": {"defaults": {"unit": "cores"}, "overrides": []}},
-        {"id": 6, "type": "timeseries", "title": "Memory working set", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "sum(container_memory_working_set_bytes{namespace=\"arc-systems\", image!=\"\"})", "legendFormat": "mem"}], "options": {"legend": {"displayMode": "list", "placement": "right"}}, "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []}},
-        {"id": 7, "type": "timeseries", "title": "PVC usage % (top 10)", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "topk(10, (kubelet_volume_stats_used_bytes{namespace=\"arc-systems\"} / kubelet_volume_stats_capacity_bytes{namespace=\"arc-systems\"}) * 100)", "legendFormat": "{{persistentvolumeclaim}}"}], "options": {"legend": {"displayMode": "list", "placement": "right"}}, "fieldConfig": {"defaults": {"unit": "percent", "decimals": 1}, "overrides": []}},
-        {"id": 9, "type": "timeseries", "title": "ARC jobs (assigned vs running)", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "sum(gha_assigned_jobs{namespace=\"arc-systems\"}) or vector(0)", "legendFormat": "assigned jobs"}, {"refId": "B", "expr": "sum(gha_running_jobs{namespace=\"arc-systems\"}) or vector(0)", "legendFormat": "running jobs"}], "options": {"legend": {"displayMode": "list", "placement": "right"}}, "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []}},
-        {"id": 10, "type": "timeseries", "title": "ARC runners (desired/registered/busy/idle)", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "sum(gha_desired_runners{namespace=\"arc-systems\"}) or vector(0)", "legendFormat": "desired"}, {"refId": "B", "expr": "sum(gha_registered_runners{namespace=\"arc-systems\"}) or vector(0)", "legendFormat": "registered"}, {"refId": "C", "expr": "sum(gha_busy_runners{namespace=\"arc-systems\"}) or vector(0)", "legendFormat": "busy"}, {"refId": "D", "expr": "sum(gha_idle_runners{namespace=\"arc-systems\"}) or vector(0)", "legendFormat": "idle"}], "options": {"legend": {"displayMode": "list", "placement": "right"}}, "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []}}
+        {
+          "id": 1,
+          "type": "row",
+          "title": "Health overview",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Pods Running",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(kube_pod_status_phase{namespace=\"arc-systems\",phase=\"Running\"}) or vector(0)",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "id": 2,
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 0,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Pods Not Running",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(kube_pod_status_phase{namespace=\"arc-systems\",phase=~\"Pending|Failed|Unknown\"}) or vector(0)",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "id": 3,
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 3,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Restarts (1h)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"arc-systems\"}[1h])) or vector(0)",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 10
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "id": 4,
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 6,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "OOM kills (24h)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(increase(container_oom_events_total{namespace=\"arc-systems\"}[24h])) or vector(0)",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "id": 5,
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 9,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Waiting containers",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(kube_pod_container_status_waiting{namespace=\"arc-systems\"}) or vector(0)",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "id": 6,
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 12,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "CPU (cores)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"arc-systems\",image!=\"\"}[$$__rate_interval])) or vector(0)",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 2,
+              "unit": "cores"
+            },
+            "overrides": []
+          },
+          "id": 7,
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 15,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Memory",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(container_memory_working_set_bytes{namespace=\"arc-systems\",image!=\"\"}) or vector(0)",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 1,
+              "unit": "bytes"
+            },
+            "overrides": []
+          },
+          "id": 8,
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 18,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Max PVC used",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max((kubelet_volume_stats_used_bytes{namespace=\"arc-systems\"} / kubelet_volume_stats_capacity_bytes{namespace=\"arc-systems\"}) * 100) or vector(0)",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 1,
+              "unit": "percent",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 75
+                  },
+                  {
+                    "color": "red",
+                    "value": 90
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "id": 9,
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 21,
+            "y": 1
+          }
+        },
+        {
+          "id": 10,
+          "type": "row",
+          "title": "GitHub Actions runners (ARC)",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 5
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Utilization",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(100 * sum(gha_busy_runners{namespace=\"arc-systems\"}) / clamp_min(sum(gha_registered_runners{namespace=\"arc-systems\"}), 1)) or vector(0)",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 1,
+              "unit": "percent"
+            },
+            "overrides": []
+          },
+          "id": 11,
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 6
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Desired",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_desired_runners{namespace=\"arc-systems\"}) or vector(0)",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "id": 12,
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 6
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Registered",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_registered_runners{namespace=\"arc-systems\"}) or vector(0)",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "id": 13,
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 8,
+            "y": 6
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Busy",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_busy_runners{namespace=\"arc-systems\"}) or vector(0)",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "id": 14,
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 12,
+            "y": 6
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Idle",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_idle_runners{namespace=\"arc-systems\"}) or vector(0)",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "id": 15,
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 16,
+            "y": 6
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Assigned jobs",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_assigned_jobs{namespace=\"arc-systems\"}) or vector(0)",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "id": 16,
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 20,
+            "y": 6
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Runners (desired/registered/busy/idle)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_desired_runners{namespace=\"arc-systems\"})",
+              "legendFormat": "desired"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(gha_registered_runners{namespace=\"arc-systems\"})",
+              "legendFormat": "registered"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(gha_busy_runners{namespace=\"arc-systems\"})",
+              "legendFormat": "busy"
+            },
+            {
+              "refId": "D",
+              "expr": "sum(gha_idle_runners{namespace=\"arc-systems\"})",
+              "legendFormat": "idle"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 17,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 10
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Jobs (assigned vs running)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_assigned_jobs{namespace=\"arc-systems\"})",
+              "legendFormat": "assigned"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(gha_running_jobs{namespace=\"arc-systems\"})",
+              "legendFormat": "running"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 18,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 10
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Autoscale bounds (min/max vs registered)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(gha_min_runners{namespace=\"arc-systems\"})",
+              "legendFormat": "min"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(gha_max_runners{namespace=\"arc-systems\"})",
+              "legendFormat": "max"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(gha_registered_runners{namespace=\"arc-systems\"})",
+              "legendFormat": "registered"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 19,
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 18
+          }
+        },
+        {
+          "id": 20,
+          "type": "row",
+          "title": "Workload & pods",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 25
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Pod phase over time",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (phase) (kube_pod_status_phase{namespace=\"arc-systems\"})",
+              "legendFormat": "{{phase}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 30,
+                "showPoints": "never",
+                "lineWidth": 1,
+                "stacking": {
+                  "mode": "normal"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "id": 21,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 26
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Pod restarts (top 10, 30m)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(10, sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"arc-systems\"}[30m])))",
+              "legendFormat": "{{pod}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 22,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 26
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Container waiting reasons",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (reason) (kube_pod_container_status_waiting_reason{namespace=\"arc-systems\"})",
+              "legendFormat": "{{reason}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "description": "CrashLoopBackOff, ImagePullBackOff, etc. Empty when all containers are running.",
+          "id": 23,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 34
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Replicas: desired vs ready",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(kube_deployment_spec_replicas{namespace=\"arc-systems\"})",
+              "legendFormat": "deploy desired"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(kube_deployment_status_replicas_available{namespace=\"arc-systems\"})",
+              "legendFormat": "deploy ready"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(kube_statefulset_replicas{namespace=\"arc-systems\"})",
+              "legendFormat": "sts desired"
+            },
+            {
+              "refId": "D",
+              "expr": "sum(kube_statefulset_status_replicas_ready{namespace=\"arc-systems\"})",
+              "legendFormat": "sts ready"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 24,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 34
+          }
+        },
+        {
+          "id": 25,
+          "type": "row",
+          "title": "CPU",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 42
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "CPU \u2014 usage vs requests vs limits",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"arc-systems\",image!=\"\"}[$$__rate_interval]))",
+              "legendFormat": "usage"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(kube_pod_container_resource_requests{namespace=\"arc-systems\",resource=\"cpu\"})",
+              "legendFormat": "requests"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(kube_pod_container_resource_limits{namespace=\"arc-systems\",resource=\"cpu\"})",
+              "legendFormat": "limits"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "cores",
+              "decimals": 3,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 26,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 43
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "CPU usage by pod",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"arc-systems\",image!=\"\"}[$$__rate_interval]))",
+              "legendFormat": "{{pod}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "cores",
+              "decimals": 3,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 27,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 43
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "CPU throttling % by pod",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod) (rate(container_cpu_cfs_throttled_periods_total{namespace=\"arc-systems\"}[$$__rate_interval])) / clamp_min(sum by (pod) (rate(container_cpu_cfs_periods_total{namespace=\"arc-systems\"}[$$__rate_interval])), 1) * 100",
+              "legendFormat": "{{pod}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 1,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "description": "Share of CFS periods the container was throttled. Sustained >25% means the CPU limit is too low.",
+          "id": 28,
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 51
+          }
+        },
+        {
+          "id": 29,
+          "type": "row",
+          "title": "Memory",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 58
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Memory \u2014 usage vs requests vs limits",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(container_memory_working_set_bytes{namespace=\"arc-systems\",image!=\"\"})",
+              "legendFormat": "working set"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(kube_pod_container_resource_requests{namespace=\"arc-systems\",resource=\"memory\"})",
+              "legendFormat": "requests"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(kube_pod_container_resource_limits{namespace=\"arc-systems\",resource=\"memory\"})",
+              "legendFormat": "limits"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 30,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 59
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Memory by pod",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"arc-systems\",image!=\"\"})",
+              "legendFormat": "{{pod}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 31,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 59
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Memory % of limit by pod (OOM risk)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"arc-systems\",image!=\"\"}) / sum by (pod) (kube_pod_container_resource_limits{namespace=\"arc-systems\",resource=\"memory\"}) * 100",
+              "legendFormat": "{{pod}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 1,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "description": "Working set as a share of the memory limit. Approaching 100% risks an OOM kill.",
+          "id": 32,
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 67
+          }
+        },
+        {
+          "id": 33,
+          "type": "row",
+          "title": "Network",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 74
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Network throughput (RX up / TX down)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(container_network_receive_bytes_total{namespace=\"arc-systems\"}[$$__rate_interval]))",
+              "legendFormat": "rx"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(rate(container_network_transmit_bytes_total{namespace=\"arc-systems\"}[$$__rate_interval])) * -1",
+              "legendFormat": "tx"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "Bps",
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 34,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 75
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Receive by pod",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (pod) (rate(container_network_receive_bytes_total{namespace=\"arc-systems\"}[$$__rate_interval]))",
+              "legendFormat": "{{pod}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "Bps",
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 35,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 75
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Packet drops & errors",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(container_network_receive_packets_dropped_total{namespace=\"arc-systems\"}[$$__rate_interval]))",
+              "legendFormat": "rx drop"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(rate(container_network_transmit_packets_dropped_total{namespace=\"arc-systems\"}[$$__rate_interval]))",
+              "legendFormat": "tx drop"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(rate(container_network_receive_errors_total{namespace=\"arc-systems\"}[$$__rate_interval]))",
+              "legendFormat": "rx err"
+            },
+            {
+              "refId": "D",
+              "expr": "sum(rate(container_network_transmit_errors_total{namespace=\"arc-systems\"}[$$__rate_interval]))",
+              "legendFormat": "tx err"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "pps",
+              "decimals": 2,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 36,
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 83
+          }
+        },
+        {
+          "id": 37,
+          "type": "row",
+          "title": "Storage",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 90
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "PVC usage %",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(kubelet_volume_stats_used_bytes{namespace=\"arc-systems\"} / kubelet_volume_stats_capacity_bytes{namespace=\"arc-systems\"}) * 100",
+              "legendFormat": "{{persistentvolumeclaim}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 1,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "{{persistentvolumeclaim}}"
+                },
+                "properties": []
+              }
+            ]
+          },
+          "id": 38,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 91
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "PVC used bytes",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace=\"arc-systems\"})",
+              "legendFormat": "{{persistentvolumeclaim}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 39,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 91
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "PVC available bytes",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (persistentvolumeclaim) (kubelet_volume_stats_available_bytes{namespace=\"arc-systems\"})",
+              "legendFormat": "{{persistentvolumeclaim}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 40,
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 99
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Inodes used %",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(1 - kubelet_volume_stats_inodes_free{namespace=\"arc-systems\"} / kubelet_volume_stats_inodes{namespace=\"arc-systems\"}) * 100",
+              "legendFormat": "{{persistentvolumeclaim}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": [
+                "last",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 1,
+              "custom": {
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "id": 41,
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 99
+          }
+        }
       ]
     }
