@@ -10,7 +10,7 @@ Operator in `cnpg-system`. One `Cluster` per app namespace; wire backups/monitor
 
 ## Add a database
 1. `kubernetes/apps/<ns>/<app>/app/database/cluster.yaml` — `kind: Cluster` (`postgresql.cnpg.io/v1`): `instances: 2`, `storage.storageClass: longhorn` (the reserved class, **not** longhorn-general), and **always `walStorage`** (own volume, same class). Both rules enforced by `guard-skills.sh`.
-   - **Why walStorage:** WAL only recycles after archiving to Garage S3; if Garage is down, `pg_wal` on a shared volume fills the data disk → DB CrashLoops `no free disk space for WALs` (took Grafana + Dependency-Track down; [[cnpg-garage-wal-spof]]). 5Gi default, ~10Gi heavy writers (Grafana, Dependency-Track). Addable in-place (rolling restart), **never removable**.
+   - **Why walStorage:** WAL only recycles after archiving to Garage S3; if Garage is down, `pg_wal` on a shared volume fills the data disk → DB CrashLoops `no free disk space for WALs` (took Grafana + Dependency-Track down). 5Gi default, ~10Gi heavy writers (Grafana, Dependency-Track). Addable in-place (rolling restart), **never removable**.
    - Operator auto-creates `<app>-db-app` / `<app>-db-rw` / `<app>-db-ro` secrets — reference via `existingSecret`/`envFromSecret`, never inline.
 2. Add `database/` to the app `kustomization.yaml`; app `ks.yaml` `dependsOn` the DB.
 
@@ -34,9 +34,9 @@ caveat doesn't apply. **forgejo-db + openbao** are the gitops-critical exception
    authentik-db/dependency-track-db/guac-db unbacked.
 
 ## Gotchas
-- Backup S3 creds: Secret `cnpg-backup-s3` (`S3_*` keys). `barmanObjectStore.endpointURL` is a **plain string**, not a SecretKeySelector. (`cnpg-backup-s3` is now ESO-backed from OpenBao via the component — see [[external-secrets-eso-openbao]].)
+- Backup S3 creds: Secret `cnpg-backup-s3` (`S3_*` keys). `barmanObjectStore.endpointURL` is a **plain string**, not a SecretKeySelector. (`cnpg-backup-s3` is now ESO-backed from OpenBao via the component — see the `external-secrets` skill.)
 - Objects double-nest: `destinationPath/<cluster>/<cluster>/…`.
-- **Recovery-window retention won't GC pre-first-backup WAL** until the anchor backup ages out — WAL can pile up in S3. Force-prune via a temporary lower retention: [[barman-cloud-retention-orphan-wal]].
+- **Recovery-window retention won't GC pre-first-backup WAL** until the anchor backup ages out — WAL can pile up in S3. Force-prune via a temporary lower retention (`docs/techdocs/docs/runbooks/cnpg-backups.md`).
 - **Zero-trust namespace?** the DB-layer ks needs `components/cnpg-netpol` or cnpg-system can't poll the instance :8000 → `ClusterIsNotReady` deadlock — see the `network-policy` skill.
 - Restore drills no-op once tested — delete ConfigMap `cnpg-restore-test-state` in the ns to force a re-test. The `cnpg-disaster-recovery` cluster sitting in "error/hibernated" with "Continuous archiving is working" is **normal** post-test (hibernated to 0 instances), not a failure.
 - **Verifying backups: the Cluster's `.status.lastSuccessfulBackup` does NOT populate on the plugin path** — check `kubectl get backups.postgresql.cnpg.io -n <ns>` (`PHASE=completed`) or the ScheduledBackup's `lastScheduleTime`, NOT the Cluster status. A large DB's first base backup can take 10–20 min (`pg_basebackup` force-wait checkpoints in the pod log = progressing, not stuck).

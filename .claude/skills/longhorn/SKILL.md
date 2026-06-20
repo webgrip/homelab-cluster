@@ -30,10 +30,10 @@ nodes + HARD anti-affinity).
 
 ## Key defaultSettings (and why)
 
-`replicaAutoBalance: disabled` (auto-balance caused a rebuild storm + OOM — 06-09; [[longhorn-manager-oom-instability]]) ·
+`replicaAutoBalance: disabled` (auto-balance caused a rebuild storm + OOM — [2026-06-09 incident](docs/techdocs/docs/incidents/2026-06-09-longhorn-oom-cascade.md)) ·
 `concurrentReplicaRebuildPerNodeLimit: "1"` (RAM-tight; rebuilds are serial/slow) ·
 `guaranteedInstanceManagerCPU: "20"` (**danger-zone: changing it rolls every node's IM = a replica wipe; converge node-by-node** —
-[[longhorn-guaranteed-im-cpu-delayed-detonation]], [runbook](docs/techdocs/docs/runbooks/longhorn-im-cpu-converge.md)) ·
+[2026-06-18 incident](docs/techdocs/docs/incidents/2026-06-18-longhorn-im-cpu-rolling-detonation.md) + [runbook](docs/techdocs/docs/runbooks/longhorn-im-cpu-converge.md)) ·
 `replicaDiskSoftAntiAffinity: false` (each replica on a distinct node). `longhorn-manager` is Guaranteed-QoS
 via a postRenderer (don't let it go BestEffort → OOM).
 
@@ -53,7 +53,7 @@ via a postRenderer (don't let it go BestEffort → OOM).
   **`strategy: Recreate`** (StatefulSets/CNPG immune). Full explanation → the `workload-placement` skill.
 - **Storage-node reboots churn Longhorn** (detach/re-attach + IM restart → degraded waves + zombie
   replicas). Reboot replica-holding nodes deliberately, drained, expecting a wave. Spacing rollout-heavy
-  commits apart matters too ([[batched-rollouts-storage-collapse]]).
+  commits apart matters too (storage starvation → instance-manager probe timeouts → faulted volumes).
 - **Don't ship a Talos `machine.disks` entry over a disk that still has a filesystem** — Talos won't
   `mkfs` without `--force` and wedges boot (06-19). Wipe first.
 

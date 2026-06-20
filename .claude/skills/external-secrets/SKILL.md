@@ -6,7 +6,7 @@ description: Add or manage secrets via External Secrets Operator + OpenBao — t
 # External Secrets (ESO + OpenBao)
 
 Secrets are migrating off SOPS to **ESO** (engine) + **OpenBao** KV v2 (backend, ns `security`).
-Full state/history + every gotcha: [[external-secrets-eso-openbao]]. Rollout plan:
+Background + rollout plan: `docs/techdocs/docs/runbooks/external-secrets.md`,
 `docs/techdocs/docs/runbooks/secret-migration-rollout.md`.
 
 ## Stores + generator (cluster-scoped)

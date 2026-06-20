@@ -14,7 +14,7 @@ defaults), and **PolicyException** (waivers).
 ## Audit vs Enforce
 New validate policies land in **`validationFailureAction: Audit`** (reports violations to a PolicyReport,
 doesn't block) → promote to **Enforce** (admission-blocks) once the fleet is clean. ~10 policies sit in
-Audit; the promotion backlog is tracked in the roadmap ([[security-hardening-roadmap]]). **Promote one at
+Audit; the promotion backlog is tracked in `docs/techdocs/docs/general/roadmap.md`. **Promote one at
 a time** and check PolicyReports are clean first, or you'll block a legitimate workload at admission.
 
 ## Add a policy
@@ -28,7 +28,7 @@ When a workload legitimately must break a policy (e.g. forgejo-runner's privileg
 PolicyException` (v2) at `…/policies/app/exception-<name>.yaml`, matching the **exact** resource (labels) +
 the `policyName`/rule names. Scope it tight — match the specific workload, never the whole namespace. Model:
 `exception-forgejo-runner.yaml`. Note: privileged DinD *also* needs the namespace at
-`pod-security.kubernetes.io/enforce: privileged` — Kyverno and PSA are separate gates ([[forgejo-runner-privileged-and-registration]]).
+`pod-security.kubernetes.io/enforce: privileged` — Kyverno and PSA are separate gates (`docs/techdocs/docs/runbooks/forgejo-runner.md`).
 
 ## Test (required for a policy change)
 - **CLI (fast, offline):** `just kyverno-test` → `scripts/run-kyverno-cli-tests.sh`. Per policy:

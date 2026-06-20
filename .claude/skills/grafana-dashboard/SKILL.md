@@ -24,7 +24,7 @@ Folder CRD names (use as `folderRef`): `apps` · `claude-code` · `data` · `inf
 ## Escaping (Flux envsubst) — enforced by `guard-skills.sh`
 Double **every** Grafana token (`$$__range`, `$$__rate_interval`, `$$var`, `$$__all`). Single `$` before `{`/`(` fails the *whole* grafana Kustomization; single `$model`/`$__range` is silently blanked → No data. Double as you write to avoid fix loops. No literal `$` in titles/`line_format` — write `USD`.
 
-## House style (matches [[dashboard-ux-preferences]])
+## House style
 - Don't graph everything: `stat` for single values, `table` for many-row comparison, `timeseries` only when over-time shape matters.
 - Money: `currencyUSD`, `decimals: 2` (nl-NL). Pair counts with a derived rate. Log y-axis (`custom.scaleDistribution:{type:log,log:10}`) for series spanning magnitudes.
 - Datasource: hardcode `"uid": "prometheus"`/`"loki"` on panels + variable `datasource` fields — never a `${datasource}` picker (Flux blanks braced `${…}` → silent fallback to the default datasource).

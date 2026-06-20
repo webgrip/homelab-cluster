@@ -18,7 +18,7 @@ Cilium enforces egress on the **post-DNAT backend identity + targetPort**, not t
 port. So CIDR/port rules do **not** govern Service/gateway traffic — a `0.0.0.0/0 except pod-CIDR` rule
 looks permissive but silently drops gateway hairpins + kube-apiserver calls. Govern Service/gateway flows
 by **identity** (`namespaceSelector`/`toEntities`), port-less.
-([ADR-0021](docs/techdocs/docs/adr/adr-0021-cilium-gateway-egress-for-oidc.md), [[cilium-service-vip-egress-identity]]).
+([ADR-0021](docs/techdocs/docs/adr/adr-0021-cilium-gateway-egress-for-oidc.md)).
 
 ## The two reusable components (don't hand-roll these)
 - **`components/gateway-egress`** — `allow-gateway-egress`: egress to `namespaceSelector: network`, **no
@@ -33,7 +33,6 @@ Add `components/cnpg-netpol` to the `<app>-db` ks (the one that only `dependsOn`
 the app ks. Default-deny blocks cnpg-system from polling the instance :8000 → `ClusterIsNotReady` → the DB
 never goes Ready → the app ks gate (`dependsOn` db-Ready) never fires → **deadlock**. The allow must sit on
 the non-gated layer so the DB can come up first.
-([[cnpg-netpol-operator-deadlock]], [[w7-netpol-cnpg-operator-deadlock]]).
 
 ## Add per-app policies
 Copy `kubernetes/apps/authentik/app/networkpolicy.yaml` (or `kubernetes/apps/harbor/harbor/app/networkpolicy.yaml`):

@@ -45,7 +45,7 @@ Its one job: load this skill **exactly when relevant, never otherwise**.
 - **One real in-repo example by path** beats an inlined synthetic template (which rots and costs tokens).
 - **Anchors for skimming:** bold the scan keywords, tables for name→value lookups, bullets over prose.
 - **Guardrails as `Never`/gotchas** — the expensive mistake the model can't infer is the highest-ROI line.
-- **Don't duplicate** CLAUDE.md, the codebase, or git history — link. `[[memory-slug]]` for mutable state.
+- **Don't duplicate** CLAUDE.md, the codebase, or git history — link to a **committed in-repo doc** (ADR/runbook/incident under `docs/`). **Never link `[[memory]]` from a committed skill** — memory lives in `~/.claude`, per-user/per-machine, so the link dangles on anyone else's clone. `[[memory]]` is portable only inside *personal* (`~/.claude`) skills + memory files.
 
 ## Single source of truth
 
@@ -71,7 +71,7 @@ lists** — anything needed only sometimes. Move it to a sibling and reference i
 
 ## What does NOT go in a skill
 
-- Always-on project rules → `CLAUDE.md`. Mutable state / incident history → memory `[[slug]]`.
+- Always-on project rules → `CLAUDE.md`. Mutable state / incident history → the memory system (but a *committed* skill links the in-repo incident doc/runbook, never the `[[memory]]`).
 - Long-form human reference → `docs/…/runbooks/`. One-off facts / anything derivable from the repo → omit.
 - Generic knowledge a competent model already has → omit. Skills carry only the *specific* and *non-obvious*.
 
