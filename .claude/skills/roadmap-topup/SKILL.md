@@ -1,11 +1,12 @@
 ---
 name: roadmap-topup
-description: Re-inventory the whole cluster/repo and refresh roadmap.md, kept topped up at 100 open improvement items. Use when asked to "inventarize", "take inventory", "refresh/top-up the roadmap", or "what should we do next" at a strategic level.
+description: Re-inventory the whole cluster/repo and refresh the roadmap (docs/techdocs/docs/general/roadmap.md), kept topped up at 100 open improvement items.
+when_to_use: Use when asked to "inventarize" / "take inventory", "refresh/top-up the roadmap", prioritize or triage the backlog, decide what to work on, or "what should we work on/do next" at a strategic (multi-item, not single-task) level.
 ---
 
 # Inventory → top up the roadmap to 100
 
-Maintains `/roadmap.md` (repo root): a living, prioritized backlog held at **exactly 100 open
+Maintains `docs/techdocs/docs/general/roadmap.md`: a living, prioritized backlog held at **exactly 100 open
 items**. Each run re-inventories live state, moves shipped work to the Done log, and refills new
 findings so the open count stays 100.
 
@@ -56,7 +57,7 @@ Tell them to verify, not guess (e.g. is policy X still Audit? does ns Y still la
 ### 5. Validate, commit, push
 - Cosmetic markdownlint (MD029/MD022/MD060) is expected — ignore.
 - The owner commits concurrently on the **same local `main`**. **Stage only your own files**
-  (`git add roadmap.md` + any skill file) — never `git add -A`. Commit with
+  (`git add docs/techdocs/docs/general/roadmap.md` + any skill file) — never `git add -A`. Commit with
   `git -c commit.gpgsign=false commit` (via `mise exec --` so lefthook's zizmor resolves), then
   `git fetch` + push (clean fast-forward; their WIP stays untouched).
 

@@ -1,6 +1,7 @@
 ---
 name: workload-placement
-description: Decide which node a workload runs on and pin it the DRY way. Use when adding/placing a workload, choosing nodeAffinity/nodeSelector, pinning apps to the workers, keeping infra unconstrained, or wiring the worker-pool component. Capability-label taxonomy, not control-plane-role or node names.
+description: Decide which node a workload runs on and pin it the DRY way — capability-label taxonomy (pool=worker), the worker-pool component, nodeAffinity/nodeSelector. Not control-plane-role or node names.
+when_to_use: Use when adding/placing a workload, choosing nodeAffinity/nodeSelector, pinning apps to the worker pool, keeping infra unconstrained, wiring the worker-pool component, or debugging a pod stuck Pending / "didn't match node affinity" / a volume (e.g. CNPG, n8n) that won't schedule on a node you just added.
 ---
 
 # Workload placement

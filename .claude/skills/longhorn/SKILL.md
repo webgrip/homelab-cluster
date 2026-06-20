@@ -1,7 +1,7 @@
 ---
 name: longhorn
 description: Operate Longhorn storage on the homelab — StorageClasses, replica/volume health, the rebuild-wedge fix, node eviction, capacity, and the gotchas that have caused storage SEVs.
-when_to_use: Use when touching kubernetes/apps/longhorn-system, StorageClasses, volumes/replicas/nodes.longhorn.io, diagnosing degraded/faulted volumes, or moving storage between nodes.
+when_to_use: Use when touching kubernetes/apps/longhorn-system, choosing/deciding a StorageClass for a new volume, working with StorageClasses/volumes/replicas/nodes.longhorn.io, diagnosing degraded/faulted volumes, or moving storage between nodes.
 allowed-tools: Bash(mise exec -- kubectl get volumes.longhorn.io*), Bash(mise exec -- kubectl get replicas.longhorn.io*), Bash(mise exec -- kubectl get nodes.longhorn.io*)
 ---
 
