@@ -6,7 +6,7 @@ description: Add or manage secrets via External Secrets Operator + OpenBao — t
 # External Secrets (ESO + OpenBao)
 
 Secrets are migrating off SOPS to **ESO** (engine) + **OpenBao** KV v2 (backend, ns `security`).
-Full state/history + every gotcha: [[external-secrets-eso-openbao]]. Rollout plan:
+Background + rollout plan: `docs/techdocs/docs/runbooks/external-secrets.md`,
 `docs/techdocs/docs/runbooks/secret-migration-rollout.md`.
 
 ## Stores + generator (cluster-scoped)
@@ -30,9 +30,9 @@ OpenBao. The agent has no `bao` CLI/token and cannot write OpenBao — so a desi
   length-exact variant), `refreshInterval: "0"` (generate-once) + `target.deletionPolicy: Retain`,
   `rewrite` `password` → the env key. **Multi-key:** add one `dataFrom` entry per key — each
   `generatorRef` invocation yields an independent value (reference the same generator N times for N
-  distinct values). Example: `kubernetes/apps/harbor/harbor/app/harbor-core.externalsecret.yaml`
-  (admin pw + secretKey/CSRF/registry/jobservice, all generated). Simple single-key example:
-  `searxng/.../externalsecret.yaml`.
+  distinct values). Multi-key example: `kubernetes/apps/harbor/harbor/app/harbor-admin.externalsecret.yaml`
+  (admin pw via `password-generator-32` + `secretKey` via `password-generator-16`; Harbor's
+  CSRF/registry/jobservice secrets are chart-managed, not in this ESO).
   - **At-rest encryption keys** (Harbor `secretKey`, anything that decrypts stored data): generate-once
     + `Retain` is safe on a *fresh* install, but **regenerating corrupts existing data** — never delete
     the Secret on a populated app. (For pre-existing data you must preserve the *current* value: store
