@@ -22,8 +22,15 @@ spec:
       freshrss:
         annotations:
           reloader.stakater.com/auto: "true"
+        # RWO longhorn-general volume → Recreate avoids the Multi-Attach deadlock
+        # when the pod relocates; pin to the worker pool off the soyos (ADR-0028).
+        # Lands on fringe — the WFFC-era volume predates worker-1 (use native
+        # nodeSelector, not the postRenderer component, which deadlocks on RWO moves).
+        strategy: Recreate
         pod:
           hostUsers: false
+          nodeSelector:
+            node.webgrip.io/pool: worker
         containers:
           app:
             image:

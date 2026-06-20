@@ -24,11 +24,15 @@ spec:
           reloader.stakater.com/auto: "true"
         strategy: Recreate
         pod:
+          # Pin to the worker pool off the soyos (ADR-0028) via native nodeSelector
+          # + strategy:Recreate above — NOT the postRenderer component, which
+          # deadlocks helm-controller on this RWO move. Lands on fringe (WFFC-era
+          # volume predates worker-1).
+          nodeSelector:
+            node.webgrip.io/pool: worker
           securityContext:
             fsGroup: 1000
             fsGroupChangePolicy: OnRootMismatch
-            # worker-pool affinity is injected by components/placement/worker-pool
-            # (ADR-0028) — see kustomization.yaml.
         containers:
           app:
             image:
