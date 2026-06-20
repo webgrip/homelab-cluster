@@ -13,7 +13,7 @@ when_to_use: Use when adding/creating a new app, service, workload, or deploymen
 3. **`app/helmrelease.yaml`** — default chart is bjw-s **app-template** via an `OCIRepository` (`oci://ghcr.io/bjw-s-labs/helm/app-template`, pinned `ref.tag`); `HelmRelease.spec.chartRef` → that OCIRepository; values: `controllers`/`service`/`persistence`.
 4. **Ingress** = `app/httproute.yaml`, **Gateway API not Ingress** (enforced). `parentRefs` → `envoy-internal` (LAN) or `envoy-external` (public via Cloudflare Tunnel), `namespace: network`, `sectionName: https`; `hostnames: ["<app>.$${SECRET_DOMAIN}"]`. TLS terminates at the gateway (wildcard cert) — HTTPRoutes don't manage certs.
 5. **Database** → `cnpg-database` skill.
-6. **New namespace?** add `namespace.yaml` + ensure the ns `kustomization.yaml` includes `../../components/sops`.
+6. **New namespace?** add `namespace.yaml` + ensure the ns `kustomization.yaml` includes `../../components/sops`. For zero-trust (default-deny + per-app netpols) → the `network-policy` skill.
 7. **Register** the app in `kubernetes/apps/<ns>/kustomization.yaml`.
 
 ## Placement
