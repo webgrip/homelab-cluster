@@ -16,49 +16,6 @@ spec:
   interval: 1h
   timeout: 20m
   maxHistory: 3
-  # Pin all harbor components to the worker pool (ADR-0028) off the soyos. Inline
-  # (not the worker-pool component) because harbor ALSO needs strategy:Recreate on
-  # the RWO Deployments — registry + jobservice mount RWO longhorn-general PVCs, so
-  # a RollingUpdate move deadlocks on Multi-Attach (see the persistence note below).
-  # Replacing the whole /spec/strategy drops the chart's rollingUpdate block, which
-  # k8s rejects alongside type:Recreate.
-  postRenderers:
-    - kustomize:
-        patches:
-          - target:
-              kind: Deployment
-            patch: |
-              - op: add
-                path: /spec/template/spec/affinity
-                value:
-                  nodeAffinity:
-                    requiredDuringSchedulingIgnoredDuringExecution:
-                      nodeSelectorTerms:
-                        - matchExpressions:
-                            - key: node.webgrip.io/pool
-                              operator: In
-                              values: ["worker"]
-          - target:
-              kind: StatefulSet
-            patch: |
-              - op: add
-                path: /spec/template/spec/affinity
-                value:
-                  nodeAffinity:
-                    requiredDuringSchedulingIgnoredDuringExecution:
-                      nodeSelectorTerms:
-                        - matchExpressions:
-                            - key: node.webgrip.io/pool
-                              operator: In
-                              values: ["worker"]
-          - target:
-              kind: Deployment
-              name: "harbor-(registry|jobservice)"
-            patch: |
-              - op: replace
-                path: /spec/strategy
-                value:
-                  type: Recreate
   install:
     remediation:
       retries: 3
@@ -164,6 +121,8 @@ spec:
     redis:
       type: internal
       internal:
+        nodeSelector:
+          node.webgrip.io/pool: worker
         resources:
           requests:
             cpu: 50m
@@ -176,6 +135,8 @@ spec:
     # requests.memory + limits.memory match the policy; cpu limit omitted to avoid
     # throttling the registry under image push/pull. Memory limits sized generously.
     core:
+      nodeSelector:
+        node.webgrip.io/pool: worker
       resources:
         requests:
           cpu: 100m
@@ -184,6 +145,10 @@ spec:
           memory: 768Mi
 
     jobservice:
+      # RWO longhorn-general PVC → on the move to a worker the RollingUpdate briefly
+      # Multi-Attach-deadlocks (~10min, self-heals on Longhorn force-detach).
+      nodeSelector:
+        node.webgrip.io/pool: worker
       # The CNPG outage left this Deployment deleted; Helm's no-op upgrade won't
       # recreate a resource that's unchanged in the chart manifest. This stable
       # annotation gives the Deployment a real (secret-free) diff so the next upgrade
@@ -198,6 +163,10 @@ spec:
           memory: 512Mi
 
     registry:
+      # RWO longhorn-general PVC → same ~10min Multi-Attach self-heal as jobservice
+      # on the move to a worker.
+      nodeSelector:
+        node.webgrip.io/pool: worker
       # Same as jobservice above — force re-creation of the deleted registry Deployment.
       podAnnotations:
         harbor.webgrip.io/restored-at: "2026-06-16"
@@ -217,6 +186,8 @@ spec:
             memory: 128Mi
 
     portal:
+      nodeSelector:
+        node.webgrip.io/pool: worker
       resources:
         requests:
           cpu: 25m
@@ -225,6 +196,8 @@ spec:
           memory: 128Mi
 
     nginx:
+      nodeSelector:
+        node.webgrip.io/pool: worker
       resources:
         requests:
           cpu: 25m
@@ -233,6 +206,8 @@ spec:
           memory: 128Mi
 
     exporter:
+      nodeSelector:
+        node.webgrip.io/pool: worker
       resources:
         requests:
           cpu: 25m
@@ -241,6 +216,8 @@ spec:
           memory: 128Mi
 
     trivy:
+      nodeSelector:
+        node.webgrip.io/pool: worker
       enabled: true
       # Right-sized: the adapter idles ~6Mi; chart default reserved 512Mi. Limit
       # kept generous (1Gi) for scan bursts (DB load happens here).
