@@ -42,10 +42,15 @@ via a postRenderer (don't let it go BestEffort → OOM).
 - **Rebuild wedge:** many volumes `degraded` but **0 rebuilding** = zombie replicas (`running`,
   `healthyAt=""`, not in the engine `replicaModeMap`) holding the per-node slot. Fix:
   [longhorn-rebuild-wedge runbook](docs/techdocs/docs/runbooks/longhorn-rebuild-wedge.md).
-- **`longhorn` (Immediate) vs `longhorn-general` (WFFC) decides whether a volume can move to a new node.**
-  WFFC bakes the PV `nodeAffinity` at first bind and never refreshes (permanently excludes worker-1, joined
-  06-19); Immediate sets none → attaches anywhere. Full rule + the migration fix → the `workload-placement`
-  skill (Sequencing gotcha). Check per volume: `kubectl get pv <pv> -o jsonpath='{.spec.nodeAffinity}'` (empty = free).
+- **WFFC bakes a node-restrictive PV `nodeAffinity`; with `dataLocality` off it's pure downside.** WFFC
+  (`WaitForFirstConsumer`) records the storage nodes present at first bind into the PV `nodeAffinity` and
+  never refreshes it → permanently excludes nodes added later (this is the whole worker-1-exclusion saga).
+  With `dataLocality: disabled` Longhorn volumes are **network-attached**, so WFFC's topology binding has
+  **no benefit** — it's just harm. **The general/cold/snapshot/cache SCs were flipped to `Immediate`
+  2026-06-20** (the storageclass Flux ks has `force: true` so the immutable binding-mode change recreates
+  the SC; bound PVs unaffected). `gitops` stays WFFC (it uses `dataLocality: best-effort`). New volumes
+  attach anywhere; **existing** WFFC-era PVs keep their baked affinity until recreated (migrate to the now-
+  Immediate SC). Check per volume: `kubectl get pv <pv> -o jsonpath='{.spec.nodeAffinity}'` (empty = free).
 - **Deleting a `nodes.longhorn.io` CR** is rejected while `allowScheduling=true` — patch it `false` first.
 - **`faulted` ≠ recoverable.** `auto-salvage` can log `no data exists` when no replica has valid data;
   recovery is then a *logical* restore (pg_dump/S3), not a block salvage. Check `replica.spec.healthyAt`.

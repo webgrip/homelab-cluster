@@ -47,6 +47,28 @@ chart-agnostic), raw Deploy/StatefulSet, **and** CNPG `Cluster`s (`spec.affinity
 **Exception:** an HR that already defines its own `spec.postRenderers` (e.g. `dependency-track`) must NOT
 use the component — its strategic-merge would replace that list; set the same affinity inline there.
 
+## ⚠️ When NOT to use the component — prefer native `nodeSelector` (learned 2026-06)
+
+The component works for **stateless multi-Deployment** charts (keda, guac). It **fails** for two classes,
+where you must instead set the chart's **native `nodeSelector`** in `values` (plain values apply cleanly;
+postRenderers don't):
+
+1. **Charts that expose `nodeSelector` per component** (harbor, the goharbor chart; kube-prometheus-stack;
+   app-template `pod.nodeSelector`; CNPG `spec.affinity.nodeSelector`; raw Deploy/STS `template.spec.nodeSelector`).
+   Just set `node.webgrip.io/pool: worker` there — simpler and reliable.
+2. **Any HR whose pin *moves* a RWO Deployment** (dependency-track api-server, harbor registry/jobservice).
+   Two failure modes both end in `remediateLastFailure` rolling the whole release back in a loop:
+   - **Inline/component postRenderer** → helm-controller `failed to wait for object to sync in-cache after
+     patching: context deadline exceeded` (the slow soyo API). Inline postRenderers are unreliable here.
+   - **RWO RollingUpdate move** → Multi-Attach deadlock → release never goes Ready → rollback (it does NOT
+     "self-heal" — the rollback aborts the move). The chart often **hardcodes `RollingUpdate`** so you
+     can't set `Recreate` via values either (renders both → k8s rejects).
+   Handling: pin only the components that move cleanly (stateless Deploys + StatefulSets — STS do an
+   ordered recreate, no Multi-Attach); **leave RWO Deployments unpinned**, then move them via a one-off
+   PVC recreate on the Immediate `longhorn` SC (works when the PVC data is throwaway/S3-backed). Verify a
+   pin actually stuck: `kubectl get deploy <d> -o jsonpath='{.spec.template.spec.nodeSelector}'` AND check
+   `kubectl get hr <app> -o jsonpath='{.status.conditions[?(@.type=="Ready")].reason}'` is not `RollbackSucceeded`.
+
 ## ⚠️ RWO + RollingUpdate deadlock when a pin *moves* a pod
 
 Pinning a single-replica **Deployment** with a RWO Longhorn PVC that **relocates it to another node**
