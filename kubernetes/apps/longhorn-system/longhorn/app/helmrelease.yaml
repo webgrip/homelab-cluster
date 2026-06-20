@@ -56,6 +56,15 @@ spec:
       rebuildConcurrentSyncLimit: "2"
       storageMinimalAvailablePercentage: "10"
       storageReservedPercentageForDefaultDisk: "10"
+      # Volumes are heavily thin/over-provisioned: ~541Gi reserved vs ~109Gi
+      # actually used (one copy) — every CNPG DB reserves 20-30Gi for <0.5Gi of
+      # data. To get BOTH replicas off the soyos (ADR-0026) the second copy must
+      # reserve onto fringe's 236Gi SSD, which can't fit 541Gi at the default
+      # 100%. Raise to 300% so the thin volumes schedule there; real usage stays
+      # ~46% of fringe's SSD. WATCH fringe SSD free — the only unbounded growers
+      # are prometheus (50Gi cap) and WAL (capped by walStorage + Garage archive).
+      # Durable fix is right-sizing the volumes / adding the fringe HDD (ADR-0027).
+      storageOverProvisioningPercentage: "300"
       # Allow system-managed components (like longhorn-csi-plugin) to run on the tainted fringe node.
       taintToleration: "dedicated=fringe:NoSchedule"
     ingress:
