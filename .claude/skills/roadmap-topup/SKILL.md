@@ -29,12 +29,7 @@ findings so the open count stays 100.
 ```bash
 git log --oneline <last-roadmap-commit>..HEAD          # what shipped since last run
 git status --porcelain=v1                              # owner WIP (do NOT stage it — see step 5)
-# verified posture counts:
-grep -rl 'kind: PodDisruptionBudget' kubernetes/ | wc -l
-grep -rl 'kind: NetworkPolicy' kubernetes/ | wc -l ; grep -rl 'CiliumNetworkPolicy\|CiliumClusterwideNetworkPolicy' kubernetes/ | wc -l
-grep -rl 'kind: ResourceQuota' kubernetes/ | wc -l ; grep -rl 'kind: SecurityPolicy' kubernetes/ | wc -l
-for f in kubernetes/apps/kyverno/policies/app/*.yaml; do grep -m1 'validationFailureAction:' "$f"; done | sort | uniq -c
-grep -rl 'kind: NetworkPolicy' kubernetes/apps/ | sed 's|kubernetes/apps/||;s|/.*||' | sort -u   # which ns covered
+./scripts/posture-counts.sh                            # verified posture: PDB/NetPol/Cilium/Quota/SecurityPolicy + Kyverno Audit-vs-Enforce + ns netpol coverage
 ```
 Cross-check live cluster read-only via MCP: `mcp__kubernetes__*` (Flux NOT-READY/suspended,
 replica counts) and `mcp__grafana__query_prometheus` (e.g. confirm a metric exists before proposing
