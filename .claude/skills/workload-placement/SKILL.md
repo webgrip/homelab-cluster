@@ -22,11 +22,11 @@ Every workload resolves to one of these:
 - **Control-plane** (apiserver/etcd/scheduler, coredns) → soyos. Leave as-is.
 - **Node DaemonSets** (cilium, longhorn-manager/csi, node-exporter, alloy-agent, spegel) → all nodes. No decision.
 - **Infra / operators** → **unconstrained** (run on soyos *and* workers — uses soyo RAM on purpose). Add
-  nothing. Keep recovery-critical-path infra here (kyverno admission, external-secrets, openbao-unsealer,
-  trust-manager, cnpg-operator, flux/cilium/cert-manager) so a both-worker outage is recoverable.
+  nothing. Keep recovery-critical-path infra here (anything on the admission/secrets/storage-operator
+  path, e.g. kyverno, external-secrets, cnpg-operator) so a both-worker outage is recoverable.
 - **Apps** (stateless + stateful) → **hard-pin to `pool=worker`** → `Pending` if both workers down (apps
-  aren't worth crushing the 12 GiB soyos for). This includes the observability stack, ARC runners, KEDA,
-  authentik, harbor, the security *apps* (dependency-track, guac, trivy-server), all CNPG DBs.
+  aren't worth crushing the 12 GiB soyos for). User-facing apps + their CNPG DBs (e.g. the observability
+  stack, authentik).
 - **gitops-critical** (forgejo, openbao) → worker-preferred + one designated soyo permitted, on
   `longhorn-gitops` (3 replicas) — survive a both-worker outage.
 
@@ -85,3 +85,8 @@ worker capacity free). Use **`required`** (hard) for placement you actually want
 A taint would shove *all* infra onto the workers (overloading them) and forces tolerations everywhere.
 Apps opt *out* of soyos via the hard worker affinity; infra stays put. etcd protection is enforced at the
 **Longhorn layer** (replicas off soyos — see the `longhorn` skill), not via k8s taints.
+
+## Validate
+
+`./scripts/run-flux-local-test.sh` after adding the component (confirms the post-render injected the
+affinity). Before pinning a stateful app, check its PV `nodeAffinity` per the sequencing gotcha above.
