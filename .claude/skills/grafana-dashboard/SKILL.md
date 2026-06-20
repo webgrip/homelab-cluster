@@ -12,9 +12,11 @@ All `grafana.integreatly.org/v1beta1` CRDs — never dashboard ConfigMaps or Hel
 - Datasource = `GrafanaDatasource` with `spec.datasource.editable: true`.
 
 ## Add a dashboard
-1. `observability/grafana/app/dashboards/<name>.yaml`: `kind: GrafanaDashboard`, `spec.folder: "<Title>"`, `spec.json: |`.
+1. `observability/grafana/app/dashboards/<name>.yaml`: `kind: GrafanaDashboard`, `spec.folderRef: <folder-crd-name>` (the GrafanaFolder `metadata.name`, e.g. `claude-code`), `spec.json: |`.
 2. Register in `observability/grafana/app/kustomization.yaml`.
-3. Keep dashboards in `observability` — `folder:` resolves only within the dashboard's own namespace. Cross-namespace → `folderUID` (`allowCrossNamespaceImport` is instance targeting, NOT folder lookup).
+3. Keep dashboards in `observability` — folder lookup resolves only within the dashboard's own namespace (`allowCrossNamespaceImport` is instance targeting, NOT folder lookup).
+
+**Bind folders by `folderRef`, never `spec.folder: "<Title>"`.** A title string makes the operator create+own a *second* folder separate from the GrafanaFolder CRD of the same title → two identical folders, each resurrected on reconcile (UI deletes never stick). `folderRef: <crd-name>` ties the dashboard to the CRD-owned folder. (Fixed 2026-06-20 across the Claude Code dashboards.)
 
 Folder titles: Apps · Data · Kubernetes · Networking · Observability · Platform · Security · Storage · Synthetics · Claude Code.
 
