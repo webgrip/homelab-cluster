@@ -1,6 +1,7 @@
 ---
 name: add-app
-description: Scaffold a new application in the Flux GitOps tree. Use when adding/creating a new app, service, workload, or deployment to the cluster (kubernetes/apps/<namespace>/<app>).
+description: Scaffold a new application in the Flux GitOps tree — ks.yaml + bjw-s app-template HelmRelease + HTTPRoute (Gateway API) + secrets/DB wiring.
+when_to_use: Use when adding/creating a new app, service, workload, or deployment to the cluster under kubernetes/apps/<namespace>/<app>.
 ---
 
 # Add an application
@@ -22,24 +23,17 @@ tier model + the stateful sequencing gotcha (only `WaitForFirstConsumer` volumes
 are node-locked to pre-worker-1 nodes; `longhorn`/`Immediate` volumes — incl. CNPG DBs — pin freely).
 
 ## Storage (Longhorn)
-`longhorn` = default SSD/general (2-replica; reserved for CNPG too) · `longhorn-general` = current app RWO (folding into `longhorn`) · `longhorn-rwx` = shared RWX (rarely) · `longhorn-cold` = HDD bulk (not for DBs) · `longhorn-gitops` = forgejo/openbao only. See the `longhorn` skill / [ADR-0029](docs/techdocs/docs/adr/adr-0029-storageclass-consolidation.md).
+Default SC is `longhorn` (SSD, 2-replica). Full StorageClass table + when to use each → the `longhorn` skill ([ADR-0029](docs/techdocs/docs/adr/adr-0029-storageclass-consolidation.md)).
 
 ## Observability
-- Logs: stdout/stderr (JSON) → Loki automatically. Traces: OTLP/HTTP → `http://alloy-gateway.observability.svc.cluster.local:4318`.
-- Metrics: expose `/metrics` + `ServiceMonitor`; Alerts: `PrometheusRule` (symptom-based; labels `severity`/`owner`/`service`; annotations `summary`/`description`/`runbook_url`/`dashboard_url`). Both **need label `release: kube-prometheus-stack`** (enforced) and low cardinality (`app.kubernetes.io/name`).
+- Logs: JSON to stdout/stderr → Loki automatically. Traces: OTLP/HTTP → `http://alloy-gateway.observability.svc.cluster.local:4318`.
+- Metrics/alerts: `ServiceMonitor` + `PrometheusRule`, both **need label `release: kube-prometheus-stack`** (enforced) + low cardinality. Dashboard/alert specifics → the `grafana-dashboard` skill.
 
 ## Secrets
-Cluster is migrating SOPS → **External Secrets Operator + OpenBao** — use the `external-secrets` skill. Don't write new `*.sops.yaml`. Quick path for a new app secret:
-- **Random/session entropy:** `ExternalSecret` `dataFrom.sourceRef.generatorRef` → `ClusterGenerator/password-generator`, `refreshInterval: "0"` (generate-once). No human, no SOPS.
-- **Provided value** (token/password/key): put it in OpenBao KV `secret/<app>/<name>` (UI `openbao.$${SECRET_DOMAIN}` or `bao kv put`), then an `ExternalSecret` (store `openbao`, `creationPolicy: Owner`, per-key `remoteRef` or `dataFrom: [{extract: {key: <path>}}]` for all keys).
-- Consume via `existingSecret`/`envFromSecret`/`secretKeyRef`. SOPS floor that stays: age key, `cluster-secrets`, `talsecret`, `github-deploy-key`, openbao unseal.
+**ESO + OpenBao, never a new `*.sops.yaml`** — use the `external-secrets` skill (random entropy → generate in-cluster; provided value → OpenBao). Consume via `existingSecret`/`envFromSecret`/`secretKeyRef`.
 
 ## In-cluster provisioner Job/CronJob (optional)
-For an app that needs a Job/CronJob hitting an admin API or writing a Secret/ConfigMap (e.g. `forgejo-ci-provisioner`, `cosign-pubkey`):
-- **Least-privilege RBAC:** if it only `kubectl get` + `kubectl apply`s ONE object, scope `get,update,patch` with `resourceNames: [<that-object>]` and put `create` in a **separate** rule (RBAC can't scope `create` by name) — not blanket `secrets`/`configmaps`.
-- **`secretKeyRef` env is injected by the kubelet, not the SA** — consuming a Secret via env needs **zero** RBAC; only direct API calls (`kubectl`) do. Set `automountServiceAccountToken: false` if it never calls the k8s API.
-- **Fail-soft + idempotent:** mark inputs `optional: true`, guard missing values (`exit 0`, retry next tick), and make writes create-or-update so re-runs converge.
-- Harden the pod: `runAsNonRoot`, `seccompProfile: {type: RuntimeDefault}`, `readOnlyRootFilesystem: true`, `capabilities: {drop: [ALL]}`.
+App needs a bootstrap/reconcile Job that hits an admin API or writes a Secret/ConfigMap → the `provisioner-job` skill.
 
 ## Validate
 `./scripts/run-flux-local-test.sh` before committing.
