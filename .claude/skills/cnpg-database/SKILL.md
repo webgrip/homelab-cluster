@@ -43,4 +43,4 @@ caveat doesn't apply. **forgejo-db + openbao** are the gitops-critical exception
 - **Operator + `plugin-barman-cloud` both run 1 replica → leader election OFF.** Their HelmRelease values set `additionalArgs: [--leader-elect=false]`. With a single replica, leader election only *causes* "leader election lost" restarts (a missed lease renewal during a transient API/etcd blip → the controller-runtime manager exits/restarts → can interrupt an in-progress backup). Keep this on any reinstall/upgrade. The chart hardcodes `--leader-elect`; the appended `--leader-elect=false` wins (pflag last value).
 
 ## Validate
-Schema `kubernetes/schemas/cnpg-cluster.schema.json` (via `# yaml-language-server: $schema=`). PITR: `docs/techdocs/docs/cnpg-restore-playbook.md`. `./scripts/run-flux-local-test.sh`.
+Schema `kubernetes/schemas/cnpg-cluster.schema.json` (via `# yaml-language-server: $schema=`). PITR: `docs/techdocs/docs/runbooks/cnpg-restore-playbook.md`. `./scripts/run-flux-local-test.sh`.

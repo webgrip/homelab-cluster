@@ -25,7 +25,7 @@ Authentik is the IdP; providers are **blueprints** the operator applies.
 2. **Credentials** match the provider.
 3. **Redirect URI** matches exactly.
 
-Refs: `docs/techdocs/docs/authentik.md`, `docs/techdocs/docs/runbooks/authentik-oidc-login.md`.
+Refs: `docs/techdocs/docs/general/authentik.md`, `docs/techdocs/docs/runbooks/authentik-oidc-login.md`.
 
 ## Validate
 `mise exec -- kustomize build kubernetes/apps/authentik/app` (renders the blueprints ConfigMap) → `./scripts/run-flux-local-test.sh`.
