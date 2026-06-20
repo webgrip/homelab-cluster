@@ -16,6 +16,49 @@ spec:
   interval: 1h
   timeout: 20m
   maxHistory: 3
+  # Pin all harbor components to the worker pool (ADR-0028) off the soyos. Inline
+  # (not the worker-pool component) because harbor ALSO needs strategy:Recreate on
+  # the RWO Deployments — registry + jobservice mount RWO longhorn-general PVCs, so
+  # a RollingUpdate move deadlocks on Multi-Attach (see the persistence note below).
+  # Replacing the whole /spec/strategy drops the chart's rollingUpdate block, which
+  # k8s rejects alongside type:Recreate.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: Deployment
+            patch: |
+              - op: add
+                path: /spec/template/spec/affinity
+                value:
+                  nodeAffinity:
+                    requiredDuringSchedulingIgnoredDuringExecution:
+                      nodeSelectorTerms:
+                        - matchExpressions:
+                            - key: node.webgrip.io/pool
+                              operator: In
+                              values: ["worker"]
+          - target:
+              kind: StatefulSet
+            patch: |
+              - op: add
+                path: /spec/template/spec/affinity
+                value:
+                  nodeAffinity:
+                    requiredDuringSchedulingIgnoredDuringExecution:
+                      nodeSelectorTerms:
+                        - matchExpressions:
+                            - key: node.webgrip.io/pool
+                              operator: In
+                              values: ["worker"]
+          - target:
+              kind: Deployment
+              name: "harbor-(registry|jobservice)"
+            patch: |
+              - op: replace
+                path: /spec/strategy
+                value:
+                  type: Recreate
   install:
     remediation:
       retries: 3
