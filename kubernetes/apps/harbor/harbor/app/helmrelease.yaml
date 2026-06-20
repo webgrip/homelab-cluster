@@ -145,10 +145,13 @@ spec:
           memory: 768Mi
 
     jobservice:
-      # RWO longhorn-general PVC → on the move to a worker the RollingUpdate briefly
-      # Multi-Attach-deadlocks (~10min, self-heals on Longhorn force-detach).
-      nodeSelector:
-        node.webgrip.io/pool: worker
+      # NOT pinned: jobservice mounts a RWO longhorn-general PVC, and the goharbor
+      # chart hardcodes RollingUpdate (can't be Recreate — it always renders a
+      # rollingUpdate block). Moving it nodes deadlocks on Multi-Attach, the helm
+      # upgrade never goes Ready, and remediateLastFailure rolls the WHOLE release
+      # back (3 failed upgrades, terminal) — taking the other components with it.
+      # Move it via a one-off: recreate its PVC on the Immediate `longhorn` SC
+      # (job logs are throwaway), then it schedules on a worker. Tracked separately.
       # The CNPG outage left this Deployment deleted; Helm's no-op upgrade won't
       # recreate a resource that's unchanged in the chart manifest. This stable
       # annotation gives the Deployment a real (secret-free) diff so the next upgrade
@@ -163,10 +166,9 @@ spec:
           memory: 512Mi
 
     registry:
-      # RWO longhorn-general PVC → same ~10min Multi-Attach self-heal as jobservice
-      # on the move to a worker.
-      nodeSelector:
-        node.webgrip.io/pool: worker
+      # NOT pinned — same RWO-RollingUpdate-rollback trap as jobservice (its PVC is
+      # config/cache only; blobs live in Garage S3, so its PVC is also safe to
+      # recreate on the Immediate `longhorn` SC to move it). Tracked separately.
       # Same as jobservice above — force re-creation of the deleted registry Deployment.
       podAnnotations:
         harbor.webgrip.io/restored-at: "2026-06-16"
