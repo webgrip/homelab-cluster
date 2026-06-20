@@ -14,6 +14,9 @@ All hook-checked rules live in SKILL.md (shape, folderRef, Flux escaping). The b
 - `allValue: ".*"` (or omit) for `includeAll` vars; never `$$__all` (logic bug → No data).
 - Variable queries must scope to a **real, existing** metric — `label_values(<metric>, <label>)`, never bare `label_values(<label>)` (scans every series, so e.g. `model` picks up node-exporter disk models → polluted dropdown). Verify the metric exists first via MCP — our kube-state-metrics has no `kube_namespace_labels`; use `kube_namespace_status_phase`.
 - MTD: `time:{from:now/M,to:now}` → `$$__range`=MTD; projection `(<expr>)*$$days_in_month*86400/$$__range_s` (noisy early-month — label estimate + show MTD actual).
+- `sum(A) + sum(B)` returns **empty** if either operand has zero series (e.g. a namespace with a Deployment but no StatefulSet) — Prom drops the whole vector. For a combined total give each metric its own target/series; don't `+` them. (`or vector(0)` on a timeseries adds a phantom 0 line, so that's not the fix either.)
+- `histogram_quantile()` needs `le` buckets — confirm they exist via MCP. Some exporters ship only `_sum`/`_count` (e.g. Harbor `harbor_core_http_request_duration_seconds`, no `_bucket`); with no buckets show avg `rate(_sum)/rate(_count)`, not a fake p95.
+- Verify panel metric **names** via MCP before authoring — don't copy from an old dashboard or upstream docs, they drift. (Harbor: real is `harbor_project_quota_usage_byte` not `harbor_quota_usage_byte`; totals are `harbor_statistics_*`.)
 
 ## Multi-query tables (`merge` + `organize`)
 - N near-identical series / many instant queries → generate JSON from a small Python rate-table. Pattern: each metric a `format:"table",instant:true` target (refId A,B,…) → transform `merge` → `organize` `renameByName` the value cols (`Value #A`→friendly) + `indexByName` for order. Confirmed working in prod.
@@ -22,6 +25,20 @@ All hook-checked rules live in SKILL.md (shape, folderRef, Flux escaping). The b
 
 ## k8s capacity metrics (verified present)
 `kube_node_status_allocatable`/`_capacity{resource,unit}`, `kube_pod_container_resource_requests`/`_limits{resource,unit,node}` (carry a **`node`** label → per-node req/lim with no join), `container_cpu_usage_seconds_total`/`container_memory_working_set_bytes` (carry **`node`** too), `kubelet_volume_stats_{used,capacity,available}_bytes{persistentvolumeclaim}`, `container_cpu_cfs_{throttled_,}periods_total`. Pod→workload rollup: `… * on(namespace,pod) group_left(workload,workload_type) namespace_workload_pod:kube_pod_owner:relabel` (rule value 1). No `kube_namespace_labels` here — namespace var = `label_values(kube_namespace_status_phase, namespace)`.
+
+## App / per-namespace dashboards
+
+One dashboard per app, every panel scoped to a single `namespace`. All apps share ONE baseline built
+only from metrics present for any namespace, so generate the whole family from one Python script (titles/
+queries/layout identical; only the namespace + an app-specific section differ). Folders: user-facing apps
+→ `apps`; platform services (git, registry, CI) → `infrastructure`. Baseline sections + their source:
+
+- **Health** (stat, `or vector(0)`): `kube_pod_status_phase{phase=...}`, `increase(kube_pod_container_status_restarts_total[1h])`, `increase(container_oom_events_total[24h])` (OOM kills), `kube_pod_container_status_waiting`.
+- **CPU / Memory**: usage `rate(container_cpu_usage_seconds_total{image!=""}[…])` / `container_memory_working_set_bytes` vs `kube_pod_container_resource_{requests,limits}{resource="cpu"|"memory"}`; throttle `rate(container_cpu_cfs_throttled_periods_total)/rate(container_cpu_cfs_periods_total)`; mem-vs-limit % flags OOM risk.
+- **Network**: `rate(container_network_{receive,transmit}_{bytes,errors,packets_dropped}_total[…])`.
+- **Storage**: `kubelet_volume_stats_{used,capacity,available}_bytes`, inodes `kubelet_volume_stats_inodes{,_free}`.
+- **Database** (CNPG, per-namespace, present when the app has a `Cluster`): `cnpg_collector_up`, `cnpg_pg_database_size_bytes`, `cnpg_backends_total`/`_waiting_total`, `rate(cnpg_pg_stat_database_{xact_commit,xact_rollback,blks_hit,blks_read,tup_*})`, `cnpg_pg_stat_archiver_{archived,failed}_count`, `cnpg_pg_replication_lag`.
+- **App-specific** only where an exporter is scraped: `gitea_*` (Forgejo) + `go_*`/`process_*` on `job="forgejo-http"`, `harbor_*`/`harbor_statistics_*`, `gha_*` (ARC runners), `a2s_*` (Zomboid). No exporter (searxng, invoiceninja) → baseline only. Check `up{namespace=…}` and `kube_pod_container_info` first to see what's scraped / which DB engine (not every app is CNPG — invoiceninja=mariadb, searxng=valkey).
 
 ## Claude Code metrics
 Prom counters → `increase()`/`rate()`:

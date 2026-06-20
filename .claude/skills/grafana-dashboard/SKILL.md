@@ -33,4 +33,4 @@ Double **every** Grafana token (`$$__range`, `$$__rate_interval`, `$$var`, `$$__
 - LogQL rules, panel hygiene, multi-query tables (`merge`+`organize`), the verified k8s-capacity metric catalog, and the Claude Code metric catalog → [reference.md](reference.md)
 
 ## Validate
-JSON parses → `mise exec -- kustomize build kubernetes/apps/observability/grafana/app` → smoke-test queries via the read-only Grafana MCP. MCP can't test var interpolation/table transforms — spot-check in UI after reconcile. The `grafana` ks `dependsOn` `grafana-db`; if that CNPG DB is down nothing updates.
+JSON parses → `mise exec -- kustomize build kubernetes/apps/observability/grafana/app` → smoke-test queries via the read-only Grafana MCP (`query_prometheus` needs `datasourceUid: prometheus` **and** `startTime`/`endTime` like `now-5m`/`now` even for an instant query). MCP can't test var interpolation/table transforms — spot-check in UI after reconcile. The `grafana` ks `dependsOn` `grafana-db`; if that CNPG DB is down nothing updates.
