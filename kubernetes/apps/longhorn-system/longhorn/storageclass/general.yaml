@@ -12,4 +12,11 @@ parameters:
   staleReplicaTimeout: "30"
 reclaimPolicy: Delete
 allowVolumeExpansion: true
-volumeBindingMode: WaitForFirstConsumer
+# Immediate, not WaitForFirstConsumer: with dataLocality=disabled, Longhorn
+# volumes are network-attached (the engine attaches over the network regardless
+# of where replicas live), so WFFC's topology-aware binding has NO benefit — it
+# only bakes a node-restrictive PV nodeAffinity at first bind that permanently
+# excludes nodes added later (this is what locked every longhorn-general volume
+# off worker-1). Existing PVs keep their baked affinity until recreated (ADR-0029
+# migration to `longhorn`); new volumes attach anywhere.
+volumeBindingMode: Immediate
