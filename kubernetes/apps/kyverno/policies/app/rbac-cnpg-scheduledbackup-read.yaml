@@ -1,0 +1,24 @@
+---
+# The storage-cnpg-governance/audit-cnpg-scheduledbackup rule resolves a context
+# apiCall that lists postgresql.cnpg.io ScheduledBackups. Kyverno's controllers
+# have no RBAC for that CRD out of the box, so the apiCall errored ("permission
+# denied") and the rule never evaluated. These aggregated ClusterRoles grant
+# read-only access to the admission, background, and reports controllers so the
+# audit rule can actually count ScheduledBackups.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno:cnpg-scheduledbackup-read
+  labels:
+    rbac.kyverno.io/aggregate-to-admission-controller: "true"
+    rbac.kyverno.io/aggregate-to-background-controller: "true"
+    rbac.kyverno.io/aggregate-to-reports-controller: "true"
+rules:
+  - apiGroups:
+      - postgresql.cnpg.io
+    resources:
+      - scheduledbackups
+    verbs:
+      - get
+      - list
+      - watch
