@@ -1,14 +1,10 @@
 ---
-# Marks worker-1 as the general "apps tier" node. App workloads use a soft
-# nodeAffinity preference (weight 100) for workload-tier=apps so they pack onto
-# worker-1's headroom and stay off the RAM-tight soyo control-planes, while still
-# falling back to a soyo if worker-1 is unavailable. Add this label to any future
-# worker you want to host apps — placement is label-driven, never hostname-pinned.
+# worker-1 — placement is label-driven (capability taxonomy, ADR-0025), never
+# hostname-pinned. Apps hard-pin to node.webgrip.io/pool=worker.
 machine:
   nodeLabels:
-    workload-tier: apps
-    # Capability taxonomy (ADR-0025). Additive; workload-tier stays as a
-    # transitional alias until apps move to pool=worker affinity in Phase D.
+    # Capability taxonomy (ADR-0025). The legacy `workload-tier` label was retired
+    # 2026-06-21 (all apps moved to the pool/cpu/ram scheme).
     # worker-1 = the high-RAM worker and a Longhorn storage node (SSD hot).
     node.webgrip.io/pool: worker
     node.webgrip.io/cpu: standard
