@@ -87,8 +87,13 @@ lists** — anything needed only sometimes. Move it to a sibling and reference i
 | `user-invocable: false` | Background knowledge Claude should auto-load but isn't a user command. |
 
 Full field catalog, string substitutions (`$ARGUMENTS`, `${CLAUDE_SKILL_DIR}`…), and the advanced
-levers (`paths`, `context: fork`/`agent`, dynamic `` !`cmd` `` injection) with **when each fits** →
-[reference.md](reference.md). Note: command name comes from the **directory name**, not `name:`.
+levers (`paths`, `context: fork`/`agent`, dynamic bang-backtick shell injection) with **when each fits**
+→ [reference.md](reference.md). Note: command name comes from the **directory name**, not `name:`.
+
+<!-- Don't write the literal bang-backtick token in THIS file: the loader executes that pattern at
+     skill-load time, so a documentation example self-triggers ("command not found: cmd"). The syntax
+     is shown safely in reference.md (a sibling — not scanned for injection). -->
+
 
 ## Create
 

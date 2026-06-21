@@ -22,22 +22,20 @@ nodes + HARD anti-affinity).
 | `longhorn` | 2 (target) | SSD | default / general — the "hot" tier. **NOTE: the chart's `longhorn` SC still carries `numberOfReplicas: 3`** (immutable param; needs a recreate to converge — ADR-0029 Stage 2). |
 | `longhorn-general` | 2 | SSD | app volumes (16 PVCs) — being folded into `longhorn` |
 | `longhorn-cold` | 1 | HDD (`cold` tag) | bulk/low-IOPS (backups, archives). **Never** Postgres/WAL — HDD-speed sync writes. Inert until the fringe HDD is wiped + tagged. |
-| `longhorn-rwx` | 2 | SSD (NFS) | ReadWriteMany — **blocked by default**: Kyverno `storage-cnpg-governance/disallow-rwx-pvcs` denies any RWX PVC at admission unless explicitly allowlisted. So multi-pod-shared-volume apps stay **single-node** (pin via a node-unique capability label — see `workload-placement`), not RWX. |
+| `longhorn-rwx` | 2 | SSD (NFS) | ReadWriteMany — **blocked by Kyverno `disallow-rwx-pvcs`** (allowlist-gated). Shared-volume apps stay single-node instead — see `workload-placement`. |
 | `longhorn-snapshot` | 1 | SSD | restore source |
 
 `defaultReplicaCount: 2` in the HelmRelease. CNPG DBs use `longhorn` (reserved) — see the `cnpg-database` skill.
-The `longhorn-gitops` SC (soyo-replica DR for forgejo/openbao) was **retired** — soyos stay Longhorn-free;
-gitops DR is external-Garage-S3 backups + a GitHub fallback Flux source, not a soyo replica.
+**Soyos stay Longhorn-free** — the `longhorn-gitops` soyo-replica SC was retired; gitops DR is external-S3
+backups + a GitHub fallback Flux source (ADR-0026), not a soyo replica.
 
 ## Backups → external Garage S3
 
-A `BackupTarget` CR is the working mechanism — **Longhorn 1.11 ignores `defaultSettings.backupTarget`**
-(deprecated). Target `default` → `s3://cnpg-backups-bucket@garage/longhorn-backups`, creds from the
-`longhorn-backup-s3` ExternalSecret (OpenBao `s3/cnpg-backup`, mapped to `AWS_*`). A `gitops-backup`
-RecurringJob (cron `0 2 * * *`) backs up volumes labeled
-`recurring-job-group.longhorn.io/gitops-backup=enabled` (forgejo-data, gitea-mirror). Files at
-`kubernetes/apps/longhorn-system/longhorn/app/{backuptarget,backup-s3.externalsecret,recurringjob}.yaml`.
-Restore drill for a Longhorn volume from Garage is still **unproven** (roadmap #58).
+**Longhorn 1.11 ignores `defaultSettings.backupTarget`** (deprecated) — set the target via a `BackupTarget`
+CR instead. The `default` target (Garage, creds from the `longhorn-backup-s3` ESO) + a `gitops-backup`
+RecurringJob (daily) back up volumes labeled `recurring-job-group.longhorn.io/gitops-backup=enabled`
+(forgejo-data, gitea-mirror). Files: `…/longhorn/app/{backuptarget,backup-s3.externalsecret,recurringjob}.yaml`.
+A volume restore from Garage is still **unproven** (roadmap #58).
 
 ## Key defaultSettings (and why)
 

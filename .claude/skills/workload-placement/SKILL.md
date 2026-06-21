@@ -46,10 +46,10 @@ components:
 injects the hard `pool=worker` affinity into HelmRelease-rendered Deployments/StatefulSets (post-render,
 chart-agnostic), raw Deploy/StatefulSet, **and** CNPG `Cluster`s (`spec.affinity.nodeSelector`).
 
-**Exception:** an HR that already defines its own `spec.postRenderers` (e.g. `dependency-track`) must NOT
-use the component — its strategic-merge would replace that list; set the same affinity inline there.
+**Exception:** an HR that already defines its own `spec.postRenderers` must NOT use the component — its
+strategic-merge would replace that list; set the affinity inline there instead.
 
-## ⚠️ When NOT to use the component — prefer native `nodeSelector` (learned 2026-06)
+## ⚠️ When NOT to use the component — prefer native `nodeSelector`
 
 The component works for **stateless multi-Deployment** charts (keda, guac). It **fails** for two classes,
 where you must instead set the chart's **native `nodeSelector`** in `values` (plain values apply cleanly;
@@ -58,34 +58,34 @@ postRenderers don't):
 1. **Charts that expose `nodeSelector` per component** (harbor, the goharbor chart; kube-prometheus-stack;
    app-template `pod.nodeSelector`; CNPG `spec.affinity.nodeSelector`; raw Deploy/STS `template.spec.nodeSelector`).
    Just set `node.webgrip.io/pool: worker` there — simpler and reliable.
-2. **Any HR whose pin *moves* a RWO Deployment** (dependency-track api-server, harbor registry/jobservice).
-   Two failure modes both end in `remediateLastFailure` rolling the whole release back in a loop:
+2. **Any HR whose pin *moves* a RWO Deployment** (harbor registry/jobservice) — two ways the whole release
+   `remediateLastFailure`-rolls back in a loop:
    - **Inline/component postRenderer** → helm-controller `failed to wait for object to sync in-cache after
-     patching: context deadline exceeded` (the slow soyo API). Inline postRenderers are unreliable here.
-   - **RWO RollingUpdate move** → Multi-Attach deadlock → release never goes Ready → rollback (it does NOT
-     "self-heal" — the rollback aborts the move). The chart often **hardcodes `RollingUpdate`** so you
-     can't set `Recreate` via values either (renders both → k8s rejects).
-   Handling (in order of preference): (a) **convert to a StatefulSet** if the chart allows
-   (dependency-track api-server did — STS do an ordered recreate, no Multi-Attach); else (b) **pin via
-   native `nodeSelector` and break the deadlock by hand** — the HR upgrade creates the new (pinned) pod
-   `Pending`, so delete the **old pod AND its old ReplicaSet** (`kubectl delete rs <old-rs>` — the
-   Deployment won't recreate a superseded revision) to free the RWO volume; the new pod then attaches and
-   the upgrade goes Ready. **Proven on harbor registry+jobservice** — the cache-sync rollback is driven by
-   the *loaded* soyo API, so an idle control-plane lets the move through. The deadlock window must beat the HR timeout (20m here), so delete promptly. Verify:
-   `kubectl get deploy <d> -o jsonpath='{.spec.template.spec.nodeSelector}'` AND
-   `kubectl get hr <app> -o jsonpath='{.status.conditions[?(@.type=="Ready")].reason}'` is `UpgradeSucceeded`,
-   not `RollbackSucceeded`.
+     patching: context deadline exceeded` (loaded soyo API). Use native `nodeSelector`, not a postRenderer.
+   - **RWO RollingUpdate move** → Multi-Attach deadlock → never Ready → rollback. Fixes → the **RWO +
+     RollingUpdate deadlock** section below.
 
 ## ⚠️ RWO + RollingUpdate deadlock when a pin *moves* a pod
 
 Pinning a single-replica **Deployment** with a RWO Longhorn PVC that **relocates it to another node**
-(e.g. soyo → worker) hangs: `RollingUpdate` with `maxUnavailable` rounding to 0 keeps the old pod up
-holding the volume, so the new pod sits `ContainerCreating` with `Multi-Attach error ... Volume is
-already used by pod(s) …`. Fix = **`strategy: Recreate`** (terminate-then-start) on that Deployment —
-done for `dependency-track-api-server` via its postRenderer (commit after `70dff79`). StatefulSets and
-CNPG are unaffected (ordered recreate). Apps **already on a worker** don't relocate, so they don't hit
-this — it only bites `longhorn`-backed Deployments currently on a soyo. Set Recreate in the same place
-you set the affinity (component apps: the chart's `controllers.<name>.strategy`, or an inline patch).
+(soyo → worker) hangs: `RollingUpdate` (`maxUnavailable`→0) keeps the old pod holding the volume, so the
+new pod sits `ContainerCreating` with `Multi-Attach error … Volume is already used by pod(s) …`; the HR
+never goes Ready → `remediateLastFailure` rolls it back (it does NOT self-heal). StatefulSets + CNPG are
+immune (ordered recreate); apps **already on a worker** don't relocate. Fixes, by preference:
+
+1. **`strategy: Recreate`** when you control the strategy — set it where you set the affinity (component
+   apps: the chart's `controllers.<name>.strategy`, or an inline patch).
+2. **Convert to a StatefulSet** when the chart **hardcodes `RollingUpdate`** (renders both → k8s rejects,
+   so Recreate-via-values is impossible) — `dependency-track` api-server did this (`deploymentType: StatefulSet`).
+3. **Pin + break the deadlock by hand** (goharbor also hardcodes RollingUpdate): the upgrade leaves the
+   new pod `Pending`, so delete the **old pod AND its old ReplicaSet** (`kubectl delete rs <old-rs>` — the
+   Deployment won't recreate a superseded revision) to free the volume; the new pod attaches and the
+   upgrade goes Ready. Do it while the control-plane is **idle** (the cache-sync rollback is driven by a
+   *loaded* soyo API) and beat the HR timeout. **Proven on harbor registry+jobservice.**
+
+Verify a move stuck: `kubectl get deploy <d> -o jsonpath='{.spec.template.spec.nodeSelector}'` and
+`kubectl get hr <app> -o jsonpath='{.status.conditions[?(@.type=="Ready")].reason}'` == `UpgradeSucceeded`
+(not `RollbackSucceeded`).
 
 ## Single-node-by-design apps (multiple pods, one RWO volume)
 
