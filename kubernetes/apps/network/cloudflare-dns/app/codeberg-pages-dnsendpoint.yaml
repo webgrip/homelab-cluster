@@ -1,0 +1,21 @@
+---
+# Custom-domain CNAME for the TechDocs site served by Codeberg Pages (ADR-0022).
+# docs.${SECRET_DOMAIN} -> webgrip.codeberg.page (owner codeberg.org/WebGrip; the
+# pages host is the lowercased owner). external-dns (crd source) creates the record.
+#
+# DNS-ONLY / UNPROXIED is mandatory: Codeberg terminates TLS and issues its own
+# Let's Encrypt cert for docs.${SECRET_DOMAIN}, so the record must NOT be orange-clouded
+# through Cloudflare (which would break Codeberg's ACME validation + serve the wrong cert).
+# The cluster-wide --cloudflare-proxied default is overridden per-record below.
+apiVersion: externaldns.k8s.io/v1alpha1
+kind: DNSEndpoint
+metadata:
+  name: codeberg-pages-docs
+  annotations:
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "false"
+spec:
+  endpoints:
+    - dnsName: "docs.${SECRET_DOMAIN}"
+      recordType: CNAME
+      targets:
+        - "webgrip.codeberg.page"

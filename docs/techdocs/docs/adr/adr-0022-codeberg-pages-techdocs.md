@@ -44,8 +44,11 @@ as the DR/off-site mirror**, not removed.
 - **CI change.** `on_docs_change.yml`'s deploy job calls a new reusable
   `webgrip/workflows/.forgejo/workflows/techdocs-deploy-codeberg.yml`; the dead `pages`-branch push
   to the in-cluster Forgejo is dropped.
-- **One-time manual prerequisites** (handed off, not GitOps): create the Codeberg repo, mint the
-  token into OpenBao, set the DNS CNAME. See the [RFC](../rfc/rfc-codeberg-pages-techdocs.md) §Operations.
+- **One-time manual prerequisites** (handed off, not GitOps): create the Codeberg repo and mint the
+  token into OpenBao. The `docs` CNAME is GitOps after all — a `DNSEndpoint`
+  (`network/cloudflare-dns/app/codeberg-pages-dnsendpoint.yaml`, `cloudflare-proxied=false`) lets
+  external-dns publish it, matching the off-site tunnel record. See the
+  [RFC](../rfc/rfc-codeberg-pages-techdocs.md) §Operations.
 
 ## Alternatives considered
 

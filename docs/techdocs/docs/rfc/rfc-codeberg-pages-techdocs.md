@@ -80,15 +80,17 @@ on_docs_change.yml (Forgejo)
 
 ## 6. Operations / one-time prerequisites (handoff)
 
-These are deliberately **not** GitOps (external account + DNS + a root-seeded secret):
+Two are external (a Codeberg account action + a root-seeded secret); the DNS record is GitOps:
 
-1. **Codeberg repo** — create `codeberg.org/webgrip/<docs-repo>` (a dedicated published-site repo, or
+1. **Codeberg repo** — create `codeberg.org/WebGrip/<docs-repo>` (a dedicated published-site repo, or
    reuse the infrastructure mirror). The `pages` branch is what gets served.
 2. **Codeberg token** — mint a PAT (scope `write:repository`) for the publishing bot; store it in
    OpenBao at `codeberg/pages` (property `token`). The ExternalSecret + CronJob publish it as the
    org Actions secret `CODEBERG_TOKEN`.
-3. **DNS** — `docs.webgrip.dev CNAME webgrip.codeberg.page.` (+ any Codeberg domain-verification
-   record they require).
+3. **DNS** (GitOps) — `docs.${SECRET_DOMAIN} CNAME webgrip.codeberg.page`, published by external-dns
+   from `network/cloudflare-dns/app/codeberg-pages-dnsendpoint.yaml`. Pinned **DNS-only / unproxied**
+   (`cloudflare-proxied=false`) so Codeberg can ACME-validate and serve its own cert. Add any
+   Codeberg domain-verification record they require alongside it.
 
 ## 7. Risks & mitigations
 
