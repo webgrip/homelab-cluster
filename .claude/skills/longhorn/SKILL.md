@@ -26,10 +26,10 @@ nodes + HARD anti-affinity).
 | `longhorn-snapshot` | 1 | SSD | restore source |
 
 `defaultReplicaCount: 2` in the HelmRelease. CNPG DBs use `longhorn` (reserved) — see the `cnpg-database` skill.
-The `longhorn-gitops` SC (soyo-replica DR for forgejo/openbao) was **retired 2026-06-21** — soyos stay
-Longhorn-free; gitops DR is external-Garage-S3 backups + a GitHub fallback Flux source, not a soyo replica.
+The `longhorn-gitops` SC (soyo-replica DR for forgejo/openbao) was **retired** — soyos stay Longhorn-free;
+gitops DR is external-Garage-S3 backups + a GitHub fallback Flux source, not a soyo replica.
 
-## Backups → external Garage S3 (live since 2026-06-21)
+## Backups → external Garage S3
 
 A `BackupTarget` CR is the working mechanism — **Longhorn 1.11 ignores `defaultSettings.backupTarget`**
 (deprecated). Target `default` → `s3://cnpg-backups-bucket@garage/longhorn-backups`, creds from the
@@ -57,9 +57,9 @@ via a postRenderer (don't let it go BestEffort → OOM).
   (`WaitForFirstConsumer`) records the storage nodes present at first bind into the PV `nodeAffinity` and
   never refreshes it → permanently excludes nodes added later (this is the whole worker-1-exclusion saga).
   With `dataLocality: disabled` Longhorn volumes are **network-attached**, so WFFC's topology binding has
-  **no benefit** — it's just harm. **Every Longhorn SC is now `Immediate`** (flipped 2026-06-20/21; the
-  storageclass Flux ks has `force: true` so the immutable binding-mode change recreates the SC; bound PVs
-  unaffected). New volumes attach anywhere; **existing** WFFC-era PVs keep their baked affinity until
+  **no benefit** — it's just harm. **Every Longhorn SC is now `Immediate`** (the storageclass Flux ks has
+  `force: true` so the immutable binding-mode change recreates the SC; bound PVs unaffected). New volumes
+  attach anywhere; **existing** WFFC-era PVs keep their baked affinity until
   recreated. Check per volume: `kubectl get pv <pv> -o jsonpath='{.spec.nodeAffinity}'` (empty = free).
 - **Deleting a `nodes.longhorn.io` CR** is rejected while `allowScheduling=true` — patch it `false` first.
 - **`faulted` ≠ recoverable.** `auto-salvage` can log `no data exists` when no replica has valid data;

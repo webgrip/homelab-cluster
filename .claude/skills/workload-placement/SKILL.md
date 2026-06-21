@@ -28,8 +28,8 @@ Every workload resolves to one of these:
 - **Apps** (stateless + stateful) → **hard-pin to `pool=worker`** → `Pending` if both workers down (apps
   aren't worth crushing the 12 GiB soyos for). User-facing apps + their CNPG DBs (e.g. the observability
   stack, authentik).
-- **gitops-critical** (forgejo, openbao) → **also just hard-pinned to `pool=worker`** like any app
-  (2026-06-21). The old "one designated soyo replica" design was retired — soyos stay Longhorn-free;
+- **gitops-critical** (forgejo, openbao) → **also just hard-pinned to `pool=worker`** like any app.
+  The old "one designated soyo replica" design was retired — soyos stay Longhorn-free;
   resilience to a both-worker outage comes from external-Garage-S3 backups + a GitHub fallback Flux
   source, not a soyo replica. See the `longhorn` skill (backups) and ADR-0026.
 
@@ -70,9 +70,8 @@ postRenderers don't):
    native `nodeSelector` and break the deadlock by hand** — the HR upgrade creates the new (pinned) pod
    `Pending`, so delete the **old pod AND its old ReplicaSet** (`kubectl delete rs <old-rs>` — the
    Deployment won't recreate a superseded revision) to free the RWO volume; the new pod then attaches and
-   the upgrade goes Ready. This **worked for harbor registry+jobservice 2026-06-21** once the soyos were
-   idle — the cache-sync rollback was driven by the *loaded* soyo API, so an idle control-plane lets the
-   move through. The deadlock window must beat the HR timeout (20m here), so delete promptly. Verify:
+   the upgrade goes Ready. **Proven on harbor registry+jobservice** — the cache-sync rollback is driven by
+   the *loaded* soyo API, so an idle control-plane lets the move through. The deadlock window must beat the HR timeout (20m here), so delete promptly. Verify:
    `kubectl get deploy <d> -o jsonpath='{.spec.template.spec.nodeSelector}'` AND
    `kubectl get hr <app> -o jsonpath='{.status.conditions[?(@.type=="Ready")].reason}'` is `UpgradeSucceeded`,
    not `RollbackSucceeded`.
@@ -97,12 +96,12 @@ to exactly one node** — never a hostname or a legacy label. authentik → `nod
 (fringe is the only high-CPU node), set as **both** `nodeSelector` and the hard `nodeAffinity`. The pods
 stay co-located, the RWO volume attaches cleanly, and placement still goes through the taxonomy. Node-level
 HA then requires moving the shared data off RWO first (e.g. authentik media → S3, roadmap #47) before
-switching to `pool=worker`. Pattern shipped 2026-06-21 (`kubernetes/apps/authentik/app/helmrelease.yaml`).
+switching to `pool=worker`. Real example: `kubernetes/apps/authentik/app/helmrelease.yaml`.
 
 ## ⚠️ Sequencing gotcha (stateful) — legacy WFFC PVs only
 
 A stateful app is safe to hard-pin to `pool=worker` **iff its PV isn't node-locked to nodes that exclude
-the worker you need**. **All Longhorn SCs are now `Immediate`** (flipped 2026-06-20/21), so any volume
+the worker you need**. **All Longhorn SCs are now `Immediate`**, so any volume
 bound since has **no** PV `nodeAffinity` → attaches anywhere, incl. worker-1 → **pin freely** (all CNPG
 DBs, etc.). The trap is only **legacy WFFC-era PVs** (bound before the flip): they baked in the storage
 nodes present at first bind and never refresh, so they can exclude worker-1 until recreated — eviction
