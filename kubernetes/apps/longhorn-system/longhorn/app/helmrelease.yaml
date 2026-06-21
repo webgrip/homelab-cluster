@@ -24,6 +24,12 @@ spec:
   values:
     defaultSettings:
       defaultDataPath: "/var/lib/longhorn"
+      # External Garage S3 backup target (creds from backup-s3.externalsecret.yaml,
+      # OpenBao-sourced). Off-cluster → volume backups survive a both-worker outage
+      # (ADR-0026 DR: this is how forgejo-data/gitea-mirror are protected without a
+      # soyo replica). Volumes opt in via the `gitops-backup` RecurringJob group.
+      backupTarget: "s3://cnpg-backups-bucket@garage/longhorn-backups"
+      backupTargetCredentialSecret: longhorn-backup-s3
       replicaDiskSoftAntiAffinity: false
       createDefaultDiskLabeledNodes: false
       defaultDataLocality: best-effort
