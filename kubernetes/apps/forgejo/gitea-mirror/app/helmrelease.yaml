@@ -24,6 +24,11 @@ spec:
           reloader.stakater.com/auto: "true"
         strategy: Recreate
         pod:
+          # Pin off the soyos onto the worker pool (ADR-0028); native nodeSelector
+          # + Recreate (RWO longhorn-general volume → avoids Multi-Attach on the
+          # move). Lands on fringe (WFFC-era volume predates worker-1).
+          nodeSelector:
+            node.webgrip.io/pool: worker
           securityContext:
             runAsUser: 1000
             runAsGroup: 1000

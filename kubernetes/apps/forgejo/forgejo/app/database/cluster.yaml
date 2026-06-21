@@ -9,6 +9,12 @@ metadata:
     monitoring.webgrip.io/enabled: "true"
 spec:
   instances: 1
+  # Pin the DB off the soyo control-planes onto the worker pool (ADR-0028).
+  # gitops-critical soyo replica was dropped 2026-06-21 (ADR-0026) — DR is via
+  # external Garage S3 backups, not a live soyo replica.
+  affinity:
+    nodeSelector:
+      node.webgrip.io/pool: worker
   inheritedMetadata:
     annotations:
       reloader.stakater.com/auto: "true"
