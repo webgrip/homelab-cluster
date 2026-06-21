@@ -26,6 +26,18 @@ All hook-checked rules live in SKILL.md (shape, folderRef, Flux escaping). The b
 ## k8s capacity metrics (verified present)
 `kube_node_status_allocatable`/`_capacity{resource,unit}`, `kube_pod_container_resource_requests`/`_limits{resource,unit,node}` (carry a **`node`** label → per-node req/lim with no join), `container_cpu_usage_seconds_total`/`container_memory_working_set_bytes` (carry **`node`** too), `kubelet_volume_stats_{used,capacity,available}_bytes{persistentvolumeclaim}`, `container_cpu_cfs_{throttled_,}periods_total`. Pod→workload rollup: `… * on(namespace,pod) group_left(workload,workload_type) namespace_workload_pod:kube_pod_owner:relabel` (rule value 1). No `kube_namespace_labels` here — namespace var = `label_values(kube_namespace_status_phase, namespace)`.
 
+## Flux / GitOps metrics (verified — this cluster runs flux-operator)
+
+`gotk_reconcile_condition` / `gotk_suspend_status` are **NOT exposed here** — only `gotk_reconcile_duration_seconds_{bucket,count,sum}` (p95 by `kind`; `HelmChart` le-buckets can be NaN) and `gotk_event_*`. Resource health = **`flux_resource_info`** (flux-operator), value always 1, labels: `kind`,`name`,**`exported_namespace`** (the resource's real ns — `namespace` is flux-system, where the operator runs),`ready="True|False"`,`reason`,`suspended="True|False"`,`revision`,`source_name`,`path`. Failing reconcilers → `flux_resource_info{ready="False"}` (table: `max by (exported_namespace,kind,name,reason)`, rename exported_namespace→namespace); suspended → `{suspended="True"}`; scoreboard → `count(flux_resource_info{ready="False"}) or vector(0)`. Real example: `dashboards/cluster-ops-overview.yaml` (Flux section).
+
+## Pod termination / OOM caveats (verified names)
+
+`kube_pod_container_status_last_terminated_finished_time` does **NOT exist** — use `kube_pod_container_status_last_terminated_timestamp` (epoch, `unit: dateTimeFromEpoch`), gated by `… and on(namespace,pod,container) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled"}==1)`. For OOM *counts* use `increase(container_oom_events_total[24h])`. The reason series only exists while a container's last termination was OOM → empty table = no recent OOMs (correct, not broken).
+
+## Verify what envsubst actually produced
+
+Single-`$` vs `$$` confusion: read the **deployed** query via MCP `get_dashboard_panel_queries(uid, panelId)` — it returns post-substitution text, so you see whether `$$token`→`$token` landed (it does) without guessing. Guard still requires `$$` in source regardless.
+
 ## App / per-namespace dashboards
 
 One dashboard per app, every panel scoped to a single `namespace`. All apps share ONE baseline built
