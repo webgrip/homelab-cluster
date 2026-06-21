@@ -57,33 +57,33 @@ spec:
             "refresh": 1,
             "includeAll": true,
             "multi": true,
-            "current": {"selected": true, "text": "All", "value": "$__all"}
+            "current": {"selected": true, "text": "All", "value": "$$__all"}
           },
           {
             "name": "pvc",
             "type": "query",
             "datasource": {"type": "prometheus", "uid": "prometheus"},
             "query": {
-              "query": "label_values(kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\"}, persistentvolumeclaim)",
+              "query": "label_values(kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\"}, persistentvolumeclaim)",
               "refId": "A"
             },
             "refresh": 2,
             "includeAll": true,
             "multi": true,
-            "current": {"selected": true, "text": "All", "value": "$__all"}
+            "current": {"selected": true, "text": "All", "value": "$$__all"}
           },
           {
             "name": "node",
             "type": "query",
             "datasource": {"type": "prometheus", "uid": "prometheus"},
             "query": {
-              "query": "label_values(kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\"}, node)",
+              "query": "label_values(kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\"}, node)",
               "refId": "A"
             },
             "refresh": 2,
             "includeAll": true,
             "multi": true,
-            "current": {"selected": true, "text": "All", "value": "$__all"}
+            "current": {"selected": true, "text": "All", "value": "$$__all"}
           },
           {
             "name": "topk",
@@ -103,7 +103,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"}) / sum(kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"})"
+              "expr": "sum(kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\", node=~\"$$node\"}) / sum(kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\", node=~\"$$node\"})"
             }
           ],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
@@ -133,7 +133,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"})"
+              "expr": "sum(kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\", node=~\"$$node\"})"
             }
           ],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
@@ -148,7 +148,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "count((kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"} / kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"}) > 0.8)"
+              "expr": "count((kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\", node=~\"$$node\"} / kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\", node=~\"$$node\"}) > 0.8)"
             }
           ],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
@@ -163,7 +163,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "count(kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"})"
+              "expr": "count(kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\", node=~\"$$node\"})"
             }
           ],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
@@ -179,7 +179,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, (kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"} / kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"}) * 100)",
+              "expr": "topk($$topk, (kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\", node=~\"$$node\"} / kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\", node=~\"$$node\"}) * 100)",
               "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
             }
           ],
@@ -204,7 +204,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"})",
+              "expr": "topk($$topk, kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\", node=~\"$$node\"})",
               "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
             }
           ],
@@ -220,7 +220,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, kubelet_volume_stats_available_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"})",
+              "expr": "topk($$topk, kubelet_volume_stats_available_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\", node=~\"$$node\"})",
               "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
             }
           ],
@@ -237,7 +237,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, rate(kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"}[30m]))",
+              "expr": "topk($$topk, rate(kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\", node=~\"$$node\"}[30m]))",
               "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
             }
           ],
@@ -253,7 +253,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, (predict_linear(kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"}[6h], 24*3600) / kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"}) * 100)",
+              "expr": "topk($$topk, (predict_linear(kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\", node=~\"$$node\"}[6h], 24*3600) / kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\", node=~\"$$node\"}) * 100)",
               "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
             }
           ],
@@ -279,7 +279,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, (kubelet_volume_stats_inodes_used{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"} / kubelet_volume_stats_inodes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"}) * 100)",
+              "expr": "topk($$topk, (kubelet_volume_stats_inodes_used{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\", node=~\"$$node\"} / kubelet_volume_stats_inodes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\", node=~\"$$node\"}) * 100)",
               "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
             }
           ],
@@ -295,7 +295,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\"} / on(namespace, persistentvolumeclaim) kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"})",
+              "expr": "topk($$topk, kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\"} / on(namespace, persistentvolumeclaim) kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\", node=~\"$$node\"})",
               "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
             }
           ],
@@ -312,7 +312,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "bottomk($topk, kubelet_volume_stats_available_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"} / clamp_min(rate(kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"}[6h]), 1) / 3600)",
+              "expr": "bottomk($$topk, kubelet_volume_stats_available_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\", node=~\"$$node\"} / clamp_min(rate(kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\", node=~\"$$node\"}[6h]), 1) / 3600)",
               "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
             }
           ],
@@ -337,19 +337,19 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk(50, (kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", node=~\"$node\"} / kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", node=~\"$node\"}) * 100)",
+              "expr": "topk(50, (kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\", node=~\"$$node\"} / kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\", node=~\"$$node\"}) * 100)",
               "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}",
               "instant": true
             },
             {
               "refId": "B",
-              "expr": "topk(50, kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", node=~\"$node\"})",
+              "expr": "topk(50, kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\", node=~\"$$node\"})",
               "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}",
               "instant": true
             },
             {
               "refId": "C",
-              "expr": "topk(50, kubelet_volume_stats_available_bytes{namespace=~\"$namespace\", node=~\"$node\"})",
+              "expr": "topk(50, kubelet_volume_stats_available_bytes{namespace=~\"$$namespace\", node=~\"$$node\"})",
               "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}",
               "instant": true
             }
@@ -367,7 +367,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "count by (namespace, persistentvolumeclaim, pod) (kube_pod_spec_volumes_persistentvolumeclaim_info{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\"})",
+              "expr": "count by (namespace, persistentvolumeclaim, pod) (kube_pod_spec_volumes_persistentvolumeclaim_info{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\"})",
               "instant": true
             }
           ],
@@ -384,7 +384,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "(sum by (namespace) (kubelet_volume_stats_used_bytes{namespace=~\"$namespace\"}) / sum by (namespace) (kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\"})) * 100",
+              "expr": "(sum by (namespace) (kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\"}) / sum by (namespace) (kubelet_volume_stats_capacity_bytes{namespace=~\"$$namespace\"})) * 100",
               "legendFormat": "{{namespace}}"
             }
           ],
@@ -465,7 +465,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "max by (namespace, persistentvolumeclaim, phase) (kube_persistentvolumeclaim_status_phase{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", phase!=\"Bound\"} == 1)",
+              "expr": "max by (namespace, persistentvolumeclaim, phase) (kube_persistentvolumeclaim_status_phase{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\", phase!=\"Bound\"} == 1)",
               "instant": true
             }
           ],
@@ -481,7 +481,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, (kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\", node=~\"$node\"} / on(namespace, persistentvolumeclaim) group_left kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\"}) * 100)",
+              "expr": "topk($$topk, (kubelet_volume_stats_used_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\", node=~\"$$node\"} / on(namespace, persistentvolumeclaim) group_left kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\"}) * 100)",
               "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
             }
           ],
@@ -497,7 +497,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "topk($topk, kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$pvc\"})",
+              "expr": "topk($$topk, kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace=~\"$$namespace\", persistentvolumeclaim=~\"$$pvc\"})",
               "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}"
             }
           ],
