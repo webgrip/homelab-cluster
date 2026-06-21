@@ -145,13 +145,12 @@ spec:
           memory: 768Mi
 
     jobservice:
-      # NOT pinned: jobservice mounts a RWO longhorn-general PVC, and the goharbor
-      # chart hardcodes RollingUpdate (can't be Recreate — it always renders a
-      # rollingUpdate block). Moving it nodes deadlocks on Multi-Attach, the helm
-      # upgrade never goes Ready, and remediateLastFailure rolls the WHOLE release
-      # back (3 failed upgrades, terminal) — taking the other components with it.
-      # Move it via a one-off: recreate its PVC on the Immediate `longhorn` SC
-      # (job logs are throwaway), then it schedules on a worker. Tracked separately.
+      # Pinned to the worker pool. Its WFFC longhorn-general PVC lists fringe (a
+      # worker), so it schedules there. The goharbor chart hardcodes RollingUpdate,
+      # so the soyo-3->fringe move deadlocks on Multi-Attach until the old pod is
+      # deleted by hand (done at migration time) — the new pod then attaches.
+      nodeSelector:
+        node.webgrip.io/pool: worker
       # The CNPG outage left this Deployment deleted; Helm's no-op upgrade won't
       # recreate a resource that's unchanged in the chart manifest. This stable
       # annotation gives the Deployment a real (secret-free) diff so the next upgrade
@@ -166,9 +165,10 @@ spec:
           memory: 512Mi
 
     registry:
-      # NOT pinned — same RWO-RollingUpdate-rollback trap as jobservice (its PVC is
-      # config/cache only; blobs live in Garage S3, so its PVC is also safe to
-      # recreate on the Immediate `longhorn` SC to move it). Tracked separately.
+      # Pinned to the worker pool (same Multi-Attach-move handling as jobservice;
+      # its PVC is config/cache only — blobs are in Garage S3).
+      nodeSelector:
+        node.webgrip.io/pool: worker
       # Same as jobservice above — force re-creation of the deleted registry Deployment.
       podAnnotations:
         harbor.webgrip.io/restored-at: "2026-06-16"
