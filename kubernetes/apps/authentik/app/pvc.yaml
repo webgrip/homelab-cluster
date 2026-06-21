@@ -1,13 +1,19 @@
 ---
+# authentik media — RWX (longhorn-rwx / NFS) so the server+worker pods can share
+# /data across nodes, which lets authentik be pinned to the worker POOL (not the
+# single `fringe` node) and gives node-level HA. Switched from RWO 2026-06-21
+# (the media was empty, so zero data migration). authentik keeps its `file`
+# storage backend at /data — only the volume type changed. The old RWO
+# `authentik-media` PVC is pruned once the pods roll onto this one.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: authentik-media
+  name: authentik-media-rwx
   namespace: authentik
 spec:
   accessModes:
-    - ReadWriteOnce
-  storageClassName: longhorn
+    - ReadWriteMany
+  storageClassName: longhorn-rwx
   resources:
     requests:
       storage: 10Gi

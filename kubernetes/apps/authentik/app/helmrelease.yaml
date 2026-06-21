@@ -38,26 +38,24 @@ spec:
           type: RuntimeDefault
       podAnnotations:
         reloader.stakater.com/auto: "true"
+      # Pinned to the worker POOL (ADR-0028), not the single fringe node — possible
+      # now that media is on an RWX (shared) volume. podAntiAffinity soft spreads
+      # the 2 server replicas across workers for node-level HA.
       nodeSelector:
-        nodegroup: fringe
-      tolerations:
-        - key: dedicated
-          operator: Equal
-          value: fringe
-          effect: NoSchedule
+        node.webgrip.io/pool: worker
       affinity:
         podAntiAffinity: soft
         nodeAffinity:
           type: hard
           matchExpressions:
-            - key: nodegroup
+            - key: node.webgrip.io/pool
               operator: In
               values:
-                - fringe
+                - worker
       volumes:
         - name: authentik-media
           persistentVolumeClaim:
-            claimName: authentik-media
+            claimName: authentik-media-rwx
       volumeMounts:
         - name: authentik-media
           mountPath: /data
