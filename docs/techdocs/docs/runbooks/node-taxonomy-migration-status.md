@@ -97,8 +97,18 @@ The D1/D2 split is no longer "stateless vs stateful" — it's **`longhorn`/Immed
    ([ADR-0015](../adr/adr-0015-external-bootstrap-fallback-source.md)), so forgejo-db/openbao/gitea-mirror
    are pinned to the **workers** like any app; DR is external Garage S3 backups (Longhorn backup target +
    CNPG barman + openbao raft snapshots). `longhorn-gitops` SC deleted. **Soyos stay 100% Longhorn-free.**
-6. **Cleanup** — remove `nodegroup`/`workload-tier` labels once nothing references them; delete `echo` +
-   the stale `default/envoy-*` duplicates; optionally exclude the Longhorn DaemonSets from the soyos.
+6. **Cleanup** — **mostly done 2026-06-21.** Swapped the legacy `nodegroup=fringe` nodeSelector →
+   `pool=worker` on the stragglers (tempo, dependency-track-metrics-exporter, forgejo-runner, minecraft,
+   zomboid, invoiceninja ×2 +Recreate). **Still on `nodegroup=fringe` (deferred — careful):**
+   - **authentik** — global nodeSelector pins all components; `authentik-worker` mounts RWO media, so the
+     swap needs Recreate handling. (`authentik/app/helmrelease.yaml`.)
+   - **envoy-gateway** — the ingress data plane (2×envoy-internal + 2×envoy-external + controller); swap =
+     a brief ingress blip. (`network/envoy-gateway/app/{helmrelease,envoy}.yaml`.)
+   Because those two still need it, `nodegroup: fringe` was **re-added** to `talos/patches/worker/fringe-dedicated.yaml`.
+   **Final label drop:** migrate authentik + envoy → `pool=worker`, then remove `nodegroup`/`workload-tier`
+   from the Talos patches (`worker/{fringe-dedicated,worker-1}.yaml`, `controller/nodegroup-soyo.yaml`) and
+   `task talos:apply-node MODE=no-reboot` per node. (`cilium/app/networks.yaml` keeps `nodegroup` — it's
+   Cilium network config, not placement.) Also: delete `echo` + stale `default/envoy-*` duplicates.
 
 ## DR hardening (replaces the soyo replica — 2026-06-21)
 

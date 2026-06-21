@@ -1,3 +1,4 @@
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -8,11 +9,10 @@ spec:
   selector:
     matchLabels:
       app: invoiceninja
+  # Recreate: RWO longhorn-general volume → a RollingUpdate move/restart deadlocks
+  # on Multi-Attach (ADR-0028). Terminate-then-start frees the volume first.
   strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 0
-      maxUnavailable: 1
+    type: Recreate
   template:
     metadata:
       labels:
@@ -21,7 +21,7 @@ spec:
         reloader.stakater.com/auto: "true"
     spec:
       nodeSelector:
-        nodegroup: fringe
+        node.webgrip.io/pool: worker
       tolerations:
         - key: dedicated
           operator: Equal

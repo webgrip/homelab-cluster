@@ -1,3 +1,4 @@
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -18,11 +19,10 @@ metadata:
   namespace: invoiceninja
 spec:
   replicas: 1
+  # Recreate: RWO longhorn-general volume → a RollingUpdate move/restart deadlocks
+  # on Multi-Attach (ADR-0028). Terminate-then-start frees the volume first.
   strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 0
-      maxUnavailable: 1
+    type: Recreate
   selector:
     matchLabels:
       app: invoiceninja-mariadb
@@ -32,7 +32,7 @@ spec:
         app: invoiceninja-mariadb
     spec:
       nodeSelector:
-        nodegroup: fringe
+        node.webgrip.io/pool: worker
       tolerations:
         - key: dedicated
           operator: Equal

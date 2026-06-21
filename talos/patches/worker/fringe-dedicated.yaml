@@ -7,6 +7,12 @@ machine:
     node.webgrip.io/cpu: high
     node.webgrip.io/ram: standard
     storage.webgrip.io/longhorn: "true"
+    # Legacy label — KEPT temporarily: authentik (worker has RWO media) and
+    # envoy-gateway (ingress data plane) are the last two apps still pinning to
+    # nodeSelector nodegroup=fringe. Migrate them to pool=worker (careful: RWO
+    # Recreate / ingress blip), THEN drop this label + apply-node. Removing it
+    # before that strands those apps. See node-taxonomy-migration-status.md.
+    nodegroup: fringe
   kubelet:
     extraArgs: {}
     # The `dedicated=fringe:NoSchedule` taint was RETIRED 2026-06-19 (ADR-0028):
