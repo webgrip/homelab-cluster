@@ -100,6 +100,26 @@ The D1/D2 split is no longer "stateless vs stateful" — it's **`longhorn`/Immed
 6. **Cleanup** — remove `nodegroup`/`workload-tier` labels once nothing references them; delete `echo` +
    the stale `default/envoy-*` duplicates; optionally exclude the Longhorn DaemonSets from the soyos.
 
+## DR hardening (replaces the soyo replica — 2026-06-21)
+
+With the soyos kept Longhorn-free, forgejo/openbao survive a both-worker outage via **external Garage S3**
+backups (Garage is off-cluster at 10.0.0.110), not a live replica:
+
+- **forgejo-db** → CNPG barman to Garage (daily, confirmed: 5+ backups present). Restore drill left
+  *suspended* (load + the mechanism is the proven shared CNPG component) — run on demand via the
+  [cnpg-restore-playbook](cnpg-restore-playbook.md).
+- **openbao** → nightly raft snapshot to Garage (confirmed running). Restore + the **unseal-key backup
+  gap** → [openbao-restore](openbao-restore.md).
+- **forgejo-data + gitea-mirror** → a **Longhorn backup target** (Garage S3, `default` BackupTarget CR,
+  `AVAILABLE=true`) + the `gitops-backup` RecurringJob (daily, retain 7). **Owner one-time opt-in** (the
+  Volume CR label is hook-gated):
+  ```bash
+  mise exec -- kubectl label volumes.longhorn.io \
+    $(mise exec -- kubectl get pvc forgejo-data -n forgejo -o jsonpath='{.spec.volumeName}') \
+    $(mise exec -- kubectl get pvc gitea-mirror -n forgejo -o jsonpath='{.spec.volumeName}') \
+    -n longhorn-system recurring-job-group.longhorn.io/gitops-backup=enabled
+  ```
+
 ## Guardrails
 
 GitOps-first; **one reversible change per commit, spaced apart** (batched reconciles have collapsed
