@@ -22,11 +22,22 @@ nodes + HARD anti-affinity).
 | `longhorn` | 2 (target) | SSD | default / general — the "hot" tier. **NOTE: the chart's `longhorn` SC still carries `numberOfReplicas: 3`** (immutable param; needs a recreate to converge — ADR-0029 Stage 2). |
 | `longhorn-general` | 2 | SSD | app volumes (16 PVCs) — being folded into `longhorn` |
 | `longhorn-cold` | 1 | HDD (`cold` tag) | bulk/low-IOPS (backups, archives). **Never** Postgres/WAL — HDD-speed sync writes. Inert until the fringe HDD is wiped + tagged. |
-| `longhorn-gitops` | 3 | SSD + 1 soyo (`gitops` tag) | **only** forgejo + openbao (survive a both-worker outage). Inert until disks tagged. |
-| `longhorn-rwx` | 2 | SSD (NFS) | ReadWriteMany |
+| `longhorn-rwx` | 2 | SSD (NFS) | ReadWriteMany — **blocked by default**: Kyverno `storage-cnpg-governance/disallow-rwx-pvcs` denies any RWX PVC at admission unless explicitly allowlisted. So multi-pod-shared-volume apps stay **single-node** (pin via a node-unique capability label — see `workload-placement`), not RWX. |
 | `longhorn-snapshot` | 1 | SSD | restore source |
 
 `defaultReplicaCount: 2` in the HelmRelease. CNPG DBs use `longhorn` (reserved) — see the `cnpg-database` skill.
+The `longhorn-gitops` SC (soyo-replica DR for forgejo/openbao) was **retired 2026-06-21** — soyos stay
+Longhorn-free; gitops DR is external-Garage-S3 backups + a GitHub fallback Flux source, not a soyo replica.
+
+## Backups → external Garage S3 (live since 2026-06-21)
+
+A `BackupTarget` CR is the working mechanism — **Longhorn 1.11 ignores `defaultSettings.backupTarget`**
+(deprecated). Target `default` → `s3://cnpg-backups-bucket@garage/longhorn-backups`, creds from the
+`longhorn-backup-s3` ExternalSecret (OpenBao `s3/cnpg-backup`, mapped to `AWS_*`). A `gitops-backup`
+RecurringJob (cron `0 2 * * *`) backs up volumes labeled
+`recurring-job-group.longhorn.io/gitops-backup=enabled` (forgejo-data, gitea-mirror). Files at
+`kubernetes/apps/longhorn-system/longhorn/app/{backuptarget,backup-s3.externalsecret,recurringjob}.yaml`.
+Restore drill for a Longhorn volume from Garage is still **unproven** (roadmap #58).
 
 ## Key defaultSettings (and why)
 
@@ -46,11 +57,10 @@ via a postRenderer (don't let it go BestEffort → OOM).
   (`WaitForFirstConsumer`) records the storage nodes present at first bind into the PV `nodeAffinity` and
   never refreshes it → permanently excludes nodes added later (this is the whole worker-1-exclusion saga).
   With `dataLocality: disabled` Longhorn volumes are **network-attached**, so WFFC's topology binding has
-  **no benefit** — it's just harm. **The general/cold/snapshot/cache SCs were flipped to `Immediate`
-  2026-06-20** (the storageclass Flux ks has `force: true` so the immutable binding-mode change recreates
-  the SC; bound PVs unaffected). `gitops` stays WFFC (it uses `dataLocality: best-effort`). New volumes
-  attach anywhere; **existing** WFFC-era PVs keep their baked affinity until recreated (migrate to the now-
-  Immediate SC). Check per volume: `kubectl get pv <pv> -o jsonpath='{.spec.nodeAffinity}'` (empty = free).
+  **no benefit** — it's just harm. **Every Longhorn SC is now `Immediate`** (flipped 2026-06-20/21; the
+  storageclass Flux ks has `force: true` so the immutable binding-mode change recreates the SC; bound PVs
+  unaffected). New volumes attach anywhere; **existing** WFFC-era PVs keep their baked affinity until
+  recreated. Check per volume: `kubectl get pv <pv> -o jsonpath='{.spec.nodeAffinity}'` (empty = free).
 - **Deleting a `nodes.longhorn.io` CR** is rejected while `allowScheduling=true` — patch it `false` first.
 - **`faulted` ≠ recoverable.** `auto-salvage` can log `no data exists` when no replica has valid data;
   recovery is then a *logical* restore (pg_dump/S3), not a block salvage. Check `replica.spec.healthyAt`.

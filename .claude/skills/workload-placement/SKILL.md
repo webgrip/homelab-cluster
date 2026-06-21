@@ -28,8 +28,10 @@ Every workload resolves to one of these:
 - **Apps** (stateless + stateful) → **hard-pin to `pool=worker`** → `Pending` if both workers down (apps
   aren't worth crushing the 12 GiB soyos for). User-facing apps + their CNPG DBs (e.g. the observability
   stack, authentik).
-- **gitops-critical** (forgejo, openbao) → worker-preferred + one designated soyo permitted, on
-  `longhorn-gitops` (3 replicas) — survive a both-worker outage.
+- **gitops-critical** (forgejo, openbao) → **also just hard-pinned to `pool=worker`** like any app
+  (2026-06-21). The old "one designated soyo replica" design was retired — soyos stay Longhorn-free;
+  resilience to a both-worker outage comes from external-Garage-S3 backups + a GitHub fallback Flux
+  source, not a soyo replica. See the `longhorn` skill (backups) and ADR-0026.
 
 ## How to pin — the DRY component
 
@@ -63,11 +65,17 @@ postRenderers don't):
    - **RWO RollingUpdate move** → Multi-Attach deadlock → release never goes Ready → rollback (it does NOT
      "self-heal" — the rollback aborts the move). The chart often **hardcodes `RollingUpdate`** so you
      can't set `Recreate` via values either (renders both → k8s rejects).
-   Handling: pin only the components that move cleanly (stateless Deploys + StatefulSets — STS do an
-   ordered recreate, no Multi-Attach); **leave RWO Deployments unpinned**, then move them via a one-off
-   PVC recreate on the Immediate `longhorn` SC (works when the PVC data is throwaway/S3-backed). Verify a
-   pin actually stuck: `kubectl get deploy <d> -o jsonpath='{.spec.template.spec.nodeSelector}'` AND check
-   `kubectl get hr <app> -o jsonpath='{.status.conditions[?(@.type=="Ready")].reason}'` is not `RollbackSucceeded`.
+   Handling (in order of preference): (a) **convert to a StatefulSet** if the chart allows
+   (dependency-track api-server did — STS do an ordered recreate, no Multi-Attach); else (b) **pin via
+   native `nodeSelector` and break the deadlock by hand** — the HR upgrade creates the new (pinned) pod
+   `Pending`, so delete the **old pod AND its old ReplicaSet** (`kubectl delete rs <old-rs>` — the
+   Deployment won't recreate a superseded revision) to free the RWO volume; the new pod then attaches and
+   the upgrade goes Ready. This **worked for harbor registry+jobservice 2026-06-21** once the soyos were
+   idle — the cache-sync rollback was driven by the *loaded* soyo API, so an idle control-plane lets the
+   move through. The deadlock window must beat the HR timeout (20m here), so delete promptly. Verify:
+   `kubectl get deploy <d> -o jsonpath='{.spec.template.spec.nodeSelector}'` AND
+   `kubectl get hr <app> -o jsonpath='{.status.conditions[?(@.type=="Ready")].reason}'` is `UpgradeSucceeded`,
+   not `RollbackSucceeded`.
 
 ## ⚠️ RWO + RollingUpdate deadlock when a pin *moves* a pod
 
@@ -80,23 +88,28 @@ CNPG are unaffected (ordered recreate). Apps **already on a worker** don't reloc
 this — it only bites `longhorn`-backed Deployments currently on a soyo. Set Recreate in the same place
 you set the affinity (component apps: the chart's `controllers.<name>.strategy`, or an inline patch).
 
-## ⚠️ Sequencing gotcha (stateful) — it's the SC binding mode, not "all PVs"
+## Single-node-by-design apps (multiple pods, one RWO volume)
 
-A stateful app is safe to hard-pin to `pool=worker` **iff its volume isn't node-locked to nodes that
-exclude the worker you need**. That lock depends entirely on the StorageClass `volumeBindingMode`:
+Some apps run several pods sharing **one RWO volume** (authentik: 2 server + 1 worker share `/data`
+media) — they can't spread across nodes. RWX would let them, but **Kyverno `disallow-rwx-pvcs` blocks
+RWX cluster-wide** (see `longhorn`). So pin them to a **single node via a capability label that resolves
+to exactly one node** — never a hostname or a legacy label. authentik → `node.webgrip.io/cpu: high`
+(fringe is the only high-CPU node), set as **both** `nodeSelector` and the hard `nodeAffinity`. The pods
+stay co-located, the RWO volume attaches cleanly, and placement still goes through the taxonomy. Node-level
+HA then requires moving the shared data off RWO first (e.g. authentik media → S3, roadmap #47) before
+switching to `pool=worker`. Pattern shipped 2026-06-21 (`kubernetes/apps/authentik/app/helmrelease.yaml`).
 
-- **`longhorn` (`Immediate`)** → PV has **no** `nodeAffinity` → attaches anywhere, incl. later-added
-  worker-1. **Pin now**, stateful or not (all CNPG DBs, dependency-track api-server, etc.).
-- **`longhorn-general` (`WaitForFirstConsumer`)** → PV bakes in the storage nodes present at first bind
-  and never refreshes → **permanently excludes worker-1**. Can still reach the older workers it lists
-  (fringe), so it pins fine **once the fringe taint is retired**; to reach worker-1 it must be **migrated
-  to the `longhorn` SC** (ADR-0029) — eviction can't rewrite the immutable PV `nodeAffinity`.
+## ⚠️ Sequencing gotcha (stateful) — legacy WFFC PVs only
 
-Check before pinning a stateful app: `kubectl get pv <pv> -o jsonpath='{.spec.nodeAffinity}'` (empty =
-free). Symptom of pinning a locked volume too early: `Pending` / `didn't match PersistentVolume's node
-affinity` (this is what stranded n8n — a `longhorn-general` volume). See
-[ADR-0028](docs/techdocs/docs/adr/adr-0028-application-workload-placement.md) D2 and the
-[longhorn](docs/techdocs/docs/runbooks/node-taxonomy-migration-status.md) skill.
+A stateful app is safe to hard-pin to `pool=worker` **iff its PV isn't node-locked to nodes that exclude
+the worker you need**. **All Longhorn SCs are now `Immediate`** (flipped 2026-06-20/21), so any volume
+bound since has **no** PV `nodeAffinity` → attaches anywhere, incl. worker-1 → **pin freely** (all CNPG
+DBs, etc.). The trap is only **legacy WFFC-era PVs** (bound before the flip): they baked in the storage
+nodes present at first bind and never refresh, so they can exclude worker-1 until recreated — eviction
+can't rewrite an immutable PV `nodeAffinity`. Check before pinning: `kubectl get pv <pv>
+-o jsonpath='{.spec.nodeAffinity}'` (empty = free). Symptom of pinning a still-locked legacy volume:
+`Pending` / `didn't match PersistentVolume's node affinity` (this stranded n8n). See
+[ADR-0028](docs/techdocs/docs/adr/adr-0028-application-workload-placement.md) D2 + the `longhorn` skill.
 
 ## Soft affinity is non-deterministic — don't
 
