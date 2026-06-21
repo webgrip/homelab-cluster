@@ -97,21 +97,21 @@ The D1/D2 split is no longer "stateless vs stateful" — it's **`longhorn`/Immed
    ([ADR-0015](../adr/adr-0015-external-bootstrap-fallback-source.md)), so forgejo-db/openbao/gitea-mirror
    are pinned to the **workers** like any app; DR is external Garage S3 backups (Longhorn backup target +
    CNPG barman + openbao raft snapshots). `longhorn-gitops` SC deleted. **Soyos stay 100% Longhorn-free.**
-6. **Cleanup** — **nearly done 2026-06-21.** Swapped the legacy `nodegroup=fringe` → `pool=worker` on
-   tempo, dependency-track-metrics-exporter, forgejo-runner, minecraft, zomboid, invoiceninja ×2 (+Recreate),
-   and **envoy-gateway** (controller + proxies — clean rolling restart, gateways stayed Programmed).
-   **The ONE app still on `nodegroup=fringe`: `authentik`** — its 2 server + 1 worker pods share a **RWO
-   file-backed media PVC**, so they're single-node by design. Unpinning needs **authentik media moved to
-   Garage S3** first (`AUTHENTIK_STORAGE__MEDIA__BACKEND=s3`), *then* `pool=worker` — a separate feature,
-   tracked in the authentik HR comment. Until then, `nodegroup: fringe` stays on `fringe-dedicated.yaml`.
-   **Final label drop (gated on authentik):** move authentik media→S3 + pin → `pool=worker`, then remove
-   `nodegroup`/`workload-tier` from the Talos patches and `task talos:apply-node MODE=no-reboot` per node.
-   (`cilium/app/networks.yaml` keeps `nodegroup` — it's Cilium network config, not placement.)
-   **harbor registry/jobservice** still sit on soyo-3 (RWO + the goharbor chart hardcodes RollingUpdate, so
-   they can't move via a normal rollout) — but their **Longhorn replicas are already on the workers**, so
-   they cost a little soyo RAM, **not** etcd disk I/O. Low priority; move via a manual one-off (scale to 0
-   / recreate the throwaway PVC on the Immediate `longhorn` SC, then pin) if you want the soyos 100%
-   app-free. Also: delete `echo` + stale `default/envoy-*` duplicates.
+6. **Cleanup — DONE 2026-06-21. The soyos are 100% app-free (control-plane only).**
+   - Swapped every legacy `nodegroup=fringe` → the capability scheme: tempo, dt-metrics-exporter,
+     forgejo-runner, minecraft, zomboid, invoiceninja ×2 (+Recreate), envoy-gateway (controller+proxies),
+     and cilium's zomboid L2 policy → `pool=worker`.
+   - **authentik** → `node.webgrip.io/cpu=high` (resolves to fringe — the only high-CPU node — so it stays
+     single-node on its RWO media, but off the legacy label). The RWX-media route was rejected by Kyverno
+     (`disallow-rwx-pvcs`); true node-level HA still wants media→S3 (open follow-up; media is empty).
+   - **harbor registry + jobservice** → fringe (pinned `pool=worker`; their WFFC PVCs allow fringe). The
+     goharbor RollingUpdate deadlock was broken at migration time by deleting the old pod/ReplicaSet; the
+     HR upgrade then succeeded (the now-idle soyo API avoided the old cache-sync rollback).
+   - **Legacy labels removed** from the Talos patches (`controller/nodegroup-soyo`, `worker/{fringe-dedicated,worker-1}`).
+     ⏳ **Owner handoff:** they apply on the next `task talos:apply-node MODE=no-reboot` per node (label-only,
+     etcd-safe). Until applied, the live nodes still carry the labels — harmless, nothing references them.
+   - Remaining nice-to-haves (non-blocking): authentik media→S3 for node-level HA; delete `echo` + stale
+     `default/envoy-*` duplicates.
 
 ## DR hardening (replaces the soyo replica — 2026-06-21)
 
