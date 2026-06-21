@@ -8,7 +8,14 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/common.sh"
 source "${SCRIPT_DIR}/lib/flux-local.sh"
 
-check_cli docker mktemp rsync awk grep sort wc
+check_cli docker mktemp rsync awk grep sort wc python3
+
+# Shift-left guard: every Grafana alert-rule SSE node must carry an `expression:`
+# pointer. Missing it silently broke all 16 SLO rules for ~3 weeks (kubeconform and
+# the operator CRD can't see model internals). See scripts/validate_grafana_alert_expr.py
+# and ADR-0030.
+log info "Validating Grafana alert-rule expressions"
+python3 "${SCRIPT_DIR}/validate_grafana_alert_expr.py" "${ROOT_DIR}"
 
 workspace="$(mktemp -d)"
 trap 'rm -rf "${workspace}"' EXIT

@@ -36,6 +36,7 @@ spec:
           model:
             refId: threshold
             type: threshold
+            expression: query
             datasource:
               uid: "-100"
               type: __expr__
@@ -87,6 +88,7 @@ spec:
           model:
             refId: threshold
             type: threshold
+            expression: query
             datasource:
               uid: "-100"
               type: __expr__
@@ -138,6 +140,7 @@ spec:
           model:
             refId: threshold
             type: threshold
+            expression: query
             datasource:
               uid: "-100"
               type: __expr__
@@ -162,5 +165,63 @@ spec:
         description: "The Grafana operator is failing to reconcile resources. Dashboards, alert rules, and datasources may be out of sync."
       labels:
         severity: warning
+        slo: observability
+        team: platform
+
+    # -------------------------------------------------------------------------
+    # Meta-monitoring — watch the watchers (ADR-0031).
+    # Fires when Grafana's own alert-rule evaluations error (e.g. the sse.parseError
+    # that silently broke all 16 SLO rules for 3 weeks). noDataState/execErrState are
+    # Alerting on purpose: a blind watcher must page, never go quiet.
+    # -------------------------------------------------------------------------
+    - uid: slo-grafana-alert-rule-eval-failing
+      title: "SLO: Grafana Alert Rule Evaluation Failing"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange:
+            from: 600
+            to: 0
+          datasourceUid: prometheus
+          model:
+            expr: "sum(increase(grafana_alerting_rule_evaluation_failures_total[10m]))"
+            instant: true
+            refId: query
+            datasource:
+              uid: prometheus
+              type: prometheus
+        - refId: threshold
+          relativeTimeRange:
+            from: 0
+            to: 0
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            expression: query
+            datasource:
+              uid: "-100"
+              type: __expr__
+            conditions:
+              - type: query
+                evaluator:
+                  type: gt
+                  params:
+                    - 0
+                operator:
+                  type: and
+                query:
+                  params:
+                    - query
+                reducer:
+                  type: last
+      noDataState: Alerting
+      execErrState: Alerting
+      for: 10m
+      annotations:
+        summary: "Grafana alert-rule evaluations are failing ({{ $value | humanize }} in 10m)"
+        description: "One or more Grafana-managed alert rules are erroring during evaluation (e.g. an sse.parseError / malformed threshold expression). The alerting system is partially blind. Check Grafana → Alerting → Alert rules for rules in Error state and inspect last_error."
+      labels:
+        severity: critical
         slo: observability
         team: platform

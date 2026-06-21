@@ -9,6 +9,11 @@ metadata:
   namespace: observability
   labels:
     app.kubernetes.io/name: grafana
+    # Prometheus (kube-prometheus-stack) only selects ServiceMonitors carrying this
+    # release label; without it this SM is never loaded and Grafana /metrics (incl.
+    # grafana_alerting_*) is silently unscraped — which is how the 3-week alert-rule
+    # outage went unnoticed. See ADR-0031.
+    release: kube-prometheus-stack
 spec:
   endpoints:
     - interval: 1m
@@ -20,5 +25,5 @@ spec:
       - observability
   selector:
     matchLabels:
-      app.kubernetes.io/name: grafana
       app.kubernetes.io/managed-by: grafana-operator
+      grafana.internal/instance: grafana

@@ -52,6 +52,7 @@ This is the repo's first ADR section; the conventions below apply to everything 
 | [Cutting the GitOps umbilical](../rfc/rfc-flux-forgejo-source.md) | Proposed | Repoint Flux's source from GitHub to in-cluster Forgejo; keep an external mirror for bootstrap + break-glass. |
 | [Harbor Pull-Through Proxy Cache](../rfc/rfc-harbor-proxy-cache.md) | Proposed | Route docker.io/ghcr.io pulls through Harbor proxy-cache projects at the containerd-mirror layer, with upstream fallback. |
 | [Node taxonomy & storage placement](../rfc/rfc-node-taxonomy-and-storage-placement.md) | Proposed | Capability node taxonomy + move Longhorn off the control-planes onto the workers; apps hard-pin to workers; scoped forgejo storage exception. |
+| [Observability alerting reliability](../rfc/rfc-observability-alerting-reliability.md) | Accepted | Fix the silently-broken SLO rules, lint the rule shape, and monitor the alerting system itself. |
 
 ### ADRs
 
@@ -86,3 +87,5 @@ This is the repo's first ADR section; the conventions below apply to everything 
 | [ADR-0027](adr-0027-longhorn-hot-cold-tiers.md) | Proposed | Longhorn hot/cold tiers (SSD/HDD), configured declaratively from node annotations. |
 | [ADR-0028](adr-0028-application-workload-placement.md) | Proposed | Hard-pin application workloads to the worker pool; forgejo excepted. |
 | [ADR-0029](adr-0029-storageclass-consolidation.md) | Proposed | Consolidate Longhorn StorageClasses to a minimal intent-named set; one 2-replica default. |
+| [ADR-0030](adr-0030-grafana-threshold-rule-shape.md) | Accepted | Canonical Grafana threshold-rule shape (`expression: <refId>`) + a dependency-free lint guard. |
+| [ADR-0031](adr-0031-meta-monitoring-alert-rule-health.md) | Accepted | Fix the Grafana metrics scrape + add a page-on-failure meta-rule for alert-rule evaluation health. |
