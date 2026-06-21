@@ -97,18 +97,21 @@ The D1/D2 split is no longer "stateless vs stateful" — it's **`longhorn`/Immed
    ([ADR-0015](../adr/adr-0015-external-bootstrap-fallback-source.md)), so forgejo-db/openbao/gitea-mirror
    are pinned to the **workers** like any app; DR is external Garage S3 backups (Longhorn backup target +
    CNPG barman + openbao raft snapshots). `longhorn-gitops` SC deleted. **Soyos stay 100% Longhorn-free.**
-6. **Cleanup** — **mostly done 2026-06-21.** Swapped the legacy `nodegroup=fringe` nodeSelector →
-   `pool=worker` on the stragglers (tempo, dependency-track-metrics-exporter, forgejo-runner, minecraft,
-   zomboid, invoiceninja ×2 +Recreate). **Still on `nodegroup=fringe` (deferred — careful):**
-   - **authentik** — global nodeSelector pins all components; `authentik-worker` mounts RWO media, so the
-     swap needs Recreate handling. (`authentik/app/helmrelease.yaml`.)
-   - **envoy-gateway** — the ingress data plane (2×envoy-internal + 2×envoy-external + controller); swap =
-     a brief ingress blip. (`network/envoy-gateway/app/{helmrelease,envoy}.yaml`.)
-   Because those two still need it, `nodegroup: fringe` was **re-added** to `talos/patches/worker/fringe-dedicated.yaml`.
-   **Final label drop:** migrate authentik + envoy → `pool=worker`, then remove `nodegroup`/`workload-tier`
-   from the Talos patches (`worker/{fringe-dedicated,worker-1}.yaml`, `controller/nodegroup-soyo.yaml`) and
-   `task talos:apply-node MODE=no-reboot` per node. (`cilium/app/networks.yaml` keeps `nodegroup` — it's
-   Cilium network config, not placement.) Also: delete `echo` + stale `default/envoy-*` duplicates.
+6. **Cleanup** — **nearly done 2026-06-21.** Swapped the legacy `nodegroup=fringe` → `pool=worker` on
+   tempo, dependency-track-metrics-exporter, forgejo-runner, minecraft, zomboid, invoiceninja ×2 (+Recreate),
+   and **envoy-gateway** (controller + proxies — clean rolling restart, gateways stayed Programmed).
+   **The ONE app still on `nodegroup=fringe`: `authentik`** — its 2 server + 1 worker pods share a **RWO
+   file-backed media PVC**, so they're single-node by design. Unpinning needs **authentik media moved to
+   Garage S3** first (`AUTHENTIK_STORAGE__MEDIA__BACKEND=s3`), *then* `pool=worker` — a separate feature,
+   tracked in the authentik HR comment. Until then, `nodegroup: fringe` stays on `fringe-dedicated.yaml`.
+   **Final label drop (gated on authentik):** move authentik media→S3 + pin → `pool=worker`, then remove
+   `nodegroup`/`workload-tier` from the Talos patches and `task talos:apply-node MODE=no-reboot` per node.
+   (`cilium/app/networks.yaml` keeps `nodegroup` — it's Cilium network config, not placement.)
+   **harbor registry/jobservice** still sit on soyo-3 (RWO + the goharbor chart hardcodes RollingUpdate, so
+   they can't move via a normal rollout) — but their **Longhorn replicas are already on the workers**, so
+   they cost a little soyo RAM, **not** etcd disk I/O. Low priority; move via a manual one-off (scale to 0
+   / recreate the throwaway PVC on the Immediate `longhorn` SC, then pin) if you want the soyos 100%
+   app-free. Also: delete `echo` + stale `default/envoy-*` duplicates.
 
 ## DR hardening (replaces the soyo replica — 2026-06-21)
 
