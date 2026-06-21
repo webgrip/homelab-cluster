@@ -8,7 +8,7 @@ spec:
     matchLabels:
       grafana.internal/instance: grafana
   allowCrossNamespaceImport: false
-  folder: "Security"
+  folderRef: security
   json: |-
     {
       "schemaVersion": 39,
@@ -56,10 +56,11 @@ spec:
         {
           "id": 3,
           "type": "stat",
-          "title": "HTTP 5xx rate",
+          "title": "Task errors/s",
+          "description": "authentik exposes no per-status HTTP metric; this tracks background task failures (authentik_tasks_errors_total). For HTTP 5xx use the envoy-gateway dashboard.",
           "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "sum(rate(authentik_http_requests_total{namespace=\"authentik\", status=~\"5..\"}[5m])) or vector(0)", "legendFormat": "5xx/s"}],
+          "targets": [{"refId": "A", "expr": "sum(rate(authentik_tasks_errors_total{namespace=\"authentik\"}[5m])) or vector(0)", "legendFormat": "errors/s"}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto"},
           "fieldConfig": {"defaults": {"unit": "reqps", "decimals": 3, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.05}, {"color": "red", "value": 0.2}]}}, "overrides": []}
         },
@@ -79,7 +80,7 @@ spec:
           "title": "Request rate",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "sum by (status) (rate(authentik_http_requests_total{namespace=\"authentik\"}[5m]))", "legendFormat": "{{status}}"}],
+          "targets": [{"refId": "A", "expr": "sum(rate(authentik_main_request_duration_seconds_count{namespace=\"authentik\"}[5m])) or vector(0)", "legendFormat": "requests/s"}],
           "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "none"}}
         },

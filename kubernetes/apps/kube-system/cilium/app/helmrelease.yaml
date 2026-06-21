@@ -49,7 +49,17 @@ spec:
     gatewayAPI:
       enabled: false
     hubble:
-      enabled: false
+      enabled: true
+      # Metrics-only (no relay/UI pods) — keep the footprint small on RAM-tight
+      # nodes. Low-cardinality set: drop reasons + policy verdicts for the
+      # zero-trust network dashboard (hubble_drop_total, hubble_policy_verdicts_total).
+      metrics:
+        enabled:
+          - drop
+          - policy
+        serviceMonitor:
+          enabled: true
+          trustCRDsExist: true
     ipam:
       mode: kubernetes
     ipv4NativeRoutingCIDR: "10.42.0.0/16"

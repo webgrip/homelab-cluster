@@ -47,7 +47,7 @@ spec:
             "refresh": 1,
             "includeAll": true,
             "multi": true,
-            "current": {"selected": true, "text": "All", "value": "$__all"}
+            "current": {"selected": true, "text": "All", "value": "$$__all"}
           }
         ]
       },
@@ -61,7 +61,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "max by (persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace=\"observability\", persistentvolumeclaim=~\"$pvc\"}) / max by (persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{namespace=\"observability\", persistentvolumeclaim=~\"$pvc\"})"
+              "expr": "max by (persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace=\"observability\", persistentvolumeclaim=~\"$$pvc\"}) / max by (persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{namespace=\"observability\", persistentvolumeclaim=~\"$$pvc\"})"
             }
           ],
           "options": {
@@ -95,7 +95,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "max by (persistentvolumeclaim) (predict_linear(kubelet_volume_stats_used_bytes{namespace=\"observability\", persistentvolumeclaim=~\"$pvc\"}[6h], 24*3600)) / max by (persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{namespace=\"observability\", persistentvolumeclaim=~\"$pvc\"})"
+              "expr": "max by (persistentvolumeclaim) (predict_linear(kubelet_volume_stats_used_bytes{namespace=\"observability\", persistentvolumeclaim=~\"$$pvc\"}[6h], 24*3600)) / max by (persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{namespace=\"observability\", persistentvolumeclaim=~\"$$pvc\"})"
             }
           ],
           "options": {
@@ -129,12 +129,12 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "max by (persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace=\"observability\", persistentvolumeclaim=~\"$pvc\"})",
+              "expr": "max by (persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace=\"observability\", persistentvolumeclaim=~\"$$pvc\"})",
               "legendFormat": "{{persistentvolumeclaim}} used"
             },
             {
               "refId": "B",
-              "expr": "max by (persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{namespace=\"observability\", persistentvolumeclaim=~\"$pvc\"})",
+              "expr": "max by (persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{namespace=\"observability\", persistentvolumeclaim=~\"$$pvc\"})",
               "legendFormat": "{{persistentvolumeclaim}} capacity"
             }
           ],
@@ -150,28 +150,12 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "max by (persistentvolumeclaim) (rate(kubelet_volume_stats_used_bytes{namespace=\"observability\", persistentvolumeclaim=~\"$pvc\"}[15m]))",
+              "expr": "max by (persistentvolumeclaim) (rate(kubelet_volume_stats_used_bytes{namespace=\"observability\", persistentvolumeclaim=~\"$$pvc\"}[15m]))",
               "legendFormat": "{{persistentvolumeclaim}}"
             }
           ],
           "options": {"legend": {"displayMode": "list", "placement": "right"}},
           "fieldConfig": {"defaults": {"unit": "Bps"}, "overrides": []}
-        },
-        {
-          "id": 5,
-          "type": "timeseries",
-          "title": "Mimir received samples/s",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum(rate(mimir_distributor_received_samples_total[5m])) or sum(rate(cortex_distributor_received_samples_total[5m]))",
-              "legendFormat": "samples/s"
-            }
-          ],
-          "options": {"legend": {"displayMode": "list", "placement": "right"}},
-          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
         },
         {
           "id": 6,

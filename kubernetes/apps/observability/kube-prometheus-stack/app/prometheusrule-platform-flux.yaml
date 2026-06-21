@@ -22,7 +22,7 @@ spec:
             owner: platform
             service: flux
           annotations:
-            summary: "Flux Kustomization not Ready ({{$labels.namespace}}/{{$labels.name}})"
+            summary: "Flux Kustomization not Ready ({{$labels.exported_namespace}}/{{$labels.name}})"
             description: |
               What's happening:
               - Flux reports Kustomization status=False for 15m.
@@ -53,7 +53,7 @@ spec:
             owner: platform
             service: flux
           annotations:
-            summary: "Flux HelmRelease not Ready ({{$labels.namespace}}/{{$labels.name}})"
+            summary: "Flux HelmRelease not Ready ({{$labels.exported_namespace}}/{{$labels.name}})"
             description: |
               What's happening:
               - Flux reports HelmRelease status=False for 15m.
@@ -84,7 +84,7 @@ spec:
             owner: platform
             service: flux
           annotations:
-            summary: "Flux detected runtime drift ({{$labels.kind}} {{$labels.namespace}}/{{$labels.name}})"
+            summary: "Flux detected runtime drift ({{$labels.kind}} {{$labels.exported_namespace}}/{{$labels.name}})"
             description: |
               What's happening:
               - Flux reports that live cluster state has drifted from the reconciled GitOps state.
@@ -109,8 +109,8 @@ spec:
           # Excludes the 3 intentionally-parked Kustomizations (pyroscope/beyla
           # documented; drawio unused) so this fires only on *forgotten* suspends.
           expr: |
-            max by (name, namespace) (
-              gotk_suspend_status{kind="Kustomization", name!~"pyroscope|beyla|drawio"}
+            max by (name, exported_namespace) (
+              flux_resource_info{kind="Kustomization", suspended="True", name!~"pyroscope|beyla|drawio"}
             ) == 1
           for: 24h
           labels:
@@ -118,10 +118,10 @@ spec:
             owner: platform
             service: flux
           annotations:
-            summary: "Flux Kustomization suspended > 24h ({{$labels.namespace}}/{{$labels.name}})"
+            summary: "Flux Kustomization suspended > 24h ({{$labels.exported_namespace}}/{{$labels.name}})"
             description: |
               What's happening:
-              - Kustomization {{$labels.namespace}}/{{$labels.name}} has been suspended for over 24h.
+              - Kustomization {{$labels.exported_namespace}}/{{$labels.name}} has been suspended for over 24h.
 
               Impact/risk:
               - A suspended Kustomization stops reconciling, so its GitOps changes silently

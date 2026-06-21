@@ -8,7 +8,7 @@ spec:
     matchLabels:
       grafana.internal/instance: grafana
   allowCrossNamespaceImport: false
-  folder: "Platform"
+  folderRef: platform
   json: |-
     {
       "schemaVersion": 39,
@@ -111,14 +111,15 @@ spec:
         {
           "id": 6,
           "type": "timeseries",
-          "title": "ACME order failures/s",
+          "title": "Certificates not Ready",
+          "description": "cert-manager exposes no ACME order metric here; this counts Certificates whose Ready condition is False (the actionable issuance-failure signal).",
           "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(rate(certmanager_orders_total{state=~\"invalid|errored|failed\"}[5m])) or sum(rate(certmanager_orders_total{status=~\"invalid|errored|failed\"}[5m])) or on() vector(0)",
-              "legendFormat": "order failures"
+              "expr": "count(certmanager_certificate_ready_status{condition=\"False\"} == 1) or on() vector(0)",
+              "legendFormat": "not ready"
             }
           ],
           "options": {"legend": {"displayMode": "list", "placement": "right"}},
