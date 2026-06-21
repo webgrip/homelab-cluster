@@ -1,6 +1,11 @@
 # ADR-0027: Longhorn hot/cold storage tiers (SSD/HDD), configured from node annotations
 
-> Status: **Proposed** · Date: 2026-06-19 · Part of [RFC: Node taxonomy & storage placement](../rfc/rfc-node-taxonomy-and-storage-placement.md)
+> Status: **Proposed** (the `gitops-critical` soyo disk is **dropped**) · Date: 2026-06-19 · Part of [RFC: Node taxonomy & storage placement](../rfc/rfc-node-taxonomy-and-storage-placement.md)
+>
+> **Update (2026-06-21):** the `gitops-critical` disk on a designated soyo and the `longhorn-gitops`
+> StorageClass are **retired** — see the [ADR-0026](adr-0026-confine-longhorn-to-workers.md) update. The
+> soyos get **no** Longhorn disk config at all. The `hot` (worker SSD) and `cold` (fringe HDD) tiers in
+> this ADR still stand; only the gitops row is dropped.
 
 ## Context
 

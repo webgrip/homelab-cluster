@@ -1,6 +1,16 @@
 # ADR-0026: Confine Longhorn storage to the worker nodes (protect etcd), with a scoped forgejo exception
 
-> Status: **Proposed** · Date: 2026-06-19 · Part of [RFC: Node taxonomy & storage placement](../rfc/rfc-node-taxonomy-and-storage-placement.md)
+> Status: **Accepted** (gitops-critical exception **superseded** — see below) · Date: 2026-06-19 · Part of [RFC: Node taxonomy & storage placement](../rfc/rfc-node-taxonomy-and-storage-placement.md)
+>
+> **Update (2026-06-21): the soyo-replica "gitops-critical exception" is dropped — the soyos stay 100%
+> Longhorn-free.** Two findings killed the need for it: (1) **Garage S3 is external** (10.0.0.110,
+> off-cluster) so backups survive a both-worker outage — restore-from-S3 is a real DR path; (2) forgejo's
+> resilience as the *future* Flux source is handled by the **GitHub fallback source** ([ADR-0015](adr-0015-external-bootstrap-fallback-source.md)),
+> which decouples forgejo's reconcile-resilience from its storage. So forgejo/openbao are pinned to the
+> workers like any other app, with DR via external Garage S3 backups (Longhorn backup target for
+> forgejo-data/gitea-mirror; CNPG barman for forgejo-db; raft snapshots for openbao). `longhorn-gitops`
+> and the `gitops-critical` soyo disk ([ADR-0027](adr-0027-longhorn-hot-cold-tiers.md)) are retired,
+> unbuilt. The paragraph below is kept for history.
 
 ## Context
 

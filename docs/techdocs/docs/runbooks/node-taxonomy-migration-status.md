@@ -89,10 +89,14 @@ The D1/D2 split is no longer "stateless vs stateful" — it's **`longhorn`/Immed
 4. **Phase E — evict Longhorn replicas off the soyos** onto the workers (protects etcd — the original
    goal): `allowScheduling=false` + `evictionRequested=true` per soyo, one at a time, waiting for both
    0 replicas and healthy volumes before the next. This is about **replica placement**, independent of
-   the PV-pinning above.
-   Keep one designated soyo's `gitops-critical` disk for forgejo/openbao.
-5. **gitops-critical exception** — forgejo + openbao to `longhorn-gitops` (3 replicas incl. the designated
-   soyo) and a worker-preferred / soyo-permitted affinity, so they survive a both-worker outage.
+   the PV-pinning above. **Done 2026-06-21: soyos hold 0 replicas.**
+5. **gitops-critical — RESOLVED WITHOUT a soyo replica (2026-06-21).** The original plan (forgejo+openbao
+   on `longhorn-gitops`, 3 replicas incl. a designated soyo) is **dropped** — see the
+   [ADR-0026](../adr/adr-0026-confine-longhorn-to-workers.md) update. Garage S3 is external (survives a
+   both-worker outage) and forgejo's future-Flux-source resilience is the GitHub fallback
+   ([ADR-0015](../adr/adr-0015-external-bootstrap-fallback-source.md)), so forgejo-db/openbao/gitea-mirror
+   are pinned to the **workers** like any app; DR is external Garage S3 backups (Longhorn backup target +
+   CNPG barman + openbao raft snapshots). `longhorn-gitops` SC deleted. **Soyos stay 100% Longhorn-free.**
 6. **Cleanup** — remove `nodegroup`/`workload-tier` labels once nothing references them; delete `echo` +
    the stale `default/envoy-*` duplicates; optionally exclude the Longhorn DaemonSets from the soyos.
 
