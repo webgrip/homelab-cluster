@@ -53,6 +53,7 @@ This is the repo's first ADR section; the conventions below apply to everything 
 | [Harbor Pull-Through Proxy Cache](../rfc/rfc-harbor-proxy-cache.md) | Proposed | Route docker.io/ghcr.io pulls through Harbor proxy-cache projects at the containerd-mirror layer, with upstream fallback. |
 | [Node taxonomy & storage placement](../rfc/rfc-node-taxonomy-and-storage-placement.md) | Proposed | Capability node taxonomy + move Longhorn off the control-planes onto the workers; apps hard-pin to workers; scoped forgejo storage exception. |
 | [Observability alerting reliability](../rfc/rfc-observability-alerting-reliability.md) | Accepted | Fix the silently-broken SLO rules, lint the rule shape, and monitor the alerting system itself. |
+| [Kyverno audit→enforce hardening](../rfc/rfc-kyverno-audit-enforce-hardening.md) | Proposed | Gated, one-at-a-time promotion of the 11 audit policies to enforce, with a no-enforce-without-tests CI gate. |
 
 ### ADRs
 
@@ -90,3 +91,5 @@ This is the repo's first ADR section; the conventions below apply to everything 
 | [ADR-0030](adr-0030-grafana-threshold-rule-shape.md) | Accepted | Canonical Grafana threshold-rule shape (`expression: <refId>`) + a dependency-free lint guard. |
 | [ADR-0031](adr-0031-meta-monitoring-alert-rule-health.md) | Accepted | Fix the Grafana metrics scrape + add a page-on-failure meta-rule for alert-rule evaluation health. |
 | [ADR-0032](adr-0032-reenable-pyroscope-worker-pool.md) | Accepted | Re-enable Pyroscope hard-pinned to the worker pool (supersedes the 2026-06-03 suspension); defrag-gated un-suspend. |
+| [ADR-0033](adr-0033-kyverno-enforce-promotion-policy.md) | Proposed | Gated Kyverno audit→enforce promotion via split + overrides; mandatory CI test-coverage gate. |
+| [ADR-0034](adr-0034-approved-registries-stays-audit.md) | Proposed | `require-approved-registries` stays Audit; enforce only ever via Harbor proxy + admission mutate-rewrite. |

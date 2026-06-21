@@ -16,30 +16,23 @@ prepare_kyverno_test_workspace() {
     local policy_dir="${root_dir}/kubernetes/apps/kyverno/policies/app"
     local tests_dir="${root_dir}/kubernetes/apps/kyverno/tests"
 
-    local -a policies=(
-        cert-manager-governance.yaml
-        exception-governance.yaml
-        flux-governance-enforce.yaml
-        image-attestations-audit.yaml
-        image-verify-audit.yaml
-        image-supply-chain-audit.yaml
-        namespace-defaults-generate.yaml
-        namespace-tenancy-audit.yaml
-        network-exposure-enforce.yaml
-        pod-security-baseline-enforce.yaml
-        rbac-least-privilege-audit.yaml
-        require-probes-audit.yaml
-    )
-
     mkdir -p "${workspace}/cli" "${workspace}/chainsaw" "${workspace}/policies"
 
     rsync -a "${tests_dir}/cli/" "${workspace}/cli/"
     rsync -a "${tests_dir}/chainsaw/" "${workspace}/chainsaw/"
 
-    for policy in "${policies[@]}"; do
+    # Load EVERY Kyverno policy + exception into the test workspace, discovered by
+    # kind. This was previously a hardcoded allowlist that silently omitted policies
+    # (workload-hardening, workload-advanced-hardening, secrets-observability-ops,
+    # image-hygiene, image-verify-harbor, storage-cnpg) — so one could promote those
+    # to Enforce with ZERO CLI test coverage and CI would stay green. Discovering by
+    # kind closes that hole and keeps the test set in lock-step with the policies on
+    # disk. See ADR-0033 + scripts/check-kyverno-test-coverage.sh.
+    local policy
+    while IFS= read -r -d '' policy; do
         sed "s|\${SECRET_DOMAIN}|${KYVERNO_TEST_SECRET_DOMAIN}|g; s|__SECRET_DOMAIN__|${KYVERNO_TEST_SECRET_DOMAIN}|g" \
-            "${policy_dir}/${policy}" >"${workspace}/policies/${policy}"
-    done
+            "${policy}" >"${workspace}/policies/$(basename "${policy}")"
+    done < <(grep -rlZ -E '^kind: (ClusterPolicy|Policy|PolicyException|ClusterCleanupPolicy)$' "${policy_dir}"/*.yaml)
 
     while IFS= read -r -d '' file; do
         sed -i "s|\${SECRET_DOMAIN}|${KYVERNO_TEST_SECRET_DOMAIN}|g; s|__SECRET_DOMAIN__|${KYVERNO_TEST_SECRET_DOMAIN}|g" "${file}"
