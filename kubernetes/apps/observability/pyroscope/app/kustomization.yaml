@@ -1,6 +1,11 @@
+---
 # yaml-language-server: $schema=https://json.schemastore.org/kustomization
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+components:
+  # Hard-pin pyroscope to the worker pool (ADR-0032). Its high-throughput writes
+  # must never land on the soyo control-planes again (etcd I/O SEV, 2026-06-03).
+  - ../../../../components/placement/worker-pool
 resources:
   - ./ocirepository.yaml
   - ./helmrelease.yaml

@@ -1,7 +1,10 @@
 ---
 # yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
 #
-# SUSPENDED: Pyroscope removed 2026-06-03 to fix etcd instability.
+# STILL SUSPENDED — re-enablement staged (ADR-0032). Placement is now fixed (hard
+# worker-pool pin, see below); the ONLY remaining gate before flipping
+# `suspend: false` is the owner-run etcd defrag (REMAINING ACTIONS). Pyroscope was
+# removed 2026-06-03 to fix etcd instability — full root cause kept below for history.
 #
 # ROOT CAUSE SUMMARY
 # ==================
@@ -53,15 +56,20 @@
 #    (talos/patches/controller/cluster.yaml — requires talhelper genconfig + apply)
 # 2. Pyroscope suspended here and removed from cluster
 #
-# REMAINING ACTIONS REQUIRED
-# ==========================
-# - Run: talosctl etcd defrag (one member at a time!) to shrink 436MB → ~163MB
-#   This is the single highest-impact action and requires no code change.
-# - Run talhelper genconfig and apply the updated cluster.yaml to all CP nodes
-# - When revisiting Pyroscope: schedule it on fringe-workstation ONLY, using
-#   a hard requiredDuringSchedulingIgnoredDuringExecution anti-affinity against
-#   node-role.kubernetes.io/control-plane='' (DoesNotExist operator).
-# - Long-term: add a second local SSD per soyo node for dedicated etcd storage.
+# REMAINING ACTIONS REQUIRED (re-enablement — ADR-0032)
+# =====================================================
+# DONE (this commit): placement fixed the DRY way — app/kustomization.yaml now pulls in
+#   components/placement/worker-pool, which post-render-injects a HARD
+#   node.webgrip.io/pool=worker affinity into the rendered StatefulSet. This is the
+#   correct successor to the stale "fringe-workstation only / control-plane DoesNotExist"
+#   advice (predates the node taxonomy + worker-1); pool=worker resolves to BOTH workers.
+# TODO (owner, then flip `suspend: false`):
+# - Run: talosctl etcd defrag (one member at a time, leader LAST!) to shrink 436MB → ~163MB.
+#   See docs/techdocs/docs/runbooks/etcd-health.md. Single highest-impact etcd action.
+# - Then set `suspend: false` below and commit. Verify the pod lands on a worker
+#   (never soyo-*) and etcd_disk_wal_fsync_duration_seconds p99 stays flat (<500ms).
+# Long-term (separate, ADR-0032 does NOT close it): a second local SSD per soyo for
+#   dedicated etcd storage. The etcd heartbeat/election tuning (2026-06-03) is already applied.
 #
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization

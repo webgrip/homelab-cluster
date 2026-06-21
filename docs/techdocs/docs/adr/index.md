@@ -89,3 +89,4 @@ This is the repo's first ADR section; the conventions below apply to everything 
 | [ADR-0029](adr-0029-storageclass-consolidation.md) | Proposed | Consolidate Longhorn StorageClasses to a minimal intent-named set; one 2-replica default. |
 | [ADR-0030](adr-0030-grafana-threshold-rule-shape.md) | Accepted | Canonical Grafana threshold-rule shape (`expression: <refId>`) + a dependency-free lint guard. |
 | [ADR-0031](adr-0031-meta-monitoring-alert-rule-health.md) | Accepted | Fix the Grafana metrics scrape + add a page-on-failure meta-rule for alert-rule evaluation health. |
+| [ADR-0032](adr-0032-reenable-pyroscope-worker-pool.md) | Accepted | Re-enable Pyroscope hard-pinned to the worker pool (supersedes the 2026-06-03 suspension); defrag-gated un-suspend. |
