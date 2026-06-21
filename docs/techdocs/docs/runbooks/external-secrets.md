@@ -176,6 +176,38 @@ under `secret/<name>` (KV v2), then add the matching `ExternalSecret`.
 For the **shared S3 components**, edit the component itself (`kubernetes/components/cnpg-backup/`
 etc.) so every consuming namespace gets the ESO-produced Secret with the same name/keys.
 
+## Recipe: seed the Codeberg Pages token (one-time, human)
+
+The `forgejo/forgejo-codeberg` ExternalSecret reads `secret/codeberg/pages` property `token` and
+publishes it (via the `forgejo-actions-secrets` CronJob, `optional: true`) as the `webgrip` org
+Forgejo Actions secret `CODEBERG_TOKEN` — used by the `techdocs-deploy-codeberg` workflow
+([ADR-0022](../adr/adr-0022-codeberg-pages-techdocs.md)). The manifests are all in place; the only
+missing piece is the seed. **No manifest change** — this is the one-time prerequisite ADR-0022
+calls out. Until seeded, the ExternalSecret reports `SecretSyncedError` and the CronJob logs
+"token not present yet; skipping" (benign).
+
+1. **Mint a Codeberg PAT.** On codeberg.org (the account owning the Pages repo): Settings →
+   Applications → Generate New Token, scope **`write:repository`**. Copy it (shown once).
+2. **Seed it into OpenBao** (KV v2, logical path — do *not* type `data/`):
+
+   ```bash
+   mise exec -- just bao-login                       # OIDC browser login
+   mise exec -- bao kv put secret/codeberg/pages token=<CODEBERG_PAT>
+   ```
+
+   Or the OpenBao UI (`openbao.${SECRET_DOMAIN}`, Authentik OIDC) → engine `secret/` →
+   path `codeberg/pages` → key `token`.
+
+3. **Verify sync** (ESO refreshes hourly; force it):
+
+   ```bash
+   kubectl -n forgejo annotate externalsecret forgejo-codeberg force-sync="$(date +%s)" --overwrite
+   kubectl -n forgejo get externalsecret forgejo-codeberg          # READY=True / SecretSynced
+   ```
+
+4. On the next CronJob tick (`:23`), the log flips to "created/updated org secret
+   webgrip/CODEBERG_TOKEN".
+
 ## Troubleshooting
 
 Use the [diagnostics](#diagnostics) below to inspect each symptom.
