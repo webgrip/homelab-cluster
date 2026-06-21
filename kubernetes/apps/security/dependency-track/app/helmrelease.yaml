@@ -13,6 +13,10 @@ spec:
         name: dependency-track
         namespace: security
   interval: 1h
+  # Generous timeout: switching the api-server to a StatefulSet gives it a fresh
+  # /data, so first boot re-mirrors the NVD/OSV vuln DB. Don't let a slow-but-fine
+  # startup get rolled back by the root-injected remediateLastFailure.
+  timeout: 15m
   install:
     remediation:
       retries: 3
@@ -21,29 +25,11 @@ spec:
     remediation:
       retries: 3
       remediateLastFailure: true
-  # The dependency-track@1.0.0 chart exposes nodeSelector/tolerations but NOT
-  # affinity, so we inject a soft nodeAffinity preference for the apps tier
-  # (worker-1) via a post-render patch — soft so it falls back to a soyo if
-  # worker-1 is unavailable, matching the other apps-tier workloads.
-  postRenderers:
-    - kustomize:
-        patches:
-          - target:
-              kind: Deployment
-              name: "dependency-track-(api-?server|frontend)"
-            patch: |
-              - op: add
-                path: /spec/template/spec/affinity
-                value:
-                  nodeAffinity:
-                    preferredDuringSchedulingIgnoredDuringExecution:
-                      - weight: 100
-                        preference:
-                          matchExpressions:
-                            - key: workload-tier
-                              operator: In
-                              values:
-                                - apps
+  # No postRenderers: api-server + frontend are pinned to the worker pool via the
+  # chart's native nodeSelector (in values below). A post-render affinity patch was
+  # the cause of the prior pin's rollback loop (helm-controller "context deadline
+  # exceeded" on the slow soyo API) — reverted in 2db5b15. Native values apply
+  # cleanly. ADR-0028.
   values:
     common:
       fullnameOverride: dependency-track
@@ -52,7 +38,16 @@ spec:
         existingSecretName: dependency-track-secret
 
     apiServer:
-      deploymentType: Deployment
+      # StatefulSet (the chart default), NOT Deployment: an ordered recreate frees
+      # the RWO /data volume cleanly when relocating to a worker — a Deployment's
+      # RollingUpdate deadlocks on Multi-Attach. The StatefulSet uses a `data`
+      # volumeClaimTemplate, so /data is recreated fresh (rebuildable NVD/OSV mirror
+      # cache; the encryption secret.key lives in dependency-track-secret, not /data).
+      deploymentType: StatefulSet
+      # Hard-pin off the soyo etcd nodes (ADR-0028). On 2026-06-21 the co-located DB
+      # starved etcd into a leader election; keep DT's compute off the control-plane.
+      nodeSelector:
+        node.webgrip.io/pool: worker
       resources:
         requests:
           cpu: 500m
@@ -95,6 +90,8 @@ spec:
 
     frontend:
       apiBaseUrl: https://dependency-track.${SECRET_DOMAIN}
+      nodeSelector:
+        node.webgrip.io/pool: worker
       resources:
         requests:
           cpu: 50m
