@@ -1,0 +1,15 @@
+---
+# The external Garage S3 backup target (Longhorn 1.11 manages this via the
+# `default` BackupTarget CR — defaultSettings.backupTarget is deprecated/ignored).
+# Off-cluster (10.0.0.110) → volume backups survive a both-worker outage; this is
+# how forgejo-data/gitea-mirror are protected without a soyo replica (ADR-0026).
+# Creds: longhorn-backup-s3 (backup-s3.externalsecret.yaml, OpenBao-sourced).
+apiVersion: longhorn.io/v1beta2
+kind: BackupTarget
+metadata:
+  name: default
+  namespace: longhorn-system
+spec:
+  backupTargetURL: "s3://cnpg-backups-bucket@garage/longhorn-backups"
+  credentialSecret: longhorn-backup-s3
+  pollInterval: "5m0s"
