@@ -38,24 +38,27 @@ spec:
           type: RuntimeDefault
       podAnnotations:
         reloader.stakater.com/auto: "true"
-      # Pinned to the worker POOL (ADR-0028), not the single fringe node — possible
-      # now that media is on an RWX (shared) volume. podAntiAffinity soft spreads
-      # the 2 server replicas across workers for node-level HA.
+      # Single-node by design (RWO /data shared by server+worker; the cluster
+      # disallows RWX). Pin to the high-CPU node via the capability label
+      # node.webgrip.io/cpu=high — which resolves to fringe (the only high-CPU
+      # node), replacing the legacy nodegroup=fringe. Keeps authentik exactly
+      # where it is (no risky move) while dropping the legacy-label dependency.
+      # Node-level HA needs media on S3 first (follow-up). ADR-0028.
       nodeSelector:
-        node.webgrip.io/pool: worker
+        node.webgrip.io/cpu: high
       affinity:
         podAntiAffinity: soft
         nodeAffinity:
           type: hard
           matchExpressions:
-            - key: node.webgrip.io/pool
+            - key: node.webgrip.io/cpu
               operator: In
               values:
-                - worker
+                - high
       volumes:
         - name: authentik-media
           persistentVolumeClaim:
-            claimName: authentik-media-rwx
+            claimName: authentik-media
       volumeMounts:
         - name: authentik-media
           mountPath: /data
