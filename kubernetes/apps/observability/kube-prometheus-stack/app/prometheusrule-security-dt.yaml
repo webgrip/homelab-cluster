@@ -8,101 +8,11 @@ metadata:
     release: kube-prometheus-stack
 spec:
   groups:
-    - name: dependency-track.critical
-      interval: 5m
-      rules:
-        - alert: DependencyTrackCriticalVulnerabilities
-          expr: dt_portfolio_vulnerabilities{severity="critical"} > 0
-          for: 15m
-          labels:
-            severity: warning
-            team: security
-          annotations:
-            summary: "DependencyTrack critical vulnerabilities ({{ $value | humanize }})"
-            description: |
-              What's happening:
-              - The portfolio has {{ $value | humanize }} critical-severity vulnerabilities (15m).
-
-              Impact/risk:
-              - Known-critical CVEs in tracked components raise the supply-chain risk surface.
-
-              Likely causes:
-              - A new dependency CVE was published, or a vulnerable component was added.
-
-              First actions:
-              - Review the affected projects in Dependency-Track.
-              - Patch/upgrade the offending components and re-analyze.
-            runbook_url: "https://dependency-track.webgrip.dev/projects"
-
-        - alert: DependencyTrackPolicyViolationsFail
-          expr: dt_portfolio_policy_violations{state="fail"} > 0
-          for: 15m
-          labels:
-            severity: warning
-            team: security
-          annotations:
-            summary: "DependencyTrack policy FAIL violations ({{ $value | humanize }})"
-            description: |
-              What's happening:
-              - {{ $value | humanize }} components have policy violations at FAIL severity (15m).
-
-              Impact/risk:
-              - Components breach a defined supply-chain policy (license/CVE/age gate).
-
-              Likely causes:
-              - A new component violates policy, or a policy threshold was tightened.
-
-              First actions:
-              - Review the failing policy violations in Dependency-Track.
-              - Remediate the component or adjust the policy with justification.
-            runbook_url: "https://dependency-track.webgrip.dev/projects"
-
-        - alert: DependencyTrackHighRiskScore
-          expr: dt_portfolio_risk_score > 2000
-          for: 30m
-          labels:
-            severity: warning
-            team: security
-          annotations:
-            summary: "DependencyTrack portfolio risk score high ({{ $value | humanize }})"
-            description: |
-              What's happening:
-              - Inherited portfolio risk score is {{ $value | humanize }}, above the 2000 threshold (30m).
-
-              Impact/risk:
-              - Aggregate supply-chain risk across tracked projects is elevated.
-
-              Likely causes:
-              - Accumulated unaudited findings, or new high-risk components added.
-
-              First actions:
-              - Review the Dependency-Track dashboard for the projects driving the score.
-              - Audit/triage findings and remediate the highest-risk components.
-            runbook_url: "https://dependency-track.webgrip.dev/dashboard"
-
-        - alert: DependencyTrackMetricsExporterDown
-          expr: absent(dt_exporter_last_scrape_timestamp) or (time() - dt_exporter_last_scrape_timestamp > 1800)
-          for: 10m
-          labels:
-            severity: warning
-            team: platform
-          annotations:
-            summary: "DependencyTrack metrics exporter not reporting (observability)"
-            description: |
-              What's happening:
-              - The DT Prometheus metrics exporter has not scraped DT in over 30 minutes.
-
-              Impact/risk:
-              - DT vulnerability/policy alerts above are blind while the exporter is down.
-
-              Likely causes:
-              - Exporter pod down, DT API unreachable, or an auth/token issue.
-
-              First actions:
-              - Check the dt-exporter pod logs and DT API health.
-              - Restart the exporter; confirm dt_exporter_last_scrape_timestamp advances.
-            runbook_url: "https://dependency-track.webgrip.dev/projects"
-
+    # NOTE: the DependencyTrack{CriticalVulnerabilities,PolicyViolationsFail,HighRiskScore}
+    # and MetricsExporterDown ALERTS were removed 2026-06-22 — they duplicated the
+    # Grafana SLO rules (slo-dt-critical-cves, slo-dt-policy-fail, slo-dt-risk-score,
+    # slo-dt-exporter-stale) on the same metrics+thresholds (ADR-0030 alerting layer is
+    # the single source). The recording rules below are NOT duplicated and stay here.
     - name: dependency-track.recording
       interval: 5m
       rules:
