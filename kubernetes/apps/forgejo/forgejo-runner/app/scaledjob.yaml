@@ -27,12 +27,19 @@ spec:
   minReplicaCount: 1
   maxReplicaCount: 6
   successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 5
+  # 0: don't retain Failed runner Jobs. The warm-pool runner blocks on `one-job --wait`;
+  # a real CI failure is visible in Forgejo's Actions UI, not worth a lingering k8s Job
+  # object that trips the stock KubeJobFailed alert. Also reaps the old DeadlineExceeded
+  # backlog on the next KEDA reconcile.
+  failedJobsHistoryLimit: 0
   jobTargetRef:
     parallelism: 1
     completions: 1
     backoffLimit: 0
-    activeDeadlineSeconds: 7200
+    # NO activeDeadlineSeconds: the warm-pool runner intentionally blocks on `one-job --wait`
+    # for a task; a 2h deadline killed idle waiters as DeadlineExceeded (false KubeJobFailed
+    # churn every ~2h). Actual job runtime is capped by Forgejo's per-job timeout, which
+    # cleanly signals the runner to stop — so the k8s deadline only ever hurt the warm pool.
     template:
       metadata:
         labels:
