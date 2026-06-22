@@ -17,6 +17,10 @@ spec:
     spec:
       serviceAccountName: forgejo-ci-provisioner
       restartPolicy: Never
+      # Keep this stateless bootstrap Job off the soyo control-planes (ADR-0028);
+      # no reason to spill onto etcd nodes (AppsTierWorkloadSpilledToControlPlane).
+      nodeSelector:
+        node.webgrip.io/pool: worker
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534
