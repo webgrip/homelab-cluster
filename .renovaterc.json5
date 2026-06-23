@@ -12,6 +12,14 @@
     ":automergeBranch",
   ],
   dependencyDashboardTitle: "Renovate Dashboard 🤖",
+  // NOTE on Harbor-proxied charts: non-bootstrap OCI Helm charts have their
+  // OCIRepository url pointed at Harbor's pull-through proxy (harbor.${SECRET_DOMAIN}/ghcr/…,
+  // ADR-0016/0017). Renovate does its version lookup *through* Harbor — verified that
+  // Harbor 2.15's proxy returns the full upstream tag list (not just cached tags), so
+  // discovery is complete. registryAliases is NOT used: its keys match on registry host
+  // only, so they can't disambiguate multiple upstreams behind one Harbor host+path.
+  // Pinned @sha256: digests stay valid (proxy is content-addressable). The two packageRules
+  // below that keyed on ghcr.io are widened to also match the harbor.…/ghcr proxy path.
   ignorePaths: [
     "**/*.sops.*",
     "age.key",
@@ -265,12 +273,13 @@
       separateMultipleMajor: true,
     },
     {
-      description: "Treat missing release timestamps as stable for GHCR Docker datasource updates; Renovate only supports Docker release timestamps on Docker Hub, so GHCR OCI artifacts can otherwise stay pending forever.",
+      description: "Treat missing release timestamps as stable for GHCR Docker datasource updates; Renovate only supports Docker release timestamps on Docker Hub, so GHCR OCI artifacts can otherwise stay pending forever. Also covers charts proxied through Harbor (harbor.${SECRET_DOMAIN}/<project>/…), whose timestamps are likewise unavailable.",
       matchDatasources: [
         "docker"
       ],
       matchPackageNames: [
-        "/^ghcr\\.io\\//"
+        "/^ghcr\\.io\\//",
+        "/^harbor\\.webgrip\\.dev\\//"
       ],
       minimumReleaseAgeBehaviour: "timestamp-optional",
     },
@@ -286,12 +295,13 @@
       groupName: null,
     },
     {
-      description: "Group shared app-template updates into a dedicated PR",
+      description: "Group shared app-template updates into a dedicated PR (matches both the upstream ref and the Harbor pull-through proxy path).",
       matchDatasources: [
         "docker"
       ],
       matchPackageNames: [
-        "ghcr.io/bjw-s-labs/helm/app-template"
+        "ghcr.io/bjw-s-labs/helm/app-template",
+        "harbor.webgrip.dev/ghcr/bjw-s-labs/helm/app-template"
       ],
       groupName: "shared app-template",
       additionalBranchPrefix: "shared-app-template-",
