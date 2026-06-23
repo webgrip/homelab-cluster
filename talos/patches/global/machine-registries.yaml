@@ -1,0 +1,34 @@
+---
+# Harbor pull-through cache mirror (ADR-0017). Per-registry containerd mirror so workload
+# image pulls route through Harbor's proxy-cache projects without rewriting any manifest.
+# Composes with Spegel (prependExisting: true) -> Spegel peers -> Harbor proxy -> upstream.
+# Fails open: skipFallback left default (false), so Harbor/Garage/Envoy down degrades to a
+# direct upstream pull, never ImagePullBackOff. overridePath: true is mandatory so containerd
+# uses the /v2/<project> path verbatim instead of appending its own /v2/.
+machine:
+  registries:
+    mirrors:
+      docker.io:
+        endpoints:
+          - https://harbor.${secretDomain}/v2/dockerhub
+        overridePath: true
+      ghcr.io:
+        endpoints:
+          - https://harbor.${secretDomain}/v2/ghcr
+        overridePath: true
+      quay.io:
+        endpoints:
+          - https://harbor.${secretDomain}/v2/quay
+        overridePath: true
+      mirror.gcr.io:
+        endpoints:
+          - https://harbor.${secretDomain}/v2/gcrmirror
+        overridePath: true
+      registry.k8s.io:
+        endpoints:
+          - https://harbor.${secretDomain}/v2/k8s
+        overridePath: true
+      code.forgejo.org:
+        endpoints:
+          - https://harbor.${secretDomain}/v2/forgejo
+        overridePath: true

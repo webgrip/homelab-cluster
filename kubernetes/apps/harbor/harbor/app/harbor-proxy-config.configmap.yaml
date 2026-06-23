@@ -52,18 +52,21 @@ data:
         | jq -r ".[] | select(.name==\"$$1\") | .id" 2>/dev/null | head -n1
     }
 
-    # ensure_registry NAME TYPE URL USER PASS -> registry id on stdout (or empty)
+    # ensure_registry NAME TYPE URL [USER] [PASS] -> registry id on stdout (or empty)
+    # Credentials are optional: anonymous pull-through (quay/gcr/k8s/forgejo) creates the
+    # endpoint without a credential block; dockerhub/ghcr include creds to lift rate limits.
     ensure_registry() {
       _name="$$1"; _type="$$2"; _url="$$3"; _user="$${4:-}"; _pass="$${5:-}"
       _id="$$(registry_id "$$_name")"
       if [ -n "$$_id" ] && [ "$$_id" != "null" ]; then
         log "registry '$$_name' already exists (id=$$_id)"; echo "$$_id"; return 0
       fi
-      if [ -z "$$_user" ] || [ -z "$$_pass" ]; then
-        log "registry '$$_name': no upstream credentials in secret/harbor/registry-proxy — skipping"
-        return 0
+      if [ -n "$$_user" ] && [ -n "$$_pass" ]; then
+        _body="{\"name\":\"$$_name\",\"type\":\"$$_type\",\"url\":\"$$_url\",\"insecure\":false,\"credential\":{\"type\":\"basic\",\"access_key\":\"$$_user\",\"access_secret\":\"$$_pass\"}}"
+      else
+        log "registry '$$_name': no upstream credentials — creating anonymous endpoint"
+        _body="{\"name\":\"$$_name\",\"type\":\"$$_type\",\"url\":\"$$_url\",\"insecure\":false}"
       fi
-      _body="{\"name\":\"$$_name\",\"type\":\"$$_type\",\"url\":\"$$_url\",\"insecure\":false,\"credential\":{\"type\":\"basic\",\"access_key\":\"$$_user\",\"access_secret\":\"$$_pass\"}}"
       if _out="$$(hc POST "/registries" "$$_body" 2>&1)"; then
         log "created registry endpoint '$$_name' -> $$_url"
       else
@@ -137,6 +140,23 @@ data:
     GH_ID="$$(ensure_registry ghcr docker-registry https://ghcr.io \
       "$${GHCR_USERNAME:-}" "$${GHCR_TOKEN:-}")"
     [ -n "$$GH_ID" ] && [ "$$GH_ID" != "null" ] && ensure_proxy_project ghcr "$$GH_ID"
+
+    # Anonymous upstreams (no creds needed); each maps to a Talos machine.registries mirror.
+    # quay.io -> proxy project "quay" (prometheus, jetstack/cert-manager)
+    QUAY_ID="$$(ensure_registry quay docker-registry https://quay.io)"
+    [ -n "$$QUAY_ID" ] && [ "$$QUAY_ID" != "null" ] && ensure_proxy_project quay "$$QUAY_ID"
+
+    # mirror.gcr.io -> proxy project "gcrmirror" (coredns)
+    GCRM_ID="$$(ensure_registry gcrmirror docker-registry https://mirror.gcr.io)"
+    [ -n "$$GCRM_ID" ] && [ "$$GCRM_ID" != "null" ] && ensure_proxy_project gcrmirror "$$GCRM_ID"
+
+    # registry.k8s.io -> proxy project "k8s" (forward-looking: kube system images)
+    K8S_ID="$$(ensure_registry k8s docker-registry https://registry.k8s.io)"
+    [ -n "$$K8S_ID" ] && [ "$$K8S_ID" != "null" ] && ensure_proxy_project k8s "$$K8S_ID"
+
+    # code.forgejo.org -> proxy project "forgejo" (forgejo-runner)
+    FORGEJO_ID="$$(ensure_registry forgejo docker-registry https://code.forgejo.org)"
+    [ -n "$$FORGEJO_ID" ] && [ "$$FORGEJO_ID" != "null" ] && ensure_proxy_project forgejo "$$FORGEJO_ID"
 
     # Own-image hosting: private project + CI robot (webgrip/{infrastructure,workflows} handoffs)
     ensure_private_project webgrip
