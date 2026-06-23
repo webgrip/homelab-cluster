@@ -1,6 +1,15 @@
+---
 machine:
   network:
     disableSearchDomain: true
     nameservers:
       - 1.1.1.1
       - 1.0.0.1
+    # Harbor is LAN-only (ADR-0005): harbor.${secretDomain} has no public DNS record, so the
+    # node resolver (1.1.1.1) NXDOMAINs it. The containerd registry mirror (ADR-0017) points at
+    # https://harbor.${secretDomain}/v2/… — without this static entry every mirrored pull silently
+    # falls back to upstream and nothing routes through Harbor. 10.0.0.27 = envoy-internal LAN VIP.
+    extraHostEntries:
+      - ip: 10.0.0.27
+        aliases:
+          - harbor.${secretDomain}
