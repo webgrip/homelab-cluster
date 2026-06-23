@@ -1,6 +1,13 @@
 # ADR-0017: Inject the Harbor mirror at the Talos/containerd layer, composed with Spegel
 
-> Status: **Proposed** · Date: 2026-06-13 · Part of [RFC: Harbor Pull-Through Proxy Cache](../rfc/rfc-harbor-proxy-cache.md)
+> Status: **Accepted** · Date: 2026-06-13 (accepted 2026-06-23) · Part of [RFC: Harbor Pull-Through Proxy Cache](../rfc/rfc-harbor-proxy-cache.md)
+>
+> **Applied 2026-06-23** on all 5 nodes via `task talos:apply-node … MODE=no-reboot` (the registry
+> mirror is a containerd config reload — no drain or reboot needed). Spegel `prependExisting: true`
+> shipped. The mirror covers all six upstreams (`docker.io`, `ghcr.io`, `quay.io`, `mirror.gcr.io`,
+> `registry.k8s.io`, `code.forgejo.org`). Fallback drill passed: an uncached pull succeeded with
+> Harbor scaled to zero. The `${secretDomain}` value is supplied via plaintext `talos/talenv.yaml`
+> (`secretDomain: webgrip.dev` — not sensitive), not SOPS.
 
 ## Context
 

@@ -1,16 +1,23 @@
 # RFC: Harbor Pull-Through Proxy Cache
 
-> Status: **Proposed.** This RFC proposes routing the cluster's *third-party* image pulls
+> Status: **Accepted (2026-06-23).** This RFC routes the cluster's *third-party* image pulls
 > (`docker.io`, `ghcr.io`, …) through Harbor pull-through **proxy-cache projects**, wired at the
 > containerd registry-mirror layer so manifests keep their upstream image references and
 > containerd transparently tries the cache first and **falls back to upstream when Harbor is
 > down**. The individual decisions are [ADR-0016](../adr/adr-0016-harbor-pull-through-proxy-cache.md)
 > (adopt the cache), [ADR-0017](../adr/adr-0017-registry-mirror-talos-spegel.md) (where the mirror is
 > injected), and [ADR-0018](../adr/adr-0018-harbor-config-idempotent-job.md) (how the Harbor side is
-> provisioned in GitOps). It is the umbrella; it flips to **Accepted** when the Phase-1 cutover
-> lands and the fallback drill passes. It extends — does not replace — the
+> provisioned in GitOps). It extends — does not replace — the
 > [Harbor Container Registry RFC](rfc-harbor-registry.md), whose "replication to/from a remote
 > Harbor" was explicitly deferred.
+>
+> **Cutover landed 2026-06-23:** the Talos mirror is applied on all 5 nodes and the fallback drill
+> passed (uncached pull succeeds with Harbor scaled to zero). Phase 2 came with it — coverage is
+> **all six upstreams** (`dockerhub`, `ghcr`, `quay`, `gcrmirror`, `k8s`, `forgejo`), not just two.
+> A follow-on extended the same proxies to **non-bootstrap OCI Helm charts** by rewriting their
+> `OCIRepository` url (charts bypass containerd, so they can't use the transparent mirror); that
+> path is **not** fail-open, so its scope is bounded to non-bootstrap charts — see
+> [ADR-0016](../adr/adr-0016-harbor-pull-through-proxy-cache.md) consequences.
 
 [harbor-proxy]: https://goharbor.io/docs/2.10.0/administration/configure-proxy-cache/
 [spegel]: https://spegel.dev/
@@ -58,7 +65,7 @@ with upstream fallback; idempotent GitOps provisioning of the Harbor-side config
 
 | # | Decision | Choice |
 |---|----------|--------|
-| [ADR-0016](../adr/adr-0016-harbor-pull-through-proxy-cache.md) | Adopt a pull-through cache | **Two Harbor proxy-cache projects**, `dockerhub` → docker.io and `ghcr` → ghcr.io |
+| [ADR-0016](../adr/adr-0016-harbor-pull-through-proxy-cache.md) | Adopt a pull-through cache | **Six Harbor proxy-cache projects** (`dockerhub`, `ghcr`, `quay`, `gcrmirror`, `k8s`, `forgejo`); started as two (docker.io, ghcr.io) and extended to all upstreams at cutover |
 | [ADR-0017](../adr/adr-0017-registry-mirror-talos-spegel.md) | Where to inject the mirror | **Talos `machine.registries.mirrors`** (per-registry, `overridePath`) composed with **Spegel `prependExisting: true`**; upstream fallback on |
 | [ADR-0018](../adr/adr-0018-harbor-config-idempotent-job.md) | How to provision Harbor | **Idempotent CronJob** against the Harbor v2 API (no operator exists); creds via ESO/OpenBao |
 
@@ -128,17 +135,19 @@ not a new hard dependency.
 - **Gate:** `docker pull harbor.${SECRET_DOMAIN}/dockerhub/library/hello-world` succeeds on the
   LAN before proceeding.
 
-**Phase 1 — pull-path cutover (node-touching, human-gated).**
+**Phase 1 — pull-path cutover (node-touching, human-gated). ✅ done 2026-06-23.**
 
-- Apply the Talos `machine.registries.mirrors` patch from
-  [ADR-0017](../adr/adr-0017-registry-mirror-talos-spegel.md), one node at a time (reboot-safe drain via
-  the `talos` skill).
+- Applied the Talos `machine.registries.mirrors` patch from
+  [ADR-0017](../adr/adr-0017-registry-mirror-talos-spegel.md) on all 5 nodes (`MODE=no-reboot` — a
+  containerd config reload, so no drain/reboot was needed).
 - Set Spegel `prependExisting: true` in its HelmRelease values.
-- **Drill:** scale Harbor to zero, confirm a fresh pull of an *uncached* image still succeeds
-  (upstream fallback), then restore Harbor and confirm the pull is served from the proxy.
+- **Drill passed:** with `harbor-core`/`harbor-registry` scaled to zero, a fresh pull of an
+  uncached image still succeeded (upstream fallback), then Harbor was restored.
 
-**Phase 2 — expansion (future).** Add `quay.io` / `registry.k8s.io` proxy projects; revisit
-whether the proxy projects should enforce Trivy "prevent vulnerable from running" gates.
+**Phase 2 — expansion. ✅ done 2026-06-23.** Added `quay`, `gcrmirror` (mirror.gcr.io), `k8s`
+(registry.k8s.io) and `forgejo` proxy projects (all anonymous). Also extended the proxies to
+non-bootstrap OCI Helm charts (url rewrite). **Still open:** Trivy "prevent vulnerable from
+running" gates on the proxy projects, and proxy-cache retention/TTL to bound Garage growth.
 
 ## Success criteria
 

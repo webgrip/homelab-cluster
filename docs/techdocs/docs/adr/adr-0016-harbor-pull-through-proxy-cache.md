@@ -1,6 +1,13 @@
 # ADR-0016: Adopt Harbor pull-through proxy cache for third-party images
 
-> Status: **Proposed** · Date: 2026-06-13 · Part of [RFC: Harbor Pull-Through Proxy Cache](../rfc/rfc-harbor-proxy-cache.md)
+> Status: **Accepted** · Date: 2026-06-13 (accepted 2026-06-23) · Part of [RFC: Harbor Pull-Through Proxy Cache](../rfc/rfc-harbor-proxy-cache.md)
+>
+> **2026-06-23 cutover:** the mirror ([ADR-0017](adr-0017-registry-mirror-talos-spegel.md)) is
+> applied on all 5 nodes and the fallback drill passed (image pulls succeed with Harbor scaled to
+> zero). Coverage was extended beyond the original two projects to **all six upstreams** in the
+> tree — `dockerhub`, `ghcr`, `quay`, `gcrmirror` (mirror.gcr.io), `k8s` (registry.k8s.io) and
+> `forgejo` (code.forgejo.org) — anonymous proxy-cache projects, provisioned idempotently
+> ([ADR-0018](adr-0018-harbor-config-idempotent-job.md)).
 
 ## Context
 
@@ -47,6 +54,19 @@ GitOps ([ADR-0018](adr-0018-harbor-config-idempotent-job.md)) are separate decis
   is the load-bearing win.
 - **Storage growth** in the Garage `harbor` bucket; proxy-cache retention/TTL policies bound it
   (Phase 2).
+- **Helm charts narrow the fail-open stance (2026-06-23).** Image pulls fail open via the
+  containerd mirror, but Flux's source-controller fetches OCI *charts* directly (no containerd, no
+  Talos mirror), so routing them through Harbor required rewriting the `OCIRepository` `url:` to
+  `harbor.${SECRET_DOMAIN}/<project>/…`. Unlike images this is **not** fail-open: while Harbor is
+  down, the affected apps cannot **install or upgrade** (already-running releases keep running —
+  charts are only fetched on reconcile-with-change). The blast radius is deliberately bounded:
+  only **non-bootstrap** OCI charts were rewritten; everything in the bootstrap / reach-Harbor path
+  (flux, cilium, coredns, cert-manager, external-secrets, kyverno, k8s-gateway, envoy-gateway,
+  spegel, trust-manager) stays upstream, and the 21 HTTP `HelmRepository` sources stay upstream
+  (Harbor's proxy is OCI-only — ChartMuseum was removed in 2.8). Renovate keeps working without
+  `registryAliases`: Harbor 2.15's proxy returns the full upstream tag list, so version discovery
+  through the proxy path is complete (the `ghcr.io`-keyed packageRules were widened to also match
+  the `harbor.${SECRET_DOMAIN}/ghcr` path).
 
 ## Alternatives considered
 
