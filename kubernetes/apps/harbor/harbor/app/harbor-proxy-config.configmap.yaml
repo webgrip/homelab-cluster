@@ -163,6 +163,19 @@ data:
       fi
     }
 
+    # ensure_project_scanning PROJECT -> Trivy scan-on-push + native SBOM-on-push so every pushed
+    # artifact is scanned and gets a Harbor SBOM with no manual click. Set as two PUTs: scan-on-push
+    # works on any Harbor; auto_sbom_generation needs Harbor >= 2.11, so it's best-effort/fail-soft.
+    ensure_project_scanning() {
+      _proj="$$1"
+      _pid="$$(hc GET "/projects?name=$$_proj" 2>/dev/null | jq -r ".[] | select(.name==\"$$_proj\") | .project_id" 2>/dev/null | head -n1)"
+      [ -n "$$_pid" ] && [ "$$_pid" != "null" ] || { log "WARN: $$_proj project id not found; skipping scan config"; return 0; }
+      hc PUT "/projects/$$_pid" '{"metadata":{"auto_scan":"true"}}' >/dev/null 2>&1 \
+        && log "scan-on-push enabled on $$_proj" || log "WARN: scan-on-push enable failed on $$_proj"
+      hc PUT "/projects/$$_pid" '{"metadata":{"auto_sbom_generation":"true"}}' >/dev/null 2>&1 \
+        && log "sbom-on-push enabled on $$_proj" || log "WARN: sbom-on-push enable failed on $$_proj (needs Harbor >= 2.11)"
+    }
+
     # docker.io -> proxy project "dockerhub"
     DH_ID="$$(ensure_registry docker-hub docker-hub https://hub.docker.com \
       "$${DOCKERHUB_USERNAME:-}" "$${DOCKERHUB_TOKEN:-}")"
@@ -198,5 +211,6 @@ data:
     # tag-retention policy (keep latest 10 versions; the rest get untagged for GC to reclaim).
     ensure_gc_schedule
     ensure_retention webgrip
+    ensure_project_scanning webgrip
 
     log "reconcile complete"
