@@ -54,6 +54,7 @@ This is the repo's first ADR section; the conventions below apply to everything 
 | [Node taxonomy & storage placement](../rfc/rfc-node-taxonomy-and-storage-placement.md) | Proposed | Capability node taxonomy + move Longhorn off the control-planes onto the workers; apps hard-pin to workers; scoped forgejo storage exception. |
 | [Observability alerting reliability](../rfc/rfc-observability-alerting-reliability.md) | Accepted | Fix the silently-broken SLO rules, lint the rule shape, and monitor the alerting system itself. |
 | [Kyverno audit→enforce hardening](../rfc/rfc-kyverno-audit-enforce-hardening.md) | Proposed | Gated, one-at-a-time promotion of the 11 audit policies to enforce, with a no-enforce-without-tests CI gate. |
+| [CI pipeline performance](../rfc/rfc-ci-pipeline-performance.md) | Accepted | Kill the per-job cold start: pre-baked action cache + offline mode, amd64-default builds via a constrictor fast-workflow; the warm-cache half of ADR-0008's topology C, landed early. |
 
 ### ADRs
 
@@ -93,3 +94,5 @@ This is the repo's first ADR section; the conventions below apply to everything 
 | [ADR-0032](adr-0032-reenable-pyroscope-worker-pool.md) | Accepted | Re-enable Pyroscope hard-pinned to the worker pool (supersedes the 2026-06-03 suspension); defrag-gated un-suspend. |
 | [ADR-0033](adr-0033-kyverno-enforce-promotion-policy.md) | Proposed | Gated Kyverno audit→enforce promotion via split + overrides; mandatory CI test-coverage gate. |
 | [ADR-0034](adr-0034-approved-registries-stays-audit.md) | Proposed | `require-approved-registries` stays Audit; enforce only ever via Harbor proxy + admission mutate-rewrite. |
+| [ADR-0035](adr-0035-action-clone-wall.md) | Accepted | The action-clone wall: forgejo-runner 12.10.2 has no offline mode (verified), so measure first after the amd64 fix; scoped LAN mirror if still needed; reject pre-bake / global DEFAULT_ACTIONS_URL / RWX. |
+| [ADR-0036](adr-0036-amd64-default-constrictor-build.md) | Accepted | amd64-by-default image builds (QEMU only on demand) via a new constrictor fast-build workflow; keep buildx + Harbor layer cache. |
