@@ -8,16 +8,19 @@ image builds. This is **Topology A, host-mode** from [ADR-0008](../adr/adr-0008-
 - **Manifests:** `kubernetes/apps/forgejo/forgejo-runner/`
 - **Scaler:** KEDA `ScaledJob/forgejo-runner` (namespace `forgejo`), trigger type `forgejo-runner`
   against `forgejo-http.forgejo.svc.cluster.local:3000`, `global: "true"`, `labels: docker`
-- **Nodes:** pinned to the `fringe` nodegroup (`nodeSelector` + `dedicated=fringe` toleration)
+- **Nodes:** `nodeSelector node.webgrip.io/pool: worker` (the `dedicated=fringe` taint was retired
+  2026-06-19; the toleration stays, dormant). In practice pods land on `fringe-workstation` (8c/~15Gi).
 - **Label:** advertises exactly one honest label — `docker` (host-mode). Workflows `runs-on: docker`.
 
 ## How it scales
 
 ```
-pollingInterval: 30        # scaler asks Forgejo "how many `docker` jobs are pending?" every 30s
-minReplicaCount: 1         # WARM POOL: always keep N runners blocked on `one-job --wait`
+pollingInterval: 15        # scaler asks Forgejo "how many `docker` jobs are pending?" every 15s
+minReplicaCount: 2         # WARM POOL: always keep N runners blocked on `one-job --wait`
 maxReplicaCount: 6         # burst ceiling
-activeDeadlineSeconds:7200 # a runner Job is killed after 2h (also caps an idle warm runner)
+# NO activeDeadlineSeconds: the warm pool intentionally blocks on `one-job --wait`; a k8s deadline
+# would kill idle waiters as DeadlineExceeded (false KubeJobFailed churn). Job runtime is capped by
+# Forgejo's per-job timeout (config.yaml `timeout: 1h`). failedJobsHistoryLimit: 0 (don't retain).
 ```
 
 - **Warm pool.** `minReplicaCount: N` keeps N runner Jobs running permanently. Each runs
@@ -27,12 +30,13 @@ activeDeadlineSeconds:7200 # a runner Job is killed after 2h (also caps an idle 
   no-op for burst pods (their task is already pending).
 - **Burst.** When pending jobs exceed the warm pool, KEDA creates more Jobs up to
   `maxReplicaCount`. As each warm runner takes a job and exits, KEDA backfills to maintain the floor.
-- **Capacity bound.** The warm pool only fits if the `fringe` node has memory for it. Today there is
-  **one** fringe node, so `minReplicaCount` is **1** (2 left the second pod `Pending: Insufficient
-  memory`). Bump it back up once fringe capacity grows.
-- **Idle recycle.** A warm runner with no work is killed at `activeDeadlineSeconds` (2h) and
-  backfilled — so during long-idle periods you'll see a periodic `Failed` (DeadlineExceeded) Job in
-  history. `failedJobsHistoryLimit: 5` bounds it; it's cosmetic.
+- **Capacity bound.** Each pod reserves ~**500m CPU / ~1.0Gi** by *requests* (runner 250m/512Mi +
+  dind 250m/512Mi); neither container sets a CPU limit, so a lone build bursts into the idle node
+  (observed ~1 core). The worker pool is `fringe-workstation` (8c/~15Gi) + `worker-1` (4c) — the
+  warm pool + burst fit comfortably (peak concurrency observed: **3 of 6**). `minReplicaCount` was
+  briefly **1** while dind carried a 4Gi mem *limit* that inflated node memory pressure (the 2nd
+  warm pod went `Pending: Insufficient memory`); with that limit cut to **1.5Gi** (peak use ~649Mi)
+  it is back to **2**.
 
 ## The runner identity (registration)
 

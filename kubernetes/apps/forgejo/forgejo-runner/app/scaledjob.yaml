@@ -17,14 +17,15 @@ metadata:
   name: forgejo-runner
   namespace: forgejo
 spec:
-  pollingInterval: 30
-  # Warm pool: keep 1 runner always blocked on `one-job --wait` so routine jobs start with no
-  # cold-start, then burst up to maxReplicaCount under load. KEDA backfills as the warm runner
-  # takes a job and exits. Each pod (a privileged dind sidecar) requests ~200m CPU / ~768Mi and
-  # runs 24/7 on the fringe nodes. Was 2, but the single fringe node only had memory headroom for
-  # one warm runner (the 2nd stayed Pending: Insufficient memory) — bump back up once fringe
-  # capacity grows. Set to 0 for pure scale-from-zero.
-  minReplicaCount: 1
+  pollingInterval: 15
+  # Warm pool: keep runners always blocked on `one-job --wait` so routine jobs start with no
+  # cold-start, then burst up to maxReplicaCount under load. KEDA backfills as a warm runner
+  # takes a job and exits. Each pod (a privileged dind sidecar) reserves ~500m CPU / ~1.0Gi by
+  # requests and runs 24/7 on the worker pool. Back to 2: the old "2nd warm runner Pending:
+  # Insufficient memory" was driven by dind's oversized 4Gi mem LIMIT inflating node pressure;
+  # that limit is now 1.5Gi (peak usage ~649Mi) and fringe-workstation (8c/~15Gi) has ample
+  # headroom (~1.5c used). Set to 0 for pure scale-from-zero.
+  minReplicaCount: 2
   maxReplicaCount: 6
   successfulJobsHistoryLimit: 3
   # 0: don't retain Failed runner Jobs. The warm-pool runner blocks on `one-job --wait`;
@@ -105,11 +106,13 @@ spec:
               periodSeconds: 2
               failureThreshold: 30
             resources:
+              # No CPU limit: let a lone build burst into the idle node (observed ~0.8 core peak).
+              # Mem peak ~649Mi over 7d, so 1.5Gi is ~2.3x headroom (was 4Gi, wildly over-provisioned).
               requests:
-                cpu: 100m
+                cpu: 250m
                 memory: 512Mi
               limits:
-                memory: 4Gi
+                memory: 1536Mi
         containers:
           - name: runner
             # Host-mode toolchain image: docker CLI + buildx plugin, git, php, dotnet; runs as the
@@ -159,11 +162,13 @@ spec:
                 mountPath: /certs
                 readOnly: true
             resources:
+              # No CPU limit: steps run host-mode here and burst to ~1 core on an idle node.
+              # Mem peak ~796Mi/1Gi (78%, tight) over 7d, so raise the ceiling to 1.25Gi.
               requests:
-                cpu: 100m
-                memory: 256Mi
+                cpu: 250m
+                memory: 512Mi
               limits:
-                memory: 1Gi
+                memory: 1280Mi
         volumes:
           - name: config
             configMap:
