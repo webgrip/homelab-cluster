@@ -1,7 +1,7 @@
 ---
 name: forgejo-leading
 description: Migrate a webgrip repo from GitHub-leading (gitea-mirror pull-mirror into Forgejo) to Forgejo-leading — stop the mirror, un-mirror in Forgejo, re-point local git remotes (origin→Forgejo SSH, github→GitHub). Needed because in-cluster Forgejo CI must git-push tags/releases, which a read-only pull-mirror rejects.
-when_to_use: Use when making a repo Forgejo-leading, cutting a repo over from GitHub to Forgejo, stopping gitea-mirror for one repo, un-mirroring a pull-mirror, fixing "remote: mirror repository is read-only" (403) on push, or re-pointing origin to forgejo-ssh.webgrip.dev. webgrip/workflows is first (reusable-workflow library); infrastructure already done.
+when_to_use: Use when making a repo Forgejo-leading, cutting a repo over from GitHub to Forgejo, stopping gitea-mirror for one repo, un-mirroring a pull-mirror, fixing "remote: mirror repository is read-only" (403) on push, or re-pointing origin to forgejo-ssh.webgrip.dev. Also covers post-cutover parity: enabling Forgejo Actions to match GitHub, push-mirroring back to GitHub, and branch protection (scripts/forgejo-sync.sh). webgrip/workflows is first (reusable-workflow library); infrastructure already done.
 allowed-tools: Bash(git status:*), Bash(git remote -v), Bash(git fetch:*), Bash(git rev-parse:*), Bash(git log:*)
 ---
 
@@ -21,6 +21,10 @@ API** (gitea-mirror state is a private SQLite DB; Forgejo pull-mirror removal is
 DB edits.
 
 ## Procedure
+
+**Two shapes.** If the repo is a Forgejo pull-mirror, do step 1. If it was **never mirrored** (GET
+`/api/v1/repos/webgrip/<r>` → 404), skip step 1 — instead create an **empty** repo on Forgejo (match
+GitHub visibility), and in step 2 populate it with `git push origin --all && git push origin --tags`.
 
 **1. Stop the mirror + un-mirror (UI — PAUSE here, can't automate):**
    - **gitea-mirror UI** (`gitea-mirror.${SECRET_DOMAIN}`): disable sync / remove the repo from the
@@ -58,7 +62,16 @@ git push origin main                         # no-op if synced. 403 "mirror repo
 git push github main                         # still mirrors to GitHub until it's archived
 ```
 
-**4. Record state** in the migration memory (repo now Forgejo-leading; what's left). Personal memory —
+**4. Settings parity to GitHub** — gitea-mirror creates repos with the **Actions unit OFF**; this turns
+it back on (matching GitHub), adds a Forgejo→GitHub push-mirror (auto-backup), and mirrors GitHub's `main`
+branch protection. Run `scripts/forgejo-sync.sh` (dry-run first, then `--apply`):
+```bash
+set -a; source ~/.config/webgrip/forgejo.env; set +a   # FORGEJO_TOKEN (write:repository) + GH_MIRROR_TOKEN (GitHub PAT, repo)
+scripts/forgejo-sync.sh --repo <name>            # dry-run: shows the planned Actions/mirror/protect changes
+scripts/forgejo-sync.sh --repo <name> --apply
+```
+
+**5. Record state** in the migration memory (repo now Forgejo-leading; what's left). Personal memory —
 not a committed link.
 
 ## Gotchas
@@ -73,3 +86,9 @@ not a committed link.
   (forgejo-ci-provisioner), so semantic-release can push tags once the repo is writable.
 - **Don't migrate a consumer before `webgrip/workflows`** — its CI `uses:` the workflows lib; resolve
   that on Forgejo first.
+- **`forgejo-sync.sh` token scopes:** `FORGEJO_TOKEN` = `write:repository` (repo edit/mirror/protection).
+  A `/user` call 403s with a repo-scoped token — expected, the script doesn't use it. `--all` (org sweep)
+  additionally needs `read:organization`; without it, pass `--repo <name>` explicitly.
+- **Never copy GitHub `status_check_contexts` into Forgejo branch protection** — they're GitHub job names;
+  Forgejo's checks differ, so requiring them deadlocks every merge. `forgejo-sync.sh` drops them and warns;
+  re-add under Forgejo check names after CI has run once.
