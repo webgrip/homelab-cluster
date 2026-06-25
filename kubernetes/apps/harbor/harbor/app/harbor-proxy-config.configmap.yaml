@@ -131,6 +131,38 @@ data:
       fi
     }
 
+    # ensure_gc_schedule -> registry-wide garbage collection, weekly, deleting UNTAGGED manifests.
+    # This is what reclaims the orphaned buildx `:cache` manifests (each cache-to push overwrites the
+    # `cache` tag and leaves the previous manifest untagged) plus anything retention has untagged.
+    # The live `cache` tag is kept (it's tagged). Idempotent: GET decides create (POST) vs update (PUT).
+    ensure_gc_schedule() {
+      _body='{"schedule":{"type":"Custom","cron":"0 30 3 * * 0"},"parameters":{"delete_untagged":true,"workers":1}}'
+      _cur="$$(hc GET "/system/gc/schedule" 2>/dev/null | jq -r '.schedule.cron // empty' 2>/dev/null)"
+      if [ -z "$$_cur" ]; then
+        hc POST "/system/gc/schedule" "$$_body" >/dev/null 2>&1 && log "GC schedule created (Sun 03:30, delete_untagged)" || log "WARN: GC schedule create failed"
+      else
+        hc PUT "/system/gc/schedule" "$$_body" >/dev/null 2>&1 && log "GC schedule updated (Sun 03:30, delete_untagged)" || log "WARN: GC schedule update failed"
+      fi
+    }
+
+    # ensure_retention PROJECT -> keep the latest 10 pushed tags per repo; older versions become
+    # untagged and the weekly GC reclaims them. The `cache` tag is excluded so retention never
+    # targets it. Skips if a retention policy already exists on the project (metadata.retention_id).
+    ensure_retention() {
+      _proj="$$1"
+      _pid="$$(hc GET "/projects?name=$$_proj" 2>/dev/null | jq -r ".[] | select(.name==\"$$_proj\") | .project_id" 2>/dev/null | head -n1)"
+      [ -n "$$_pid" ] && [ "$$_pid" != "null" ] || { log "WARN: $$_proj project id not found; skipping retention"; return 0; }
+      if [ -n "$$(hc GET "/projects/$$_pid" 2>/dev/null | jq -r '.metadata.retention_id // empty' 2>/dev/null)" ]; then
+        log "retention policy already set on $$_proj"; return 0
+      fi
+      _body="{\"algorithm\":\"or\",\"rules\":[{\"action\":\"retain\",\"template\":\"latestPushedK\",\"params\":{\"latestPushedK\":10},\"scope_selectors\":{\"repository\":[{\"kind\":\"doublestar\",\"decoration\":\"repoMatches\",\"pattern\":\"**\"}]},\"tag_selectors\":[{\"kind\":\"doublestar\",\"decoration\":\"matches\",\"pattern\":\"**\"},{\"kind\":\"doublestar\",\"decoration\":\"excludes\",\"pattern\":\"cache\"}]}],\"scope\":{\"level\":\"project\",\"ref\":$$_pid},\"trigger\":{\"kind\":\"Schedule\",\"settings\":{\"cron\":\"0 0 4 * * *\"}}}"
+      if _out="$$(hc POST "/retentions" "$$_body" 2>&1)"; then
+        log "retention policy created on $$_proj (keep latest 10 pushed, excl. cache)"
+      else
+        log "WARN: failed to create retention on $$_proj: $$_out"
+      fi
+    }
+
     # docker.io -> proxy project "dockerhub"
     DH_ID="$$(ensure_registry docker-hub docker-hub https://hub.docker.com \
       "$${DOCKERHUB_USERNAME:-}" "$${DOCKERHUB_TOKEN:-}")"
@@ -161,5 +193,10 @@ data:
     # Own-image hosting: private project + CI robot (webgrip/{infrastructure,workflows} handoffs)
     ensure_private_project webgrip
     ensure_webgrip_robot
+
+    # Storage hygiene: weekly registry GC (reaps untagged incl. orphaned build cache) + a webgrip
+    # tag-retention policy (keep latest 10 versions; the rest get untagged for GC to reclaim).
+    ensure_gc_schedule
+    ensure_retention webgrip
 
     log "reconcile complete"
