@@ -80,6 +80,19 @@ spec:
           name: renovate-runtime-token
           key: RENOVATE_HOST_RULES
           optional: true
+    # github.com DATASOURCE auth (distinct from the GHCR registry auth above). On the Forgejo platform
+    # Renovate has no github.com credential, so github-actions/github-releases/github-tags lookups hit
+    # api.github.com anonymously and rate-limit ("Please set a GITHUB_COM_TOKEN"). Reuse the same
+    # GitHub-App installation token the GitHub path already uses for these datasources (the gitops path
+    # proves it can read them) — it authenticates public reads and lifts 60→5000/h. GITHUB_COM_TOKEN is
+    # Renovate's purpose-built env for a non-github platform querying github.com (ADR-0013: GitHub stays
+    # the version oracle during dual-run). optional: falls back to anonymous until the first token mint.
+    - name: GITHUB_COM_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: renovate-runtime-token
+          key: token
+          optional: true
   extraVolumes:
     - name: config
       configMap:
