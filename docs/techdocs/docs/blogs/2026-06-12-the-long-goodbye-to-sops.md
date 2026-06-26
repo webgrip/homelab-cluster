@@ -154,7 +154,7 @@ You cannot bootstrap a secrets manager entirely from secrets it manages. Somethi
 - **`cluster-secrets.sops.yaml`**, which carries `${SECRET_DOMAIN}` and is substituted into roughly fifty `ks.yaml` files at *build time*. ESO writes runtime Secrets; it cannot do build‑time string substitution into Flux Kustomizations. This one stays SOPS forever, by design and without apology.
 - The **OpenBao unseal key**, held as `openbao-keys` — the one credential that lets the vault open itself.
 
-Everything above that floor is now ESO. Out of forty‑seven encrypted files, the cluster is down to essentially two `*.sops.yaml` under `kubernetes/`: the permanent `cluster-secrets` floor, and a single straggler.
+Everything above that floor is now ESO. Out of forty‑seven encrypted files, the cluster is down to exactly two `*.sops.yaml` under `kubernetes/`: the permanent `cluster-secrets` floor, and a single straggler. The migration above the floor is, for all practical purposes, done.
 
 That straggler is **`zomboid-secrets`**, and it's blocked for an honest reason: there is no live `zomboid-secrets` Secret in the cluster at all — only the SOPS file. A `PushSecret` seeds *from* a live Secret, so there's nothing to seed. It's a decision, not a task: either provide the values or delete an unused file. Exactly the kind of thing worth leaving to a human who knows which it is.
 
@@ -171,6 +171,6 @@ And the properties we got almost for free are the ones that matter at 3am:
 - **Rotation is a value change, not a ceremony.** Push a new value, let ESO reconcile it down. The thing that used to be a careful manual encryption is now a write to a vault.
 - **Disaster recovery has a known shape.** The vault's own state rides the CNPG backups; the floor that recovers it is four files and an unseal key, all written down.
 
-The human is out of the loop where the human was only ever a source of toil and risk — and still firmly *in* the loop for the two or three decisions that genuinely need judgment. That was the whole point. SOPS served this cluster well for a long time, and a thin, deliberate sliver of it always will. But the long goodbye is, at last, very nearly done.
+The human is out of the loop where the human was only ever a source of toil and risk — and still firmly *in* the loop for the two or three decisions that genuinely need judgment. That was the whole point. SOPS served this cluster well for a long time, and a thin, deliberate sliver of it always will. But the long goodbye is, at last, over: everything above the floor has crossed to ESO, and all that remains of SOPS is the handful of files that were always meant to stay — the age key, `cluster-secrets`, the Talos and deploy identities, the unseal key — plus one honest straggler waiting on a decision, not a migration.
 
 *— and the secrets, for the first time, mostly look after themselves.*

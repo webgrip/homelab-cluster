@@ -39,10 +39,16 @@ admission webhook "validate.kyverno.svc-fail" denied the request:
   Privileged mode is disallowed ... /spec/template/spec/initContainers/1/securityContext/privileged/
 ```
 
-`initContainers[1]` is the `dind` sidecar. The runner advertises one honest label and builds images
-with a **privileged** Docker-in-Docker — and `forgejo` is an *application* namespace, where Kyverno's
-`pod-security-baseline-enforce` policy forbids privileged containers. So KEDA created the Job, the
-Job was rejected at admission, no pod ever existed, and the workflow sat pending forever. The runner
+`initContainers[1]` is the `dind` sidecar. This is **`forgejo-runner`** — Forgejo's own runner, not
+upstream `act_runner`; the failure modes and flags below reason from `forgejo-runner`, not from `act`.
+Each runner is a KEDA `ScaledJob` that spawns an **ephemeral, host-mode, three-container pod** — an
+init that copies the static `forgejo-runner` binary out of its image, a privileged `dind` sidecar, and
+the toolchain container the steps actually run inside — and it advertises exactly **one honest label,
+`docker`** (no `ubuntu-latest`/`default` masks; the label is true, not a costume). It builds images
+with a **privileged** Docker-in-Docker today — rootless BuildKit is the destination, not the present
+([ADR-0008](../adr/adr-0008-rootless-ci-image-builds.md)) — and `forgejo` is an *application* namespace,
+where Kyverno's `pod-security-baseline-enforce` policy forbids privileged containers. So KEDA created
+the Job, the Job was rejected at admission, no pod ever existed, and the workflow sat pending forever. The runner
 had, in fact, *never successfully created a pod* since it shipped — the smoke test that "proved" it
 had been measuring the wrong thing (a runner that scales to zero correctly also creates zero pods
 when it's blocked).
@@ -219,6 +225,23 @@ at runtime:
 - **You cannot push to a pull-mirror.** Any repo whose in-cluster CI writes back (releases, Renovate
   branches) has to stop being a mirror and become authoritative first. It is the same wall, every
   time.
+- **The runner has no CPU limit, so the speed lever isn't a CPU cap.** Neither the `runner` nor the
+  `dind` container sets a CPU *limit* — a lone job is free to use the whole idle node. The constraint
+  under contention is the CPU *request*, plus the cold start every scale-from-zero job pays. Don't
+  "fix CI speed" by raising a limit that doesn't exist.
+- **The dominant CI cost was emulated arm64, not action clones.** The shared build composite defaulted
+  to `linux/amd64,linux/arm64`; this cluster is amd64-only Talos, so every image spent minutes
+  building an arm64 artifact *nothing here runs*, under QEMU. Defaulting builds to `linux/amd64` and
+  gating `setup-qemu-action` behind a non-amd64 request ([ADR-0036](../adr/adr-0036-amd64-default-constrictor-build.md))
+  is the single biggest, lowest-risk speedup — far ahead of caching action checkouts. (A caller that
+  passes an explicit `platforms: "linux/amd64,linux/arm64"` defeats the gate, so the caller's
+  `platforms` has to change too.)
+- **There is no action "offline mode" to lean on.** `forgejo-runner` 12.10.2 exposes no way to skip
+  re-fetching already-cached actions at any layer — `exec` has *stripped* upstream act's
+  `--action-offline-mode`, and even a warm baked `~/.cache/act` `git fetch`es every job. So the
+  action-clone wall is measure-first, not pre-bake-first
+  ([ADR-0035](../adr/adr-0035-action-clone-wall.md)): ship the amd64 fix, re-time, and only then
+  consider a scoped LAN mirror of the handful of build actions.
 
 ---
 
@@ -239,6 +262,17 @@ deliberately last of all.
 
 The day-to-day shape of it, written down for the next person, is the [Forgejo runner
 runbook](../runbooks/forgejo-runner.md): how it scales, how the identity is minted, the two gates,
-and the whole table of failures above with their fixes. Because the tax the first post named — *the
-ordinary cost of owning the stack instead of renting it* — doesn't get paid once. It gets paid one
-runtime surprise at a time. The receipts are the point.
+and the whole table of failures above with their fixes.
+
+One last honest note on *watching* the thing now that it runs. The runner pods' logs **are** in Loki —
+the Alloy pipeline carries `namespace`/`pod`/`container` labels, so `{namespace="forgejo",
+pod=~"forgejo-runner.*"}` is a real LogQL query — though what you'll find there is mostly the `dind`
+daemon's lifecycle; a *job's* pass/fail still lives in the Forgejo job log, not the pod's stdout, and
+`forgejo-runner one-job` exits 0 after running its one job even when that job *failed*. What's missing
+is *timing*: Forgejo's `/metrics` is `gitea_*` count gauges only (repos, releases, users…), with no
+run-duration or job-status series, so a "where does CI time go" dashboard can't come from native
+metrics — it needs a custom exporter against the Forgejo Actions API. That's the next receipt to
+collect.
+
+Because the tax the first post named — *the ordinary cost of owning the stack instead of renting it* —
+doesn't get paid once. It gets paid one runtime surprise at a time. The receipts are the point.

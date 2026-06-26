@@ -16,6 +16,12 @@ not "is it control-plane" or hostnames. Set via Talos `machine.nodeLabels`:
 | `node.webgrip.io/ram` | `high`(worker-1) \| `low`(soyo) \| `standard` | RAM class |
 | `storage.webgrip.io/longhorn` | `"true"` | a Longhorn storage node (workers) |
 
+⚠️ **Node labels feed more than the scheduler — `grep` ALL consumers before retiring/renaming one.**
+Capability labels aren't only `nodeAffinity`/`nodeSelector` selectors: **Cilium L2**
+(`CiliumL2AnnouncementPolicy.spec.nodeSelector`) selects LB-IP-announcing nodes by node label too, and other
+Cilium CRDs can as well. Renaming or dropping a label silently can break L2 ARP announcement (an LB VIP goes
+dark) with no scheduling error. Grep the whole repo — including Cilium CRDs — for the label before changing it.
+
 ## The tier model ([ADR-0028](docs/techdocs/docs/adr/adr-0028-application-workload-placement.md))
 
 Every workload resolves to one of these:

@@ -16,9 +16,11 @@ consumers' Forgejo CI must resolve it on Forgejo before they migrate.
 ## Order is load-bearing (mirror-clobber race)
 
 **Stop the driver → take one final sync → make writable → re-point.** Un-mirroring in Forgejo *before*
-stopping gitea-mirror lets the next sync re-assert the read-only mirror. Two manual steps have **no REST
-API** (gitea-mirror state is a private SQLite DB; Forgejo pull-mirror removal is UI-only) — don't script
-DB edits.
+stopping gitea-mirror lets the next sync re-assert the read-only mirror. gitea-mirror state is a private
+SQLite DB with **no REST API** — don't script DB edits. The Forgejo convert is the documented UI route
+below, but it is **no longer strictly UI-only**: Forgejo added `POST /repos/{owner}/{repo}/convert` (PR
+#8932, backported to 15.0/16.0; cluster runs chart 17.1.0) which can automate bulk un-mirroring — keep
+the Danger-Zone convert as the verified per-repo path, reach for the API only for a fleet sweep.
 
 ## Procedure
 
@@ -33,8 +35,9 @@ GitHub visibility), and in step 2 populate it with `git push origin --all && git
    - **Forgejo → repo → Settings**: in the **Mirror settings** panel click **Synchronize now** (final
      pull), wait, then scroll to the **Danger Zone** → **Convert to a regular repository** (type the repo
      name to confirm). ⚠️ The Mirror-settings panel has **no un-mirror button** (only Synchronize /
-     interval / prune) — the Danger-Zone convert is the *only* way to flip `is_mirror=false` and make it
-     writable. Verified on Forgejo 15.0.2 (gitea-1.22).
+     interval / prune) — the Danger-Zone convert (or the `POST .../convert` API) is what flips
+     `is_mirror=false` and makes it writable, not the Mirror-settings panel. Verified on Forgejo 15.0.2
+     (gitea-1.22).
    - ⚠️ If gitea-mirror **auto-imports the whole org**, a per-repo disable can be re-added on the next
      discovery pass — exclude the repo, or it re-creates the pull-mirror.
 

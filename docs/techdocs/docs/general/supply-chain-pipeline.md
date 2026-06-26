@@ -1,415 +1,345 @@
 # Supply Chain Intelligence Pipeline
 
-This document explains the complete software supply chain intelligence system in this cluster: where SBOMs come from, how they flow into Dependency-Track and GUAC, how attestations from CI fit in, and what questions you can actually answer as a result.
+> Status: living · Companion to [Container Supply Chain — Architecture Overview](./supply-chain-overview.md),
+> the [Transit key-rotation runbook](../runbooks/cosign-transit-key-rotation.md), the
+> [Harbor runbook](../runbooks/harbor.md), and the Kyverno image-verify policies under
+> `kubernetes/apps/kyverno/policies/app/`.
+
+This document explains the end-to-end software supply chain in this cluster: how first-party
+images are built, signed and published; how they are verified at admission; where SBOMs come
+from and how they flow into Dependency-Track and GUAC; and what questions you can actually
+answer as a result.
 
 ---
 
-## The two SBOM origins
+## Release once, publish many
 
-There are two fundamentally different moments at which a Software Bill of Materials (SBOM) is produced for images in this environment. Understanding the difference is essential to understanding the pipeline.
+The single most important thing to understand: **Forgejo is the sole release authority.**
 
-### Origin 1 — Build-time (CI, webgrip/infrastructure)
+- **Forgejo (in-cluster, LAN)** owns the release. A change under `ops/docker/**` in a
+  `webgrip/*` repo triggers `semantic-release`, which decides the version, **cuts the release
+  tag**, and **commits the bumped `package.json` back with `[skip ci]`**. Forgejo's in-cluster
+  KEDA/DinD runner then **builds** the image and **dual-publishes** it to two registries:
+  **Harbor** (`harbor.${SECRET_DOMAIN}/webgrip/*`, private/LAN, the primary) **and**
+  **GHCR** (`ghcr.io/webgrip/*`).
+- **GitHub is a pure mirror.** The repo is push-mirrored to GitHub for off-site DR, but the
+  GitHub side **runs zero Actions** for the release — it does not tag, does not version, does
+  not decide anything. Anything the `.github/` mirror still does at push time is build-side
+  only and is **not what the cluster trusts** (see "What the cluster trusts" below).
 
-When `webgrip/infrastructure` builds and releases an application image, the GitHub Actions workflow (triggered on `on_release_published`) does several things in addition to building the image:
+So: one release is cut once (on Forgejo), and the resulting image is published to many places
+(Harbor + GHCR). The trust anchor is the same in both: **one signing key**.
 
-1. Builds the container image and pushes it to GHCR with an immutable digest reference.
-2. Signs the image digest with **Cosign**, using a short-lived **GitHub OIDC identity** (`https://token.actions.githubusercontent.com`). No long-lived private key is involved.
-3. Generates a **CycloneDX SBOM** describing what went into the image (source dependencies, lockfiles, package manifests).
-4. Attaches the SBOM to the image digest in GHCR as a **Cosign attestation** (OCI artifact in the same registry).
-5. Generates and attaches **SLSA provenance** — a machine-readable record of who built this, from which repository, on which commit, on what workflow trigger.
-6. Optionally uploads a vulnerability scan (Trivy SARIF) to GitHub Security.
+---
 
-The resulting attestation artifacts live in GHCR alongside the image. They are queryable with `cosign verify-attestation`, readable by Kyverno policies, and ingestable by GUAC's OCI collector.
+## Signing — key-based, both registries, same key
 
-> **Key characteristics of build-time SBOMs:**
-> - High fidelity — produced from source code, not from scanning a binary layer
-> - Available immediately when the image is pushed
-> - Signed with a cryptographically verifiable CI identity
-> - Represent what was declared to be in the image
+Both registries are signed the **same way**: key-based by digest, not keyless.
 
-### Origin 2 — Runtime scanning (Trivy in-cluster)
+- **`cosign sign` / `cosign attest` by digest**, using the OpenBao **Transit** key
+  `cosign-webgrip` (`ecdsa-p256`). The private key **never leaves OpenBao** — cosign calls
+  `transit/sign` over `--key hashivault://cosign-webgrip`.
+- **`--tlog-upload=false`.** Signatures are **not** uploaded to a public Rekor transparency
+  log. This avoids leaking digests/timestamps to the public internet and removes an internet
+  dependency from the signing path. (This is the fact that drives the Kyverno `rekor.ignoreTlog`
+  requirement below — read that section.)
+- **Authorized per-job via Forgejo Actions OIDC → OpenBao.** Each release job mints a
+  *per-job* OIDC token from Forgejo (issuer `https://forgejo.${SECRET_DOMAIN}/api/actions`,
+  audience `openbao-cosign`) and presents it to OpenBao at `/v1/auth/forgejo/login`. OpenBao's
+  JWT auth (mount `auth/forgejo`, role **`cosign-signer`**) independently verifies the token
+  against Forgejo's JWKS and its **bound claims** before issuing a short-lived, sign-only
+  Transit token. A fork PR gets no token and therefore cannot sign.
 
-The cluster runs a daily `trivy-sbom-uploader` CronJob at **02:00 UTC**. This job:
+> **The bound-claims shape is Forgejo-specific, not GitHub.** The release fires via
+> `workflow_dispatch` on a branch (semantic-release publishes on `main`/`release/*`), so the
+> role binds `{"repository": "webgrip/infrastructure", "event_name": "workflow_dispatch",
+> "ref": "refs/heads/*"}`.
+> The earlier GitHub-shaped binding (`event_name=release`, `ref=refs/tags/*`) made OpenBao
+> 400 the login. Source: `kubernetes/apps/security/openbao/bootstrap/config.sh`.
 
-1. Lists every running container image across all pods in all namespaces.
-2. For each image, runs `trivy image --format cyclonedx` to scan the actual image layers.
-3. Uploads the CycloneDX SBOM to **Dependency-Track** via `POST /api/v1/bom`.
-4. Also writes the SBOM to the GUAC S3 bucket (`s3://guac/sboms/<name>-<version>.cdx.json`) for GUAC ingestion.
+**As of commit `fc5fdf1` (2026-06-26), webgrip GHCR is signed with the SAME Transit key as
+Harbor.** GHCR is no longer keyless / Fulcio / Rekor. The keyless+Rekor language survives in
+exactly one place: **third-party `ghcr.io/kyverno/*` images**, which still verify via GitHub
+Actions OIDC against the public Rekor (`rekor.url: https://rekor.sigstore.dev`). Do not use
+"keyless" to describe any `webgrip/*` image.
 
-> **Key characteristics of runtime SBOMs:**
-> - Cover every image actually running in the cluster, regardless of where it came from (third-party, operator, system)
-> - Produced by scanning binary image layers (what is actually there, not just what was declared)
-> - Not signed or attested (the SBOM is evidence, but without a cryptographic chain back to CI)
-> - May differ from the build-time SBOM if image layers were manipulated after build
+### One key signs both registries
 
-### Why you need both
+The `.forgejo` sign-attest action signs **by digest**
+(`docker buildx imagetools inspect … --format '{{.Manifest.Digest}}'`) and was generalized to
+`REGISTRY_USERNAME` / `REGISTRY_TOKEN` so the single `cosign-webgrip` key signs Harbor and
+GHCR identically. The public half is published to the **`cosign-webgrip-pub`** ConfigMap
+(`security` ns) by the `cosign-pubkey` CronJob (every 30 min, every still-trusted key version,
+newest first) — no human ever pastes a PEM. See the
+[Transit key-rotation runbook](../runbooks/cosign-transit-key-rotation.md).
 
-| Concern | Build-time | Runtime |
+---
+
+## What the cluster trusts — Kyverno is the single admission gate
+
+Kyverno `verifyImages` is the **one** admission gate. Three **Audit** ClusterPolicies cover
+first-party images, all **key-based** against the `cosign-webgrip-pub` ConfigMap:
+
+| Policy file | Rule | Verifies |
 |---|---|---|
-| Covers third-party / external images | No | **Yes** |
-| Cryptographically tied to CI identity | **Yes** | No |
-| Detects supply-chain tampering | **Yes** (signature mismatch) | No |
-| Covers what is actually running right now | No | **Yes** |
-| SBOMs for system/operator images | No | **Yes** |
-| Basis for SLSA admission policy | **Yes** | No |
+| `image-verify-audit.yaml` | `verify-webgrip-images` | `ghcr.io/webgrip/*` **signature** (key-based) |
+| `image-attestations-audit.yaml` | `verify-webgrip-ghcr-images` | `ghcr.io/webgrip/*` **CycloneDX SBOM attestation** (key-based) |
+| `image-verify-harbor-audit.yaml` | `verify-webgrip-harbor-images` | `harbor.${SECRET_DOMAIN}/webgrip/*` **signature + CycloneDX SBOM** (key-based) |
 
-In a mature pipeline, build-time SBOMs provide the trust anchor and CI governance, and runtime SBOMs provide continuous posture visibility for everything in the cluster.
+All three read the public key from the `cosign-webgrip-pub` ConfigMap in `security`. The Harbor
+policy additionally supplies the `harbor-pull` robot credential (Harbor is private + LAN-only,
+so Kyverno needs it to fetch the manifest/signature/attestation). `image-verify-audit` also
+carries the separate `verify-kyverno-images-keyless` rule for `ghcr.io/kyverno/*` — that is
+the **only** keyless rule, and it is the only place `rekor.url` legitimately appears.
+
+### The Rekor gate — `rekor.ignoreTlog: true` (CRITICAL)
+
+Because cosign signs with **`--tlog-upload=false`**, there is **no Rekor transparency-log
+entry** for any webgrip image. But Kyverno (1.18.x, cosign 2.x) **verifies the Rekor tlog by
+default**. A key-based attestor against a `--tlog-upload=false` signature therefore needs an
+explicit `rekor.ignoreTlog: true` on **every** verify entry, or verification fails for a
+correctly-signed image:
+
+```yaml
+attestors:
+  - count: 1
+    entries:
+      - keys:
+          publicKeys: '{{ cosignpub.data."cosign.pub" }}'
+          rekor:
+            ignoreTlog: true   # no tlog exists (--tlog-upload=false) → must skip the lookup
+```
+
+This was a latent bug masked by Audit mode (Audit only surfaces PolicyReports; it does not
+block). It was added to all key-based attestors in **commit `f26106d`**. Without it, flipping
+to Enforce would reject **every** (correctly) signed image cluster-wide.
+
+### Promotion gate — do NOT flip Audit → Enforce until both are true
+
+1. **The policies carry `rekor.ignoreTlog: true`** on every key-based attestor. ✅ *Done
+   (`f26106d`).*
+2. **A real signed release verifies green with zero false positives** — confirm via Policy
+   Reports / the Kyverno dashboards that an actual signed Harbor+GHCR image admits cleanly
+   before promoting. *Not yet exercised end-to-end.*
+
+When you do promote the Harbor rule, also flip its `failurePolicy: Ignore` → `Fail` (it is
+`Ignore` today so an unpublished ConfigMap / OpenBao blip / unreachable Harbor cannot block
+unrelated pod admissions during Audit).
+
+> **Correcting the stale OIDC contract.** Older docs described the trust as a GitHub keyless
+> subject `https://github.com/webgrip/infrastructure/.github/workflows/...@refs/tags/*` issued
+> by `https://token.actions.githubusercontent.com`. **That is no longer what the cluster
+> trusts.** The cluster trusts the **`cosign-webgrip` Transit public key**. The GitHub-OIDC
+> subject pattern applies to nothing in scope; the only keyless trust is the
+> `kyverno/kyverno` subject in `verify-kyverno-images-keyless`.
+>
+> **Stale CLI-test rule names.** The CLI test
+> `kubernetes/apps/kyverno/tests/cli/image-verification/kyverno-test.yaml` still references
+> rule names `verify-github-slsa-provenance` and `verify-cyclonedx-sbom`, which **no longer
+> match** any rule. The live rules are `verify-webgrip-images` (signature) in
+> `image-verify-audit` and `verify-webgrip-ghcr-images` (SBOM attestation) in
+> `image-attestations-audit`. The test needs updating to the current rule names.
 
 ---
 
-## Data flow diagram
+## SBOMs — two origins
+
+There are two fundamentally different moments at which an SBOM is produced. Both matter.
+
+### Origin 1 — Build-time (CI, by digest)
+
+During the release job, the `.forgejo` sign-attest action runs **Syft** to produce a
+**CycloneDX** (and SPDX) SBOM, then **`cosign attest --type cyclonedx`** by digest (same
+Transit key, same `--tlog-upload=false`). This attestation is what Kyverno's SBOM policies
+verify, and what GUAC's OCI collector ingests.
+
+The action also **uploads the CycloneDX SBOM to in-cluster Dependency-Track**
+(`POST http://dependency-track-api-server.security.svc.cluster.local:8080/api/v1/bom`,
+`autoCreate`). **This upload is fail-soft**: on a non-2xx it logs a `::warning::` and the job
+continues — the cosign attestation already proves provenance and Trivy Operator covers
+continuous analysis, so a DT hiccup must not fail a release.
+
+> **Harbor's native SBOM column is separate** and is **not** fed by the pushed cosign
+> attestation. The "SBOM" column in Harbor's UI is populated **exclusively** by Harbor's own
+> Trivy-backed `.sbom` accessory, triggered server-side and authorized by RBAC resource
+> **`sbom` + action `create`** (NOT `scan:create`). The CI robot lacked that grant and the
+> step 403'd until **commit `9938e09`** added it. A `cosign attest --type cyclonedx` shows up
+> under "Signed" as a `.att` accessory — never in the SBOM column. See the
+> [Harbor runbook](../runbooks/harbor.md) for the least-privilege robot grant.
+>
+> **The Harbor SBOM step is asymmetric on purpose.** It is gated
+> `if: contains(inputs.registry, 'harbor')` — GHCR has no server-side SBOM API, so the step is
+> meaningless there. Evaluate signing/SBOM changes per-target, never blindly mirror them.
+
+### Origin 2 — Runtime scanning (whole-fleet)
+
+The `dependency-track/sbom-uploader` CronJob runs **Sundays at 02:10 UTC** (`10 2 * * 0`). It:
+
+1. Lists every running container image across all namespaces.
+2. Runs `trivy image --format cyclonedx` on each (scans actual layers).
+3. Uploads each CycloneDX SBOM to Dependency-Track (`POST /api/v1/bom`).
+4. Writes the SBOM to the GUAC Garage S3 bucket (`s3://guac/sboms/`) for GUAC ingestion.
+
+This auto-populates **~160 DT projects (and growing)** — overwhelmingly **third-party / system
+/ operator images**, not just webgrip images. Keep that in mind when reading DT/SLO numbers:
+they are whole-fleet posture, not a verdict on your own images.
+
+### Why both
+
+| Concern | Build-time (attestation) | Runtime (Trivy scan) |
+|---|---|---|
+| Covers third-party / system images | No | **Yes** |
+| Cryptographically tied to the release | **Yes** (cosign by digest) | No |
+| Detects post-build tampering | **Yes** (signature mismatch) | No |
+| Reflects what is actually running now | No | **Yes** |
+| Basis for Kyverno SBOM admission | **Yes** | No |
+
+---
+
+## Data flow
 
 ```mermaid
 flowchart TD
-    subgraph CI ["webgrip/infrastructure CI (GitHub Actions)"]
-        A[Build image] --> B[Push to GHCR with digest]
-        B --> C[Cosign sign digest\nGitHub OIDC identity]
-        B --> D[Generate CycloneDX SBOM\nfrom source]
-        B --> E[Generate SLSA provenance]
-        C --> F[Attach as OCI attestation\nin GHCR]
-        D --> F
-        E --> F
+    subgraph Forge ["Forgejo — sole release authority (in-cluster, LAN)"]
+        SR[semantic-release\ntag + commit package.json [skip ci]] --> B[Runner builds ops/docker/*]
+        B --> H[push harbor.${SECRET_DOMAIN}/webgrip/*]
+        B --> G[push ghcr.io/webgrip/*]
+        B --> SY[Syft → CycloneDX + SPDX]
     end
 
-    subgraph Cluster ["Homelab cluster (daily at 02:00 UTC)"]
-        G[trivy-sbom-uploader CronJob\nlists all running images] --> H[trivy scan each image\nformat: cyclonedx]
-        H --> I[POST /api/v1/bom\nto Dependency-Track]
-        H --> J[mc cp to Garage S3\ns3://guac/sboms/]
+    subgraph Sign ["Sign by digest — OpenBao Transit (cosign-webgrip, ECDSA-P256)"]
+        OIDC[Forgejo OIDC per-job token\naud=openbao-cosign] --> BAO[auth/forgejo/login\nrole cosign-signer]
+        BAO --> TR[transit/sign\n--tlog-upload=false]
+        SY --> TR
+        TR --> SH[cosign sig + CycloneDX attest\non BOTH registries]
     end
 
     subgraph DT ["Dependency-Track (security ns)"]
-        I --> K[Component analysis\nVulnerability matching OSV/NVD]
-        K --> L[Policy evaluation\n10 IaC-managed policies]
-        L --> M[dt_portfolio_* metrics\nvia DT exporter]
+        SY -.->|fail-soft POST /api/v1/bom| DTU[CI upload]
+        TRIVY[sbom-uploader CronJob\nSun 02:10 UTC, ~160 imgs] --> DTU
+        TRIVY --> S3[Garage S3 s3://guac/sboms/]
     end
 
     subgraph GUAC ["GUAC (security ns)"]
-        F --> N[oci-collector\ncontinuously polls GHCR\nfor attestations]
-        J --> O[s3-collector CronJob\n05:00 UTC daily]
-        N --> P[ingestor → NATS\n→ graphql-server]
-        O --> P
-        P --> Q[GUAC graph DB\nPostgreSQL/ent]
+        SH --> OCI[oci-collector polls registries]
+        S3 --> S3C[s3-collector CronJob]
+        OCI --> GR[GUAC graph]
+        S3C --> GR
     end
 
-    subgraph Observability ["Observability"]
-        M --> R[Prometheus scrape\nevery 5m]
-        R --> S[Grafana dashboards\nSLO alerts]
+    subgraph Admit ["Kyverno verifyImages — single admission gate (Audit)"]
+        PUB[cosign-webgrip-pub ConfigMap] --> KV[3 key-based policies\nrekor.ignoreTlog:true]
+        SH --> KV
     end
 
-    subgraph Kyverno ["Kyverno admission"]
-        F --> T[Keyless image verification\nGitHub OIDC subject match]
-        F --> U[Attestation audit\nSLSA + CycloneDX presence]
+    subgraph Mirror ["GitHub — pure mirror (zero Actions)"]
+        GHM[push-mirror DR only]
     end
+
+    Forge -.->|push-mirror| GHM
 ```
 
 ---
 
 ## Dependency-Track in depth
 
-### What it does
+Dependency-Track is the **continuous component-analysis** platform. For every uploaded SBOM it
+parses components (name + version + PURL), matches them against OSV / NVD / GitHub Advisory,
+evaluates the bootstrapped policies, and aggregates portfolio metrics.
 
-Dependency-Track is a **continuous component analysis** platform. It maintains a portfolio of projects (one per image), each with its SBOM. For every SBOM upload it:
+The DT metrics exporter polls `GET /api/v1/metrics/portfolio/current` every 5 minutes and
+exposes `dt_portfolio_*` metrics (vulnerabilities by severity, policy violations by state,
+projects, components, risk score, last-scrape timestamp) to Prometheus.
 
-1. Parses all components (name + version + PURL).
-2. Looks up every component against **OSV, NVD, GitHub Advisory**, and other vulnerability databases.
-3. Evaluates the portfolio against the configured **policies** (see below).
-4. Aggregates portfolio-level metrics (`dt_portfolio_vulnerabilities`, `dt_portfolio_risk_score`, etc.).
+- Public URL: `https://dependency-track.${SECRET_DOMAIN}`
+- The portfolio dashboard aggregates from `PROJECTMETRICS` on an hourly cycle — fresh uploads
+  may take up to an hour to appear (or `POST /api/v1/metrics/portfolio/refresh`).
 
-### Policy engine
-
-Ten policies are bootstrapped via an idempotent `policy-bootstrap` CronJob:
-
-| Policy | Type | Action |
-|---|---|---|
-| P1 Critical CVEs | Vulnerability severity | FAIL |
-| P2 High CVEs | Vulnerability severity | WARN |
-| P3 Unpatched Critical (>30d) | Vulnerability age | WARN |
-| P4 CVSS >= 9 | CVSS score | FAIL |
-| P5 No License | No license declared | INFO |
-| P6 Copyleft License | License group (copyleft) | WARN |
-| P7 PURL required | Component without PURL | INFO |
-| P8 CVSS 7-9 | CVSS score range | WARN |
-| P9 Old Components (>2 years) | Component age (`P2Y`) | INFO |
-| P10 Copyleft | License group (dynamic UUID lookup) | WARN |
-
-> **Known bug (fixed):** DT v4.12+ sets `IS_LATEST=false` on all projects by default. All policies use `onlyLatestProjectVersion: false` to ensure they evaluate all imported images.
-
-### Metrics exposed
-
-The DT metrics exporter (Deployment `dependency-track-metrics-exporter`) polls `GET /api/v1/metrics/portfolio/current` every 5 minutes and exposes these Prometheus metrics:
-
-| Metric | Description |
-|---|---|
-| `dt_portfolio_vulnerabilities{severity}` | Vulnerability count by severity (critical/high/medium/low/unassigned) |
-| `dt_portfolio_policy_violations{state}` | Policy violation count by state (fail/warn/info) |
-| `dt_portfolio_projects` | Total projects in portfolio |
-| `dt_portfolio_components` | Total components |
-| `dt_portfolio_vulnerabilities_suppressed` | Suppressed vulnerability count |
-| `dt_portfolio_risk_score` | Aggregate portfolio risk score |
-| `dt_portfolio_findings{audited}` | Findings by audit state |
-| `dt_exporter_last_scrape_timestamp` | Unix timestamp of last successful scrape (stale = exporter down) |
-
-### Accessing DT
-
-- Public URL: `https://dependency-track.webgrip.dev`
-- Projects view: `https://dependency-track.webgrip.dev/projects` — shows all scanned images
-- Portfolio dashboard: `https://dependency-track.webgrip.dev/dashboard` — portfolio-level metrics (refreshes hourly from `PROJECTMETRICS`)
-
-> **Note:** DT's portfolio dashboard aggregates from `PROJECTMETRICS` on an hourly cycle. If you just uploaded SBOMs and don't see numbers yet, wait up to 1 hour or trigger a manual refresh via `POST /api/v1/metrics/portfolio/refresh`.
+> **Read DT numbers as whole-fleet hygiene.** ~160 projects are mostly third-party/system
+> images. A "critical CVE" in DT is usually an upstream-image finding, not a defect in a
+> webgrip image — triage accordingly before paging on it.
 
 ---
 
 ## GUAC in depth
 
-### What it does
+GUAC (Graph for Understanding Artifact Composition) is the **supply-chain metadata graph** —
+it answers relationship questions ("which running images depend on log4j?", "what is the
+provenance of image Z?", "which images share this vulnerable component?"). It ingests SBOMs +
+attestations and stores them as a graph in CloudNativePG PostgreSQL, queried via GraphQL
+(`https://guac.${SECRET_DOMAIN}`).
 
-GUAC (Graph for Understanding Artifact Composition) is a **supply chain metadata graph**. Where DT focuses on component risk analysis, GUAC focuses on **relationship queries**: "which of my running images depends on log4j?", "what is the full dependency path from this SLSA provenance to that CVE?", "which images share this vulnerable component?"
+Two ingest paths:
 
-GUAC ingests structured documents (SBOMs, attestations, provenance) and stores them as a graph in PostgreSQL. You query the graph via GraphQL (`https://guac.webgrip.dev` / `graphql-server:8080/query`) or REST (`rest-api:8081`).
-
-### Components
-
-| Component | Role |
-|---|---|
-| `graphql-server` | GraphQL query API, backend: PostgreSQL/ent |
-| `rest-api` | REST query API for simpler access |
-| `ingestor` | Subscribes to NATS, fetches docs from S3 blob store, ingests into graph |
-| `collectsub` | Collect-sub service — coordinates what collectors should fetch |
-| `oci-collector` | Polls GHCR for OCI-attached attestations (build-time SBOMs, SLSA provenance) |
-| `depsdev-collector` | Enriches packages with deps.dev metadata |
-| `osv-certifier` | Cross-references components against OSV vulnerability database |
-| `cd-certifier` | Cross-references with ClearlyDefined license data |
-| `guac-nats` | NATS message bus for collector → ingestor pipeline |
-
-### Two ingest paths
-
-**Path A — OCI attestations (build-time)**
-
-The `oci-collector` deployment continuously polls GHCR for images under `ghcr.io/webgrip/*` and fetches any attached Cosign attestations. These include:
-
-- CycloneDX SBOMs (produced during CI)
-- SLSA provenance documents
-
-This gives GUAC the cryptographically-anchored build-time supply chain graph.
-
-**Path B — S3 cluster SBOMs (runtime)**
-
-The `guac-s3-collector` CronJob runs at **05:00 UTC daily** (3 hours after the SBOM upload at 02:00 UTC). It runs `guaccollect s3 --service-poll=false` against the `sboms/` path in the `guac` Garage S3 bucket, ingesting all CycloneDX SBOMs generated by the Trivy scanner.
-
-This gives GUAC visibility into every running image in the cluster, including third-party and operator images that have no CI attestations.
-
-### Storage
-
-- **Graph database**: CloudNativePG PostgreSQL cluster (`guac-db`)
-- **Blob store**: Garage S3 (`s3://guac` on `http://10.0.0.110:3900`), credentials from `security-s3` secret
-- **Message bus**: NATS (`guac-nats`)
-
-### What you can query
-
-From the GUAC GraphQL API or visualizer (`https://guac.webgrip.dev`):
-
-- "What packages does image X contain?" (SBOM graph)
-- "What images in my cluster are vulnerable to CVE-Y?" (via osv-certifier cross-reference)
-- "What is the build provenance for image Z — which CI run, which repo, which commit?" (SLSA attestation)
-- "Which images share component package:P?" (dependency graph traversal)
-- "Show me the complete dependency chain from image A to vulnerable component B"
+- **OCI attestations (build-time):** `oci-collector` polls the registries for cosign-attached
+  CycloneDX attestations on `webgrip/*` images — the cryptographically-anchored graph.
+- **S3 cluster SBOMs (runtime):** the `guac-s3-collector` CronJob ingests every CycloneDX SBOM
+  the Trivy uploader wrote to `s3://guac/sboms/` — visibility into every running image,
+  including third-party/operator images with no attestation.
 
 ---
 
-## Attestation flow (webgrip/infrastructure CI)
+## How Kyverno, Trivy, DT, and GUAC relate
 
-When a release tag is pushed to `webgrip/infrastructure`:
+They are layered, not redundant:
 
-```
-on_release_published.yml triggers
-    ↓
-docker build → ghcr.io/webgrip/<app>:<tag>@sha256:<digest>
-    ↓
-cosign sign --oidc-issuer https://token.actions.githubusercontent.com
-    ↓ (stored in GHCR as OCI artifact alongside the image)
-cosign attest --type cyclonedx       → CycloneDX SBOM attestation
-cosign attest --type slsaprovenance  → SLSA provenance attestation
-    ↓
-GUAC oci-collector discovers these via GHCR catalog API
-    ↓
-Kyverno at admission time verifies:
-  - signature subject matches webgrip/infrastructure/.github/workflows/on_release_published.yml@refs/tags/*
-  - SLSA provenance attestation present
-  - CycloneDX SBOM attestation present
-```
-
-### Kyverno OIDC contract
-
-The cluster currently trusts the following identity shape for `ghcr.io/webgrip/*` images:
-
-- **Issuer**: `https://token.actions.githubusercontent.com`
-- **Subject pattern**: `https://github.com/webgrip/infrastructure/.github/workflows/on_release_published.yml@refs/tags/<tag>`
-
-If a `webgrip/*` image is deployed that was **not** built through this exact workflow on a release tag, Kyverno will flag it (audit mode — not yet blocking). This is the supply chain trust boundary.
-
-### What CI must do (checklist for webgrip/infrastructure workflows)
-
-For the full pipeline to work end-to-end, the CI workflow needs:
-
-```yaml
-permissions:
-  id-token: write       # required for GitHub OIDC
-  packages: write       # required for GHCR push
-  contents: read
-```
-
-Steps required:
-
-1. `docker build` + `docker push` with digest output
-2. `cosign sign $IMAGE_DIGEST` (keyless)
-3. `trivy image --format cyclonedx --output sbom.json $IMAGE` then `cosign attest --type cyclonedx --predicate sbom.json $IMAGE_DIGEST`
-4. `cosign attest --type slsaprovenance --predicate provenance.json $IMAGE_DIGEST` (or use the SLSA GitHub Generator action)
-5. Deploy using `image: ghcr.io/webgrip/<app>@sha256:<digest>` (pinned, not tag)
-
-> **Current gap**: CI workflows need to be audited to confirm all five steps are implemented. The cluster-side policy is in place and working. CI is the remaining half.
-
----
-
-## How GUAC, DT, Kyverno, and Trivy relate to each other
-
-These tools are not redundant. They occupy different jobs in the supply chain:
-
-| Tool | Primary job | Data source | When it runs |
+| Tool | Job | Data source | When |
 |---|---|---|---|
-| **Kyverno** | Admission gate — enforce acceptable state at deploy time | OCI attestations (real-time) | At every pod admission |
-| **Trivy Operator** | Continuous in-cluster scanning — CVE + config + RBAC posture | Running images (cluster) | Scheduled, on workload change |
-| **Dependency-Track** | Portfolio-level SBOM analysis — component risk, policy, license | CycloneDX SBOMs (daily from Trivy) | Daily scrape + hourly aggregation |
-| **GUAC** | Supply chain graph — relationship queries across all evidence | SBOMs + attestations + OSV + ClearlyDefined | Continuous (OCI) + daily (S3) |
+| **Kyverno** | Admission gate — only signed first-party images run | cosign sig + SBOM attestation (key-based) | Every pod admission |
+| **Trivy Operator** | Continuous in-cluster CVE/config/RBAC posture | Running images | Scheduled / on change |
+| **Dependency-Track** | Portfolio SBOM risk + policy + license | CycloneDX SBOMs (CI upload + weekly Trivy) | On upload + hourly aggregation |
+| **GUAC** | Supply-chain graph / relationship queries | SBOMs + attestations + OSV | Continuous (OCI) + S3 ingest |
 
-They form a layered funnel:
-
-```
-GUAC                         ← aggregates and relates ALL evidence
-  ↑ attestations (CI)         ↑ runtime SBOMs (Trivy)
-Dependency-Track             ← policy + risk analysis on runtime SBOMs
-  ↑ daily SBOM upload (Trivy)
-Kyverno                      ← admission gate using CI attestations
-  ↑ real-time OCI check (at admission)
-Trivy Operator               ← continuous running-state scanner
-```
-
-A finding may be visible in more than one tool. That is intentional, not waste:
-
-- DT says "this component has a critical CVE" → actionable for operators
-- GUAC says "here are the 12 images that share this component" → actionable for remediation scoping
-- Kyverno says "this image has no SLSA provenance" → actionable for CI enforcement
-- Trivy Operator says "this running pod has CVE-XYZ" → actionable for patching
-
----
-
-## SLO alerts and Grafana dashboards
-
-### Active SLO alert rules (GrafanaAlertRuleGroup)
-
-Three `GrafanaAlertRuleGroup` CRDs are deployed in the `observability` namespace, all synced to Grafana under the **Security** folder:
-
-**Security SLOs** (`slo-security`):
-
-| Alert | Threshold | Severity |
-|---|---|---|
-| DT Critical CVEs | > 0 | critical |
-| DT High CVEs | > 500 | warning |
-| DT Policy FAIL violations | > 0 | warning |
-| DT Portfolio risk score | > 2000 | warning |
-| Kyverno high/critical violations | > 0 | critical |
-| Kyverno total FAIL violations | > 50 | warning |
-| DT exporter stale | no scrape for 15m | warning |
-
-**Platform SLOs** (`slo-platform`): Flux reconciliation failures, cert expiry (<14d critical, <3d critical), node memory/disk pressure.
-
-**Observability SLOs** (`slo-observability`): Prometheus targets down, TSDB reload failures, Grafana operator reconcile failures.
-
-### Dashboards
-
-| Dashboard | Location in Grafana | Coverage |
-|---|---|---|
-| Security / Supply Chain (Dependency-Track) | Security folder | DT portfolio metrics, CVE trends, policy violations |
-| Security / SOC Command Center | Security folder | Cross-tool overview (Kyverno + Trivy + Falco + Tetragon + DT) |
-| Kyverno / Policy Insights | Security folder | Policy pass/fail rates, violation trends |
-| Kyverno / Policy Violations | Security folder | Individual violations, severity breakdown |
-| Trivy / Vulnerabilities | Security folder | Workload-level CVE findings |
-| Falco / Runtime Detections | Security folder | Runtime alert heatmap, top rules |
-| Tetragon / Runtime Telemetry | Security folder | Process execution, network events |
-
-### Adding notification routes
-
-The 16 SLO rules currently fire but route to the Alertmanager `null` receiver (Discord was removed). To route alerts to a channel:
-
-1. Go to **Grafana → Alerting → Contact Points** and add a contact point (email, Slack, PagerDuty, etc.)
-2. Go to **Alerting → Notification Policies** and add a route matching `severity=critical` (or your desired label)
-3. No Git changes needed — contact points are managed in Grafana UI (backed by Grafana DB, not CRDs)
+A finding may surface in more than one — that is intentional: DT says *what component is
+vulnerable*, GUAC says *which images share it*, Kyverno says *this image isn't signed*, Trivy
+Operator says *this running pod has the CVE*.
 
 ---
 
 ## Operational schedule
 
-| Time (UTC) | Job | What it does |
+| When (UTC) | Job | What it does |
 |---|---|---|
-| 02:00 daily | `trivy-sbom-uploader` | Scans all running images, uploads SBOMs to DT and S3 |
-| 03:00+ | DT `PORTFOLIOMETRICS` aggregation | Hourly background job aggregates project metrics |
-| 05:00 daily | `guac-s3-collector` | Ingests all SBOMs from S3 into GUAC graph |
-| Continuous | `oci-collector` | Polls GHCR for new OCI attestations on webgrip images |
-| Every 5m | `dt-metrics-exporter` | Polls DT REST API, exposes `dt_portfolio_*` to Prometheus |
-| Every 30m (scrape) | Prometheus | Scrapes DT exporter, Trivy operator, Kyverno, Falco, Tetragon |
-| Renovate schedule | Renovate | Keeps chart/image versions updated (automatic dependency hygiene) |
+| On `ops/docker/**` change | Forgejo `semantic-release` + runner | Tag, build, dual-publish, sign + attest by digest |
+| Per release | DT upload (CI) | `POST /api/v1/bom` — **fail-soft** |
+| Sun 02:10 | `dependency-track/sbom-uploader` | Scans ~160 running images → DT + Garage S3 |
+| ~hourly | DT `PROJECTMETRICS` aggregation | Portfolio metric rollup |
+| every 30 min | `cosign-pubkey` CronJob | Publishes Transit public key(s) → `cosign-webgrip-pub` |
+| every 5 min | DT metrics exporter | Exposes `dt_portfolio_*` to Prometheus |
+| continuous | GUAC `oci-collector` | Polls registries for attestations |
+| daily | GUAC `s3-collector` | Ingests S3 SBOMs into the graph |
 
 ---
 
-## Gaps and what still needs to be done
+## Gaps and what's next
 
-### CI side (webgrip/infrastructure)
-
-The cluster-side policies are in place. These CI gaps remain:
-
-1. **Confirm `on_release_published.yml` produces Cosign signatures** — verify with `cosign verify ghcr.io/webgrip/<app>:latest` from a workstation with the OIDC issuer pattern
-2. **Confirm CycloneDX SBOM attestation is published** — `cosign verify-attestation --type cyclonedx ghcr.io/webgrip/<app>@sha256:<digest>`
-3. **Confirm SLSA provenance attestation is published** — `cosign verify-attestation --type slsaprovenance ...`
-4. **Deploy by digest** in Flux HelmReleases and kustomize image overrides, not by tag
-
-Until CI publishes all three, Kyverno will flag webgrip images with `audit` violations (not blocking, but visible in the Kyverno dashboard).
-
-### GUAC ↔ DT direct integration
-
-GUAC has a conceptual DT collector path but the GUAC chart v0.8.0 does not include it as a first-class component. The current integration is indirect via the shared S3 bucket:
-
-- Trivy generates CycloneDX → GUAC S3 bucket → GUAC ingests
-- This is sufficient for runtime SBOMs
-- A future improvement would be to have DT emit VEX/CycloneDX enriched with its vulnerability analysis, and GUAC ingest that for richer graph data
-
-### VEX / exploitability context
-
-DT v4.x has VEX support but it requires human review to mark vulnerabilities as not exploitable. Once the team is reviewing DT findings regularly, VEX analysis reduces noise significantly — especially for distro-level CVEs that are not exploitable in the deployed context.
-
-### Admission enforcement (webgrip images)
-
-Kyverno's image verification and attestation policies for `ghcr.io/webgrip/*` are currently in **audit** mode. Once CI is confirmed to produce all required artifacts, these can be promoted to **enforce**. The promotion checklist:
-
-1. No audit violations in Kyverno dashboard for webgrip images
-2. CI confirmed to produce signature + SLSA + CycloneDX on every release
-3. All Flux image overrides use digest pins
-4. PolicyException governance process is in place for legitimate exceptions
+- **Promote Kyverno Audit → Enforce.** Gated on a real signed release verifying green with
+  zero false positives (the `rekor.ignoreTlog` half is done). See the promotion gate above.
+- **Fix the CLI test rule names.** `tests/cli/image-verification/kyverno-test.yaml` still
+  names `verify-github-slsa-provenance` / `verify-cyclonedx-sbom`; update to
+  `verify-webgrip-images` / `verify-webgrip-ghcr-images`.
+- **First real Harbor SBOM column populate.** `sbom:create` is granted (`9938e09`); the next
+  release should turn the `::warning:: HTTP 403` into a populated SBOM column — confirm live.
+- **GHCR package visibility.** If `ghcr.io/webgrip/*` packages are private, add a `ghcr-pull`
+  read-scoped credential to the GHCR policies so Kyverno can fetch manifests/attestations.
+- **Leave Harbor's own Deployment-security / cosign gate OFF.** Harbor's signature check only
+  verifies *a* signature exists (not against your key) and would block pulls of unsigned
+  artifacts including the buildx `:cache` tag. Enforce only at Kyverno admission.
 
 ---
 
-## Quick reference: key endpoints
+## Quick reference
 
 | Service | In-cluster URL | External URL |
 |---|---|---|
-| Dependency-Track API | `http://dependency-track-api-server.security.svc.cluster.local:8080` | `https://dependency-track.webgrip.dev` |
-| GUAC GraphQL | `http://graphql-server.security.svc.cluster.local:8080/query` | `https://guac.webgrip.dev` (visualizer) |
-| GUAC REST | `http://rest-api.security.svc.cluster.local:8081` | — |
-| DT metrics exporter | `http://dependency-track-metrics-exporter.security.svc.cluster.local:9090/metrics` | — |
+| Dependency-Track API | `http://dependency-track-api-server.security.svc.cluster.local:8080` | `https://dependency-track.${SECRET_DOMAIN}` |
+| GUAC GraphQL | `http://graphql-server.security.svc.cluster.local:8080/query` | `https://guac.${SECRET_DOMAIN}` |
+| Harbor (registry) | `harbor.${SECRET_DOMAIN}` (LAN-only) | — |
+| OpenBao (Transit + auth/forgejo) | `http://openbao.security.svc.cluster.local:8200` | — |
 
-## Quick reference: key secrets
-
-| Secret | Namespace | Keys | Purpose |
-|---|---|---|---|
-| `dependency-track-api-key` | `security` | `api-key` | DT REST API authentication (exporter + uploader) |
-| `dependency-track-secret` | `security` | `username`, `password`, `secret.key` | DT admin credentials |
-| `security-s3` | `security` | `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT`, `S3_GUAC_BUCKET`, `S3_REGION` | Garage S3 for GUAC blob store + SBOM bucket |
-| `guac-secrets` | `security` | `values.yaml` | GUAC database credentials |
+| Resource | Namespace | Purpose |
+|---|---|---|
+| Transit key `cosign-webgrip` | OpenBao | ECDSA-P256 signing key; private half never leaves OpenBao |
+| `cosign-webgrip-pub` ConfigMap | `security` | Public key(s) Kyverno verifies against; published by CronJob |
+| `harbor-pull` secret | `security` | Robot pull cred Kyverno uses to fetch private Harbor manifests |
+| `auth/forgejo` role `cosign-signer` | OpenBao | JWT role binding `repository`/`event_name=workflow_dispatch`/`ref=refs/heads/*` |

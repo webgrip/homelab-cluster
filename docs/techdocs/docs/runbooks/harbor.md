@@ -79,8 +79,12 @@ kubectl -n harbor get secret harbor-admin -o jsonpath='{.data.HARBOR_ADMIN_PASSW
   `helm registry login` + `helm push` an OCI chart. Confirm objects land: `garage bucket info harbor`.
 - **Trivy**: scan a pushed image (UI → project → artifact → Scan), expect a CVE report.
 - **Metrics**: `harbor_core_http_request_total` in Prometheus; the **Harbor** Grafana dashboard
-  (`/d/harbor/harbor`, folder *Apps*) populates. Some Harbor-specific panels depend on exporter metric
-  names (`harbor_project_total`, `harbor_quota_usage_byte`) — verify/adjust after the first scrape.
+  (`/d/harbor/harbor`, folder *Apps*) populates. The `prometheusrule` wires only
+  `harbor_core_http_request_total` / `up{}`. Storage panels should use the canonical Harbor exporter
+  metrics **`harbor_quotas_size_bytes`** (label `type` = `hard`/`used`) and `harbor_system_volumes_bytes` —
+  verify/adjust after the first scrape (treat as unverified until then). Do **not** use
+  `harbor_statistics_total_storage_consumption` / `harbor_project_quota_usage_byte` — those names are not
+  emitted by this exporter.
 - **Backups**: trigger an on-demand `Backup` for `harbor-db`; confirm an object under
   `s3://cnpg-backups-bucket/homelab-cluster/harbor-db/`. Restore drills: see below.
 
@@ -92,9 +96,13 @@ Design: [RFC: Harbor Pull-Through Proxy Cache](../rfc/rfc-harbor-proxy-cache.md)
 
 ### Pull third-party images through the proxy cache
 
-The two proxy-cache projects — `dockerhub` → `docker.io`, `ghcr` → `ghcr.io` — are created
-idempotently by the `harbor-proxy-config` CronJob (creds from OpenBao `secret/harbor/registry-proxy`,
-[ADR-0018](../adr/adr-0018-harbor-config-idempotent-job.md)). Two ways to consume them:
+**Seven** proxy-cache projects are created idempotently by the `harbor-proxy-config` CronJob (creds from
+OpenBao `secret/harbor/registry-proxy`, [ADR-0018](../adr/adr-0018-harbor-config-idempotent-job.md)):
+`dockerhub` → `docker.io`, `ghcr` → `ghcr.io`, `quay` → `quay.io`, `gcrmirror` → `mirror.gcr.io`,
+`k8s` → `registry.k8s.io`, `forgejo` → `code.forgejo.org`, and `mcr` → `mcr.microsoft.com` (playwright base).
+`dockerhub` uses Harbor's **native `docker-hub` provider** (url `hub.docker.com`), not a generic
+docker-registry endpoint. The Talos registry mirror covers only **six** of these — `mcr` is proxy-only,
+with no Talos `machine.registries.mirrors` entry. Two ways to consume them:
 
 - **Explicit** (works now): pull through the project path —
   `docker pull harbor.${SECRET_DOMAIN}/dockerhub/library/<repo>:<tag>` (or `.../ghcr/<owner>/<repo>`).
@@ -132,6 +140,41 @@ GitHub-hosted Actions cannot reach it. The build-and-push therefore lives in **`
 > Status: designed; the Harbor-side project + robot are not yet provisioned, and the CI lives in
 > `webgrip/workflows`.
 
+## SBOM column & robot RBAC
+
+Harbor's native SBOM generation (Harbor ≥ 2.11) is gated by a **dedicated RBAC resource** — action
+`create` on resource **`sbom`**, **not** `scan:create`. Granting the intuitive `scan:create` does **not**
+clear the 403: in Harbor source at the deployed tag (v2.15.1), `src/server/v2.0/handler/scan.go` does
+`if scanType == ScanTypeSbom { res = ResourceSBOM }`, and `ResourceSBOM` is defined in
+`src/common/rbac/const.go`. So the CI robot's access list must carry `{resource: sbom, action: create}`
+alongside its `repository` push/pull (commit `9938e09`).
+
+- **Triggering it:** `POST .../artifacts/{ref}/scan {"scan_type":"sbom"}` authorizes against `sbom:create`.
+- **What feeds the column:** the **SBOM** UI column is populated *exclusively* by Harbor's own native
+  (Trivy-backed) `.sbom` accessory. This is **separate** from the cosign `.att` attestation — a
+  `cosign attest --type cyclonedx` produces a `.att` accessory shown under *Signed*, but it never lands in
+  the SBOM column (different media types: the attestation feeds Kyverno verifyImages + Dependency-Track;
+  the `.sbom` accessory feeds the Harbor UI/policies). Per-project `auto_sbom_generation` (≥ 2.11) is set
+  via `PUT /projects/{id}`.
+
+### Robot provisioner is non-idempotent
+
+The project robot `robot$webgrip+ci` (project-level, id `2`) is provisioned by `configure.sh` inside
+`harbor-proxy-config.configmap.yaml` (the same `harbor-proxy-config` CronJob). It is **not idempotent for
+permissions**: `ensure_webgrip_robot()` POSTs the permission array only on **first creation**; for an
+existing robot it merely PATCHes the secret, so editing the create-body permissions is a no-op against the
+live robot. Converge an existing robot with a **`PUT /robots/{id}`** resending the full desired spec each
+run. Caveats:
+
+- `UpdateRobot` rejects a changed **name** or **level** — the PUT must reuse the **exact stored full name**.
+  `GET /robots/{id}` returns it as `robot$webgrip+ci` (creation used the bare `ci`); read it back and reuse
+  it verbatim.
+- To find a **project** robot, query `GET /robots?q=Level=project,ProjectID=<id>` (URL-encoded
+  `q=Level%3Dproject%2CProjectID%3D<id>`). A bare `GET /robots` lists **system** robots only.
+
+> Verify an RBAC requirement credential-free by reading Harbor source at the deployed tag
+> (`src/server/v2.0/handler/*.go`, `src/common/rbac/const.go`).
+
 ## Common problems
 
 | Symptom | Cause | Fix |
@@ -141,6 +184,7 @@ GitHub-hosted Actions cannot reach it. The build-and-push therefore lives in **`
 | `registry` pod errors talking to S3 / redirect loops | Garage path-style not honored | `disableredirect: true` + `secure: false` + HTTP `regionendpoint` are mandatory (set already); check Garage at `10.0.0.110:3900` |
 | Registry 5xx / blob I/O failing | Garage down | Garage is a hard dependency (ADR-0002 / [CNPG ↔ Garage](cnpg-backups.md)); restore Garage |
 | OIDC login fails | redirect URI / RS256 | redirect must equal `https://harbor.${SECRET_DOMAIN}/c/oidc/callback`; see [Authentik OIDC login](authentik-oidc-login.md) |
+| New pinned pod stuck `ContainerCreating` (Multi-Attach) when a single-replica RWO Deployment moves nodes | goharbor chart hardcodes `RollingUpdate` (can't switch to `Recreate` via values); old pod still holds the RWO volume — deleting the old *pod* alone fails (the ReplicaSet recreates it) | Delete the **old ReplicaSet** — the Deployment won't recreate a superseded revision, the volume frees, HR goes `UpgradeSucceeded`. Must beat the HR timeout (20m). The Dependency-Track api-server was instead converted to a **StatefulSet** (ordered recreate frees the RWO volume natively); note a StatefulSet's `volumeClaimTemplates.storageClassName` is **immutable** — repointing a chart-rendered STS PVC to a different SC is API-rejected and breaks the HR until STS+PVC are deleted/recreated |
 
 ## Backup & disaster recovery
 

@@ -9,6 +9,17 @@ All hook-checked rules live in SKILL.md (shape, folderRef, Flux escaping). The b
 - Fields nest under `attributes.*`. Aggregation/`unwrap`/`quantile` → explicit `| json field="attributes.x"` then use `x`; never bare `| json` for aggregation (cardinality blowup). Bare `| json` ok for display-only `logs` panels.
 - `clamp_min`/most Prom funcs are invalid in LogQL; `vector(0)` is valid.
 
+## PromQL anti-patterns (boolean gauges & empty sets)
+- **`count()` over a boolean gauge counts SERIES, not the ones that are "true".** `count(up == 1)` and
+  `count(up)` return the same number; a `0`/`1` gauge is `1` for the series-exists-and-matches case, so
+  `count()` just tallies series. To count how many are *true*, use **`sum()`** (`sum(up)` = how many are up;
+  `count(up)` = how many exist). Same for any `==1`/threshold gauge.
+- **`count()`/`sum()` over an empty filtered set returns NoData, not 0.** If the label filter matches no
+  series, the whole vector is empty → the panel/alert sees **NoData** (not `0`). Append **`or vector(0)`**
+  to floor it at 0 (`sum(up{job="x"} == 0) or vector(0)`) — *unless* you intentionally want a missing-data
+  alert, in which case leave it off and set `noDataState: Alerting`. (Phantom-0 caveat below still applies:
+  `or vector(0)` belongs on `stat` panels, not timeseries/table.)
+
 ## Panel hygiene
 - `or vector(0)` on `stat` panels only — on timeseries/table/bargauge it adds a phantom 0 series.
 - `allValue: ".*"` (or omit) for `includeAll` vars; never `$$__all` (logic bug → No data).

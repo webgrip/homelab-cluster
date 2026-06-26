@@ -26,5 +26,21 @@ reconcile into a ConfigMap) · gate it with a Flux ks like
   true`, `capabilities: {drop: [ALL]}`.
 - **Secrets** the job consumes/produces → the `external-secrets` skill (ESO+OpenBao, never SOPS).
 
+## Forgejo org Actions secrets (write-only API)
+
+To provision org-level Actions secrets/variables, add the OpenBao value via an `ExternalSecret`, then add
+env vars + `put_secret` calls to `kubernetes/apps/forgejo/forgejo-actions-secrets/app/forgejo-actions-secrets.cronjob.yaml`
+(OpenBao-backed CronJob; PUTs every tick = create-or-update). Gotchas:
+
+- **The Forgejo Actions secrets API is write-only** — you cannot read a secret back. **Verify only by the
+  cronjob log line** (e.g. `created org secret webgrip/...`), never by GET. (`hc()`/`curl -fsS` makes a
+  logged success branch direct evidence of a 2xx.)
+- **`FORGEJO_`/`GITHUB_`/`GITEA_` name prefixes are RESERVED** — the org API rejects them (secret PUT 400;
+  var POST/PUT 400/404). Use a **`WEBGRIP_`** prefix (e.g. `WEBGRIP_CI_TOKEN`, `WEBGRIP_FORGEJO_URL`).
+  `GHCR_*`, `CODEBERG_TOKEN`, `HARBOR_ROBOT_*`, `DT_API_KEY` are fine. (`secrets.FORGEJO_TOKEN` inside a
+  workflow is the built-in per-job token — distinct from this org bot token.)
+- OpenBao backend + writing the value → the `external-secrets` skill (ESO+OpenBao OIDC). No ESO
+  push-provider for Forgejo Actions secrets exists, hence the CronJob.
+
 ## Validate
 `./scripts/run-flux-local-test.sh`.

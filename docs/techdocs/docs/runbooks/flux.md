@@ -49,6 +49,18 @@ When `FluxResourceDriftDetected` fires:
 - If intentional, make the same change in Git and let Flux reconcile it.
 - If unintentional, revert the live change or force a Flux reconcile after confirming the Git state is still correct.
 
+### Known benign drift: spegel
+
+A global `driftDetection` patch with `mode: warn` is set on every HelmRelease in
+`kubernetes/flux/cluster/ks.yaml` — Flux detects and logs drift but never
+remediates it (so it doesn't fight Kyverno mutate webhooks or controller-side
+defaulting). The notable, persistent drift we've seen is **spegel**: its chart
+renders a DaemonSet that omits fields the API server then defaults
+(`spec.revisionHistoryLimit`, `spec.updateStrategy.rollingUpdate.maxSurge`), so
+it logs drift on every reconcile and never converges. This is benign noise on
+`FluxResourceDriftDetected`. A per-HR `ignore` for spegel's server-side
+DaemonSet defaults is proposed but **not yet applied** (roadmap item 75).
+
 ## Fix workflow (GitOps-first)
 
 - Make the minimal manifest change in Git.

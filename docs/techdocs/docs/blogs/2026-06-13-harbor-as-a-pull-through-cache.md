@@ -10,8 +10,9 @@
 
 It started as a one-line ask: *can I move my docker and ghcr stuff to Harbor?* Harbor was already
 running — LAN-only, blobs on Garage S3, SSO through Authentik. The cluster pulls something like 64
-distinct third-party images: 23 from `docker.io`, 34 from `ghcr.io`, the rest from quay and the
-Kubernetes registry. Pointing those at a local Harbor proxy-cache is a well-trodden path. You get
+distinct third-party images, spread across half a dozen upstreams: the bulk from `docker.io` and
+`ghcr.io`, the rest from quay, the Kubernetes registry, the GCR mirror, Forgejo's own registry, and
+`mcr.microsoft.com`. Pointing those at a local Harbor proxy-cache is a well-trodden path. You get
 Docker Hub rate-limit relief, a local cache that survives upstream hiccups, and Trivy scanning
 every image as it lands.
 
@@ -51,9 +52,9 @@ while in Spegel's and Talos's docs making sure I composed with it instead of fig
 answer turned out to be clean:
 
 - **Talos `machine.registries.mirrors`** declares the Harbor endpoint *per registry* — `docker.io`
-  → `harbor/v2/dockerhub`, `ghcr.io` → `harbor/v2/ghcr`. (Spegel's own `additionalMirrorTargets` is
-  a single flat list applied to every registry, so it physically can't route two upstreams to two
-  different Harbor project paths. Wrong tool.)
+  → `harbor/v2/dockerhub`, `ghcr.io` → `harbor/v2/ghcr`, and so on for the other four upstreams.
+  (Spegel's own `additionalMirrorTargets` is a single flat list applied to every registry, so it
+  physically can't route six upstreams to six different Harbor project paths. Wrong tool.)
 - **Spegel `prependExisting: true`** tells Spegel to *keep* the Talos-written Harbor mirror and
   prepend itself, rather than clobbering it.
 
@@ -82,6 +83,18 @@ I verified all of this against the upstream docs before writing a line of node c
 "fails open" is a claim you have to *earn*: Talos leaves `skipFallback` off by default, and since
 1.9 it matches the CRI fallback behaviour (these nodes run 1.13.3). The full reasoning, with the
 exact config, is in [ADR-0017](../adr/adr-0017-registry-mirror-talos-spegel.md).
+
+There's a subtler way the same "fails open" property can betray you: a mirror that fails open *all
+the time*. The mirror endpoints point at `https://harbor.${SECRET_DOMAIN}/v2/…`, but Harbor is
+LAN-only by design, and the nodes resolve DNS through public resolvers — so containerd looked up
+`harbor.${SECRET_DOMAIN}`, got `no such host`, and silently fell back to upstream on **every** pull.
+The mirror was present and correct on every node and routed nothing; the proxy projects stayed
+empty; the fail-open drill "passed" trivially because fallback was the only path that ever worked.
+The catch is that image pulls happen in **node DNS** (kubelet/containerd), not pod/cluster DNS, so
+none of the in-cluster split-DNS helped. The fix is a static Talos `extraHostEntries` mapping
+`harbor.${SECRET_DOMAIN}` → the envoy-internal LAN VIP (`10.0.0.27`), and the lesson is to verify a
+node can actually *resolve* the mirror host — `talosctl … read /etc/hosts | grep harbor` — before
+believing the cache is doing anything.
 
 ## Spegel and Harbor do different jobs
 
@@ -158,7 +171,13 @@ having, was not a hypothetical.
 So the proxy config gets provisioned the same way OpenBao bootstraps itself here: an **idempotent
 CronJob** that reconciles Harbor's state from a script — checks whether each endpoint and project
 exists, creates only what's missing, treats "already there" as success, and re-runs hourly so a
-Harbor rebuild self-heals on the next tick. It's **fail-soft** by design: if the upstream
+Harbor rebuild self-heals on the next tick. There are **seven** proxy projects in the configmap:
+`dockerhub`, `ghcr`, `quay`, `gcrmirror`, `k8s`, `forgejo`, and `mcr` (→ `mcr.microsoft.com`, for
+Playwright base images). One asymmetry worth noting: `dockerhub` uses Harbor's *native* `docker-hub`
+provider (which talks to `hub.docker.com`), not the generic `docker-registry` type the other six
+use. And the count is deliberately one higher than the Talos mirror's: `mcr` is **proxy-only** —
+reachable as an explicit `harbor.${SECRET_DOMAIN}/mcr/…` ref, but with no transparent node-level
+mirror — so the node mirror covers six upstreams while the proxy serves seven. It's **fail-soft** by design: if the upstream
 credentials aren't in OpenBao yet, or Harbor is mid-restart, it logs and exits cleanly instead of
 crashlooping. (That last detail is a scar from the same incident week — a different bootstrap Job
 had been quietly piling up failed pods until they tripped the cluster's own health alerts. The
@@ -195,8 +214,22 @@ transparently, from the nearest of three places: a neighbour node, Harbor's cach
 cold or down) `docker.io` itself. The only thing you *notice* is that Docker Hub's rate-limit `429`s
 stop and cold pulls speed up as the cache warms. There is no "it's all imported now" moment — the
 cache only ever holds what something has actually pulled at least once. (The explicit form,
-`docker pull harbor.$SECRET_DOMAIN/dockerhub/library/<repo>`, works today; the transparent form waits
+`docker pull harbor.${SECRET_DOMAIN}/dockerhub/library/<repo>`, works today; the transparent form waits
 on the Phase-1 mirror cutover.)
+
+Two things that *don't* break, which is worth saying because both were live worries. **Renovate keeps
+working through the proxy.** The old folklore that a Harbor proxy-cache only advertises tags it has
+already cached — which would blind Renovate to new versions — is gone in Harbor 2.15: a
+`tags/list` against a proxy project returns the *full upstream* tag list, even for a repo nobody has
+pulled yet. (What Renovate's `registryAliases` can't do is disambiguate the proxy paths, because it
+keys on the Harbor host alone and can't tell `/ghcr` from `/quay`; the lever that actually works is
+widening the existing `ghcr.io` package rules to also match the Harbor path.) And **Helm charts ride
+a completely separate path.** Flux's source-controller fetches OCI charts directly, not through
+containerd, so the Talos node mirror does nothing for them — charts get to Harbor by *rewriting the
+`OCIRepository` URL* (`oci://ghcr.io/… → oci://harbor.${SECRET_DOMAIN}/ghcr/…`), one explicit edit
+per source. Unlike the image path, that one is **not** fail-open: while Harbor is down a rewritten
+chart can't install or upgrade (already-running releases keep running), so the bootstrap and
+reach-Harbor chart sources are deliberately left pointing upstream.
 
 Publishing *my own* images is the deliberately-separate other half, and Harbor being
 [LAN-only by design](../adr/adr-0005-lan-only-exposure.md) turns out to quietly answer "who's
@@ -209,7 +242,7 @@ docker login harbor.$SECRET_DOMAIN -u 'robot$webgrip+ci' -p "$TOKEN"
 docker push  harbor.$SECRET_DOMAIN/webgrip/twitch-exporter:1.2.3
 ```
 
-Workloads then pull `harbor.$SECRET_DOMAIN/webgrip/…` with a pull secret, like any private registry.
+Workloads then pull `harbor.${SECRET_DOMAIN}/webgrip/…` with a pull secret, like any private registry.
 GitHub-hosted runners can't reach Harbor at all — which is the correct answer, not a workaround — so
 that pipeline lives in the `webgrip/workflows` repo, while the Harbor side (the private project and the
 robot's token, generated and vaulted in OpenBao) stays GitOps here. The step-by-step is in

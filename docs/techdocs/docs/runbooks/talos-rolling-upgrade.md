@@ -51,12 +51,32 @@ Recommended follow-up improvements after upgrade:
 
 ## Upgrade one node
 
+> **Force-drain single-replica-PDB workloads first.** The drain built into the
+> Talos node-upgrade flow (`task talos:upgrade-node`) stalls indefinitely on
+> single-replica workloads protected by a PodDisruptionBudget — it cannot evict
+> them, so it hits the internal drain timeout and the node never actually
+> reboots onto the new image (even though the task may print "upgrade
+> completed"). This has bitten all 5 nodes. The two recurring offenders are the
+> kyverno admission/background controllers and the single-instance CNPG
+> databases. Remedy: **before** running the upgrade, drain the node yourself
+> with eviction disabled (which bypasses the PDB by deleting pods directly):
+>
+> ```sh
+> mise exec -- kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data --disable-eviction
+> ```
+>
+> Alternatively, temporarily scale down or relocate the single-replica
+> workloads. A stalled upgrade is safe to Ctrl+C; retry it after the node is
+> drained.
+
 - `mise exec -- just talos-upgrade-node IP=<node-ip>`
 
 Verify:
 
 - `mise exec -- talosctl version --nodes <node-ip>`
 - `mise exec -- kubectl get node <node-name> -o wide`
+
+At `talosVersion: v1.13.4` the bundled etcd is `v3.6.12`.
 
 ## Troubleshooting
 

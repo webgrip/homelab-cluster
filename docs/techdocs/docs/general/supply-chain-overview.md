@@ -30,7 +30,7 @@ flowchart TB
   subgraph IDS["🔐 IDENTITY & SECRETS"]
     authentik["Authentik — <b>humans</b><br/><i>SSO</i>"]
     subgraph OB["OpenBao — <b>machines</b>"]
-      jwtauth["JWT auth · auth/forgejo<br/><i>role claim-bound: only release@tag signs</i>"]
+      jwtauth["JWT auth · auth/forgejo<br/><i>role claim-bound: workflow_dispatch@branch signs</i>"]
       transit["Transit key · cosign-webgrip<br/><i>private key never leaves</i>"]
       kv["KV: Harbor robot, DT key<br/><i>+ dynamic PKI/SSH/cloud later</i>"]
       oidcp["OIDC provider · identity/oidc<br/><i>mint tokens for cloud (future)</i>"]
@@ -131,8 +131,10 @@ flowchart TB
 
 ### How to read it
 - **Thick arrows (1→2→3) are the signing spine.** A Forgejo job proves identity with a *per-job*
-  OIDC token whose claims (`event=release`, tag ref) are the authorization → OpenBao checks the
+  OIDC token whose claims (`event_name=workflow_dispatch`, `ref=refs/heads/*`) are the authorization → OpenBao checks the
   claims → returns a *scoped, short-lived* token → cosign signs via Transit (key never leaves OpenBao).
+  (The build/sign job is reached via `workflow_dispatch` on a branch, **not** a tag-`release` event —
+  binding the OpenBao role to `event_name=release` + `refs/tags/*` 400s the login.)
 - **`3b` (dotted) is the unification target.** Harbor/DT creds reach CI as Forgejo org secrets today
   (a CronJob); the goal is to fetch them over the same spine so there are **zero** standing Forgejo secrets.
 - **Two dotted "verify" arrows are the gates.** Flux verifies *charts* before deploy; Kyverno verifies
@@ -171,7 +173,8 @@ sequenceDiagram
     dev->>fj: push to ops/docker/** (on_source_change)
     fj->>run: schedule semantic-release job
     run->>fj: create release tag IMG-vVER
-    fj-->>run: release published → trigger on_release_published
+    run->>fj: POST workflow_dispatch (per image, tag input)
+    fj-->>run: dispatch on_release_published (event_name=workflow_dispatch, branch ref)
 
     rect rgb(237,243,251)
     Note over run,harbor: Job 1 — build + push (release-distribute-harbor)
@@ -183,12 +186,12 @@ sequenceDiagram
 
     rect rgb(237,247,239)
     Note over run,bao: Job 2 — sign + attest (enable-openid-connect)
-    run->>fj: GET ACTIONS_ID_TOKEN_REQUEST_URL?audience=openbao-cosign
-    fj-->>run: per-job OIDC JWT (claims repository, event_name=release, ref=refs/tags/*)
+    run->>fj: GET ACTIONS_ID_TOKEN_REQUEST_URL + audience=openbao-cosign (? vs & per existing query)
+    fj-->>run: per-job OIDC JWT (claims repository, event_name=workflow_dispatch, ref=refs/heads/*)
     run->>bao: POST auth/forgejo/login {role cosign-signer, jwt}
     bao->>fj: fetch OIDC discovery + JWKS
     fj-->>bao: JWKS
-    bao->>bao: verify iss + bound_claims (repo / event / tag)
+    bao->>bao: verify iss + bound_claims (repo / event_name=workflow_dispatch / refs/heads/*)
     bao-->>run: scoped token (TTL 10m, Transit sign-only)
     run->>harbor: docker login + resolve digest (imagetools inspect)
     run->>run: syft → CycloneDX + SPDX SBOM
@@ -212,11 +215,14 @@ sequenceDiagram
 ```
 
 ### Security-critical moments
-- **6–7:** the runner proves identity with a *per-job* OIDC token; a fork PR gets no token.
-- **8–11:** OpenBao independently verifies that token against Forgejo's JWKS + the bound claims
-  before issuing a 10-minute, sign-only token.
-- **16–19:** signing/attesting call `transit/sign` — the key material never reaches the runner.
-- **24–26:** Kyverno re-checks signature + SBOM at admission against the **public** key.
+- **10–11:** the runner proves identity with a *per-job* OIDC token; a fork PR gets no token.
+  Append `audience=openbao-cosign` to `ACTIONS_ID_TOKEN_REQUEST_URL` with the right separator
+  (`?` if the URL has no query string, else `&`) — a malformed URL silently mints the *default*
+  audience and OpenBao 400s the login.
+- **12–16:** OpenBao independently verifies that token against Forgejo's JWKS + the bound claims
+  (`event_name=workflow_dispatch`, `ref=refs/heads/*`) before issuing a 10-minute, sign-only token.
+- **19–22:** signing/attesting call `transit/sign` — the key material never reaches the runner.
+- **29:** Kyverno re-checks signature + SBOM at admission against the **public** (Transit) key.
 
 ## 3. Prerequisites to go live
 

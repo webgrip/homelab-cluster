@@ -49,6 +49,10 @@ Expanded before Claude sees the body (preprocessing):
 | `${CLAUDE_EFFORT}` | `low…max` (ultracode reports `xhigh`) |
 | `${CLAUDE_SKILL_DIR}` | the skill's own dir — use to call bundled `scripts/` regardless of cwd |
 
+> **Caveat:** the exact spelling of the skill-dir variable (`${CLAUDE_SKILL_DIR}` vs `${CLAUDE_PLUGIN_ROOT}`)
+> is harness-version-dependent — **verify it against the deployed harness before relying on it**; don't
+> treat either as canonical without checking.
+
 Escape a literal `$` before a digit/`ARGUMENTS`/declared name with one backslash: `\$1.00`.
 
 ## Advanced levers + when each fits
