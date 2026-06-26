@@ -98,11 +98,15 @@ scripts/forgejo-sync.sh --all --only webhook --apply                  # all de-m
 
 It registers a Forgejo repo webhook with:
 
-- **Payload URL:** `https://renovate-webhook.${SECRET_DOMAIN}/webhook/v1/forgejo?namespace=renovate&job=webgrip-forgejo`
+- **Payload URL:** `http://renovate-operator.renovate.svc.cluster.local:8082/webhook/v1/forgejo?namespace=renovate&job=webgrip-forgejo`
+  — Forgejo is **in-cluster**, so it hits the operator Service directly (unlike the external GitHub
+  webhook, which must use `renovate-webhook.${SECRET_DOMAIN}`). No envoy-external hairpin.
 - **Content type:** `json`, **method:** `POST`
-- **Auth:** `Authorization: Bearer <token>` — the FIRST token in Secret `renovate-webhook-auth` key
-  `token` (OpenBao `renovate/webhook-auth`). The script reads it from `$RENOVATE_WEBHOOK_AUTH_TOKEN`,
-  else from the cluster Secret via `kubectl`. Never printed (Forgejo also masks it on read).
+- **Auth:** `Authorization: Bearer <token>` — set via the hook's **top-level** `authorization_header`
+  field (NOT a `config` key — Forgejo silently drops unknown config keys, so nesting it sends no auth
+  header and the receiver 401s). Token = the FIRST entry in Secret `renovate-webhook-auth` key `token`
+  (OpenBao `renovate/webhook-auth`); script reads `$RENOVATE_WEBHOOK_AUTH_TOKEN` else the cluster
+  Secret via `kubectl`. Never printed (Forgejo also masks it on read).
 - **Events:** **Issues** (Dependency Dashboard checkboxes) and **Pull requests** (PR checkboxes).
 
 **Token rotation:** ESO re-materialises the *same* `renovate-webhook-auth` value hourly, so registered

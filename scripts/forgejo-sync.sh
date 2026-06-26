@@ -44,10 +44,10 @@ REPOS=()
 # pushes/PRs don't spawn stray in-repo runs (disabling the unit does NOT break `uses:` consumers —
 # the caller's runner resolves+executes the reusable workflow).
 ACTIONS_OFF_REPOS="workflows"
-# Renovate webhook receiver (operator Service, exposed via envoy-external). The ?namespace=&job= params
-# route the inbound Forgejo event to the Forgejo RenovateJob, mirroring the documented GitHub webhook.
-# Host literal matches the script's hardcoded forgejo.webgrip.dev (this is a local CLI, not a manifest).
-RENOVATE_WEBHOOK_URL="https://renovate-webhook.webgrip.dev/webhook/v1/forgejo?namespace=renovate&job=webgrip-forgejo"
+# Renovate webhook receiver. Forgejo is IN-CLUSTER, so the hook targets the operator Service directly
+# (http, port 8082) — no envoy-external hairpin / public round-trip needed. The ?namespace=&job= params
+# route the inbound event to the Forgejo RenovateJob.
+RENOVATE_WEBHOOK_URL="http://renovate-operator.renovate.svc.cluster.local:8082/webhook/v1/forgejo?namespace=renovate&job=webgrip-forgejo"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 have() { echo ",$ONLY," | grep -q ",$1,"; }
@@ -196,8 +196,10 @@ sync_webhook() {
   id=$(fj "$FORGEJO_API/repos/$ORG/$r/hooks" 2>/dev/null \
     | python3 -c "import sys,json;h=json.load(sys.stdin);print(next((str(x['id']) for x in h if x.get('config',{}).get('url','').split('?')[0]=='$base'),''))" 2>/dev/null || echo "")
   # __TOKEN__ placeholder so the bearer never appears in any echo/dry-run line (like sync_mirror).
+  # NB: authorization_header is a TOP-LEVEL field in the Forgejo hook API, NOT a config key — Forgejo
+  # silently drops unknown config keys, so nesting it sends NO Authorization header → receiver 401s.
   local body
-  body=$(python3 -c "import json;print(json.dumps({'type':'forgejo','config':{'url':'$RENOVATE_WEBHOOK_URL','content_type':'json','http_method':'POST','authorization_header':'Bearer __TOKEN__'},'events':['issues','pull_request'],'active':True}))")
+  body=$(python3 -c "import json;print(json.dumps({'type':'forgejo','config':{'url':'$RENOVATE_WEBHOOK_URL','content_type':'json','http_method':'POST'},'events':['issues','pull_request'],'active':True,'authorization_header':'Bearer __TOKEN__'}))")
   if [ -z "$id" ]; then
     if [ "$APPLY" = 1 ]; then
       note "APPLY: create Renovate webhook on $r"
