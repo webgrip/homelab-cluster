@@ -81,6 +81,35 @@ Create a GitHub webhook (repo-level or org-level) with:
 
 This causes Renovate runs to be triggered immediately when you tick boxes or use Renovate checkboxes in PRs.
 
+## Make Dependency Dashboard actions immediate (Forgejo webhook)
+
+Same idea for the Forgejo path. The operator's **native** auto-registration
+(`webhook.forgejo.sync` on `webgrip-forgejo.yaml`) is **disabled** — it calls a repo-by-topic search
+that 404s on Forgejo 15 (operator 4.10.1 bug; no config workaround). The webhook *receiver* is fine;
+only the auto-registration is broken. Forgejo has no GitHub-App-style org webhook, so register a
+**per-repo** hook with the `webhook` action of [`scripts/forgejo-sync.sh`](../../../../../scripts/forgejo-sync.sh)
+(idempotent, dry-run by default):
+
+```sh
+scripts/forgejo-sync.sh --repo infrastructure --only webhook          # dry-run (prints intent, never the token)
+scripts/forgejo-sync.sh --repo infrastructure --only webhook --apply  # apply one repo
+scripts/forgejo-sync.sh --all --only webhook --apply                  # all de-mirrored repos
+```
+
+It registers a Forgejo repo webhook with:
+
+- **Payload URL:** `https://renovate-webhook.${SECRET_DOMAIN}/webhook/v1/forgejo?namespace=renovate&job=webgrip-forgejo`
+- **Content type:** `json`, **method:** `POST`
+- **Auth:** `Authorization: Bearer <token>` — the FIRST token in Secret `renovate-webhook-auth` key
+  `token` (OpenBao `renovate/webhook-auth`). The script reads it from `$RENOVATE_WEBHOOK_AUTH_TOKEN`,
+  else from the cluster Secret via `kubectl`. Never printed (Forgejo also masks it on read).
+- **Events:** **Issues** (Dependency Dashboard checkboxes) and **Pull requests** (PR checkboxes).
+
+**Token rotation:** ESO re-materialises the *same* `renovate-webhook-auth` value hourly, so registered
+hooks do **not** go stale on refresh — only a real rotation of the OpenBao `renovate/webhook-auth` value
+does. After such a rotation, re-run `scripts/forgejo-sync.sh --all --only webhook --apply` (its PATCH
+re-sets the embedded bearer). The hook needs **repo admin** to create/update (same as `protect`).
+
 ## Renovate manifests
 
 - RenovateJob: `webgrip-gitops.yaml`

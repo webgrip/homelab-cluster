@@ -10,13 +10,21 @@
 #   mirror   — add a Forgejo -> GitHub push-mirror (auto-backup) if none points at github.com
 #   protect  — protect `main`: mirror GitHub's rule if it has one, else a minimal safe rule
 #              (block force-push + deletion, keep direct-push — does NOT require PRs)
+#   webhook  — register a Forgejo repo webhook -> the renovate-operator receiver so ticking a
+#              Dependency-Dashboard / PR checkbox triggers an immediate Renovate run (not the 6h cron).
+#              Idempotent: matches an existing hook by receiver URL; creates if missing, refreshes if
+#              present. The operator's native webhook.forgejo.sync is broken on Forgejo 15, so we do
+#              it per-repo (the documented Forgejo way). See jobs/README.md.
 #
 # SAFE BY DEFAULT: prints the intended mutations and exits. Pass --apply to actually write.
 #
 # Requires:
-#   FORGEJO_TOKEN   Forgejo PAT, scope write:repository (+ admin to set protection). Never printed.
+#   FORGEJO_TOKEN   Forgejo PAT, scope write:repository (+ repo admin for `protect` and `webhook`). Never printed.
 #   gh              GitHub CLI, authenticated (for reading GitHub state).
 #   GH_MIRROR_TOKEN GitHub PAT (classic, scope `repo`) — ONLY needed for `mirror`. Never printed.
+#   RENOVATE_WEBHOOK_AUTH_TOKEN  bearer the hook sends to the receiver — ONLY for `webhook`. Optional:
+#              if unset and kubectl is configured, falls back to Secret renovate/renovate-webhook-auth
+#              key `token`. Never printed.
 #
 # Usage:
 #   scripts/forgejo-sync.sh --repo workflows                 # dry-run, all actions, one repo
@@ -29,13 +37,17 @@ FORGEJO_API="https://forgejo.webgrip.dev/api/v1"
 GITHUB_HOST="github.com"
 ORG="webgrip"
 APPLY=0
-ONLY="actions,prs,mirror,protect"
+ONLY="actions,prs,mirror,protect,webhook"
 REPOS=()
 # Reusable-workflow LIBRARY repos: their workflows are `on: workflow_call` and run in the *caller*
 # repo, never here. Keep the Forgejo Actions unit OFF for these even though GitHub has it on, so
 # pushes/PRs don't spawn stray in-repo runs (disabling the unit does NOT break `uses:` consumers —
 # the caller's runner resolves+executes the reusable workflow).
 ACTIONS_OFF_REPOS="workflows"
+# Renovate webhook receiver (operator Service, exposed via envoy-external). The ?namespace=&job= params
+# route the inbound Forgejo event to the Forgejo RenovateJob, mirroring the documented GitHub webhook.
+# Host literal matches the script's hardcoded forgejo.webgrip.dev (this is a local CLI, not a manifest).
+RENOVATE_WEBHOOK_URL="https://renovate-webhook.webgrip.dev/webhook/v1/forgejo?namespace=renovate&job=webgrip-forgejo"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 have() { echo ",$ONLY," | grep -q ",$1,"; }
@@ -160,6 +172,51 @@ print(json.dumps(rule))')
   fi
 }
 
+# Resolve the receiver bearer token once (env wins; else the in-cluster Secret). Never printed.
+# Lazy: only invoked from sync_webhook, so a no-webhook run never needs kubectl or the token.
+WEBHOOK_TOKEN=""
+resolve_webhook_token() {
+  [ -n "$WEBHOOK_TOKEN" ] && return 0
+  if [ -n "${RENOVATE_WEBHOOK_AUTH_TOKEN:-}" ]; then
+    WEBHOOK_TOKEN="$RENOVATE_WEBHOOK_AUTH_TOKEN"
+  else
+    command -v kubectl >/dev/null || { note "webhook: SKIP — no RENOVATE_WEBHOOK_AUTH_TOKEN and no kubectl"; return 1; }
+    WEBHOOK_TOKEN="$(kubectl -n renovate get secret renovate-webhook-auth -o jsonpath='{.data.token}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+    [ -n "$WEBHOOK_TOKEN" ] || { note "webhook: SKIP — could not read Secret renovate/renovate-webhook-auth (kubectl context? RBAC?)"; return 1; }
+  fi
+  WEBHOOK_TOKEN="${WEBHOOK_TOKEN%%,*}"   # Secret may hold a comma-separated list; embed exactly ONE
+}
+
+sync_webhook() {
+  local r="$1"
+  resolve_webhook_token || return 0       # SKIP already noted; non-fatal so other repos/actions proceed
+  local base="${RENOVATE_WEBHOOK_URL%%\?*}"
+  # Dedupe on the URL PREFIX (before '?') so adding/removing query params never spawns a duplicate hook.
+  local id
+  id=$(fj "$FORGEJO_API/repos/$ORG/$r/hooks" 2>/dev/null \
+    | python3 -c "import sys,json;h=json.load(sys.stdin);print(next((str(x['id']) for x in h if x.get('config',{}).get('url','').split('?')[0]=='$base'),''))" 2>/dev/null || echo "")
+  # __TOKEN__ placeholder so the bearer never appears in any echo/dry-run line (like sync_mirror).
+  local body
+  body=$(python3 -c "import json;print(json.dumps({'type':'forgejo','config':{'url':'$RENOVATE_WEBHOOK_URL','content_type':'json','http_method':'POST','authorization_header':'Bearer __TOKEN__'},'events':['issues','pull_request'],'active':True}))")
+  if [ -z "$id" ]; then
+    if [ "$APPLY" = 1 ]; then
+      note "APPLY: create Renovate webhook on $r"
+      fj -X POST "$FORGEJO_API/repos/$ORG/$r/hooks" -d "${body/__TOKEN__/$WEBHOOK_TOKEN}" >/dev/null && note "  ok" || note "  FAILED"
+    else
+      note "DRY-RUN would: create Renovate webhook on $r -> $base (events: issues,pull_request)"
+    fi
+  else
+    # Hook exists. Forgejo masks authorization_header on GET, so we can't diff the token — a PATCH
+    # always re-sets url/events/active and the bearer (this also doubles as the token-rotation refresh).
+    if [ "$APPLY" = 1 ]; then
+      note "APPLY: refresh Renovate webhook on $r (id $id)"
+      fj -X PATCH "$FORGEJO_API/repos/$ORG/$r/hooks/$id" -d "${body/__TOKEN__/$WEBHOOK_TOKEN}" >/dev/null && note "  ok" || note "  FAILED"
+    else
+      note "webhook: already registered on $r (id $id) — would refresh config/token"
+    fi
+  fi
+}
+
 echo "forgejo-sync: org=$ORG only=$ONLY apply=$APPLY repos=${REPOS[*]}"
 for r in "${REPOS[@]}"; do
   echo "== $r =="
@@ -167,6 +224,7 @@ for r in "${REPOS[@]}"; do
   have prs     && sync_prs     "$r"
   have mirror  && sync_mirror  "$r"
   have protect && sync_protect "$r"
+  have webhook && sync_webhook "$r"
 done
 echo "done.${APPLY:+}"
 [ "$APPLY" = 1 ] || echo "(dry-run — re-run with --apply to write)"
