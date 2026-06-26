@@ -604,6 +604,79 @@ spec:
               "legendFormat": "active",
               "expr": "max(keda_scaler_active{scaledObject=\"forgejo-runner\"})" }
           ]
+        },
+        {
+          "id": 26,
+          "type": "row",
+          "title": "Run mapping (Loki) — pod → task → repo",
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 72 }
+        },
+        {
+          "id": 27,
+          "type": "logs",
+          "title": "Live CI run feed (pod → task → repo)",
+          "description": "Each runner pod logs `task <N> repo is <owner/repo>` when it picks up a job — this is the authoritative pod→run mapping. Expand a line to see its `pod` label. NOTE: populates only after the alloy-agent DNS fix reconciles (runner stdout → Loki) AND a new CI run lands; until then it reads 'No data'.",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 9, "w": 24, "x": 0, "y": 73 },
+          "options": {
+            "showTime": true,
+            "showLabels": true,
+            "showCommonLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": false,
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "sortOrder": "Descending"
+          },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "loki", "uid": "loki" },
+              "expr": "{namespace=\"forgejo\", container=\"runner\"} |= \"repo is\"" }
+          ]
+        },
+        {
+          "id": 28,
+          "type": "timeseries",
+          "title": "CI runs started over time",
+          "description": "Accurate run-start throughput: counts the `task … repo is …` log lines per bucket (one per job a runner actually picked up). The reliable counterpart to the GC-limited k8s-Job metric above.",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 82 },
+          "fieldConfig": {
+            "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60, "showPoints": "never" } },
+            "overrides": []
+          },
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "single" }
+          },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "loki", "uid": "loki" },
+              "legendFormat": "runs started",
+              "expr": "sum(count_over_time({namespace=\"forgejo\", container=\"runner\"} |= \"repo is\" [$$__interval]))" }
+          ]
+        },
+        {
+          "id": 29,
+          "type": "bargauge",
+          "title": "Runs by repo (dashboard range)",
+          "description": "Which repos drove CI over the selected time range — parsed from the runner `repo is <owner/repo>` lines.",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 82 },
+          "fieldConfig": {
+            "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] } },
+            "overrides": []
+          },
+          "options": {
+            "displayMode": "gradient",
+            "orientation": "horizontal",
+            "showUnfilled": true,
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+          },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "queryType": "instant",
+              "legendFormat": "{{repo}}",
+              "expr": "sum by (repo) (count_over_time({namespace=\"forgejo\", container=\"runner\"} |= \"repo is\" | regexp `repo is (?P<repo>\\S+)` | repo != \"\" [$$__range]))" }
+          ]
         }
       ]
     }
