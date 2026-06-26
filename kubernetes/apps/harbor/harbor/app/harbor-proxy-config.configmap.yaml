@@ -105,24 +105,47 @@ data:
       fi
     }
 
-    # Ensure the webgrip CI robot exists (push+pull on webgrip) and its secret matches our
-    # vaulted token. GET /robots lists only SYSTEM robots, so PROJECT robots must be queried
+    # Ensure the webgrip CI robot exists, and that its access list + secret converge to the
+    # desired spec. GET /robots lists only SYSTEM robots, so PROJECT robots must be queried
     # with q=Level=project,ProjectID=<id>; re-resolve after POST so a 409 still leads to PATCH.
+    #
+    # Access list = repository push/pull (CI image push) PLUS sbom:create, so the release
+    # pipeline can trigger Harbor's native SBOM generation
+    # (POST .../artifacts/{digest}/scan {"scan_type":"sbom"}). Harbor >= 2.11 gates SBOM
+    # generation behind the dedicated `sbom` resource, NOT `repository` — without it that call
+    # returns 403 FORBIDDEN and Harbor's SBOM column stays empty (the cosign SBOM attestation +
+    # Dependency-Track upload from the pipeline are signed/unaffected; this is the registry-UI copy).
     ensure_webgrip_robot() {
       [ -n "$${WEBGRIP_CI_TOKEN:-}" ] || {
         log "no webgrip robot token (secret/harbor/robot-webgrip) — skipping robot"; return 0; }
       _pid="$$(hc GET "/projects?name=webgrip" 2>/dev/null | jq -r '.[] | select(.name=="webgrip") | .project_id' 2>/dev/null | head -n1)"
       [ -n "$$_pid" ] && [ "$$_pid" != "null" ] || { log "WARN: webgrip project id not found; skipping robot"; return 0; }
+      # Single source of truth for the robot's project-scoped access (no shell '$' inside, so
+      # Flux post-build substitution leaves it untouched and it interpolates cleanly below).
+      _perms='[{"kind":"project","namespace":"webgrip","access":[{"resource":"repository","action":"push"},{"resource":"repository","action":"pull"},{"resource":"sbom","action":"create"}]}]'
       _q="Level%3Dproject%2CProjectID%3D$$_pid"
       _rid="$$(hc GET "/robots?q=$$_q&page_size=100" 2>/dev/null | jq -r '.[0].id' 2>/dev/null)"
       if [ -z "$$_rid" ] || [ "$$_rid" = "null" ]; then
-        _body='{"name":"ci","description":"webgrip CI push/pull (managed)","duration":-1,"level":"project","disable":false,"permissions":[{"kind":"project","namespace":"webgrip","access":[{"resource":"repository","action":"push"},{"resource":"repository","action":"pull"}]}]}'
+        _body="{\"name\":\"ci\",\"description\":\"webgrip CI push/pull (managed)\",\"duration\":-1,\"level\":\"project\",\"disable\":false,\"permissions\":$$_perms}"
         hc POST "/robots" "$$_body" >/dev/null 2>&1 || true
         _rid="$$(hc GET "/robots?q=$$_q&page_size=100" 2>/dev/null | jq -r '.[0].id' 2>/dev/null)"
       fi
       if [ -z "$$_rid" ] || [ "$$_rid" = "null" ]; then
         log "WARN: webgrip robot not resolvable (pid=$$_pid); robots seen: $$(hc GET "/robots?q=$$_q&page_size=100" 2>/dev/null | jq -rc '[.[].name]' 2>/dev/null)"
         return 0
+      fi
+      # Converge the access list on the EXISTING robot too: the POST above runs only on first
+      # creation, so a robot provisioned before sbom:create was added keeps 403ing without this.
+      # UpdateRobot rejects a changed name/level, so reuse the exact stored name (robot$webgrip+ci)
+      # from the GET and resend the desired spec with the (possibly new) permissions.
+      _rname="$$(hc GET "/robots/$$_rid" 2>/dev/null | jq -r '.name // empty' 2>/dev/null)"
+      if [ -n "$$_rname" ]; then
+        _upd="{\"name\":\"$$_rname\",\"description\":\"webgrip CI push/pull (managed)\",\"duration\":-1,\"level\":\"project\",\"disable\":false,\"permissions\":$$_perms}"
+        if _out="$$(hc PUT "/robots/$$_rid" "$$_upd" 2>&1)"; then
+          log "webgrip robot (id=$$_rid) access converged (repository push/pull + sbom:create)"
+        else
+          log "WARN: failed to update webgrip robot permissions (id=$$_rid): $$_out"
+        fi
       fi
       if _out="$$(hc PATCH "/robots/$$_rid" "{\"secret\":\"$${WEBGRIP_CI_TOKEN}\"}" 2>&1)"; then
         log "webgrip robot (id=$$_rid) secret ensured"
