@@ -2,7 +2,8 @@
 # forgejo-sync.sh — bring a Forgejo repo's settings to parity with its GitHub origin.
 #
 # Actions (idempotent, each checks current state first):
-#   actions  — enable the Forgejo Actions unit (has_actions) when GitHub has Actions enabled
+#   actions  — enable the Forgejo Actions unit (has_actions) when GitHub has Actions enabled,
+#              EXCEPT for reusable-workflow library repos in ACTIONS_OFF_REPOS (forced off)
 #   prs      — enable the Pull Requests unit (has_pull_requests). Converting a pull-mirror to a
 #              regular repo leaves PRs DISABLED (mirrors are read-only), which makes Renovate skip
 #              the repo ("pull requests are disabled") and blocks any normal PR. Always-on parity.
@@ -30,9 +31,15 @@ ORG="webgrip"
 APPLY=0
 ONLY="actions,prs,mirror,protect"
 REPOS=()
+# Reusable-workflow LIBRARY repos: their workflows are `on: workflow_call` and run in the *caller*
+# repo, never here. Keep the Forgejo Actions unit OFF for these even though GitHub has it on, so
+# pushes/PRs don't spawn stray in-repo runs (disabling the unit does NOT break `uses:` consumers —
+# the caller's runner resolves+executes the reusable workflow).
+ACTIONS_OFF_REPOS="workflows"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 have() { echo ",$ONLY," | grep -q ",$1,"; }
+is_actions_off() { echo " $ACTIONS_OFF_REPOS " | grep -q " $1 "; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -66,8 +73,17 @@ fi
 sync_actions() {
   local r="$1"
   local gh_on fj_on
-  gh_on=$(gh api "repos/$ORG/$r/actions/permissions" -q .enabled 2>/dev/null || echo "")
   fj_on=$(fj "$FORGEJO_API/repos/$ORG/$r" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("has_actions"))')
+  if is_actions_off "$r"; then            # reusable-workflow library: force the unit OFF
+    if [ "$fj_on" = "True" ]; then
+      mut "DISABLE Actions on $r (reusable-workflow library — runs belong in caller repos)" \
+          -X PATCH "$FORGEJO_API/repos/$ORG/$r" -d '{"has_actions":false}'
+    else
+      note "actions: kept off ($r is a reusable-workflow library)"
+    fi
+    return
+  fi
+  gh_on=$(gh api "repos/$ORG/$r/actions/permissions" -q .enabled 2>/dev/null || echo "")
   if [ "$gh_on" = "true" ] && [ "$fj_on" != "True" ]; then
     mut "enable Actions unit on $r (GitHub=on, Forgejo=off)" \
         -X PATCH "$FORGEJO_API/repos/$ORG/$r" -d '{"has_actions":true}'
