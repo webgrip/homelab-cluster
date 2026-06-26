@@ -3,6 +3,9 @@
 #
 # Actions (idempotent, each checks current state first):
 #   actions  — enable the Forgejo Actions unit (has_actions) when GitHub has Actions enabled
+#   prs      — enable the Pull Requests unit (has_pull_requests). Converting a pull-mirror to a
+#              regular repo leaves PRs DISABLED (mirrors are read-only), which makes Renovate skip
+#              the repo ("pull requests are disabled") and blocks any normal PR. Always-on parity.
 #   mirror   — add a Forgejo -> GitHub push-mirror (auto-backup) if none points at github.com
 #   protect  — protect `main`: mirror GitHub's rule if it has one, else a minimal safe rule
 #              (block force-push + deletion, keep direct-push — does NOT require PRs)
@@ -25,7 +28,7 @@ FORGEJO_API="https://forgejo.webgrip.dev/api/v1"
 GITHUB_HOST="github.com"
 ORG="webgrip"
 APPLY=0
-ONLY="actions,mirror,protect"
+ONLY="actions,prs,mirror,protect"
 REPOS=()
 
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -70,6 +73,18 @@ sync_actions() {
         -X PATCH "$FORGEJO_API/repos/$ORG/$r" -d '{"has_actions":true}'
   else
     note "actions: nothing to do (GitHub=$gh_on, Forgejo has_actions=$fj_on)"
+  fi
+}
+
+sync_prs() {
+  local r="$1"
+  local on
+  on=$(fj "$FORGEJO_API/repos/$ORG/$r" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("has_pull_requests"))')
+  if [ "$on" != "True" ]; then
+    mut "enable Pull Requests unit on $r (was disabled — un-mirror leaves it off; Renovate skips PR-less repos)" \
+        -X PATCH "$FORGEJO_API/repos/$ORG/$r" -d '{"has_pull_requests":true}'
+  else
+    note "prs: already enabled"
   fi
 }
 
@@ -133,6 +148,7 @@ echo "forgejo-sync: org=$ORG only=$ONLY apply=$APPLY repos=${REPOS[*]}"
 for r in "${REPOS[@]}"; do
   echo "== $r =="
   have actions && sync_actions "$r"
+  have prs     && sync_prs     "$r"
   have mirror  && sync_mirror  "$r"
   have protect && sync_protect "$r"
 done

@@ -6,75 +6,56 @@ metadata:
   name: image-attestations-audit
   annotations:
     pod-policies.kyverno.io/autogen-controllers: DaemonSet,Deployment,StatefulSet
-    policies.kyverno.io/title: Image Attestations (Audit)
+    policies.kyverno.io/title: GHCR Image Signature + SBOM (Audit)
     policies.kyverno.io/category: Software Supply Chain
     policies.kyverno.io/severity: high
     policies.kyverno.io/subject: Pod
     kyverno.io/kyverno-version: 1.18.1
     policies.kyverno.io/description: >-
-      Audit that internal GHCR images carry keyless GitHub OIDC attestations for
-      SLSA provenance and CycloneDX SBOMs. These rules are intentionally
-      Audit-only until every internal image build publishes the corresponding
-      Cosign/GitHub Artifact Attestation records.
+      Audit that internal GHCR images carry a valid cosign signature + CycloneDX SBOM attestation
+      signed by the OpenBao Transit key (cosign-webgrip-pub). Forgejo is now the sole release
+      authority and signs GHCR with the SAME key as Harbor — there is no more GitHub keyless SLSA
+      provenance / public-rekor flow, so this verifies the static key (no rekor), mirroring
+      image-verify-harbor-audit. Audit-only; flip to Enforce once green.
 spec:
   validationFailureAction: Audit
-  background: false
+  background: false # verifyImages requires admission context
   webhookTimeoutSeconds: 30
   failurePolicy: Fail
   rules:
-    - name: verify-github-slsa-provenance
+    - name: verify-webgrip-ghcr-images
       match:
         any:
           - resources:
               kinds:
                 - Pod
+      context:
+        # Public half of the OpenBao Transit cosign key — the same one Harbor verification uses.
+        - name: cosignpub
+          configMap:
+            name: cosign-webgrip-pub
+            namespace: security
       verifyImages:
         - imageReferences:
             - "ghcr.io/webgrip/*"
-          type: SigstoreBundle
+          # If the webgrip GHCR packages are PRIVATE, add imageRegistryCredentials with a ghcr-pull
+          # secret (a read-scoped PAT) so Kyverno can fetch the manifest + signature/attestation.
           required: true
           mutateDigest: false
           verifyDigest: true
-          attestations:
-            - type: https://slsa.dev/provenance/v1
-              attestors:
-                - count: 1
-                  entries:
-                    - keyless:
-                        subjectRegExp: "^https://github\\.com/webgrip/infrastructure/\\.github/workflows/on_release_published\\.yml@refs/tags/.+$"
-                        issuer: "https://token.actions.githubusercontent.com"
-                        rekor:
-                          url: https://rekor.sigstore.dev
-              conditions:
-                - all:
-                    - key: "{{ buildDefinition.buildType }}"
-                      operator: Equals
-                      value: https://actions.github.io/buildtypes/workflow/v1
-
-    - name: verify-cyclonedx-sbom
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      verifyImages:
-        - imageReferences:
-            - "ghcr.io/webgrip/*"
-          required: true
-          mutateDigest: false
-          verifyDigest: true
+          # No `rekor` block -> key-only verification, no transparency-log lookup (cosign signs with
+          # --tlog-upload=false). This policy verifies the SBOM ATTESTATION; the cosign SIGNATURE is
+          # verified by image-verify-audit (verify-webgrip-images). Matches the harbor key model.
           attestations:
             - predicateType: https://cyclonedx.org/bom
               attestors:
                 - count: 1
                   entries:
-                    - keyless:
-                        subjectRegExp: "^https://github\\.com/webgrip/infrastructure/\\.github/workflows/on_release_published\\.yml@refs/tags/.+$"
-                        issuer: "https://token.actions.githubusercontent.com"
-                        rekor:
-                          url: https://rekor.sigstore.dev
+                    - keys:
+                        publicKeys: '{{ cosignpub.data."cosign.pub" }}'
+              # Require at least one component in the SBOM (sanity check).
               conditions:
                 - all:
-                    - key: "{{ Data.bomFormat }}"
-                      operator: Equals
-                      value: CycloneDX
+                    - key: "{{ components | length(@) }}"
+                      operator: GreaterThan
+                      value: 0

@@ -12,12 +12,12 @@ metadata:
     policies.kyverno.io/subject: Pod
     kyverno.io/kyverno-version: 1.18.1
     policies.kyverno.io/description: >-
-      Audit that first-party WebGrip images are signed with Sigstore/Cosign
-      keyless signatures issued by the infrastructure release workflow via
-      GitHub Actions OIDC.
-      This policy runs in Audit mode so existing unsigned workloads are surfaced in
-      PolicyReports without being blocked. Promote to Enforce once all images in scope
-      are signed in CI with id-token: write and digest-pinned deployment references.
+      Audit that container images carry valid Cosign signatures. First-party WebGrip images
+      (ghcr.io/webgrip/*) are now key-signed by Forgejo (the sole release authority) with the
+      OpenBao Transit key — the same key as Harbor, NOT GitHub keyless OIDC. Third-party images
+      (e.g. kyverno) keep keyless verification. Audit mode surfaces unsigned workloads in
+      PolicyReports without blocking; promote to Enforce once all images in scope are signed and
+      deployments are digest-pinned.
 spec:
   validationFailureAction: Audit
   background: false # verifyImages requires admission context
@@ -26,8 +26,8 @@ spec:
   rules:
     # -----------------------------------------------------------------------
     # First-party images: ghcr.io/webgrip/*
-    # These images are produced by webgrip/infrastructure releases and signed by
-    # that repository's release workflow using keyless Cosign and GitHub OIDC.
+    # Produced by webgrip/infrastructure releases and signed by Forgejo (the sole release authority)
+    # with cosign + the OpenBao Transit key (cosign-webgrip-pub) — the same key as Harbor.
     # -----------------------------------------------------------------------
     - name: verify-webgrip-images
       match:
@@ -35,17 +35,24 @@ spec:
           - resources:
               kinds:
                 - Pod
+      context:
+        # Public half of the OpenBao Transit cosign key (same one Harbor + the SBOM-attestation
+        # policy use). Kyverno runs in `security`, so this is an in-namespace read.
+        - name: cosignpub
+          configMap:
+            name: cosign-webgrip-pub
+            namespace: security
       verifyImages:
         - imageReferences:
             - "ghcr.io/webgrip/*"
+          # Key-based: Forgejo (the sole release authority) signs GHCR with the OpenBao Transit key —
+          # the SAME key as Harbor, NOT GitHub keyless OIDC. No `rekor` block -> no transparency-log
+          # lookup (cosign signs with --tlog-upload=false).
           attestors:
             - count: 1
               entries:
-                - keyless:
-                    subjectRegExp: "^https://github\\.com/webgrip/infrastructure/\\.github/workflows/on_release_published\\.yml@refs/tags/.+$"
-                    issuer: "https://token.actions.githubusercontent.com"
-                    rekor:
-                      url: https://rekor.sigstore.dev
+                - keys:
+                    publicKeys: '{{ cosignpub.data."cosign.pub" }}'
           required: true
           mutateDigest: false
           verifyDigest: true
