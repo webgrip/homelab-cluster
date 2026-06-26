@@ -117,9 +117,17 @@ spec:
                   -d "{\"name\":\"$team\",\"description\":\"Renovate bot — write, all repos\",\"permission\":\"write\",\"includes_all_repositories\":true,\"can_create_org_repo\":false,\"units\":[\"repo.code\",\"repo.issues\",\"repo.pulls\"]}" | jq -r '.id // empty')"
               fi
               if [ -n "$tid" ]; then
-                curl -sS -o /dev/null -u "$admin" -X PUT "$api/orgs/$org/teams/$tid/members/$BOT_USERNAME" && echo "bot in $org/$team (id $tid)"
+                # Team-member endpoints are GLOBAL in Forgejo/Gitea: PUT /teams/{id}/members/{user}
+                # — NOT /orgs/{org}/teams/{id}/members/{user} (that path 404s). The old call also
+                # lacked -f, so the 404 was reported as success and the bot was NEVER added → it had
+                # no push/visibility on org repos (Renovate found nothing, can_push=false). -f makes a
+                # real failure abort the Job (set -e). PUT is idempotent (204 on re-add); then verify.
+                curl -fsS -o /dev/null -u "$admin" -X PUT "$api/teams/$tid/members/$BOT_USERNAME"
+                curl -fsS -o /dev/null -u "$admin" "$api/teams/$tid/members/$BOT_USERNAME" \
+                  && echo "bot is a member of $org/$team (id $tid, write + all repos)" \
+                  || { echo "ERROR: bot not a member of $org/$team after add" >&2; exit 1; }
               else
-                echo "WARN: could not ensure $org/$team membership (org-wide push will not work yet)" >&2
+                echo "ERROR: could not resolve $org/$team id (org-wide push will not work)" >&2; exit 1
               fi
               echo "provisioner converged"
           securityContext:
