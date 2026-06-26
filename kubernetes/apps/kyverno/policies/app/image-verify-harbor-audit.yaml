@@ -56,11 +56,15 @@ spec:
           required: true
           mutateDigest: false
           verifyDigest: true
+          # cosign signs with --tlog-upload=false → no Rekor entry; Kyverno verifies the tlog by
+          # default, so rekor.ignoreTlog MUST be set or Enforce rejects correctly-signed images.
           attestors:
             - count: 1
               entries:
                 - keys:
                     publicKeys: '{{ cosignpub.data."cosign.pub" }}'
+                    rekor:
+                      ignoreTlog: true
           attestations:
             - predicateType: https://cyclonedx.org/bom
               attestors:
@@ -68,6 +72,8 @@ spec:
                   entries:
                     - keys:
                         publicKeys: '{{ cosignpub.data."cosign.pub" }}'
+                        rekor:
+                          ignoreTlog: true
               # Require at least one component in the SBOM (sanity check).
               conditions:
                 - all:

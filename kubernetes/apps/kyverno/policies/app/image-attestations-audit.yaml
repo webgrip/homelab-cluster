@@ -43,9 +43,10 @@ spec:
           required: true
           mutateDigest: false
           verifyDigest: true
-          # No `rekor` block -> key-only verification, no transparency-log lookup (cosign signs with
-          # --tlog-upload=false). This policy verifies the SBOM ATTESTATION; the cosign SIGNATURE is
-          # verified by image-verify-audit (verify-webgrip-images). Matches the harbor key model.
+          # cosign signs with --tlog-upload=false → no Rekor entry. Kyverno/cosign verify the tlog BY
+          # DEFAULT, so rekor.ignoreTlog MUST be set or Enforce rejects correctly-signed images. This
+          # policy verifies the SBOM ATTESTATION; the cosign SIGNATURE is verified by image-verify-audit
+          # (verify-webgrip-images). Matches the harbor key model.
           attestations:
             - predicateType: https://cyclonedx.org/bom
               attestors:
@@ -53,6 +54,8 @@ spec:
                   entries:
                     - keys:
                         publicKeys: '{{ cosignpub.data."cosign.pub" }}'
+                        rekor:
+                          ignoreTlog: true
               # Require at least one component in the SBOM (sanity check).
               conditions:
                 - all:

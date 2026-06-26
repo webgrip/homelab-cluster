@@ -46,13 +46,16 @@ spec:
         - imageReferences:
             - "ghcr.io/webgrip/*"
           # Key-based: Forgejo (the sole release authority) signs GHCR with the OpenBao Transit key —
-          # the SAME key as Harbor, NOT GitHub keyless OIDC. No `rekor` block -> no transparency-log
-          # lookup (cosign signs with --tlog-upload=false).
+          # the SAME key as Harbor, NOT GitHub keyless OIDC. cosign signs with --tlog-upload=false, so
+          # there is NO Rekor transparency-log entry. Kyverno/cosign verify the tlog BY DEFAULT, so
+          # rekor.ignoreTlog MUST be set or Enforce rejects every (correctly) signed image.
           attestors:
             - count: 1
               entries:
                 - keys:
                     publicKeys: '{{ cosignpub.data."cosign.pub" }}'
+                    rekor:
+                      ignoreTlog: true
           required: true
           mutateDigest: false
           verifyDigest: true
