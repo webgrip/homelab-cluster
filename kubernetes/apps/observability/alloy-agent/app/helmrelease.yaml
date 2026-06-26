@@ -27,6 +27,11 @@ spec:
       # hostNetwork gives alloy-agent pods a foothold in the host network namespace
       # so Talos OS (pre-pod) can reach the syslog listener at 127.0.0.1:6514.
       hostNetwork: true
+      # hostNetwork silently downgrades dnsPolicy: ClusterFirst to the host resolver,
+      # which can't resolve *.svc.cluster.local -> loki.write to loki-gateway fails
+      # ("no such host") and ALL pod stdout is dropped before reaching Loki. Force
+      # CoreDNS for these hostNetwork pods so the Loki push resolves.
+      dnsPolicy: ClusterFirstWithHostNet
 
     alloy:
       podAnnotations:
