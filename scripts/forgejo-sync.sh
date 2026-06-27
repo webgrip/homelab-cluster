@@ -7,6 +7,11 @@
 #   prs      — enable the Pull Requests unit (has_pull_requests). Converting a pull-mirror to a
 #              regular repo leaves PRs DISABLED (mirrors are read-only), which makes Renovate skip
 #              the repo ("pull requests are disabled") and blocks any normal PR. Always-on parity.
+#   releases — enable the Releases unit (has_releases). Un-mirroring leaves it OFF too, so the
+#              Releases tab/API 404s and in-cluster CI (semantic-release via the Gitea plugin) has no
+#              Releases tab to publish into. Git tags mirror over, but Release OBJECTS do not — and
+#              historical GitHub releases never backfill; this only enables the unit for new ones.
+#              Always-on parity.
 #   mirror   — add a Forgejo -> GitHub push-mirror (auto-backup) if none points at github.com
 #   protect  — protect `main`: mirror GitHub's rule if it has one, else a minimal safe rule
 #              (block force-push + deletion, keep direct-push — does NOT require PRs)
@@ -37,7 +42,7 @@ FORGEJO_API="https://forgejo.webgrip.dev/api/v1"
 GITHUB_HOST="github.com"
 ORG="webgrip"
 APPLY=0
-ONLY="actions,prs,mirror,protect,webhook"
+ONLY="actions,prs,releases,mirror,protect,webhook"
 REPOS=()
 # Reusable-workflow LIBRARY repos: their workflows are `on: workflow_call` and run in the *caller*
 # repo, never here. Keep the Forgejo Actions unit OFF for these even though GitHub has it on, so
@@ -113,6 +118,18 @@ sync_prs() {
         -X PATCH "$FORGEJO_API/repos/$ORG/$r" -d '{"has_pull_requests":true}'
   else
     note "prs: already enabled"
+  fi
+}
+
+sync_releases() {
+  local r="$1"
+  local on
+  on=$(fj "$FORGEJO_API/repos/$ORG/$r" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("has_releases"))')
+  if [ "$on" != "True" ]; then
+    mut "enable Releases unit on $r (was disabled — un-mirror leaves it off; CI semantic-release publishes Releases)" \
+        -X PATCH "$FORGEJO_API/repos/$ORG/$r" -d '{"has_releases":true}'
+  else
+    note "releases: already enabled"
   fi
 }
 
@@ -222,9 +239,10 @@ sync_webhook() {
 echo "forgejo-sync: org=$ORG only=$ONLY apply=$APPLY repos=${REPOS[*]}"
 for r in "${REPOS[@]}"; do
   echo "== $r =="
-  have actions && sync_actions "$r"
-  have prs     && sync_prs     "$r"
-  have mirror  && sync_mirror  "$r"
+  have actions  && sync_actions  "$r"
+  have prs      && sync_prs      "$r"
+  have releases && sync_releases "$r"
+  have mirror   && sync_mirror   "$r"
   have protect && sync_protect "$r"
   have webhook && sync_webhook "$r"
 done

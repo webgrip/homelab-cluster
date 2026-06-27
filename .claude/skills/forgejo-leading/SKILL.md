@@ -74,7 +74,13 @@ scripts/forgejo-sync.sh --repo <name>            # dry-run: shows the planned Ac
 scripts/forgejo-sync.sh --repo <name> --apply
 ```
 
-**5. Record state** in the migration memory (repo now Forgejo-leading; what's left). Personal memory —
+**5. Port the CI/release workflows** — git hosting is now on Forgejo, but `.github/workflows/` still
+targets GitHub (ARC runner label, GitHub-App auth, `@semantic-release/github`) and won't release on
+Forgejo. **Move** `.github/workflows/*` → `.forgejo/workflows/*` and convert `.releaserc.json` →
+a `GITEA_ACTIONS`-gated `.releaserc.js` → see **forgejo-port-workflows**. Skipping this leaves the repo
+"Forgejo-leading" in git only; releases stay on GitHub (the gap that hid on renovate-config until 2026-06-27).
+
+**6. Record state** in the migration memory (repo now Forgejo-leading; what's left). Personal memory —
 not a committed link.
 
 ## Gotchas
