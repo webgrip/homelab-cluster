@@ -62,3 +62,6 @@ Releases unit (`has_releases`) the Releases tab/API **404s** and semantic-releas
 - Historical GitHub **releases do not backfill** — only git tags mirror over. New releases start at the
   next bump; consumers that pin `github>owner/repo#vX.Y.Z` resolve by tag, so they keep working.
 - Don't migrate a `uses:`-consumer before **webgrip/workflows** is Forgejo-leading (resolve the lib first).
+- **Semantic Release `verifyConditions` fails in ~1 min?** The gitea plugin needs `GITEA_URL`; set it to
+  `github.server_url`, the runner's intrinsic Forgejo instance URL. (Plugin *selection* is the
+  `GITEA_ACTIONS` gate — separate concern from its *URL*.)
