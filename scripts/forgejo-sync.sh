@@ -14,7 +14,12 @@
 #              Always-on parity.
 #   mirror   — add a Forgejo -> GitHub push-mirror (auto-backup) if none points at github.com
 #   protect  — protect `main`: mirror GitHub's rule if it has one, else a minimal safe rule
-#              (block force-push + deletion, keep direct-push — does NOT require PRs)
+#              (block force-push + deletion, keep direct-push — does NOT require PRs).
+#              OPT-IN (not in the default set): a Forgejo-leading repo's CI commits the
+#              semantic-release `chore(release)` bump + tag DIRECTLY to main, so mirroring GitHub's
+#              "require PR + approval" rule (enable_push:false) REJECTS the bot and breaks releases.
+#              Forgejo-leading repos run UNPROTECTED, matching webgrip/infrastructure. Use `protect`
+#              only on a repo where humans gate main and no bot pushes.
 #   webhook  — register a Forgejo repo webhook -> the renovate-operator receiver so ticking a
 #              Dependency-Dashboard / PR checkbox triggers an immediate Renovate run (not the 6h cron).
 #              Idempotent: matches an existing hook by receiver URL; creates if missing, refreshes if
@@ -42,7 +47,7 @@ FORGEJO_API="https://forgejo.webgrip.dev/api/v1"
 GITHUB_HOST="github.com"
 ORG="webgrip"
 APPLY=0
-ONLY="actions,prs,releases,mirror,protect,webhook"
+ONLY="actions,prs,releases,mirror,webhook"   # protect is OPT-IN (breaks CI commit-back — see header)
 REPOS=()
 # Reusable-workflow LIBRARY repos: their workflows are `on: workflow_call` and run in the *caller*
 # repo, never here. Keep the Forgejo Actions unit OFF for these even though GitHub has it on, so
