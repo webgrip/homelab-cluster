@@ -22,7 +22,11 @@ spec:
     - renovate/forgejo-renovate-pilot
   provider:
     name: forgejo
-    endpoint: https://forgejo.${SECRET_DOMAIN}/api/v1
+    # In-cluster endpoint (see configmap-forgejo.yaml for the why): the public Cloudflare-fronted host
+    # normalizes %2F in branch-ref API paths -> 404 -> Renovate aborts every run (forgejo issue#3).
+    # Must match the Renovate config endpoint; the operator can surface this as RENOVATE_ENDPOINT, which
+    # overrides the config file, so both have to point at forgejo-http to take effect.
+    endpoint: http://forgejo-http.forgejo.svc.cluster.local:3000/api/v1
   # Offset from webgrip-gitops (:17) to avoid overlapping executor runs on the fringe pool.
   # TEMP(diagnose issue#3): */5 to force a debug run capturing repository-changed cause; revert to "47 */6 * * *".
   schedule: "*/5 * * * *"

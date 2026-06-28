@@ -8,11 +8,18 @@ kind: ConfigMap
 metadata:
   name: renovate-config-forgejo
 data:
+  # endpoint is the in-cluster forgejo-http Service, NOT the public https://forgejo.${SECRET_DOMAIN} host:
+  # Cloudflare (in front of the public host) normalizes the %2F in branch-ref API paths, e.g.
+  #   /repos/.../commits/renovate%2Ffoo/statuses  ->  /repos/.../commits/renovate/foo/statuses  -> 404.
+  # Renovate maps that 404 to REPOSITORY_CHANGED and aborts the whole run, so every cycle bailed with
+  # result=repository-changed once renovate/* branches existed (forgejo issue#3). Hitting forgejo-http
+  # directly preserves the encoded slash. Git clone uses this endpoint host too (in-cluster http,
+  # bot-token auth) — fine cluster-internal. Keep in sync with provider.endpoint in webgrip-forgejo.yaml.
   renovate.json: |-
     {
       "$schema": "https://docs.renovatebot.com/renovate-schema.json",
       "platform": "forgejo",
-      "endpoint": "https://forgejo.${SECRET_DOMAIN}/api/v1",
+      "endpoint": "http://forgejo-http.forgejo.svc.cluster.local:3000/api/v1",
       "autodiscover": false,
       "onboarding": true,
       "requireConfig": "optional",
