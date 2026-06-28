@@ -28,8 +28,7 @@ spec:
     # overrides the config file, so both have to point at forgejo-http to take effect.
     endpoint: http://forgejo-http.forgejo.svc.cluster.local:3000/api/v1
   # Offset from webgrip-gitops (:17) to avoid overlapping executor runs on the fringe pool.
-  # TEMP(diagnose issue#3): */5 to force a debug run capturing repository-changed cause; revert to "47 */6 * * *".
-  schedule: "*/5 * * * *"
+  schedule: "47 */6 * * *"
   parallelism: 1
   image: docker.io/renovate/renovate:43.209.0-full@sha256:f5963ab360818459a856eb4bc3e1655f95e5d7031f1a9d57cdedaf04f3fa2954
   secretRef: renovate-forgejo-token
@@ -74,7 +73,7 @@ spec:
     - name: NODE_OPTIONS
       value: --max-old-space-size=3000
     - name: LOG_LEVEL
-      value: debug
+      value: info
     # GHCR/Docker Hub auth: reuse the GitHub-App token-minter's output (renovate-runtime-token),
     # which already runs for the dual-run GitHub path — no separate GHCR PAT or OpenBao entry
     # needed. optional: tolerates the secret not existing yet (GHCR falls back to anonymous until
