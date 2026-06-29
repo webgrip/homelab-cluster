@@ -8,6 +8,7 @@ This page is intentionally a **links-only index**. Each runbook has its own dedi
 
 ## Platform / GitOps
 
+- New-machine setup (continue working from a fresh clone): [docs/techdocs/docs/runbooks/new-machine-setup.md](new-machine-setup.md)
 - Cluster health: [docs/techdocs/docs/runbooks/cluster-health.md](cluster-health.md)
 - Flux: [docs/techdocs/docs/runbooks/flux.md](flux.md)
 - Renovate: [docs/techdocs/docs/runbooks/renovate.md](renovate.md)
