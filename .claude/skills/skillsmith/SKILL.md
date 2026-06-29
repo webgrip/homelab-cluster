@@ -45,6 +45,7 @@ Its one job: load this skill **exactly when relevant, never otherwise**.
 - **One real in-repo example by path** beats an inlined synthetic template (which rots and costs tokens).
 - **Anchors for skimming:** bold the scan keywords, tables for name→value lookups, bullets over prose.
 - **Guardrails as `Never`/gotchas** — the expensive mistake the model can't infer is the highest-ROI line.
+- **Forbid only live traps.** A `Never X` earns its line *only* when X is an attractive mistake the model would otherwise make. Forbidding what it wasn't going to do anyway plants the bad pattern as baggage and burns tokens — state the right thing and leave the wrong alternative **unsaid**. Positive (`use github.server_url`) beats negative (`don't read vars.FOO because it's always empty`); the negative smuggles in the dead concept you're trying to retire.
 - **Don't duplicate** CLAUDE.md, the codebase, or git history — link to a **committed in-repo doc** (ADR/runbook/incident under `docs/`). **Never link `[[memory]]` from a committed skill** — memory lives in `~/.claude`, per-user/per-machine, so the link dangles on anyone else's clone. `[[memory]]` is portable only inside *personal* (`~/.claude`) skills + memory files.
 
 ## Single source of truth
@@ -134,6 +135,7 @@ when_to_use: Use when <trigger phrases + symptoms>.
 - Inlined templates duplicating a real file; a fact restated in another skill.
 - A paragraph of *why* where one clause suffices.
 - A description that summarizes instead of triggering, or repeats the skill name.
+- A `Never`/`don't` guarding a pattern the model wouldn't reach for anyway — the prohibition *is* the baggage. Show the right thing; omit the wrong one.
 - Walls of prose where a table or bullets parse faster.
 - A lookup table or link list sitting in the always-on body instead of a sibling.
 
