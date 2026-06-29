@@ -1,0 +1,166 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: exec-security-supply-chain
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  allowCrossNamespaceImport: false
+  folderRef: executive
+  json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Executive / Security & Supply-Chain Risk",
+      "uid": "exec-security-supply-chain",
+      "timezone": "browser",
+      "tags": ["executive", "security", "supply-chain", "devsecops"],
+      "editable": true,
+      "graphTooltip": 1,
+      "refresh": "5m",
+      "time": {"from": "now-24h", "to": "now"},
+      "links": [
+        {"title": "◀ Scorecard", "url": "/d/exec-kpi-scorecard", "type": "link", "icon": "dashboard"},
+        {"title": "Value Flow & Delivery", "url": "/d/exec-value-flow-delivery", "type": "link", "icon": "external link"},
+        {"title": "Reliability & SRE", "url": "/d/exec-reliability-sre", "type": "link", "icon": "external link"},
+        {"title": "Platform & Efficiency", "url": "/d/exec-platform-efficiency", "type": "link", "icon": "external link"}
+      ],
+      "annotations": {"list": [{"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard"}]},
+      "templating": {"list": []},
+      "panels": [
+        {
+          "id": 1, "type": "text", "title": "", "gridPos": {"h": 3, "w": 24, "x": 0, "y": 0},
+          "options": {"mode": "markdown", "content": "## Security & Supply-Chain Risk\nExposure to real-world exploit risk and the integrity of what we ship. **Trivy** = vulnerabilities in images actually running; **Dependency-Track** = source-dependency CVEs across the SBOM portfolio — different populations, reported separately. Prioritise by exploitability and closure age, not raw finding counts (scanner theater). Signature **coverage** is on the roadmap — 32 image-verify rules are active but PolicyReports aren't yet emitting results."}
+        },
+
+        {"id": 10, "type": "row", "title": "Risk headline", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 3}, "panels": []},
+        {
+          "id": 11, "type": "stat", "title": "Critical CVEs (running images)", "description": "Critical-severity vulnerabilities in running container images (Trivy Operator).", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(trivy_image_vulnerabilities{severity=\"Critical\"}) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 10}]}}, "overrides": []}
+        },
+        {
+          "id": 12, "type": "stat", "title": "Supply-chain risk score", "description": "Dependency-Track portfolio risk score (aggregate of finding severity x count across all SBOM projects).", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "dt_portfolio_risk_score", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 500}, {"color": "orange", "value": 1000}, {"color": "red", "value": 2000}]}}, "overrides": []}
+        },
+        {
+          "id": 13, "type": "stat", "title": "Open policy violations", "description": "Current failing Kyverno policy results across cluster + namespaced reports.", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(policy_report_result{status=\"fail\"} or cluster_policy_report_result{status=\"fail\"}) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 50}]}}, "overrides": []}
+        },
+        {
+          "id": 14, "type": "stat", "title": "Exposed secrets", "description": "Secrets detected inside running images (Trivy). Any non-zero is a finding.", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(trivy_image_exposedsecrets) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []}
+        },
+
+        {"id": 20, "type": "row", "title": "Vulnerability posture", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 8}, "panels": []},
+        {
+          "id": 21, "type": "bargauge", "title": "Running-image CVEs by severity (Trivy)", "description": "Open vulnerabilities in running images, by severity.", "gridPos": {"h": 7, "w": 12, "x": 0, "y": 9},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum by (severity) (trivy_image_vulnerabilities)", "instant": true, "legendFormat": "{{severity}}"}],
+          "options": {"orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "displayMode": "gradient", "valueMode": "color"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "continuous-GrYlRd"}}, "overrides": []}
+        },
+        {
+          "id": 22, "type": "bargauge", "title": "Portfolio CVEs by severity (Dependency-Track)", "description": "Source-dependency vulnerabilities across the SBOM portfolio, by severity.", "gridPos": {"h": 7, "w": 12, "x": 12, "y": 9},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum by (severity) (dt_portfolio_vulnerabilities)", "instant": true, "legendFormat": "{{severity}}"}],
+          "options": {"orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "displayMode": "gradient", "valueMode": "color"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "continuous-GrYlRd"}}, "overrides": []}
+        },
+
+        {"id": 30, "type": "row", "title": "Supply-chain visibility & coverage", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 16}, "panels": []},
+        {
+          "id": 31, "type": "stat", "title": "SBOM projects tracked", "description": "Total projects with an SBOM in Dependency-Track — supply-chain visibility footprint.", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 17},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "dt_portfolio_projects{state=\"total\"}", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
+        },
+        {
+          "id": 32, "type": "stat", "title": "Vulnerable projects", "description": "Projects with at least one known vulnerability.", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 17},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "dt_portfolio_projects{state=\"vulnerable\"}", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "orange", "value": 50}]}}, "overrides": []}
+        },
+        {
+          "id": 33, "type": "stat", "title": "Running-image scan coverage", "description": "Distinct running images with a Trivy vulnerability scan ÷ total distinct running images.", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 17},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "(count(count by (image_repository, image_tag) (trivy_image_vulnerabilities)) / count(count by (image_repository, image_tag) (trivy_image_info))) * 100", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 0, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 50}, {"color": "green", "value": 80}]}}, "overrides": []}
+        },
+        {
+          "id": 34, "type": "stat", "title": "Active image-verify rules", "description": "Kyverno imageVerify rules ready and enforcing signature/attestation checks at admission.", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 17},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(kyverno_policy_rule_info_total{rule_type=\"imageVerify\", status_ready=\"true\"}) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "green"}}, "overrides": []}
+        },
+
+        {"id": 40, "type": "row", "title": "Policy enforcement & compliance", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 21}, "panels": []},
+        {
+          "id": 41, "type": "stat", "title": "Policy compliance rate", "description": "Passing ÷ (pass + fail) policy results across cluster + namespaced reports.", "gridPos": {"h": 4, "w": 8, "x": 0, "y": 22},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(policy_report_result{status=\"pass\"} or cluster_policy_report_result{status=\"pass\"}) / sum(policy_report_result{status=~\"pass|fail\"} or cluster_policy_report_result{status=~\"pass|fail\"}) * 100", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 1, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 90}, {"color": "green", "value": 99}]}}, "overrides": []}
+        },
+        {
+          "id": 42, "type": "stat", "title": "Admission blocks (24h)", "description": "Enforce-mode policy denials in the last 24h — guardrails actively blocking bad admissions. Higher = more caught at the door.", "gridPos": {"h": 4, "w": 8, "x": 8, "y": 22},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(increase(kyverno_policy_results_total{rule_result=\"fail\", policy_validation_mode=\"enforce\"}[24h])) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "area"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
+        },
+        {
+          "id": 43, "type": "stat", "title": "Compliance controls failing", "description": "Failing controls across CIS / NSA / Pod Security Standards (Trivy compliance).", "gridPos": {"h": 4, "w": 8, "x": 16, "y": 22},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(trivy_cluster_compliance{status=\"Fail\"}) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 10}]}}, "overrides": []}
+        },
+        {
+          "id": 44, "type": "bargauge", "title": "Compliance controls passing by framework", "description": "Passing controls per framework (Trivy cluster compliance).", "gridPos": {"h": 7, "w": 24, "x": 0, "y": 26},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum by (title) (trivy_cluster_compliance{status=\"Pass\"})", "instant": true, "legendFormat": "{{title}}"}],
+          "options": {"orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "displayMode": "gradient", "valueMode": "color"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "continuous-GrYlBl"}}, "overrides": []}
+        },
+
+        {"id": 50, "type": "row", "title": "Certificates", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 33}, "panels": []},
+        {
+          "id": 51, "type": "stat", "title": "Soonest cert expiry", "description": "Days until the nearest TLS certificate expires (cert-manager).", "gridPos": {"h": 4, "w": 8, "x": 0, "y": 34},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "min(certmanager_certificate_expiration_timestamp_seconds - time()) / 86400", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "orange", "value": 14}, {"color": "green", "value": 30}]}}, "overrides": []}
+        },
+        {
+          "id": 52, "type": "stat", "title": "Certs expiring < 14 days", "description": "Count of certificates expiring within 14 days.", "gridPos": {"h": 4, "w": 8, "x": 8, "y": 34},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "count((certmanager_certificate_expiration_timestamp_seconds - time()) < 14*24*3600) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []}
+        },
+        {
+          "id": 53, "type": "stat", "title": "Certificates not Ready", "description": "Certificates whose Ready condition is False (cert-manager).", "gridPos": {"h": 4, "w": 8, "x": 16, "y": 34},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "count(certmanager_certificate_ready_status{condition=\"False\"} == 1) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []}
+        }
+      ]
+    }

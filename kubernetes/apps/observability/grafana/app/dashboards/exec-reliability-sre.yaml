@@ -1,0 +1,145 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: exec-reliability-sre
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  allowCrossNamespaceImport: false
+  folderRef: executive
+  json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Executive / Reliability & SRE",
+      "uid": "exec-reliability-sre",
+      "timezone": "browser",
+      "tags": ["executive", "reliability", "sre", "slo"],
+      "editable": true,
+      "graphTooltip": 1,
+      "refresh": "1m",
+      "time": {"from": "now-7d", "to": "now"},
+      "links": [
+        {"title": "◀ Scorecard", "url": "/d/exec-kpi-scorecard", "type": "link", "icon": "dashboard"},
+        {"title": "Value Flow & Delivery", "url": "/d/exec-value-flow-delivery", "type": "link", "icon": "external link"},
+        {"title": "Security & Supply Chain", "url": "/d/exec-security-supply-chain", "type": "link", "icon": "external link"},
+        {"title": "Platform & Efficiency", "url": "/d/exec-platform-efficiency", "type": "link", "icon": "external link"}
+      ],
+      "annotations": {"list": [{"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard"}]},
+      "templating": {"list": []},
+      "panels": [
+        {
+          "id": 1, "type": "text", "title": "", "gridPos": {"h": 3, "w": 24, "x": 0, "y": 0},
+          "options": {"mode": "markdown", "content": "## Reliability & SRE\nUser-facing service health from blackbox probes, plus the GitOps + workload stability signals behind it. SLO target is **99.9%**; error budget and downtime minutes are measured against it. Distributions (p50/p90), not averages. _Firing-alert tiles are split by severity — the raw count is dominated by non-paging security/dependency-hygiene alerts._"}
+        },
+
+        {"id": 10, "type": "row", "title": "Headline (window)", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 3}, "panels": []},
+        {
+          "id": 11, "type": "stat", "title": "SLO attainment", "description": "Mean availability across all probed services over the window.", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "avg(avg_over_time(probe_success[$$__range])) * 100", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 3, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 99}, {"color": "green", "value": 99.9}]}}, "overrides": []}
+        },
+        {
+          "id": 12, "type": "stat", "title": "Error budget burn (99.9% SLO)", "description": "Fraction of the 0.1% error budget consumed over the window. 1.0 = budget fully spent.", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "(1 - avg(avg_over_time(probe_success[$$__range]))) / 0.001", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 2, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.5}, {"color": "red", "value": 1}]}}, "overrides": []}
+        },
+        {
+          "id": 13, "type": "stat", "title": "Customer-visible incident minutes", "description": "Estimated downtime minutes across probed services over the window.", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(sum_over_time((probe_success == bool 0)[$$__range:30s])) * 30 / 60", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "m", "decimals": 1, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}, "overrides": []}
+        },
+        {
+          "id": 14, "type": "stat", "title": "Targets down now", "description": "Probed endpoints currently failing (probe_success == 0).", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(probe_success == 0) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 2}]}}, "overrides": []}
+        },
+
+        {"id": 20, "type": "row", "title": "Availability", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 8}, "panels": []},
+        {
+          "id": 21, "type": "table", "title": "Availability by service (window)", "description": "Mean availability per probed endpoint over the window. Sorted worst-first.", "gridPos": {"h": 8, "w": 10, "x": 0, "y": 9},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "avg by (instance, job) (avg_over_time(probe_success[$$__range]))", "instant": true, "format": "table"}],
+          "transformations": [
+            {"id": "organize", "options": {"excludeByName": {"Time": true}, "renameByName": {"instance": "Endpoint", "job": "Probe", "Value": "Availability"}}}
+          ],
+          "options": {"showHeader": true, "sortBy": [{"displayName": "Availability", "desc": false}]},
+          "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": [{"matcher": {"id": "byName", "options": "Availability"}, "properties": [{"id": "unit", "value": "percentunit"}, {"id": "decimals", "value": 4}, {"id": "custom.cellOptions", "value": {"type": "color-background"}}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 0.99}, {"color": "green", "value": 0.999}]}}]}]}
+        },
+        {
+          "id": 22, "type": "timeseries", "title": "Rolling availability by service", "description": "Rolling availability per endpoint (avg of probe_success over the rate interval).", "gridPos": {"h": 8, "w": 14, "x": 10, "y": 9},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "avg by (instance) (avg_over_time(probe_success[$$__rate_interval]))", "legendFormat": "{{instance}}"}],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "fieldConfig": {"defaults": {"unit": "percentunit", "decimals": 3, "min": 0, "max": 1, "custom": {"lineWidth": 1, "fillOpacity": 10, "showPoints": "never"}}, "overrides": []}
+        },
+
+        {"id": 30, "type": "row", "title": "Latency", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 17}, "panels": []},
+        {
+          "id": 31, "type": "timeseries", "title": "Probe latency p50 / p90", "description": "Probe round-trip latency distribution across all endpoints.", "gridPos": {"h": 7, "w": 12, "x": 0, "y": 18},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(prober_probe_duration_seconds_bucket[$$__rate_interval])))", "legendFormat": "p50"},
+            {"refId": "B", "expr": "histogram_quantile(0.90, sum by (le) (rate(prober_probe_duration_seconds_bucket[$$__rate_interval])))", "legendFormat": "p90"}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "fieldConfig": {"defaults": {"unit": "s", "decimals": 3, "custom": {"lineWidth": 1, "fillOpacity": 10, "showPoints": "never"}}, "overrides": []}
+        },
+        {
+          "id": 32, "type": "bargauge", "title": "p90 latency by endpoint", "description": "p90 probe latency per endpoint over the window.", "gridPos": {"h": 7, "w": 12, "x": 12, "y": 18},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "histogram_quantile(0.90, sum by (le, instance) (rate(prober_probe_duration_seconds_bucket[$$__rate_interval])))", "instant": true, "legendFormat": "{{instance}}"}],
+          "options": {"orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "displayMode": "gradient", "valueMode": "color"},
+          "fieldConfig": {"defaults": {"unit": "s", "decimals": 3, "color": {"mode": "continuous-GrYlRd"}}, "overrides": []}
+        },
+
+        {"id": 40, "type": "row", "title": "Alerts & workload stability", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 25}, "panels": []},
+        {
+          "id": 41, "type": "stat", "title": "Critical alerts firing", "description": "Alerts firing at severity=critical right now.", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 26},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "count(ALERTS{alertstate=\"firing\", severity=\"critical\"}) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}, "overrides": []}
+        },
+        {
+          "id": 42, "type": "stat", "title": "Warning alerts firing", "description": "Alerts firing at severity=warning right now.", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 26},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "count(ALERTS{alertstate=\"firing\", severity=\"warning\"}) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 5}, {"color": "red", "value": 15}]}}, "overrides": []}
+        },
+        {
+          "id": 43, "type": "stat", "title": "Container restarts (24h)", "description": "Sum of container restarts in the last 24h.", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 26},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(increase(kube_pod_container_status_restarts_total[24h])) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 10}]}}, "overrides": []}
+        },
+        {
+          "id": 44, "type": "stat", "title": "OOM kills (24h)", "description": "Out-of-memory kills in the last 24h.", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 26},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(increase(container_oom_events_total[24h])) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}, "overrides": []}
+        },
+        {
+          "id": 45, "type": "table", "title": "Top firing alerts (by alertname)", "description": "Currently firing alerts grouped by name + severity. Many are non-paging security/dependency-hygiene alerts — triage by severity.", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 30},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "topk(15, count by (alertname, severity) (ALERTS{alertstate=\"firing\"}))", "instant": true, "format": "table"}],
+          "transformations": [
+            {"id": "organize", "options": {"excludeByName": {"Time": true}, "renameByName": {"alertname": "Alert", "severity": "Severity", "Value": "Count"}}}
+          ],
+          "options": {"showHeader": true, "sortBy": [{"displayName": "Count", "desc": true}]},
+          "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": [{"matcher": {"id": "byName", "options": "Count"}, "properties": [{"id": "unit", "value": "short"}, {"id": "custom.width", "value": 100}]}]}
+        }
+      ]
+    }

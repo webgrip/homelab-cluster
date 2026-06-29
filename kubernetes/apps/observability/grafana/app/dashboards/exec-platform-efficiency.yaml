@@ -1,0 +1,170 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: exec-platform-efficiency
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  allowCrossNamespaceImport: false
+  folderRef: executive
+  json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Executive / Platform Leverage & Efficiency",
+      "uid": "exec-platform-efficiency",
+      "timezone": "browser",
+      "tags": ["executive", "platform", "finops", "efficiency", "ai"],
+      "editable": true,
+      "graphTooltip": 1,
+      "refresh": "1m",
+      "time": {"from": "now-7d", "to": "now"},
+      "links": [
+        {"title": "◀ Scorecard", "url": "/d/exec-kpi-scorecard", "type": "link", "icon": "dashboard"},
+        {"title": "Value Flow & Delivery", "url": "/d/exec-value-flow-delivery", "type": "link", "icon": "external link"},
+        {"title": "Reliability & SRE", "url": "/d/exec-reliability-sre", "type": "link", "icon": "external link"},
+        {"title": "Security & Supply Chain", "url": "/d/exec-security-supply-chain", "type": "link", "icon": "external link"}
+      ],
+      "annotations": {"list": [{"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard"}]},
+      "templating": {"list": []},
+      "panels": [
+        {
+          "id": 1, "type": "text", "title": "", "gridPos": {"h": 3, "w": 24, "x": 0, "y": 0},
+          "options": {"mode": "markdown", "content": "## Platform Leverage & Efficiency\nThe internal-product leverage of the DevOps/platform capability: how much runs on the paved road, how efficiently it uses hardware, and the engineering leverage from AI. There is no cloud bill in a homelab — **efficiency = right-sizing** (reserved-but-idle capacity), not currency. AI cost is an API-equivalent **estimate**, not billed spend."}
+        },
+
+        {"id": 10, "type": "row", "title": "Platform adoption (paved road)", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 3}, "panels": []},
+        {
+          "id": 11, "type": "stat", "title": "Paved-road health", "description": "Share of all Flux-managed resources currently Ready.", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(flux_resource_info{ready=\"True\"}) / count(flux_resource_info) * 100", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 1, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 95}, {"color": "green", "value": 99}]}}, "overrides": []}
+        },
+        {
+          "id": 12, "type": "stat", "title": "GitOps namespaces", "description": "Distinct namespaces under Flux management — the breadth of the paved road.", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "count(count by (exported_namespace) (flux_resource_info))", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
+        },
+        {
+          "id": 13, "type": "stat", "title": "HelmReleases", "description": "Applications delivered via Flux HelmReleases.", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "count(flux_resource_info{kind=\"HelmRelease\"})", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
+        },
+        {
+          "id": 14, "type": "stat", "title": "Kustomizations", "description": "Flux Kustomizations composing the cluster.", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "count(flux_resource_info{kind=\"Kustomization\"})", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
+        },
+
+        {"id": 20, "type": "row", "title": "Resource efficiency (right-sizing)", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 8}, "panels": []},
+        {
+          "id": 21, "type": "stat", "title": "CPU reserved-but-idle", "description": "Share of requested CPU that sits unused (requests - usage / requests). The right-sizing opportunity.", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 9},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "(sum(kube_pod_container_resource_requests{resource=\"cpu\"}) - sum(rate(container_cpu_usage_seconds_total{container!=\"\"}[$$__rate_interval]))) / sum(kube_pod_container_resource_requests{resource=\"cpu\"}) * 100", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 0, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}, {"color": "red", "value": 80}]}}, "overrides": []}
+        },
+        {
+          "id": 22, "type": "stat", "title": "Memory reserved-but-idle", "description": "Share of requested memory that sits unused (requests - working-set / requests).", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 9},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "(sum(kube_pod_container_resource_requests{resource=\"memory\"}) - sum(container_memory_working_set_bytes{container!=\"\"})) / sum(kube_pod_container_resource_requests{resource=\"memory\"}) * 100", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 0, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}, {"color": "red", "value": 80}]}}, "overrides": []}
+        },
+        {
+          "id": 23, "type": "stat", "title": "CPU headroom free", "description": "Allocatable CPU not yet reserved by requests.", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 9},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "(1 - sum(kube_pod_container_resource_requests{resource=\"cpu\"}) / sum(kube_node_status_allocatable{resource=\"cpu\"})) * 100", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 0, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 10}, {"color": "green", "value": 20}]}}, "overrides": []}
+        },
+        {
+          "id": 24, "type": "stat", "title": "Memory headroom free", "description": "Allocatable memory not yet reserved by requests.", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 9},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "(1 - sum(kube_pod_container_resource_requests{resource=\"memory\"}) / sum(kube_node_status_allocatable{resource=\"memory\"})) * 100", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 0, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 10}, {"color": "green", "value": 20}]}}, "overrides": []}
+        },
+        {
+          "id": 25, "type": "timeseries", "title": "CPU — allocatable vs requested vs used", "description": "Cluster CPU cores: node allocatable, sum of requests, and actual usage. The gap between requests and usage is recoverable.", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 13},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(kube_node_status_allocatable{resource=\"cpu\"})", "legendFormat": "allocatable"},
+            {"refId": "B", "expr": "sum(kube_pod_container_resource_requests{resource=\"cpu\"})", "legendFormat": "requested"},
+            {"refId": "C", "expr": "sum(rate(container_cpu_usage_seconds_total{container!=\"\"}[$$__rate_interval]))", "legendFormat": "used"}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 1, "custom": {"lineWidth": 1, "fillOpacity": 10, "showPoints": "never"}}, "overrides": [{"matcher": {"id": "byName", "options": "allocatable"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "blue"}}]}, {"matcher": {"id": "byName", "options": "requested"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}}]}, {"matcher": {"id": "byName", "options": "used"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]}]}
+        },
+        {
+          "id": 26, "type": "timeseries", "title": "Memory — allocatable vs requested vs used", "description": "Cluster memory: node allocatable, sum of requests, and actual working-set. The gap between requests and usage is recoverable.", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 13},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(kube_node_status_allocatable{resource=\"memory\"})", "legendFormat": "allocatable"},
+            {"refId": "B", "expr": "sum(kube_pod_container_resource_requests{resource=\"memory\"})", "legendFormat": "requested"},
+            {"refId": "C", "expr": "sum(container_memory_working_set_bytes{container!=\"\"})", "legendFormat": "used"}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "fieldConfig": {"defaults": {"unit": "bytes", "decimals": 1, "custom": {"lineWidth": 1, "fillOpacity": 10, "showPoints": "never"}}, "overrides": [{"matcher": {"id": "byName", "options": "allocatable"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "blue"}}]}, {"matcher": {"id": "byName", "options": "requested"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}}]}, {"matcher": {"id": "byName", "options": "used"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]}]}
+        },
+
+        {"id": 30, "type": "row", "title": "AI engineering leverage (Claude Code)", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 21}, "panels": []},
+        {
+          "id": 31, "type": "stat", "title": "Commits", "description": "Git commits produced through Claude Code over the window.", "gridPos": {"h": 4, "w": 4, "x": 0, "y": 22},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(increase(claude_code_commit_count_total[$$__range])) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "area"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "purple"}}, "overrides": []}
+        },
+        {
+          "id": 32, "type": "stat", "title": "Pull requests", "description": "Pull requests opened through Claude Code over the window.", "gridPos": {"h": 4, "w": 4, "x": 4, "y": 22},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(increase(claude_code_pull_request_count_total[$$__range])) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "area"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "purple"}}, "overrides": []}
+        },
+        {
+          "id": 33, "type": "stat", "title": "Lines of code", "description": "Lines of code added/changed through Claude Code over the window.", "gridPos": {"h": 4, "w": 4, "x": 8, "y": 22},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(increase(claude_code_lines_of_code_count_total[$$__range])) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "area"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
+        },
+        {
+          "id": 34, "type": "stat", "title": "Edit accept-rate", "description": "Accepted / all code-edit decisions over the window.", "gridPos": {"h": 4, "w": 4, "x": 12, "y": 22},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "(sum(increase(claude_code_code_edit_tool_decision_total{decision=\"accept\"}[$$__range])) or vector(0)) / clamp_min(sum(increase(claude_code_code_edit_tool_decision_total[$$__range])) or vector(0), 1) * 100", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 0, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 50}, {"color": "green", "value": 80}]}}, "overrides": []}
+        },
+        {
+          "id": 35, "type": "stat", "title": "Active engineering time", "description": "Active engagement time (user + CLI) through Claude Code over the window.", "gridPos": {"h": 4, "w": 4, "x": 16, "y": 22},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(increase(claude_code_active_time_seconds_total[$$__range])) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "area"},
+          "fieldConfig": {"defaults": {"unit": "s", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
+        },
+        {
+          "id": 36, "type": "stat", "title": "AI cost (API-equiv est.)", "description": "API-equivalent ESTIMATE of Claude Code spend over the window. Not billed spend.", "gridPos": {"h": 4, "w": 4, "x": 20, "y": 22},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(increase(claude_code_cost_usage_USD_total[$$__range])) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "area"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "fixed", "fixedColor": "green"}}, "overrides": []}
+        },
+        {
+          "id": 37, "type": "timeseries", "title": "AI-assisted output over time", "description": "Lines of code produced through Claude Code over time.", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 26},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(increase(claude_code_lines_of_code_count_total[$$__rate_interval]))", "legendFormat": "lines of code"}],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "custom": {"lineWidth": 1, "fillOpacity": 25, "showPoints": "never", "drawStyle": "bars"}, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
+        }
+      ]
+    }
