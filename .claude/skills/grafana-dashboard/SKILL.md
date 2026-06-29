@@ -19,7 +19,7 @@ All `grafana.integreatly.org/v1beta1` CRDs — never dashboard ConfigMaps or Hel
 
 **Bind folders by `folderRef`, never `spec.folder: "<Title>"`.** A title string makes the operator create+own a *second* folder separate from the GrafanaFolder CRD of the same title → two identical folders, each resurrected on reconcile (UI deletes never stick). `folderRef: <crd-name>` ties the dashboard to the CRD-owned folder. (Fixed 2026-06-20 across the Claude Code dashboards.)
 
-Folder CRD names (use as `folderRef`): `apps` · `claude-code` · `data` · `infrastructure` · `kubernetes` · `networking` · `observability` · `platform` · `security` · `storage` · `synthetics`.
+Folder CRD names (use as `folderRef`): `apps` · `claude-code` · `data` · `executive` · `infrastructure` · `kubernetes` · `networking` · `observability` · `platform` · `security` · `storage` · `synthetics`. (`executive` = leadership KPI operating system: `exec-kpi-scorecard` + per-dimension drill-downs.)
 
 ## Escaping (Flux envsubst) — enforced by `guard-skills.sh`
 Double **every** Grafana token (`$$__range`, `$$__rate_interval`, `$$var`, `$$__all`). Single `$` before `{`/`(` fails the *whole* grafana Kustomization; single `$model`/`$__range` is silently blanked → No data. Double as you write to avoid fix loops. No literal `$` in titles/`line_format` — write `USD`.
