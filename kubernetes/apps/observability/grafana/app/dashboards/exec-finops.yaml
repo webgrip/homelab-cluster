@@ -1,0 +1,121 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: exec-finops
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  allowCrossNamespaceImport: false
+  folderRef: executive
+  json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Executive / FinOps & Cost",
+      "uid": "exec-finops",
+      "timezone": "browser",
+      "tags": ["executive", "finops", "cost", "opencost"],
+      "editable": true,
+      "graphTooltip": 1,
+      "refresh": "5m",
+      "time": {"from": "now-7d", "to": "now"},
+      "links": [
+        {"title": "◀ Scorecard", "url": "/d/exec-kpi-scorecard", "type": "link", "icon": "dashboard"},
+        {"title": "Platform & Efficiency", "url": "/d/exec-platform-efficiency", "type": "link", "icon": "external link"},
+        {"title": "Value Flow & Delivery", "url": "/d/exec-value-flow-delivery", "type": "link", "icon": "external link"},
+        {"title": "Reliability & SRE", "url": "/d/exec-reliability-sre", "type": "link", "icon": "external link"},
+        {"title": "Security & Supply Chain", "url": "/d/exec-security-supply-chain", "type": "link", "icon": "external link"}
+      ],
+      "annotations": {"list": [{"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard"}]},
+      "templating": {"list": []},
+      "panels": [
+        {
+          "id": 1, "type": "text", "title": "", "gridPos": {"h": 3, "w": 24, "x": 0, "y": 0},
+          "options": {"mode": "markdown", "content": "## FinOps & Cost\nCost allocation, idle cost, and unit economics from **OpenCost** with an on-prem custom pricing model (no cloud bill exists). Figures are **EUR**, modelled from a tunable cluster TCO (~EUR 1,000/yr = power + hardware amortisation over 23.75 cores / 70 GiB) — calibrate `costModel` in the OpenCost HelmRelease to your real numbers. FinOps pairs cost with value: idle cost and per-namespace showback drive right-sizing, never blind cost-cutting. _Cost panels populate once OpenCost has reconciled and scraped a few cycles._"}
+        },
+
+        {"id": 10, "type": "row", "title": "Cluster economics (modelled, monthly run-rate)", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 3}, "panels": []},
+        {
+          "id": 11, "type": "stat", "title": "Cluster run-rate / month", "description": "Total modelled cost of all nodes per month (node_total_hourly_cost x 730).", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(node_total_hourly_cost) * 730", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "area"},
+          "fieldConfig": {"defaults": {"unit": "currencyEUR", "decimals": 2, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
+        },
+        {
+          "id": 12, "type": "stat", "title": "Cluster run-rate / year", "description": "Total modelled annualised cost of all nodes (node_total_hourly_cost x 8760).", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(node_total_hourly_cost) * 8760", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "currencyEUR", "decimals": 2, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
+        },
+        {
+          "id": 13, "type": "stat", "title": "Allocated cost / month", "description": "Cost of CPU + RAM actually allocated to workloads per month (the part doing useful work).", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "(sum(container_cpu_allocation * on(node) group_left() node_cpu_hourly_cost) + sum(container_memory_allocation_bytes / 1024^3 * on(node) group_left() node_ram_hourly_cost)) * 730", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "currencyEUR", "decimals": 2, "color": {"mode": "fixed", "fixedColor": "green"}}, "overrides": []}
+        },
+        {
+          "id": 14, "type": "stat", "title": "Cost efficiency (allocated ÷ run-rate)", "description": "Share of cluster spend backing allocated workloads. Low = paying for idle capacity (right-sizing opportunity).", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "100 * (sum(container_cpu_allocation * on(node) group_left() node_cpu_hourly_cost) + sum(container_memory_allocation_bytes / 1024^3 * on(node) group_left() node_ram_hourly_cost)) / sum(node_total_hourly_cost)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 1, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 40}, {"color": "green", "value": 60}]}}, "overrides": []}
+        },
+
+        {"id": 20, "type": "row", "title": "Cost allocation — showback by namespace", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 8}, "panels": []},
+        {
+          "id": 21, "type": "bargauge", "title": "Top namespaces by monthly cost", "description": "Modelled monthly compute cost (CPU + RAM allocation x node hourly cost x 730) per namespace. The showback view.", "gridPos": {"h": 9, "w": 12, "x": 0, "y": 9},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "topk(15, sum by (namespace) (container_cpu_allocation * on(node) group_left() node_cpu_hourly_cost) * 730 + sum by (namespace) (container_memory_allocation_bytes / 1024^3 * on(node) group_left() node_ram_hourly_cost) * 730)", "instant": true, "legendFormat": "{{namespace}}"}],
+          "options": {"orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "displayMode": "gradient", "valueMode": "color"},
+          "fieldConfig": {"defaults": {"unit": "currencyEUR", "decimals": 2, "color": {"mode": "continuous-GrYlRd"}}, "overrides": []}
+        },
+        {
+          "id": 22, "type": "timeseries", "title": "Cluster cost run-rate over time", "description": "Total node hourly cost vs the portion allocated to workloads. The gap is idle/unallocated spend.", "gridPos": {"h": 9, "w": 12, "x": 12, "y": 9},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "sum(node_total_hourly_cost)", "legendFormat": "run-rate (EUR/hr)"},
+            {"refId": "B", "expr": "sum(container_cpu_allocation * on(node) group_left() node_cpu_hourly_cost) + sum(container_memory_allocation_bytes / 1024^3 * on(node) group_left() node_ram_hourly_cost)", "legendFormat": "allocated (EUR/hr)"}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "fieldConfig": {"defaults": {"unit": "currencyEUR", "decimals": 4, "custom": {"lineWidth": 1, "fillOpacity": 10, "showPoints": "never"}}, "overrides": [{"matcher": {"id": "byName", "options": "run-rate (EUR/hr)"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "blue"}}]}, {"matcher": {"id": "byName", "options": "allocated (EUR/hr)"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]}]}
+        },
+
+        {"id": 30, "type": "row", "title": "Efficiency & cross-cutting spend", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 18}, "panels": []},
+        {
+          "id": 31, "type": "stat", "title": "Idle / unallocated cost / month", "description": "Cluster run-rate minus allocated cost — what you pay for reserved-but-unused capacity each month.", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 19},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "(sum(node_total_hourly_cost) - (sum(container_cpu_allocation * on(node) group_left() node_cpu_hourly_cost) + sum(container_memory_allocation_bytes / 1024^3 * on(node) group_left() node_ram_hourly_cost))) * 730", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "currencyEUR", "decimals": 2, "color": {"mode": "fixed", "fixedColor": "orange"}}, "overrides": []}
+        },
+        {
+          "id": 32, "type": "stat", "title": "CPU reserved-but-idle (waste)", "description": "Requested CPU sitting unused (from kube metrics — available immediately, independent of OpenCost). The physical driver of idle cost.", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 19},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "(sum(kube_pod_container_resource_requests{resource=\"cpu\"}) - sum(rate(container_cpu_usage_seconds_total{container!=\"\"}[$$__rate_interval]))) / sum(kube_pod_container_resource_requests{resource=\"cpu\"}) * 100", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 0, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}, {"color": "red", "value": 80}]}}, "overrides": []}
+        },
+        {
+          "id": 33, "type": "stat", "title": "Cost per node / month", "description": "Average modelled monthly cost per node.", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 19},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(node_total_hourly_cost) * 730 / count(node_total_hourly_cost)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "currencyEUR", "decimals": 2, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
+        },
+        {
+          "id": 34, "type": "stat", "title": "AI cost (API-equiv est., USD)", "description": "API-equivalent ESTIMATE of Claude Code spend over the window (USD, token volume x list price) — a separate, non-infra cost line. Not billed spend.", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 19},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(increase(claude_code_cost_usage_USD_total[$$__range])) or vector(0)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "area"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "fixed", "fixedColor": "purple"}}, "overrides": []}
+        },
+        {
+          "id": 35, "type": "text", "title": "", "gridPos": {"h": 4, "w": 24, "x": 0, "y": 23},
+          "options": {"mode": "markdown", "content": "**Tuning the cost model:** edit `spec.values.opencost.customPricing.costModel` in `kubernetes/apps/observability/opencost/app/helmrelease.yaml` — `CPU` (EUR/core-hr), `RAM` (EUR/GB-hr), `storage` (EUR/GB-hr). The ratio between CPU and RAM sets the compute-vs-memory split; absolute values set the total. Derive them from your real power cost (~EUR 3/W·yr) + hardware amortisation. For deeper drill-down, the official OpenCost dashboards (grafana.com 22208 / 22252) can be added as GrafanaDashboard CRs."}
+        }
+      ]
+    }

@@ -1,0 +1,78 @@
+---
+# yaml-language-server: $schema=https://lds-schemas.pages.dev/helm.toolkit.fluxcd.io/helmrelease_v2.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: opencost
+spec:
+  interval: 1h
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  chart:
+    spec:
+      chart: opencost
+      version: 2.5.25
+      sourceRef:
+        kind: HelmRepository
+        name: opencost
+        namespace: observability
+  values:
+    opencost:
+      exporter:
+        # Explicit requests keep the pod Burstable (never BestEffort — this
+        # cluster OOM-kills BestEffort pods). No CPU limit (throttling antipattern).
+        resources:
+          requests:
+            cpu: 50m
+            memory: 200Mi
+          limits:
+            memory: 512Mi
+      # UI off: we consume cost data via Grafana (the FinOps dashboard). Enable
+      # + add an HTTPRoute later if the cost-explorer UI is wanted.
+      ui:
+        enabled: false
+      # Query the EXISTING in-cluster Prometheus rather than deploying our own.
+      # serviceName/port verified live: kube-prometheus-stack-prometheus:9090.
+      prometheus:
+        internal:
+          enabled: true
+          serviceName: kube-prometheus-stack-prometheus
+          namespaceName: observability
+          port: 9090
+        external:
+          enabled: false
+      # Let kube-prometheus-stack scrape OpenCost's own /metrics (:9003).
+      # additionalLabels must satisfy the Prometheus serviceMonitorSelector.
+      metrics:
+        serviceMonitor:
+          enabled: true
+          additionalLabels:
+            release: kube-prometheus-stack
+          scrapeInterval: 30s
+          honorLabels: true
+      # On-prem custom pricing — no cloud bill exists, so cost is modelled.
+      # OpenCost is currency-agnostic; these numbers are EUR by our convention.
+      # Baseline targets ~EUR 1,000/yr cluster TCO (~120 W @ EUR 0.30/kWh power
+      # + hardware amortisation) spread over the live 23.75 cores + 70 GiB RAM.
+      # TUNE costModel.{CPU,RAM,storage} to your real power rate + hardware cost.
+      customPricing:
+        enabled: true
+        createConfigmap: true
+        configmapName: opencost-custom-pricing
+        configPath: /tmp/custom-config
+        provider: custom
+        costModel:
+          description: "webgrip homelab on-prem pricing (EUR; per CPU-core-hr / GB-RAM-hr / GB-storage-hr)"
+          CPU: "0.003"
+          RAM: "0.0006"
+          storage: "0.00002"
+          GPU: "0"
+          zoneNetworkEgress: "0"
+          regionNetworkEgress: "0"
+          internetNetworkEgress: "0"
