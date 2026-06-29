@@ -72,8 +72,12 @@ spec:
       value: /tmp
     - name: NODE_OPTIONS
       value: --max-old-space-size=3000
+    # debug (not info): the Forgejo path runs only 4x/day, so the extra log volume is cheap, and the
+    # per-branch reasoning (minimumReleaseAge soak, "PR has been edited", update failure, rate-limit,
+    # repository-changed) is only emitted at debug. Keeps "why didn't this update?" one Loki query away:
+    #   {pod=~"webgrip-forgejo-webgrip-infrastructure.*"} |= "renovate/<branch>"
     - name: LOG_LEVEL
-      value: info
+      value: debug
     # GHCR/Docker Hub auth: reuse the GitHub-App token-minter's output (renovate-runtime-token),
     # which already runs for the dual-run GitHub path — no separate GHCR PAT or OpenBao entry
     # needed. optional: tolerates the secret not existing yet (GHCR falls back to anonymous until
