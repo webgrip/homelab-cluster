@@ -115,7 +115,61 @@ spec:
         },
         {
           "id": 35, "type": "text", "title": "", "gridPos": {"h": 4, "w": 24, "x": 0, "y": 23},
-          "options": {"mode": "markdown", "content": "**Tuning the cost model:** edit `spec.values.opencost.customPricing.costModel` in `kubernetes/apps/observability/opencost/app/helmrelease.yaml` — `CPU` (EUR/core-hr), `RAM` (EUR/GB-hr), `storage` (EUR/GB-hr). The ratio between CPU and RAM sets the compute-vs-memory split; absolute values set the total. Derive them from your real power cost (~EUR 3/W·yr) + hardware amortisation. For deeper drill-down, the official OpenCost dashboards (grafana.com 22208 / 22252) can be added as GrafanaDashboard CRs."}
+          "options": {"mode": "markdown", "content": "**Tuning the cost model:** edit `spec.values.opencost.customPricing.costModel` in `kubernetes/apps/observability/opencost/app/helmrelease.yaml` — `CPU`, `RAM`, `storage` are **MONTHLY** rates (EUR per core-month / GB-month / GB-month; OpenCost divides by 730 to emit the hourly cost). The ratio CPU:RAM sets the compute-vs-memory split; absolute values set the total. **Bump `exporter.extraEnv.pricingRev`** so the pod restarts and re-reads. Derive from your real power cost (~EUR 3/W·yr) + hardware amortisation. Deeper drill-down: official OpenCost dashboards grafana.com 22208 / 22252."}
+        },
+
+        {"id": 40, "type": "row", "title": "Storage costs", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 27}, "panels": []},
+        {
+          "id": 41, "type": "stat", "title": "Storage cost / month", "description": "Modelled monthly cost of PVC-backed storage (pod_pvc_allocation x storage rate x 730).", "gridPos": {"h": 6, "w": 6, "x": 0, "y": 28},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(pod_pvc_allocation) / 1024^3 * scalar(max(pv_hourly_cost)) * 730", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "currencyEUR", "decimals": 2, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
+        },
+        {
+          "id": 42, "type": "stat", "title": "Provisioned PVC storage", "description": "Total bytes allocated to pods from PVCs (OpenCost pod_pvc_allocation).", "gridPos": {"h": 6, "w": 6, "x": 6, "y": 28},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(pod_pvc_allocation)", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "bytes", "decimals": 1, "color": {"mode": "fixed", "fixedColor": "purple"}}, "overrides": []}
+        },
+        {
+          "id": 43, "type": "bargauge", "title": "Storage cost by namespace / month", "description": "Modelled monthly PVC storage cost per namespace.", "gridPos": {"h": 6, "w": 12, "x": 12, "y": 28},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "topk(12, sum by (namespace) (pod_pvc_allocation) / 1024^3 * scalar(max(pv_hourly_cost)) * 730)", "instant": true, "legendFormat": "{{namespace}}"}],
+          "options": {"orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "displayMode": "gradient", "valueMode": "color"},
+          "fieldConfig": {"defaults": {"unit": "currencyEUR", "decimals": 2, "color": {"mode": "continuous-GrYlRd"}}, "overrides": []}
+        },
+
+        {"id": 50, "type": "row", "title": "Allocation engine — OpenCost API (Infinity)", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 34}, "panels": []},
+        {
+          "id": 51, "type": "table", "title": "Cost & efficiency by namespace (Allocation API, 7d)", "description": "From the OpenCost /allocation API via the Infinity datasource — per-namespace total/CPU/RAM/PV cost and request-vs-usage efficiency with idle shared back. This is the allocation-engine data the raw-metric panels cannot show. NOTE: Infinity object-parsing — if empty, spot-check the query (root_selector data.0 / columns) in the panel editor.", "gridPos": {"h": 10, "w": 24, "x": 0, "y": 35},
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "opencost-api"},
+          "targets": [{
+            "refId": "A",
+            "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "opencost-api"},
+            "type": "json", "source": "url", "format": "table",
+            "url": "http://opencost.observability.svc.cluster.local:9003/allocation?window=7d&aggregate=namespace&accumulate=true&shareIdle=true",
+            "url_options": {"method": "GET"},
+            "parser": "backend",
+            "root_selector": "data.0",
+            "columns": [
+              {"selector": "name", "text": "Namespace", "type": "string"},
+              {"selector": "totalCost", "text": "Total cost", "type": "number"},
+              {"selector": "cpuCost", "text": "CPU", "type": "number"},
+              {"selector": "ramCost", "text": "RAM", "type": "number"},
+              {"selector": "pvCost", "text": "Storage", "type": "number"},
+              {"selector": "totalEfficiency", "text": "Efficiency", "type": "number"}
+            ]
+          }],
+          "options": {"showHeader": true, "sortBy": [{"displayName": "Total cost", "desc": true}]},
+          "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": [
+            {"matcher": {"id": "byName", "options": "Total cost"}, "properties": [{"id": "unit", "value": "currencyEUR"}, {"id": "decimals", "value": 2}]},
+            {"matcher": {"id": "byName", "options": "CPU"}, "properties": [{"id": "unit", "value": "currencyEUR"}, {"id": "decimals", "value": 2}]},
+            {"matcher": {"id": "byName", "options": "RAM"}, "properties": [{"id": "unit", "value": "currencyEUR"}, {"id": "decimals", "value": 2}]},
+            {"matcher": {"id": "byName", "options": "Storage"}, "properties": [{"id": "unit", "value": "currencyEUR"}, {"id": "decimals", "value": 2}]},
+            {"matcher": {"id": "byName", "options": "Efficiency"}, "properties": [{"id": "unit", "value": "percentunit"}, {"id": "decimals", "value": 1}]}
+          ]}
         }
       ]
     }

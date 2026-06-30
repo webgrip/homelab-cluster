@@ -1,0 +1,27 @@
+---
+# Exposes the OpenCost built-in MCP server (port 8081, streamable-HTTP, root path)
+# on the LAN via envoy-internal, matching the mcp-grafana / k8s-mcp pattern.
+# Read-only cost tools (get_allocation_costs, get_asset_costs, get_efficiency);
+# unauthenticated, so LAN-only (external-dns excluded). Consumed via .mcp.json.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: opencost-mcp
+  annotations:
+    external-dns.alpha.kubernetes.io/exclude: "true"
+spec:
+  hostnames:
+    - opencost-mcp.${SECRET_DOMAIN}
+  parentRefs:
+    - name: envoy-internal
+      namespace: network
+      sectionName: https
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: opencost
+          namespace: observability
+          port: 8081

@@ -1,0 +1,22 @@
+---
+# Infinity datasource for the OpenCost /allocation + /assets JSON API (in-cluster,
+# access:proxy → Grafana's backend reaches the service directly; no external route).
+# Unlocks idle-cost allocation, shared-cost distribution, request-vs-usage efficiency,
+# and label/controller rollups that the raw Prometheus metrics cannot express.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: opencost-api
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  datasource:
+    name: OpenCost API
+    type: yesoreyeram-infinity-datasource
+    uid: opencost-api
+    editable: true
+    access: proxy
+    jsonData:
+      allowedHosts:
+        - http://opencost.observability.svc.cluster.local:9003

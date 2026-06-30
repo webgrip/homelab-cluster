@@ -1,0 +1,97 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: opencost-finops
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: opencost
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: opencost.finops
+      rules:
+        # Cluster modelled run-rate jumped sharply vs 6h ago — a new heavy
+        # workload, a scale-up, or a pricing change. Ratio cancels the x730.
+        - alert: OpenCostClusterCostSpike
+          expr: |
+            sum(node_total_hourly_cost) / sum(node_total_hourly_cost offset 6h) > 1.25
+          for: 1h
+          labels:
+            severity: warning
+            owner: platform
+            service: finops
+          annotations:
+            summary: "Cluster cost run-rate up >25% vs 6h ago"
+            description: |
+              What's happening:
+              - Modelled cluster run-rate (sum node_total_hourly_cost) is >25% higher than 6h ago for 1h.
+
+              Impact/risk:
+              - Spend is climbing; could be a new/scaled workload, more nodes, or a pricing-model change.
+
+              First actions:
+              - Open the FinOps dashboard; check per-namespace showback for the new cost.
+              - Confirm whether nodes were added or a workload scaled up.
+              - If it followed a costModel edit, this is expected — silence/ack.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/exec-finops/executive-finops-and-cost"
+        # Paying for a lot of reserved-but-unallocated capacity (idle cost).
+        - alert: OpenCostHighIdleCost
+          expr: |
+            (
+              sum(node_total_hourly_cost)
+              - (
+                  sum(container_cpu_allocation * on(node) group_left() node_cpu_hourly_cost)
+                  + sum(container_memory_allocation_bytes / 1024^3 * on(node) group_left() node_ram_hourly_cost)
+                )
+            ) * 730 > 30
+          for: 2h
+          labels:
+            severity: warning
+            owner: platform
+            service: finops
+          annotations:
+            summary: "Idle cluster cost >EUR 30/month"
+            description: |
+              What's happening:
+              - Modelled idle/unallocated cost (run-rate minus allocated) projects to >EUR 30/month for 2h.
+
+              Impact/risk:
+              - You are paying for capacity nothing is requesting — a right-sizing or scale-down opportunity.
+
+              First actions:
+              - FinOps dashboard -> cost efficiency + idle tiles.
+              - Use the OpenCost get_efficiency MCP tool (or Platform & Efficiency dashboard) to find over-provisioned workloads.
+              - Lower requests in the offending HelmRelease(s), or consolidate/scale down a node.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/exec-finops/executive-finops-and-cost"
+        # A namespace requesting >1 core but using <15% of it — rightsizing target.
+        - alert: OpenCostNamespaceLowCPUEfficiency
+          expr: |
+            (
+              sum by (namespace) (rate(container_cpu_usage_seconds_total{container!=""}[1h]))
+              / sum by (namespace) (kube_pod_container_resource_requests{resource="cpu"})
+            ) < 0.15
+            and
+            sum by (namespace) (kube_pod_container_resource_requests{resource="cpu"}) > 1
+          for: 12h
+          labels:
+            severity: info
+            owner: platform
+            service: finops
+          annotations:
+            summary: "Namespace {{ $labels.namespace }} CPU efficiency <15%"
+            description: |
+              What's happening:
+              - Namespace {{ $labels.namespace }} is using <15% of its requested CPU (requests >1 core) for 12h.
+
+              Impact/risk:
+              - Over-requested CPU inflates idle cost and crowds the scheduler. Prime right-sizing candidate.
+
+              First actions:
+              - Compare usage vs requests on the Platform & Efficiency dashboard for {{ $labels.namespace }}.
+              - Lower the CPU request in that app's HelmRelease; re-check after a window for realised savings.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/exec-platform-efficiency/executive-platform-leverage-and-efficiency"
