@@ -31,25 +31,26 @@ spec:
         runAsNonRoot: false
       resources:
         requests:
-          cpu: 50m
+          # Light sysfs reader — keep the request tiny so it also fits worker-1,
+          # which is CPU-request-saturated. Explicit request = Burstable, not
+          # BestEffort (this cluster OOM-kills BestEffort pods).
+          cpu: 10m
           memory: 64Mi
         limits:
           memory: 256Mi
-      # Tolerate ALL taints so the power DaemonSet covers every node (the chart
-      # default only tolerates control-plane/master; worker-1 had a taint that
-      # left its pod Pending).
+      # Tolerate ALL taints so the power DaemonSet covers every node.
       tolerations:
         - operator: Exists
     config:
       log:
         level: info
-        # Node-level real RAPL power only (dev.fake off, auto-discovered powercap
-        # zones — chart defaults). Kube per-pod attribution is intentionally NOT
-        # enabled: the chart's config.kube.enabled writes kube.enable=true with an
-        # empty kube.node-name into the shared config file, which fails Kepler's
-        # startup validation (node-name is per-node, supplied only via the CLI arg
-        # AFTER file validation). Node power is the real measured value for EUR/kWh
-        # + carbon; per-pod is only CPU-time attribution, so we skip it.
+        # Real RAPL meter (dev.fake off, auto-discovered powercap zones — chart
+        # defaults). We deliberately do NOT set config.kube.enabled: it writes
+        # kube.enable=true with an empty kube.node-name into the shared config file,
+        # which fails Kepler's startup validation (node-name is per-node). The chart
+        # ALWAYS passes --kube.enable --kube.node-name=$(NODE_NAME) as CLI args, so
+        # per-pod/container attribution still works — we get both node power (real,
+        # measured) and per-pod power (CPU-time attribution).
     serviceMonitor:
       enabled: true
       interval: 30s

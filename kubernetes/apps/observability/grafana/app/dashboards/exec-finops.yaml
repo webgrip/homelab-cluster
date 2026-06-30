@@ -170,6 +170,47 @@ spec:
             {"matcher": {"id": "byName", "options": "Storage"}, "properties": [{"id": "unit", "value": "currencyEUR"}, {"id": "decimals", "value": 2}]},
             {"matcher": {"id": "byName", "options": "Efficiency"}, "properties": [{"id": "unit", "value": "percentunit"}, {"id": "decimals", "value": 1}]}
           ]}
+        },
+
+        {"id": 60, "type": "row", "title": "Energy — measured (Kepler RAPL: CPU + DRAM domains)", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 45}, "panels": []},
+        {
+          "id": 61, "type": "stat", "title": "Measured power (CPU+DRAM)", "description": "Live cluster power from Intel RAPL via Kepler (sum of package + dram zones across nodes). NOTE: RAPL measures CPU package + memory only — real wall power (PSU/board/disks/fans) is higher; treat this as a floor.", "gridPos": {"h": 6, "w": 5, "x": 0, "y": 46},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(kepler_node_cpu_watts{zone=~\"package|dram\"})", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "area"},
+          "fieldConfig": {"defaults": {"unit": "watt", "decimals": 1, "color": {"mode": "fixed", "fixedColor": "green"}}, "overrides": []}
+        },
+        {
+          "id": 62, "type": "stat", "title": "Electricity / month (est.)", "description": "Measured CPU+DRAM power x 730h x EUR 0.30/kWh. A lower bound (RAPL only) — tune the rate in the query.", "gridPos": {"h": 6, "w": 5, "x": 5, "y": 46},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(kepler_node_cpu_watts{zone=~\"package|dram\"}) / 1000 * 730 * 0.30", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "currencyEUR", "decimals": 2, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
+        },
+        {
+          "id": 63, "type": "stat", "title": "CO2 / month — kg (est.)", "description": "Measured CPU+DRAM power x 730h x 0.33 kgCO2/kWh (NL grid avg). Lower bound; tune the factor in the query.", "gridPos": {"h": 6, "w": 4, "x": 10, "y": 46},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum(kepler_node_cpu_watts{zone=~\"package|dram\"}) / 1000 * 730 * 0.33", "instant": true}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 1, "color": {"mode": "fixed", "fixedColor": "purple"}}, "overrides": []}
+        },
+        {
+          "id": 64, "type": "bargauge", "title": "Measured power by node", "description": "Live RAPL power (package + dram) per node.", "gridPos": {"h": 6, "w": 10, "x": 14, "y": 46},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum by (node_name) (kepler_node_cpu_watts{zone=~\"package|dram\"})", "instant": true, "legendFormat": "{{node_name}}"}],
+          "options": {"orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "displayMode": "gradient", "valueMode": "color"},
+          "fieldConfig": {"defaults": {"unit": "watt", "decimals": 1, "color": {"mode": "continuous-GrYlRd"}}, "overrides": []}
+        },
+        {
+          "id": 65, "type": "timeseries", "title": "Measured power over time by node", "description": "RAPL package + dram power per node over the window.", "gridPos": {"h": 7, "w": 24, "x": 0, "y": 52},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "sum by (node_name) (kepler_node_cpu_watts{zone=~\"package|dram\"})", "legendFormat": "{{node_name}}"}],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "fieldConfig": {"defaults": {"unit": "watt", "decimals": 1, "custom": {"lineWidth": 1, "fillOpacity": 10, "showPoints": "never", "stacking": {"mode": "normal", "group": "A"}}}, "overrides": []}
+        },
+        {
+          "id": 66, "type": "text", "title": "", "gridPos": {"h": 4, "w": 24, "x": 0, "y": 59},
+          "options": {"mode": "markdown", "content": "**Measured energy (Kepler + Intel RAPL).** These are REAL watts read from `/sys/class/powercap/intel-rapl`, summed over the **package + dram** zones. Caveat: RAPL covers **CPU + memory only** — it does **not** include PSU loss, motherboard, disks, fans or NIC, so true wall-socket power (your actual bill) is meaningfully higher (RAPL is typically ~40–60% of wall). Treat these as a **floor**. Tune the **EUR 0.30/kWh** and **0.33 kgCO2/kWh** constants directly in the panel queries for your tariff + grid factor. Per-pod/container power is also available (`kepler_pod_cpu_watts`, `kepler_container_cpu_watts`) — attribution of the node total by CPU-time, not a per-pod meter."}
         }
       ]
     }
