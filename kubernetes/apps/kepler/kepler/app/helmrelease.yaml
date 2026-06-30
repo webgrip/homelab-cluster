@@ -35,14 +35,21 @@ spec:
           memory: 64Mi
         limits:
           memory: 256Mi
+      # Tolerate ALL taints so the power DaemonSet covers every node (the chart
+      # default only tolerates control-plane/master; worker-1 had a taint that
+      # left its pod Pending).
+      tolerations:
+        - operator: Exists
     config:
       log:
         level: info
-      # Enable Kubernetes integration so power is attributed to pods/containers,
-      # not just nodes (chart default is false). Real RAPL meter (dev.fake off) and
-      # auto-discovered powercap zones are the chart defaults.
-      kube:
-        enabled: true
+        # Node-level real RAPL power only (dev.fake off, auto-discovered powercap
+        # zones — chart defaults). Kube per-pod attribution is intentionally NOT
+        # enabled: the chart's config.kube.enabled writes kube.enable=true with an
+        # empty kube.node-name into the shared config file, which fails Kepler's
+        # startup validation (node-name is per-node, supplied only via the CLI arg
+        # AFTER file validation). Node power is the real measured value for EUR/kWh
+        # + carbon; per-pod is only CPU-time attribution, so we skip it.
     serviceMonitor:
       enabled: true
       interval: 30s
