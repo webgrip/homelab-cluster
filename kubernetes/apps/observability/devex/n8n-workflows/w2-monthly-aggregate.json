@@ -1,0 +1,39 @@
+{
+  "name": "DevEx W2 — Monthly aggregate",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "cronExpression", "expression": "0 6 3 * *" }
+          ]
+        }
+      },
+      "name": "Monthly (3rd, 06:00)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT refresh_dimension_scores();",
+        "options": {}
+      },
+      "name": "refresh_dimension_scores",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [240, 0],
+      "credentials": {
+        "postgres": { "id": "REPLACE_WITH_DEVEX_DB_CRED", "name": "devex-db" }
+      }
+    }
+  ],
+  "connections": {
+    "Monthly (3rd, 06:00)": {
+      "main": [[{ "node": "refresh_dimension_scores", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

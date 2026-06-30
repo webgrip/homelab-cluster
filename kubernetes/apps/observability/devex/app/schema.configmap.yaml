@@ -1,0 +1,298 @@
+---
+# DevEx warehouse schema, applied idempotently by the devex-db-migrate Job (psql).
+# Two zones: RAW collection (restricted — grafana_ro gets NO grant) and AGGREGATE/telemetry
+# (exposed to grafana_ro through views only). Aggregation + suppression live in SQL so n8n
+# (W2) and the demo seed both light up dashboards identically.
+#
+# Reminder: the devex app Kustomization runs WITHOUT Flux postBuild substitution, so the
+# dollar-quoting ($fn$ ... $$) below survives untouched.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devex-schema
+  namespace: observability
+data:
+  schema.sql: |-
+    BEGIN;
+
+    -- ====================================================================
+    -- RAW collection zone (restricted; never granted to grafana_ro)
+    -- ====================================================================
+    CREATE TABLE IF NOT EXISTS survey (
+      id        bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      name      text NOT NULL,
+      framework text,
+      month     date NOT NULL,
+      opened_at timestamptz DEFAULT now(),
+      closed_at timestamptz,
+      synthetic boolean NOT NULL DEFAULT false,
+      UNIQUE (month, synthetic)
+    );
+
+    CREATE TABLE IF NOT EXISTS survey_question (
+      id             bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      code           text NOT NULL UNIQUE,        -- Q1..Q18
+      question       text NOT NULL,
+      reverse_scored boolean NOT NULL DEFAULT false
+    );
+
+    -- many-to-many: a question can feed several dimensions (e.g. Q2, Q5, Q15)
+    CREATE TABLE IF NOT EXISTS dimension_map (
+      dimension     text NOT NULL,
+      question_code text NOT NULL REFERENCES survey_question(code) ON DELETE CASCADE,
+      PRIMARY KEY (dimension, question_code)
+    );
+
+    CREATE TABLE IF NOT EXISTS survey_response (
+      id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      survey_id       bigint NOT NULL REFERENCES survey(id) ON DELETE CASCADE,
+      respondent_hash text,                       -- optional irreversible hash; NULL = fully anon
+      team            text NOT NULL DEFAULT 'unknown',
+      role_family     text,
+      tenure_band     text,
+      submitted_at    timestamptz NOT NULL DEFAULT now(),
+      synthetic       boolean NOT NULL DEFAULT false
+    );
+
+    CREATE TABLE IF NOT EXISTS survey_answer (
+      response_id bigint NOT NULL REFERENCES survey_response(id) ON DELETE CASCADE,
+      question_id bigint NOT NULL REFERENCES survey_question(id),
+      score       int NOT NULL CHECK (score BETWEEN 1 AND 7),
+      PRIMARY KEY (response_id, question_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS survey_freetext (
+      id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      response_id bigint REFERENCES survey_response(id) ON DELETE CASCADE,
+      prompt      text,
+      body        text,
+      theme       text,                           -- coded theme (manual/LLM later)
+      synthetic   boolean NOT NULL DEFAULT false
+    );
+
+    -- ====================================================================
+    -- AGGREGATE / telemetry zone (exposed to grafana_ro via views)
+    -- ====================================================================
+    CREATE TABLE IF NOT EXISTS monthly_dimension_score (
+      month            date NOT NULL,
+      team             text NOT NULL,
+      dimension        text NOT NULL,             -- + composite 'devex_index'
+      avg_score        numeric(4,2),              -- 1..7
+      normalized_score numeric(5,2),              -- 0..100
+      response_count   int NOT NULL,
+      synthetic        boolean NOT NULL DEFAULT false,
+      PRIMARY KEY (month, team, dimension)
+    );
+
+    CREATE TABLE IF NOT EXISTS monthly_delivery_metrics (
+      month date, service text, deploy_freq numeric, lead_time_p50_h numeric,
+      lead_time_p90_h numeric, cfr_pct numeric, synthetic boolean NOT NULL DEFAULT false,
+      PRIMARY KEY (month, service)
+    );
+    CREATE TABLE IF NOT EXISTS monthly_ci_metrics (
+      month date, team text, ci_p50_min numeric, ci_p95_min numeric,
+      ci_success_pct numeric, synthetic boolean NOT NULL DEFAULT false,
+      PRIMARY KEY (month, team)
+    );
+    CREATE TABLE IF NOT EXISTS monthly_pr_metrics (
+      month date, team text, first_review_p50_h numeric, cycle_time_p50_h numeric,
+      cycle_time_p90_h numeric, synthetic boolean NOT NULL DEFAULT false,
+      PRIMARY KEY (month, team)
+    );
+    CREATE TABLE IF NOT EXISTS monthly_reliability_metrics (
+      month date, service text, slo_attainment_pct numeric, error_budget_burn numeric,
+      mttr_min numeric, synthetic boolean NOT NULL DEFAULT false,
+      PRIMARY KEY (month, service)
+    );
+    CREATE TABLE IF NOT EXISTS monthly_cost_metrics (
+      month date, service text, unit_cost_eur numeric,
+      synthetic boolean NOT NULL DEFAULT false,
+      PRIMARY KEY (month, service)
+    );
+    CREATE TABLE IF NOT EXISTS incidents (
+      id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      fingerprint  text,
+      triggered_at timestamptz,
+      acknowledged_at timestamptz,              -- no Alertmanager ack source: stays NULL (deferred)
+      resolved_at  timestamptz,
+      severity     text,
+      service      text,
+      synthetic    boolean NOT NULL DEFAULT false,
+      UNIQUE (fingerprint, triggered_at)
+    );
+
+    -- ====================================================================
+    -- Aggregation: respondent-mean -> dimension-mean -> normalize -> DevEx index.
+    -- Called by n8n W2 (live) and the demo seed. Full recompute (data is tiny).
+    -- ====================================================================
+    CREATE OR REPLACE FUNCTION refresh_dimension_scores() RETURNS void AS $fn$
+    BEGIN
+      DELETE FROM monthly_dimension_score;
+
+      -- per-dimension score: average of each respondent's mean over that dimension's items
+      INSERT INTO monthly_dimension_score
+        (month, team, dimension, avg_score, normalized_score, response_count, synthetic)
+      WITH resp_dim AS (
+        SELECT r.id AS response_id, r.survey_id, r.team, r.synthetic, dm.dimension,
+               AVG(a.score)::numeric AS dim_mean
+        FROM survey_response r
+        JOIN survey_answer a   ON a.response_id = r.id
+        JOIN survey_question q ON q.id = a.question_id
+        JOIN dimension_map dm  ON dm.question_code = q.code
+        GROUP BY r.id, r.survey_id, r.team, r.synthetic, dm.dimension
+      )
+      SELECT s.month, rd.team, rd.dimension,
+             ROUND(AVG(rd.dim_mean), 2),
+             ROUND(((AVG(rd.dim_mean) - 1) / 6.0) * 100, 2),
+             COUNT(DISTINCT rd.response_id),
+             bool_or(rd.synthetic)
+      FROM resp_dim rd
+      JOIN survey s ON s.id = rd.survey_id
+      GROUP BY s.month, rd.team, rd.dimension;
+
+      -- composite DevEx index per (month, team): weighted blend of the 5 dimensions
+      INSERT INTO monthly_dimension_score
+        (month, team, dimension, avg_score, normalized_score, response_count, synthetic)
+      SELECT month, team, 'devex_index',
+             ROUND(1 + (idx / 100.0) * 6, 2),
+             ROUND(idx, 2),
+             rc, syn
+      FROM (
+        SELECT mds.month, mds.team,
+               SUM(mds.normalized_score * w.weight) / SUM(w.weight) AS idx,
+               MAX(mds.response_count) AS rc,
+               bool_or(mds.synthetic)  AS syn
+        FROM monthly_dimension_score mds
+        JOIN (VALUES
+          ('satisfaction', 0.25), ('feedback_loops', 0.30), ('cognitive_load', 0.20),
+          ('flow', 0.15), ('collaboration', 0.10)
+        ) AS w(dimension, weight) ON w.dimension = mds.dimension
+        GROUP BY mds.month, mds.team
+      ) z;
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    -- ====================================================================
+    -- Views exposed to Grafana (grafana_ro)
+    -- ====================================================================
+    -- dimensions pivoted wide per (month, team)
+    CREATE OR REPLACE VIEW grafana_survey_dim_wide AS
+    SELECT month, team,
+      MAX(normalized_score) FILTER (WHERE dimension = 'satisfaction')   AS satisfaction,
+      MAX(normalized_score) FILTER (WHERE dimension = 'feedback_loops') AS feedback_loops,
+      MAX(normalized_score) FILTER (WHERE dimension = 'cognitive_load') AS cognitive_load,
+      MAX(normalized_score) FILTER (WHERE dimension = 'flow')           AS flow,
+      MAX(normalized_score) FILTER (WHERE dimension = 'collaboration')  AS collaboration,
+      MAX(normalized_score) FILTER (WHERE dimension = 'devex_index')    AS devex_index,
+      MAX(response_count)                                               AS response_count,
+      bool_or(synthetic)                                                AS synthetic
+    FROM monthly_dimension_score
+    GROUP BY month, team;
+
+    -- team-level, suppressing groups below n=5 (privacy guardrail at the view layer)
+    CREATE OR REPLACE VIEW grafana_survey_scores AS
+    SELECT month, team, dimension, avg_score, normalized_score, response_count, synthetic
+    FROM monthly_dimension_score
+    WHERE response_count >= 5;
+
+    -- org-wide rollup (response-weighted; no suppression needed at org scale)
+    CREATE OR REPLACE VIEW grafana_devex_org AS
+    SELECT month, dimension,
+           ROUND(SUM(normalized_score * response_count) / NULLIF(SUM(response_count), 0), 2)
+             AS normalized_score,
+           SUM(response_count) AS response_count,
+           bool_or(synthetic)  AS synthetic
+    FROM monthly_dimension_score
+    GROUP BY month, dimension;
+
+    -- survey <-> telemetry join per (month, team) for the correlation dashboard
+    CREATE OR REPLACE VIEW grafana_survey_telemetry AS
+    SELECT w.month, w.team,
+           w.satisfaction, w.feedback_loops, w.cognitive_load, w.flow,
+           w.collaboration, w.devex_index,
+           ci.ci_p50_min, ci.ci_p95_min, ci.ci_success_pct,
+           pr.first_review_p50_h, pr.cycle_time_p50_h, pr.cycle_time_p90_h,
+           w.response_count,
+           (w.synthetic OR COALESCE(ci.synthetic, false) OR COALESCE(pr.synthetic, false))
+             AS synthetic
+    FROM grafana_survey_dim_wide w
+    LEFT JOIN monthly_ci_metrics ci ON ci.month = w.month AND ci.team = w.team
+    LEFT JOIN monthly_pr_metrics pr ON pr.month = w.month AND pr.team = w.team;
+
+    -- free-text themes (counts only; raw bodies stay restricted)
+    CREATE OR REPLACE VIEW grafana_freetext_themes AS
+    SELECT s.month, r.team, f.theme, COUNT(*) AS mentions, bool_or(f.synthetic) AS synthetic
+    FROM survey_freetext f
+    JOIN survey_response r ON r.id = f.response_id
+    JOIN survey s          ON s.id = r.survey_id
+    WHERE f.theme IS NOT NULL
+    GROUP BY s.month, r.team, f.theme;
+
+    -- ====================================================================
+    -- Read-only Grafana role. Created here (idempotent); password (re)set from the
+    -- devex-grafana-ro secret passed in as psql var :ro_pw. SELECT on views + metric
+    -- tables only — never on the raw survey_response/survey_answer/survey_freetext.
+    -- ====================================================================
+    DO $role$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'grafana_ro') THEN
+        CREATE ROLE grafana_ro LOGIN;
+      END IF;
+    END
+    $role$;
+    ALTER ROLE grafana_ro LOGIN PASSWORD :'ro_pw';
+
+    GRANT CONNECT ON DATABASE devex TO grafana_ro;
+    GRANT USAGE ON SCHEMA public TO grafana_ro;
+    GRANT SELECT ON
+      grafana_survey_dim_wide, grafana_survey_scores, grafana_devex_org,
+      grafana_survey_telemetry, grafana_freetext_themes,
+      monthly_dimension_score, monthly_delivery_metrics, monthly_ci_metrics,
+      monthly_pr_metrics, monthly_reliability_metrics, monthly_cost_metrics, incidents
+      TO grafana_ro;
+
+    -- Writer role used by n8n. This migration runs as the superuser, so objects are owned by
+    -- the superuser; grant the `devex` role full DML + execute so n8n (connecting as devex) can
+    -- insert responses, upsert metrics, and call refresh_dimension_scores().
+    GRANT USAGE ON SCHEMA public TO devex;
+    GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO devex;
+    GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO devex;
+    GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO devex;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO devex;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO devex;
+
+    COMMIT;
+
+    -- ====================================================================
+    -- Seed: question bank (Q1..Q18) + dimension map. Idempotent.
+    -- ====================================================================
+    INSERT INTO survey_question (code, question) VALUES
+      ('Q1','I am satisfied with our ability to deliver software effectively.'),
+      ('Q2','The platform tooling and standards help me get work done.'),
+      ('Q3','I can complete routine engineering tasks without unnecessary tickets or hand-holding.'),
+      ('Q4','CI feedback is fast enough for normal day-to-day work.'),
+      ('Q5','Pull request review turnaround supports steady progress.'),
+      ('Q6','Build and test failures are easy to diagnose and fix.'),
+      ('Q7','My local development environment is reliable and reproducible.'),
+      ('Q8','I know the recommended path for images, CI/CD, secrets, deployment, and environments.'),
+      ('Q9','Engineering documentation is easy to find and accurate.'),
+      ('Q10','I usually have enough uninterrupted time for deep work.'),
+      ('Q11','Interruptions from meetings, support, and incidents are manageable.'),
+      ('Q12','Releasing to production feels safe and predictable.'),
+      ('Q13','Security and compliance controls fit into normal engineering flow.'),
+      ('Q14','Production issues are detected and routed effectively.'),
+      ('Q15','I understand service ownership and escalation paths.'),
+      ('Q16','Shared platform standards save me time.'),
+      ('Q17','I would recommend our internal platform and delivery experience to another engineer.'),
+      ('Q18','Changes made in the last month improved my day-to-day work.')
+    ON CONFLICT (code) DO UPDATE SET question = EXCLUDED.question;
+
+    INSERT INTO dimension_map (dimension, question_code) VALUES
+      ('satisfaction','Q1'),('satisfaction','Q2'),('satisfaction','Q17'),('satisfaction','Q18'),
+      ('feedback_loops','Q3'),('feedback_loops','Q4'),('feedback_loops','Q5'),
+      ('feedback_loops','Q6'),('feedback_loops','Q7'),('feedback_loops','Q16'),
+      ('cognitive_load','Q2'),('cognitive_load','Q8'),('cognitive_load','Q9'),
+      ('cognitive_load','Q13'),('cognitive_load','Q15'),
+      ('flow','Q10'),('flow','Q11'),('flow','Q12'),
+      ('collaboration','Q5'),('collaboration','Q14'),('collaboration','Q15')
+    ON CONFLICT DO NOTHING;

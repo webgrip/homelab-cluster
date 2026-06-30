@@ -1,0 +1,40 @@
+{
+  "name": "DevEx W4 — Incident intake (Alertmanager)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "devex-incident",
+        "options": {}
+      },
+      "name": "Alertmanager webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "devex-incident"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO incidents (fingerprint, triggered_at, resolved_at, severity, service)\nSELECT a->>'fingerprint',\n       (a->>'startsAt')::timestamptz,\n       NULLIF(a->>'endsAt','0001-01-01T00:00:00Z')::timestamptz,\n       a->'labels'->>'severity',\n       coalesce(a->'labels'->>'service', a->'labels'->>'namespace')\nFROM jsonb_array_elements($1::jsonb->'alerts') a\nON CONFLICT (fingerprint, triggered_at) DO UPDATE SET resolved_at = EXCLUDED.resolved_at;",
+        "options": {
+          "queryReplacement": "={{ JSON.stringify($json.body) }}"
+        }
+      },
+      "name": "Upsert incidents",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": { "id": "REPLACE_WITH_DEVEX_DB_CRED", "name": "devex-db" }
+      }
+    }
+  ],
+  "connections": {
+    "Alertmanager webhook": {
+      "main": [[{ "node": "Upsert incidents", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

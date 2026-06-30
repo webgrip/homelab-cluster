@@ -1,0 +1,14 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: observability
+resources:
+  - devex-db-secret.externalsecret.yaml
+  - devex-grafana-ro.externalsecret.yaml
+  - schema.configmap.yaml
+  - migration-job.yaml
+  # Demo data (synthetic survey + telemetry) so the dashboards are populated on first
+  # deploy and the whole flow is testable end-to-end. Every seeded row is synthetic=true.
+  # To WIPE: flip spec.suspend:false on demo/demo-teardown.job.yaml and commit (or run the
+  # documented DELETE … WHERE synthetic). Remove this line entirely to disable demo data.
+  - demo

@@ -1,0 +1,28 @@
+---
+# Raw survey answers are irreplaceable human input (not rebuildable like Grafana's own DB),
+# so this warehouse gets a longer retention than grafana-db (Tier 2, 30d).
+# See docs/techdocs/docs/database-backup-tiers.md
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: devex-db-store
+spec:
+  retentionPolicy: 30d
+  configuration:
+    endpointURL: http://10.0.0.110:3900
+    destinationPath: s3://cnpg-backups-bucket/homelab-cluster/devex-db/
+    s3Credentials:
+      accessKeyId:
+        name: cnpg-backup-s3
+        key: S3_ACCESS_KEY_ID
+      secretAccessKey:
+        name: cnpg-backup-s3
+        key: S3_SECRET_ACCESS_KEY
+      region:
+        name: cnpg-backup-s3
+        key: S3_REGION
+    wal:
+      compression: gzip
+      maxParallel: 1
+    data:
+      compression: gzip

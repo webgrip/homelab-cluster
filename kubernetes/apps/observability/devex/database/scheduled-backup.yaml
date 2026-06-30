@@ -1,0 +1,15 @@
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: devex-db-daily
+  namespace: observability
+spec:
+  # 6-field cron; staggered off grafana-db (02:20) and n8n-db (02:15) to spread S3 load.
+  schedule: "0 45 2 * * *"
+  backupOwnerReference: cluster
+  cluster:
+    name: devex-db
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io

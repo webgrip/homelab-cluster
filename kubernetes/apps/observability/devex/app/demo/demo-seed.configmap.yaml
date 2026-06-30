@@ -1,0 +1,197 @@
+---
+# Synthetic demo dataset so every DevEx dashboard is fully populated on first deploy and the
+# whole flow is testable end-to-end before a single real response exists. ~21 respondents
+# (3 teams x 7) x 6 months, with telemetry rollups ANTI-correlated to experience (worse
+# scores -> slower CI / longer PR waits / more incidents) so the correlation dashboard shows
+# real signal. Synthetic teams are prefixed `demo-` and every row is synthetic=true, so this
+# coexists with real data and wipes cleanly. Idempotent: re-running replaces the demo set.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devex-demo-seed
+  namespace: observability
+data:
+  seed.sql: |-
+    BEGIN;
+    SELECT setseed(0.42);  -- reproducible spread
+
+    -- ---- wipe any prior demo set (clean idempotent re-seed) ----
+    DELETE FROM survey WHERE synthetic;                  -- cascades responses/answers/freetext
+    DELETE FROM monthly_ci_metrics          WHERE synthetic;
+    DELETE FROM monthly_pr_metrics          WHERE synthetic;
+    DELETE FROM monthly_delivery_metrics    WHERE synthetic;
+    DELETE FROM monthly_reliability_metrics WHERE synthetic;
+    DELETE FROM monthly_cost_metrics        WHERE synthetic;
+    DELETE FROM incidents                   WHERE synthetic;
+
+    -- ---- one synthetic survey per month, last 6 months ----
+    INSERT INTO survey (name, framework, month, opened_at, closed_at, synthetic)
+    SELECT 'DEMO pulse ' || to_char(m.month, 'YYYY-MM'), 'SPACE+DevEx', m.month,
+           m.month, m.month + interval '4 days', true
+    FROM (
+      SELECT (date_trunc('month', now())::date - ((5 - g) || ' months')::interval)::date AS month
+      FROM generate_series(0, 5) g
+    ) m;
+
+    -- ---- respondents: 3 teams x 7 per month ----
+    INSERT INTO survey_response (survey_id, team, role_family, tenure_band, submitted_at, synthetic)
+    SELECT s.id, t.team,
+           (ARRAY['backend','frontend','platform','sre','qa'])[floor(random()*5)::int + 1],
+           (ARRAY['<1y','1-3y','3-5y','5y+'])[floor(random()*4)::int + 1],
+           s.month + interval '14 days' + (random()*6 || ' days')::interval,
+           true
+    FROM survey s
+    CROSS JOIN (VALUES ('demo-platform'), ('demo-app-alpha'), ('demo-app-bravo')) AS t(team)
+    CROSS JOIN generate_series(1, 7) r
+    WHERE s.synthetic;
+
+    -- ---- answers: score = team base + month trend + per-question offset + noise, clamped 1..7 ----
+    INSERT INTO survey_answer (response_id, question_id, score)
+    SELECT r.id, q.id,
+           GREATEST(1, LEAST(7, ROUND(
+               base.base
+             + (0.6 - ((extract(year from now())::int * 12 + extract(month from now())::int)
+                     - (extract(year from s.month)::int * 12 + extract(month from s.month)::int)) * 0.12)
+             + off.qoff
+             + (random() - 0.5) * 1.3
+           )))::int
+    FROM survey_response r
+    JOIN survey s ON s.id = r.survey_id AND s.synthetic
+    CROSS JOIN survey_question q
+    JOIN (VALUES
+      ('demo-platform', 5.5), ('demo-app-alpha', 4.5), ('demo-app-bravo', 3.6)
+    ) AS base(team, base) ON base.team = r.team
+    JOIN (VALUES
+      ('Q1', 0.2), ('Q2', -0.2), ('Q3', -0.2), ('Q4', -0.3), ('Q5', -0.3), ('Q6', -0.2),
+      ('Q7', -0.1), ('Q8', -0.4), ('Q9', -0.5), ('Q10', -0.5), ('Q11', -0.6), ('Q12', -0.1),
+      ('Q13', -0.3), ('Q14', 0.0), ('Q15', -0.3), ('Q16', -0.1), ('Q17', 0.2), ('Q18', 0.0)
+    ) AS off(code, qoff) ON off.code = q.code
+    WHERE r.synthetic;
+
+    -- ---- a sprinkling of coded free-text themes (more from the struggling team) ----
+    INSERT INTO survey_freetext (response_id, prompt, body, theme, synthetic)
+    SELECT r.id, 'What slowed you down most this month?',
+           '(demo) ' || th.theme,
+           th.theme, true
+    FROM survey_response r
+    JOIN survey s ON s.id = r.survey_id AND s.synthetic
+    JOIN LATERAL (
+      SELECT (ARRAY['CI is slow','Flaky tests','Docs hard to find','Too many interruptions',
+                    'Local setup pain','Unclear ownership','Risky releases'])[floor(random()*7)::int + 1] AS theme
+    ) th ON true
+    WHERE r.synthetic
+      AND random() < CASE r.team WHEN 'demo-app-bravo' THEN 0.7
+                                 WHEN 'demo-app-alpha' THEN 0.4 ELSE 0.2 END;
+
+    -- ---- telemetry rollups, anti-correlated with experience ----
+    -- quality q in ~3.6..6.1; worse q -> slower CI, longer PR waits, more failures.
+    WITH q AS (
+      SELECT s.month, t.team,
+             t.base + (0.6 - ((extract(year from now())::int * 12 + extract(month from now())::int)
+                     - (extract(year from s.month)::int * 12 + extract(month from s.month)::int)) * 0.12) AS q
+      FROM survey s
+      CROSS JOIN (VALUES
+        ('demo-platform', 5.5), ('demo-app-alpha', 4.5), ('demo-app-bravo', 3.6)
+      ) AS t(team, base)
+      WHERE s.synthetic
+    )
+    INSERT INTO monthly_ci_metrics (month, team, ci_p50_min, ci_p95_min, ci_success_pct, synthetic)
+    SELECT month, team,
+           ROUND((22 - q * 2.2)::numeric, 1),
+           ROUND((22 - q * 2.2)::numeric * 2.1, 1),
+           LEAST(99, ROUND((80 + q * 2.6)::numeric, 1)),
+           true
+    FROM q;
+
+    WITH q AS (
+      SELECT s.month, t.team,
+             t.base + (0.6 - ((extract(year from now())::int * 12 + extract(month from now())::int)
+                     - (extract(year from s.month)::int * 12 + extract(month from s.month)::int)) * 0.12) AS q
+      FROM survey s
+      CROSS JOIN (VALUES
+        ('demo-platform', 5.5), ('demo-app-alpha', 4.5), ('demo-app-bravo', 3.6)
+      ) AS t(team, base)
+      WHERE s.synthetic
+    )
+    INSERT INTO monthly_pr_metrics (month, team, first_review_p50_h, cycle_time_p50_h, cycle_time_p90_h, synthetic)
+    SELECT month, team,
+           ROUND((20 - q * 2.2)::numeric, 1),
+           ROUND((40 - q * 4.0)::numeric, 1),
+           ROUND((40 - q * 4.0)::numeric * 2.2, 1),
+           true
+    FROM q;
+
+    WITH q AS (
+      SELECT s.month, t.team AS service,
+             t.base + (0.6 - ((extract(year from now())::int * 12 + extract(month from now())::int)
+                     - (extract(year from s.month)::int * 12 + extract(month from s.month)::int)) * 0.12) AS q
+      FROM survey s
+      CROSS JOIN (VALUES
+        ('demo-platform', 5.5), ('demo-app-alpha', 4.5), ('demo-app-bravo', 3.6)
+      ) AS t(team, base)
+      WHERE s.synthetic
+    )
+    INSERT INTO monthly_delivery_metrics
+      (month, service, deploy_freq, lead_time_p50_h, lead_time_p90_h, cfr_pct, synthetic)
+    SELECT month, service,
+           ROUND((q * 1.6)::numeric, 1),
+           ROUND((48 - q * 5)::numeric, 1),
+           ROUND((48 - q * 5)::numeric * 3, 1),
+           GREATEST(2, ROUND((20 - q * 2)::numeric, 1)),
+           true
+    FROM q;
+
+    WITH q AS (
+      SELECT s.month, t.team AS service,
+             t.base + (0.6 - ((extract(year from now())::int * 12 + extract(month from now())::int)
+                     - (extract(year from s.month)::int * 12 + extract(month from s.month)::int)) * 0.12) AS q
+      FROM survey s
+      CROSS JOIN (VALUES
+        ('demo-platform', 5.5), ('demo-app-alpha', 4.5), ('demo-app-bravo', 3.6)
+      ) AS t(team, base)
+      WHERE s.synthetic
+    )
+    INSERT INTO monthly_reliability_metrics
+      (month, service, slo_attainment_pct, error_budget_burn, mttr_min, synthetic)
+    SELECT month, service,
+           ROUND((98.6 + (q - 5) * 0.12)::numeric, 3),
+           ROUND(GREATEST(0, (5.5 - q))::numeric, 2),
+           ROUND((120 - q * 12)::numeric, 1),
+           true
+    FROM q;
+
+    WITH q AS (
+      SELECT s.month, t.team AS service,
+             t.base + (0.6 - ((extract(year from now())::int * 12 + extract(month from now())::int)
+                     - (extract(year from s.month)::int * 12 + extract(month from s.month)::int)) * 0.12) AS q
+      FROM survey s
+      CROSS JOIN (VALUES
+        ('demo-platform', 5.5), ('demo-app-alpha', 4.5), ('demo-app-bravo', 3.6)
+      ) AS t(team, base)
+      WHERE s.synthetic
+    )
+    INSERT INTO monthly_cost_metrics (month, service, unit_cost_eur, synthetic)
+    SELECT month, service, ROUND((0.85 - q * 0.07)::numeric, 3), true
+    FROM q;
+
+    -- ---- incidents: more (and longer) for the struggling team -> higher MTTR ----
+    INSERT INTO incidents (fingerprint, triggered_at, resolved_at, severity, service, synthetic)
+    SELECT 'demo-' || svc.service || '-' || s.month || '-' || n,
+           s.month + interval '5 days' + (random() * 18 || ' days')::interval AS trig,
+           NULL, -- set below
+           (ARRAY['critical','warning'])[floor(random()*2)::int + 1],
+           svc.service, true
+    FROM survey s
+    CROSS JOIN (VALUES ('demo-platform', 1), ('demo-app-alpha', 2), ('demo-app-bravo', 3)) AS svc(service, cnt)
+    CROSS JOIN generate_series(1, 3) n
+    WHERE s.synthetic AND n <= svc.cnt;
+    -- give them realistic, team-skewed durations (resolved = triggered + MTTR)
+    UPDATE incidents SET resolved_at = triggered_at
+      + (CASE service WHEN 'demo-app-bravo' THEN 95 WHEN 'demo-app-alpha' THEN 55 ELSE 30 END
+         + random() * 40 || ' minutes')::interval
+    WHERE synthetic AND resolved_at IS NULL;
+
+    COMMIT;
+
+    -- recompute dimension scores (same function n8n W2 calls) so the boards light up now
+    SELECT refresh_dimension_scores();

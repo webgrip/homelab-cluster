@@ -1,0 +1,64 @@
+---
+# DevEx / SPACE / DORA measurement warehouse. Holds the monthly engineering-experience
+# pulse (raw survey answers) + monthly telemetry rollups, joined and surfaced in Grafana's
+# "Engineering Experience" folder. Owner role `devex` is the n8n writer + migration-job
+# identity; read-only `grafana_ro` (created by the migration Job) is what Grafana queries.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: devex-db
+  namespace: observability
+  labels:
+    monitoring.webgrip.io/enabled: "true"
+spec:
+  instances: 1
+  # Maintenance Jobs (migrate/demo-seed/teardown) connect as the superuser to create objects in
+  # the public schema (PG15+ no longer grants the DB owner CREATE on public) and manage roles.
+  # n8n + Grafana never use it — n8n writes as `devex`, Grafana reads as `grafana_ro`.
+  enableSuperuserAccess: true
+  # Pin the DB off the soyo control-planes onto the worker pool (ADR-0028).
+  affinity:
+    nodeSelector:
+      node.webgrip.io/pool: worker
+  inheritedMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
+  storage:
+    resizeInUseVolumes: true
+    size: 5Gi
+    storageClass: longhorn
+  walStorage:
+    # Mandatory separate WAL volume — Garage-down WAL SPOF hardening
+    # (see docs + the CNPG↔Garage WAL incident).
+    resizeInUseVolumes: true
+    size: 2Gi
+    storageClass: longhorn
+  postgresql:
+    parameters:
+      # Backup-tier policy: compress WAL full-page images to shrink the S3 archive
+      # and local WAL. See docs/techdocs/docs/database-backup-tiers.md
+      wal_compression: "zstd"
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: devex-db-store
+        serverName: devex-db
+  managed:
+    roles:
+      # The owner/writer. createrole lets the migration Job create grafana_ro;
+      # createdb is harmless parity with other tenants. Password from the generated
+      # devex-db-secret (also the initdb bootstrap secret below).
+      - name: devex
+        ensure: present
+        login: true
+        createdb: true
+        createrole: true
+        passwordSecret:
+          name: devex-db-secret
+  bootstrap:
+    initdb:
+      database: devex
+      owner: devex
+      secret:
+        name: devex-db-secret

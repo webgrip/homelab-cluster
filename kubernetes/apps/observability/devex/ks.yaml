@@ -1,0 +1,23 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: devex
+spec:
+  dependsOn:
+    - name: devex-db
+  interval: 1h
+  path: ./kubernetes/apps/observability/devex/app
+  # NOTE: deliberately NO postBuild.substituteFrom here. The schema/seed SQL in the
+  # mounted ConfigMaps uses PostgreSQL dollar-quoting ($fn$ ... $$), and Flux envsubst
+  # would mangle every bare `$`. This app needs no ${SECRET_DOMAIN}-style substitution
+  # (n8n hosts the survey form; there is no HTTPRoute here), so we skip substitution
+  # entirely rather than escape SQL. See memory: Flux postBuild vs inline-script vars.
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: observability
+  wait: false

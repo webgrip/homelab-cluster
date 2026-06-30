@@ -1,0 +1,107 @@
+{
+  "name": "DevEx W3 — Telemetry snapshot",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [ { "field": "weeks", "weeksInterval": 1 } ] }
+      },
+      "name": "Weekly",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "url": "http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090/api/v1/query",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "query", "value": "count(count by (revision) (max_over_time(flux_resource_info{kind=\"Kustomization\",suspended=\"False\"}[30d])))" }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Prometheus: deploy_freq",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, -120]
+    },
+    {
+      "parameters": {
+        "jsCode": "const month = new Date().toISOString().slice(0,8) + '01';\nconst v = Number($json.data.result?.[0]?.value?.[1] ?? 0);\nreturn [{ json: { month, service: 'all', deploy_freq: v } }];"
+      },
+      "name": "Shape delivery row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, -120]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO monthly_delivery_metrics (month, service, deploy_freq)\nVALUES ($1,$2,$3)\nON CONFLICT (month, service) DO UPDATE SET deploy_freq = EXCLUDED.deploy_freq;",
+        "options": { "queryReplacement": "={{ $json.month }},{{ $json.service }},{{ $json.deploy_freq }}" }
+      },
+      "name": "Upsert delivery",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, -120],
+      "credentials": { "postgres": { "id": "REPLACE_WITH_DEVEX_DB_CRED", "name": "devex-db" } }
+    },
+    {
+      "parameters": {
+        "url": "https://forgejo.example.com/api/v1/repos/OWNER/REPO/pulls?state=all&sort=recentupdate&limit=50",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "name": "Forgejo: pulls (template)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 120],
+      "credentials": { "httpHeaderAuth": { "id": "REPLACE_WITH_FORGEJO_API_CRED", "name": "forgejo-api" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compute monthly PR rollups from the Forgejo pulls payload.\n// Map each repo to a team. Replace the percentile math as needed.\nconst month = new Date().toISOString().slice(0,8) + '01';\nconst prs = Array.isArray($json) ? $json : ($json.body ?? []);\nconst hrs = (a,b) => (new Date(a) - new Date(b)) / 3.6e6;\nconst cycle = prs.filter(p => p.merged_at).map(p => hrs(p.merged_at, p.created_at)).sort((a,b)=>a-b);\nconst pct = (arr,q) => arr.length ? arr[Math.min(arr.length-1, Math.floor(q*arr.length))] : null;\nreturn [{ json: { month, team: 'app-alpha', first_review_p50_h: null, cycle_time_p50_h: pct(cycle,0.5), cycle_time_p90_h: pct(cycle,0.9) } }];"
+      },
+      "name": "Shape PR row (template)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 120]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO monthly_pr_metrics (month, team, first_review_p50_h, cycle_time_p50_h, cycle_time_p90_h)\nVALUES ($1,$2,$3,$4,$5)\nON CONFLICT (month, team) DO UPDATE SET\n  first_review_p50_h = EXCLUDED.first_review_p50_h,\n  cycle_time_p50_h   = EXCLUDED.cycle_time_p50_h,\n  cycle_time_p90_h   = EXCLUDED.cycle_time_p90_h;",
+        "options": { "queryReplacement": "={{ $json.month }},{{ $json.team }},{{ $json.first_review_p50_h }},{{ $json.cycle_time_p50_h }},{{ $json.cycle_time_p90_h }}" }
+      },
+      "name": "Upsert PR metrics (template)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 120],
+      "credentials": { "postgres": { "id": "REPLACE_WITH_DEVEX_DB_CRED", "name": "devex-db" } }
+    }
+  ],
+  "connections": {
+    "Weekly": {
+      "main": [[
+        { "node": "Prometheus: deploy_freq", "type": "main", "index": 0 },
+        { "node": "Forgejo: pulls (template)", "type": "main", "index": 0 }
+      ]]
+    },
+    "Prometheus: deploy_freq": {
+      "main": [[{ "node": "Shape delivery row", "type": "main", "index": 0 }]]
+    },
+    "Shape delivery row": {
+      "main": [[{ "node": "Upsert delivery", "type": "main", "index": 0 }]]
+    },
+    "Forgejo: pulls (template)": {
+      "main": [[{ "node": "Shape PR row (template)", "type": "main", "index": 0 }]]
+    },
+    "Shape PR row (template)": {
+      "main": [[{ "node": "Upsert PR metrics (template)", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

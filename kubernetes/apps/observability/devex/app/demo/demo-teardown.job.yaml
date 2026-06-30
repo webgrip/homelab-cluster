@@ -1,0 +1,73 @@
+---
+# Wipes the synthetic demo dataset (everything WHERE synthetic) and recomputes scores.
+# Dormant by default (spec.suspend: true). To run: set suspend:false and commit; Flux runs
+# it once. Real responses (synthetic=false) are untouched.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: devex-db-demo-teardown
+  namespace: observability
+spec:
+  suspend: true
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: psql
+          image: docker.io/library/postgres:18.4-alpine3.23@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          resources:
+            requests: {cpu: 25m, memory: 64Mi}
+            limits: {memory: 128Mi}
+          env:
+            - name: HOME
+              value: /tmp
+            - name: PGHOST
+              value: devex-db-rw
+            - name: PGPORT
+              value: "5432"
+            - name: PGDATABASE
+              value: devex
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef: {name: devex-db-superuser, key: username}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef: {name: devex-db-superuser, key: password}
+          command:
+            - "/bin/sh"
+            - "-ceu"
+          args:
+            - |
+              psql -v ON_ERROR_STOP=1 <<'SQL'
+              BEGIN;
+              DELETE FROM survey WHERE synthetic;
+              DELETE FROM monthly_ci_metrics          WHERE synthetic;
+              DELETE FROM monthly_pr_metrics          WHERE synthetic;
+              DELETE FROM monthly_delivery_metrics    WHERE synthetic;
+              DELETE FROM monthly_reliability_metrics WHERE synthetic;
+              DELETE FROM monthly_cost_metrics        WHERE synthetic;
+              DELETE FROM incidents                   WHERE synthetic;
+              COMMIT;
+              SELECT refresh_dimension_scores();
+              SQL
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}

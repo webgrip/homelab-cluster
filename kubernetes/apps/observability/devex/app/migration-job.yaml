@@ -1,0 +1,72 @@
+---
+# Applies the warehouse schema idempotently. Connects as the `devex` owner (createrole,
+# from devex-db-secret) and passes the grafana_ro password in as a psql var. Re-runs when
+# its spec changes; to force a re-apply after editing schema.configmap.yaml, bump the
+# `schema-rev` annotation below (changes the pod template -> Flux recreates the Job).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: devex-db-migrate
+  namespace: observability
+  annotations:
+    schema-rev: "1"
+spec:
+  backoffLimit: 10 # retries until the CNPG cluster + managed `devex` role are ready
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      annotations:
+        schema-rev: "1"
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: psql
+          image: docker.io/library/postgres:18.4-alpine3.23@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          resources:
+            requests: {cpu: 25m, memory: 64Mi}
+            limits: {memory: 128Mi}
+          env:
+            - name: HOME
+              value: /tmp
+            - name: PGHOST
+              value: devex-db-rw
+            - name: PGPORT
+              value: "5432"
+            - name: PGDATABASE
+              value: devex
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef: {name: devex-db-superuser, key: username}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef: {name: devex-db-superuser, key: password}
+            - name: GRAFANA_RO_PW
+              valueFrom:
+                secretKeyRef: {name: devex-grafana-ro, key: password}
+          command:
+            - "/bin/sh"
+            - "-ceu"
+          args:
+            - psql -v ON_ERROR_STOP=1 -v ro_pw="$GRAFANA_RO_PW" -f /schema/schema.sql
+          volumeMounts:
+            - {name: schema, mountPath: /schema, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: schema
+          configMap: {name: devex-schema}
+        - name: tmp
+          emptyDir: {}

@@ -1,0 +1,68 @@
+{
+  "name": "DevEx W1 — Survey intake",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Engineering Experience Pulse",
+        "formDescription": "Anonymous monthly pulse — ~3 minutes. Results are reported only in aggregate (groups under 5 are suppressed) and are used to prioritise platform/DevOps improvements, never to evaluate individuals. Scale: 1 = strongly disagree … 7 = strongly agree.",
+        "formFields": {
+          "values": [
+            { "fieldLabel": "team", "fieldType": "dropdown", "fieldOptions": { "values": [ { "option": "platform" }, { "option": "app-alpha" }, { "option": "app-bravo" } ] }, "requiredField": true },
+            { "fieldLabel": "role_family", "fieldType": "dropdown", "fieldOptions": { "values": [ { "option": "backend" }, { "option": "frontend" }, { "option": "platform" }, { "option": "sre" }, { "option": "qa" } ] } },
+            { "fieldLabel": "tenure_band", "fieldType": "dropdown", "fieldOptions": { "values": [ { "option": "<1y" }, { "option": "1-3y" }, { "option": "3-5y" }, { "option": "5y+" } ] } },
+            { "fieldLabel": "Q1 I am satisfied with our ability to deliver software effectively.", "fieldType": "number", "requiredField": true },
+            { "fieldLabel": "Q2 The platform tooling and standards help me get work done.", "fieldType": "number", "requiredField": true },
+            { "fieldLabel": "Q3 I can complete routine tasks without unnecessary tickets or hand-holding.", "fieldType": "number", "requiredField": true },
+            { "fieldLabel": "Q4 CI feedback is fast enough for normal day-to-day work.", "fieldType": "number", "requiredField": true },
+            { "fieldLabel": "Q5 Pull request review turnaround supports steady progress.", "fieldType": "number", "requiredField": true },
+            { "fieldLabel": "Q6 Build and test failures are easy to diagnose and fix.", "fieldType": "number", "requiredField": true },
+            { "fieldLabel": "Q7 My local development environment is reliable and reproducible.", "fieldType": "number", "requiredField": true },
+            { "fieldLabel": "Q8 I know the recommended path for images, CI/CD, secrets, deployment, environments.", "fieldType": "number", "requiredField": true },
+            { "fieldLabel": "Q9 Engineering documentation is easy to find and accurate.", "fieldType": "number", "requiredField": true },
+            { "fieldLabel": "Q10 I usually have enough uninterrupted time for deep work.", "fieldType": "number", "requiredField": true },
+            { "fieldLabel": "Q11 Interruptions from meetings, support, and incidents are manageable.", "fieldType": "number", "requiredField": true },
+            { "fieldLabel": "Q12 Releasing to production feels safe and predictable.", "fieldType": "number", "requiredField": true },
+            { "fieldLabel": "Q13 Security and compliance controls fit into normal engineering flow.", "fieldType": "number", "requiredField": true },
+            { "fieldLabel": "Q14 Production issues are detected and routed effectively.", "fieldType": "number", "requiredField": true },
+            { "fieldLabel": "Q15 I understand service ownership and escalation paths.", "fieldType": "number", "requiredField": true },
+            { "fieldLabel": "Q16 Shared platform standards save me time.", "fieldType": "number", "requiredField": true },
+            { "fieldLabel": "Q17 I would recommend our internal platform/delivery experience to another engineer.", "fieldType": "number", "requiredField": true },
+            { "fieldLabel": "Q18 Changes made in the last month improved my day-to-day work.", "fieldType": "number", "requiredField": true },
+            { "fieldLabel": "What slowed you down most this month?", "fieldType": "textarea" },
+            { "fieldLabel": "What should the platform team fix next?", "fieldType": "textarea" },
+            { "fieldLabel": "Which change helped most?", "fieldType": "textarea" }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Pulse form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [0, 0],
+      "webhookId": "devex-pulse"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH s AS (\n  INSERT INTO survey (name, framework, month)\n  VALUES ('Monthly pulse', 'SPACE+DevEx', date_trunc('month', now())::date)\n  ON CONFLICT (month, synthetic) DO UPDATE SET name = survey.name\n  RETURNING id\n), r AS (\n  INSERT INTO survey_response (survey_id, team, role_family, tenure_band)\n  SELECT id, $1, $2, $3 FROM s\n  RETURNING id\n)\nINSERT INTO survey_answer (response_id, question_id, score)\nSELECT r.id, q.id, v.score\nFROM r\nJOIN (VALUES\n  ('Q1',$4::int),('Q2',$5::int),('Q3',$6::int),('Q4',$7::int),('Q5',$8::int),\n  ('Q6',$9::int),('Q7',$10::int),('Q8',$11::int),('Q9',$12::int),('Q10',$13::int),\n  ('Q11',$14::int),('Q12',$15::int),('Q13',$16::int),('Q14',$17::int),('Q15',$18::int),\n  ('Q16',$19::int),('Q17',$20::int),('Q18',$21::int)\n) AS v(code, score) ON true\nJOIN survey_question q ON q.code = v.code;",
+        "options": {
+          "queryReplacement": "={{ $json['team'] }},{{ $json['role_family'] }},{{ $json['tenure_band'] }},{{ $json['Q1 I am satisfied with our ability to deliver software effectively.'] }},{{ $json['Q2 The platform tooling and standards help me get work done.'] }},{{ $json['Q3 I can complete routine tasks without unnecessary tickets or hand-holding.'] }},{{ $json['Q4 CI feedback is fast enough for normal day-to-day work.'] }},{{ $json['Q5 Pull request review turnaround supports steady progress.'] }},{{ $json['Q6 Build and test failures are easy to diagnose and fix.'] }},{{ $json['Q7 My local development environment is reliable and reproducible.'] }},{{ $json['Q8 I know the recommended path for images, CI/CD, secrets, deployment, environments.'] }},{{ $json['Q9 Engineering documentation is easy to find and accurate.'] }},{{ $json['Q10 I usually have enough uninterrupted time for deep work.'] }},{{ $json['Q11 Interruptions from meetings, support, and incidents are manageable.'] }},{{ $json['Q12 Releasing to production feels safe and predictable.'] }},{{ $json['Q13 Security and compliance controls fit into normal engineering flow.'] }},{{ $json['Q14 Production issues are detected and routed effectively.'] }},{{ $json['Q15 I understand service ownership and escalation paths.'] }},{{ $json['Q16 Shared platform standards save me time.'] }},{{ $json['Q17 I would recommend our internal platform/delivery experience to another engineer.'] }},{{ $json['Q18 Changes made in the last month improved my day-to-day work.'] }}"
+        }
+      },
+      "name": "Insert response + answers",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": { "id": "REPLACE_WITH_DEVEX_DB_CRED", "name": "devex-db" }
+      }
+    }
+  ],
+  "connections": {
+    "Pulse form": {
+      "main": [[{ "node": "Insert response + answers", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}
