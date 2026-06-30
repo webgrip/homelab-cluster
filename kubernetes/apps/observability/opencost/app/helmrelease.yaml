@@ -58,8 +58,16 @@ spec:
           honorLabels: true
       # On-prem custom pricing — no cloud bill exists, so cost is modelled.
       # OpenCost is currency-agnostic; these numbers are EUR by our convention.
-      # Baseline targets ~EUR 1,000/yr cluster TCO (~120 W @ EUR 0.30/kWh power
-      # + hardware amortisation) spread over the live 23.75 cores + 70 GiB RAM.
+      #
+      # IMPORTANT — the chart costModel CPU/RAM/storage are MONTHLY rates
+      # (EUR/core-month, EUR/GB-month, EUR/GB-month). OpenCost divides them by
+      # 730 h to emit the hourly node_*_hourly_cost metrics. Verified live: an
+      # earlier CPU "0.003" surfaced as node_cpu_hourly_cost 0.000004 (= 0.003/730),
+      # i.e. ~700x too low. So set MONTHLY = intended-hourly x 730.
+      #
+      # Baseline targets ~EUR 1,000/yr cluster TCO (power ~EUR 3/W·yr + hardware
+      # amortisation) over the live 23.75 cores + 70 GiB RAM:
+      #   CPU 2.19/core-mo -> 0.003/core-hr ; RAM 0.44/GB-mo -> 0.0006/GB-hr.
       # TUNE costModel.{CPU,RAM,storage} to your real power rate + hardware cost.
       customPricing:
         enabled: true
@@ -68,10 +76,10 @@ spec:
         configPath: /tmp/custom-config
         provider: custom
         costModel:
-          description: "webgrip homelab on-prem pricing (EUR; per CPU-core-hr / GB-RAM-hr / GB-storage-hr)"
-          CPU: "0.003"
-          RAM: "0.0006"
-          storage: "0.00002"
+          description: "webgrip homelab on-prem pricing (EUR; MONTHLY rates: per core-month / GB-month)"
+          CPU: "2.19"
+          RAM: "0.44"
+          storage: "0.0146"
           GPU: "0"
           zoneNetworkEgress: "0"
           regionNetworkEgress: "0"
