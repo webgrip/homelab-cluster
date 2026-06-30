@@ -11,14 +11,18 @@ components:
 
 resources:
   - ./namespace.yaml
-  - ./kube-prometheus-stack/ks.yaml
+  # Metrics backend: modular VictoriaMetrics (replaced kube-prometheus-stack).
+  # prometheus-operator-crds keeps the monitoring.coreos.com CRDs so the VM
+  # operator can convert the cluster's existing ServiceMonitor/PrometheusRule CRs.
+  - ./prometheus-operator-crds/ks.yaml
+  - ./vm-operator/ks.yaml
+  - ./victoria-metrics/ks.yaml
+  - ./kube-state-metrics/ks.yaml
+  - ./node-exporter/ks.yaml
   - ./grafana/database/ks.yaml
   - ./grafana-operator/ks.yaml
   - ./grafana/ks.yaml
   - ./mcp-grafana/ks.yaml
-  # Mimir disabled.
-  # Re-enable by uncommenting the line below.
-  # - ./mimir-distributed/ks.yaml
   - ./loki/ks.yaml
   # Tempo (tracing) suspended 2026-06-19 to free ~1Gi on the overcommitted fringe
   # node. Flux (cluster-apps, prune:true) garbage-collects it and Helm-uninstalls

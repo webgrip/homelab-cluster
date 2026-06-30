@@ -1,0 +1,30 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: kube-apiserver
+spec:
+  namespaceSelector:
+    matchNames:
+      - default
+  selector:
+    matchLabels:
+      component: apiserver
+      provider: kubernetes
+  endpoints:
+    - port: https
+      scheme: https
+      interval: 60s
+      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      tlsConfig:
+        insecureSkipVerify: true
+        serverName: kubernetes
+      # Ported verbatim from kube-prometheus-stack: drop ~74k high-cardinality
+      # series (apiserver write/watch histograms, etcd request histogram,
+      # feature-gate gauges, workqueue histograms) nothing here graphs/alerts.
+      # Keep apiserver_request_duration / _sli_duration (API-server SLO rules).
+      metricRelabelConfigs:
+        - action: drop
+          sourceLabels:
+            - __name__
+          regex: "apiserver_request_body_size_bytes_bucket|apiserver_response_sizes_bucket|apiserver_watch_list_duration_seconds_bucket|apiserver_watch_cache_read_wait_seconds_bucket|apiserver_watch_events_sizes_bucket|etcd_request_duration_seconds_bucket|kubernetes_feature_enabled|workqueue_work_duration_seconds_bucket|workqueue_queue_duration_seconds_bucket"

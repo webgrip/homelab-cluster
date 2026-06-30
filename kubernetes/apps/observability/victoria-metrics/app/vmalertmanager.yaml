@@ -1,0 +1,70 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAlertmanager
+metadata:
+  name: vmalertmanager
+spec:
+  replicaCount: 1
+  externalURL: https://alertmanager.${SECRET_DOMAIN}
+  # Ported verbatim from the kube-prometheus-stack Alertmanager config: route all
+  # alerts to a "null" receiver (no paging wired up yet), silence Watchdog, and
+  # inhibit warnings when a matching critical fires. VMAlertmanager does NOT
+  # default to this, so it must be carried over or alerts route nowhere.
+  configRawYaml: |
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: "null"
+      group_by:
+        - alertname
+        - namespace
+        - severity
+        - service
+        - owner
+        - project
+        - pod
+        - job
+        - instance
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      routes:
+        - receiver: "null"
+          matchers:
+            - alertname="Watchdog"
+    receivers:
+      - name: "null"
+    inhibit_rules:
+      - source_matchers:
+          - severity="critical"
+        target_matchers:
+          - severity="warning"
+        equal:
+          - namespace
+          - alertname
+  storage:
+    volumeClaimTemplate:
+      spec:
+        storageClassName: longhorn
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi
+  podMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
+  nodeSelector:
+    node.webgrip.io/pool: worker
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: fringe
+      effect: NoSchedule
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi

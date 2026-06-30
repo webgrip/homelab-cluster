@@ -1,0 +1,35 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMSingle
+metadata:
+  name: vmsingle
+spec:
+  # 15d local retention — matches the Prometheus this replaces (Mimir long-term
+  # store is disabled). Query + ingest endpoint: vmsingle-vmsingle:8429.
+  retentionPeriod: "15d"
+  replicaCount: 1
+  removePvcAfterDelete: false
+  storage:
+    accessModes:
+      - ReadWriteOnce
+    storageClassName: longhorn
+    resources:
+      requests:
+        storage: 50Gi
+  podMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
+  nodeSelector:
+    node.webgrip.io/pool: worker
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: fringe
+      effect: NoSchedule
+  resources:
+    requests:
+      cpu: 400m
+      memory: 3Gi
+    limits:
+      cpu: "2"
+      memory: 6Gi

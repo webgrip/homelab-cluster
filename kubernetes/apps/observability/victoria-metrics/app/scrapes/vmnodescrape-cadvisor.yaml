@@ -1,0 +1,21 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMNodeScrape
+metadata:
+  name: cadvisor
+spec:
+  # Same kubelet target, cAdvisor path — provides container_* series consumed by
+  # the Longhorn/PVC and app rules + the talos-nodes dashboard.
+  scheme: https
+  path: /metrics/cadvisor
+  honorLabels: true
+  interval: 60s
+  scrapeTimeout: 30s
+  tlsConfig:
+    insecureSkipVerify: true
+  bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+  relabelConfigs:
+    - action: labelmap
+      regex: __meta_kubernetes_node_label_(.+)
+    - targetLabel: job
+      replacement: cadvisor

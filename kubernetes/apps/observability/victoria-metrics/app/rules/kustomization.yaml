@@ -2,16 +2,14 @@
 # yaml-language-server: $schema=https://json.schemastore.org/kustomization
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+# These stay as kind: PrometheusRule — the VictoriaMetrics operator converts each
+# into a VMRule, which VMAlert (selectAllByDefault) then evaluates.
 resources:
-  - ./ocirepository.yaml
-  - ./helmrelease.yaml
-  - ./httproute-prometheus.yaml
-  - ./httproute-alertmanager.yaml
   - ./prometheusrule-observability-stack.yaml
-  # Disabled alongside the k6 suspension (observability/kustomization.yaml, 2026-06-19):
-  # the canary that feeds these alerts is intentionally off, so the alerts must be too.
-  # Re-enable together with ./k6-operator + ./k6-canaries.
-  # - ./rules/prometheusrule-synthetic-k6-canaries.yaml
+  # Disabled alongside the k6 suspension (observability/kustomization.yaml,
+  # 2026-06-19): the canary that feeds these alerts is intentionally off, so the
+  # alerts must be too. Re-enable together with ./k6-operator + ./k6-canaries.
+  # - ./prometheusrule-synthetic-k6-canaries.yaml
   - ./prometheusrule-apps.yaml
   - ./prometheusrule-app-traffic.yaml
   - ./prometheusrule-platform-flux.yaml
@@ -26,7 +24,3 @@ resources:
   - ./prometheusrule-security-authentik.yaml
   - ./prometheusrule-security-dt.yaml
   - ./prometheusrule-claude-code.yaml
-  - ./grafana-dashboard-alertmanager.yaml
-  - ./grafana-dashboard-prometheus.yaml
-  - ./grafana-dashboard-etcd.yaml
-  - ./grafana-dashboard-talos-nodes.yaml

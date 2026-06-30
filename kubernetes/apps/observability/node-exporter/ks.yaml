@@ -3,16 +3,14 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: mimir-distributed
+  name: node-exporter
 spec:
+  dependsOn:
+    # ServiceMonitor CRD must exist before the chart can create its monitor.
+    - name: prometheus-operator-crds
+      namespace: observability
   interval: 1h
-  path: ./kubernetes/apps/observability/mimir-distributed/disabled
-  postBuild:
-    substituteFrom:
-      - kind: Secret
-        name: cluster-secrets
-      - kind: Secret
-        name: observability-s3
+  path: ./kubernetes/apps/observability/node-exporter/app
   prune: true
   sourceRef:
     kind: GitRepository

@@ -1,0 +1,20 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMNodeScrape
+metadata:
+  name: kubelet
+spec:
+  # Scrapes each node's kubelet (:10250, HTTPS, self-signed) for kubelet_* and
+  # kubelet_volume_stats_* (used by the Longhorn/PVC platform rules).
+  scheme: https
+  honorLabels: true
+  interval: 60s
+  scrapeTimeout: 30s
+  tlsConfig:
+    insecureSkipVerify: true
+  bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+  relabelConfigs:
+    - action: labelmap
+      regex: __meta_kubernetes_node_label_(.+)
+    - targetLabel: job
+      replacement: kubelet

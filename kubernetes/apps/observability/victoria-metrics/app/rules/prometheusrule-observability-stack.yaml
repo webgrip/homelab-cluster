@@ -108,89 +108,26 @@ spec:
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#observability-stack"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/obs-stack-overview/cluster-ops-overview"
 
-        - alert: PrometheusRemoteWriteBacklog
+        # NOTE: the two Prometheus remote_write alerts (backlog / dropping samples)
+        # were removed with the Prometheus->VictoriaMetrics swap — they keyed on
+        # prometheus_remote_storage_* counters that VMAgent does not emit, and the
+        # Mimir remote_write target they guarded is gone. VMAgent's own
+        # vmagent_remotewrite_* metrics are the VM-native replacement if/when a
+        # remote_write backlog alert is wanted again.
+
+        - alert: VictoriaMetricsSeriesCreationHigh
           expr: |
-            (
-              (
-                prometheus_remote_storage_queue_highest_received_timestamp_seconds
-                -
-                prometheus_remote_storage_queue_highest_sent_timestamp_seconds
-              ) > 300
-            )
-            or
-            (
-              prometheus_remote_storage_samples_pending > 0
-              and
-              rate(prometheus_remote_storage_samples_failed_total[5m]) > 0
-            )
-          for: 15m
-          labels:
-            severity: warning
-            owner: platform
-            service: mimir
-          annotations:
-            summary: "Prometheus remote_write backlog{{ if $labels.remote_name }} ({{ $labels.remote_name }}){{ else }} (mimir){{ end }}"
-            description: |
-              What's happening:
-              - Prometheus has had pending samples for remote_write for 15m.
-
-              Impact/risk:
-              - Increased risk of remote_write drops; long-term metrics may lag.
-
-              Likely causes:
-              - Mimir gateway slow/unhealthy or returning 429/5xx
-              - DNS/network path issues from Prometheus to the remote_write endpoint
-              - Remote write throughput insufficient or Prometheus under-resourced
-
-              First actions:
-              - Check pending/failed/dropped sample counters and remote write latencies
-              - Check Prometheus logs for remote write errors and HTTP status codes
-              - Check Mimir gateway health and ingestion rate
-            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#prometheus-remote-write"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/obs-lgtmp-health/observability-lgtmp-health"
-
-        - alert: PrometheusRemoteWriteDroppingSamples
-          expr: |
-            increase(prometheus_remote_storage_samples_dropped_total[5m]) > 0
-          for: 10m
-          labels:
-            severity: critical
-            owner: platform
-            service: mimir
-          annotations:
-            summary: "Prometheus remote_write dropping samples{{ if $labels.remote_name }} ({{ $labels.remote_name }}){{ else }} (mimir){{ end }}"
-            description: |
-              What's happening:
-              - Prometheus is dropping samples for remote_write.
-
-              Impact/risk:
-              - Long-term metrics in Mimir will be incomplete.
-
-              Likely causes:
-              - Mimir gateway overloaded or erroring (429/5xx)
-              - Network/DNS failures to the remote_write endpoint
-              - Prometheus under-resourced for current ingest/remote_write load
-
-              First actions:
-              - Check Mimir gateway errors/latency and ingestion capacity
-              - Check Prometheus remote_write logs and queue settings
-              - Scale/resize Prometheus and/or Mimir to restore throughput
-            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#prometheus-remote-write"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/obs-lgtmp-health/observability-lgtmp-health"
-
-        - alert: PrometheusSeriesCreationHigh
-          expr: |
-            rate(prometheus_tsdb_head_series_created_total[1h]) > 50000
+            rate(vm_new_timeseries_created_total[1h]) > 50000
           for: 30m
           labels:
             severity: warning
             owner: platform
-            service: prometheus
+            service: victoriametrics
           annotations:
-            summary: "High Prometheus series creation rate (prometheus)"
+            summary: "High VictoriaMetrics series creation rate (victoriametrics)"
             description: |
               What's happening:
-              - Prometheus is creating >50k new series/hour for 30m.
+              - VMSingle is creating >50k new series/hour for 30m.
 
               Impact/risk:
               - Cardinality regression can increase memory/CPU and destabilize scraping/alerting.
@@ -201,7 +138,7 @@ spec:
               - Recording/alert rule change increasing series churn
 
               First actions:
-              - Identify the top churn sources (targets/metrics) in Prometheus/Grafana
+              - Identify the top churn sources (targets/metrics) in VMUI/Grafana
               - Roll back or fix the change that introduced new labels
               - Apply relabeling/metric drop rules to reduce cardinality
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#observability-stack"

@@ -137,7 +137,7 @@ That's the whole job — all scoring/normalization/suppression logic lives in th
 source, a **Code/Set** node shapes `(month, team|service, value…)`, and a **Postgres** node
 upserts. Use `date_trunc('month', now())::date` as `month`.
 
-Prometheus instant queries (`GET http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090/api/v1/query?query=…`):
+Prometheus instant queries (`GET http://vmsingle-vmsingle.observability.svc.cluster.local:8429/api/v1/query?query=…`):
 
 | Target table.column | PromQL |
 |---|---|

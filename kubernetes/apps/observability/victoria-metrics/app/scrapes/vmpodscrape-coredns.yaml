@@ -1,0 +1,18 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMPodScrape
+metadata:
+  name: coredns
+spec:
+  # The default kube-dns Service doesn't expose the 9153 metrics port, so scrape
+  # the CoreDNS pods directly on their named `metrics` container port (9153/http).
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  selector:
+    matchLabels:
+      k8s-app: kube-dns
+  podMetricsEndpoints:
+    - port: metrics
+      scheme: http
+      interval: 60s
