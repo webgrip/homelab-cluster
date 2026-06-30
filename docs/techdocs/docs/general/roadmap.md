@@ -32,6 +32,16 @@
 
 ## ✅ Done log (recent)
 
+- **DevEx / SPACE / DORA measurement program — foundation (2026-06-30):** new `devex-db` CNPG
+  warehouse in observability (schema = raw survey zone + aggregate/telemetry zone + SQL
+  `refresh_dimension_scores()` + n≥5-suppression views + grafana_ro read-only role), idempotent
+  migration Job, generated ESO secrets. Grafana `postgres-devex` datasource + "Engineering
+  Experience" folder + 3 dashboards (scorecard, dimensions, telemetry-correlation), and the real
+  DevEx index now feeds the exec-kpi-scorecard "developer experience" tile (closing that honest
+  gap). Ships an opt-in demo seed (~21 synthetic respondents × 3 teams × 6 months + anti-correlated
+  telemetry) so dashboards are populated + testable end-to-end before any real response, with a
+  suspendable teardown. n8n is the survey+ETL runtime (workflow templates + build guide committed,
+  not yet wired — see #73a). Closes the "developer satisfaction" exec gap; OSS-only.
 - **Node-taxonomy + storage migration (2026-06-16→21, ADR-0025/0026/0027/0028):** the big one.
   Introduced the capability label scheme (`node.webgrip.io/pool|cpu|ram`, `storage.webgrip.io/longhorn`)
   and moved **every app + all Longhorn replicas off the 3 soyo etcd nodes** — pinned ~40 apps and all
@@ -191,6 +201,12 @@ NetworkPolicies · `#17` Prom/Alertmanager auth · `#45` admission-webhook HA ·
 71. Per-app Sloth SLOs (Forgejo, Authentik, ingress) + burn-rate alerts — `[P2 · Med · M]`
 72. GitOps-health dashboard (e2e status, commit-vs-reconciled, drift, suspended count) — `[P2 · Med · M]`
 73. Verify Claude Code telemetry metric names + enable pending settings.json wiring — `[P2 · Low · S]`
+73a. **Wire the DevEx program live** (warehouse + dashboards + demo data shipped; see
+    `general/engineering-experience-program.md`). Remaining: build/import the 4 n8n workflows
+    (W1 form, W2 `refresh_dimension_scores()`, W3 Prometheus+Forgejo-API rollups, W4 Alertmanager
+    incidents), attach creds, apply the n8n egress netpol + Alertmanager receiver, run the first
+    real pulse, then teardown demo data. Code free-text themes; calibrate telemetry thresholds
+    after 2 clean months — `[P2 · Med · M]`
 74. **Flux alerting is dead** — this Flux version's controllers expose `gotk_reconcile_duration` but NOT
     `gotk_reconcile_condition`/`gotk_suspend_status`, so the 3 owner Flux alerts + the suspended-ks alert
     never fire. Fix: add a kube-state-metrics CustomResourceState config for the Flux CRDs (generates
