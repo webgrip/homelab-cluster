@@ -14,11 +14,13 @@ resources:
   - ./n8n-secrets.pushsecret.yaml
   - ./n8n-db-secret.externalsecret.yaml
   - ./n8n-db-secret.pushsecret.yaml
-  - ./n8n-oidc-secrets.pushsecret.yaml
-  - ./n8n-oidc-secrets.externalsecret.yaml
 components:
-  # server-side OIDC discovery to authentik hairpins through envoy-internal;
-  # default-deny requires an identity-based egress allow to ns network (ADR-0021)
+  # Identity-based egress to the `network` ns so n8n's server-side workflow HTTP
+  # calls can hairpin to in-cluster gateway-fronted hosts via the envoy-internal
+  # VIP under default-deny (e.g. the DevEx ETL pulls from forgejo/prometheus).
+  # Cilium enforces on the post-DNAT backend identity, so a CIDR/port rule won't
+  # work (ADR-0021). Originally added for OIDC discovery to authentik; OIDC was
+  # removed 2026-06-30 (paid n8n feature) but this allow stays for the ETL calls.
   - ../../../../components/gateway-egress
   # NOTE: worker-pool pin removed 2026-06-19 — n8n's Longhorn PV node-affinity
   # excludes worker-1 (volume predates that node) and fringe is still tainted, so
