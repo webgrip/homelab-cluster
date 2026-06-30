@@ -1,0 +1,17 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kepler
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+  labels:
+    webgrip.io/owner: platform
+    webgrip.io/tier: platform
+    webgrip.io/exposure: private
+    # Kepler is a privileged, hostPID node-power DaemonSet (reads host RAPL via
+    # /sys powercap). It needs PSA privileged; paired with a scoped Kyverno
+    # PolicyException (exception-kepler-privileged) for the same baseline rules.
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged

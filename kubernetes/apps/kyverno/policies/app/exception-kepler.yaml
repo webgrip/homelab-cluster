@@ -1,0 +1,53 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/policyexception_v2.json
+# Exception for the Kepler node power-metering DaemonSet (kepler namespace).
+# Kepler reads Intel/AMD RAPL energy counters from the host's read-only /sys
+# (powercap) + /proc and uses hostPID to attribute power to processes/containers.
+# That needs a privileged container, host namespaces, and hostPath mounts —
+# pod-security-baseline-enforce blocks the DaemonSet's autogen rules before any pod
+# exists. This waives ONLY those three baseline rules for the kepler DaemonSet/Pods
+# in the (PSA-privileged) kepler namespace; all other controls still apply. Audit
+# hardening findings (root/privileged) are intentionally NOT waived — they remain
+# visible. Revisit if Kepler ships a non-privileged sysfs variant.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: exception-kepler-privileged
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      Kepler DaemonSet needs privileged + hostPID + hostPath (/sys powercap, /proc)
+      to read RAPL energy. Waives baseline-enforce host-namespaces / host-path /
+      privileged-containers for the kepler DaemonSet and Pods only.
+spec:
+  exceptions:
+    - policyName: pod-security-baseline-enforce
+      ruleNames:
+        - host-namespaces
+        - autogen-host-namespaces
+        - host-path
+        - autogen-host-path
+        - privileged-containers
+        - autogen-privileged-containers
+  match:
+    any:
+      # The controller the webhook rejects first (autogen rules).
+      - resources:
+          kinds:
+            - DaemonSet
+          namespaces:
+            - kepler
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: kepler
+      # The DaemonSet's Pods (base rules, background scan).
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - kepler
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: kepler

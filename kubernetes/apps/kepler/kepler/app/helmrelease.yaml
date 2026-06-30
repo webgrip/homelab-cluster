@@ -1,0 +1,51 @@
+---
+# yaml-language-server: $schema=https://lds-schemas.pages.dev/helm.toolkit.fluxcd.io/helmrelease_v2.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kepler
+spec:
+  interval: 1h
+  chartRef:
+    kind: OCIRepository
+    name: kepler
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  values:
+    image:
+      # renovate: datasource=docker depName=quay.io/sustainable_computing_io/kepler
+      tag: v0.11.4
+    # DaemonSet: chart defaults already set hostPID + control-plane tolerations so
+    # it runs on every node. Privileged + root are required to read host RAPL via
+    # /sys powercap (paired with the kepler-privileged Kyverno exception). Explicit
+    # requests keep it Burstable (this cluster OOM-kills BestEffort pods).
+    daemonset:
+      securityContext:
+        privileged: true
+        runAsNonRoot: false
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          memory: 256Mi
+    config:
+      log:
+        level: info
+      # Enable Kubernetes integration so power is attributed to pods/containers,
+      # not just nodes (chart default is false). Real RAPL meter (dev.fake off) and
+      # auto-discovered powercap zones are the chart defaults.
+      kube:
+        enabled: true
+    serviceMonitor:
+      enabled: true
+      interval: 30s
+      # Match the kube-prometheus-stack serviceMonitorSelector so it's scraped.
+      labels:
+        release: kube-prometheus-stack
