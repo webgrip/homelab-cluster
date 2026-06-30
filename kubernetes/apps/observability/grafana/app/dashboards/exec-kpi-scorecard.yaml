@@ -25,7 +25,8 @@ spec:
         {"title": "Reliability & SRE", "url": "/d/exec-reliability-sre", "type": "link", "icon": "external link"},
         {"title": "Security & Supply Chain", "url": "/d/exec-security-supply-chain", "type": "link", "icon": "external link"},
         {"title": "Platform & Efficiency", "url": "/d/exec-platform-efficiency", "type": "link", "icon": "external link"},
-        {"title": "FinOps & Cost", "url": "/d/exec-finops", "type": "link", "icon": "external link"}
+        {"title": "FinOps & Cost", "url": "/d/exec-finops", "type": "link", "icon": "external link"},
+        {"title": "Engineering Experience (DevEx)", "url": "/d/devex-scorecard", "type": "link", "icon": "external link"}
       ],
       "annotations": {"list": [{"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard"}]},
       "templating": {"list": []},
@@ -173,30 +174,38 @@ spec:
 
         {"id": 60, "type": "row", "title": "Developer experience & leverage", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 28}, "panels": []},
         {
-          "id": 61, "type": "stat", "title": "AI-assisted commits", "description": "Git commits produced through Claude Code over the window.", "gridPos": {"h": 4, "w": 8, "x": 0, "y": 29},
+          "id": 61, "type": "stat", "title": "AI-assisted commits", "description": "Git commits produced through Claude Code over the window.", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 29},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [{"refId": "A", "expr": "sum(increase(claude_code_commit_count_total[$$__range])) or vector(0)", "instant": true}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "area"},
           "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "purple"}}, "overrides": []}
         },
         {
-          "id": 62, "type": "stat", "title": "AI-assisted lines of code", "description": "Lines of code added/changed through Claude Code over the window.", "gridPos": {"h": 4, "w": 8, "x": 8, "y": 29},
+          "id": 62, "type": "stat", "title": "AI-assisted lines of code", "description": "Lines of code added/changed through Claude Code over the window.", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 29},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [{"refId": "A", "expr": "sum(increase(claude_code_lines_of_code_count_total[$$__range])) or vector(0)", "instant": true}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "area"},
           "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
         },
         {
-          "id": 63, "type": "stat", "title": "AI edit accept-rate", "description": "Accepted ÷ all code-edit decisions over the window — a trust/quality signal for AI-suggested changes.", "gridPos": {"h": 4, "w": 8, "x": 16, "y": 29},
+          "id": 63, "type": "stat", "title": "AI edit accept-rate", "description": "Accepted ÷ all code-edit decisions over the window — a trust/quality signal for AI-suggested changes.", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 29},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [{"refId": "A", "expr": "(sum(increase(claude_code_code_edit_tool_decision_total{decision=\"accept\"}[$$__range])) or vector(0)) / clamp_min(sum(increase(claude_code_code_edit_tool_decision_total[$$__range])) or vector(0), 1) * 100", "instant": true}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
           "fieldConfig": {"defaults": {"unit": "percent", "decimals": 0, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 50}, {"color": "green", "value": 80}]}}, "overrides": []}
         },
+        {
+          "id": 64, "type": "stat", "title": "DevEx index (pulse)", "description": "Real developer-experience signal: composite of the monthly anonymous SPACE/DevEx pulse (0–100), most recent surveyed month, all teams. Drill: Engineering Experience folder.", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 29},
+          "datasource": {"type": "postgres", "uid": "postgres-devex"},
+          "targets": [{"refId": "A", "format": "table", "rawSql": "SELECT normalized_score FROM grafana_devex_org WHERE dimension='devex_index' ORDER BY month DESC LIMIT 1"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": ""}, "textMode": "value", "colorMode": "background", "graphMode": "none"},
+          "links": [{"title": "DevEx scorecard", "url": "/d/devex-scorecard", "targetBlank": false}],
+          "fieldConfig": {"defaults": {"unit": "none", "decimals": 0, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 55}, {"color": "green", "value": 70}]}}, "overrides": []}
+        },
 
         {
           "id": 70, "type": "text", "title": "", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 33},
-          "options": {"mode": "markdown", "content": "### Instrumentation roadmap — KPIs not yet wired (honest gaps)\nEverything above is live from systems of record; nothing is manual status reporting. The whitepaper's remaining executive KPIs need new joins — sequenced 30 / 90 / 180 days:\n\n- **0–30 days:** customer feature lead time (work-tracker → PR → deploy join); KEV remediation time (CISA KEV enrichment on Dependency-Track).\n- **31–90 days:** golden-path completion time & self-service success (platform portal analytics); SBOM signature **coverage** (image-verify PolicyReports are defined but not currently emitting results — 32 verify rules are active).\n- **91–180 days:** cost-to-serve & unit cost in EUR (OpenCost / billing allocation — no cloud bill exists in a homelab); developer satisfaction (quarterly pulse survey).\n\n_Showing the gap is the point: baseline first, transform later._"}
+          "options": {"mode": "markdown", "content": "### Instrumentation roadmap — KPIs not yet wired (honest gaps)\nEverything above is live from systems of record; nothing is manual status reporting. The whitepaper's remaining executive KPIs need new joins — sequenced 30 / 90 / 180 days:\n\n- **0–30 days:** customer feature lead time (work-tracker → PR → deploy join); KEV remediation time (CISA KEV enrichment on Dependency-Track).\n- **31–90 days:** golden-path completion time & self-service success (platform portal analytics); SBOM signature **coverage** (image-verify PolicyReports are defined but not currently emitting results — 32 verify rules are active).\n- **91–180 days:** cost-to-serve & unit cost in EUR (OpenCost / billing allocation — no cloud bill exists in a homelab).\n\n✅ **Developer satisfaction is now wired** — the monthly anonymous SPACE/DevEx pulse feeds the DevEx index tile above and the [Engineering Experience](/d/devex-scorecard) dashboards (survey ↔ DORA/CI/PR telemetry).\n\n_Showing the gap is the point: baseline first, transform later._"}
         }
       ]
     }

@@ -1,0 +1,108 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: devex-telemetry-correlation
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  allowCrossNamespaceImport: false
+  folderRef: engineering-experience
+  json: |-
+    {
+      "schemaVersion": 39,
+      "title": "DevEx — Survey ↔ Telemetry",
+      "uid": "devex-telemetry-correlation",
+      "tags": ["devex", "space", "dora", "engineering-experience", "correlation"],
+      "editable": true,
+      "timezone": "browser",
+      "time": {"from": "now-13M", "to": "now"},
+      "links": [
+        {"title": "Scorecard", "url": "/d/devex-scorecard", "type": "link", "icon": "dashboard"},
+        {"title": "Dimensions & themes", "url": "/d/devex-dimensions", "type": "link", "icon": "external link"}
+      ],
+      "templating": {"list": []},
+      "annotations": {"list": [{"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "name": "Annotations & Alerts", "type": "dashboard"}]},
+      "panels": [
+        {
+          "id": 1, "type": "text", "gridPos": {"h": 3, "w": 24, "x": 0, "y": 0},
+          "options": {"mode": "markdown", "content": "## Survey ↔ Telemetry\nWhat developers *report* (left, survey 0–100) set beside what the systems *do* (right, DORA/CI/PR telemetry). The thesis: low **feedback-loop** scores track with slow CI and long PR waits; low **flow** tracks with incident load. Telemetry rollups are written monthly by the n8n snapshot workflow (Prometheus + Forgejo API). Synthetic `demo-` rows are seeded anti-correlated so the relationship is visible before real data lands."}
+        },
+
+        {"id": 10, "type": "row", "title": "Survey ↔ system — latest month, per team", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 3}},
+        {
+          "id": 11, "type": "table", "title": "Feedback loops vs CI & PR (latest month)", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 4},
+          "datasource": {"type": "postgres", "uid": "postgres-devex"},
+          "targets": [{"refId": "A", "format": "table", "rawSql": "SELECT team, feedback_loops, ci_p50_min, ci_p95_min, ci_success_pct, first_review_p50_h, cycle_time_p50_h FROM grafana_survey_telemetry WHERE month=(SELECT max(month) FROM grafana_survey_telemetry) ORDER BY feedback_loops DESC NULLS LAST"}],
+          "fieldConfig": {
+            "defaults": {"custom": {"cellOptions": {"type": "color-background", "mode": "gradient"}, "align": "center"}, "color": {"mode": "thresholds"}},
+            "overrides": [
+              {"matcher": {"id": "byName", "options": "team"}, "properties": [{"id": "custom.cellOptions", "value": {"type": "auto"}}, {"id": "custom.align", "value": "left"}]},
+              {"matcher": {"id": "byName", "options": "feedback_loops"}, "properties": [{"id": "unit", "value": "none"}, {"id": "decimals", "value": 0}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 55}, {"color": "green", "value": 70}]}}]},
+              {"matcher": {"id": "byName", "options": "ci_success_pct"}, "properties": [{"id": "unit", "value": "percent"}, {"id": "decimals", "value": 1}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 85}, {"color": "green", "value": 95}]}}]},
+              {"matcher": {"id": "byName", "options": "ci_p50_min"}, "properties": [{"id": "unit", "value": "m"}, {"id": "decimals", "value": 1}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 12}, {"color": "red", "value": 18}]}}]},
+              {"matcher": {"id": "byName", "options": "ci_p95_min"}, "properties": [{"id": "unit", "value": "m"}, {"id": "decimals", "value": 1}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 25}, {"color": "red", "value": 40}]}}]},
+              {"matcher": {"id": "byName", "options": "first_review_p50_h"}, "properties": [{"id": "unit", "value": "h"}, {"id": "decimals", "value": 1}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 8}, {"color": "red", "value": 16}]}}]},
+              {"matcher": {"id": "byName", "options": "cycle_time_p50_h"}, "properties": [{"id": "unit", "value": "h"}, {"id": "decimals", "value": 1}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 24}, {"color": "red", "value": 40}]}}]}
+            ]
+          },
+          "options": {"showHeader": true, "cellHeight": "md"}
+        },
+
+        {"id": 20, "type": "row", "title": "Correlations over time", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 12}},
+        {
+          "id": 21, "type": "timeseries", "title": "Feedback loops vs CI success %", "description": "Org averages. Expect them to move together.", "gridPos": {"h": 8, "w": 8, "x": 0, "y": 13},
+          "datasource": {"type": "postgres", "uid": "postgres-devex"},
+          "targets": [{"refId": "A", "format": "time_series", "rawSql": "SELECT month AS time, ROUND(AVG(feedback_loops),1) AS \"Feedback loops\", ROUND(AVG(ci_success_pct),1) AS \"CI success %\" FROM grafana_survey_telemetry GROUP BY month ORDER BY 1"}],
+          "fieldConfig": {"defaults": {"unit": "none", "min": 0, "max": 100, "custom": {"drawStyle": "line", "lineWidth": 2, "showPoints": "always", "spanNulls": true}}},
+          "options": {"legend": {"showLegend": true, "placement": "bottom"}, "tooltip": {"mode": "multi"}}
+        },
+        {
+          "id": 22, "type": "timeseries", "title": "Flow vs incidents", "description": "Flow (left) against incident count per month (right). Expect inverse.", "gridPos": {"h": 8, "w": 8, "x": 8, "y": 13},
+          "datasource": {"type": "postgres", "uid": "postgres-devex"},
+          "targets": [{"refId": "A", "format": "time_series", "rawSql": "SELECT m.month AS time, m.flow AS \"Flow\", COALESCE(i.cnt,0) AS \"Incidents\" FROM (SELECT month, ROUND(AVG(flow),1) AS flow FROM grafana_survey_telemetry GROUP BY month) m LEFT JOIN (SELECT date_trunc('month', triggered_at)::date AS month, COUNT(*) AS cnt FROM incidents GROUP BY 1) i ON i.month=m.month ORDER BY 1"}],
+          "fieldConfig": {
+            "defaults": {"custom": {"drawStyle": "line", "lineWidth": 2, "showPoints": "always", "spanNulls": true}},
+            "overrides": [
+              {"matcher": {"id": "byName", "options": "Flow"}, "properties": [{"id": "unit", "value": "none"}, {"id": "max", "value": 100}, {"id": "min", "value": 0}]},
+              {"matcher": {"id": "byName", "options": "Incidents"}, "properties": [{"id": "unit", "value": "short"}, {"id": "custom.axisPlacement", "value": "right"}, {"id": "custom.drawStyle", "value": "bars"}, {"id": "custom.fillOpacity", "value": 40}]}
+            ]
+          },
+          "options": {"legend": {"showLegend": true, "placement": "bottom"}, "tooltip": {"mode": "multi"}}
+        },
+        {
+          "id": 23, "type": "timeseries", "title": "Feedback loops vs PR first-review wait", "description": "Feedback loops (left) vs median first-review wait in hours (right). Expect inverse.", "gridPos": {"h": 8, "w": 8, "x": 16, "y": 13},
+          "datasource": {"type": "postgres", "uid": "postgres-devex"},
+          "targets": [{"refId": "A", "format": "time_series", "rawSql": "SELECT month AS time, ROUND(AVG(feedback_loops),1) AS \"Feedback loops\", ROUND(AVG(first_review_p50_h),1) AS \"PR first-review (h)\" FROM grafana_survey_telemetry GROUP BY month ORDER BY 1"}],
+          "fieldConfig": {
+            "defaults": {"custom": {"drawStyle": "line", "lineWidth": 2, "showPoints": "always", "spanNulls": true}},
+            "overrides": [
+              {"matcher": {"id": "byName", "options": "Feedback loops"}, "properties": [{"id": "unit", "value": "none"}, {"id": "max", "value": 100}, {"id": "min", "value": 0}]},
+              {"matcher": {"id": "byName", "options": "PR first-review (h)"}, "properties": [{"id": "unit", "value": "h"}, {"id": "custom.axisPlacement", "value": "right"}]}
+            ]
+          },
+          "options": {"legend": {"showLegend": true, "placement": "bottom"}, "tooltip": {"mode": "multi"}}
+        },
+
+        {"id": 30, "type": "row", "title": "Delivery, reliability & cost — per service (latest month)", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 21}},
+        {
+          "id": 31, "type": "table", "title": "DORA / SRE / cost by service", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 22},
+          "datasource": {"type": "postgres", "uid": "postgres-devex"},
+          "targets": [{"refId": "A", "format": "table", "rawSql": "SELECT d.service, d.deploy_freq, d.lead_time_p50_h, d.cfr_pct, r.slo_attainment_pct, r.mttr_min, c.unit_cost_eur FROM monthly_delivery_metrics d LEFT JOIN monthly_reliability_metrics r ON r.month=d.month AND r.service=d.service LEFT JOIN monthly_cost_metrics c ON c.month=d.month AND c.service=d.service WHERE d.month=(SELECT max(month) FROM monthly_delivery_metrics) ORDER BY d.service"}],
+          "fieldConfig": {
+            "defaults": {"custom": {"align": "center"}},
+            "overrides": [
+              {"matcher": {"id": "byName", "options": "service"}, "properties": [{"id": "custom.align", "value": "left"}]},
+              {"matcher": {"id": "byName", "options": "deploy_freq"}, "properties": [{"id": "unit", "value": "short"}, {"id": "decimals", "value": 1}]},
+              {"matcher": {"id": "byName", "options": "lead_time_p50_h"}, "properties": [{"id": "unit", "value": "h"}, {"id": "decimals", "value": 1}]},
+              {"matcher": {"id": "byName", "options": "cfr_pct"}, "properties": [{"id": "unit", "value": "percent"}, {"id": "decimals", "value": 1}, {"id": "custom.cellOptions", "value": {"type": "color-background", "mode": "gradient"}}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 10}, {"color": "red", "value": 15}]}}]},
+              {"matcher": {"id": "byName", "options": "slo_attainment_pct"}, "properties": [{"id": "unit", "value": "percent"}, {"id": "decimals", "value": 2}, {"id": "custom.cellOptions", "value": {"type": "color-background", "mode": "gradient"}}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 99}, {"color": "green", "value": 99.5}]}}]},
+              {"matcher": {"id": "byName", "options": "mttr_min"}, "properties": [{"id": "unit", "value": "m"}, {"id": "decimals", "value": 0}]},
+              {"matcher": {"id": "byName", "options": "unit_cost_eur"}, "properties": [{"id": "unit", "value": "currencyEUR"}, {"id": "decimals", "value": 2}]}
+            ]
+          },
+          "options": {"showHeader": true, "cellHeight": "md"}
+        }
+      ]
+    }

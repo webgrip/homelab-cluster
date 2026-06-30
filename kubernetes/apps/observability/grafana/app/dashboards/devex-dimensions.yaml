@@ -1,0 +1,100 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: devex-dimensions
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  allowCrossNamespaceImport: false
+  folderRef: engineering-experience
+  json: |-
+    {
+      "schemaVersion": 39,
+      "title": "DevEx — Dimensions & Themes",
+      "uid": "devex-dimensions",
+      "tags": ["devex", "space", "engineering-experience", "dimensions"],
+      "editable": true,
+      "timezone": "browser",
+      "time": {"from": "now-13M", "to": "now"},
+      "links": [
+        {"title": "Scorecard", "url": "/d/devex-scorecard", "type": "link", "icon": "dashboard"},
+        {"title": "Survey ↔ Telemetry", "url": "/d/devex-telemetry-correlation", "type": "link", "icon": "external link"}
+      ],
+      "templating": {"list": []},
+      "annotations": {"list": [{"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "name": "Annotations & Alerts", "type": "dashboard"}]},
+      "panels": [
+        {
+          "id": 1, "type": "text", "gridPos": {"h": 3, "w": 24, "x": 0, "y": 0},
+          "options": {"mode": "markdown", "content": "## Dimensions & themes\nPer-dimension trends split by team (groups below 5 responses are suppressed), the latest-month team heatmap, and the top coded free-text themes. Use this to find *which* team and *which* dimension to act on, then cross-check the [Survey ↔ Telemetry](/d/devex-telemetry-correlation) board for the system-side cause."}
+        },
+
+        {"id": 10, "type": "row", "title": "Dimension trends by team", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 3}},
+        {
+          "id": 11, "type": "timeseries", "title": "Feedback loops", "gridPos": {"h": 8, "w": 8, "x": 0, "y": 4},
+          "datasource": {"type": "postgres", "uid": "postgres-devex"},
+          "targets": [{"refId": "A", "format": "time_series", "rawSql": "SELECT month AS time, normalized_score AS value, team AS metric FROM grafana_survey_scores WHERE dimension='feedback_loops' ORDER BY 1"}],
+          "fieldConfig": {"defaults": {"unit": "none", "min": 0, "max": 100, "custom": {"drawStyle": "line", "lineWidth": 2, "showPoints": "auto", "spanNulls": true}}},
+          "options": {"legend": {"showLegend": true, "placement": "bottom", "displayMode": "list"}, "tooltip": {"mode": "multi"}}
+        },
+        {
+          "id": 12, "type": "timeseries", "title": "Cognitive load (clarity)", "gridPos": {"h": 8, "w": 8, "x": 8, "y": 4},
+          "datasource": {"type": "postgres", "uid": "postgres-devex"},
+          "targets": [{"refId": "A", "format": "time_series", "rawSql": "SELECT month AS time, normalized_score AS value, team AS metric FROM grafana_survey_scores WHERE dimension='cognitive_load' ORDER BY 1"}],
+          "fieldConfig": {"defaults": {"unit": "none", "min": 0, "max": 100, "custom": {"drawStyle": "line", "lineWidth": 2, "showPoints": "auto", "spanNulls": true}}},
+          "options": {"legend": {"showLegend": true, "placement": "bottom", "displayMode": "list"}, "tooltip": {"mode": "multi"}}
+        },
+        {
+          "id": 13, "type": "timeseries", "title": "Flow state", "gridPos": {"h": 8, "w": 8, "x": 16, "y": 4},
+          "datasource": {"type": "postgres", "uid": "postgres-devex"},
+          "targets": [{"refId": "A", "format": "time_series", "rawSql": "SELECT month AS time, normalized_score AS value, team AS metric FROM grafana_survey_scores WHERE dimension='flow' ORDER BY 1"}],
+          "fieldConfig": {"defaults": {"unit": "none", "min": 0, "max": 100, "custom": {"drawStyle": "line", "lineWidth": 2, "showPoints": "auto", "spanNulls": true}}},
+          "options": {"legend": {"showLegend": true, "placement": "bottom", "displayMode": "list"}, "tooltip": {"mode": "multi"}}
+        },
+        {
+          "id": 14, "type": "timeseries", "title": "Collaboration", "gridPos": {"h": 8, "w": 8, "x": 0, "y": 12},
+          "datasource": {"type": "postgres", "uid": "postgres-devex"},
+          "targets": [{"refId": "A", "format": "time_series", "rawSql": "SELECT month AS time, normalized_score AS value, team AS metric FROM grafana_survey_scores WHERE dimension='collaboration' ORDER BY 1"}],
+          "fieldConfig": {"defaults": {"unit": "none", "min": 0, "max": 100, "custom": {"drawStyle": "line", "lineWidth": 2, "showPoints": "auto", "spanNulls": true}}},
+          "options": {"legend": {"showLegend": true, "placement": "bottom", "displayMode": "list"}, "tooltip": {"mode": "multi"}}
+        },
+        {
+          "id": 15, "type": "timeseries", "title": "Satisfaction", "gridPos": {"h": 8, "w": 8, "x": 8, "y": 12},
+          "datasource": {"type": "postgres", "uid": "postgres-devex"},
+          "targets": [{"refId": "A", "format": "time_series", "rawSql": "SELECT month AS time, normalized_score AS value, team AS metric FROM grafana_survey_scores WHERE dimension='satisfaction' ORDER BY 1"}],
+          "fieldConfig": {"defaults": {"unit": "none", "min": 0, "max": 100, "custom": {"drawStyle": "line", "lineWidth": 2, "showPoints": "auto", "spanNulls": true}}},
+          "options": {"legend": {"showLegend": true, "placement": "bottom", "displayMode": "list"}, "tooltip": {"mode": "multi"}}
+        },
+        {
+          "id": 16, "type": "timeseries", "title": "Responses by team", "gridPos": {"h": 8, "w": 8, "x": 16, "y": 12},
+          "datasource": {"type": "postgres", "uid": "postgres-devex"},
+          "targets": [{"refId": "A", "format": "time_series", "rawSql": "SELECT month AS time, response_count AS value, team AS metric FROM grafana_survey_scores WHERE dimension='devex_index' ORDER BY 1"}],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "min": 0, "custom": {"drawStyle": "bars", "lineWidth": 1, "fillOpacity": 60, "spanNulls": false}}},
+          "options": {"legend": {"showLegend": true, "placement": "bottom", "displayMode": "list"}, "tooltip": {"mode": "multi"}}
+        },
+
+        {"id": 20, "type": "row", "title": "Team heatmap — latest month", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 20}},
+        {
+          "id": 21, "type": "table", "title": "Team × dimension (latest month, n≥5)", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 21},
+          "datasource": {"type": "postgres", "uid": "postgres-devex"},
+          "targets": [{"refId": "A", "format": "table", "rawSql": "SELECT team, satisfaction, feedback_loops, cognitive_load, flow, collaboration, devex_index FROM grafana_survey_dim_wide WHERE month=(SELECT max(month) FROM grafana_survey_dim_wide) AND response_count >= 5 ORDER BY team"}],
+          "fieldConfig": {
+            "defaults": {"unit": "none", "decimals": 0, "custom": {"cellOptions": {"type": "color-background", "mode": "gradient"}, "align": "center"}, "color": {"mode": "continuous-RdYlGr"}, "min": 0, "max": 100},
+            "overrides": [
+              {"matcher": {"id": "byName", "options": "team"}, "properties": [{"id": "custom.cellOptions", "value": {"type": "auto"}}, {"id": "custom.align", "value": "left"}]}
+            ]
+          },
+          "options": {"showHeader": true, "cellHeight": "md"}
+        },
+
+        {"id": 30, "type": "row", "title": "Free-text themes", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 29}},
+        {
+          "id": 31, "type": "bargauge", "title": "Top themes (latest month)", "description": "Counts of coded themes from the open-text answers. Raw text stays restricted; only aggregate counts are exposed.", "gridPos": {"h": 9, "w": 24, "x": 0, "y": 30},
+          "datasource": {"type": "postgres", "uid": "postgres-devex"},
+          "targets": [{"refId": "A", "format": "table", "rawSql": "SELECT theme, SUM(mentions)::int AS mentions FROM grafana_freetext_themes WHERE month=(SELECT max(month) FROM grafana_freetext_themes) GROUP BY theme ORDER BY mentions DESC"}],
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "continuous-BlPu"}}},
+          "options": {"orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true, "reduceOptions": {"calcs": ["lastNotNull"], "fields": ""}}
+        }
+      ]
+    }

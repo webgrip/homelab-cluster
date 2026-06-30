@@ -1,0 +1,39 @@
+---
+# Native PostgreSQL datasource (no plugin needed) for the DevEx warehouse (devex-db in this
+# namespace). Read-only role grafana_ro — granted SELECT on the grafana_* views + metric
+# tables only, never the raw survey answers. Password injected from the devex-grafana-ro
+# secret via the Grafana Operator's valuesFrom.
+#
+# Flux escaping: $${password} -> ${password} after Flux postBuild substitution; the operator
+# then replaces ${password} (matching the secretKeyRef key) with the secret value. A single
+# ${password} would be blanked by Flux envsubst.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: postgres-devex
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  valuesFrom:
+    - targetPath: secureJsonData.password
+      valueFrom:
+        secretKeyRef:
+          name: devex-grafana-ro
+          key: password
+  datasource:
+    name: DevEx Warehouse
+    type: postgres
+    uid: postgres-devex
+    access: proxy
+    url: devex-db-rw.observability.svc.cluster.local:5432
+    user: grafana_ro
+    database: devex
+    editable: true
+    jsonData:
+      sslmode: require
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+    secureJsonData:
+      password: $${password}
