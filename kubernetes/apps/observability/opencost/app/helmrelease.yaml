@@ -33,6 +33,12 @@ spec:
             memory: 200Mi
           limits:
             memory: 512Mi
+        # OpenCost reads its pricing ConfigMap ONLY at startup, and the chart does
+        # not roll the pod when that ConfigMap changes. Bump pricingRev on every
+        # customPricing.costModel edit: it changes the pod template -> rolling
+        # restart -> OpenCost re-reads the corrected pricing. (rev2 = monthly-rate fix)
+        extraEnv:
+          pricingRev: "2"
       # UI off: we consume cost data via Grafana (the FinOps dashboard). Enable
       # + add an HTTPRoute later if the cost-explorer UI is wanted.
       ui:
