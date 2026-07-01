@@ -1,0 +1,30 @@
+---
+# PgBouncer sidecar config for zero-downtime dynamic-credential rotation (ADR-0010).
+# freshrss connects on loopback with a STABLE cred (auth_file); the ROTATING backend cred
+# (PgBouncer -> Postgres) lives in the %include'd databases.ini, rendered by the
+# freshrss-pgbouncer-backend ExternalSecret and reloaded (SIGHUP) by the pgbouncer-reload
+# sidecar without dropping client connections.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: freshrss-pgbouncer-config
+  namespace: freshrss
+data:
+  pgbouncer.ini: |-
+    [pgbouncer]
+    listen_addr = 127.0.0.1
+    listen_port = 5432
+    unix_socket_dir = /var/run/pgbouncer
+    pidfile = /var/run/pgbouncer/pgbouncer.pid
+    auth_type = scram-sha-256
+    auth_file = /etc/pgbouncer/userlist.txt
+    # transaction pooling: a server connection is released at each transaction boundary, so a
+    # RELOAD-flagged (close_needed) connection cycles onto the new backend cred within one txn.
+    pool_mode = transaction
+    # PHP PDO sends extra_float_digits in the startup packet; PgBouncer FATALs without this.
+    ignore_startup_parameters = extra_float_digits
+    # Pod-to-pod is WireGuard-encrypted (Cilium); prefer TLS to Postgres, don't hard-fail on it.
+    server_tls_sslmode = prefer
+    max_client_conn = 200
+    default_pool_size = 20
+    %include /etc/pgbouncer/backend/databases.ini
