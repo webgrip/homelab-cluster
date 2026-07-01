@@ -35,10 +35,15 @@ spec:
     # which flux-local already builds. Fewer moving parts for the swap.
     admissionWebhooks:
       enabled: false
-    # Expose operator metrics; the operator also creates self-scrape VMServiceScrapes
-    # for the VM components it manages (default), so no extra scrape CRs are needed.
+    # Do NOT enable the chart's own serviceMonitor: it renders a VMServiceScrape CR
+    # in the SAME Helm release that installs the VMServiceScrape CRD, so the install
+    # fails with `no matches for kind "VMServiceScrape"` (the CRD isn't registered
+    # yet when Helm applies the CR). `helm template` can't catch this — it renders
+    # but never applies. The operator still self-scrapes the VM components it manages
+    # at runtime; its own metrics can be picked up via a VMServiceScrape in the
+    # victoria-metrics app (applied after the CRDs exist) if wanted.
     serviceMonitor:
-      enabled: true
+      enabled: false
     resources:
       requests:
         cpu: 50m
