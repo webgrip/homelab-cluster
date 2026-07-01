@@ -1,0 +1,26 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: victoria-metrics
+spec:
+  dependsOn:
+    - name: vm-operator
+      namespace: observability
+  interval: 1h
+  path: ./kubernetes/apps/observability/victoria-metrics/app
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-secrets
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: observability
+  # wait:false matches the old kube-prometheus-stack ks semantics: dependents
+  # gate on this Kustomization applying (CRs created), not on the VM pods being
+  # Ready. Avoids kstatus mis-reading the operator-managed CR status.
+  wait: false

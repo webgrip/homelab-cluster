@@ -1,0 +1,33 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/helm.toolkit.fluxcd.io/helmrelease_v2.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: prometheus-operator-crds
+spec:
+  interval: 1h
+  install:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    crds: CreateReplace
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  chartRef:
+    kind: OCIRepository
+    name: prometheus-operator-crds
+  # CRD-only chart. It owns the monitoring.coreos.com CRDs (ServiceMonitor,
+  # PodMonitor, Probe, PrometheusRule, ...) that the kube-prometheus-stack chart
+  # used to install. We keep them because:
+  #   1. the VictoriaMetrics operator CONVERTS the cluster's existing
+  #      Prometheus-operator CRs (~48 ServiceMonitor/PrometheusRule/Probe across
+  #      namespaces) into VM CRDs — that conversion needs the source CRDs present;
+  #   2. a from-scratch `flux bootstrap` must still have these CRDs available.
+  # NOTE (live cutover only): kube-prometheus-stack installed these CRDs under a
+  # different Helm release. Helm leaves CRDs on uninstall, so they will already
+  # exist; this release must adopt them once (see PR description for the one-time
+  # ownership-relabel command). A fresh cluster installs them cleanly.
+  values: {}

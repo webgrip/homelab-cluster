@@ -1,0 +1,55 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/helm.toolkit.fluxcd.io/helmrelease_v2.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: vm-operator
+spec:
+  interval: 1h
+  install:
+    timeout: 15m
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    timeout: 15m
+    cleanupOnFail: true
+    crds: CreateReplace
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  rollback:
+    timeout: 15m
+  chartRef:
+    kind: OCIRepository
+    name: vm-operator
+  values:
+    # Convert the cluster's existing Prometheus-operator CRs (ServiceMonitor,
+    # PodMonitor, Probe, PrometheusRule) into VM CRDs. Default is enabled; set
+    # explicitly so the ~48 existing CRs across the cluster keep being scraped
+    # without rewriting them, and VMAgent/VMAlert (selectAllByDefault) pick them up.
+    operator:
+      disable_prometheus_converter: false
+    # Drop the admission webhook: it needs cert plumbing (a cert race during the
+    # single-reconcile cutover) and only validates the VM CRs we author in-repo,
+    # which flux-local already builds. Fewer moving parts for the swap.
+    admissionWebhooks:
+      enabled: false
+    # Expose operator metrics; the operator also creates self-scrape VMServiceScrapes
+    # for the VM components it manages (default), so no extra scrape CRs are needed.
+    serviceMonitor:
+      enabled: true
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+    nodeSelector:
+      node.webgrip.io/pool: worker
+    tolerations:
+      - key: dedicated
+        operator: Equal
+        value: fringe
+        effect: NoSchedule

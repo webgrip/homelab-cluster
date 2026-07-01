@@ -23,13 +23,18 @@ spec:
             owner: platform
             service: finops
           annotations:
-            summary: "Cluster cost run-rate up >25% vs 6h ago"
+            summary: "Cluster cost run-rate up >25% vs 6h ago (cluster)"
             description: |
               What's happening:
               - Modelled cluster run-rate (sum node_total_hourly_cost) is >25% higher than 6h ago for 1h.
 
               Impact/risk:
               - Spend is climbing; could be a new/scaled workload, more nodes, or a pricing-model change.
+
+              Likely causes:
+              - A new or scaled-up workload requesting more CPU/RAM.
+              - Nodes were added to the cluster.
+              - A cost-model / pricing change (costModel edit).
 
               First actions:
               - Open the FinOps dashboard; check per-namespace showback for the new cost.
@@ -53,13 +58,18 @@ spec:
             owner: platform
             service: finops
           annotations:
-            summary: "Idle cluster cost >EUR 30/month"
+            summary: "Idle cluster cost >EUR 30/month (cluster)"
             description: |
               What's happening:
               - Modelled idle/unallocated cost (run-rate minus allocated) projects to >EUR 30/month for 2h.
 
               Impact/risk:
               - You are paying for capacity nothing is requesting — a right-sizing or scale-down opportunity.
+
+              Likely causes:
+              - Workload requests sit far below node capacity (over-provisioned nodes).
+              - A node was added ahead of demand, or a workload scaled down but the node stayed.
+              - Reserved headroom larger than current allocation needs.
 
               First actions:
               - FinOps dashboard -> cost efficiency + idle tiles.
@@ -82,13 +92,18 @@ spec:
             owner: platform
             service: finops
           annotations:
-            summary: "Namespace {{ $labels.namespace }} CPU efficiency <15%"
+            summary: "Namespace {{ $labels.namespace }} CPU efficiency <15% ({{ $labels.namespace }})"
             description: |
               What's happening:
               - Namespace {{ $labels.namespace }} is using <15% of its requested CPU (requests >1 core) for 12h.
 
               Impact/risk:
               - Over-requested CPU inflates idle cost and crowds the scheduler. Prime right-sizing candidate.
+
+              Likely causes:
+              - CPU requests set far above actual usage.
+              - A bursty workload sized for peak but idle most of the time.
+              - Copy-pasted resource requests never tuned to real usage.
 
               First actions:
               - Compare usage vs requests on the Platform & Efficiency dashboard for {{ $labels.namespace }}.

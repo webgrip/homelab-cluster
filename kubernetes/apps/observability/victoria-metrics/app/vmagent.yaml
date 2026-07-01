@@ -1,0 +1,35 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAgent
+metadata:
+  name: vmagent
+spec:
+  replicaCount: 1
+  # Scrape every VMServiceScrape/VMPodScrape/VMNodeScrape/VMStaticScrape/VMProbe
+  # in the cluster — including the ones the operator converts from the existing
+  # ServiceMonitor/PodMonitor/Probe CRs. This reproduces kube-prometheus-stack's
+  # empty-selector "scrape everything" behaviour, so the 48 `release:`-labelled
+  # CRs keep being scraped as harmless no-ops.
+  selectAllByDefault: true
+  scrapeInterval: 60s
+  externalLabels:
+    cluster: homelab-cluster
+  remoteWrite:
+    - url: http://vmsingle-vmsingle.observability.svc.cluster.local:8429/api/v1/write
+  podMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
+  nodeSelector:
+    node.webgrip.io/pool: worker
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: fringe
+      effect: NoSchedule
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi

@@ -1,0 +1,24 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMStaticScrape
+metadata:
+  name: talos-etcd
+spec:
+  # Talos exposes etcd metrics on each control-plane node IP at :2381 over plain
+  # HTTP (no mTLS). jobName=talos-etcd sets job=talos-etcd, which the
+  # platform-etcd rules + etcd SLO key on (up{job="talos-etcd"}).
+  jobName: talos-etcd
+  targetEndpoints:
+    - targets:
+        - 10.0.0.20:2381
+        - 10.0.0.21:2381
+        - 10.0.0.22:2381
+      scheme: http
+      interval: 30s
+      # Drop the etcd request-latency histogram + per-method gRPC handled counters
+      # (~16k series, unused here) — matches the kube-prometheus-stack config.
+      metricRelabelConfigs:
+        - action: drop
+          sourceLabels:
+            - __name__
+          regex: "etcd_request_duration_seconds_bucket|grpc_server_handled_total"

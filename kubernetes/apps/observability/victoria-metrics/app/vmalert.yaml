@@ -1,0 +1,36 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAlert
+metadata:
+  name: vmalert
+spec:
+  replicaCount: 1
+  # Evaluate every VMRule in the cluster (operator-converted from PrometheusRule).
+  selectAllByDefault: true
+  evaluationInterval: 60s
+  datasource:
+    url: http://vmsingle-vmsingle.observability.svc.cluster.local:8429
+  remoteRead:
+    url: http://vmsingle-vmsingle.observability.svc.cluster.local:8429
+  # Persist recording-rule results (e.g. the claude_code:* records) back to VMSingle.
+  remoteWrite:
+    url: http://vmsingle-vmsingle.observability.svc.cluster.local:8429
+  notifiers:
+    - url: http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093
+  podMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
+  nodeSelector:
+    node.webgrip.io/pool: worker
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: fringe
+      effect: NoSchedule
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
