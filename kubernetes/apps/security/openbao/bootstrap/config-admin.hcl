@@ -23,9 +23,21 @@ path "sys/auth" {
   capabilities = ["read"]
 }
 # Manage the database secrets engine's CONNECTIONS and ROLES (dynamic DB credentials —
-# RFC: Dynamic Database Credentials / ADR-0010). Deliberately NOT sys/mounts: config-admin
-# manages the engine's config, it does not mount it (init.sh / break-glass root does that).
+# RFC: Dynamic Database Credentials / ADR-0010).
 # Issuing creds (database/creds/*) is granted to the external-secrets policy, not here.
+#
+# NARROW mount grant (ADR-0010, decided 2026-06/07): init.sh mounts `database` only on a
+# FRESH cluster; on an already-bootstrapped cluster there is no live root and generate-root
+# returns 405 here, so config-admin mounts the engine itself. Scoped to database* ONLY (not
+# sys/mounts/*), and reversible — config-admin can already self-escalate via sys/policies/acl/*,
+# so this explicit grant is little real new exposure. It does NOT let config-admin mount other
+# engines.
+path "sys/mounts/database" {
+  capabilities = ["create", "read", "update"]
+}
+path "sys/mounts/database/*" {
+  capabilities = ["create", "read", "update"]
+}
 path "database/config/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
 }

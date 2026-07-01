@@ -116,4 +116,44 @@ else
   echo "   oidc not enabled yet; skipping group-alias"
 fi
 
+echo "==> database engine (dynamic Postgres creds — ADR-0010)"
+# Mount the database engine on the RUNNING cluster if init.sh (fresh-only) never did.
+# config-admin holds a narrow sys/mounts/database* grant (see config-admin.hcl).
+if ! bao secrets list -format=json 2>/dev/null | grep -q '"database/"'; then
+  bao secrets enable -path=database database 2>/dev/null \
+    && echo "   database engine mounted" \
+    || echo "   WARN: database engine mount FAILED (check sys/mounts/database* grant)"
+fi
+
+# freshrss-db connection + role. config-admin CANNOT read KV, so the vault_admin password
+# arrives as a mounted Secret file (see config-cronjob.yaml). Skip cleanly until it exists.
+FRESHRSS_VA_PW="$(cat /db-admin/freshrss/password 2>/dev/null || true)"
+if [ -n "${FRESHRSS_VA_PW}" ]; then
+  # Idempotent upsert. connection_url {{username}}/{{password}} are OpenBao templates it fills
+  # from the username/password fields below. NB: no rotate-root — CNPG owns this password.
+  bao write database/config/freshrss-db \
+    plugin_name=postgresql-database-plugin \
+    allowed_roles="freshrss" \
+    connection_url="postgresql://{{username}}:{{password}}@freshrss-db-rw.freshrss.svc.cluster.local:5432/freshrss?sslmode=require" \
+    username="vault_admin" \
+    password="${FRESHRSS_VA_PW}" >/dev/null 2>&1 \
+    && echo "   freshrss-db connection configured" \
+    || echo "   WARN: freshrss-db connection write FAILED (netpol? vault_admin in PG yet? TLS?)"
+
+  # Ephemeral login role: member of freshrss, TTL-bounded. Revocation is DEFENSIVE — a bare
+  # DROP ROLE fails if the role owns objects or has live sessions, so terminate + reassign +
+  # drop-owned first (order matters).
+  bao write database/roles/freshrss \
+    db_name=freshrss-db \
+    default_ttl="1h" \
+    max_ttl="2h" \
+    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; GRANT freshrss TO \"{{name}}\";" \
+    revocation_statements="SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = '{{name}}'; REASSIGN OWNED BY \"{{name}}\" TO freshrss; DROP OWNED BY \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
+    >/dev/null 2>&1 \
+    && echo "   freshrss role configured" \
+    || echo "   WARN: freshrss role write FAILED"
+else
+  echo "   freshrss vault_admin password not mounted yet; skipping db config (retry next run)"
+fi
+
 echo "==> config converged (scoped config-admin; no root)"

@@ -53,6 +53,15 @@ spec:
           port: 8000
         - protocol: TCP
           port: 5432
+    # OpenBao (security ns) -> dynamic-creds admin connection to Postgres (ADR-0010). The
+    # database engine's vault_admin connection mints/drops ephemeral roles on freshrss-db.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: security
+      ports:
+        - protocol: TCP
+          port: 5432
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

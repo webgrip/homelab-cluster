@@ -37,6 +37,9 @@ spec:
               volumeMounts:
                 - {name: scripts, mountPath: /scripts}
                 - {name: tmp, mountPath: /tmp}
+                # vault_admin password for the freshrss-db database-engine connection (ADR-0010).
+                # config-admin can't read KV, so config.sh reads it from this mounted file.
+                - {name: db-admin-freshrss, mountPath: /db-admin/freshrss, readOnly: true}
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
@@ -46,3 +49,8 @@ spec:
               configMap: {name: openbao-bootstrap}
             - name: tmp
               emptyDir: {}
+            # optional:true so the job doesn't crashloop before ESO materialises the Secret.
+            - name: db-admin-freshrss
+              secret:
+                secretName: freshrss-vault-admin
+                optional: true

@@ -30,6 +30,26 @@ spec:
       parameters:
         barmanObjectName: freshrss-db-store
         serverName: freshrss-db
+  managed:
+    roles:
+      # OpenBao database-engine connection role (ADR-0010). CREATEROLE lets it mint/drop the
+      # ephemeral v-freshrss-* login roles; explicitly NOT superuser / NOT bypassrls.
+      # inRoles: [freshrss] gives membership in the app owner role so it can GRANT it onward to
+      # ephemeral roles. NB PG16+: GRANT of a role needs ADMIN OPTION — verify `admin_option=t`
+      # for vault_admin on freshrss after reconcile; if CNPG's inRoles didn't set it, apply the
+      # one-time `GRANT freshrss TO vault_admin WITH ADMIN OPTION` (runbook). Password is the
+      # shared generate-once freshrss-vault-admin (same value OpenBao connects with).
+      - name: vault_admin
+        ensure: present
+        login: true
+        superuser: false
+        createdb: false
+        createrole: true
+        bypassrls: false
+        inRoles:
+          - freshrss
+        passwordSecret:
+          name: freshrss-vault-admin
   bootstrap:
     initdb:
       database: freshrss
