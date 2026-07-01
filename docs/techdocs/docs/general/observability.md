@@ -4,13 +4,13 @@ This cluster runs a Flux-managed, Grafana-centric observability platform in the 
 
 It provides:
 
-- **Metrics**: Prometheus (via kube-prometheus-stack)
+- **Metrics**: VictoriaMetrics (vm-operator + VMSingle/VMAgent/VMAlert; see [ADR-0038](../adr/adr-0038-victoriametrics-metrics-backend.md))
 - **Logs**: Loki
 - **Traces**: Tempo
 - **Profiles**: Pyroscope
 - **Collection / routing**: Grafana Alloy (node agent + OTLP gateway)
 - **Visualization**: Grafana
-- **Alerting**: Alertmanager (kube-prometheus-stack) + Grafana Alerting UI
+- **Alerting**: VMAlert + VMAlertmanager + Grafana Alerting UI
 
 > Design goal: “top-tier OSS stack” with clean GitOps, SOPS-managed secrets, and Gateway API ingress.
 
@@ -41,44 +41,24 @@ These are exposed via `HTTPRoute` on the `envoy-internal` gateway:
 
 ## Components
 
-### Prometheus + Alertmanager (kube-prometheus-stack)
+### VictoriaMetrics (metrics backend)
 
-- HelmRelease: [kubernetes/apps/observability/kube-prometheus-stack/app/helmrelease.yaml](../../../../kubernetes/apps/observability/kube-prometheus-stack/app/helmrelease.yaml)
-- Storage: Longhorn-backed PVCs for Prometheus TSDB and Alertmanager
+Replaced kube-prometheus-stack on 2026-07-01 — see [ADR-0038](../adr/adr-0038-victoriametrics-metrics-backend.md) and the [VictoriaMetrics runbook](../runbooks/victoriametrics.md). Modular, grafana-operator-style:
 
-Key decisions:
+- **`vm-operator`** HelmRelease — installs the VM CRDs and **converts** existing `ServiceMonitor`/`PodMonitor`/`Probe`/`PrometheusRule` CRs into VM CRDs, so app scrape/rule CRs are unchanged and the `release: kube-prometheus-stack` labels are harmless no-ops. (Its own `serviceMonitor` is intentionally disabled — enabling it races the VMServiceScrape CRD on first install; see the runbook.)
+- **`prometheus-operator-crds`** HelmRelease — keeps the `monitoring.coreos.com` CRDs (needed for conversion + a from-scratch bootstrap).
+- **`victoria-metrics/app/`** CRs:
+  - **VMSingle** — TSDB + query + `remote_write` receiver, 15d / 50Gi Longhorn, at `vmsingle-vmsingle.observability.svc.cluster.local:8429` (`/api/v1/write`).
+  - **VMAgent** — scrapes everything (`selectAllByDefault: true`), `remote_write` → VMSingle. Reproduces Prometheus's cluster-wide discovery; `externalLabels.cluster=homelab-cluster`.
+  - **VMAlert** — evaluates the converted VMRules, notifies VMAlertmanager.
+  - **VMAlertmanager** — `vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093`.
+- **`kube-state-metrics`** + **`node-exporter`** — standalone charts (were kube-prom subcharts).
 
-- `kubeProxy.enabled=false` because this cluster is kube-proxy-free (Cilium).
-- Control-plane scrapes are disabled by default (`kubeEtcd`, `kubeControllerManager`, `kubeScheduler`) to avoid noisy failures in environments where endpoints are not exposed.
-- Prometheus is configured to **discover ServiceMonitors/PodMonitors/Rules cluster-wide** (selectors empty + `*SelectorNilUsesHelmValues=false`).
-- Prometheus sets `externalLabels.cluster=homelab-cluster` to make multi-cluster / remote storage queries unambiguous.
-- Prometheus `remote_write` includes a small set of write-time relabeling guardrails to reduce high-churn label cardinality.
+Control-plane scrape coverage (kubelet, cAdvisor, kube-apiserver, CoreDNS, Talos etcd) is explicit under `victoria-metrics/app/scrapes/` — Talos etcd on `10.0.0.20/21/22:2381` (HTTP, `job=talos-etcd`), CoreDNS metrics on the pod port named `tcp-9153`.
 
-### Mimir (long-term metrics)
+**Long-term storage:** VMSingle *is* the store (no Mimir/Thanos). Mimir + its embedded Kafka were retired with this swap. Retention is 15d local; no object-store backup is configured (a future option).
 
-- HelmRelease: [kubernetes/apps/observability/mimir-distributed/app/helmrelease.yaml](../../../../kubernetes/apps/observability/mimir-distributed/app/helmrelease.yaml)
-
-Endpoints (in-cluster):
-
-- Prometheus `remote_write` target: `http://mimir-distributed-gateway.observability.svc.cluster.local/api/v1/push`
-- Prometheus-compatible query endpoint: `http://mimir-distributed-gateway.observability.svc.cluster.local/prometheus`
-
-Tenant:
-
-- This setup uses Mimir multi-tenancy with `X-Scope-OrgID: homelab`.
-
-Storage:
-
-- Object storage: S3-compatible backend via `observability-s3` env vars
-- Local persistence: Longhorn PVCs for ingester/store-gateway/compactor
-
-Retention:
-
-- Configured for 90 days in Mimir (block retention via compactor limits).
-
-Meta-monitoring:
-
-- Chart-provided dashboards, ServiceMonitor, and PrometheusRules are enabled so Mimir can be monitored like any other app.
+> The app-instrumentation sections further down still reference the old Prometheus/Mimir endpoints in places — for scraping, emit a `ServiceMonitor`/`PodMonitor` (the operator converts it) or a native VM `*Scrape`; there is no separate long-term `remote_write` target anymore (VMSingle is the store).
 
 ### Grafana
 

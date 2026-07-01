@@ -93,6 +93,15 @@ Verify a move stuck: `kubectl get deploy <d> -o jsonpath='{.spec.template.spec.n
 `kubectl get hr <app> -o jsonpath='{.status.conditions[?(@.type=="Ready")].reason}'` == `UpgradeSucceeded`
 (not `RollbackSucceeded`).
 
+## ⚠️ Surge deadlock: single-replica pod pinned to a full pool
+
+Even with no RWO move, a single-replica **Deployment** pinned to a small pool can wedge its own rollout:
+default `RollingUpdate` (`maxSurge:1`/`maxUnavailable:0`) needs room for a **second** pod, but if every
+eligible node is request-saturated the new pod sits `Pending` (`Insufficient cpu/memory`) and the old
+can't be removed. Scheduling is on **requests**, so `kubectl top` can look fine. Fix: `maxSurge:0` +
+`maxUnavailable:1` (terminate-then-recreate) where you set the strategy — e.g. VMAgent's
+`spec.rollingUpdate` (2026-07-01, `pool=worker`). Fine for stateless/scraper pods (brief gap on rollout).
+
 ## Single-node-by-design apps (multiple pods, one RWO volume)
 
 Some apps run several pods sharing **one RWO volume** (authentik: 2 server + 1 worker share `/data`
