@@ -26,10 +26,16 @@ spec:
       operator: Equal
       value: fringe
       effect: NoSchedule
+  # Right-sized down from Prometheus's mirrored 400m/3Gi after measuring steady
+  # state: VMSingle uses ~1Gi RAM / ~120m CPU for this workload (~390k active
+  # series, ~8.7k samples/s). Request 1.5Gi (~50% headroom); 4Gi limit absorbs
+  # query spikes. Frees ~1.5Gi of reservation on worker-1.
+  # (Storage stays 50Gi — Longhorn can't shrink a PVC online; ~6x oversized for
+  # 15d but harmless.)
   resources:
     requests:
-      cpu: 400m
-      memory: 3Gi
+      cpu: 200m
+      memory: 1536Mi
     limits:
       cpu: "2"
-      memory: 6Gi
+      memory: 4Gi

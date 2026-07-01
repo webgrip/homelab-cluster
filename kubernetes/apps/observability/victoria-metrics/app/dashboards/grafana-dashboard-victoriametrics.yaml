@@ -1,0 +1,103 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: victoriametrics-backend-health
+  namespace: observability
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: observability
+  json: |-
+    {
+      "uid": "vm-backend-health",
+      "title": "VictoriaMetrics — backend health & efficiency",
+      "tags": ["observability", "victoriametrics"],
+      "schemaVersion": 39,
+      "editable": true,
+      "refresh": "1m",
+      "time": { "from": "now-6h", "to": "now" },
+      "panels": [
+        {
+          "id": 1, "type": "stat", "title": "VMSingle memory (RSS)",
+          "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "process_resident_memory_bytes{job=\"vmsingle-vmsingle\"}" } ],
+          "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 2 }, "overrides": [] },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "textMode": "auto" }
+        },
+        {
+          "id": 2, "type": "stat", "title": "Active time series",
+          "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "vm_cache_entries{job=\"vmsingle-vmsingle\", type=\"storage/tsid\"}" } ],
+          "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "textMode": "auto" }
+        },
+        {
+          "id": 3, "type": "stat", "title": "Ingest rate (samples/s)",
+          "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(vm_rows_inserted_total{job=\"vmsingle-vmsingle\"}[$$__rate_interval]))" } ],
+          "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "textMode": "auto" }
+        },
+        {
+          "id": 4, "type": "stat", "title": "Disk used (VMSingle)",
+          "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(vm_data_size_bytes{job=\"vmsingle-vmsingle\"})" } ],
+          "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 2 }, "overrides": [] },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "textMode": "auto" }
+        },
+        {
+          "id": 5, "type": "stat", "title": "RAM per 1M series",
+          "gridPos": { "h": 5, "w": 6, "x": 0, "y": 5 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "process_resident_memory_bytes{job=\"vmsingle-vmsingle\"} / (vm_cache_entries{job=\"vmsingle-vmsingle\", type=\"storage/tsid\"} / 1e6)" } ],
+          "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 2 }, "overrides": [] },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "textMode": "auto" }
+        },
+        {
+          "id": 6, "type": "stat", "title": "VMSingle uptime",
+          "gridPos": { "h": 5, "w": 6, "x": 6, "y": 5 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "time() - process_start_time_seconds{job=\"vmsingle-vmsingle\"}" } ],
+          "fieldConfig": { "defaults": { "unit": "s", "decimals": 0 }, "overrides": [] },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "auto" }
+        },
+        {
+          "id": 7, "type": "stat", "title": "Scrape targets up",
+          "gridPos": { "h": 5, "w": 6, "x": 12, "y": 5 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "count(up)" } ],
+          "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none", "textMode": "auto" }
+        },
+        {
+          "id": 8, "type": "stat", "title": "Scrape targets DOWN",
+          "gridPos": { "h": 5, "w": 6, "x": 18, "y": 5 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "count(up == 0) or vector(0)" } ],
+          "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "background", "graphMode": "none", "textMode": "auto" }
+        },
+        {
+          "id": 9, "type": "timeseries", "title": "VMSingle memory over time (request 1.5Gi / limit 4Gi)",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "process_resident_memory_bytes{job=\"vmsingle-vmsingle\"}", "legendFormat": "RSS" } ],
+          "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+          "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } }
+        },
+        {
+          "id": 10, "type": "timeseries", "title": "Ingest rate over time (samples/s)",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(vm_rows_inserted_total{job=\"vmsingle-vmsingle\"}[$$__rate_interval]))", "legendFormat": "samples/s" } ],
+          "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+          "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } }
+        }
+      ]
+    }
