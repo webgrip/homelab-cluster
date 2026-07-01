@@ -5,6 +5,14 @@ metadata:
   name: vmagent
 spec:
   replicaCount: 1
+  # Only worker-1/fringe match pool=worker and neither has request headroom for a
+  # SECOND vmagent pod, so the default surge rollout (maxSurge:1/maxUnavailable:0)
+  # deadlocks — the new pod stays Pending and the old one can't be removed.
+  # Terminate-then-recreate instead; a brief scrape gap on rollout is fine for a
+  # scraper (metrics are point-in-time, no backfill either way).
+  rollingUpdate:
+    maxSurge: 0
+    maxUnavailable: 1
   # Scrape every VMServiceScrape/VMPodScrape/VMNodeScrape/VMStaticScrape/VMProbe
   # in the cluster — including the ones the operator converts from the existing
   # ServiceMonitor/PodMonitor/Probe CRs. This reproduces kube-prometheus-stack's

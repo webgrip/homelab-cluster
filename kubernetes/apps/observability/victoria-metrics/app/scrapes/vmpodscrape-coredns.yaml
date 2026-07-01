@@ -5,7 +5,8 @@ metadata:
   name: coredns
 spec:
   # The default kube-dns Service doesn't expose the 9153 metrics port, so scrape
-  # the CoreDNS pods directly on their named `metrics` container port (9153/http).
+  # the CoreDNS pods directly. This cluster's CoreDNS names the port `tcp-9153`
+  # (not the upstream `metrics`), so target that name.
   namespaceSelector:
     matchNames:
       - kube-system
@@ -13,6 +14,6 @@ spec:
     matchLabels:
       k8s-app: kube-dns
   podMetricsEndpoints:
-    - port: metrics
+    - port: tcp-9153
       scheme: http
       interval: 60s
