@@ -36,6 +36,12 @@ spec:
           # Shared PID namespace lets the pgbouncer-reload sidecar SIGHUP the pgbouncer process
           # (pod-internal only, NOT hostPID → passes pod-security-baseline-enforce).
           shareProcessNamespace: true
+          # fsGroup 70 so the NON-root pgbouncer (uid 70) can write the /var/run/pgbouncer
+          # emptyDir (socket + pidfile). OnRootMismatch avoids re-chowning the data PVC each mount
+          # (owner is unchanged; only the group is set, so freshrss's own access is unaffected).
+          securityContext:
+            fsGroup: 70
+            fsGroupChangePolicy: OnRootMismatch
           nodeSelector:
             node.webgrip.io/pool: worker
         containers:
@@ -81,9 +87,10 @@ spec:
               - "pgbouncer"
               - "/etc/pgbouncer/pgbouncer.ini"
             securityContext:
-              # (userns) root so it can write the /var/run/pgbouncer emptyDir (socket + pidfile);
-              # pod hostUsers:false remaps it off host root. readOnlyRootFilesystem + drop all caps.
-              runAsUser: 0
+              # pgbouncer refuses to run as root; run as its own uid 70. The pod fsGroup 70 lets
+              # it write the /var/run/pgbouncer emptyDir. readOnlyRootFilesystem + drop all caps.
+              runAsNonRoot: true
+              runAsUser: 70
               allowPrivilegeEscalation: false
               readOnlyRootFilesystem: true
               capabilities: {drop: ["ALL"]}
@@ -118,7 +125,8 @@ spec:
                   sleep 10
                 done
             securityContext:
-              runAsUser: 0
+              runAsNonRoot: true
+              runAsUser: 70
               allowPrivilegeEscalation: false
               readOnlyRootFilesystem: true
               capabilities: {drop: ["ALL"]}
