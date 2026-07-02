@@ -2,271 +2,311 @@
 
 > **Living backlog, kept topped up at 100 open items.** As items ship, move them to the Done log
 > and refill so the open count stays ~100. Maintained by the `roadmap-topup` skill.
-> Re-inventoried **2026-06-21** (post node-taxonomy/storage migration; live MCP/Prometheus + posture checks).
-> Tags: `[Priority · Impact · Effort]` — Priority P0–P3, Impact H/M/L, Effort S/M/L.
+> Re-inventoried **2026-07-02** (post decision-landscape audit; live MCP/PromQL + posture checks +
+> 3-way deep repo audit). Tags: `[Priority · Impact · Effort]` — Priority P0–P3, Impact H/M/L,
+> Effort S/M/L.
 
-## Where we stand (live, 2026-06-21)
+## Where we stand (live, 2026-07-02)
 
-- **Flux:** all Kustomizations/HelmReleases Ready at `7f8da29`. Suspended on purpose:
-  `observability/pyroscope` (etcd I/O — but see #69, the rationale just changed).
-- **etcd protection — ACHIEVED.** The node-taxonomy/storage migration moved **all ~84 Longhorn
-  replicas and every app pod off the 3 soyo control-planes** (42 replicas on fringe, 42 on worker-1,
-  **0 on any soyo**). The soyos now run control-plane + DaemonSets only. WFFC was eliminated (every
-  Longhorn StorageClass is `Immediate` — the node-locking `gitops` WFFC SC was deleted).
-- **Memory:** control planes dropped from 80–83% to **65–73%** (soyo-1 73 / soyo-2 67 / soyo-3 65),
-  fringe 48%, worker-1 45%. The etcd *disk* threat is gone; the residual soyo RAM is now
-  control-plane + BestEffort-DaemonSet overhead (see #42), not app load. Restore drills stay **off**
-  until CP RAM < ~70% (soyo-1 still just above).
-- **Hardening posture (verified):** **2 PodDisruptionBudgets** (coredns, cloudflare-tunnel) · **17
-  NetworkPolicies across 11 app namespaces** + **1 CiliumNetworkPolicy** (CNPG→apiserver), but
-  **13 platform namespaces still unprotected**, no Hubble, no default-deny · 4 ResourceQuotas (app ns)
-  · **11 of 17 Kyverno policies still `Audit`** · 0 Envoy `SecurityPolicy`, Envoy TLS floor still 1.2 ·
-  all ~11 CNPG clusters single-instance (backups tiered + WAL-compressed) · Garage S3 (10.0.0.110) a
-  hard SPOF · **no off-node etcd snapshot backup**.
-- **Backup/DR status:** CNPG barman→Garage (current) and OpenBao raft snapshots→Garage (nightly) work.
-  A **Longhorn external backup target (Garage) is now `Available`** with a `gitops-backup` RecurringJob;
-  forgejo-data + gitea-mirror are labeled — but **no Longhorn backup has actually run yet** (first
-  schedule 02:00; unverified — #58). RWX PVCs are blocked cluster-wide by Kyverno `disallow-rwx-pvcs`.
-- **Active owner workstreams:** Forgejo migration (Renovate dual-run + Flux source, ADR 0011–0019)
-  and Harbor pull-through proxy-cache (ADR 0016–0018). Sequence around their gates.
+- **Flux:** one NOT-READY: `kepler/kepler` (Helm upgrade timeout on the DaemonSet — #67). Suspended
+  by design: `observability/pyroscope` (ADR-0032; sole gate = owner etcd defrag). Commented out of
+  kustomizations (zombie state): **tempo, beyla, k6-operator, k6-canaries** (observability), **drawio**
+  (RAM), **zomboid** (last SOPS secret) — #68/#40.
+- **Nodes:** control-plane RAM **80 / 71 / 64 %** (worst soyo regressed from 73 % on 06-21 — #38);
+  workers 52 / 41 %. etcd healthy: WAL-fsync p99 **3.9 ms**, DB ~1.2 GiB total (defrag still pending).
+- **Hardening posture (verified):** **2 PodDisruptionBudgets** · **17 NetworkPolicies across 11
+  namespaces** + 2 CiliumNetworkPolicies (platform ns — incl. `security`, `forgejo`, `observability`,
+  `network` — still open-network) · 4 count-only ResourceQuotas, **zero compute quotas** · **0 Envoy
+  SecurityPolicy**, TLS floor 1.2 · Kyverno **11 Audit / 6 Enforce** · all 11 CNPG DBs single-instance ·
+  Garage S3 single host behind every backup · **no alert reaches a human** (VMAlertmanager routes to
+  `"null"`, Grafana has no contact points) · Falco + Tetragon uninstalled · ARC runners 0/0.
+- **Decision debt is now mapped:** the 2026-07-02 [decision-landscape audit](../adr/landscape.md)
+  registered 11 gaps, each with a Proposed RFC (alert delivery, backup/DR, Garage, runtime detection,
+  foundations, ingress/DNS, identity, Postgres layer, observability pipeline, image signing, ARC).
+  Many items below are those RFCs' implementation legs.
+- **Active owner workstreams (in flight at re-inventory):** the freshrss PgBouncer dynamic-creds
+  iteration (ADR-0010 — sidecar SIGHUP-reload shape in the working tree), the MADR ADR conversion
+  (`adr-writer` skill), and a docs link-checker landing in e2e CI. The Flux-source cutover
+  (ADR-0014/0015) remains the big gate.
 
 ## ✅ Done log (recent)
 
-- **DevEx / SPACE / DORA measurement program — foundation (2026-06-30):** new `devex-db` CNPG
-  warehouse in observability (schema = raw survey zone + aggregate/telemetry zone + SQL
-  `refresh_dimension_scores()` + n≥5-suppression views + grafana_ro read-only role), idempotent
-  migration Job, generated ESO secrets. Grafana `postgres-devex` datasource + "Engineering
-  Experience" folder + 3 dashboards (scorecard, dimensions, telemetry-correlation), and the real
-  DevEx index now feeds the exec-kpi-scorecard "developer experience" tile (closing that honest
-  gap). Ships an opt-in demo seed (~21 synthetic respondents × 3 teams × 6 months + anti-correlated
-  telemetry) so dashboards are populated + testable end-to-end before any real response, with a
-  suspendable teardown. n8n is the survey+ETL runtime (workflow templates + build guide committed,
-  not yet wired — see #73a). Closes the "developer satisfaction" exec gap; OSS-only.
-- **Node-taxonomy + storage migration (2026-06-16→21, ADR-0025/0026/0027/0028):** the big one.
-  Introduced the capability label scheme (`node.webgrip.io/pool|cpu|ram`, `storage.webgrip.io/longhorn`)
-  and moved **every app + all Longhorn replicas off the 3 soyo etcd nodes** — pinned ~40 apps and all
-  6 CNPG DBs to the worker pool; flipped every Longhorn SC WFFC→Immediate (killing the PV node-lock that
-  excluded worker-1); deleted the over-engineered soyo-replica `gitops` SC. Solved the hard cases:
-  authentik (RWX blocked by Kyverno → pinned via `cpu=high`/fringe), harbor registry+jobservice (broke
-  the goharbor RollingUpdate Multi-Attach deadlock by hand), DT api-server (→StatefulSet), envoy
-  (controller+proxies, no ingress blip). Retired the legacy `nodegroup`/`workload-tier` labels + the
-  fringe `dedicated` taint. Shipped the Longhorn Garage backup target (BackupTarget CR — 1.11 ignores
-  defaultSettings) + `gitops-backup` RecurringJob, and the `openbao-restore` runbook (surfacing that the
-  unseal-key lives only in-cluster). Progresses #47/#58; supersedes the old etcd-SSD-contention framing.
-- **CNPG netpol regression fix (2026-06-15):** W7 zero-trust policies had cut cnpg-system off from the
-  CNPG instances and the instances off from kube-apiserver → `ClusterIsNotReady`. Fixed by moving
-  cnpg-system ingress into the DB-layer ks (deadlock-proof) + the first CiliumNetworkPolicy. Progresses #15.
-- **Headway batch (2026-06-14):** digest-pinned 9 unpinned images (#29); PDBs for CoreDNS + cloudflared
-  (#44, the reschedulable ones). Surfaced #74: Flux alerting is dead (metric source missing).
-- **Owner W6/W7 + Harbor + CNPG (2026-06-13/14):** per-namespace count-only ResourceQuotas (W6);
-  zero-trust NetworkPolicies across 11 app namespaces (W7); Harbor proxy-cache + HR stall fix; CNPG
-  backup tiering (WAL zstd, per-tier retention).
+- **Decision-landscape audit (2026-07-02, `aa58de83`):** coverage map of all 39 ADRs + 16 RFC-tier
+  docs (`adr/landscape.md`), 11 gap RFCs written and registered. ADR corpus normalized with
+  corrected statuses (`57b1d15c`); 7 dead runbooks pruned; general docs refreshed; nav rebuilt;
+  vestigial `release: kube-prometheus-stack` guard-hook check retired.
+- **VictoriaMetrics swap (2026-07-01→02, ADR-0038, PR #360):** kube-prometheus-stack →
+  modular vm-operator + VMSingle/VMAgent/VMAlert/VMAlertmanager + standalone KSM/node-exporter;
+  CoreDNS scrape + vmagent deadlock + CRD-race fixed; VMSingle right-sized + backend-health
+  dashboard; Watchdog/KubeNodeNotReady/KubeJobFailed house rules restored; umbrella-chart
+  re-evaluation done — stayed modular. Mimir + Kafka removed (all Mimir roadmap items obsolete).
+- **Default-deny ratified (2026-07-01, ADR-0039 `7051e70d`):** opt-in per-namespace generator +
+  `cnpg-netpol`/`gateway-egress` components + CI guard — recorded and Accepted (mechanism had
+  shipped W7). Supersedes the old Hubble-first cluster-wide plan.
+- **Dynamic DB creds (ADR-0010, 2026-07-01→02):** database engine + `vault_admin` + `openbao-db`
+  store + PgBouncer pipeline built; freshrss pilot cut over, then reverted ×2 (PG16 ADMIN OPTION +
+  sidecar startup) — infra stands, pilot iteration continuing (#41).
+- **Harbor proxy Phase-1 cutover (2026-06-23, ADR-0016/17/18):** mirror on all 5 nodes, fallback
+  drill passed, six upstreams, non-bootstrap OCI charts through the proxy. CI perf decisions
+  (ADR-0035/36) accepted 06-25.
+- **Authentik login repair (2026-06-30→07-02):** inline single-page password flow fixed (KeyOf
+  forward-ref bug); dead n8n/authentik OIDC half-config removed. Renovate presets re-homed to
+  Forgejo (`local>webgrip/renovate-config:forgejo`, prCreation:immediate).
+- **Node-taxonomy + storage migration (2026-06-16→21, ADR-0025…0029):** every app + all Longhorn
+  replicas off the soyos; capability labels; Longhorn Garage backup target + gitops-backup
+  RecurringJob; openbao-restore runbook. (Detail in git history / the ADRs.)
 
 ## ▶ Do next (top of the stack)
 
-`#53` key escrow (owner) · `#52` etcd off-node backup · `#58` verify+restore-test Longhorn backup ·
-`#42` DaemonSet right-sizing · `#34` apply-node label drop (finish migration) · `#13` platform-ns
-NetworkPolicies · `#17` Prom/Alertmanager auth · `#45` admission-webhook HA · `#78` SHA-pin Actions.
+`#64` alert channel (end the null-receiver era) · `#39` OpenBao unseal-key escrow · `#53` age.key/talsecret
+escrow verify · `#67` kepler fix-or-retire (the one NOT-READY) · `#38` soyo RAM regression · `#43`
+webhook HA · `#55` prove the Longhorn backup · `#8` security-ns default-deny · `#84` Forgejo CI parity
+(gates the cutover).
 
 ---
 
 ## The 100
 
-### Security — promote Kyverno audit → enforce (11 policies live in `Audit`)
-1. Promote `require-probes` → Enforce (after a probe-coverage sweep) — `[P1 · Med · M]`
-2. Promote `image-hygiene` (immutable tags, no `:latest`) → Enforce — `[P2 · Med · M]`
-3. Promote `image-supply-chain` (digest + approved registries) → Enforce for platform ns — `[P2 · High · M]`
-4. Promote `rbac-least-privilege` → Enforce after a clean PolicyReport week — `[P2 · High · M]`
-5. Promote `workload-hardening` (runAsNonRoot/seccomp/PE) → Enforce, ns-by-ns — `[P2 · High · L]`
-6. Promote `workload-advanced-hardening` (automountSAToken/privileged) → Enforce — `[P2 · High · M]`
-7. Promote `namespace-tenancy` → Enforce — `[P2 · Med · M]`
-8. Promote `secrets-observability-ops` → Enforce — `[P2 · Med · M]`
-9. Promote `image-verify` (cosign keyless) → Enforce for `ghcr.io/webgrip/*` — `[P2 · High · M]`
-10. Promote `image-attestations` (SLSA + CycloneDX) → Enforce — `[P3 · Med · M]`
+### Security — Kyverno audit→enforce (11 policies still Audit; ADR-0033 waves)
 
-### Security — network containment
-11. Enable Hubble (gates the default-deny work) — `[P1 · Med · S]`
-12. Default-deny `CiliumClusterwideNetworkPolicy` + per-ns allows from observed flows — `[P2 · High · L]`
-13. NetworkPolicies for the 13 unprotected platform/game namespaces (cnpg-system, observability,
-    security, network, kube-system, flux-system, longhorn-system, arc-systems, cert-manager, keda,
-    renovate, minecraft, zomboid) — also covers alloy-agent's `hostNetwork` syslog listener — `[P1 · High · M]`
-14. Crown-jewel netpol: restrict OpenBao ingress to ESO + unsealer only — `[P2 · High · M]`
-15. Crown-jewel netpol: CNPG clusters (app + barman egress only) — extends the CNPG→apiserver
-    CiliumNetworkPolicy already shipped — `[P2 · High · M]`
-16. Extract a reusable NetworkPolicy component/base (DRY the 11 hand-written zero-trust policies) — `[P2 · Med · S]`
+1. Promote `require-probes` → Enforce (cleanest next wave; app probes already conformant) — `[P1 · M · S]`
+2. Promote `namespace-tenancy` → Enforce — `[P2 · M · S]`
+3. Promote `rbac-least-privilege` → Enforce (zero in-tree violations found) — `[P2 · M · S]`
+4. Pin real tags on drawio/plantuml/excalidraw (`latest@sha256` pseudo-tags) → unblocks
+   `image-hygiene` promotion — `[P2 · L · S]`
+5. Promote `workload-hardening` → Enforce, ns-by-ns, after the pod-hardening sweep (#21–26) — `[P2 · H · M]`
+6. Promote `image-verify-harbor` (first-party signatures) → Enforce — the first verify wave, with
+   verification-infra namespaces carved out ([RFC](../rfc/rfc-image-signing-verification.md)) — `[P2 · H · M]`
+7. Burn down the `storage-cnpg-governance` test-coverage debt + add pass-cases to the enforce suites — `[P2 · M · M]`
 
-### Security — auth & exposure
-17. Prometheus + Alertmanager behind Authentik (Envoy `SecurityPolicy` OIDC) — `[P1 · High · M]`
-18. Auth-matrix sweep: Longhorn UI, Policy Reporter, OpenBao UI, Backstage (all LAN-exposed, no auth) — `[P2 · High · M]`
-19. Document-or-gate public envoy-external routes (invoiceninja, flux-ui, renovate, twitch) — `[P2 · Med · M]`
-20. Envoy hardening: proxy-pod `securityContext` (EnvoyProxy CRD) + raise ClientTrafficPolicy TLS
-    floor `minVersion: "1.2"` → `"1.3"` (`envoy.yaml:155`) — `[P2 · Med · S]`
+### Security — network containment (ADR-0039 rollout beyond app namespaces)
 
-### Security — per-app pod hardening
-21. searxng: fix `runAsNonRoot:false` + `readOnlyRootFilesystem:false` (explicit violation) — `[P1 · High · M]`
-22. invoiceninja: pod + container securityContext — the `copy-app` init runs `runAsUser:0` and the
-    FPM/scheduler containers lack `runAsNonRoot`/cap-drops (`invoiceninja-deployment.yaml`) — `[P1 · Med · M]`
-23. sparkyfitness + zomboid: drop `runAsNonRoot:false` (the main `workload-hardening` violators) — `[P2 · Med · M]`
-24. dependency-track SBOM-uploader CronJob: fix `runAsNonRoot:false` — `[P2 · Med · S]`
-25. Observability stack securityContext: loki, tempo, mimir, blackbox, k6, sloth, alloy — `[P2 · Med · M]`
-26. KEDA controller/metrics-server securityContext — `[P2 · Med · S]`
-27. drawio + excalidraw + freshrss: pod securityContext (+ drawio `resources.requests`) — `[P2 · Low · S]`
-28. arc-systems runners: add `seccompProfile: RuntimeDefault` + harden/document the DinD/CI threat model — `[P2 · High · M]`
-29. external-secrets: add container securityContext (drop caps, `readOnlyRootFilesystem`, no PE) to
-    operator/webhook/cert-controller — `[P2 · Med · S]`
+8. Default-deny the `security` namespace — OpenBao/ESO/cosign crown jewels currently sit on a flat
+   network — `[P1 · H · M]`
+9. Default-deny the `forgejo` namespace (git server + privileged DinD CI runners) — `[P1 · H · M]`
+10. Default-deny `observability` + `network` namespaces — `[P2 · M · M]`
+11. Default-deny the remaining platform/game namespaces (cnpg-system, cert-manager, keda, renovate,
+    kepler, longhorn-system, kube-system, flux-system, minecraft) — `[P2 · M · L]`
+12. OpenBao ingress NetworkPolicy: ESO + unsealer + gateway only — `[P1 · H · M]`
+13. dependency-track + guac DB layers adopt the `cnpg-netpol` component (Postgres reachable
+    cluster-wide today) — `[P2 · M · S]`
+14. Kyverno guard: explicit opt-in label required on `envoy-external` HTTPRoutes
+    ([RFC](../rfc/rfc-ingress-dns-edge.md)) — `[P2 · M · S]`
+15. Rate-limiting / SecurityPolicy baseline on the public envoy-external routes — `[P2 · M · M]`
 
-### Security — image supply chain
-30. Finish digest-pinning (harbor-proxy-config, owner) + Renovate `digestPin` for CronJob/runner
-    images going forward — `[P2 · Med · S]`
-31. Finish ADR-0008 rootless CI builds (BuildKit, kill DinD) — `[P2 · Med · M]`
+### Security — auth & identity ([RFC](../rfc/rfc-identity-sso.md))
 
-### Node / Talos / storage
-32. Kubernetes API audit logging → Loki — `[P2 · High · M]`
-33. Add KubePrism (local API LB for kubelet→apiserver) — `[P2 · Med · S]`
-34. **Finish the taxonomy migration: `task talos:apply-node MODE=no-reboot` per node** to strip the
-    now-unused `nodegroup`/`workload-tier` labels (removed from the patches, still live on nodes) +
-    remove the dead `register-with-taints`/cold-tier comments. Label-only, etcd-safe — `[P2 · Low · S]`
-35. **Activate the `longhorn-cold` HDD tier on fringe** (ADR-0027 Phase C): wipe the leftover NTFS
-    filesystem on the 1 TB HDD, add it as a Talos disk, tag it cold — offloads bulk volumes off the
-    SSDs — `[P3 · Med · M]`
-36. Decide secure-boot + LUKS/TPM disk encryption in an ADR (+ document the deleted Talos admission/PSA-fallback decision) — `[P3 · Med · L]`
+16. Forward-auth pilot: Authentik proxy outpost + Envoy `SecurityPolicy` on the Longhorn UI (it can
+    delete volumes; today LAN-open) — `[P1 · H · M]`
+17. Roll forward-auth to the remaining unauthenticated UIs (flux-ui, policy-reporter,
+    vmsingle/vmalertmanager routes, searxng, excalidraw) — `[P2 · H · M]`
+18. Route-auth classification matrix in `applications.md`: every HTTPRoute = OIDC / forward-auth /
+    app-local / deliberately-open — `[P2 · M · S]`
+19. Retroactive identity ADRs via `adr-writer`: adopt-Authentik + blueprint-as-code — `[P2 · M · S]`
+20. Harbor: add the Reloader annotation (5 rotatable ExternalSecrets, no auto-restart today) + fleet
+    Reloader-coverage audit — `[P2 · M · S]`
+
+### Security — pod hardening (the workload-hardening Enforce prerequisites)
+
+21. searxng: `runAsNonRoot` + `readOnlyRootFilesystem` (runs as root today) — `[P1 · M · M]`
+22. invoiceninja: de-root the `copy-app` / `prepare-storage` init containers — `[P2 · M · M]`
+23. sparkyfitness + zomboid + minecraft: runAsNonRoot / drop-caps / seccomp — `[P2 · M · M]`
+24. drawio + excalidraw + freshrss + DT sbom-uploader: add missing securityContexts — `[P2 · M · S]`
+25. KEDA + external-secrets: explicit hardening overrides (chart defaults only today) — `[P3 · L · S]`
+26. EnvoyProxy pod securityContext + raise ClientTrafficPolicy TLS floor 1.2 → 1.3 — `[P2 · M · S]`
+
+### Security — supply chain ([RFC](../rfc/rfc-image-signing-verification.md))
+
+27. Retroactive ADR: OpenBao Transit signing anchor; fix rfc-security-hardening's stale
+    "re-anchor to Authentik" narrative — `[P2 · M · S]`
+28. Dependency-Track vs GUAC consolidation decision (two platforms ingest the same weekly SBOMs) — `[P2 · M · M]`
+29. Scheduled re-verification job: cosign verify + OCI-digest drift on deployed images — `[P3 · M · M]`
+30. ADR-0008 step 2: shared rootless BuildKit service; drop the privileged DinD sidecar — `[P2 · H · L]`
+
+### Security — runtime detection ([RFC](../rfc/rfc-runtime-detection-response.md))
+
+31. RCA the 2026-06-19 "runtime agents destabilized the cluster" attribution (which agent, what
+    mechanism — the 06-18 Longhorn incident is a confounder) — `[P2 · M · M]`
+32. Reinstate ONE detector (Tetragon leaning) under ADR-0032-style gates, wired into alert
+    delivery — or record retiring both and delete the manifests — `[P2 · H · M]`
+
+### Talos / nodes
+
+33. kube-apiserver audit logging → Loki — `[P2 · M · M]`
+34. KubePrism: enable explicitly + verify (relies on implicit default today) — `[P3 · L · S]`
+35. Re-enable the in-apiserver PodSecurity admission (currently `$patch: delete`d — Kyverno is the
+    only admission layer) — `[P2 · M · S]`
+36. Secure-boot + LUKS2/TPM disk-encryption ADR + rolling apply window — `[P3 · M · L]`
+37. Finish the taxonomy migration: `task talos:apply-node MODE=no-reboot` per node to strip the
+    retired labels (owner; label-only, etcd-safe) — `[P2 · L · S]`
+38. Investigate the soyo RAM regression (80 % worst, was 73 % on 06-21) + right-size the remaining
+    BestEffort pods (spegel notably) — first OOM-kill targets under pressure — `[P1 · H · S]`
 
 ### Secrets endgame
-37. Ship dynamic Postgres credentials (ADR-0010) for one app (freshrss) — `[P2 · High · L]`
-38. Roll dynamic DB creds to remaining CNPG apps; retire static DB ExternalSecrets — `[P3 · High · L]`
-39. Migrate the last SOPS app secret (zomboid) → ESO — `[P2 · Med · M]`
-40. Audit Reloader (`reloader.stakater.com/auto`) coverage + tune ESO `refreshInterval` per-secret — `[P2 · Med · S]`
-41. Secret-rotation cadence doc for the SOPS floor (age key, talsecret, deploy key) + CI guard that
-    fails when a new `*.sops.yaml` appears outside the allowed floor — `[P2 · Med · S]`
 
-### Reliability — HA, resources, PDBs, replicas
-42. **Right-size the BestEffort platform/DaemonSet pods** (cert-manager, cnpg-operator, flux-operator,
-    ARC, renovate-operator, ESO, trivy-operator, guac; **longhorn-manager + alloy + spegel on the
-    control-planes**) — now the dominant soyo RAM load (65–73%) and the first thing evicted under
-    pressure; also unblocks `workload-hardening` Enforce — `[P1 · High · M]`
-43. topologySpreadConstraints on the multi-replica apps that lack them (authentik server, mimir
-    gateway) so both replicas don't co-schedule — `[P2 · Med · S]`
-44. Remaining PodDisruptionBudgets: cilium-operator, k8s-gateway (after #45) — cert-manager/ESO
-    webhooks handled by #45; envoy/authentik stay deferred (worker-pinned) — `[P1 · High · M]`
-45. Admission-webhook HA: cert-manager + external-secrets webhooks are single-replica (`replicaCount:1`)
-    on the cluster's pod-creation/cert-issuance critical path → 2 replicas + PDB + soft spread — `[P1 · High · M]`
-46. k8s-gateway → 2 replicas + PDB + Flux `healthChecks` (internal-DNS SPOF, 1 replica today) — `[P1 · High · M]`
-47. **Authentik node-level HA: media → Garage S3** (`AUTHENTIK_STORAGE__MEDIA__S3`), then unpin from
-    `cpu=high`/fringe → `pool=worker`. Interim `cpu=high` single-node pin shipped (RWX was Kyverno-blocked);
-    S3 is the only remaining path to spread the SSO across both workers — `[P2 · Med · M]`
-48. HelmRelease resilience: add `install/upgrade.remediation.retries` + explicit `timeout` to the
-    platform HRs that lack them (ESO, trust-manager, cert-manager, reloader, metrics-server) — `[P2 · Med · S]`
-49. Selected CNPG clusters → 2 instances (authentik, harbor, forgejo) — `[P2 · High · M]`
-50. HA review: single-replica metrics-server / reloader / alloy-gateway / mcp-grafana / loki / tempo
-    (loki+tempo on fringe = observability blind on node loss) — `[P3 · Med · S]`
-51. PriorityClasses for envoy-gateway + the remaining platform tier (k8s-gateway, reloader, metrics-server) — `[P2 · Med · S]`
+39. **OpenBao unseal-key escrow out-of-cluster** (SOPS floor slot exists; the live key exists only in
+    the in-cluster Secret — nightly snapshots are unusable without it,
+    [RFC](../rfc/rfc-backup-dr.md)) — `[P0 · H · S]`
+40. zomboid: migrate the last app SOPS secret → ESO, then re-wire or delete the suspended app; add a
+    CI guard failing any new `*.sops.yaml` outside the floor — `[P2 · M · S]`
+41. Land the freshrss dynamic-creds pilot: PgBouncer SIGHUP-reload sidecar iteration is in the
+    working tree — verify mint→rotate→reload end-to-end, then declare ADR-0010 phase 1 — `[P2 · H · M]`
+42. Pooling decision: CNPG `Pooler` CR vs per-app sidecar — one mechanism for dynamic creds + future
+    replicas ([RFC](../rfc/rfc-postgres-data-layer.md)) — `[P2 · M · M]`
 
-### Reliability — backup & DR
-52. **etcd off-node snapshot backup → Garage S3** (no automated etcd backup exists; logical
-    corruption/total-loss is currently unrecoverable) — `[P1 · High · M]`
-53. Off-site escrow of `age.key` + `talsecret` — verify a copy exists outside git — `[P0 · High · S]`
-54. Restore-test components for the 2 CNPG apps still missing them (authentik, grafana) — `[P1 · Med · M]`
-55. Re-enable restore drills (staggered) once CP RAM < ~70% — `[P2 · Med · S]`
-56. Verify the OpenBao raft snapshot actually restores (test into kind) — runbook exists, drill doesn't — `[P2 · High · M]`
-57. Offsite backup for non-DB PVCs (volsync / Longhorn S3): forgejo, authentik media, n8n, worlds — `[P2 · High · L]`
-58. **Verify the new Longhorn `gitops-backup` actually completes + restore-test a volume from Garage**
-    (the BackupTarget + RecurringJob shipped 06-21 and the target is `Available`, but 0 backups have
-    run; trigger one now rather than waiting for 02:00, then prove restore) — `[P1 · High · S]`
-59. Full DR drill of the hibernated `cnpg-disaster-recovery`; write the runbook from it — `[P2 · High · M]`
-60. "Total cluster loss → restored" end-to-end runbook + periodic bootstrap-from-scratch rebuild test — `[P2 · High · M]`
-61. RCA + re-enable Beyla, or remove it (undated suspension) — `[P2 · Low · S]`
+### Reliability — HA, PDBs, priorities
 
-### Reliability — Garage SPOF
-62. Document Garage RPO/RTO + a Garage-down recovery runbook (Garage-down also fails CNPG WAL archiving
-    → DBs CrashLoop — a known incident) — `[P2 · High · S]`
-63. Evaluate a 2nd Garage node / replicated MinIO so 11 DBs + all Longhorn/OpenBao backups don't share
-    one box — `[P2 · High · L]`
+43. cert-manager + external-secrets webhooks → 2 replicas + PDB (single-replica admission SPOFs on
+    the cert/secret critical path) — `[P1 · H · S]`
+44. k8s-gateway → 2 replicas + PDB (internal split-DNS SPOF; one pod today) — `[P1 · H · S]`
+45. Envoy proxies: PDB + topologySpread (2 replicas can co-schedule/co-evict today); envoy-gateway
+    controller → 2 replicas — `[P1 · H · S]`
+46. Fix the Kyverno PDB/drain deadlock: `minAvailable: 1` PDBs on single-replica
+    background/cleanup/reports controllers block node drains — `[P2 · M · S]`
+47. cilium-operator → 2 replicas (CNI IPAM/LB-IPAM control-plane SPOF) — `[P2 · M · S]`
+48. PriorityClass scheme for data-plane criticals (openbao, envoy, k8s-gateway, victoria-metrics,
+    CNPG, forgejo) — undefined preemption order under soyo memory pressure today — `[P2 · M · S]`
+49. authentik media → Garage S3 (`AUTHENTIK_STORAGE__MEDIA__S3`), then unpin from fringe — both
+    server replicas sit on one node behind an RWO volume — `[P2 · M · M]`
+50. CNPG 2-instance exception test: evaluate forgejo + authentik against the criteria
+    ([RFC](../rfc/rfc-postgres-data-layer.md)) — `[P2 · H · M]`
+51. HelmRelease resilience defaults: add `install.remediation.retries` + `timeout` to the root
+    patch (only upgrade remediation is defaulted today) — `[P2 · L · S]`
+52. Accept-or-fix review of the single-replica utility tier (metrics-server, reloader, KEDA,
+    trust-manager) — record the posture instead of leaving it accidental — `[P3 · L · S]`
 
-### Reliability — Flux structure & capacity
-64. **GitHub fallback Flux `GitRepository` before the Forgejo source cutover** — when Flux's source
-    flips to in-cluster Forgejo (ADR-0014), a forgejo/both-worker outage would strand reconciliation;
-    keep a GitHub mirror as a fallback source so resilience is decoupled from forgejo uptime — `[P2 · High · M]`
-65. Add `healthChecks` + `wait: true` to platform-tier Kustomizations — `[P2 · Med · M]`
-66. Audit `dependsOn` graph + `postBuild.substituteFrom` coverage (~24 ks lack dependsOn;
-    coredns/k8s-gateway notably) — `[P2 · Med · M]`
-67. Mimir Kafka single-broker durability: PVC auto-expand or StatefulSet replacement — `[P2 · Med · M]`
-68. Extend ResourceQuotas to platform namespaces (W6 covered app ns only) — `[P3 · Low · S]`
+### Reliability — backup & DR ([RFC](../rfc/rfc-backup-dr.md))
 
-### Observability — alert/SLO coverage
-69. **Re-evaluate Pyroscope return** — it was suspended for etcd-SSD I/O contention, but the migration
-    moved all Longhorn I/O off the soyo SSDs, so the original blocker is largely gone; test re-enabling
-    (fringe-pinned) and watch etcd fsync before/after — `[P3 · Low · M]`
-70. Alert-coverage bundle: cert-expiry beyond cert-manager (OpenBao TLS), cloudflared tunnel-down
-    (2 replicas but no failure alert), Mimir/Kafka memory-saturation-before-OOM — `[P2 · Med · S]`
-71. Per-app Sloth SLOs (Forgejo, Authentik, ingress) + burn-rate alerts — `[P2 · Med · M]`
-72. GitOps-health dashboard (e2e status, commit-vs-reconciled, drift, suspended count) — `[P2 · Med · M]`
-73. Verify Claude Code telemetry metric names + enable pending settings.json wiring — `[P2 · Low · S]`
-73a. **Wire the DevEx program live** (warehouse + dashboards + demo data shipped; see
-    `general/engineering-experience-program.md`). Remaining: build/import the 4 n8n workflows
-    (W1 form, W2 `refresh_dimension_scores()`, W3 Prometheus+Forgejo-API rollups, W4 Alertmanager
-    incidents), attach creds, apply the n8n egress netpol + Alertmanager receiver, run the first
-    real pulse, then teardown demo data. Code free-text themes; calibrate telemetry thresholds
-    after 2 clean months — `[P2 · Med · M]`
-74. **Flux alerting is dead** — this Flux version's controllers expose `gotk_reconcile_duration` but NOT
-    `gotk_reconcile_condition`/`gotk_suspend_status`, so the 3 owner Flux alerts + the suspended-ks alert
-    never fire. Fix: add a kube-state-metrics CustomResourceState config for the Flux CRDs (generates
-    `gotk_resource_info{ready,suspended,…}`) + RBAC, then rewrite the 4 alerts to it — `[P1 · High · M]`
-75. Tune `spec.driftDetection.ignore` on HRs that warn on benign drift — `[P1 · Med · S]`
+53. age.key + talsecret off-site escrow — **verify** copies exist outside git (owner) — `[P0 · H · S]`
+54. etcd off-node snapshot backup → Garage (no automated etcd backup exists; logical corruption is
+    currently unrecoverable) — `[P1 · H · M]`
+55. Verify the Longhorn `gitops-backup` RecurringJob actually completes + restore-test one volume
+    from Garage (machinery shipped 06-21, still unproven) — `[P1 · H · S]`
+56. Longhorn RecurringJob coverage audit: every non-CNPG stateful PVC (forgejo-data, n8n, authentik
+    media, game worlds) has a backup job — make the list checkable — `[P2 · H · M]`
+57. CNPG coverage campaign: restore-test components for the 5 DBs missing them (dependency-track,
+    guac, devex, authentik, grafana); DR components for the 8 missing — `[P2 · M · M]`
+58. OpenBao snapshot restore drill into kind — proves snapshot + escrowed key end-to-end (pairs with
+    #39) — `[P2 · H · M]`
+59. guac: adopt the barman pattern or record the pg_dump-only tier exception — currently neither — `[P2 · M · S]`
+60. Data-protection tier map ADR (all durable data, not just DBs) + total-loss runbook + drill
+    cadence (staggered CNPG drills resume when CP RAM < 70 % — see #38) — `[P2 · H · M]`
+
+### Reliability — Garage ([RFC](../rfc/rfc-object-storage-garage.md))
+
+61. Garage host metrics scrape (`VMStaticScrape`) + capacity/staleness alerts — today only a
+    blackbox probe watches the box every backup lands on — `[P2 · H · S]`
+62. Garage host lifecycle doc (hardware, version, config export, upgrade procedure) + Garage-down
+    recovery runbook (CNPG WAL backpressure) — `[P2 · M · S]`
+63. Second S3 leg: 2nd Garage node or bucket replication — the 3-2-1 build — `[P2 · H · L]`
+
+### Observability — alert delivery ([RFC](../rfc/rfc-alert-delivery.md))
+
+64. **Notification channel** (ntfy + a critical-severity fallback leg) wired into VMAlertmanager
+    receivers/routes — ends the `"null"`-receiver era — `[P0 · H · M]`
+65. Grafana contact points + notification policy CRs → the same channel (16 SLO rules currently
+    deliver nowhere) — `[P1 · H · S]`
+66. Watchdog → external deadman heartbeat (healthchecks.io / uptime-kuma off-cluster) — silence
+    pages — `[P1 · H · S]`
+
+### Observability — pipeline ([RFC](../rfc/rfc-observability-pipeline.md))
+
+67. kepler: fix the failing DaemonSet rollout or retire it — the one NOT-READY HelmRelease right
+    now — `[P1 · M · S]`
+68. Decide the commented-out telemetry: tempo, beyla, k6-operator/k6-canaries (k6 dashboards +
+    rules point at data never collected), and unwired twitch-exporter — re-enable worker-pinned or
+    remove — `[P2 · M · M]`
+69. Pyroscope: owner-run etcd defrag → flip `suspend: false` (ADR-0032's sole gate; fsync p99 is
+    3.9 ms) — `[P2 · M · S]`
+70. Telemetry retention/durability tier ADR (15d metrics / 30d logs / 14d traces; the
+    VMSingle-backup decision) — `[P3 · M · S]`
+71. Retroactive pipeline ADRs via `adr-writer`: Loki logging + the two-Alloy collector topology — `[P2 · M · S]`
+72. Alert-coverage bundle: cloudflared tunnel-down, OpenBao TLS expiry, Garage capacity — `[P2 · M · S]`
+73. Per-app Sloth SLOs (forgejo, authentik, ingress) + burn-rate alerts — `[P3 · M · M]`
+
+### Observability — programs
+
+74. DevEx program wiring: the 4 n8n workflows (form → refresh → rollups → incidents), first real
+    pulse, demo-data teardown — `[P2 · M · M]`
+75. GitOps-health dashboard (commit-vs-reconciled, drift, suspended count) — `[P3 · M · M]`
+
+### Flux / GitOps / capacity
+
+76. **Execute the ADR-0014/0015 cutover pack:** pull→push mirror flip, `sync.url` repoint to the
+    in-cluster Forgejo Service, Forgejo webhook on the existing Receiver, break-glass runbook,
+    GHCR re-home, GitHub RenovateJob retirement — `[P1 · H · L]`
+77. ADR-0020 Codeberg push-mirror (post-cutover; resolve the ToS question first) — `[P3 · M · M]`
+78. Platform-tier `healthChecks`/`wait` audit + `driftDetection.ignore` tuning on noisy HRs — `[P3 · L · S]`
+79. Compute ResourceQuotas: label namespaces for the existing Kyverno quota generator (zero
+    carriers today; count-only quotas everywhere) — `[P3 · M · S]`
+
+### Storage tails (ADR-0026/0027/0029)
+
+80. ADR-0029 stage 2: recreate the chart `longhorn` SC at 2 replicas (every volume on it is
+    perpetually Degraded at 3) + migrate the ~18 `longhorn-general` references — `[P2 · M · M]`
+81. Restrict the longhorn-manager DaemonSet to storage nodes (stale fringe toleration only today)
+    + converge the soyo-2 straggler replica — `[P2 · M · S]`
+82. ADR-0027 cold tier: supervised HDD wipe + node-annotation disk topology (the ADR-0037 disk
+    gate; unlocks the v2/LINSTOR revisit too) — `[P3 · M · M]`
 
 ### CI / shift-left
-76. Add zizmor (Actions security lint) to e2e CI — `[P1 · Med · S]`
-77. mkdocs/TechDocs build in CI + markdownlint + link-checker (catch broken links/nav across 78 MD) — `[P1 · Low · S]`
-78. Pin all GitHub Actions to commit SHAs (`actions/checkout@v4`, `claude-code-action@v1`, …) — `[P1 · Med · S]`
-79. Grafana dashboard JSON validation in CI (~45 dashboards) — `[P2 · Med · S]`
-80. CI workflow hardening: `timeout-minutes` on every job (none have it today) + least-privilege
-    `permissions:` blocks + runner pip/mise caching — `[P2 · Med · S]`
-81. Unit tests for `.claude/hooks/` (guard-secrets/destructive/skills, validate-manifest) — they're
-    security-critical and untested; a regression silently disables a guard — `[P2 · Med · M]`
-82. shellcheck on `scripts/` in CI + lefthook (~900 LOC unchecked) — `[P2 · Med · S]`
-83. Kyverno test-coverage gate: fail if a policy ships without tests; expand chainsaw admission tests
-    for all Enforce policies + CLI tests for the audit policies — `[P2 · Med · M]`
-84. kustomize-build smoke test for `bootstrap/` + `talos/` in CI — `[P2 · Low · S]`
-85. claude-review.yml + renovate-dry-run: also run on push to main (trunk-based; config edits bypass them today) — `[P2 · Med · S]`
-86. Renovate `postUpgradeTasks` run `flux-local test` so bumps self-validate — `[P2 · High · M]`
-87. Enforce lefthook install (or add a `.pre-commit-config.yaml` fallback) — `[P2 · Med · S]`
-88. CI: validate every PrometheusRule/ServiceMonitor carries `release: kube-prometheus-stack` — `[P2 · Med · S]`
-89. Renovate config drives Forgejo dual-run; verify both registries pull-through post-cutover — `[P2 · Med · S]`
 
-### Repo hygiene / DX / automation
-90. Backstage catalog: model all ~28 namespaces, or auto-generate from the Flux tree — `[P2 · Med · L]`
-91. `add-app` skill: scaffold NetworkPolicy + alerts + restore-test + Backstage + auth by default — `[P2 · High · M]`
-92. Standardize `app.kubernetes.io/*` labels via a Kyverno mutate policy — `[P2 · Med · M]`
-93. Wire or delete `twitch-exporter` (orphaned — not in observability kustomization) — `[P2 · Low · S]`
-94. Nightly scheduled cluster-health digest (delta summary) — `[P2 · Med · S]`
-95. Schedule weekly `triage-renovate` to label/comment PR risk — `[P3 · Low · S]`
-96. Auto-generate a dependency/topology diagram from `dependsOn` + an ADR/RFC status index page — `[P3 · Low · M]`
+83. kubeconform/CRD schema validation in CI — today it exists only in the local edit hook;
+    `flux-local build` alone catches no schema drift — `[P1 · H · M]`
+84. **Forgejo CI parity:** port the e2e gate set to `.forgejo/workflows` (currently a hello-world
+    stub) — hard gate for this repo going Forgejo-leading (#76) — `[P1 · H · L]`
+85. CI hygiene bundle: `timeout-minutes` on every job (none today), `permissions:` +
+    `persist-credentials: false` on claude-review/labeler/label-sync, dedupe the double flux-local
+    run, claude-review also on push-to-main — `[P2 · M · S]`
+86. Fix the zizmor lefthook glob (misses `.yml` files) + run zizmor and gitleaks in CI, not just
+    locally — `[P2 · M · S]`
+87. shellcheck for `scripts/` + `.claude/hooks` in CI/lefthook (~1600 LOC unchecked; `.shellcheckrc`
+    already exists) — `[P2 · M · S]`
+88. SHA-pin the claude-review.yml actions (`checkout@v4`, `claude-code-action@v1` — the only
+    tag-pinned workflow left) — `[P2 · M · S]`
+89. Docs CI: mkdocs build + markdownlint on top of the link-checker just landing in e2e
+    (`check-docs-links.sh`) — render breakage still ships silently — `[P2 · M · M]`
+90. Grafana dashboard JSON validation in CI (66 GrafanaDashboard CRs, zero model validation) — `[P3 · M · M]`
+91. `bootstrap/` (helmfile template) + `talos/` (talhelper validate) smoke tests in CI — `[P3 · M · S]`
+92. Unit tests for the `.claude/hooks` guards (248 LOC gating every edit) + the stdlib Python
+    validators — `[P2 · M · M]`
 
-### Docs / horizon
-97. Runbooks for shipped W6/W7 + migration features: zero-trust NetworkPolicy model, ResourceQuotas,
-    Harbor proxy-cache, Forgejo source, the capability-label taxonomy (ADR-0025/0028) — `[P2 · Med · M]`
-98. Second SSD per soyo node for fully-dedicated etcd storage — lower urgency now Longhorn I/O is off
-    the soyo SSDs, but still isolates etcd from OS/image I/O — `[P3 · Med · L]`
-99. **Add a 3rd worker node** — two workers means no real node-level HA headroom; a third lets replicas
-    keep 3-way redundancy and apps tolerate a worker loss without landing back on soyos. Also decide
-    OpenBao 3-node Raft — `[P2 · High · L]`
-100. Backup-coverage matrix doc: every stateful app × {CNPG | Longhorn-S3 | OpenBao-snapshot | none},
-     so gaps (authentik media, n8n, worlds) are visible at a glance — `[P3 · Med · S]`
+### DX / docs / horizon
+
+93. `add-app` scaffold completeness: NetworkPolicy + alerts + `catalog-info.yaml` + restore-test
+    wiring by default — every new app currently inherits those gaps — `[P2 · H · M]`
+94. Backstage catalog: entities for the ~27 apps (auto-generate from the Flux tree) + a dependsOn
+    graph (66 edges in-tree, nothing surfaces them) — `[P3 · M · L]`
+95. `app.kubernetes.io/*` label standard via a Kyverno policy — `[P3 · M · M]`
+96. Scheduled cluster-health digest: wire the empty `scheduled-maintenance.yml` stub (digest.sh
+    runs only on a laptop systemd timer today) — `[P3 · M · M]`
+97. Retroactive foundation ADR pack via `adr-writer`: Talos, Flux topology, Cilium datapath +
+    the ingress/DNS/tunnel edge ([RFCs](../rfc/rfc-platform-foundations.md)) — `[P2 · M · M]`
+98. ARC end-state: retire-or-restore decision + teardown/sunset checklist
+    ([RFC](../rfc/rfc-github-actions-retirement.md); 0/0 "TEMP" since 06-18) — `[P2 · M · S]`
+99. 3rd worker node / layered-hardware Phase-2 path choice — unlocks a 3-replica ceiling, real
+    node-level HA, and the ADR-0037 engine revisit — `[P2 · H · L]`
+100. Dedicated etcd SSD per soyo (L2/L3 isolation; lower urgency post-migration, still the clean
+     fix) — `[P3 · M · L]`
 
 ---
 
 ## Sequencing notes
 
-- **#34 apply-node finishes the migration** — label-only, etcd-safe, do it whenever; nothing breaks
-  until then (the live labels are just unused).
-- **#58 is the highest-value DR proof** — the Longhorn backup machinery is wired but unproven; a single
-  triggered backup + restore closes the last untested DR claim cheaply.
-- **#11 Hubble gates #12** (don't author cluster-wide default-deny blind). #13/#14/#15 land now (W7 pattern).
-- **#42 DaemonSet right-sizing is the cheap correctness win** — BestEffort system pods are first evicted
-  at high CP memory; it also unblocks #5 Enforce. The migration relaxed but didn't remove soyo RAM pressure.
-- **#45 (webhook HA) before #44** — the cert-manager/ESO webhooks are the admission-path SPOF.
-- **#47 needs S3 (#57-adjacent)** — authentik can't be node-HA until its media leaves the RWO volume.
-- **#52 etcd backup is the missing leg** of DR — CNPG/PVC backups exist, etcd doesn't.
-- **#64 GitHub fallback source** must land **before** the Forgejo Flux-source cutover (ADR-0014), not after.
-- **#37 unblocks #38** (dynamic creds: one app before the fleet). **#55 restore-drill re-enable** gated on
-  CP RAM (<~70%), not etcd — soyo-1 (73%) is the holdout.
-- Keep new work clear of the **Forgejo migration** (ADR 0011–0019) and **Harbor proxy-cache** gates.
+- **#64→#65/#66 before #32** — alert delivery must exist before runtime detection returns;
+  detections nobody hears are cost without control. Same for #61's Garage alerts.
+- **#39 pairs with #58** — the escrowed unseal key is only real once a restore drill proves it.
+  #53 is the same class of owner action; do both in one sitting.
+- **#84 gates #76** — this repo cannot go Forgejo-leading while `.forgejo/workflows/ci.yml` is a
+  stub; port the gates first, then cut over, then #77 (Codeberg) and the GitHub RenovateJob
+  retirement follow.
+- **#21–26 gate #5**, **#4 gates image-hygiene**, and **#6 needs the verify-namespace carve-outs**
+  — the enforce waves stay one-policy-per-commit per ADR-0033.
+- **#38 is the lever for #60's drill re-enable** (CP RAM < 70 %) and lowers the risk of every
+  rollout-heavy item; treat the RAM regression as the first reliability move.
+- **#49 before #50** — authentik can't be meaningfully 2-instance while both replicas are pinned
+  to one node by the RWO media volume.
+- **#80–82 are window work** — storage changes ship isolated, spaced from other rollout-heavy
+  commits (the batched-rollout collapse lesson).
+- **#99 unlocks the horizon** — a third worker reopens 3-replica Longhorn, real node HA, and the
+  ADR-0037 storage-engine gate; decide the layered-hardware path before buying.
