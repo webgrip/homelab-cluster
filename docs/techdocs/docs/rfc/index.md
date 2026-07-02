@@ -18,3 +18,31 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
   [Backstage TechDocs](rfc-backstage-techdocs.md) (+ [implementation
   plan](plan-backstage-techdocs.md)), [layered hardware
   architecture](rfc-layered-hardware-architecture.md) (program doc).
+
+## Decision-landscape gap RFCs (2026-07-02)
+
+Spawned by the [decision-landscape audit](../adr/landscape.md): the parts of the running platform
+that had no decision record. All **Proposed**. Roughly by stakes:
+
+- [Alert delivery](rfc-alert-delivery.md) — no alert currently reaches a human (both planes end in
+  `"null"`/nothing).
+- [Backup & DR program](rfc-backup-dr.md) — tier map, the OpenBao unseal-key escrow hole, second
+  backup leg, drill cadence.
+- [Object storage — Garage](rfc-object-storage-garage.md) — the unrecorded S3 backbone everything
+  depends on.
+- [Runtime detection & response](rfc-runtime-detection-response.md) — Falco *and* Tetragon
+  uninstalled since 2026-06-19; pick one, gate the return, wire the response.
+- [Platform foundations](rfc-platform-foundations.md) — retroactive ADRs for Talos, Flux topology,
+  Cilium datapath.
+- [Ingress, DNS & edge](rfc-ingress-dns-edge.md) — dual gateways, tunnel, split DNS; enforce the
+  internal-by-default posture.
+- [Identity & SSO](rfc-identity-sso.md) — Authentik adoption record + the non-OIDC/forward-auth
+  hole.
+- [Postgres data layer](rfc-postgres-data-layer.md) — CNPG-as-standard, the single-instance
+  posture, pooling.
+- [Observability pipeline](rfc-observability-pipeline.md) — logs/traces/profiles composition,
+  retention tiers, Kepler's fate.
+- [Image signing & verification](rfc-image-signing-verification.md) — record the OpenBao Transit
+  anchor, own the verify-enforce waves, DT-vs-GUAC.
+- [GitHub Actions retirement](rfc-github-actions-retirement.md) — ARC has been 0/0 "TEMP" since
+  2026-06-18; retire or restore, on purpose.

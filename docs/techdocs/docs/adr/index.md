@@ -3,6 +3,8 @@
 One defensible decision per record — the durable answer to *"why is it built this way?"*.
 Design exploration lives in [RFCs](../rfc/index.md); an RFC is the umbrella, its ADRs are the
 individual choices. Operational procedure lives in [runbooks](../runbooks/index.md).
+Coverage of the whole estate — which domains have records, which don't — is mapped in the
+[decision landscape](landscape.md) (audited 2026-07-02).
 
 ## Conventions
 
