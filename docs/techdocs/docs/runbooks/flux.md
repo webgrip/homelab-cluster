@@ -38,6 +38,30 @@ Look for:
 - Secret not present (especially if it’s a SOPS-managed secret that wasn’t created yet).
 - Runtime drift from manual `kubectl`/`helm` changes or controller-side mutation outside Git.
 
+## Recover a stalled HelmRelease
+
+When a HelmRelease is stuck `Stalled` / `RetriesExceeded` (install retries
+exhausted — for example it failed because an `existingSecret` didn't exist yet,
+then remediation uninstalled it), the usual imperative recovery commands are
+**blocked in this repo** (GitOps-only): `flux reconcile --force`,
+`flux suspend`/`flux resume`, and `kubectl patch/apply/delete` are all denied.
+The in-cluster `kubernetes` MCP is read-only `view`, so it can't remediate
+either.
+
+To un-stall it, make helm-controller reset the failure count and re-attempt the
+release by **incrementing the HR's generation via a committed spec change**:
+
+- Edit the HelmRelease with a benign, useful spec field bump — e.g. add or
+  change `spec.maxHistory: 3` — and commit + push to `main`. Flux applies the
+  new generation and helm-controller retries the release.
+- **Fixing the underlying cause alone does NOT un-stall it.** Adding the missing
+  Secret (or otherwise correcting the failure) leaves the HR generation
+  unchanged, so helm-controller does not retry. You still need the generation
+  bump.
+
+Seen during the Forgejo bring-up: admin/oidc secrets were committed but the HR
+stayed stalled until a `spec.maxHistory` bump forced the retry.
+
 ## Runtime drift
 
 When `FluxResourceDriftDetected` fires:

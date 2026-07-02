@@ -199,14 +199,49 @@ New hardware is only half the win; it **unlocks a software re-layering** the cur
 single-disk/flat-network topology can't support. These are the changes that actually retire the
 incident classes.
 
-**Storage model — the biggest fork.** All three beat today's shared-disk Longhorn v1; they trade
+**Storage model — the biggest fork.** All four beat today's shared-disk Longhorn v1; they trade
 differently:
 
 | Model | Resilience | Speed | RAM/CPU overhead | Ops complexity | SPOF |
 |---|---|---|---|---|---|
-| **Rook-Ceph** | Excellent (n-way, self-healing) | High on NVMe | **High** (MON/OSD/MDS) | High | None |
-| **Longhorn v2 (SPDK)** | Good (replica-based) | High (NVMe/SPDK datapath) | Medium | **Low–medium** (already in-cluster) | None |
+| **Rook-Ceph** | Excellent (n-way, self-healing) | High on NVMe | **High** (MON/OSD/MDS; ~4–8 GiB RAM _per OSD_) | High | None |
+| **Longhorn v2 (SPDK)** | Good (replica-based) | High (NVMe/SPDK datapath) | **Medium–high** (~2 GiB _locked_ hugepages + **1–2 CPU cores spinning 24/7** per node) | Medium (GA only since 1.12.0) | None |
+| **LINSTOR / Piraeus (DRBD)** | Good (sync replica + diskless tiebreaker) | Very high (in-kernel, near-native latency) | **Low** (in-kernel; no per-volume engine) | Medium–high (CLI-first; DRBD split-brain recovery) | None (needs a 3rd node for quorum) |
 | **ZFS-HA (TrueNAS pair)** | Good (HA pair + snapshots) | **Highest single-box** (Optane SLOG) | Low (off-cluster) | **Low** | Mitigated by HA pair |
+
+**Engine choice is gated on disks, not preference — and today's hardware blocks it.** The two
+"stay-in-Kubernetes" upgrades from v1 (Longhorn v2 and LINSTOR/Piraeus) were both evaluated against
+this cluster in mid-2026; the finding is that **neither is a swap you make on the current nodes.** Two
+walls, shared by both:
+
+1. **Both need a clean, dedicated block device.** v1's filesystem path (`/var/lib/longhorn`) does not
+   carry over — v2 wants a raw block-type disk, and DRBD wants a raw device to auto-prepare into an
+   LVM/ZFS pool. Today **neither storage node has one free**: fringe's 1 TB HDD is still unwiped NTFS
+   (the inert cold-tier, [ADR-0027](../adr/adr-0027-longhorn-hot-cold-tiers.md)) and worker-1's SSD is
+   fully consumed. So both are **blocked on exactly the L3 boot/etcd-≠-data disk split this RFC already
+   calls for** — you cannot adopt either until dedicated data disks exist.
+2. **Both add a permanent per-node reservation that lands on this cluster's weak spots** (RAM-tightness
+   and power cost, ~€3/W·yr). Longhorn v2 locks **~2 GiB hugepages and busy-spins 1–2 CPU cores per
+   node 24/7** even when idle — worst-case for the 12 GiB soyos and a measurable power regression.
+   LINSTOR is far lighter (in-kernel, no core-spin — better perf-per-watt) but taxes differently:
+
+| Differentiator (on Talos) | Longhorn v2 (SPDK) | LINSTOR / Piraeus (DRBD) |
+|---|---|---|
+| **Per-Talos-upgrade tax** | **None** — SPDK is userspace + in-tree modules (`nvme-tcp`/`vfio_pci`) | ❌ **Out-of-tree DRBD module → rebuild the Factory schematic, version-matched, on every Talos bump** |
+| **Steady-state footprint** | ❌ ~2 GiB locked hugepages + 1–2 spinning cores/node | ✅ Low; scales with volume count, no core-spin |
+| **Ecosystem fit** | ✅ Same UI + S3 `BackupTarget` already wired to Garage | ❌ CLI-first; native S3 backup is DIY (thin/ZFS-gated) |
+| **Maturity** | ❌ GA only since **1.12.0 (2026-06-02)**; open Sev-1/P0 data-integrity + crash bugs; cluster runs 1.11.2 where v2 is _Technical Preview_ | Core DRBD mature (15+ yrs); Piraeus-on-Talos a small niche |
+
+**Consequence for the plan:** the payoff both promise — retiring v1's instance-manager-OOM failure
+class (the [2026-06-09 cascade](../incidents/2026-06-09-longhorn-oom-cascade.md) /
+[06-18 detonation](../incidents/2026-06-18-longhorn-im-cpu-rolling-detonation.md)) — is real, but it is
+**a Phase-2 decision made once dedicated NVMe exists, not a Phase-0 move.** Until then **hardened
+Longhorn v1 stays the default.** When disks land, the pick is path-shaped: **Longhorn v2** suits the
+hyperconverged all-NVMe **Path A** (no kernel tax, keeps the UI/backup) if you can spare the
+cores/hugepages; **LINSTOR/Piraeus** suits a perf-per-watt-max node willing to pay the per-upgrade
+rebuild tax; **Rook-Ceph** / **ZFS-HA** remain the Path B/C answers. This gate is ratified as
+[ADR-0037](../adr/adr-0037-storage-engine-gated-on-dedicated-disks.md) — Longhorn v1 stays until
+dedicated data disks exist; the engine pick is deferred to Phase 2.
 
 **Dedicated networks & disks.** Whichever model: put **replication on the L1 storage plane** (so a
 rebuild can never again starve app traffic — the batched-rollout collapse), give **etcd its own NVMe**
@@ -263,7 +298,7 @@ actually decided. The RFC's job is to enumerate the decisions and what gates the
 | Decision | Options | Gated on |
 |---|---|---|
 | **Network fabric** | 25 GbE (sweet spot) · 100 GbE + RoCE (extreme) | Path choice; budget; whether storage is disaggregated |
-| **Storage model** | Rook-Ceph · Longhorn v2 (SPDK) · ZFS-HA pair | Distributed-vs-centralized appetite; RAM headroom; ops capacity |
+| **Storage model** | Rook-Ceph · Longhorn v2 (SPDK) · LINSTOR/Piraeus (DRBD) · ZFS-HA pair | **Dedicated data disks** (every option needs a clean block device — see the [engine-choice gate](#storage--network-relayering)); RAM/power headroom; distributed-vs-centralized appetite; ops capacity |
 | **Compute topology** | Disaggregated (CP ≠ worker ≠ storage) · hyperconverged; EPYC vs prosumer | Where it lives (noise/power); € ceiling |
 | **Power & OOB baseline** | ECC + dual-PSU + A/B UPS + OOB on all nodes | Whether ECC is required (rules out most mini-PCs) |
 | **Backup/DR topology** | 3-2-1: local snapshot + separate local target + offsite | Phase 0 offsite target; RTO/RPO goals |
@@ -305,6 +340,12 @@ When the answers converge, ratify the matching rows in
   selection and any storage automation must key on stable IDs/WWIDs, not letters.
 - **Data-migration risk** — Phase 2 moves live data (Longhorn → new); CNPG failover churn and PVC-copy
   windows need a rehearsed [restore drill](../runbooks/cnpg-restore-playbook.md) before cutover.
+- **Next-gen engine readiness** — both in-cluster upgrade paths carry a catch on this hardware:
+  Longhorn v2 only reached GA in **1.12.0 (2026-06)** and still locks ~2 GiB hugepages + busy-spins
+  1–2 cores per node; LINSTOR/Piraeus (DRBD) is lighter but its **out-of-tree module must be rebuilt
+  for every Talos kernel**. Neither is free, and both are gated on the L3 dedicated-disk split — see
+  the [storage-model fork](#storage--network-relayering). Adopting either before dedicated disks exist
+  reproduces the shared-disk contention it is meant to cure.
 
 ## Success criteria
 
@@ -342,6 +383,15 @@ Terms used above, plainest-first — this RFC should be readable without prior h
 - **Ceph / Longhorn / ZFS** — three ways to keep data safe across disks/nodes. **Ceph** = powerful,
   distributed, complex; **Longhorn** = Kubernetes-native, simpler (already in this cluster); **ZFS** =
   rock-solid single-box filesystem (what TrueNAS runs).
+- **LINSTOR / DRBD** — a fourth way: **DRBD** mirrors a disk to another node in real time _inside the
+  Linux kernel_, and **LINSTOR** (via the Piraeus operator) orchestrates it in Kubernetes. Fast and
+  light on RAM/CPU, but the kernel driver is out-of-tree so it must be **rebuilt for each Talos
+  version**, it's command-line-first (no Longhorn-style web UI), and recovering a "split-brain" needs
+  DRBD know-how.
+- **SPDK / hugepages** — **SPDK** is a "talk to NVMe from userspace, skip the kernel" toolkit that
+  Longhorn's **v2 engine** uses for speed. It needs **hugepages** (a big block of RAM reserved up-front
+  and locked away from everything else, ~2 GiB/node) and keeps a CPU core (or two) busy-spinning to
+  poll the disk — fast, but a fixed RAM + power tax per node.
 - **SLOG / special vdev** — optional ZFS speed boosters (often an Intel Optane drive).
 - **UPS / PDU** — battery backup that rides out power blips / a smart, network-controllable power strip.
 - **Jumbo frames** — larger network packets; more efficient for bulk storage traffic.
@@ -366,4 +416,4 @@ Terms used above, plainest-first — this RFC should be readable without prior h
 - **Roadmap:** reliability — HA/resources/PDBs, backup & DR, Garage SPOF ([roadmap](../general/roadmap.md))
 - **Sibling RFCs:** [Security Hardening](rfc-security-hardening.md) ·
   [Dynamic Database Credentials](rfc-dynamic-database-credentials.md)
-- **Upstream:** Rook-Ceph · Longhorn v2 (SPDK) · TrueNAS/ZFS · Cilium · Talos disks
+- **Upstream:** Rook-Ceph · Longhorn v2 (SPDK) · LINSTOR/Piraeus (DRBD) · TrueNAS/ZFS · Cilium · Talos disks

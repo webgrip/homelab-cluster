@@ -30,7 +30,7 @@ centralize the genuinely-external secrets so they're entered once and synced eve
 
 | Decision | Choice | Rationale |
 | --- | --- | --- |
-| Backend | **OpenBao** (self-hosted) | OSS (MPL-2.0 Vault fork), native OIDC login via Authentik, single-node raft (no extra Postgres/Redis), Kubernetes-auth for ESO. |
+| Backend | **OpenBao** (self-hosted) | OSS (MPL-2.0 Vault fork), native OIDC login via Authentik, single-node raft (no extra Postgres/Redis), Kubernetes-auth for ESO. **Infisical was scaffolded first, then torn down** — it gates OIDC/SAML SSO behind an enterprise license, whereas OpenBao's Authentik OIDC login is fully OSS. |
 | OIDC client secrets | **Auto-eliminate** | Generate once → blueprint sets it via `!Env` → PushSecret. Removes the copy-paste for every OIDC app. |
 | Random generator | **ESO-native `Password` / `ClusterGenerator`** | No second operator (e.g. mittwald); unifies with the external class. |
 | At-rest encryption keys | **Never regenerate** | A fresh value corrupts data already encrypted. Seed the existing value once; never a generator. |

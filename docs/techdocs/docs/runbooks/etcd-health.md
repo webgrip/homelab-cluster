@@ -155,6 +155,8 @@ mise exec -- kubectl get pods -A -o wide --field-selector spec.nodeName=soyo-1 |
 
 **Key constraint:** Never schedule write-heavy workloads on control-plane nodes. The only local disk is shared with etcd. This includes: Pyroscope, Loki (if using local storage), any database with high write throughput.
 
+> **Example (2026-06-21):** a write-heavy CNPG tenant DB (`dependency-track-db`, ~1.5 cores of SBOM-ingestion WAL writes) scheduled on soyo-3 starved etcd — WAL-fsync p99 went 3.5ms → 222ms and tripped a leader election (`etcd_server_leader_changes_seen_total` +1) plus a brief apiserver blip. Fix: hard-pin tenant DBs to `pool=worker` (native CNPG `spec.affinity.nodeSelector: {node.webgrip.io/pool: worker}`), never the soyo etcd nodes.
+
 ## Known root cause history
 
 ### 2026-06-03 — Sustained etcd instability (3337+ leader changes)

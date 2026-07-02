@@ -86,6 +86,10 @@ deliberate dead-end:
   lower-risk next step is a **per-node `hostPath`** cache (node-local, no NFS, no RWX); reach for
   RWX only if even that is insufficient. We are not there.
 
+### Why not a dind `daemon.json` / ConfigMap for base-image mirroring (rejected, backed out 2026-06-25)
+
+Routing build-time base-image pulls (the `FROM` in `docker build`) through the in-cluster Harbor pull-through cache does **not** belong in a `daemon.json`/`buildkitd.toml` mounted on the runner's **dind sidecar** — that's the wrong layer, and it was backed out as a dead-end. The CI build path uses buildx's **`docker-container` driver** (required for the Harbor registry *layer* cache), which runs buildkitd in a separate `buildx_buildkit_*` container and reads its mirror config from the file passed to `docker buildx create --config <path>`, resolved from the **runner container's** filesystem — not dind's. A `daemon.json` in dind only affects the classic embedded `docker` driver (Docker-Hub-only mirror, and bypassed entirely by docker-container builds), and a `buildkitd.toml` in dind is read by nothing. The right place for per-registry base-image mirrors is the **buildkitd config of the docker-container builder**, set in `webgrip/workflows` where the builder is created — a workflows-layer change, not a homelab dind manifest.
+
 ### Constrictor (strangler) migration for the build workflow
 
 [ADR-0036](../adr/adr-0036-amd64-default-constrictor-build.md) ships as **new** files —

@@ -25,6 +25,15 @@ reconcile into a ConfigMap) · gate it with a Flux ks like
 - **Harden the pod:** `runAsNonRoot`, `seccompProfile: {type: RuntimeDefault}`, `readOnlyRootFilesystem:
   true`, `capabilities: {drop: [ALL]}`.
 - **Secrets** the job consumes/produces → the `external-secrets` skill (ESO+OpenBao, never SOPS).
+- **Inline-script env vars → UNBRACED (`$VAR`).** When the manifest is under Flux `postBuild.substituteFrom`,
+  envsubst runs over the whole rendered manifest **including inline `command` scripts**. Reference the
+  container's runtime env vars **unbraced** (`$FORGEJO_URL`, followed by a non-identifier char like `/`,`:`,`"`,
+  space) — braced `${VAR}` of anything not in substituteFrom is **blanked to empty** (`admin="${U}:${P}"` → `":"`
+  → `curl (3) No host part`), and `$${...}` **errors the whole Kustomization** (`BuildFailed`). This is the
+  exception to CLAUDE.md's "escape as `$${...}`" rule; reserve braced `${...}` for vars actually in
+  substituteFrom (e.g. `${SECRET_DOMAIN}`). **flux-local does NOT catch it** (a blanked script is still valid
+  YAML) — verify the rendered command (`kubectl get job … -o jsonpath='{.spec.template.spec.containers[0].command[2]}'`)
+  or the run logs.
 
 ## Forgejo org Actions secrets (write-only API)
 

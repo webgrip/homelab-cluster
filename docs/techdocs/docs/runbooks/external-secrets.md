@@ -243,6 +243,25 @@ kubectl logs -n security deploy/external-secrets --tail=200 | grep -iE 'error|st
 kubectl annotate externalsecret NAME -n NS force-sync="$(date +%s)" --overwrite
 ```
 
+## Gotchas
+
+- **`bao operator generate-root` does NOT work on this cluster** — `GET
+  sys/generate-root/attempt` returns **405 "unsupported operation"** (confirmed via both the
+  `openbao` Service and the `openbao-0` headless address, with `openbao-0` active). The assumed
+  "recover an emergency root token from the unseal key" break-glass path is therefore
+  **unavailable**. Consequence: you **cannot enable a new secrets engine** (e.g. `sys/mounts/*`
+  for dynamic DB creds) on the running cluster this way. Options: grant the scoped `config-admin`
+  role `sys/mounts/*` (low real delta — it can already self-escalate via `sys/policies/acl/*` +
+  `auth/+/role/*` writes), or do a destructive wipe + reinit. Do **not** cite `generate-root` as a
+  live recovery path.
+- **OpenBao OIDC login needs RS256** — pin a `signing_key` (default `"authentik Self-signed
+  Certificate"`) on the Authentik OIDC provider, or Authentik falls back to **HS256** and OpenBao
+  login fails. Applies to the `auth/oidc/config` role for the OpenBao UI.
+- **The local kubeconform PostToolUse hook false-positives** on (a) HTTPRoute `${SECRET_DOMAIN}`
+  hostnames and (b) Authentik blueprints (no `kind`, custom `!Find` / `!Format` tags) — both are
+  correct manifests; do **not** "fix" them. Validate via the docker `flux-local build ks` path
+  (`scripts/run-flux-local-test.sh`) instead.
+
 ## Disaster recovery
 
 **Cluster rebuild order:** Talos (`talsecret`) → `scripts/bootstrap-apps.sh` (applies the

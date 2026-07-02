@@ -166,6 +166,61 @@ When you introduce or update application databases, copy this pattern into their
 
 ---
 
+## Force-prune orphaned pre-first-backup WAL
+
+CNPG's `retentionPolicy` (and the barman-cloud plugin's `retentionPolicy` on an
+`ObjectStore`) is a **recovery window** (e.g. `3d`), not a WAL age cutoff. It
+keeps the oldest base backup needed to restore to N days ago as the window
+**anchor**, and only garbage-collects WAL when it actually **deletes a base
+backup**.
+
+The trap: **WAL archived before the first-ever base backup is orphaned** (it can
+never anchor a restore) but is NOT pruned by normal retention — it only clears
+when the anchor backup is deleted, i.e. after it ages fully past the window. A
+freshly-enabled backup config therefore leaves a large orphaned-WAL tail that
+lingers for the entire window length.
+
+Signs to confirm before acting:
+
+- Bucket usage far larger than the live databases justify, concentrated in the
+  WAL prefix.
+- The plugin logs `Applying backup retention policy` every ~5 min but deletes
+  nothing — running ≠ pruning:
+
+  ```bash
+  kubectl logs <db>-1 -c plugin-barman-cloud
+  ```
+
+### Force-prune technique (pure GitOps)
+
+Temporarily lower `retentionPolicy` below the anchor backup's age so the anchor
+ages out and barman deletes it, GC-ing all WAL before the new oldest backup.
+Barman decides what is safe to delete.
+
+1. On the `ObjectStore` (or the `Cluster`'s `backup.retentionPolicy`), commit a
+   retention value shorter than the anchor's age — e.g. drop `3d`/`7d` to `2d`.
+2. Wait for the next ~5-min retention pass. The anchor ages out, barman deletes
+   it and GCs the orphaned WAL. Confirm via the `plugin-barman-cloud` logs
+   showing an actual deletion (not just "Applying backup retention policy").
+3. **Restore the intended retention value** (per
+   [Database Backup Tiers](../general/database-backup-tiers.md)) in a follow-up
+   commit.
+
+Alternatively (or additionally), take a fresh base backup to move the anchor
+forward, then let retention GC the WAL that precedes it.
+
+Worked example (2026-06-15, `cnpg-backups-bucket` on Garage S3): a newly-added
+backup config for `guac-db` + `dependency-track-db` left ~52 GiB of orphaned
+pre-first-backup WAL. Dropping retention to `2d` took the bucket
+**80 → 20 GiB** (freed ~60 GiB) in ~10 min, after which the documented retention
+was restored.
+
+> **Disk reclaim lags the S3 delete.** Garage frees the underlying blocks (and
+> thus shrinks the Proxmox backup of the Garage VM) asynchronously via its own
+> block GC, up to ~a day after the logical S3 delete.
+
+---
+
 ## Restore & PITR
 
 See [docs/techdocs/docs/cnpg-restore-playbook.md](cnpg-restore-playbook.md) for a practical restore/PITR playbook.

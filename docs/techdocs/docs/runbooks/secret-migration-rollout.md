@@ -30,8 +30,9 @@ harmlessly with `deletionPolicy: Retain`). At-rest values never change owner →
 
 - **Fix OpenBao's own OIDC self-login** — `config.sh`'s Authentik fetch returns empty (UI
   login via Authentik). Independent of app secrets; debug the cross-ns token read /
-  `authentik-server` API / `SECRET_DOMAIN` env. (OpenBao UI is still reachable via the
-  root-revoked break-glass `generate-root` if needed.)
+  `authentik-server` API / `SECRET_DOMAIN` env. (**Note:** `generate-root` is **not** a
+  break-glass path here — `sys/generate-root/attempt` returns `405 unsupported operation` on
+  this cluster; see the [runbook gotchas](external-secrets.md#gotchas).)
 - **Resolve unknowns:** `twitch-exporter` app `kustomization.yaml` does **not** list its
   `secret*.sops.yaml` (confirm how those Secrets are applied before touching). Confirm the
   `keys=[]` secrets' block-scalar formats at execution. Confirm the two on-disk

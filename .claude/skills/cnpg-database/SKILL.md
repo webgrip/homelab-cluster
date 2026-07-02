@@ -11,6 +11,7 @@ Operator in `cnpg-system`. One `Cluster` per app namespace; wire backups/monitor
 ## Add a database
 1. `kubernetes/apps/<ns>/<app>/app/database/cluster.yaml` — `kind: Cluster` (`postgresql.cnpg.io/v1`): `instances: 2`, `storage.storageClass: longhorn` (the reserved class, **not** longhorn-general), and **always `walStorage`** (own volume, same class). Both rules enforced by `guard-skills.sh`.
    - **Why walStorage:** WAL only recycles after archiving to Garage S3; if Garage is down, `pg_wal` on a shared volume fills the data disk → DB CrashLoops `no free disk space for WALs` (took Grafana + Dependency-Track down). 5Gi default, ~10Gi heavy writers (Grafana, Dependency-Track). Addable in-place (rolling restart), **never removable**.
+   - **Size with headroom — an undersized `walStorage` deadlocks the same way.** WAL fills the WAL volume → DB CrashLoops `no free disk space for WALs` (worst when Garage S3 archiving is down, so nothing drains). Adding a walStorage to an *already-backlogged* writer is worse: on first start CNPG *migrates* `pg_wal` into it, and if the backlog > `walStorage.size` the instance-manager dies at the move (`no space left on device`) **before Postgres starts** — so it can never archive out. Size it ≥ the *current* `pg_wal` backlog (measure via `kubelet_volume_stats_used_bytes`), not the steady state.
    - Operator auto-creates `<app>-db-app` / `<app>-db-rw` / `<app>-db-ro` secrets — reference via `existingSecret`/`envFromSecret`, never inline.
 2. Add `database/` to the app `kustomization.yaml`; app `ks.yaml` `dependsOn` the DB.
 
