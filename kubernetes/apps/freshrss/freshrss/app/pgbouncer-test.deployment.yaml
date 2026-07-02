@@ -1,0 +1,91 @@
+---
+# TEMPORARY validation harness (ADR-0010). Proves the PgBouncer sidecar pod spec BEFORE cutting
+# the live freshrss app over: pgbouncer starts as uid 70 (+ pod fsGroup 70 for the emptyDir), the
+# reload sidecar's SIGHUP loop survives Flux envsubst (shell vars escaped as $$), and a psql client
+# authenticates through the pooler (as freshrss) to the DB (as the rotating v-role). Isolated from
+# the freshrss app pod, so a failure here never affects the live app. DELETE after validation.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: freshrss-pgbouncer-test
+  namespace: freshrss
+  labels:
+    app.kubernetes.io/name: freshrss-pgbouncer-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: freshrss-pgbouncer-test}
+  template:
+    metadata:
+      labels: {app: freshrss-pgbouncer-test}
+    spec:
+      hostUsers: false
+      shareProcessNamespace: true
+      securityContext:
+        fsGroup: 70
+        fsGroupChangePolicy: OnRootMismatch
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      containers:
+        - name: pgbouncer
+          image: docker.io/edoburu/pgbouncer:v1.25.2-p0@sha256:7d7a27d9e90985cab5cf42256f5c13a3120baa4b055b69df37beb272b89b2340
+          command:
+            - "pgbouncer"
+            - "/etc/pgbouncer/pgbouncer.ini"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: cfg, mountPath: /etc/pgbouncer/pgbouncer.ini, subPath: pgbouncer.ini, readOnly: true}
+            - {name: userlist, mountPath: /etc/pgbouncer/userlist.txt, subPath: userlist.txt, readOnly: true}
+            - {name: backend, mountPath: /etc/pgbouncer/backend, readOnly: true}
+            - {name: run, mountPath: /var/run/pgbouncer}
+        - name: pgbouncer-reload
+          image: docker.io/edoburu/pgbouncer:v1.25.2-p0@sha256:7d7a27d9e90985cab5cf42256f5c13a3120baa4b055b69df37beb272b89b2340
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              last=""
+              while true; do
+                cur="$$(sha256sum /etc/pgbouncer/backend/databases.ini 2>/dev/null | cut -d' ' -f1 || true)"
+                if [ -n "$$cur" ] && [ "$$cur" != "$$last" ] && [ -f /var/run/pgbouncer/pgbouncer.pid ]; then
+                  if kill -HUP "$$(cat /var/run/pgbouncer/pgbouncer.pid)" 2>/dev/null; then echo "[reload] SIGHUP sent"; last="$$cur"; fi
+                fi
+                sleep 10
+              done
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: backend, mountPath: /etc/pgbouncer/backend, readOnly: true}
+            - {name: run, mountPath: /var/run/pgbouncer}
+        - name: test-client
+          image: ghcr.io/cloudnative-pg/postgresql:18.1-system-trixie
+          command:
+            - /bin/sh
+            - -c
+            - |
+              while true; do
+                psql "host=127.0.0.1 port=5432 dbname=freshrss user=freshrss sslmode=disable" -tAc "SELECT current_user" 2>&1
+                echo " <- client attempt"
+                sleep 10
+              done
+          env:
+            - name: PGPASSWORD
+              valueFrom: {secretKeyRef: {name: freshrss-pooler-app-cred, key: password}}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+      volumes:
+        - {name: cfg, configMap: {name: freshrss-pgbouncer-config}}
+        - {name: userlist, secret: {secretName: freshrss-pooler-app-cred}}
+        - {name: backend, secret: {secretName: freshrss-pgbouncer-backend}}
+        - {name: run, emptyDir: {}}
