@@ -20,7 +20,7 @@ official Forgejo Helm chart and reconciled by Flux.
 | Sessions | Stored in Postgres (`session.PROVIDER=db`) — survive pod restarts, no Redis needed |
 | Cache / queue | In-process `memory` + `level` (on the data PVC) — fine for a single replica |
 | Repo / LFS / packages | Longhorn RWO PVC `forgejo-data` (20Gi) mounted at `/data` |
-| Metrics | `/metrics` + `ServiceMonitor` labelled `release: kube-prometheus-stack` (vestigial label the labels policy still requires; a no-op for the VM operator) |
+| Metrics | `/metrics` + `ServiceMonitor` (the legacy `release: kube-prometheus-stack` label is vestigial and no longer required; VM scrapes all CRs) |
 
 Forgejo is **not** HA-capable: `replicaCount` stays at 1 with a `Recreate` strategy.
 

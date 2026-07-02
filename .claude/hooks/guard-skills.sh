@@ -43,11 +43,6 @@ if has 'apiVersion: postgresql\.cnpg\.io' && has '^kind: Cluster'; then
   has 'storageClass:[[:space:]]*longhorn-(general|rwx)' && add "[cnpg] CNPG storage should use storageClass 'longhorn' (reserved for CNPG), not longhorn-general/longhorn-rwx."
 fi
 
-# ── add-app: observability label (also flagged by the CI reviewer) ───────────
-if has '^kind: (ServiceMonitor|PrometheusRule)'; then
-  has 'release:[[:space:]]*kube-prometheus-stack' || add "[observability] $(printf '%s' "$c" | grep -m1 '^kind:' | awk '{print $2}') missing label 'release: kube-prometheus-stack' → Prometheus won't select it (silently not scraped / rule not loaded)."
-fi
-
 # ── add-app: Gateway API, not Ingress ────────────────────────────────────────
 case "$file" in *kubernetes/apps/*) has '^kind: Ingress$' && add "[ingress] use Gateway API (HTTPRoute via envoy-internal/envoy-external), not Ingress.";; esac
 

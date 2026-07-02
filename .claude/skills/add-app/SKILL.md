@@ -27,7 +27,7 @@ Default SC is `longhorn` (SSD, 2-replica). Full StorageClass table + when to use
 
 ## Observability
 - Logs: JSON to stdout/stderr → Loki automatically. Traces: OTLP/HTTP → `http://alloy-gateway.observability.svc.cluster.local:4318`.
-- Metrics/alerts: `ServiceMonitor` + `PrometheusRule`, low cardinality; add label `release: kube-prometheus-stack` — required by the guard-skills hook (legacy), scraping itself keys on VM `selectAllByDefault` (see the `victoriametrics` skill). Dashboard/alert specifics → the `grafana-dashboard` skill.
+- Metrics/alerts: `ServiceMonitor` + `PrometheusRule`, low cardinality; no `release:` label needed — VM `selectAllByDefault` scrapes every CR (see the `victoriametrics` skill; hook check retired 2026-07-02). Dashboard/alert specifics → the `grafana-dashboard` skill.
 
 ## Secrets
 **ESO + OpenBao, never a new `*.sops.yaml`** — use the `external-secrets` skill (random entropy → generate in-cluster; provided value → OpenBao). Consume via `existingSecret`/`envFromSecret`/`secretKeyRef`.

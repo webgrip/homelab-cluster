@@ -13,5 +13,5 @@ Scope: $ARGUMENTS (if empty, all open Renovate PRs).
    - **patch/minor, no values change** → low risk, safe to merge.
    - **major chart/image bump** → check the upstream CHANGELOG for breaking changes, CRD/schema migrations, and whether a multi-major jump risks a Flux rollback (see `docs/techdocs/docs/runbooks/flux.md`, "Recover a stalled HelmRelease").
    - **CRD-bearing charts** (cnpg, grafana-operator, victoria-metrics-operator, etc.) → flag CRD upgrade ordering.
-3. For anything touching observability: the `release: kube-prometheus-stack` label on ServiceMonitor/PrometheusRule is a legacy guard-hook requirement only — scraping keys on VM `selectAllByDefault`, not the label (see the `victoriametrics` skill), so a chart bump dropping it is not a scrape risk.
+3. For anything touching observability: `release: kube-prometheus-stack` labels on ServiceMonitor/PrometheusRule are fully vestigial (nothing requires them; VM `selectAllByDefault` scrapes regardless — see the `victoriametrics` skill), so a chart bump adding or dropping them is a non-event.
 4. Output a table: PR | bump | risk | recommendation | what to check. End with a suggested merge order (low-risk batch first).
