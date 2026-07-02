@@ -19,12 +19,16 @@ spec:
       tlsConfig:
         insecureSkipVerify: true
         serverName: kubernetes
-      # Ported verbatim from kube-prometheus-stack: drop ~74k high-cardinality
-      # series (apiserver write/watch histograms, etcd request histogram,
-      # feature-gate gauges, workqueue histograms) nothing here graphs/alerts.
-      # Keep apiserver_request_duration / _sli_duration (API-server SLO rules).
+      # Ported from kube-prometheus-stack: drop high-cardinality series
+      # (apiserver write/watch histograms, etcd request histogram, feature-gate
+      # gauges, workqueue histograms) nothing here graphs/alerts.
+      # apiserver_request_sli_duration_seconds_bucket added to the drop list
+      # 2026-07-02: its only consumer was kube-prom's built-in API-server SLO
+      # rule pack, which did not survive the VM swap (ADR-0038 re-evaluation).
+      # KEEP apiserver_request_duration_seconds_bucket — the cluster-health
+      # dashboard queries it.
       metricRelabelConfigs:
         - action: drop
           sourceLabels:
             - __name__
-          regex: "apiserver_request_body_size_bytes_bucket|apiserver_response_sizes_bucket|apiserver_watch_list_duration_seconds_bucket|apiserver_watch_cache_read_wait_seconds_bucket|apiserver_watch_events_sizes_bucket|etcd_request_duration_seconds_bucket|kubernetes_feature_enabled|workqueue_work_duration_seconds_bucket|workqueue_queue_duration_seconds_bucket"
+          regex: "apiserver_request_body_size_bytes_bucket|apiserver_response_sizes_bucket|apiserver_watch_list_duration_seconds_bucket|apiserver_watch_cache_read_wait_seconds_bucket|apiserver_watch_events_sizes_bucket|apiserver_request_sli_duration_seconds_bucket|etcd_request_duration_seconds_bucket|kubernetes_feature_enabled|workqueue_work_duration_seconds_bucket|workqueue_queue_duration_seconds_bucket"
