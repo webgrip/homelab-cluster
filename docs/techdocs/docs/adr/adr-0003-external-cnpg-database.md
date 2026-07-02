@@ -1,8 +1,11 @@
-# ADR-0003: External CNPG Postgres for Harbor
+# External CNPG Postgres for Harbor
 
-> Status: **Accepted** · Date: 2026-06-12 · Part of [RFC: Harbor Container Registry](../rfc/rfc-harbor-registry.md)
+* Status: accepted
+* Date: 2026-06-12
 
-## Context
+Technical Story: [RFC: Harbor Container Registry](../rfc/rfc-harbor-registry.md)
+
+## Context and Problem Statement
 
 Harbor needs a PostgreSQL database (one database in 2.x — Notary, which needed extra DBs, was
 removed). The Helm chart can bundle its own Postgres, but the cluster standard is
@@ -11,7 +14,17 @@ drills — see [CNPG Backups](../runbooks/cnpg-backups.md). Every stateful app h
 grafana, n8n, backstage, dependency-track …) runs on CNPG, and that path is governed by kyverno
 policy.
 
-## Decision
+## Considered Options
+
+* An external CNPG `Cluster` (`harbor-db`)
+* The chart-bundled Postgres
+* A hand-authored bootstrap/owner secret via ExternalSecret (the dependency-track style)
+
+## Decision Outcome
+
+Chosen option: "An external CNPG `Cluster` (`harbor-db`)", because CloudNativePG with WAL
+archiving, scheduled backups to Garage S3, and restore drills is the cluster standard — every
+stateful app here runs on it, and that path is governed by kyverno policy.
 
 Provision an external CNPG `Cluster` **`harbor-db`** (database `registry`, owner `harbor`) under
 `kubernetes/apps/harbor/harbor/app/database/`, and point Harbor at it with
@@ -23,23 +36,40 @@ Follow the **forgejo pattern with no hand-authored bootstrap secret**: the `Clus
 no password duplication for the DB. Backups use the shared `cnpg-backup` component (an
 `ObjectStore` + `ScheduledBackup` to `s3://cnpg-backups-bucket/homelab-cluster/harbor-db/`).
 
-## Alternatives considered
+### Positive Consequences
 
-- **The chart-bundled Postgres** — simplest to enable, but un-backed-up, outside CNPG governance
-  and monitoring, and a snowflake compared to every other database in the cluster.
-- **A hand-authored bootstrap/owner secret via ExternalSecret** (the dependency-track style) —
-  works, but it's an extra secret and moving part that the forgejo "let CNPG generate `-app`"
-  approach removes entirely.
+* Harbor's database inherits the cluster's backup/restore guarantees and monitoring for free.
+* One fewer secret to manage — the DB credential is CNPG-owned, not in OpenBao.
 
-## Consequences
+### Negative Consequences
 
-- Harbor's database inherits the cluster's backup/restore guarantees and monitoring for free.
-- CNPG governance is **mandatory**: the `Cluster` must set `storageClass: longhorn`, declare a
+* CNPG governance is **mandatory**: the `Cluster` must set `storageClass: longhorn`, declare a
   separate `walStorage`, and carry the `monitoring.webgrip.io/enabled: "true"` label.
-- One fewer secret to manage — the DB credential is CNPG-owned, not in OpenBao.
-- Adds a CNPG instance (plus its WAL volume) to the namespace; ties Harbor's DB backups to Garage
+* Adds a CNPG instance (plus its WAL volume) to the namespace; ties Harbor's DB backups to Garage
   like every other CNPG app.
 
-## Status log
+## Pros and Cons of the Options
 
-- 2026-06-12 — Accepted; `harbor-db` deployed with the Harbor stack.
+### An external CNPG `Cluster` (`harbor-db`)
+
+* Good, because the database inherits the cluster's backup/restore guarantees and monitoring for
+  free.
+* Good, because the forgejo "let CNPG generate `-app`" approach leaves no secret to manage — the
+  DB credential is CNPG-owned, not in OpenBao.
+* Bad, because it adds a CNPG instance (plus its WAL volume) to the namespace.
+
+### The chart-bundled Postgres
+
+* Good, because simplest to enable.
+* Bad, because un-backed-up, outside CNPG governance and monitoring, and a snowflake compared to
+  every other database in the cluster.
+
+### A hand-authored bootstrap/owner secret via ExternalSecret (the dependency-track style)
+
+* Good, because it works.
+* Bad, because it's an extra secret and moving part that the forgejo "let CNPG generate `-app`"
+  approach removes entirely.
+
+## Links
+
+* 2026-06-12 — accepted; `harbor-db` deployed with the Harbor stack

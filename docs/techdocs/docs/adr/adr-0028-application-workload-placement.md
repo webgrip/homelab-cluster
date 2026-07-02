@@ -1,8 +1,11 @@
-# ADR-0028: Pin application workloads to the worker pool (hard)
+# Pin application workloads to the worker pool (hard)
 
-> Status: **Accepted** · Date: 2026-06-19 · Part of [RFC: Node taxonomy & storage placement](../rfc/rfc-node-taxonomy-and-storage-placement.md) · Amended 2026-06-21 (see Status log)
+* Status: accepted
+* Date: 2026-07-02
 
-## Context
+Technical Story: [RFC: Node taxonomy & storage placement](../rfc/rfc-node-taxonomy-and-storage-placement.md)
+
+## Context and Problem Statement
 
 With the node taxonomy in place ([ADR-0025](adr-0025-node-taxonomy.md)) and Longhorn confined to
 the workers ([ADR-0026](adr-0026-confine-longhorn-to-workers.md)), placement must be deliberate.
@@ -14,7 +17,19 @@ if the workers are gone, apps go `Pending` and wait. An earlier *soft* `workload
 preference proved non-deterministic (image-locality scoring kept apps on soyos with worker capacity
 free).
 
-## Decision
+## Considered Options
+
+* A hard worker-pool node affinity on all application workloads
+* Soft preference (`preferred…`) to the workers
+* Allow fallback to soyos under pressure
+* Taint the soyos instead of affinity on apps
+
+## Decision Outcome
+
+Chosen option: "A hard worker-pool node affinity on all application workloads", because an earlier
+soft preference proved non-deterministic (image-locality scoring kept apps on soyos with worker
+capacity free) and the owner's call is that apps are **not** worth keeping up by spilling onto the
+soyos — if the workers are gone, apps go `Pending` and wait.
 
 All **application** workloads — stateless and stateful, including all CNPG databases — get a
 **hard** node affinity to the worker pool:
@@ -40,7 +55,7 @@ and CNPG `Cluster`s; an app opts in with one line in its `app/kustomization.yaml
 post-render patch conflicts (own `postRenderers`) or deadlocks helm-controller on an RWO volume
 move (freshrss, n8n, searxng) set the same pin via native `nodeSelector` inline. forgejo and
 openbao are plain worker-pinned like every other app — the original gitops-critical soyo exception
-was retired (see Status log).
+was retired (see Links).
 
 ### Placement reference (every workload resolves to one of these)
 
@@ -53,47 +68,66 @@ was retired (see Status log).
 
 ### Migration traps (learned 2026-06-19 — [incident](../incidents/2026-06-19-node-taxonomy-migration-storage-churn.md))
 
-- The PV-exclusion blocker is **StorageClass-specific, keyed on `volumeBindingMode`** — not all
+* The PV-exclusion blocker is **StorageClass-specific, keyed on `volumeBindingMode`** — not all
   volumes. `longhorn` (`Immediate`) PVs carry **no** `nodeAffinity` → those apps pin now, no
   eviction required. `longhorn-general` (`WaitForFirstConsumer`) PVs bake in the storage nodes
   present at first bind and never refresh — they **excluded `worker-1`** (what left n8n `Pending`);
   reaching a newer worker requires migrating the volume to an `Immediate` class
   ([ADR-0029](adr-0029-storageclass-consolidation.md)). **Eviction does not help** — it cannot
   rewrite the immutable PV `nodeAffinity`.
-- A single-replica RWO **Deployment** that the pin relocates needs `strategy: Recreate`, else a
+* A single-replica RWO **Deployment** that the pin relocates needs `strategy: Recreate`, else a
   Multi-Attach rollout deadlock.
-- A `register-with-taints` taint (the old `dedicated=fringe`) applies only at node registration;
+* A `register-with-taints` taint (the old `dedicated=fringe`) applies only at node registration;
   removing it takes a re-registration (reboot) or a manual `kubectl taint … -`.
 
-## Alternatives considered
+### Positive Consequences
 
-- **Soft preference (`preferred…`) to the workers** — tried and rejected: non-deterministic (image
-  locality kept apps on soyos with capacity free), and a soft rule lets a stateful pod start a soyo
-  Longhorn engine, defeating ADR-0026.
-- **Allow fallback to soyos under pressure** — rejected by the owner: a worker outage would dump
-  app load onto the 12 GiB soyos, the OOM-cascade condition.
-- **Taint the soyos instead of affinity on apps** — rejected ([ADR-0025](adr-0025-node-taxonomy.md)):
-  a taint blocks the infra that must run on the control plane and forces tolerations onto it.
-
-## Consequences
-
-- Apps are deterministically on the workers and the soyos host no Longhorn engine — completing
+* Apps are deterministically on the workers and the soyos host no Longhorn engine — completing
   ADR-0026's etcd-protection goal.
-- Losing both workers pauses the apps (`Pending`) rather than melting the soyos — the conscious
-  trade; recovery infra keeps running unconstrained.
-- Placement policy lives in one component + this ADR, not scattered per-manifest; retiring the
+* Placement policy lives in one component + this ADR, not scattered per-manifest; retiring the
   fringe taint/nodeSelector scheme net-simplified the tree.
-- Rollback: drop the component include (or the inline `nodeSelector`) per app; the scheduler
+* Rollback: drop the component include (or the inline `nodeSelector`) per app; the scheduler
   reverts to free placement.
 
-## Status log
+### Negative Consequences
 
-- 2026-06-19 — Proposed with the RFC; the `worker-pool` component + placement model landed the same
-  day (038c0717).
-- 2026-06-19 — Sequencing refined after the n8n canary: roll out by `volumeBindingMode`, not
-  statefulness; RWO `strategy: Recreate` trap recorded (28cf8f9e, 0498d512).
-- 2026-06-20 — freshrss/n8n/searxng pinned via native `nodeSelector` where the post-render patch
-  deadlocks on RWO moves (686271cb).
-- 2026-06-21 — The gitops-critical exception (forgejo + openbao permitted on a designated soyo with
-  `longhorn-gitops` replicas) retired with the ADR-0026 update; both are plain worker-pinned.
-- 2026-07-02 — Accepted (status corrected in ADR audit; implemented and in effect since 2026-06-19).
+* Losing both workers pauses the apps (`Pending`) rather than melting the soyos — the conscious
+  trade; recovery infra keeps running unconstrained.
+
+## Pros and Cons of the Options
+
+### A hard worker-pool node affinity on all application workloads
+
+* Good, because placement is deterministic, and a stateful pod can never make a soyo run a
+  Longhorn engine — completing [ADR-0026](adr-0026-confine-longhorn-to-workers.md)'s
+  etcd-protection goal.
+* Bad, because if both workers are unavailable the pod is `Pending`, never on a soyo — the
+  conscious trade.
+
+### Soft preference (`preferred…`) to the workers
+
+* Bad, because tried and rejected: non-deterministic (image locality kept apps on soyos with
+  capacity free), and a soft rule lets a stateful pod start a soyo Longhorn engine, defeating
+  ADR-0026.
+
+### Allow fallback to soyos under pressure
+
+* Bad, because rejected by the owner: a worker outage would dump app load onto the 12 GiB soyos,
+  the OOM-cascade condition.
+
+### Taint the soyos instead of affinity on apps
+
+* Bad, because rejected ([ADR-0025](adr-0025-node-taxonomy.md)): a taint blocks the infra that
+  must run on the control plane and forces tolerations onto it.
+
+## Links
+
+* 2026-06-19 — proposed with the RFC; the `worker-pool` component + placement model landed the
+  same day (038c0717)
+* 2026-06-19 — sequencing refined after the n8n canary: roll out by `volumeBindingMode`, not
+  statefulness; RWO `strategy: Recreate` trap recorded (28cf8f9e, 0498d512)
+* 2026-06-20 — freshrss/n8n/searxng pinned via native `nodeSelector` where the post-render patch
+  deadlocks on RWO moves (686271cb)
+* 2026-06-21 — the gitops-critical exception (forgejo + openbao permitted on a designated soyo
+  with `longhorn-gitops` replicas) retired with the ADR-0026 update; both are plain worker-pinned
+* 2026-07-02 — accepted (status corrected in ADR audit; implemented and in effect since 2026-06-19)

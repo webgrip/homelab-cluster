@@ -1,8 +1,11 @@
-# ADR-0030: Standardize the Grafana threshold alert-rule shape + lint it
+# Standardize the Grafana threshold alert-rule shape + lint it
 
-> Status: **Accepted** · Date: 2026-06-21 · Part of [RFC: Observability alerting reliability](../rfc/rfc-observability-alerting-reliability.md)
+* Status: accepted
+* Date: 2026-07-02
 
-## Context
+Technical Story: [RFC: Observability alerting reliability](../rfc/rfc-observability-alerting-reliability.md)
+
+## Context and Problem Statement
 
 Every threshold SLO rule (16 at the time) under
 [`kubernetes/apps/observability/grafana/app/alerting/`](../../../../kubernetes/apps/observability/grafana/app/alerting/)
@@ -28,7 +31,19 @@ a throwaway rule created via the read-only-by-default Grafana MCP with `expressi
 reported `health: ok`. The value is the **bare refId string** (`query`) — not `$query`, and not
 the UI's default `A`-style naming.
 
-## Decision
+## Considered Options
+
+* Canonical `expression:` shape + a lint guard in CI
+* kubeconform / CRD schema validation
+* A PyYAML-based validator
+* A Kyverno admission policy on the CR
+
+## Decision Outcome
+
+Chosen option: "Canonical `expression:` shape + a lint guard in CI", because the minimal
+reversible fix is the one `expression:` line per rule, and nothing else validates SSE model
+internals — the operator CRD types the model as a preserve-unknown-fields object, so kubeconform
+and `flux-local build` render broken rules without complaint.
 
 1. **Canonical shape.** A Grafana threshold rule's SSE node sets `type: threshold` **and**
    `expression: <input-refId>` (here `query`), alongside its `conditions[]` evaluator; the
@@ -44,28 +59,47 @@ the UI's default `A`-style naming.
    [`.github/workflows/e2e.yaml`](../../../../.github/workflows/e2e.yaml) and
    [`scripts/run-flux-local-test.sh`](../../../../scripts/run-flux-local-test.sh).
 
-## Alternatives considered
+### Positive Consequences
 
-- **kubeconform / CRD schema validation** — cannot see inside the preserve-unknown-fields `model`
-  blob; it passed the broken files for 3 weeks. Insufficient.
-- **A PyYAML-based validator** — more robust parsing, but PyYAML is absent from bare CI `python3`
-  and the house convention is deliberately dependency-free. Rejected.
-- **A Kyverno admission policy on the CR** — server-side, post-commit, and parsing nested model
-  arrays in a ClusterPolicy is heavy for a one-field invariant. Overkill, too late in the loop.
-
-## Consequences
-
-- The SLO rules evaluate again; validation was a rule-health re-query via the Grafana MCP, not
+* The SLO rules evaluate again; validation was a rule-health re-query via the Grafana MCP, not
   just render success.
-- A future rule repeating the omission fails the build with the rule uid and line number — a
+* A future rule repeating the omission fails the build with the rule uid and line number — a
   silent, weeks-long outage becomes a red CI check.
-- The lint is a text heuristic keyed on consistent indentation; it covers the
+
+### Negative Consequences
+
+* The lint is a text heuristic keyed on consistent indentation; it covers the
   threshold/math/reduce shapes this repo uses. A radically different hand-authored layout could
   evade it — acceptable for a shift-left guard aimed at the exact regression we hit.
 
-## Status log
+## Pros and Cons of the Options
 
-- 2026-06-21 — Accepted; per-rule fix + lint guard shipped (217b512c).
-- 2026-07-02 — Unaffected by the [ADR-0038](adr-0038-victoriametrics-metrics-backend.md)
+### Canonical `expression:` shape + a lint guard in CI
+
+* Good, because the fix is minimal and reversible — one `expression:` line per rule.
+* Good, because the validator is stdlib-only, no YAML deps, so it runs in bare CI `python3`.
+* Bad, because the lint is a text heuristic keyed on consistent indentation — a radically
+  different hand-authored layout could evade it.
+
+### kubeconform / CRD schema validation
+
+* Bad, because it cannot see inside the preserve-unknown-fields `model` blob; it passed the
+  broken files for 3 weeks. Insufficient.
+
+### A PyYAML-based validator
+
+* Good, because more robust parsing.
+* Bad, because PyYAML is absent from bare CI `python3` and the house convention is deliberately
+  dependency-free.
+
+### A Kyverno admission policy on the CR
+
+* Bad, because server-side, post-commit, and parsing nested model arrays in a ClusterPolicy is
+  heavy for a one-field invariant. Overkill, too late in the loop.
+
+## Links
+
+* 2026-06-21 — accepted; per-rule fix + lint guard shipped (217b512c)
+* 2026-07-02 — unaffected by the [ADR-0038](adr-0038-victoriametrics-metrics-backend.md)
   metrics-backend swap: the rules evaluate in Grafana's SSE engine against the `prometheus`-uid
-  datasource (now fronting VictoriaMetrics); the lint remains wired in CI.
+  datasource (now fronting VictoriaMetrics); the lint remains wired in CI

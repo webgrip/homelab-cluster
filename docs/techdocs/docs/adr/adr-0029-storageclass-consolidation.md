@@ -1,8 +1,11 @@
-# ADR-0029: Consolidate Longhorn StorageClasses to a minimal, intent-named set
+# Consolidate Longhorn StorageClasses to a minimal, intent-named set
 
-> Status: **Proposed** · Date: 2026-06-19 · Part of [RFC: Node taxonomy & storage placement](../rfc/rfc-node-taxonomy-and-storage-placement.md) · Amended 2026-06-21 (see Status log)
+* Status: proposed
+* Date: 2026-07-02
 
-## Context
+Technical Story: [RFC: Node taxonomy & storage placement](../rfc/rfc-node-taxonomy-and-storage-placement.md)
+
+## Context and Problem Statement
 
 The cluster had **ten** Longhorn StorageClasses, only two carrying data: `longhorn` (the chart's
 default, **3 replicas** — the CNPG databases + observability StatefulSets) and `longhorn-general`
@@ -13,7 +16,19 @@ cluster: with two storage nodes and hard anti-affinity
 ([ADR-0026](adr-0026-confine-longhorn-to-workers.md)), **2 is the ceiling anyway**. The remaining
 classes (`longhorn-hot`, `-hdd`, `-cache`, `-static`, `-rwx`, `-snapshot`) had zero bound volumes.
 
-## Decision
+## Considered Options
+
+* Collapse to a minimal, intent-named set at the 2-replica ceiling (staged)
+* Keep both `longhorn` and `longhorn-general`
+* Rename `longhorn-general` → `longhorn-hot` as the keeper
+* Force-replace the `longhorn` SC to 2 replicas immediately (`upgrade.force`)
+
+## Decision Outcome
+
+Chosen option: "Collapse to a minimal, intent-named set at the 2-replica ceiling (staged)",
+because the two data-carrying classes are functionally identical split-brain differing only in
+replica count, 2 is the ceiling anyway with two storage nodes and hard anti-affinity, and the
+convergence touches the immutable `longhorn` SC — so it is staged rather than forced.
 
 Collapse to a minimal, GitOps-owned, intent-named set at the 2-replica ceiling:
 
@@ -30,9 +45,9 @@ Collapse to a minimal, GitOps-owned, intent-named set at the 2-replica ceiling:
 
 **Staged execution** — the convergence touches the immutable `longhorn` SC, so it is deliberate:
 
-- **Stage 1 (done 2026-06-19, safe, no data impact):** `defaultSettings.defaultReplicaCount: "2"`;
+* **Stage 1 (done 2026-06-19, safe, no data impact):** `defaultSettings.defaultReplicaCount: "2"`;
   the empty redundant classes deleted; existing 3-replica volumes were reduced to 2 at runtime.
-- **Stage 2 (open):** converge the chart's `longhorn` SC to 2 replicas + the SSD `diskSelector` by
+* **Stage 2 (open):** converge the chart's `longhorn` SC to 2 replicas + the SSD `diskSelector` by
   **recreating** it — `numberOfReplicas` is an immutable StorageClass parameter, so it's
   delete+create. A StorageClass is metadata: bound PVCs are unaffected; only a sub-second
   new-provision gap, done in a window. Then retire `longhorn-general` by repointing its references
@@ -43,31 +58,49 @@ As of 2026-07-02 Stage 2 has not run: the chart-created `longhorn` SC still carr
 [HelmRelease](../../../../kubernetes/apps/longhorn-system/longhorn/app/helmrelease.yaml) comment)
 and `longhorn-general` is still referenced by ~18 manifests.
 
-## Alternatives considered
+### Positive Consequences
 
-- **Keep both `longhorn` and `longhorn-general`** — that *is* the split-brain to remove.
-- **Rename `longhorn-general` → `longhorn-hot` as the keeper** — churn for no gain; forces
-  migrating the app volumes off a good name; the conventional `longhorn` default is the natural
-  keeper.
-- **Force-replace the `longhorn` SC to 2 replicas immediately (`upgrade.force`)** — an
-  immutable-resource force-replace on the Longhorn HelmRelease during an active rebuild is exactly
-  the kind of storage change this cluster has been burned by; deferred to a window (Stage 2).
-
-## Consequences
-
-- One obvious default at 2 replicas, matching the storage ceiling; new volumes are consistent.
-- Existing bound PVCs are unaffected at every step (PVCs cache their class; PVs reference the
+* One obvious default at 2 replicas, matching the storage ceiling; new volumes are consistent.
+* Existing bound PVCs are unaffected at every step (PVCs cache their class; PVs reference the
   provisioner). `longhorn-general` lingers as deprecated until its references migrate.
-- Until Stage 2 lands, the split-brain persists in reduced form: manifests naming `longhorn` still
-  provision 3-replica volumes.
-- Rollback: Stage 1 is a settings value; Stage 2's recreate is reversed by recreating the previous
+* Rollback: Stage 1 is a settings value; Stage 2's recreate is reversed by recreating the previous
   StorageClass definition.
 
-## Status log
+### Negative Consequences
 
-- 2026-06-19 — Proposed; Stage 1 executed in the same commit (6fa8b38c): `defaultReplicaCount: "2"`
-  plus deletion of the redundant empty classes.
-- 2026-06-21 — `longhorn-gitops` (the planned 3-replica forgejo/openbao exception) retired unbuilt
-  with the [ADR-0026](adr-0026-confine-longhorn-to-workers.md) update; dropped from the target set.
-- 2026-07-02 — Stage 2 still open: the chart `longhorn` SC remains 3-replica and `longhorn-general`
-  is still referenced (~18 manifests).
+* Until Stage 2 lands, the split-brain persists in reduced form: manifests naming `longhorn` still
+  provision 3-replica volumes.
+
+## Pros and Cons of the Options
+
+### Collapse to a minimal, intent-named set at the 2-replica ceiling (staged)
+
+* Good, because Stage 1 is safe (no data impact) and existing bound PVCs are unaffected at every
+  step.
+* Good, because the conventional `longhorn` default is the natural keeper — no migrating the app
+  volumes off a good name.
+* Bad, because until Stage 2 lands, the split-brain persists in reduced form.
+
+### Keep both `longhorn` and `longhorn-general`
+
+* Bad, because that *is* the split-brain to remove.
+
+### Rename `longhorn-general` → `longhorn-hot` as the keeper
+
+* Bad, because churn for no gain; it forces migrating the app volumes off a good name; the
+  conventional `longhorn` default is the natural keeper.
+
+### Force-replace the `longhorn` SC to 2 replicas immediately (`upgrade.force`)
+
+* Bad, because an immutable-resource force-replace on the Longhorn HelmRelease during an active
+  rebuild is exactly the kind of storage change this cluster has been burned by; deferred to a
+  window (Stage 2).
+
+## Links
+
+* 2026-06-19 — proposed; Stage 1 executed in the same commit (6fa8b38c): `defaultReplicaCount: "2"`
+  plus deletion of the redundant empty classes
+* 2026-06-21 — `longhorn-gitops` (the planned 3-replica forgejo/openbao exception) retired unbuilt
+  with the [ADR-0026](adr-0026-confine-longhorn-to-workers.md) update; dropped from the target set
+* 2026-07-02 — Stage 2 still open: the chart `longhorn` SC remains 3-replica and `longhorn-general`
+  is still referenced (~18 manifests)

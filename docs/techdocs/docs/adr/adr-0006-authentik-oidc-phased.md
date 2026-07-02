@@ -1,8 +1,11 @@
-# ADR-0006: Authenticate Harbor via Authentik OIDC, layered in a second phase
+# Authenticate Harbor via Authentik OIDC, layered in a second phase
 
-> Status: **Accepted** · Date: 2026-06-12 · Part of [RFC: Harbor Container Registry](../rfc/rfc-harbor-registry.md)
+* Status: accepted
+* Date: 2026-06-12
 
-## Context
+Technical Story: [RFC: Harbor Container Registry](../rfc/rfc-harbor-registry.md)
+
+## Context and Problem Statement
 
 The cluster's SSO is [Authentik](../general/authentik.md), wired to apps via blueprint-driven OIDC
 providers (grafana, n8n, backstage, forgejo). Harbor supports OIDC, but with a wrinkle: **Harbor
@@ -11,7 +14,17 @@ runtime (UI/API), or declaratively via the chart's `core.configureUserSettings` 
 before the matching Authentik application exists would crash-loop the core, and Harbor still needs
 a working login the moment it boots (for the admin and for robot/CLI flows).
 
-## Decision
+## Considered Options
+
+* A two-phase rollout (local `db_auth` first, OIDC second)
+* Local accounts only
+* Wiring OIDC in a single phase at install
+
+## Decision Outcome
+
+Chosen option: "A two-phase rollout (local `db_auth` first, OIDC second)", because Harbor needs a
+working login the moment it boots, and wiring OIDC before the matching Authentik application
+exists would crash-loop the core.
 
 Roll OIDC out in **two phases** (both are now live):
 
@@ -25,26 +38,42 @@ Roll OIDC out in **two phases** (both are now live):
    fragment, surfaced via the `harbor-oidc-values` ExternalSecret and merged into the HelmRelease
    with `valuesFrom … optional: true`.
 
-## Alternatives considered
+### Positive Consequences
 
-- **Local accounts only** — simplest, no blueprint, but no SSO and a separate identity silo
-  divorced from the cluster's Authentik groups.
-- **Wiring OIDC in a single phase at install** — fewer commits, but risks a first-boot loop against
-  a not-yet-existent Authentik application and couples the registry's availability to SSO setup
-  ordering.
-
-## Consequences
-
-- Harbor is usable from first boot; SSO is added without a chicken-and-egg crash-loop.
-- `optional: true` on the OIDC `valuesFrom` means the core starts even if `secret/harbor/oidc` is
+* Harbor is usable from first boot; SSO is added without a chicken-and-egg crash-loop.
+* `optional: true` on the OIDC `valuesFrom` means the core starts even if `secret/harbor/oidc` is
   absent — Phase 2 is genuinely additive and reversible.
-- **`configureUserSettings` is re-applied on every core restart** — it is the source of truth, so
+* Keeps a **local admin fallback** for break-glass if Authentik is unavailable.
+
+### Negative Consequences
+
+* **`configureUserSettings` is re-applied on every core restart** — it is the source of truth, so
   auth settings changed in the UI get reverted. The fragment is kept minimal and version-controlled
   (the literal domain, not `${SECRET_DOMAIN}`, since ESO does not do build-time substitution).
-- Keeps a **local admin fallback** for break-glass if Authentik is unavailable.
 
-## Status log
+## Pros and Cons of the Options
 
-- 2026-06-12 — Accepted; deployed with Phase 1 (`db_auth`) live at first boot.
-- 2026-06-12 — Phase 2 implemented the same day: blueprint `36-oidc-harbor.yaml` +
-  `harbor-oidc-values` ExternalSecret landed (fully GitOps client credential, no CLI ceremony).
+### A two-phase rollout (local `db_auth` first, OIDC second)
+
+* Good, because Harbor is usable from first boot and SSO lands without a chicken-and-egg
+  crash-loop.
+* Good, because Phase 2 is genuinely additive and reversible (`optional: true` on the OIDC
+  `valuesFrom`).
+* Bad, because it takes more commits than wiring OIDC in a single phase.
+
+### Local accounts only
+
+* Good, because simplest — no blueprint.
+* Bad, because no SSO and a separate identity silo divorced from the cluster's Authentik groups.
+
+### Wiring OIDC in a single phase at install
+
+* Good, because fewer commits.
+* Bad, because it risks a first-boot loop against a not-yet-existent Authentik application.
+* Bad, because it couples the registry's availability to SSO setup ordering.
+
+## Links
+
+* 2026-06-12 — accepted; deployed with Phase 1 (`db_auth`) live at first boot
+* 2026-06-12 — Phase 2 implemented the same day: blueprint `36-oidc-harbor.yaml` +
+  `harbor-oidc-values` ExternalSecret landed (fully GitOps client credential, no CLI ceremony)

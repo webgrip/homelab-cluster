@@ -1,8 +1,11 @@
-# ADR-0008: Rootless CI image builds (drop privileged Docker-in-Docker)
+# Rootless CI image builds (drop privileged Docker-in-Docker)
 
-> Status: **Proposed** · Date: 2026-06-12 · Part of [RFC: Security Hardening](../rfc/rfc-security-hardening.md) · Amended 2026-06-18 (see Status log)
+* Status: proposed
+* Date: 2026-07-02
 
-## Context
+Technical Story: [RFC: Security Hardening](../rfc/rfc-security-hardening.md)
+
+## Context and Problem Statement
 
 The Forgejo CI runner (`kubernetes/apps/forgejo/forgejo-runner/`, a KEDA `ScaledJob` pinned to the
 worker pool — `node.webgrip.io/pool: worker`, [ADR-0025](adr-0025-node-taxonomy.md)) builds images
@@ -10,7 +13,24 @@ through a **privileged Docker-in-Docker sidecar** (`docker:dind`,
 `securityContext.privileged: true`). A privileged container shares the host kernel with full
 capabilities, and CI runs untrusted-ish code by definition — the cluster's **only** privileged
 workload sits in the one place that executes arbitrary repo code. The runner itself is proven on
-real jobs (see Status log); what remains is removing the privilege from how it builds.
+real jobs (see Links); what remains is removing the privilege from how it builds.
+
+## Considered Options
+
+* Topology C — shared rootless BuildKit service
+* Topology A — privileged DinD sidecar
+* Topology B — rootless BuildKit sidecar
+* ARC's no-privileged "Kubernetes mode"
+* Keep DinD, sandbox the node (gVisor / Kata runtime class)
+* Sysbox
+* Kaniko only
+* Keep privileged DinD
+
+## Decision Outcome
+
+Chosen option: "Topology C — shared rootless BuildKit service", because it removes
+`privileged: true` from CI entirely while keeping a warm build cache and reaching the engine as a
+Service — sequenced behind proving the runner on topology A first.
 
 "Runner + sidecar" hides **three** distinct responsibilities; conflating them is what produced the
 `localhost:2376` networking confusion:
@@ -26,11 +46,9 @@ The rule that falls out: **privilege and secrets never share a container.** The 
 toolchain) holds no privilege. Today's DinD already gets this half-right — the privileged daemon is
 not the container holding the Harbor token. The end-state removes privilege entirely.
 
-## Decision
-
 Two moves, **sequenced** — prove the runner before hardening how it builds:
 
-1. **Prove the runner on topology A, host-mode** *(done 2026-06-18 — see Status log)*: the agent
+1. **Prove the runner on topology A, host-mode** *(done 2026-06-18 — see Links)*: the agent
    runs inside the toolchain image (`github-runner`: docker CLI + buildx), the `dockerd` sidecar
    shares the pod netns (`DOCKER_HOST=tcp://localhost:2376` just works), an init container injects
    the static `forgejo-runner` binary, and a narrow Kyverno exception covers the one privileged
@@ -44,7 +62,25 @@ Two moves, **sequenced** — prove the runner before hardening how it builds:
 The ScaledJob today still runs topology A — a privileged `docker:dind` sidecar
 (`forgejo-runner/app/scaledjob.yaml`). This ADR stays **Proposed** until step 2 exists.
 
-## Alternatives considered
+### Positive Consequences
+
+* Removes the only privileged container in CI; a compromised build can no longer trivially escape
+  to the node.
+* Registry-backed BuildKit cache to Harbor still works — rootless BuildKit has first-class cache
+  export.
+* The Kyverno/PSA hardening exceptions on the `forgejo` namespace can be narrowed or removed, and
+  the engine becomes a Service reached by DNS — retiring the job/sidecar netns coupling and the
+  `localhost:2376` foot-gun.
+
+### Negative Consequences
+
+* Build invocations change (`docker build` → `buildctl`/`docker buildx` against rootless
+  `buildkitd`, or a Kaniko step), absorbed by the
+  [Forge migration](../blogs/2026-06-12-bringing-the-forge-home.md) workflow rewrites; builds
+  needing genuinely privileged features (loop devices, some `RUN --mount` flavors) may need a
+  narrow exception.
+
+## Pros and Cons of the Options
 
 **Topology** — where the build engine lives:
 
@@ -64,40 +100,37 @@ it has no container runtime, so it cannot build images at all.
 
 **Engine technology** (orthogonal to topology):
 
-- **Keep DinD, sandbox the node** (gVisor / Kata runtime class) — strong isolation, but a new
-  runtime to operate and slower builds.
-- **Sysbox** — lets DinD run unprivileged, but another node-level component on Talos, which
-  favors a minimal immutable host.
-- **Kaniko only** — daemonless, but stumbles on some multi-stage/cache patterns and is effectively
-  in maintenance mode; fallback, not default.
-- **Keep privileged DinD** — an unbounded privileged escape surface in the exact component that
-  runs repo-controlled code is the worst place to keep one.
+### Keep DinD, sandbox the node (gVisor / Kata runtime class)
 
-## Consequences
+* Good, because strong isolation.
+* Bad, because a new runtime to operate and slower builds.
 
-- Removes the only privileged container in CI; a compromised build can no longer trivially escape
-  to the node.
-- Build invocations change (`docker build` → `buildctl`/`docker buildx` against rootless
-  `buildkitd`, or a Kaniko step), absorbed by the
-  [Forge migration](../blogs/2026-06-12-bringing-the-forge-home.md) workflow rewrites; builds
-  needing genuinely privileged features (loop devices, some `RUN --mount` flavors) may need a
-  narrow exception.
-- Registry-backed BuildKit cache to Harbor still works — rootless BuildKit has first-class cache
-  export.
-- The Kyverno/PSA hardening exceptions on the `forgejo` namespace can be narrowed or removed, and
-  the engine becomes a Service reached by DNS — retiring the job/sidecar netns coupling and the
-  `localhost:2376` foot-gun.
+### Sysbox
 
-## Status log
+* Good, because it lets DinD run unprivileged.
+* Bad, because another node-level component on Talos, which favors a minimal immutable host.
 
-- 2026-06-12 — Proposed; the ScaledJob carried an explicit `NOTE` to validate the `one-job`
-  invocation end-to-end before any hardening.
-- 2026-06-18 — Step 1 done: the runner is **proven on real jobs** — it registered, scheduled, and
+### Kaniko only
+
+* Good, because daemonless.
+* Bad, because it stumbles on some multi-stage/cache patterns and is effectively in maintenance
+  mode — fallback, not default.
+
+### Keep privileged DinD
+
+* Bad, because an unbounded privileged escape surface in the exact component that runs
+  repo-controlled code is the worst place to keep one.
+
+## Links
+
+* 2026-06-12 — proposed; the ScaledJob carried an explicit `NOTE` to validate the `one-job`
+  invocation end-to-end before any hardening
+* 2026-06-18 — step 1 done: the runner is **proven on real jobs** — it registered, scheduled, and
   ran `webgrip/infrastructure` workflows end to end on topology A (privileged DinD, host-mode),
   after clearing four sequential gates: a Kyverno PolicyException waiving only
   `privileged-containers`, a `pod-security.kubernetes.io/enforce: privileged` pin on the `forgejo`
   namespace, an idempotent `forgejo-runner-provisioner` minting a real runner identity (the stored
   `uuid` was malformed), and prepending the toolchain's `externals/node20/bin` to `PATH`. A warm
   pool (`minReplicaCount` + `one-job --wait`) was added. Operations + the full failure table:
-  [Forgejo runner runbook](../runbooks/forgejo-runner.md).
-- 2026-07-02 — Still topology A in production; step 2 (rootless topology C) not started.
+  [Forgejo runner runbook](../runbooks/forgejo-runner.md)
+* 2026-07-02 — still topology A in production; step 2 (rootless topology C) not started

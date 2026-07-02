@@ -1,8 +1,11 @@
-# ADR-0027: Longhorn hot/cold storage tiers (SSD/HDD), configured from node annotations
+# Longhorn hot/cold storage tiers (SSD/HDD), configured from node annotations
 
-> Status: **Proposed** · Date: 2026-06-19 · Part of [RFC: Node taxonomy & storage placement](../rfc/rfc-node-taxonomy-and-storage-placement.md) · Amended 2026-06-21 (see Status log)
+* Status: proposed
+* Date: 2026-07-01
 
-## Context
+Technical Story: [RFC: Node taxonomy & storage placement](../rfc/rfc-node-taxonomy-and-storage-placement.md)
+
+## Context and Problem Statement
 
 With Longhorn confined to the two workers ([ADR-0026](adr-0026-confine-longhorn-to-workers.md)),
 fringe's 236 GiB SSD is the binding capacity constraint — hard anti-affinity means it holds a full
@@ -15,17 +18,29 @@ volume split across SSD + HDD runs at HDD speed, and Postgres/WAL on a spinning 
 fsync-stall failure class we are escaping. Its correct role is a **cold tier** for bulk, low-IOPS
 data, which relieves the SSD bottleneck.
 
-## Decision
+## Considered Options
+
+* Storage tiers via Longhorn disk tags, driven from node annotations
+* `nodes.longhorn.io` CRs committed to Git
+* One tier (SSD only), ignore the HDD
+* Put everything on the 1 TB HDD
+
+## Decision Outcome
+
+Chosen option: "Storage tiers via Longhorn disk tags, driven from node annotations", because the
+annotation + `createDefaultDisk…` path is the supported declarative entrypoint — disk topology
+lives in Git, not the UI — and a cold tier on the HDD relieves the SSD bottleneck without putting
+hot data at HDD speed.
 
 Define explicit storage tiers via Longhorn disk tags, and drive **all** Longhorn node/disk
 configuration declaratively from Kubernetes node annotations set in Talos machine config (with
 `createDefaultDiskLabeledNodes: true` in the Longhorn HelmRelease):
 
-- `node.longhorn.io/default-disks-config` defines each node's disk path(s) + tag(s);
+* `node.longhorn.io/default-disks-config` defines each node's disk path(s) + tag(s);
   `node.longhorn.io/default-node-tags` sets node tags — disk topology lives in Git, not the UI.
-- Disk tags: `hot` (worker-1 SSD, fringe SSD) and `cold` (fringe HDD, `/var/lib/longhorn-hdd`,
+* Disk tags: `hot` (worker-1 SSD, fringe SSD) and `cold` (fringe HDD, `/var/lib/longhorn-hdd`,
   addressed by stable `by-id`/mount path, not `/dev/sdX`).
-- The soyos get **no** disk config → no schedulable Longhorn disk → ADR-0026's end-state is
+* The soyos get **no** disk config → no schedulable Longhorn disk → ADR-0026's end-state is
   config, not a manual eviction that can drift back.
 
 The hot tier is the default `longhorn` class itself ([ADR-0029](adr-0029-storageclass-consolidation.md));
@@ -44,32 +59,47 @@ committed but **inert** — its `cold` disk doesn't exist: the fringe HDD still 
 The wipe is deferred to the supervised dedicated-disk step gated by
 [ADR-0037](adr-0037-storage-engine-gated-on-dedicated-disks.md).
 
-## Alternatives considered
+### Positive Consequences
 
-- **`nodes.longhorn.io` CRs committed to Git** — Longhorn's node CRs mix declared intent with live
-  status and reconcile awkwardly via Flux; the annotation + `createDefaultDisk…` path is the
-  supported declarative entrypoint.
-- **One tier (SSD only), ignore the HDD** — throws away the only relief valve for fringe's 236 GiB
-  SSD and leaves the 1 TB disk idle.
-- **Put everything on the 1 TB HDD** — HDD-speed Postgres/WAL is the fsync-stall failure class this
-  RFC exists to remove.
-
-## Consequences
-
-- The 1 TB HDD does useful work as a cold tier, relieving the real constraint (the SSD); disk/tag
+* The 1 TB HDD does useful work as a cold tier, relieving the real constraint (the SSD); disk/tag
   topology becomes declarative, reproducible on reinstall, and reviewable — closing the "tags set
   by hand in the UI" gap.
-- More classes to keep straight; misfiling a hot volume onto `longhorn-cold` would be slow —
-  mitigated by the default class being the hot tier, so cold is an explicit, reviewed choice.
-- Rollback: remove the annotations and set `createDefaultDiskLabeledNodes: false` — which is the
+* Rollback: remove the annotations and set `createDefaultDiskLabeledNodes: false` — which is the
   still-current state.
 
-## Status log
+### Negative Consequences
 
-- 2026-06-19 — Proposed, as Phase C of the node-taxonomy RFC.
-- 2026-06-21 — The `gitops-critical` soyo disk + `longhorn-gitops` StorageClass retired unbuilt with
-  the [ADR-0026](adr-0026-confine-longhorn-to-workers.md) update; the soyos get no Longhorn disk
-  config at all.
-- 2026-07-01 — The fringe HDD wipe (the cold tier's prerequisite) deferred to the supervised disk
+* More classes to keep straight; misfiling a hot volume onto `longhorn-cold` would be slow —
+  mitigated by the default class being the hot tier, so cold is an explicit, reviewed choice.
+
+## Pros and Cons of the Options
+
+### Storage tiers via Longhorn disk tags, driven from node annotations
+
+* Good, because the annotation + `createDefaultDisk…` path is the supported declarative
+  entrypoint — disk/tag topology lives in Git, reproducible on reinstall and reviewable.
+* Bad, because more classes to keep straight.
+
+### `nodes.longhorn.io` CRs committed to Git
+
+* Bad, because Longhorn's node CRs mix declared intent with live status and reconcile awkwardly
+  via Flux.
+
+### One tier (SSD only), ignore the HDD
+
+* Bad, because it throws away the only relief valve for fringe's 236 GiB SSD and leaves the 1 TB
+  disk idle.
+
+### Put everything on the 1 TB HDD
+
+* Bad, because HDD-speed Postgres/WAL is the fsync-stall failure class this RFC exists to remove.
+
+## Links
+
+* 2026-06-19 — proposed, as Phase C of the node-taxonomy RFC
+* 2026-06-21 — the `gitops-critical` soyo disk + `longhorn-gitops` StorageClass retired unbuilt
+  with the [ADR-0026](adr-0026-confine-longhorn-to-workers.md) update; the soyos get no Longhorn
+  disk config at all
+* 2026-07-01 — the fringe HDD wipe (the cold tier's prerequisite) deferred to the supervised disk
   step of [ADR-0037](adr-0037-storage-engine-gated-on-dedicated-disks.md); `longhorn-cold` remains
-  inert and the annotation mechanism remains unbuilt.
+  inert and the annotation mechanism remains unbuilt

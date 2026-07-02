@@ -1,8 +1,11 @@
-# ADR-0034: `require-approved-registries` stays Audit
+# `require-approved-registries` stays Audit
 
-> Status: **Accepted** · Date: 2026-06-21 · Part of [RFC: Kyverno audit→enforce hardening](../rfc/rfc-kyverno-audit-enforce-hardening.md)
+* Status: accepted
+* Date: 2026-07-02
 
-## Context
+Technical Story: [RFC: Kyverno audit→enforce hardening](../rfc/rfc-kyverno-audit-enforce-hardening.md)
+
+## Context and Problem Statement
 
 `require-approved-registries` (in
 [`image-supply-chain-audit.yaml`](../../../../kubernetes/apps/kyverno/policies/app/image-supply-chain-audit.yaml))
@@ -20,7 +23,19 @@ What remains unbuilt is the admission-side path below. This decision is distinct
 `require-image-digest` (digest-pinning), which is achievable without a Harbor SPOF and is promoted
 on its own track.
 
-## Decision
+## Considered Options
+
+* Stay Audit indefinitely; enforce (if ever) only via a two-phase mutate-then-scope path
+* Enforce now and accept breakage
+* Hand-edit every manifest to Harbor proxy paths, then enforce
+* Drop the rule entirely
+
+## Decision Outcome
+
+Chosen option: "Stay Audit indefinitely; enforce (if ever) only via a two-phase mutate-then-scope
+path", because flipping to Enforce cluster-wide is a guaranteed full-cluster admission outage,
+even a *satisfiable* Enforce makes Harbor a pull-time single point of failure, and Audit keeps the
+drift signal at zero operational risk.
 
 `require-approved-registries` **stays Audit indefinitely** as a drift/visibility signal,
 explicitly excluded from the enforce campaign. If it is ever enforced, only via a two-phase path —
@@ -32,27 +47,44 @@ the plan of record, never a flip:
    rule to Enforce via `validationFailureActionOverrides` in one low-risk namespace, watch, then
    expand.
 
-## Alternatives considered
+### Positive Consequences
 
-- **Enforce now and accept breakage** — a self-inflicted cluster outage. Rejected.
-- **Hand-edit every manifest to Harbor proxy paths, then enforce** — a large ongoing maintenance
-  burden, and still a pull-time Harbor SPOF at admission. Rejected.
-- **Drop the rule entirely** — loses the signal of how far from registry-sovereign the cluster is;
-  Audit keeps that signal at zero operational risk. Rejected.
-
-## Consequences
-
-- Registry-approval stays advisory; the cluster gains no hard Harbor pull-time dependency at
+* Registry-approval stays advisory; the cluster gains no hard Harbor pull-time dependency at
   admission.
-- The FAILs persist in PolicyReports as intended drift signal; `slo-kyverno-fail-total`'s threshold
+
+### Negative Consequences
+
+* The FAILs persist in PolicyReports as intended drift signal; `slo-kyverno-fail-total`'s threshold
   and the campaign burn-down account for them.
-- Enforcing later is contingent on the mutate-rewrite policy and proven Harbor availability, not on
+* Enforcing later is contingent on the mutate-rewrite policy and proven Harbor availability, not on
   this campaign.
 
-## Status log
+## Pros and Cons of the Options
 
-- 2026-06-21 — Proposed; the policy runs with `validationFailureAction: Audit`.
-- 2026-06-23 — The mirroring prerequisite shipped: Harbor pull-through proxy cache + Talos-layer
-  mirror accepted (ADR-0016/0017); the mutate-rewrite admission path remains unbuilt.
-- 2026-07-02 — Accepted (status corrected in ADR audit): in effect as decided — the rule still runs
-  Audit.
+### Stay Audit indefinitely; enforce (if ever) only via a two-phase mutate-then-scope path
+
+* Good, because the cluster gains no hard Harbor pull-time dependency at admission.
+* Good, because Audit keeps the registry-sovereignty drift signal at zero operational risk.
+* Bad, because the FAILs persist in PolicyReports; `slo-kyverno-fail-total`'s threshold and the
+  campaign burn-down account for them.
+
+### Enforce now and accept breakage
+
+* Bad, because a self-inflicted cluster outage.
+
+### Hand-edit every manifest to Harbor proxy paths, then enforce
+
+* Bad, because a large ongoing maintenance burden, and still a pull-time Harbor SPOF at admission.
+
+### Drop the rule entirely
+
+* Bad, because it loses the signal of how far from registry-sovereign the cluster is; Audit keeps
+  that signal at zero operational risk.
+
+## Links
+
+* 2026-06-21 — proposed; the policy runs with `validationFailureAction: Audit`
+* 2026-06-23 — the mirroring prerequisite shipped: Harbor pull-through proxy cache + Talos-layer
+  mirror accepted (ADR-0016/0017); the mutate-rewrite admission path remains unbuilt
+* 2026-07-02 — accepted (status corrected in ADR audit): in effect as decided — the rule still runs
+  Audit

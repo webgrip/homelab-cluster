@@ -1,8 +1,11 @@
-# ADR-0009: Secret rotation model — vault write + Reloader, dynamic creds as the endgame
+# Secret rotation model — vault write + Reloader, dynamic creds as the endgame
 
-> Status: **Accepted** · Date: 2026-06-12 · Part of [RFC: Security Hardening](../rfc/rfc-security-hardening.md)
+* Status: accepted
+* Date: 2026-07-01
 
-## Context
+Technical Story: [RFC: Security Hardening](../rfc/rfc-security-hardening.md)
+
+## Context and Problem Statement
 
 With the [SOPS → ESO/OpenBao migration](../blogs/2026-06-12-the-long-goodbye-to-sops.md) done,
 secrets are values in OpenBao surfaced as Kubernetes Secrets by External Secrets — which changes
@@ -12,7 +15,18 @@ per-secret folklore. The enabling piece is already deployed: **Stakater Reloader
 **opt-in per workload** via the `reloader.stakater.com/auto: "true"` annotation, so coverage is a
 property of each app, not automatic.
 
-## Decision
+## Considered Options
+
+* A single vault write + ESO refresh + opt-in Reloader
+* Reloader `--auto-reload-all`
+* Scheduled blanket rotation (cron)
+* Leave it undocumented
+
+## Decision Outcome
+
+Chosen option: "A single vault write + ESO refresh + opt-in Reloader", because one write at the
+source propagates automatically with no human ceremony, while explicit per-workload opt-in keeps
+at-rest-key consumers out of the restart path.
 
 Rotation is a **single vault write**, propagated automatically:
 
@@ -31,31 +45,49 @@ Rotation is a **single vault write**, propagated automatically:
 Dependency-Track `secret.key`, app `*_ENCRYPTION_KEY`s): regenerating them corrupts data already
 encrypted with the old key. Their consumers should **not** carry the auto-reload annotation.
 
-## Alternatives considered
+### Positive Consequences
 
-- **Reloader `--auto-reload-all`** — simpler coverage, but blunt: it would restart apps on
-  *at-rest-key* changes too, and turn any ESO blip into a fleet-wide restart. Explicit opt-in wins.
-- **Scheduled blanket rotation** (cron) — security theater for static secrets with no signal of
-  compromise; churns pods for no gain. Dynamic creds (short TTL by design) are the principled
-  version of "rotate often".
-- **Leave it undocumented** — the point of the migration was to remove the human from the secret
-  loop; an undocumented rotation path puts them right back in it.
-
-## Consequences
-
-- Rotation is an operation, not a ceremony — no `sops --encrypt`, no commit, no manual restart.
-- Propagation latency is bounded by `refreshInterval`, **tunable per secret** (ExternalSecrets
+* Rotation is an operation, not a ceremony — no `sops --encrypt`, no commit, no manual restart.
+* Propagation latency is bounded by `refreshInterval`, **tunable per secret** (ExternalSecrets
   default to the conservative 1h); the urgent path bypasses it entirely.
-- Reloader coverage is a **checklist item**, not a guarantee — a rotated value behind an
+
+### Negative Consequences
+
+* Reloader coverage is a **checklist item**, not a guarantee — a rotated value behind an
   un-annotated workload sits unused until the next restart. The at-rest exclusion makes this a
   feature, not only a gap.
-- This model rotates **static** credentials well but never makes them *short-lived*. The endgame —
+* This model rotates **static** credentials well but never makes them *short-lived*. The endgame —
   no long-lived DB credentials at all — is now piloted:
   [ADR-0010](adr-0010-openbao-dynamic-postgres-credentials.md) mints TTL-bounded Postgres creds
   from OpenBao's `database` engine.
 
-## Status log
+## Pros and Cons of the Options
 
-- 2026-06-12 — Accepted.
-- 2026-07-01 — The dynamic-credential endgame left the RFC stage: ADR-0010 accepted, freshrss
-  pilot under way.
+### A single vault write + ESO refresh + opt-in Reloader
+
+* Good, because rotation needs no `sops --encrypt`, no commit, and no manual restart.
+* Good, because explicit opt-in keeps at-rest-key consumers out of the restart path.
+* Bad, because coverage is a per-workload checklist item — a rotated value behind an un-annotated
+  workload sits unused until the next restart.
+
+### Reloader `--auto-reload-all`
+
+* Good, because simpler coverage.
+* Bad, because blunt: it would restart apps on *at-rest-key* changes too, and turn any ESO blip
+  into a fleet-wide restart.
+
+### Scheduled blanket rotation (cron)
+
+* Bad, because security theater for static secrets with no signal of compromise; it churns pods
+  for no gain — dynamic creds (short TTL by design) are the principled version of "rotate often".
+
+### Leave it undocumented
+
+* Bad, because the point of the migration was to remove the human from the secret loop; an
+  undocumented rotation path puts them right back in it.
+
+## Links
+
+* 2026-06-12 — accepted
+* 2026-07-01 — the dynamic-credential endgame left the RFC stage:
+  [ADR-0010](adr-0010-openbao-dynamic-postgres-credentials.md) accepted, freshrss pilot under way

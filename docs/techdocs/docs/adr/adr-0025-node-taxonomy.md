@@ -1,8 +1,11 @@
-# ADR-0025: Capability-based node taxonomy (labels), retiring the `fringe` taint/`nodegroup` scheme
+# Capability-based node taxonomy (labels), retiring the `fringe` taint/`nodegroup` scheme
 
-> Status: **Accepted** · Date: 2026-06-19 · Part of [RFC: Node taxonomy & storage placement](../rfc/rfc-node-taxonomy-and-storage-placement.md)
+* Status: accepted
+* Date: 2026-06-21
 
-## Context
+Technical Story: [RFC: Node taxonomy & storage placement](../rfc/rfc-node-taxonomy-and-storage-placement.md)
+
+## Context and Problem Statement
 
 Node placement had grown incoherent, keyed off facts we don't want to depend on: a
 `dedicated=fringe:NoSchedule` **taint** with ~11 apps carrying matching tolerations plus a
@@ -14,7 +17,19 @@ standard label for capability tiers, and Kubernetes reserves the `kubernetes.io/
 prefixes, directing custom semantics to **domain-prefixed** labels. Taint-vs-label reasoning:
 [RFC](../rfc/rfc-node-taxonomy-and-storage-placement.md).
 
-## Decision
+## Considered Options
+
+* Domain-prefixed capability labels via Talos `machine.nodeLabels`
+* `node-role.kubernetes.io/{worker,storage}`
+* Keep `nodegroup`/`workload-tier`
+* Taint the soyos to keep apps off
+
+## Decision Outcome
+
+Chosen option: "Domain-prefixed capability labels via Talos `machine.nodeLabels`", because
+placement should key on **what a node can do** — not its identity or current role — and Kubernetes
+reserves the `kubernetes.io/`/`k8s.io/` prefixes, directing custom semantics to domain-prefixed
+labels.
 
 Adopt a **domain-prefixed capability taxonomy**, set via Talos `machine.nodeLabels`:
 
@@ -42,32 +57,48 @@ This is the umbrella for the placement family:
 workloads to the worker pool, and [ADR-0029](adr-0029-storageclass-consolidation.md) consolidates
 the StorageClasses.
 
-## Alternatives considered
+### Positive Consequences
 
-- **`node-role.kubernetes.io/{worker,storage}`** — re-introduces the role-coupling being removed,
-  and the prefix is conventionally cluster-managed; a ROLES-column nicety can be added later
-  without changing the scheme.
-- **Keep `nodegroup`/`workload-tier`** — ad hoc, not capability-shaped, and the `fringe` taint
-  forces tolerations everywhere; exactly the complexity being removed.
-- **Taint the soyos to keep apps off** — blocks the infra that legitimately runs on control-planes
-  and forces tolerations on it; hard worker-pool affinity achieves the same without that blast
-  radius.
-
-## Consequences
-
-- Placement is self-describing and role-independent: a new node is onboarded by labelling its
+* Placement is self-describing and role-independent: a new node is onboarded by labelling its
   capabilities, and workloads it qualifies for follow automatically.
-- The `fringe` taint and per-app tolerations are gone — fringe is "just a worker" (high-CPU + the
+* The `fringe` taint and per-app tolerations are gone — fringe is "just a worker" (high-CPU + the
   HDD cold disk); both workers are interchangeable hosts for apps.
-- Labels live in Talos machine config (GitOps); applying them is a no-reboot `apply-node`. A node
+* Labels live in Talos machine config (GitOps); applying them is a no-reboot `apply-node`. A node
   with no `node.webgrip.io/*` labels is a misconfiguration a future guard could lint for.
-- The Talos patch **filenames** still carry legacy names (`talos/patches/worker/fringe-dedicated.yaml`,
+
+### Negative Consequences
+
+* The Talos patch **filenames** still carry legacy names (`talos/patches/worker/fringe-dedicated.yaml`,
   `talos/patches/controller/nodegroup-soyo.yaml`); their contents are migrated — cosmetic naming
   debt only.
 
-## Status log
+## Pros and Cons of the Options
 
-- 2026-06-19 — Proposed; capability labels applied via Talos patches the same day, and the
-  `dedicated=fringe:NoSchedule` taint + `nodegroup` labels retired.
-- 2026-06-21 — Transitional `workload-tier` and straggler `nodegroup` labels retired; fully
-  implemented (labels live on all 5 nodes, zero taints) — Accepted.
+### Domain-prefixed capability labels via Talos `machine.nodeLabels`
+
+* Good, because placement becomes self-describing and role-independent — a new node is onboarded
+  by labelling its capabilities, and workloads it qualifies for follow automatically.
+* Good, because the `fringe` taint and per-app tolerations go away — both workers become
+  interchangeable hosts for apps.
+
+### `node-role.kubernetes.io/{worker,storage}`
+
+* Bad, because it re-introduces the role-coupling being removed, and the prefix is conventionally
+  cluster-managed; a ROLES-column nicety can be added later without changing the scheme.
+
+### Keep `nodegroup`/`workload-tier`
+
+* Bad, because ad hoc, not capability-shaped, and the `fringe` taint forces tolerations
+  everywhere; exactly the complexity being removed.
+
+### Taint the soyos to keep apps off
+
+* Bad, because it blocks the infra that legitimately runs on control-planes and forces tolerations
+  on it; hard worker-pool affinity achieves the same without that blast radius.
+
+## Links
+
+* 2026-06-19 — proposed; capability labels applied via Talos patches the same day, and the
+  `dedicated=fringe:NoSchedule` taint + `nodegroup` labels retired
+* 2026-06-21 — transitional `workload-tier` and straggler `nodegroup` labels retired; fully
+  implemented (labels live on all 5 nodes, zero taints) — accepted

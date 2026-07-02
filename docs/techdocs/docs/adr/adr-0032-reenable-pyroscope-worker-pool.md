@@ -1,8 +1,9 @@
-# ADR-0032: Re-enable Pyroscope, hard-pinned to the worker pool
+# Re-enable Pyroscope, hard-pinned to the worker pool
 
-> Status: **Accepted** · Date: 2026-06-21 · Supersedes the 2026-06-03 pyroscope suspension
+* Status: accepted
+* Date: 2026-07-02
 
-## Context
+## Context and Problem Statement
 
 Pyroscope was suspended on 2026-06-03 after its sustained high-throughput profiling writes (a
 20 GiB Longhorn volume) contended with etcd WAL fsync on the soyo control planes' shared Talos
@@ -20,7 +21,19 @@ hostnames). Since the suspension, the taxonomy + `worker-pool` component landed
 second worker (`worker-1`) exists, and the etcd heartbeat/election tuning (500 ms / 5000 ms) is
 applied.
 
-## Decision
+## Considered Options
+
+* Re-enable via the shared `worker-pool` component (hard worker-pool affinity)
+* Native `nodeSelector`/inline hard affinity on the HelmRelease
+* Keep it suspended indefinitely
+* Pin to a single host (`fringe-workstation`)
+
+## Decision Outcome
+
+Chosen option: "Re-enable via the shared `worker-pool` component (hard worker-pool affinity)",
+because a hard pin to the worker pool fully isolates pyroscope's I/O from etcd — it physically
+cannot land on a soyo disk again — while the shared component centralizes the pinning logic
+instead of duplicating it inline.
 
 Re-enable pyroscope with placement enforced by
 [`components/placement/worker-pool`](../../../../kubernetes/components/placement/worker-pool/kustomization.yaml):
@@ -35,29 +48,51 @@ suspended; the defrag + un-suspend is the operator's final step. **Acceptance:**
 on a worker (never `soyo-*`) and `etcd_disk_wal_fsync_duration_seconds` p99 stays < 500 ms with
 leader changes ~0/h.
 
-## Alternatives considered
+### Positive Consequences
 
-- **Native `nodeSelector`/inline hard affinity on the HelmRelease** — duplicates the pinning logic
-  the `worker-pool` component centralizes, with no postRenderers conflict here. Rejected.
-- **Keep it suspended indefinitely** — loses continuous profiling while worker placement already
-  eliminates the etcd risk; the defrag is independent etcd hygiene. Rejected.
-- **Pin to a single host (`fringe-workstation`)** — the suspend-note's original suggestion; wastes
-  the second worker and re-introduces a hostname dependency the taxonomy exists to avoid. Rejected.
-
-## Consequences
-
-- Pyroscope's I/O is fully isolated from etcd — it physically cannot land on a soyo disk again, so
+* Pyroscope's I/O is fully isolated from etcd — it physically cannot land on a soyo disk again, so
   the 2026-06-03 failure class cannot recur from this workload.
-- Pyroscope goes `Pending` if both workers are down. Accepted per ADR-0028: observability, not on
+* Rollback: re-set `suspend: true`; the volume is disposable profiling data.
+
+### Negative Consequences
+
+* Pyroscope goes `Pending` if both workers are down. Accepted per ADR-0028: observability, not on
   the recovery-critical path.
-- A fresh 20 GiB Longhorn volume is provisioned on re-enable; land the un-suspend commit spaced
+* A fresh 20 GiB Longhorn volume is provisioned on re-enable; land the un-suspend commit spaced
   away from other rollout-heavy commits (the batched-rollout storage-collapse failure mode).
-- Does **not** close the long-term etcd durability gap (a dedicated local SSD per soyo for
+* Does **not** close the long-term etcd durability gap (a dedicated local SSD per soyo for
   `/var/lib/etcd`); that remains a separate open item.
-- Rollback: re-set `suspend: true`; the volume is disposable profiling data.
 
-## Status log
+## Pros and Cons of the Options
 
-- 2026-06-21 — Accepted; placement fix shipped with the Kustomization still suspended (51a8d323).
-- 2026-07-02 — Still suspended by design (`suspend: true` in ks.yaml): the sole remaining gate is
-  the owner-run etcd defrag.
+### Re-enable via the shared `worker-pool` component (hard worker-pool affinity)
+
+* Good, because pyroscope's I/O is fully isolated from etcd — the 2026-06-03 failure class cannot
+  recur from this workload.
+* Good, because pyroscope has no pre-existing `postRenderers`, so the shared component applies
+  cleanly.
+* Bad, because pyroscope goes `Pending` if both workers are down — accepted per ADR-0028.
+
+### Native `nodeSelector`/inline hard affinity on the HelmRelease
+
+* Bad, because it duplicates the pinning logic the `worker-pool` component centralizes, with no
+  postRenderers conflict here.
+
+### Keep it suspended indefinitely
+
+* Bad, because it loses continuous profiling while worker placement already eliminates the etcd
+  risk; the defrag is independent etcd hygiene.
+
+### Pin to a single host (`fringe-workstation`)
+
+The suspend-note's original suggestion.
+
+* Bad, because it wastes the second worker and re-introduces a hostname dependency the taxonomy
+  exists to avoid.
+
+## Links
+
+* 2026-06-21 — accepted; placement fix shipped with the Kustomization still suspended (51a8d323)
+* 2026-07-02 — still suspended by design (`suspend: true` in ks.yaml): the sole remaining gate is
+  the owner-run etcd defrag
+* Supersedes the 2026-06-03 pyroscope suspension

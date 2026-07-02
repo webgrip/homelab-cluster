@@ -1,8 +1,11 @@
-# ADR-0016: Adopt Harbor pull-through proxy cache for third-party images
+# Adopt Harbor pull-through proxy cache for third-party images
 
-> Status: **Accepted** · Date: 2026-06-13 · Part of [RFC: Harbor Pull-Through Proxy Cache](../rfc/rfc-harbor-proxy-cache.md)
+* Status: accepted
+* Date: 2026-06-23
 
-## Context
+Technical Story: [RFC: Harbor Pull-Through Proxy Cache](../rfc/rfc-harbor-proxy-cache.md)
+
+## Context and Problem Statement
 
 The cluster pulled every third-party image (≈64 at decision time, mostly `docker.io` + `ghcr.io`)
 straight from public registries. That exposes it to Docker Hub's anonymous rate limit (a rollout
@@ -14,7 +17,19 @@ already deployed ([ADR-0001](adr-0001-adopt-harbor.md)) and supports **proxy-cac
 project bound to an upstream registry that pulls through and caches on first request, with Trivy
 scanning and Garage-backed durability.
 
-## Decision
+## Considered Options
+
+* Harbor proxy-cache projects for all six upstreams
+* Spegel alone
+* A standalone pull-through registry (`registry:2`, `zot`)
+* Docker Hub creds as imagePullSecrets everywhere
+* Rewriting all image references to `harbor.…`
+
+## Decision Outcome
+
+Chosen option: "Harbor proxy-cache projects for all six upstreams", because Harbor is already
+deployed and its proxy-cache projects deliver a rate-limit-absorbing cache of record with Trivy
+scanning at ingress and Garage-backed durability — no new component to run and secure.
 
 Run **public, anonymous-pull Harbor proxy-cache projects for all six upstreams** used in the tree:
 `dockerhub` (docker.io), `ghcr` (ghcr.io), `quay` (quay.io), `gcrmirror` (mirror.gcr.io), `k8s`
@@ -25,30 +40,21 @@ cache and *which* registries; how pulls are routed to it is
 [ADR-0017](adr-0017-registry-mirror-talos-spegel.md), and how the projects are provisioned in GitOps
 is [ADR-0018](adr-0018-harbor-config-idempotent-job.md).
 
-## Alternatives considered
+### Positive Consequences
 
-- **Spegel alone** — a best-effort peer cache, not a rate-limit-absorbing source of record; it
-  composes *in front of* the proxy, it doesn't replace it.
-- **A standalone pull-through registry (`registry:2`, `zot`)** — another component to run and
-  secure; Harbor already exists, scans, and has RBAC/observability.
-- **Docker Hub creds as imagePullSecrets everywhere** — raises the limit but adds no cache, no scan,
-  no outage resilience, and sprays a credential across every namespace.
-- **Rewriting all image references to `harbor.…`** — hard-codes the SPOF into every manifest with no
-  fallback; the mirror layer ([ADR-0017](adr-0017-registry-mirror-talos-spegel.md)) routes
-  transparently and reversibly.
-
-## Consequences
-
-- Docker Hub rate limits are absorbed by an authenticated endpoint + local cache; a cache of record
+* Docker Hub rate limits are absorbed by an authenticated endpoint + local cache; a cache of record
   survives upstream outages for any image pulled at least once; Trivy scans third-party images at
   ingress.
-- **Harbor enters the pull path** — a new local dependency sitting on Garage S3 (the
+
+### Negative Consequences
+
+* **Harbor enters the pull path** — a new local dependency sitting on Garage S3 (the
   [WAL-SPOF](../blogs/2026-06-13-harbor-as-a-pull-through-cache.md) component). Acceptable only
   because the mirror layer falls back to upstream when Harbor is down
   ([ADR-0017](adr-0017-registry-mirror-talos-spegel.md)); the fallback drill was a release gate and
   passed at cutover.
-- Storage growth in the Garage `harbor` bucket; proxy-cache retention/TTL policies bound it.
-- **Helm charts narrow the fail-open stance (2026-06-23).** Image pulls fail open via the containerd
+* Storage growth in the Garage `harbor` bucket; proxy-cache retention/TTL policies bound it.
+* **Helm charts narrow the fail-open stance (2026-06-23).** Image pulls fail open via the containerd
   mirror, but Flux's source-controller fetches OCI *charts* directly (no containerd, no Talos
   mirror), so routing them through Harbor required rewriting the `OCIRepository` `url:` to
   `harbor.${SECRET_DOMAIN}/<project>/…`. Unlike images this is **not** fail-open: while Harbor is
@@ -62,11 +68,41 @@ is [ADR-0018](adr-0018-harbor-config-idempotent-job.md).
   through the proxy path is complete (the `ghcr.io`-keyed packageRules were widened to also match
   the `harbor.${SECRET_DOMAIN}/ghcr` path).
 
-## Status log
+## Pros and Cons of the Options
 
-- 2026-06-13 — Proposed, scoped to two projects (`dockerhub`, `ghcr`).
-- 2026-06-23 — Accepted after the Phase-1 cutover: mirror applied on all 5 nodes
+### Harbor proxy-cache projects for all six upstreams
+
+* Good, because Harbor already exists, scans, and has RBAC/observability — pull-through caching
+  with Trivy scanning and Garage-backed durability lands on infrastructure already operated.
+* Bad, because Harbor enters the pull path — acceptable only with the upstream fallback of
+  [ADR-0017](adr-0017-registry-mirror-talos-spegel.md).
+
+### Spegel alone
+
+* Bad, because it is a best-effort peer cache, not a rate-limit-absorbing source of record; it
+  composes *in front of* the proxy, it doesn't replace it.
+
+### A standalone pull-through registry (`registry:2`, `zot`)
+
+* Bad, because it is another component to run and secure; Harbor already exists, scans, and has
+  RBAC/observability.
+
+### Docker Hub creds as imagePullSecrets everywhere
+
+* Good, because it raises the rate limit.
+* Bad, because it adds no cache, no scan, no outage resilience, and sprays a credential across
+  every namespace.
+
+### Rewriting all image references to `harbor.…`
+
+* Bad, because it hard-codes the SPOF into every manifest with no fallback; the mirror layer
+  ([ADR-0017](adr-0017-registry-mirror-talos-spegel.md)) routes transparently and reversibly.
+
+## Links
+
+* 2026-06-13 — proposed, scoped to two projects (`dockerhub`, `ghcr`)
+* 2026-06-23 — accepted after the Phase-1 cutover: mirror applied on all 5 nodes
   ([ADR-0017](adr-0017-registry-mirror-talos-spegel.md)), fallback drill passed (pulls succeed with
-  Harbor scaled to zero), coverage expanded to all six upstreams.
-- 2026-06-23 — Non-bootstrap OCI Helm charts rewritten through the proxy (`595ee402`); see the
-  fail-open-narrowing consequence above.
+  Harbor scaled to zero), coverage expanded to all six upstreams
+* 2026-06-23 — non-bootstrap OCI Helm charts rewritten through the proxy (`595ee402`); see the
+  fail-open-narrowing consequence above

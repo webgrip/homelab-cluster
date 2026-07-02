@@ -1,8 +1,11 @@
-# ADR-0020: Fan Forgejo out to Codeberg as a second off-site mirror (native push-mirror, CronJob-reconciled)
+# Fan Forgejo out to Codeberg as a second off-site mirror (native push-mirror, CronJob-reconciled)
 
-> Status: **Proposed** · Date: 2026-06-17 · Part of [RFC: Cutting the GitOps umbilical](../rfc/rfc-flux-forgejo-source.md)
+* Status: proposed
+* Date: 2026-06-17
 
-## Context
+Technical Story: [RFC: Cutting the GitOps umbilical](../rfc/rfc-flux-forgejo-source.md)
+
+## Context and Problem Statement
 
 [ADR-0015](adr-0015-external-bootstrap-fallback-source.md) names Codeberg as a planned *second*
 off-site mirror so the disaster-recovery copy isn't itself a single host; this ADR pins down the
@@ -18,7 +21,19 @@ Sequencing: this must **not** run before the Flux-source cutover
 repos are read-only pull-mirrors of GitHub, so mirroring them onward only launders GitHub's content
 sideways. **Decided now, built after cutover.**
 
-## Decision
+## Considered Options
+
+* Forgejo native push-mirrors to Codeberg, reconciled by a Tier-2 CronJob
+* Tier-1 do-once Job
+* Extend the `gitea-mirror` app
+* A `forgesync`-style external sync tool
+
+## Decision Outcome
+
+Chosen option: "Forgejo native push-mirrors to Codeberg, reconciled by a Tier-2 CronJob", because
+Codeberg runs Forgejo — one script drives both ends through the same REST API — the native
+push-mirror is the built-in mechanism with visible sync status, and the self-drifting repo set
+needs a converging reconcile to keep coverage self-healing.
 
 Add a third leg to the redundancy ring: **Forgejo → Codeberg via Forgejo's native push-mirror, for
 every repo in the `webgrip` org**, kept converged by a **Tier-2 reconcile CronJob**
@@ -32,34 +47,53 @@ the same script serves as a Tier-1 one-shot if recurring healing proves unnecess
 last-sync/health is alerted (ADR-0015's "keep the push-mirror honest"), so a silent mirror failure
 doesn't rot the DR copy.
 
-## Alternatives considered
+### Positive Consequences
 
-- **Tier-1 do-once Job** — new repos and post-restore wipes wouldn't self-heal without a manual
-  re-run; exactly the self-drift that argues for Tier 2 (promotion/demotion stays free — same
-  script).
-- **Extend the `gitea-mirror` app** — inbound-only, wrong direction; a stateful web UI where a
-  stateless reconcile suffices.
-- **A `forgesync`-style external sync tool** — more to operate than the forge's built-in
-  push-mirror with visible status.
-
-## Consequences
-
-- The DR ring stops being single-host: a total cluster loss *and* a GitHub takedown still leave a
+* The DR ring stops being single-host: a total cluster loss *and* a GitHub takedown still leave a
   current copy on Codeberg (plus the nightly CNPG→Garage `forgejo-db` backup).
-- More write paths to keep honest — three counting the GitHub leg: a failed push-mirror silently
+* Reversible: delete the CronJob + Secret to stop new mirrors; existing push-mirror rows are
+  removed per-repo via API/UI. Nothing here is load-bearing for the running cluster.
+
+### Negative Consequences
+
+* More write paths to keep honest — three counting the GitHub leg: a failed push-mirror silently
   rots its copy, hence the alert is part of the decision, not an afterthought.
-- **Codeberg's usage policy is a real constraint, not a footnote.** Codeberg is a volunteer-run
+* **Codeberg's usage policy is a real constraint, not a footnote.** Codeberg is a volunteer-run
   community host that explicitly is *not* a free backup/mirror service; bulk push-mirrors of private
   or inactive repos can run afoul of its terms. The "all webgrip org repos" scope must therefore be
   filtered to repos appropriate to host there (public, of genuine community interest), **or** the
   off-site target should instead be the **second self-hosted Forgejo** the RFC also envisions
   (ToS-clean, fully under our control). **Resolve this before build.**
-- Private repos can't be public Codeberg mirrors — exclude them or push to private repos (same
+* Private repos can't be public Codeberg mirrors — exclude them or push to private repos (same
   policy note).
-- Reversible: delete the CronJob + Secret to stop new mirrors; existing push-mirror rows are
-  removed per-repo via API/UI. Nothing here is load-bearing for the running cluster.
 
-## Status log
+## Pros and Cons of the Options
 
-- 2026-06-17 — Proposed. Deliberately unbuilt until after the [ADR-0014](adr-0014-flux-source-forgejo.md)
-  cutover; the Codeberg ToS question must be resolved before build.
+### Forgejo native push-mirrors to Codeberg, reconciled by a Tier-2 CronJob
+
+* Good, because one script drives both ends through the same REST API, and the native push-mirror
+  exposes sync status in the UI/API.
+* Good, because a Tier-2 reconcile self-heals the self-drifting repo set (new repos, post-restore
+  push-mirror-row wipes).
+* Bad, because Codeberg's usage policy constrains the "all webgrip org repos" scope — to be
+  resolved before build.
+
+### Tier-1 do-once Job
+
+* Bad, because new repos and post-restore wipes wouldn't self-heal without a manual re-run;
+  exactly the self-drift that argues for Tier 2 (promotion/demotion stays free — same script).
+
+### Extend the `gitea-mirror` app
+
+* Bad, because it is inbound-only, the wrong direction; a stateful web UI where a stateless
+  reconcile suffices.
+
+### A `forgesync`-style external sync tool
+
+* Bad, because it is more to operate than the forge's built-in push-mirror with visible status.
+
+## Links
+
+* 2026-06-17 — proposed; deliberately unbuilt until after the
+  [ADR-0014](adr-0014-flux-source-forgejo.md) cutover; the Codeberg ToS question must be resolved
+  before build
