@@ -15,7 +15,16 @@ fail. The registry also holds sensitive artifacts that don't need to be internet
 
 Expose Harbor through an `HTTPRoute` on **`envoy-internal`** at `harbor.${SECRET_DOMAIN}` — LAN
 and in-cluster access only. TLS terminates at the gateway's wildcard `*.${SECRET_DOMAIN}`
-certificate, so Harbor runs `expose.type: clusterIP` with its own TLS disabled.
+certificate, so Harbor runs `expose.type: clusterIP` with its own TLS disabled. Lives in
+`kubernetes/apps/harbor/harbor/app/`.
+
+## Alternatives considered
+
+- **`envoy-external` (public)** — enables push/pull from anywhere, but the Cloudflare 100 MB body
+  cap breaks realistic image pushes, and it widens the exposure surface of a sensitive store.
+- **A dedicated LoadBalancer service / nodePort** — bypasses the gateway but loses the shared
+  wildcard-cert TLS termination and the consistent `*.${SECRET_DOMAIN}` routing every other app
+  uses.
 
 ## Consequences
 
@@ -26,10 +35,6 @@ certificate, so Harbor runs `expose.type: clusterIP` with its own TLS disabled.
   later, flip the `HTTPRoute` `parentRefs` to `envoy-external` (accepting the body-size limit) or
   add a dedicated tunnel — a reversible one-line change.
 
-## Alternatives considered
+## Status log
 
-- **`envoy-external` (public)** — enables push/pull from anywhere, but the Cloudflare 100 MB body
-  cap breaks realistic image pushes, and it widens the exposure surface of a sensitive store.
-- **A dedicated LoadBalancer service / nodePort** — bypasses the gateway but loses the shared
-  wildcard-cert TLS termination and the consistent `*.${SECRET_DOMAIN}` routing every other app
-  uses.
+- 2026-06-12 — Accepted; `HTTPRoute` live on `envoy-internal`.

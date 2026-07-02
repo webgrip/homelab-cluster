@@ -14,7 +14,14 @@ external instance and point Harbor at it. The cluster has a precedent for app-ow
 
 Use the **chart-bundled internal Redis** (`redis.type: internal`), which ships the
 `goharbor/redis-photon` image and auto-wires all four logical databases. Persist it on a small
-`longhorn-general`, `ReadWriteOnce` PVC.
+`longhorn-general`, `ReadWriteOnce` PVC. Lives in the Harbor HelmRelease values,
+`kubernetes/apps/harbor/harbor/app/`.
+
+## Alternatives considered
+
+- **An external Valkey StatefulSet** (the searxng pattern) — gives independent lifecycle/version
+  control and a path to HA later, but adds a component to own for no present benefit, and we'd
+  hand-wire the four DB indexes. Worth revisiting only if Redis HA becomes a requirement.
 
 ## Consequences
 
@@ -26,8 +33,6 @@ Use the **chart-bundled internal Redis** (`redis.type: internal`), which ships t
 - Redis is single-instance (no HA). For a homelab registry that's acceptable; a restart briefly
   interrupts the job queue/cache but loses no durable data (durable state is in Postgres + S3).
 
-## Alternatives considered
+## Status log
 
-- **An external Valkey StatefulSet** (the searxng pattern) — gives independent lifecycle/version
-  control and a path to HA later, but adds a component to own for no present benefit, and we'd
-  hand-wire the four DB indexes. Worth revisiting only if Redis HA becomes a requirement.
+- 2026-06-12 — Accepted; deployed with the Harbor stack.

@@ -7,8 +7,9 @@
 Harbor needs a PostgreSQL database (one database in 2.x — Notary, which needed extra DBs, was
 removed). The Helm chart can bundle its own Postgres, but the cluster standard is
 **CloudNativePG (CNPG)** with WAL archiving and scheduled backups to Garage S3, plus restore
-drills — see [CNPG Backups](../runbooks/cnpg-backups.md). Every stateful app here (forgejo, grafana, n8n,
-backstage, dependency-track …) runs on CNPG, and that path is governed by kyverno policy.
+drills — see [CNPG Backups](../runbooks/cnpg-backups.md). Every stateful app here (forgejo,
+grafana, n8n, backstage, dependency-track …) runs on CNPG, and that path is governed by kyverno
+policy.
 
 ## Decision
 
@@ -22,6 +23,14 @@ Follow the **forgejo pattern with no hand-authored bootstrap secret**: the `Clus
 no password duplication for the DB. Backups use the shared `cnpg-backup` component (an
 `ObjectStore` + `ScheduledBackup` to `s3://cnpg-backups-bucket/homelab-cluster/harbor-db/`).
 
+## Alternatives considered
+
+- **The chart-bundled Postgres** — simplest to enable, but un-backed-up, outside CNPG governance
+  and monitoring, and a snowflake compared to every other database in the cluster.
+- **A hand-authored bootstrap/owner secret via ExternalSecret** (the dependency-track style) —
+  works, but it's an extra secret and moving part that the forgejo "let CNPG generate `-app`"
+  approach removes entirely.
+
 ## Consequences
 
 - Harbor's database inherits the cluster's backup/restore guarantees and monitoring for free.
@@ -31,10 +40,6 @@ no password duplication for the DB. Backups use the shared `cnpg-backup` compone
 - Adds a CNPG instance (plus its WAL volume) to the namespace; ties Harbor's DB backups to Garage
   like every other CNPG app.
 
-## Alternatives considered
+## Status log
 
-- **The chart-bundled Postgres** — simplest to enable, but un-backed-up, outside CNPG governance
-  and monitoring, and a snowflake compared to every other database in the cluster.
-- **A hand-authored bootstrap/owner secret via ExternalSecret** (the dependency-track style) —
-  works, but it's an extra secret and moving part that the forgejo "let CNPG generate `-app`"
-  approach removes entirely.
+- 2026-06-12 — Accepted; `harbor-db` deployed with the Harbor stack.

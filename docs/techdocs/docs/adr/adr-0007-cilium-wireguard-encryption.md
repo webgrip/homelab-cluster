@@ -14,7 +14,8 @@ to be compatible with that datapath rather than assume a tunnel/overlay.
 
 ## Decision
 
-Enable Cilium's built-in **WireGuard** transparent encryption for pod-to-pod traffic:
+Enable Cilium's built-in **WireGuard** transparent encryption for pod-to-pod traffic, in the
+cilium HelmRelease (`kubernetes/apps/kube-system/cilium/app/helmrelease.yaml`):
 
 ```yaml
 encryption:
@@ -28,29 +29,31 @@ interacts badly with health checks and the existing DSR path. East-west *pod* tr
 exposure) is what we encrypt; Cilium manages the per-node WireGuard keys itself, so there is no key
 material to store, rotate, or put in OpenBao.
 
+## Alternatives considered
+
+- **IPsec** — Cilium's other transport encryption; stronger cipher agility but heavier (kernel
+  `xfrm` state, key rotation to manage) and more brittle on this kube-proxy-replacement + DSR
+  setup.
+- **`nodeEncryption: true`** — covers host traffic too, but risks breaking kubelet/health-check
+  and DSR node-port flows; not worth the blast radius for the marginal extra coverage.
+- **Service-mesh mTLS (Istio/Linkerd)** — an entire control plane and sidecar tax for what
+  WireGuard delivers at the datapath; revisit only if L7 identity-based policy is needed
+  (SPIFFE/SPIRE in the [hardening RFC](../rfc/rfc-security-hardening.md)).
+- **Do nothing** — "trusted LAN" is exactly the assumption a defense-in-depth posture removes.
+
 ## Consequences
 
 - All Cilium-managed pod-to-pod traffic is encrypted on the wire with no application or sidecar
   changes — it's a datapath property, invisible to workloads.
 - Enabling it **rolls every `cilium` agent** (`rollOutCiliumPods: true`), so there is a brief
-  cross-node connectivity window during the rollout. Acceptable for a homelab; done as an isolated,
-  revertible commit so a problem is a one-line `git revert`.
+  cross-node connectivity window during the rollout. Done as an isolated commit so a problem is a
+  one-line `git revert`.
 - ~60–80 bytes of WireGuard overhead per packet (MTU headroom; native routing has slack).
 - **Not covered:** host-network pods, node-port ingress, and traffic to external endpoints — those
-  ride outside the pod overlay and need `nodeEncryption` (rejected here) or gateway-level TLS (which
-  the envoy gateways already terminate for north-south).
-- Verify after rollout that agents return `Ready` and cross-node pod connectivity holds — the
-  DSR + `hostLegacyRouting` interaction is the one thing static validation can't prove.
+  ride outside the pod overlay and need `nodeEncryption` (rejected here) or gateway-level TLS
+  (which the envoy gateways already terminate for north-south).
 
-## Alternatives considered
+## Status log
 
-- **IPsec** — Cilium's other transport encryption. Stronger cipher agility but heavier (kernel
-  `xfrm` state, key rotation to manage) and more brittle on this kube-proxy-replacement + DSR setup.
-  WireGuard is simpler and self-manages keys.
-- **`nodeEncryption: true`** — encrypts host traffic too, but risks breaking kubelet/health-check
-  and DSR node-port flows. Not worth the blast radius for the marginal extra coverage.
-- **Service-mesh mTLS (Istio/Linkerd)** — application-identity encryption, but an entire new control
-  plane and sidecar tax for what WireGuard delivers at the datapath. Revisit only if we need L7
-  identity-based policy (see SPIFFE/SPIRE in the [hardening RFC](../rfc/rfc-security-hardening.md)).
-- **Do nothing** — leave the LAN trusted. Rejected; "trusted LAN" is exactly the assumption a
-  defense-in-depth posture is supposed to remove.
+- 2026-06-12 — Accepted; rolled out as an isolated, revertible commit (the post-rollout check —
+  agents Ready, cross-node pod connectivity — was the one thing static validation couldn't prove).

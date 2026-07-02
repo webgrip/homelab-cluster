@@ -1,77 +1,69 @@
 # ADR-0013: Keep GitHub as a read-only data oracle during the Renovate cutover
 
-> Status: **Accepted** (2026-06-16) · Date: 2026-06-13 · Part of [RFC: Renovate on Forgejo](../rfc/rfc-renovate-forgejo.md)
+> Status: **Accepted** · Date: 2026-06-13 · Part of [RFC: Renovate on Forgejo](../rfc/rfc-renovate-forgejo.md) · Amended 2026-07-02 (see Status log)
 
 ## Context
 
-"Leave GitHub" is two separable claims for Renovate. As the **employer** — the host it logs into,
-pushes branches to, and opens PRs against — GitHub must go, and [ADR-0011](adr-0011-dual-run-renovate-forgejo.md)
-/ [ADR-0012](adr-0012-forgejo-static-bot-pat.md) move it to Forgejo. But Renovate also reaches GitHub
-as **public data**, and that role is legitimate and not coupled to where the code lives:
-
-- **Version datasources** — `github-releases` and `github-tags` resolve upstream versions for a large
-  share of the estate's dependencies (tools, charts, pinned releases). These query `api.github.com`
-  regardless of platform.
-- **Config presets** — `.renovaterc.json5` extends `github>webgrip/renovate-config#vX`, fetched from
-  github.com. The `webgrip/renovate-config` repo is itself a migration candidate, but until it is
-  Forgejo-authoritative the preset must resolve from GitHub.
-- **GHCR images** — every image is still `ghcr.io/webgrip/*`. Today GHCR is authenticated by the
-  GitHub-App token; once that token is gone ([ADR-0012](adr-0012-forgejo-static-bot-pat.md)), GHCR
-  needs its own credential or it goes anonymous (and rate-limited / blind to private packages).
-
-Cutting *all* GitHub access at once would break version resolution, preset loading, and private-image
-datasources — none of which is what "leave GitHub" is actually about.
+"Leave GitHub" is two separable claims for Renovate. As the **employer** — the host it logs into
+and opens PRs against — GitHub must go ([ADR-0011](adr-0011-dual-run-renovate-forgejo.md) /
+[ADR-0012](adr-0012-forgejo-static-bot-pat.md)). But Renovate also reaches GitHub as **public
+data**, a role not coupled to where the code lives: **version datasources** (`github-releases` /
+`github-tags` query `api.github.com` for a large share of the estate's dependencies regardless of
+platform); **config presets** (the shared policy in `webgrip/renovate-config`); and **GHCR
+images** (`ghcr.io/webgrip/*`), which need a credential or go anonymous — rate-limited and blind
+to private packages. Cutting *all* GitHub access at once would break all three — none of which is
+what "leave GitHub" is actually about.
 
 ## Decision
 
-During the transition, **keep GitHub as a read-only data oracle** and re-home it only when its
-downstream lands:
+Keep GitHub as a **read-only data oracle** and re-home each use only when its downstream lands:
 
-- **Datasources:** retain the `api.github.com` `hostRules` (throttling) in the Forgejo admin
-  ConfigMap. `github-releases` / `github-tags` continue to query GitHub.
-- **Presets:** keep `extends: ["github>webgrip/renovate-config#vX", …]` until `webgrip/renovate-config`
-  is Forgejo-authoritative, then switch to `forgejo>webgrip/renovate-config`.
+- **Datasources:** retain the `api.github.com` `hostRules` (throttling); `github-releases` /
+  `github-tags` keep querying GitHub — largely permanent and legitimate, since that is where
+  upstream OSS publishes.
+- **Presets:** resolve from wherever `webgrip/renovate-config` is authoritative. That is now
+  Forgejo — the Forgejo job extends `local>webgrip/renovate-config:forgejo`
+  (`renovate-operator/jobs/configmap-forgejo.yaml`); repo-local configs on repos still
+  GitHub-authoritative continue to extend `github>webgrip/renovate-config`.
 - **GHCR:** during dual-run, **reuse the GitHub-App token-minter's `RENOVATE_HOST_RULES`** — the
-  existing `renovate-github-app-token` CronJob already mints a `packages:read`-capable installation
-  token and assembles the GHCR (+ Docker Hub) host-rules into `renovate-runtime-token`, and it keeps
-  running for the GitHub path anyway. The Forgejo RenovateJob consumes that same value via an
-  `extraEnv` `valueFrom` (`optional: true`) — **no separate GHCR PAT and no OpenBao entry**. At
-  GitHub-path retirement the minter goes away, so GHCR re-homes to Harbor under
-  [RFC: Harbor](../rfc/rfc-harbor-registry.md) (or, if still on GHCR then, a retained minimal
-  packages-only token).
+  minter CronJob keeps running for the GitHub path anyway, and the Forgejo RenovateJob consumes
+  the same value via an `extraEnv` `valueFrom` (`optional: true`): no separate GHCR PAT, no
+  OpenBao entry. At GitHub-path retirement the minter goes away, so GHCR re-homes to Harbor
+  ([RFC: Harbor](../rfc/rfc-harbor-registry.md)) or, failing that, a retained minimal
+  packages-only token.
 
-The principle: **employer ≠ oracle.** A GitHub credential that can only *read public release data and
-pull packages* is not "still on GitHub" in the sense that matters — it holds no write authority over
-the source of truth.
-
-## Consequences
-
-- Version resolution, preset loading, and private-image datasources keep working the instant the
-  employer flips to Forgejo — no regression in what Renovate can *see*.
-- A residual, **read-only** GitHub dependency remains by design, with three explicit exit ramps:
-  presets (→ `forgejo>` when the config repo migrates), GHCR (→ Harbor), and datasources (largely
-  permanent and legitimate — GitHub is where upstream OSS publishes).
-- **No new credential for GHCR during dual-run** — reusing the App-minter's host-rules means zero
-  extra secret to manage and nothing to enter by hand. The cost is a coupling: the Forgejo path's GHCR
-  access depends on the GitHub-App minter still running, so GHCR re-homing (Harbor) must land *with*
-  the GitHub-path retirement, not after it.
-- Honest scoping: "Renovate left GitHub" will be true for the **write/employer** path well before the
-  **read/oracle** path is fully re-homed, and the status board should say so.
+The principle: **employer ≠ oracle.** A GitHub credential that can only *read public release data
+and pull packages* is not "still on GitHub" in the sense that matters — it holds no write
+authority over the source of truth.
 
 ## Alternatives considered
 
-- **A dedicated `read:packages` GitHub PAT for GHCR** (the original plan). Works, but it's a new
-  hand-minted credential and an OpenBao entry for something the App-minter already produces. Rejected
-  in favour of reusing the minter during dual-run; a minimal packages-only token becomes relevant only
-  if GHCR outlives the minter at cutover and Harbor isn't ready.
-- **Anonymous GHCR.** No credential at all, but private `ghcr.io/webgrip/*` packages become invisible to
-  datasources and anonymous pulls are aggressively rate-limited. This is the `optional: true` fallback
-  if the minter's secret is briefly absent — acceptable transiently, not as the steady state.
-- **Block the migration on Harbor.** Cleanest end-state (no GitHub at all), but Harbor has zero cluster
-  footprint today ([RFC: Harbor](../rfc/rfc-harbor-registry.md) is Proposed), so this would stall the entire
-  Renovate cutover behind an unstarted registry. Rejected — reusing the minter is the deliberate bridge.
-- **Mirror `renovate-config` to Forgejo immediately and switch presets now.** Possible, but pointless
-  while the repo is an inbound mirror (writes go the wrong way) and it couples the preset switch to the
-  bulk mirror's progress. Deferred until that repo is authoritative.
-- **Drop GitHub datasources entirely.** Not feasible — upstream OSS releases live on GitHub; this isn't
-  a sovereignty concern, it's reading a public catalog. Kept permanently.
+- **A dedicated `read:packages` GitHub PAT for GHCR** (the original plan) — a new hand-minted
+  credential and OpenBao entry for something the App-minter already produces.
+- **Anonymous GHCR** — private packages invisible, aggressive rate limits; acceptable only as the
+  transient `optional: true` fallback.
+- **Block the migration on Harbor** — would stall the Renovate cutover behind a registry with zero
+  cluster footprint at decision time.
+- **Mirror `renovate-config` to Forgejo immediately and switch presets** — pointless while that
+  repo was an inbound mirror; deferred until authoritative (since done — see Status log).
+- **Drop GitHub datasources entirely** — not feasible; upstream OSS releases live on GitHub.
+
+## Consequences
+
+- Version resolution, preset loading, and private-image datasources keep working while the
+  employer flips to Forgejo — no regression in what Renovate can *see*.
+- A residual, **read-only** GitHub dependency remains by design, with explicit exit ramps: presets
+  (taken — now `local>` on Forgejo), GHCR (→ Harbor at retirement), datasources (permanent).
+- **Coupling:** the Forgejo path's GHCR access depends on the GitHub-App minter still running, so
+  GHCR re-homing must land *with* the GitHub-path retirement, not after it.
+- Honest scoping: "Renovate left GitHub" is true for the **write/employer** path well before the
+  **read/oracle** path is fully re-homed.
+
+## Status log
+
+- 2026-06-13 — Proposed with the RFC; GHCR plan revised the same day to reuse the App-minter's
+  host-rules instead of a dedicated PAT.
+- 2026-06-16 — Accepted.
+- 2026-07-02 — Presets exit ramp taken: `webgrip/renovate-config` is Forgejo-authoritative and the
+  Forgejo job now extends `local>webgrip/renovate-config:forgejo`. GHCR still rides the
+  App-minter.

@@ -1,62 +1,62 @@
 # ADR-0018: Provision Harbor proxy config via an idempotent API CronJob
 
-> Status: **Proposed** · Date: 2026-06-13 · Part of [RFC: Harbor Pull-Through Proxy Cache](../rfc/rfc-harbor-proxy-cache.md)
+> Status: **Accepted** · Date: 2026-06-13 · Part of [RFC: Harbor Pull-Through Proxy Cache](../rfc/rfc-harbor-proxy-cache.md)
 
 ## Context
 
 The proxy-cache projects and their upstream registry endpoints
 ([ADR-0016](adr-0016-harbor-pull-through-proxy-cache.md)) are **Harbor-internal objects**, created
-through the Harbor v2 API (`POST /api/v2.0/registries`, `POST /api/v2.0/projects`). They are not
-Kubernetes resources, so Flux/Kustomize cannot declare them directly. The cluster runs **no
-Harbor operator** (the upstream `harbor-operator` is not production-grade and would add a CRD
-controller for two objects), and everything else here is GitOps — clicking these into the Harbor
-UI would be undeclared, non-reproducible drift that a Harbor DB restore silently loses.
-
-The cluster already has a proven pattern for "reconcile an external system's state from a
-manifest": the **`openbao-init` CronJob** — idempotent, self-healing, hardened, and (after a
-[recent incident](../blogs/2026-06-13-harbor-as-a-pull-through-cache.md)) careful about finished-job
-hygiene.
+through the Harbor v2 API (`POST /api/v2.0/registries`, `…/projects`). They are not Kubernetes
+resources, so Flux/Kustomize cannot declare them. The cluster runs no Harbor operator (upstream
+`harbor-operator` is not production-grade, and a CRD controller for a handful of objects is
+disproportionate), and clicking them into the Harbor UI would be undeclared drift that a Harbor DB
+restore silently loses. The `openbao-init` CronJob is the proven in-house shape for "reconcile an
+external system's state from Git."
 
 ## Decision
 
-Provision the Harbor side with an **idempotent `harbor-proxy-config` CronJob** that calls the
-Harbor v2 API, mirroring the `openbao-init` shape:
+Provision the Harbor side with an idempotent **`harbor-proxy-config` CronJob** (hourly) that calls
+the Harbor v2 API, mirroring `openbao-init`. It is a timer-tier converging task per the model later
+codified in [ADR-0019](adr-0019-bootstrap-task-pattern.md) — idempotent `GET`-before-create
+("already exists" = success), self-healing after a Harbor DB restore, hardened pod, least-privilege
+— plus the specifics that matter here:
 
-- **Idempotent:** `GET` each registry endpoint / project first; create only if absent; treat
-  "already exists" as success. Re-running converges, never duplicates.
-- **Self-healing:** runs on a schedule (hourly), so a Harbor DB restore or a fresh Harbor
-  re-establishes the proxy config on the next tick.
-- **Fail-soft:** if the upstream credentials aren't in OpenBao yet (or Harbor is mid-restart), it
-  logs and exits **0** — Harbor is never blocked and no `KubeJobFailed` noise accrues.
+- **Fail-soft `exit 0`:** if the upstream credentials aren't in OpenBao yet, or Harbor is
+  mid-restart, it logs and exits **0** — Harbor is never blocked and no `KubeJobFailed` noise
+  accrues. This let the provisioning plane land *before* cutover: it no-ops until
+  `bao kv put secret/harbor/registry-proxy …` runs, then activates with no further GitOps change.
 - **Credentials via ESO:** a `harbor-registry-proxy` ExternalSecret reads
   `secret/harbor/registry-proxy` from OpenBao (Docker Hub + GHCR tokens, used only to lift upstream
-  rate limits); the Harbor admin password comes from the existing `harbor-admin` secret. Both are
-  mounted as `optional` env so a missing secret degrades to fail-soft rather than a wedged pod.
-- **Hardened + tidy:** `runAsNonRoot`, `readOnlyRootFilesystem`, all capabilities dropped,
-  resource requests/limits set (Kyverno), and `ttlSecondsAfterFinished` + `successfulJobsHistory`
-  /`failedJobsHistoryLimit: 1` — the finished-job hygiene the openbao-init incident taught us.
+  rate limits); the admin password comes from the existing `harbor-admin` secret. All are mounted
+  `optional` so a missing secret degrades to fail-soft, not a wedged pod.
+- **Finished-job hygiene:** `ttlSecondsAfterFinished` + success/failure history limits of 1 — the
+  lesson of the [openbao-init incident](../blogs/2026-06-13-harbor-as-a-pull-through-cache.md).
 
-## Consequences
-
-- **The Harbor proxy config is declared in Git** (the script + its inputs), reproducible across a
-  Harbor rebuild, and reviewable — no clickops drift.
-- **The provisioning plane is safe to land before cutover.** With no credentials yet the CronJob
-  no-ops; it activates the moment `bao kv put secret/harbor/registry-proxy …` runs, with no
-  further GitOps change.
-- **It's imperative glue, not a controller.** A genuinely new Harbor object type (robot accounts,
-  retention policies) means extending the script, not declaring a CR — an accepted trade for
-  avoiding an operator for a handful of objects.
-- **API-shape coupling.** The script pins Harbor v2 API payloads; a major Harbor API change would
-  require updating it. Low-frequency, well-contained risk.
+Lives at `kubernetes/apps/harbor/harbor/app/harbor-proxy-config.cronjob.yaml`.
 
 ## Alternatives considered
 
-- **Harbor UI clickops.** Undeclared, non-reproducible, and silently lost on a Harbor DB restore.
-  Rejected — it violates the GitOps-first rule.
-- **`harbor-operator` (CRDs).** A whole controller to manage two objects; not production-grade
-  upstream. Disproportionate.
-- **A Helm post-install hook in the Harbor HelmRelease.** Runs only on chart install/upgrade, not
-  on a Harbor DB restore or credential population; the standalone CronJob self-heals on a schedule
-  independent of Helm.
-- **A one-shot `Job`.** Immutable and won't re-run on Harbor rebuild or late credential entry
-  without a name change; the CronJob's scheduled convergence is the openbao-init-proven idiom.
+- **Harbor UI clickops** — undeclared, non-reproducible, silently lost on a DB restore.
+- **`harbor-operator` CRDs** — a whole controller for a handful of objects; not production-grade
+  upstream.
+- **Helm post-install hook** — fires only on chart install/upgrade; misses a DB restore or late
+  credential population.
+- **One-shot `Job`** — won't re-run on a Harbor rebuild or late credentials without a name change;
+  scheduled convergence is the point.
+
+## Consequences
+
+- The Harbor proxy config is declared in Git, reproducible across a Harbor rebuild, and reviewable;
+  a DB restore re-establishes it on the next tick.
+- It is imperative glue, not a controller: a genuinely new Harbor object type means extending the
+  script, not declaring a CR — an accepted trade for avoiding an operator.
+- API-shape coupling: the script pins Harbor v2 payloads; a major Harbor API change means updating
+  it. Low-frequency, well-contained risk.
+
+## Status log
+
+- 2026-06-13 — Proposed; the CronJob landed the same day, dormant (fail-soft until credentials
+  existed).
+- 2026-06-16 — Extended to provision the private `webgrip` project + CI robot account.
+- 2026-06-23 — Accepted: active in production at the Phase-1 cutover, provisioning all six
+  proxy-cache projects ([ADR-0016](adr-0016-harbor-pull-through-proxy-cache.md)).

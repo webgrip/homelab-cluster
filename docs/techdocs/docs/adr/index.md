@@ -1,100 +1,73 @@
 # Architecture Decision Records
 
-This section holds the cluster's **RFCs** (broad proposals up for review) and **ADRs**
-(Architecture Decision Records — one defensible decision each). It is the durable record of
-*why* the homelab is built the way it is, so a decision can be revisited later without
-re-litigating the context from memory.
-
-This is the repo's first ADR section; the conventions below apply to everything added here.
+One defensible decision per record — the durable answer to *"why is it built this way?"*.
+Design exploration lives in [RFCs](../rfc/index.md); an RFC is the umbrella, its ADRs are the
+individual choices. Operational procedure lives in [runbooks](../runbooks/index.md).
 
 ## Conventions
 
-- **Location:** `docs/techdocs/docs/architecture/`. RFCs are `rfc-<topic>.md`; ADRs are
-  `adr-NNNN-<kebab-title>.md` with a **zero-padded, monotonically increasing** number. ADR
-  numbers are never reused — a reversed decision gets a *new* ADR that supersedes the old one.
-- **No front-matter.** A doc opens with its `# H1`, then a one-line `> Status:` banner.
-- **An RFC is the umbrella**; the ADRs under it capture the individual choices it makes. Each
-  ADR links back to its RFC, and the RFC's *Decisions* table links out to each ADR.
-
-## ADR format
-
-```markdown
-# ADR-NNNN: <short title>
-
-> Status: **Accepted** · Date: YYYY-MM-DD · Part of [RFC: …](rfc-….md)
-
-## Context        # the forces — problem, constraints, what made this a decision
-## Decision       # the choice, in a sentence or two
-## Consequences   # what it commits us to — positive and negative, operational follow-ons
-## Alternatives considered   # each rejected option and why
-```
+- **Location:** `docs/techdocs/docs/adr/adr-NNNN-<kebab-title>.md`, zero-padded, monotonically
+  increasing, never reused. Start from the template: [adr-0000-template.md](adr-0000-template.md).
+- **No front-matter.** `# H1` states the decision, then a one-line
+  `> Status: **…** · Date: …` banner. Sections: Context → Decision → Alternatives considered
+  (omit if none) → Consequences → Status log.
+- **ADRs are records, not living docs.** When reality changes (revert, partial rollout,
+  supersession), append a dated line to the ADR's **Status log** and update the status banner —
+  never silently rewrite the body. A reversed decision gets a *new* ADR that supersedes the old.
+- Register every new ADR in the table below.
 
 ## Status legend
 
 | Status | Meaning |
-|--------|---------|
-| **Proposed** | Under review; not yet ratified (RFCs sit here until accepted). |
-| **Accepted** | Decided. The current source of truth. |
-| **Superseded** | Replaced by a later ADR (links to it). Kept for history, never deleted. |
-| **Deprecated** | No longer relevant, but not directly replaced. |
+| ------ | ------- |
+| **Proposed** | Decided to pursue, not yet ratified/implemented end-to-end. |
+| **Accepted** | Decided. Current source of truth. |
+| **Rejected** | Considered and declined; kept to prevent re-derivation. |
+| **Superseded** | Replaced by a later ADR (banner links to it). Never deleted. |
+| **Deprecated** | No longer relevant, not directly replaced. |
+
+*"· amended"* = the Status log records a material change (rollback, scope change, re-ratification).
 
 ## Records
 
-### RFCs
-
-| RFC | Status | Summary |
-|-----|--------|---------|
-| [Harbor Container Registry](../rfc/rfc-harbor-registry.md) | Proposed | Deploy a feature-complete Harbor as the cluster's private OCI registry + artifact store. |
-| [Security Hardening — Closing the Loops](../rfc/rfc-security-hardening.md) | Proposed | Finish the security loops already built: wire encryption, rootless CI, rotation, enforce mode. |
-| [Layered Hardware Architecture](../rfc/rfc-layered-hardware-architecture.md) | Proposed | Resilient, layered HW architecture: isolate failure domains per layer, put speed where it's scarce; four end-state paths + one migration spine. |
-| [Dynamic Database Credentials](../rfc/rfc-dynamic-database-credentials.md) | Proposed | Short-lived, per-workload, auto-revoked Postgres creds via OpenBao's database engine. |
-| [Renovate on Forgejo](../rfc/rfc-renovate-forgejo.md) | Accepted | Migrate Renovate off GitHub onto Forgejo via a second dual-run RenovateJob; cut repos over as each becomes authoritative. |
-| [Cutting the GitOps umbilical](../rfc/rfc-flux-forgejo-source.md) | Proposed | Repoint Flux's source from GitHub to in-cluster Forgejo; keep an external mirror for bootstrap + break-glass. |
-| [Harbor Pull-Through Proxy Cache](../rfc/rfc-harbor-proxy-cache.md) | Proposed | Route docker.io/ghcr.io pulls through Harbor proxy-cache projects at the containerd-mirror layer, with upstream fallback. |
-| [Node taxonomy & storage placement](../rfc/rfc-node-taxonomy-and-storage-placement.md) | Proposed | Capability node taxonomy + move Longhorn off the control-planes onto the workers; apps hard-pin to workers; scoped forgejo storage exception. |
-| [Observability alerting reliability](../rfc/rfc-observability-alerting-reliability.md) | Accepted | Fix the silently-broken SLO rules, lint the rule shape, and monitor the alerting system itself. |
-| [Kyverno audit→enforce hardening](../rfc/rfc-kyverno-audit-enforce-hardening.md) | Proposed | Gated, one-at-a-time promotion of the 11 audit policies to enforce, with a no-enforce-without-tests CI gate. |
-| [CI pipeline performance](../rfc/rfc-ci-pipeline-performance.md) | Accepted | Kill the per-job cold start: pre-baked action cache + offline mode, amd64-default builds via a constrictor fast-workflow; the warm-cache half of ADR-0008's topology C, landed early. |
-
-### ADRs
-
-| ADR | Status | Decision |
-|-----|--------|----------|
-| [ADR-0001](adr-0001-adopt-harbor.md) | Accepted | Adopt Harbor as the self-hosted OCI registry. |
-| [ADR-0002](adr-0002-registry-blob-storage-garage-s3.md) | Accepted | Store registry blobs on Garage S3, not a Longhorn PVC. |
-| [ADR-0003](adr-0003-external-cnpg-database.md) | Accepted | Back Harbor with an external CNPG Postgres (no bootstrap secret). |
-| [ADR-0004](adr-0004-chart-internal-redis.md) | Accepted | Use the chart-bundled `redis-photon`, not an external Valkey. |
-| [ADR-0005](adr-0005-lan-only-exposure.md) | Accepted | Expose Harbor LAN-only via `envoy-internal`. |
-| [ADR-0006](adr-0006-authentik-oidc-phased.md) | Accepted | Authenticate via Authentik OIDC, layered in a second phase. |
-| [ADR-0007](adr-0007-cilium-wireguard-encryption.md) | Accepted | Encrypt pod-to-pod traffic with Cilium WireGuard (`nodeEncryption` off). |
-| [ADR-0008](adr-0008-rootless-ci-image-builds.md) | Proposed | Replace privileged DinD with rootless BuildKit for CI image builds. |
-| [ADR-0009](adr-0009-secret-rotation-model.md) | Accepted | Rotate via OpenBao write → ESO refresh → Reloader restart; at-rest keys excluded. |
-| [ADR-0010](adr-0010-openbao-dynamic-postgres-credentials.md) | Proposed | Mint short-lived per-workload Postgres creds via OpenBao's database engine. |
-| [ADR-0011](adr-0011-dual-run-renovate-forgejo.md) | Accepted | Dual-run a second Forgejo RenovateJob beside the GitHub one; retire GitHub at cutover. |
-| [ADR-0012](adr-0012-forgejo-static-bot-pat.md) | Accepted | Authenticate Renovate to Forgejo with a static bot PAT (minted by the provisioner, ADR-0019). |
-| [ADR-0013](adr-0013-github-as-renovate-data-oracle.md) | Accepted | Keep GitHub as a read-only data oracle (datasources, presets, GHCR via the App-minter's host-rules). |
-| [ADR-0014](adr-0014-flux-source-forgejo.md) | Proposed | Make in-cluster Forgejo the authoritative Flux GitOps source via its internal Service URL. |
-| [ADR-0015](adr-0015-external-bootstrap-fallback-source.md) | Proposed | Keep GitHub (push-mirror) as the cold-bootstrap + break-glass GitOps source. |
-| [ADR-0016](adr-0016-harbor-pull-through-proxy-cache.md) | Proposed | Adopt two Harbor proxy-cache projects (dockerhub → docker.io, ghcr → ghcr.io). |
-| [ADR-0017](adr-0017-registry-mirror-talos-spegel.md) | Proposed | Inject the mirror via Talos `machine.registries.mirrors` + Spegel `prependExisting`; fail open to upstream. |
-| [ADR-0018](adr-0018-harbor-config-idempotent-job.md) | Proposed | Provision the proxy registries/projects via an idempotent Harbor-API CronJob (no operator). |
-| [ADR-0019](adr-0019-bootstrap-task-pattern.md) | Accepted | Bootstrap/one-shot tasks: pick the lowest trigger tier (controller > change-triggered Job > timer CronJob), gated by Flux. |
-| [ADR-0020](adr-0020-codeberg-offsite-push-mirror.md) | Proposed | Fan Forgejo out to Codeberg as a second off-site mirror via native push-mirror, reconciled by a Tier-2 CronJob; built after cutover. |
-| [ADR-0021](adr-0021-cilium-gateway-egress-for-oidc.md) | Accepted | Identity-based egress to the gateway for server-side OIDC under default-deny. |
-| [ADR-0022](adr-0022-codeberg-pages-techdocs.md) | Accepted | Serve TechDocs from Codeberg Pages as the interim host. |
-| [ADR-0023](adr-0023-backstage-techdocs.md) | Proposed | Serve TechDocs from Backstage as the target host. |
-| [ADR-0024](adr-0024-forgejo-leading-application-repos.md) | Accepted | Application repos that run write-back CI become Forgejo-authoritative (de-mirrored), not read-only pull-mirrors; `webgrip/infrastructure` first. |
-| [ADR-0025](adr-0025-node-taxonomy.md) | Proposed | Capability-based node taxonomy (labels); retire the `fringe` taint/`nodegroup` scheme. |
-| [ADR-0026](adr-0026-confine-longhorn-to-workers.md) | Proposed | Confine Longhorn replicas to the workers (protect etcd); scoped forgejo storage exception. |
-| [ADR-0027](adr-0027-longhorn-hot-cold-tiers.md) | Proposed | Longhorn hot/cold tiers (SSD/HDD), configured declaratively from node annotations. |
-| [ADR-0028](adr-0028-application-workload-placement.md) | Proposed | Hard-pin application workloads to the worker pool; forgejo excepted. |
-| [ADR-0029](adr-0029-storageclass-consolidation.md) | Proposed | Consolidate Longhorn StorageClasses to a minimal intent-named set; one 2-replica default. |
-| [ADR-0030](adr-0030-grafana-threshold-rule-shape.md) | Accepted | Canonical Grafana threshold-rule shape (`expression: <refId>`) + a dependency-free lint guard. |
-| [ADR-0031](adr-0031-meta-monitoring-alert-rule-health.md) | Accepted | Fix the Grafana metrics scrape + add a page-on-failure meta-rule for alert-rule evaluation health. |
-| [ADR-0032](adr-0032-reenable-pyroscope-worker-pool.md) | Accepted | Re-enable Pyroscope hard-pinned to the worker pool (supersedes the 2026-06-03 suspension); defrag-gated un-suspend. |
-| [ADR-0033](adr-0033-kyverno-enforce-promotion-policy.md) | Proposed | Gated Kyverno audit→enforce promotion via split + overrides; mandatory CI test-coverage gate. |
-| [ADR-0034](adr-0034-approved-registries-stays-audit.md) | Proposed | `require-approved-registries` stays Audit; enforce only ever via Harbor proxy + admission mutate-rewrite. |
-| [ADR-0035](adr-0035-action-clone-wall.md) | Accepted | The action-clone wall: forgejo-runner 12.10.2 has no offline mode (verified), so measure first after the amd64 fix; scoped LAN mirror if still needed; reject pre-bake / global DEFAULT_ACTIONS_URL / RWX. |
-| [ADR-0036](adr-0036-amd64-default-constrictor-build.md) | Accepted | amd64-by-default image builds (QEMU only on demand) via a new constrictor fast-build workflow; keep buildx + Harbor layer cache. |
-| [ADR-0037](adr-0037-storage-engine-gated-on-dedicated-disks.md) | Accepted | Keep Longhorn v1 until dedicated data disks exist; gate any next-gen engine (Longhorn v2 / LINSTOR / Ceph / ZFS) on the L3 disk split and defer the pick to Phase 2. |
-| [ADR-0039](adr-0039-default-deny-network-policies.md) | Accepted | Opt-in per-namespace default-deny NetworkPolicies (Kyverno-generated) + reusable `cnpg-netpol` / `gateway-egress` components; identity-based egress, not CIDR/port. |
+| ADR | Decision | Status | Date |
+| --- | -------- | ------ | ---- |
+| [0001](adr-0001-adopt-harbor.md) | Adopt Harbor as the self-hosted OCI registry | Accepted | 2026-06-12 |
+| [0002](adr-0002-registry-blob-storage-garage-s3.md) | Registry blob storage on Garage S3 | Accepted | 2026-06-12 |
+| [0003](adr-0003-external-cnpg-database.md) | External CNPG Postgres for Harbor | Accepted | 2026-06-12 |
+| [0004](adr-0004-chart-internal-redis.md) | Use Harbor's chart-bundled Redis | Accepted | 2026-06-12 |
+| [0005](adr-0005-lan-only-exposure.md) | Expose Harbor LAN-only via envoy-internal | Accepted | 2026-06-12 |
+| [0006](adr-0006-authentik-oidc-phased.md) | Authenticate Harbor via Authentik OIDC, phased | Accepted | 2026-06-12 |
+| [0007](adr-0007-cilium-wireguard-encryption.md) | Transparent pod-to-pod encryption via Cilium WireGuard | Accepted | 2026-06-12 |
+| [0008](adr-0008-rootless-ci-image-builds.md) | Rootless CI image builds (drop privileged Docker-in-Docker) | Proposed · amended | 2026-06-12 |
+| [0009](adr-0009-secret-rotation-model.md) | Secret rotation model — vault write + Reloader | Accepted | 2026-06-12 |
+| [0010](adr-0010-openbao-dynamic-postgres-credentials.md) | OpenBao database engine for short-lived Postgres credentials | Accepted · amended | 2026-06-12 |
+| [0011](adr-0011-dual-run-renovate-forgejo.md) | Dual-run Renovate across GitHub and Forgejo | Accepted | 2026-06-13 |
+| [0012](adr-0012-forgejo-static-bot-pat.md) | Authenticate Renovate to Forgejo with a static bot PAT | Accepted | 2026-06-13 |
+| [0013](adr-0013-github-as-renovate-data-oracle.md) | Keep GitHub as a read-only data oracle during the cutover | Accepted · amended | 2026-06-13 |
+| [0014](adr-0014-flux-source-forgejo.md) | Make Forgejo the authoritative GitOps source for Flux | Proposed | 2026-06-13 |
+| [0015](adr-0015-external-bootstrap-fallback-source.md) | External mirror as cold-bootstrap + break-glass source | Proposed | 2026-06-13 |
+| [0016](adr-0016-harbor-pull-through-proxy-cache.md) | Harbor pull-through proxy cache for third-party images | Accepted | 2026-06-13 |
+| [0017](adr-0017-registry-mirror-talos-spegel.md) | Harbor mirror at the Talos/containerd layer, with Spegel | Accepted | 2026-06-13 |
+| [0018](adr-0018-harbor-config-idempotent-job.md) | Harbor proxy config via an idempotent API CronJob | Accepted | 2026-06-13 |
+| [0019](adr-0019-bootstrap-task-pattern.md) | Bootstrap / one-shot tasks — pick the lowest trigger tier | Accepted | 2026-06-14 |
+| [0020](adr-0020-codeberg-offsite-push-mirror.md) | Codeberg as a second off-site push-mirror | Proposed | 2026-06-17 |
+| [0021](adr-0021-cilium-gateway-egress-for-oidc.md) | Identity-based egress to the gateway for server-side OIDC | Accepted · superseded in scope by 0039 | 2026-06-17 |
+| [0022](adr-0022-codeberg-pages-techdocs.md) | Serve TechDocs from Codeberg Pages (interim + off-site) | Accepted | 2026-06-18 |
+| [0023](adr-0023-backstage-techdocs.md) | TechDocs served by Backstage + Garage S3 (target) | Proposed | 2026-06-18 |
+| [0024](adr-0024-forgejo-leading-application-repos.md) | Forgejo-authoritative application repos (de-mirror) | Accepted | 2026-06-18 |
+| [0025](adr-0025-node-taxonomy.md) | Capability-based node taxonomy; retire fringe/nodegroup | Accepted | 2026-06-19 |
+| [0026](adr-0026-confine-longhorn-to-workers.md) | Confine Longhorn storage to the worker nodes | Accepted · amended | 2026-06-19 |
+| [0027](adr-0027-longhorn-hot-cold-tiers.md) | Longhorn hot/cold storage tiers from node annotations | Proposed · amended | 2026-06-19 |
+| [0028](adr-0028-application-workload-placement.md) | Pin application workloads to the worker pool (hard) | Accepted · amended | 2026-06-19 |
+| [0029](adr-0029-storageclass-consolidation.md) | Consolidate Longhorn StorageClasses | Proposed · amended | 2026-06-19 |
+| [0030](adr-0030-grafana-threshold-rule-shape.md) | Standardize + lint the Grafana threshold alert-rule shape | Accepted | 2026-06-21 |
+| [0031](adr-0031-meta-monitoring-alert-rule-health.md) | Meta-monitoring of Grafana alert-rule health | Accepted · amended | 2026-06-21 |
+| [0032](adr-0032-reenable-pyroscope-worker-pool.md) | Re-enable Pyroscope, hard-pinned to the worker pool | Accepted | 2026-06-21 |
+| [0033](adr-0033-kyverno-enforce-promotion-policy.md) | Gated Kyverno audit→enforce promotion + mandatory tests | Accepted | 2026-06-21 |
+| [0034](adr-0034-approved-registries-stays-audit.md) | `require-approved-registries` stays Audit | Accepted | 2026-06-21 |
+| [0035](adr-0035-action-clone-wall.md) | Action-clone wall — measure first; no offline mode exists | Accepted | 2026-06-25 |
+| [0036](adr-0036-amd64-default-constrictor-build.md) | amd64-by-default builds via the constrictor fast workflow | Accepted | 2026-06-25 |
+| [0037](adr-0037-storage-engine-gated-on-dedicated-disks.md) | Storage engine stays Longhorn v1; v2/LINSTOR gated on disks | Accepted | 2026-07-01 |
+| [0038](adr-0038-victoriametrics-metrics-backend.md) | VictoriaMetrics replaces kube-prometheus-stack | Accepted · amended | 2026-07-01 |
+| [0039](adr-0039-default-deny-network-policies.md) | Opt-in per-namespace default-deny NetworkPolicies | Accepted | 2026-07-01 |

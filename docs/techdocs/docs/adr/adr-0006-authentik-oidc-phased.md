@@ -13,17 +13,25 @@ a working login the moment it boots (for the admin and for robot/CLI flows).
 
 ## Decision
 
-Roll OIDC out in **two phases**:
+Roll OIDC out in **two phases** (both are now live):
 
 1. **Phase 1 — local auth.** Harbor boots in `db_auth` with a local admin (password from
    `secret/harbor/core` → `HARBOR_ADMIN_PASSWORD`). Robot accounts / CLI use tokens regardless of
    auth mode.
-2. **Phase 2 — OIDC.** Add the Authentik blueprint
+2. **Phase 2 — OIDC.** The Authentik blueprint
    `kubernetes/apps/authentik/app/blueprints/36-oidc-harbor.yaml` (redirect URI
-   `https://harbor.${SECRET_DOMAIN}/c/oidc/callback`, slug `harbor`), store the issued client
-   id/secret in `secret/harbor/oidc` as a `core.configureUserSettings` `values.yaml` fragment,
-   surface it via the `harbor-oidc-values` ExternalSecret, and merge it into the HelmRelease with
-   `valuesFrom … optional: true`.
+   `https://harbor.${SECRET_DOMAIN}/c/oidc/callback`, slug `harbor`) issues the provider; the
+   client id/secret live in `secret/harbor/oidc` as a `core.configureUserSettings` `values.yaml`
+   fragment, surfaced via the `harbor-oidc-values` ExternalSecret and merged into the HelmRelease
+   with `valuesFrom … optional: true`.
+
+## Alternatives considered
+
+- **Local accounts only** — simplest, no blueprint, but no SSO and a separate identity silo
+  divorced from the cluster's Authentik groups.
+- **Wiring OIDC in a single phase at install** — fewer commits, but risks a first-boot loop against
+  a not-yet-existent Authentik application and couples the registry's availability to SSO setup
+  ordering.
 
 ## Consequences
 
@@ -35,10 +43,8 @@ Roll OIDC out in **two phases**:
   (the literal domain, not `${SECRET_DOMAIN}`, since ESO does not do build-time substitution).
 - Keeps a **local admin fallback** for break-glass if Authentik is unavailable.
 
-## Alternatives considered
+## Status log
 
-- **Local accounts only** — simplest, no blueprint, but no SSO and a separate identity silo
-  divorced from the cluster's Authentik groups.
-- **Wiring OIDC in a single phase at install** — fewer commits, but risks a first-boot loop against
-  a not-yet-existent Authentik application and couples the registry's availability to SSO setup
-  ordering.
+- 2026-06-12 — Accepted; deployed with Phase 1 (`db_auth`) live at first boot.
+- 2026-06-12 — Phase 2 implemented the same day: blueprint `36-oidc-harbor.yaml` +
+  `harbor-oidc-values` ExternalSecret landed (fully GitOps client credential, no CLI ceremony).

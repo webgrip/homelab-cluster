@@ -39,10 +39,27 @@ chosen hardware path — this ADR sets the gate and records the evaluation, it d
 When dedicated disks exist, the choice is path-shaped:
 
 | Engine | Best-fit path | Why |
-|---|---|---|
+| --- | --- | --- |
 | **Longhorn v2 (SPDK)** | Path A (hyperconverged all-NVMe) | No out-of-tree-kernel tax; reuses the Longhorn UI + S3 `BackupTarget` already wired to Garage; feature parity landed at 1.12.0. Cost: ~2 GiB locked hugepages + 1–2 spinning cores/node. |
 | **LINSTOR / Piraeus (DRBD)** | A perf-per-watt-max node willing to pay the per-Talos-upgrade rebuild | Lowest steady-state overhead, near-native latency. Cost: CLI-first ops, DRBD split-brain recovery, DIY S3 backup, per-upgrade module rebuild. |
 | **Rook-Ceph** / **ZFS-HA** | Path B / Path C | The distributed-dedicated and centralized-HA answers; out of scope on current hardware. |
+
+## Alternatives considered
+
+- **Adopt Longhorn v2 now** (per-StorageClass `dataEngine: v2`). Rejected: needs a raw block disk the
+  storage nodes don't have, plus hugepages + `nvme-tcp`/`vfio_pci` Talos config and a chart bump to
+  1.12.0; it *locks* RAM and *spins* cores on the RAM/power-tightest nodes; and 1.12.0 is 1-month-GA
+  with open Sev-1/P0 data-integrity and crash bugs. Its loop/AIO file-backed path is test-grade (no
+  TRIM). Right engine, wrong hardware, wrong month.
+- **Adopt LINSTOR/Piraeus now.** Rejected: same no-free-disk blocker; the out-of-tree DRBD module
+  couples to the exact Talos kernel (rebuild the Factory schematic on every upgrade); CLI-first ops +
+  DRBD split-brain recovery are a real learning curve; loses Longhorn's native S3 backup. Genuinely
+  lighter and lower-latency — revisit for a perf-per-watt-max node post-disks.
+- **Adopt Rook-Ceph now.** Rejected: heaviest of all (BlueStore ~4–8 GiB RAM *per OSD*) on the
+  RAM-tightest nodes; CephFS on Talos is an unblessed rough edge (the `ceph` kernel client is missing;
+  only `rbd` is in-tree); 3-node minimum / 5 recommended. It is a Path B answer, not a current move.
+- **Do nothing and don't record it.** Rejected: the comparison is expensive to redo, and without a
+  written gate the "should we move to v2/LINSTOR?" question returns every few months.
 
 ## Consequences
 
@@ -62,19 +79,6 @@ When dedicated disks exist, the choice is path-shaped:
 - Adopting v2 or LINSTOR *before* dedicated disks exist would force file/loopback backing on the shared
   root filesystem — **reproducing the shared-disk contention this whole RFC exists to remove.**
 
-## Alternatives considered
+## Status log
 
-- **Adopt Longhorn v2 now** (per-StorageClass `dataEngine: v2`). Rejected: needs a raw block disk the
-  storage nodes don't have, plus hugepages + `nvme-tcp`/`vfio_pci` Talos config and a chart bump to
-  1.12.0; it *locks* RAM and *spins* cores on the RAM/power-tightest nodes; and 1.12.0 is 1-month-GA
-  with open Sev-1/P0 data-integrity and crash bugs. Its loop/AIO file-backed path is test-grade (no
-  TRIM). Right engine, wrong hardware, wrong month.
-- **Adopt LINSTOR/Piraeus now.** Rejected: same no-free-disk blocker; the out-of-tree DRBD module
-  couples to the exact Talos kernel (rebuild the Factory schematic on every upgrade); CLI-first ops +
-  DRBD split-brain recovery are a real learning curve; loses Longhorn's native S3 backup. Genuinely
-  lighter and lower-latency — revisit for a perf-per-watt-max node post-disks.
-- **Adopt Rook-Ceph now.** Rejected: heaviest of all (BlueStore ~4–8 GiB RAM *per OSD*) on the
-  RAM-tightest nodes; CephFS on Talos is an unblessed rough edge (the `ceph` kernel client is missing;
-  only `rbd` is in-tree); 3-node minimum / 5 recommended. It is a Path B answer, not a current move.
-- **Do nothing and don't record it.** Rejected: the comparison is expensive to redo, and without a
-  written gate the "should we move to v2/LINSTOR?" question returns every few months.
+- 2026-07-01 — Accepted; evaluation recorded (17014a02).
