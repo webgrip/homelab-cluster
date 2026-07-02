@@ -1,6 +1,6 @@
 # Authenticating Prometheus & Alertmanager (Envoy Gateway OIDC)
 
-> Status: **DESIGN / ready-to-apply, NOT yet wired** (roadmap #23 / #24).
+> Status: **DESIGN / ready-to-apply, NOT yet wired** (see roadmap).
 > This is the one P0 item that cannot be landed as a single offline commit: it
 > needs an Authentik client credential and live OIDC-flow testing, and a
 > misconfigured `SecurityPolicy` can lock you out of Prometheus. Apply it
@@ -10,13 +10,15 @@
 
 `prometheus.${SECRET_DOMAIN}` and `alertmanager.${SECRET_DOMAIN}` attach to
 `envoy-internal` (LAN-only) but have **no authentication** — anyone on the LAN
-reaches them. Grafana already has its own login; these two do not. Unlike apps
-with a login UI, Prometheus/Alertmanager are plain HTTP, so auth must be enforced
-at the gateway via an Envoy Gateway **`SecurityPolicy`** (OIDC), not app-level OIDC.
+reaches them. The backends behind those routes are now the VictoriaMetrics
+services (`vmsingle-vmsingle:8429` / `vmalertmanager-vmalertmanager:9093`); like
+the Prometheus stack they replaced, they are plain HTTP with no login UI, so auth
+must be enforced at the gateway via an Envoy Gateway **`SecurityPolicy`** (OIDC),
+not app-level OIDC. Grafana already has its own login.
 
 There is currently **no `SecurityPolicy` precedent** in this repo — this is the
-first one. Roll it out behind one host first, verify, then extend (the #24
-auth-matrix sweep covers Longhorn, Policy Reporter, OpenBao UI, Backstage).
+first one. Roll it out behind one host first, verify, then extend (the
+auth-matrix sweep — see roadmap — covers Longhorn, Policy Reporter, OpenBao UI, Backstage).
 
 ## Pieces required
 
@@ -79,7 +81,7 @@ auth-matrix sweep covers Longhorn, Policy Reporter, OpenBao UI, Backstage).
 4. From a browser, hit `https://prometheus.${SECRET_DOMAIN}` → expect an Authentik
    redirect → login → back to Prometheus. From an unauthenticated client, expect
    401/redirect.
-5. Only then extend the policy to Alertmanager, and proceed with the #24 sweep.
+5. Only then extend the policy to Alertmanager, and proceed with the auth-matrix sweep (see roadmap).
 
 ## Rollback
 

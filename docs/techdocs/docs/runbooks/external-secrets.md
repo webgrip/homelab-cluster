@@ -1,8 +1,12 @@
 # Runbook: External Secrets (ESO)
 
-Operational procedures for the [External Secrets migration](../rfc/external-secrets-plan.md):
-deploying ESO, migrating a secret per class, standing up OpenBao, and
-recovering from failures. Read the plan first for the *why* and the full secret inventory.
+Operations for the ESO + OpenBao secret backend. **Adding or migrating a secret is the
+`external-secrets` skill** (recipes, shapes, store choice) — this page is triage, DR, and the
+gotchas that cost real time. Rotating a value: [secret-rotation](secret-rotation.md).
+
+The SOPS→ESO migration is **complete** except one app secret: **`zomboid/app/secret.sops.yaml`
+is the last app still on SOPS.** The permanent SOPS floor (age key, `cluster-secrets`,
+`talsecret`, `github-deploy-key`) stays.
 
 ## Dependency chain
 
@@ -25,9 +29,14 @@ accordingly: a broken app is almost never "OpenBao is down" unless you just chan
 | ESO operator | `kubernetes/apps/security/external-secrets/` (namespace `security`) |
 | Random generator | `ClusterGenerator/password-generator` |
 | External backend | `kubernetes/apps/security/openbao/` (single-node raft) |
-| Stores | `ClusterSecretStore/openbao`, `ClusterSecretStore/kube-store` |
+| Stores | `ClusterSecretStore/openbao`, `ClusterSecretStore/openbao-db` (dynamic DB creds), `ClusterSecretStore/kube-store` |
+| Auto-unseal | `openbao-unsealer` Deployment (`app/unsealer.yaml`) reads Secret `openbao-keys`; `bootstrap/init-cronjob.yaml` initialises a fresh vault |
+| OpenBao config reconcile | `openbao-config` CronJob (`bootstrap/config-cronjob.yaml` + `config.sh`: auth, policies, engines) |
+| UI login | Authentik OIDC — blueprint `kubernetes/apps/authentik/app/blueprints/35-oidc-openbao.yaml`; `mise exec -- just bao-login` |
 | SOPS floor (forever) | `bootstrap/{sops-age,github-deploy-key}.sops.yaml`, `kubernetes/components/sops/cluster-secrets.sops.yaml`, `talos/talsecret.sops.yaml` |
-| SOPS floor (backend) | none — ESO uses K8s ServiceAccount auth; OpenBao unseal key held offline (or optional auto-unseal SOPS) |
+
+OpenBao re-seals on every pod restart; the **`openbao-unsealer` handles it automatically**
+(~1 min). Manual unseal is only a break-glass path — see [OpenBao restore](openbao-restore.md).
 
 ## Quick status checks
 
@@ -41,150 +50,18 @@ kubectl get clustergenerator
 kubectl get externalsecret -A
 kubectl get pushsecret -A
 
-# Confirm an ESO-owned Secret exists before deleting its *.sops.yaml
+# Confirm a Secret is ESO-owned
 kubectl get secret <name> -n <ns> -o jsonpath='{.metadata.ownerReferences[0].kind}{"\n"}'
 # → expect: ExternalSecret
 ```
-
-## Deploy ESO (Wave 0)
-
-GitOps only — never `kubectl apply` the manifests by hand.
-
-1. Scaffold `kubernetes/apps/security/external-secrets/` per the [plan](../rfc/external-secrets-plan.md#eso-install)
-   (`ks.yaml` + `app/{ocirepository,helmrelease,kustomization,clustergenerator,clustersecretstore-kube,rbac-authentik-push}.yaml`).
-2. Add `- ./external-secrets/ks.yaml` to `kubernetes/apps/security/kustomization.yaml`.
-3. Validate: `./scripts/run-flux-local-test.sh` then `./scripts/run-flux-local-diff.sh`.
-4. Commit (`git -c commit.gpgsign=false commit`; if `format-yaml` reformats, `git add -A` and recommit) and push.
-5. Confirm: HelmRelease Ready, ESO CRDs present (`kubectl get crd | grep external-secrets`),
-   `kube-store` Ready (it needs no backend).
-
-## Recipe: migrate a random secret
-
-For throwaway/session entropy only. **Never** for at-rest encryption keys (see
-[the at-rest list](../rfc/external-secrets-plan.md#at-rest-encryption-keys-never-regenerate)).
-
-1. Add `app/externalsecret.yaml` using the
-   [generator pattern](../rfc/external-secrets-plan.md#random-generator-clustergenerator-per-secret-externalsecret):
-   one `dataFrom` entry per key, `refreshInterval: "0"`, `target.name` = the **exact** old
-   Secret name, `deletionPolicy: Retain`.
-2. Add `dependsOn: [{name: external-secrets, namespace: security}]` to the app's `ks.yaml`.
-3. Validate, commit, push.
-4. Confirm the Secret exists and is `ExternalSecret`-owned, the app restarts cleanly
-   (reloader picks up the change), and the feature works.
-5. **Only then** remove the `*.sops.yaml` from `app/kustomization.yaml`, delete the file,
-   validate, commit, push.
-
-## Recipe: eliminate an OIDC client secret
-
-Order: grafana → forgejo → n8n → backstage. Per provider:
-
-1. **Generate** the shared secret in the app's namespace (generator `ExternalSecret`,
-   key `client_secret`, `refreshInterval: "0"`).
-2. **PushSecret** it into `authentik` as `oidc-<app>-shared` via `kube-store`
-   (see the [OIDC pattern](../rfc/external-secrets-plan.md#oidc-client_secret-auto-elimination)).
-3. **Mount** into Authentik: add the env var to `global.env` in the Authentik HelmRelease.
-4. **Set** `client_secret: !Env OIDC_<APP>_CLIENT_SECRET` (and pin `client_id`) in the
-   provider blueprint `attrs`.
-5. Reconcile Authentik (restart the worker if a new blueprint stalls — see
-   [Authentik OIDC login](authentik-oidc-login.md)).
-6. **Verify a real login** end-to-end.
-7. Delete the old `*-oidc-secret.sops.yaml`.
-
-Rollback: revert the blueprint `!Env` and `global.env` edits and restore the SOPS secret;
-Authentik re-mints on the next blueprint apply.
-
-## Stand up OpenBao (Wave 4)
-
-OpenBao is **already deployed** (`kubernetes/apps/security/openbao/`) — single-node
-integrated raft, fully OSS. It boots **sealed**, so `openbao-0` sits `0/1 Ready` until the
-one-time init/unseal ceremony below; `ClusterSecretStore/openbao` stays `NotReady` until the
-Kubernetes auth role + policy exist. ESO authenticates with its own ServiceAccount — **no
-static creds in SOPS**.
-
-> The unseal key(s) and root token are generated at init and are **never** committed to Git.
-> Keep them in your password manager. Losing them = losing OpenBao's contents.
-
-### One-time init + unseal + configure (human)
-
-Either `kubectl exec` into `openbao-0`, or `kubectl port-forward -n security svc/openbao
-8200:8200` and use a local `bao` with `BAO_ADDR=http://127.0.0.1:8200`.
-
-1. **Initialize** — saves the unseal key + root token; store the JSON **offline**:
-
-   ```bash
-   kubectl exec -n security openbao-0 -- bao operator init \
-     -key-shares=1 -key-threshold=1 -format=json > ~/openbao-init.json
-   ```
-
-2. **Unseal** (pod goes `1/1`):
-
-   ```bash
-   kubectl exec -n security openbao-0 -- bao operator unseal \
-     "$(jq -r '.unseal_keys_b64[0]' ~/openbao-init.json)"
-   ```
-
-3. **Configure** the KV engine, Kubernetes auth, a read-only policy, and the ESO role
-   (export `BAO_TOKEN=$(jq -r .root_token ~/openbao-init.json)`):
-
-   ```bash
-   bao secrets enable -path=secret kv-v2
-
-   bao auth enable kubernetes
-   bao write auth/kubernetes/config kubernetes_host=https://kubernetes.default.svc
-
-   bao policy write external-secrets - <<'EOF'
-   path "secret/data/*"     { capabilities = ["read"] }
-   path "secret/metadata/*" { capabilities = ["read", "list"] }
-   EOF
-
-   bao write auth/kubernetes/role/external-secrets \
-     bound_service_account_names=external-secrets \
-     bound_service_account_namespaces=security \
-     policies=external-secrets ttl=1h
-   ```
-
-4. Confirm: `kubectl get clustersecretstore openbao` → **READY=True**.
-
-### Restarts — unseal each time, or auto-unseal
-
-OpenBao re-seals on every pod restart. Either **manually** re-run step 2 (break-glass), or
-set up **auto-unseal**: store the unseal key in a `*.sops.yaml` + a small init/Job that
-unseals on start (adds one SOPS secret, makes reboots unattended). Record the chosen approach
-here once decided.
-
-### (Optional) Authentik OIDC login to the UI
-
-OpenBao's OIDC auth is free. To log into `openbao.${SECRET_DOMAIN}` via Authentik: add an
-OIDC provider/app in Authentik, then `bao auth enable oidc` + `bao write auth/oidc/config …`
-+ a role/group mapping. (Expand when wired.)
-
-After the store is Ready, migrate external secrets with the recipe below — put each value
-under `secret/<name>` (KV v2), then add the matching `ExternalSecret`.
-
-## Recipe: migrate an external secret
-
-1. **Seed** the value into OpenBao (`secret/<name>`, KV v2) under the agreed key/properties (e.g.
-   `garage-forgejo` → `access_key_id` / `secret_access_key`). Use the existing decrypted
-   value for at-rest keys.
-2. Add `app/externalsecret.yaml` using the matching
-   [shape](../rfc/external-secrets-plan.md#external-externalsecret-three-shapes) (existingSecret /
-   bulk env / per-key), `secretStoreRef: { kind: ClusterSecretStore, name: openbao }`,
-   preserving exact Secret name + key names.
-3. Add the `dependsOn`, validate, commit, push.
-4. Confirm sync + app health, then delete the `*.sops.yaml`.
-
-For the **shared S3 components**, edit the component itself (`kubernetes/components/cnpg-backup/`
-etc.) so every consuming namespace gets the ESO-produced Secret with the same name/keys.
 
 ## Recipe: seed the Codeberg Pages token (one-time, human)
 
 The `forgejo/forgejo-codeberg` ExternalSecret reads `secret/codeberg/pages` property `token` and
 publishes it (via the `forgejo-actions-secrets` CronJob, `optional: true`) as the `webgrip` org
 Forgejo Actions secret `CODEBERG_TOKEN` — used by the `techdocs-deploy-codeberg` workflow
-([ADR-0022](../adr/adr-0022-codeberg-pages-techdocs.md)). The manifests are all in place; the only
-missing piece is the seed. **No manifest change** — this is the one-time prerequisite ADR-0022
-calls out. Until seeded, the ExternalSecret reports `SecretSyncedError` and the CronJob logs
-"token not present yet; skipping" (benign).
+([ADR-0022](../adr/adr-0022-codeberg-pages-techdocs.md)). Until seeded, the ExternalSecret reports
+`SecretSyncedError` and the CronJob logs "token not present yet; skipping" (benign).
 
 1. **Mint a Codeberg PAT.** On codeberg.org (the account owning the Pages repo): Settings →
    Applications → Generate New Token, scope **`write:repository`**. Copy it (shown once).
@@ -198,7 +75,7 @@ calls out. Until seeded, the ExternalSecret reports `SecretSyncedError` and the 
    Or the OpenBao UI (`openbao.${SECRET_DOMAIN}`, Authentik OIDC) → engine `secret/` →
    path `codeberg/pages` → key `token`.
 
-3. **Verify sync** (ESO refreshes hourly; force it):
+3. **Verify sync** (ESO refreshes hourly; force it — human step, hook-blocked for agents):
 
    ```bash
    kubectl -n forgejo annotate externalsecret forgejo-codeberg force-sync="$(date +%s)" --overwrite
@@ -215,12 +92,12 @@ Use the [diagnostics](#diagnostics) below to inspect each symptom.
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | `ExternalSecret` shows `SecretSyncedError` | Remote key/property missing in OpenBao, or the store is `NotReady` | Seed the key at `secret/<name>` (KV v2); if the store is down, see the next row. |
-| `ClusterSecretStore/openbao` `READY=False` | OpenBao sealed or down, or the Kubernetes auth role/policy is missing | `openbao-0` sits `0/1` while sealed — re-run unseal (step 2); verify the `external-secrets` k8s auth role + policy. |
+| `ClusterSecretStore/openbao` `READY=False` | OpenBao sealed or down, or the Kubernetes auth role/policy is missing | `openbao-0` sits `0/1` while sealed — the unsealer should clear it in ~1 min; if not, [OpenBao restore](openbao-restore.md). Verify the `external-secrets` k8s auth role + policy (`openbao-config` CronJob logs). |
 | Generator `ExternalSecret` never creates | `generators.external-secrets.io` CRDs absent | `ClusterGenerator` needs ESO ≥ v0.12 — bump the chart or fall back to a namespaced `Generator`. |
-| `PushSecret` reports `Failed` / forbidden | ESO ServiceAccount lacks write RBAC in `authentik` | Add the `Role` / `RoleBinding` for the ESO SA. |
-| App broke right after migration | ESO Secret key names differ from the old SOPS keys | Match them exactly — fix `target.template` / `data[].secretKey`. |
+| `PushSecret` reports `Failed` / forbidden | ESO ServiceAccount lacks write RBAC in the target ns | Add the `Role` / `RoleBinding` for the ESO SA. |
+| App broke right after migration | ESO Secret key names differ from the old keys | Match them exactly — fix `target.template` / `data[].secretKey`. |
 | App broke but the secret is unchanged | Not an ESO problem — the cached Secret is intact | Look elsewhere. |
-| New random value where data was already encrypted | An at-rest key was wrongly put on a generator | Restore from SOPS/backup; never regenerate at-rest keys. |
+| New random value where data was already encrypted | An at-rest key was wrongly put on a generator | Restore from backup; never regenerate at-rest keys ([secret-rotation §5.4](secret-rotation.md)). |
 
 ### Diagnostics
 
@@ -233,13 +110,13 @@ kubectl describe pushsecret NAME -n NS
 # Is the generator CRD installed?
 kubectl get crd | grep generators.external-secrets
 
-# Compare produced keys against the old SOPS secret
+# Compare produced keys against the expected set
 kubectl get secret NAME -n NS -o jsonpath='{.data}' | jq keys
 
 # ESO controller logs
 kubectl logs -n security deploy/external-secrets --tail=200 | grep -iE 'error|store|generator'
 
-# Force a re-sync (annotate; still GitOps-friendly — no manifest change)
+# Force a re-sync (annotation only — no manifest change; human step, hook-blocked for agents)
 kubectl annotate externalsecret NAME -n NS force-sync="$(date +%s)" --overwrite
 ```
 
@@ -274,10 +151,11 @@ external-class ExternalSecrets reconcile.
 
 - OpenBao stores its data in its **integrated-raft PVC**, not a database. The nightly
   `openbao-snapshot` CronJob ships a raft snapshot to Garage S3. Restore with
-  `bao operator raft snapshot restore` after init+unseal.
+  `bao operator raft snapshot restore` after init+unseal — full procedure:
+  [OpenBao restore](openbao-restore.md).
 - A fresh/empty OpenBao **cannot be unsealed with a new key** to read old data — you need the
-  **original unseal key** (held offline) plus the snapshot. The unseal key is the crown jewel;
-  losing it means losing OpenBao's contents.
+  **original unseal key** (Secret `openbao-keys`, backed up offline) plus the snapshot. The unseal
+  key is the crown jewel; losing it means losing OpenBao's contents.
 
 **If OpenBao contents are lost entirely:** re-seed from the original providers. Each external
 secret is one of:
@@ -292,6 +170,8 @@ Tag each secret accordingly when seeding so this list stays accurate.
 
 ## See also
 
-- [External Secrets plan](../rfc/external-secrets-plan.md) — architecture, inventory, waves.
-- [Authentik OIDC login failures](authentik-oidc-login.md) — for OIDC-elimination debugging.
-- [CloudNativePG restore playbook](cnpg-restore-playbook.md) — for app database recovery.
+- `external-secrets` skill — add/migrate recipes (canonical).
+- [Secret rotation](secret-rotation.md) — rotating a provided/external value.
+- [OpenBao restore](openbao-restore.md) — unseal, raft snapshot restore.
+- [External Secrets plan](../rfc/external-secrets-plan.md) — original architecture + inventory (historical).
+- [Authentik OIDC login failures](authentik-oidc-login.md) — OIDC debugging.

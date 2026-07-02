@@ -81,7 +81,7 @@ mise exec -- flux check                       && echo "OK flux"
 mise exec -- just bao-login                   # OpenBao via Authentik OIDC (browser)
 ```
 
-If SOPS decrypt succeeds, `kubectl get nodes` returns the four nodes, and
+If SOPS decrypt succeeds, `kubectl get nodes` returns the five nodes, and
 flux-local passes, the environment is fully set up. Once mise shell activation is
 in place and you've `cd`'d into the repo, the env (`KUBECONFIG`,
 `SOPS_AGE_KEY_FILE`, `TALOSCONFIG`) auto-loads, so you can drop the

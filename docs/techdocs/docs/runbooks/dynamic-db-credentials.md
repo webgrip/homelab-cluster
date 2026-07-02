@@ -33,24 +33,26 @@ freshrss-db-rw:5432  ◀──backend conn (rotating v-role)──  PgBouncer si
 - **PgBouncer sidecar** — freshrss → `127.0.0.1:5432` (stable cred); PgBouncer → `freshrss-db-rw`
   (rotating cred). `pool_mode=transaction`, `ignore_startup_parameters=extra_float_digits` (PHP PDO).
 
-## Rollout state (2026-07-01)
+## Rollout state
 
-- **Phase 0 (live):** engine mount grant + `vault_admin` + connection + role + netpol.
-- **Phase 1 additive (live):** `openbao-db` store, the two pooler ExternalSecrets, the pgbouncer
-  ConfigMap. freshrss still runs on its **static** cred (`freshrss-db-secret`) until the cutover.
-- **Phase 1 cutover (pending go):** the freshrss HelmRelease change that adds the PgBouncer sidecars
-  and repoints the app at the pooler. Restarts freshrss **once** (structural, not a rotation).
+Rollout state is tracked in [ADR-0010's Status log](../adr/adr-0010-openbao-dynamic-postgres-credentials.md), not here.
+As of 2026-07-02 the freshrss pilot is in-flight and churning: cutover `678b1da` → reverted `03f222e`
+(PG16 ADMIN OPTION grant failure: `permission denied to grant role freshrss`) → re-applied → reverted again
+`391eeb1` (pooler needs hands-on runtime iteration). **Verify live state before using this runbook:**
+`kubectl -n freshrss get pod` container count — `1/1` = static-cred path, `3/3` (app + pgbouncer + pgbouncer-reload) = pooler path.
 
 ## Verify Phase 0 + additive Phase 1 BEFORE the cutover
 
-Run these (some need the OpenBao pod / `bao` — a human step, OIDC-authed):
+Run these (some need the OpenBao pod / `bao` — a human step, OIDC-authed). Note: `kubectl cnpg psql`
+requires the CNPG kubectl plugin (not in mise) — without it, substitute
+`kubectl -n freshrss exec freshrss-db-1 -c postgres -- psql -U postgres -c "..."`:
 
 ```bash
 # 1. Engine mounted + role present (via the openbao-config job log or bao read):
 kubectl -n security logs job/$(kubectl -n security get job -o name | grep openbao-config | tail -1 | cut -d/ -f2) | grep -A2 'database engine'
 #   want: "database engine mounted" (or already present), "freshrss-db connection configured", "freshrss role configured"
 
-# 2. vault_admin exists in Postgres with CREATEROLE and ADMIN OPTION on freshrss (CRITICAL for PG17):
+# 2. vault_admin exists in Postgres with CREATEROLE and ADMIN OPTION on freshrss (CRITICAL for PG16+):
 kubectl cnpg psql freshrss-db -n freshrss -- -c "\du vault_admin"
 kubectl cnpg psql freshrss-db -n freshrss -- -c "SELECT admin_option FROM pg_auth_members m JOIN pg_roles r ON m.roleid=r.oid JOIN pg_roles v ON m.member=v.oid WHERE r.rolname='freshrss' AND v.rolname='vault_admin';"
 #   MUST return admin_option = t. If f, run once (break-glass, as a superuser):

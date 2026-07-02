@@ -9,14 +9,14 @@ Use this when a random workload is down (CrashLoopBackOff, `Unavailable`, readin
 - `kubectl get pods -A -o wide`
 - `kubectl get deploy,sts,ds -A -o wide | egrep -v ' 1/1 | 2/2 | 3/3 '`
 
-1) Inspect one failing pod
+2) Inspect one failing pod
 
 - `kubectl -n <ns> describe pod <pod>`
 - `kubectl -n <ns> logs <pod> -c <container> --tail=200`
 - If it’s crashlooping:
   - `kubectl -n <ns> logs <pod> -c <container> --previous --tail=200`
 
-1) Check events (often shows scheduling/image/PVC problems)
+3) Check events (often shows scheduling/image/PVC problems)
 
 - `kubectl -n <ns> get events --sort-by=.lastTimestamp | tail -n 50`
 
@@ -32,5 +32,5 @@ Use this when a random workload is down (CrashLoopBackOff, `Unavailable`, readin
 - Image pull errors.
 - Node pressure (memory/disk) evicting pods.
 - Storage issues (unbound PVC, degraded volume).
-- DNS resolution failures for `*.webgrip.dev` hostnames — see [dns-split-dns](dns-split-dns.md).
+- DNS resolution failures for `*.${SECRET_DOMAIN}` hostnames — see [dns-split-dns](dns-split-dns.md).
 - OIDC/OAuth login failures — see [authentik-oidc-login](authentik-oidc-login.md).

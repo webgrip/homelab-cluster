@@ -2,6 +2,8 @@
 
 Use this when Sloth-generated synthetic availability / latency alerts are firing (for example `SyntheticGrafanaAvailability`, `SyntheticPrometheusAvailability`, `SyntheticAlertmanagerAvailability`, or `SyntheticEndpointSlow`).
 
+> The `prometheus.*`/`alertmanager.*` probe targets now land on the VictoriaMetrics services (`vmsingle-vmsingle` / `vmalertmanager-vmalertmanager`) behind the same hostnames — see [victoriametrics](victoriametrics.md).
+
 ## What this usually means
 
 - The blackbox exporter is failing to reach an ingress endpoint, or
@@ -50,7 +52,7 @@ From the same shell:
 
 Fires as `GarageDown` / `GarageProbeSlow` / `GarageS3Availability` when the blackbox probe to `http://10.0.0.110:3900` (endpoint `garage`) fails.
 
-**Why this matters:** Garage S3 is the barman-cloud WAL-archive and backup target for **every** CloudNativePG database, and it runs **outside** this cluster (no app/namespace; not Flux-managed). When it is unreachable, WAL archiving fails cluster-wide, Postgres cannot recycle `pg_wal`, and database data volumes fill until they CrashLoop with `no free disk space for WALs` (heavy writers like `grafana-db` / `dependency-track-db` fill first). See also [[cnpg-garage-wal-spof]].
+**Why this matters:** Garage S3 is the barman-cloud WAL-archive and backup target for **every** CloudNativePG database, and it runs **outside** this cluster (no app/namespace; not Flux-managed). When it is unreachable, WAL archiving fails cluster-wide, Postgres cannot recycle `pg_wal`, and database data volumes fill until they CrashLoop with `no free disk space for WALs` (heavy writers like `grafana-db` / `dependency-track-db` fill first). The backup/WAL wiring behind this single point of failure is documented in the [CNPG backups runbook](cnpg-backups.md).
 
 Triage:
 
@@ -62,7 +64,7 @@ Triage:
    - `kubectl -n authentik logs authentik-db-1 -c plugin-barman-cloud --tail=20`
 4. Check for fallout — any CNPG instance `1/2 CrashLoopBackOff` with `no free disk space for WALs`:
    - `kubectl get pods -A -l cnpg.io/podRole=instance`
-   - A 100%-full volume won't start even after Garage returns; give it headroom by bumping `spec.storage.size` in `<app>/app/database/cluster.yaml`, then `flux reconcile kustomization <app>-db -n flux-system --with-source`.
+   - A 100%-full volume won't start even after Garage returns; give it headroom by bumping `spec.storage.size` in `<app>/app/database/cluster.yaml`, then `flux reconcile kustomization <app>-db -n flux-system --with-source` (human step — hook-blocked for agents; Flux also picks it up on the next git poll).
 
 ## Where it’s configured
 

@@ -33,10 +33,8 @@ maxReplicaCount: 6         # burst ceiling
 - **Capacity bound.** Each pod reserves ~**500m CPU / ~1.0Gi** by *requests* (runner 250m/512Mi +
   dind 250m/512Mi); neither container sets a CPU limit, so a lone build bursts into the idle node
   (observed ~1 core). The worker pool is `fringe-workstation` (8c/~15Gi) + `worker-1` (4c) — the
-  warm pool + burst fit comfortably (peak concurrency observed: **3 of 6**). `minReplicaCount` was
-  briefly **1** while dind carried a 4Gi mem *limit* that inflated node memory pressure (the 2nd
-  warm pod went `Pending: Insufficient memory`); with that limit cut to **1.5Gi** (peak use ~649Mi)
-  it is back to **2**.
+  warm pool + burst fit comfortably. Keep the dind memory *limit* modest (currently 1.5Gi): an
+  oversized limit inflates node memory pressure and leaves warm pods `Pending: Insufficient memory`.
 
 ## The runner identity (registration)
 
@@ -120,9 +118,4 @@ kubectl -n keda logs deploy/keda-operator --tail=40 | grep -E 'Scaling Jobs|Crea
 > Imperative `kubectl delete job` on a KEDA-generated runner is blocked by the cluster's
 > GitOps-only guardrails (and unnecessary — KEDA backfills). Drive everything through manifests.
 
-## Where this is going
-
-ADR-0008 keeps the privileged DinD only to **prove the runner** (done). The destination is
-**Topology C** — a shared, rootless `buildkitd` reached as a Service, with a registry cache to
-Harbor — which removes the one `privileged: true`, lets the Kyverno + PSA exceptions be narrowed or
-removed, and retires the `localhost:2376` netns coupling.
+The privileged DinD is deliberate but interim ([ADR-0008](../adr/adr-0008-rootless-ci-image-builds.md) Topology C is the endgame — see roadmap).

@@ -17,39 +17,7 @@ Operational guide for the Harbor OCI registry. Design rationale lives in the
   token-signing cert in its own `harbor-core` secret. `harbor-s3` and (phase 2) `harbor-oidc-values`
   come from OpenBao. See [External Secrets](../rfc/external-secrets-plan.md).
 
-## First-time bring-up
-
-1. **Garage** (on the Garage host) — create the bucket + a dedicated, bucket-scoped key:
-
-   ```
-   garage bucket create harbor
-   garage key create harbor-registry
-   garage bucket allow --read --write harbor --key harbor-registry
-   garage key info --show-secret harbor-registry
-   ```
-
-2. **Store the S3 key in OpenBao** — one command from the repo (prompts via `gum`, OIDC login if needed):
-
-   ```
-   just harbor-s3-cred
-   ```
-
-   This writes `secret/harbor/s3` with `REGISTRY_STORAGE_S3_ACCESSKEY` / `REGISTRY_STORAGE_S3_SECRETKEY`.
-   ESO syncs the `harbor-s3` Secret within ~1m. (`harbor-admin` needs nothing — it self-generates.)
-
-3. **Reconcile & watch**:
-
-   ```
-   flux -n flux-system reconcile kustomization cluster-apps --with-source
-   kubectl -n harbor get externalsecret          # harbor-admin, harbor-s3, cnpg-backup-s3 → SecretSynced
-   kubectl -n harbor get cluster harbor-db -w     # Cluster healthy; harbor-db-app minted
-   flux -n harbor get helmrelease harbor
-   kubectl -n harbor get pods -w                  # core, registry, portal, jobservice, trivy, redis, exporter
-   ```
-
-4. **Verify** — see *Verification* below.
-
-### Retrieve the local admin password
+## Retrieve the local admin password
 
 The `admin` password is generated (day-to-day login is Authentik OIDC once Phase 2 is on):
 
@@ -78,7 +46,7 @@ kubectl -n harbor get secret harbor-admin -o jsonpath='{.data.HARBOR_ADMIN_PASSW
 - **Registry round-trip** (LAN): `docker login harbor.${SECRET_DOMAIN}` → push/pull a test image;
   `helm registry login` + `helm push` an OCI chart. Confirm objects land: `garage bucket info harbor`.
 - **Trivy**: scan a pushed image (UI → project → artifact → Scan), expect a CVE report.
-- **Metrics**: `harbor_core_http_request_total` in Prometheus; the **Harbor** Grafana dashboard
+- **Metrics**: `harbor_core_http_request_total` in VictoriaMetrics; the **Harbor** Grafana dashboard
   (`/d/harbor/harbor`, folder *Apps*) populates. The `prometheusrule` wires only
   `harbor_core_http_request_total` / `up{}`. Storage panels should use the canonical Harbor exporter
   metrics **`harbor_quotas_size_bytes`** (label `type` = `hard`/`used`) and `harbor_system_volumes_bytes` —
@@ -107,13 +75,10 @@ with no Talos `machine.registries.mirrors` entry. Two ways to consume them:
 - **Explicit** (works now): pull through the project path —
   `docker pull harbor.${SECRET_DOMAIN}/dockerhub/library/<repo>:<tag>` (or `.../ghcr/<owner>/<repo>`).
   Harbor fetches from upstream once, scans, and caches; later pulls are local.
-- **Transparent** (after Phase 1): your manifests keep their `docker.io/…` / `ghcr.io/…` references and
-  containerd routes them through Harbor automatically — **Spegel peers → Harbor proxy → upstream**, with
-  containerd falling back to upstream if Harbor is down. This is the Talos `machine.registries.mirrors`
-  + Spegel `prependExisting` cutover in [ADR-0017](../adr/adr-0017-registry-mirror-talos-spegel.md);
-  **gate it on the fallback drill** (scale Harbor to zero, confirm an uncached pull still succeeds).
-
-> Status: proxy projects are provisioned; the transparent-mirror cutover (Phase 1) is pending.
+- **Transparent** (live — `talos/patches/global/machine-registries.yaml`): your manifests keep their
+  `docker.io/…` / `ghcr.io/…` references and containerd routes them through Harbor automatically —
+  **Spegel peers → Harbor proxy → upstream**, with containerd falling back to upstream if Harbor is
+  down ([ADR-0017](../adr/adr-0017-registry-mirror-talos-spegel.md)).
 
 ### Publish & consume your own private images
 
@@ -136,9 +101,6 @@ GitHub-hosted Actions cannot reach it. The build-and-push therefore lives in **`
 4. **Migrate existing `ghcr.io/webgrip/*`** (optional, one-time): `skopeo copy --all
    docker://ghcr.io/webgrip/<image>:<tag> docker://harbor.${SECRET_DOMAIN}/webgrip/<image>:<tag>`, or a
    Harbor *replication* pull-rule from the `ghcr` registry endpoint.
-
-> Status: designed; the Harbor-side project + robot are not yet provisioned, and the CI lives in
-> `webgrip/workflows`.
 
 ## SBOM column & robot RBAC
 
@@ -192,5 +154,5 @@ run. Caveats:
 - An automated restore drill is wired via the `cnpg-restore-test` component
   (`kubernetes/apps/harbor/harbor/app/database/backup/restore-test/cronjob-patch.yaml`), **suspended by
   default** (cluster default to limit storage pressure). Flip `suspend: false` to enable.
-- Full restore: follow the [CNPG Restore Playbook](cnpg-restore-playbook.md). The registry **blobs** live
+- Full restore: follow the [CNPG backups & restore runbook](cnpg-backups.md#restore-dr-drill). The registry **blobs** live
   in Garage S3 (the source of truth) — restoring `harbor-db` recovers metadata; blobs are untouched by the DB restore.

@@ -1,11 +1,11 @@
 # Runbook: Split-horizon DNS (CoreDNS + k8s-gateway)
 
-Use this when pods inside the cluster cannot resolve `*.webgrip.dev` hostnames (NXDOMAIN, "no such host", `lookup: no such host`) while your workstation resolves them fine.
+Use this when pods inside the cluster cannot resolve `*.${SECRET_DOMAIN}` hostnames (NXDOMAIN, "no such host", `lookup: no such host`) while your workstation resolves them fine.
 
 ## Architecture
 
 ```
-Pod DNS query ──▶ CoreDNS (10.43.0.10) ──forward webgrip.dev──▶ k8s-gateway (10.0.0.26:53)
+Pod DNS query ──▶ CoreDNS (10.43.0.10) ──forward ${SECRET_DOMAIN}──▶ k8s-gateway (10.0.0.26:53)
                                                                             │
                                                               reads HTTPRoutes/Services
                                                                             │
@@ -24,7 +24,7 @@ Two distinct DNS paths exist for `${SECRET_DOMAIN}`:
 1) **Can your workstation resolve it?**
 
 ```bash
-dig authentik.webgrip.dev +short
+dig authentik.${SECRET_DOMAIN} +short
 # Should return the Envoy Gateway external LB IP (e.g. 10.0.0.27)
 ```
 
@@ -33,7 +33,7 @@ If this fails, the problem is upstream (Cloudflare DNS, Envoy Gateway, or the HT
 1) **Can a pod resolve it?**
 
 ```bash
-kubectl run dns-test --rm -it --restart=Never --image=busybox:1.36 -- nslookup authentik.webgrip.dev
+kubectl run dns-test --rm -it --restart=Never --image=busybox:1.36 -- nslookup authentik.${SECRET_DOMAIN}
 ```
 
 If this returns NXDOMAIN but step 1 works, the problem is **CoreDNS not forwarding to k8s-gateway**.
@@ -41,7 +41,7 @@ If this returns NXDOMAIN but step 1 works, the problem is **CoreDNS not forwardi
 1) **Can CoreDNS reach k8s-gateway directly?**
 
 ```bash
-kubectl exec -n observability deployment/grafana-deployment -- nslookup authentik.webgrip.dev 10.0.0.26
+kubectl exec -n observability deployment/grafana-deployment -- nslookup authentik.${SECRET_DOMAIN} 10.0.0.26
 ```
 
 If this works, the problem is only the CoreDNS forwarding rule. If it fails too, k8s-gateway itself is down.
@@ -57,7 +57,7 @@ kubectl get configmap -n kube-system coredns -o jsonpath='{.data.Corefile}'
 You should see a zone like:
 
 ```
-dns://webgrip.dev:53 {
+dns://${SECRET_DOMAIN}:53 {
     errors
     forward . 10.0.0.26
     cache {
@@ -70,7 +70,7 @@ dns://webgrip.dev:53 {
 }
 ```
 
-If this is **missing**, CoreDNS forwards `webgrip.dev` queries to the upstream resolver (`/etc/resolv.conf`) instead of k8s-gateway, and the upstream resolver doesn't know about internal hostnames → NXDOMAIN.
+If this is **missing**, CoreDNS forwards `${SECRET_DOMAIN}` queries to the upstream resolver (`/etc/resolv.conf`) instead of k8s-gateway, and the upstream resolver doesn't know about internal hostnames → NXDOMAIN.
 
 ## Fix: add the CoreDNS zone
 
@@ -82,7 +82,7 @@ Add a second server block inside `servers:`:
 
 ```yaml
 - zones:
-    - zone: webgrip.dev
+    - zone: ${SECRET_DOMAIN}
       scheme: dns://
       use_tcp: true
   port: 53
@@ -108,7 +108,7 @@ kubectl rollout restart deployment/coredns -n kube-system
 ## Verify the fix
 
 ```bash
-kubectl exec -n observability deployment/grafana-deployment -- nslookup authentik.webgrip.dev
+kubectl exec -n observability deployment/grafana-deployment -- nslookup authentik.${SECRET_DOMAIN}
 # Should return 10.0.0.27
 ```
 
@@ -125,7 +125,7 @@ kubectl exec -n observability deployment/grafana-deployment -- nslookup authenti
 - **Is k8s-gateway reachable from the node?**
 
   ```bash
-  dig @10.0.0.26 authentik.webgrip.dev +short
+  dig @10.0.0.26 authentik.${SECRET_DOMAIN} +short
   ```
 
   If not, check the LoadBalancer service and Cilium LB IPAM.
@@ -140,8 +140,8 @@ kubectl exec -n observability deployment/grafana-deployment -- nslookup authenti
 
 | Symptom | Likely cause | Runbook |
 |---|---|---|
-| Grafana "Failed to get token from provider" | Pod can't resolve `authentik.webgrip.dev` | This one, then [authentik-oidc-login](authentik-oidc-login.md) |
+| Grafana "Failed to get token from provider" | Pod can't resolve `authentik.${SECRET_DOMAIN}` | This one, then [authentik-oidc-login](authentik-oidc-login.md) |
 | k6 canary pods get NXDOMAIN | Same DNS hole | This one |
-| Any pod-to-pod communication using `*.webgrip.dev` | Same DNS hole | This one |
+| Any pod-to-pod communication using `*.${SECRET_DOMAIN}` | Same DNS hole | This one |
 | Workstation resolves, pod doesn't | Split DNS gap | This one |
 | Neither workstation nor pod resolves | Envoy Gateway or HTTPRoute down | [envoy-gateway](envoy-gateway.md) |

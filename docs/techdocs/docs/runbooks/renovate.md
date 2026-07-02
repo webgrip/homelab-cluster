@@ -7,9 +7,9 @@ Use this when Renovate alerts are firing (for example `RenovateOperatorDeploymen
 1) Check the operator / controller
 
 - `kubectl -n renovate get pods -o wide`
-- `kubectl -n renovate logs deploy/renovate --tail=200` (adjust deployment name if different)
+- `kubectl -n renovate logs deploy/renovate-operator --tail=200`
 
-2) Check the Dependency Dashboard (GitHub)
+2) Check the Dependency Dashboard — Renovate runs against **both forges** (GitHub + Forgejo), each repo has its own dashboard issue
 
 - Look for authentication errors, rate limiting, or failing managers.
 
@@ -41,4 +41,4 @@ Debugging trick for "which repos are skipped and why": `renovate --autodiscover 
 ## More detail
 
 - Full Renovate docs/config: [docs/techdocs/docs/renovate.md](../general/renovate.md)
-- Forgejo migration checklist: [Renovate → Forgejo migration](../general/renovate-forgejo-migration.md)
+- Forgejo migration design: [RFC — Renovate on Forgejo](../rfc/rfc-renovate-forgejo.md)

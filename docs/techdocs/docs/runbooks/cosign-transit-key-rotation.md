@@ -1,7 +1,7 @@
 # Runbook: Rotating the `cosign-webgrip` OpenBao Transit signing key
 
 **Status:** active · **Scope:** OpenBao Transit key `cosign-webgrip` used to sign + attest
-webgrip Harbor images · **Related:** [supply-chain-enforcement-roadmap.md](../rfc/supply-chain-enforcement-roadmap.md)
+webgrip Harbor images · **Related:** [supply-chain overview](../general/supply-chain-overview.md) (the "roadmap §" refs below point to its enforcement-roadmap companion)
 
 > ⚠️ **Why this is delicate.** Kyverno (`image-verify-harbor-audit`) verifies Harbor images
 > against the public key(s) held in the `cosign-webgrip-pub` ConfigMap (namespace `security`).
@@ -98,7 +98,6 @@ bao token revoke -self
 
 - [ ] Harbor verification is still **Audit** (do scheduled rotations before flipping to Enforce, or
       treat as a change-managed event if already enforced).
-- [ ] You have the unseal key and can complete `generate-root`.
 - [ ] An inventory of in-use `harbor.${SECRET_DOMAIN}/webgrip/*` images exists (to re-sign in 2.4).
 - [ ] The `cosign-pubkey-publish` CronJob is healthy (last run succeeded) — it is what carries the
       overlap. `kubectl -n security get cronjob cosign-pubkey-publish`.

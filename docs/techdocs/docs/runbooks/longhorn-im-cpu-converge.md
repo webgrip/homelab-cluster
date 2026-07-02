@@ -95,7 +95,7 @@ mise exec -- kubectl get replicas.longhorn.io -n longhorn-system --no-headers | 
 guac-db is a **single-instance, Tier-4 CNPG** cluster (no WAL archiving) with a nightly logical backup:
 CronJob `guac-db-backup` → `s3://<guac-bucket>/_db-backups/guac-<date>.sql.gz` (Garage S3). The faulted
 volume has no salvageable data, so recover from the dump (or just re-init + re-ingest SBOMs — acceptable
-by design). Cross-check exact CNPG mechanics with [cnpg-restore-playbook](cnpg-restore-playbook.md).
+by design). Cross-check exact CNPG mechanics with the [CNPG backups & restore runbook](cnpg-backups.md#restore-dr-drill).
 
 1. Remove the faulted PVC + instance so CNPG re-bootstraps a fresh empty DB:
    `kubectl delete pvc guac-db-1 -n security` and let the operator recreate `guac-db-1` (initdb).

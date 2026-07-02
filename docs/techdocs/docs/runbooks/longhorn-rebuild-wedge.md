@@ -37,7 +37,7 @@ The longhorn-manager log on the blocked node names the held slot explicitly:
 
 ```bash
 mise exec -- kubectl -n longhorn-system logs ds/longhorn-manager --tail=200 \
-  | mise exec -- rg 'rebuildings for .* are in progress on this node, which reaches .* concurrent limit'
+  | grep 'rebuildings for .* are in progress on this node, which reaches .* concurrent limit'
 ```
 
 ## 3. VERIFY a surviving copy before deleting (critical)
@@ -98,4 +98,4 @@ mise exec -- kubectl get volumes.longhorn.io -n longhorn-system -o json \
 ## See also
 
 - [Incident 2026-06-19 — config-drift reboot → rebuild wedge](../incidents/2026-06-19-node-taxonomy-migration-storage-churn.md)
-- [longhorn-capacity-remediation](longhorn-capacity-remediation.md) · [longhorn-im-cpu-converge](longhorn-im-cpu-converge.md) · [longhorn](longhorn.md)
+- [longhorn-im-cpu-converge](longhorn-im-cpu-converge.md) · `longhorn` skill (StorageClasses, eviction, capacity)

@@ -1,5 +1,7 @@
 # Incident 2026-06-18 — Longhorn rolling-IM detonation (guaranteed-IM-CPU) + guac-db faulted
 
+> **Closing addendum:** Resolved 2026-06-18 via staged drain — see [runbooks/longhorn-im-cpu-converge.md](../runbooks/longhorn-im-cpu-converge.md); the setting remains `"20"`. (Body below written mid-incident.)
+
 **Severity:** SEV3 (one non-critical app down; recurring cluster-wide degraded waves; one volume `faulted` but Tier-4/recoverable from a logical dump).
 **Duration:** 2026-06-18 ~02:19 UTC (first soyo IM roll) → **ONGOING as of ~07:49 UTC** — the driving setting is still `applied=false` and the IMs keep re-cycling (soyo-3 + soyo-1 have each re-rolled a 2nd time). Volumes *oscillate* degraded↔healthy between rolls.
 **Data loss:** `guac-db` block replicas are **unrecoverable** (auto-salvage failed `no data exists`), BUT a clean **logical `pg_dump` from 02:40 UTC today exists in S3** — so no real data loss (the dump predates the fault and the DB is Tier-4/rebuildable anyway). No other volume lost.
@@ -142,4 +144,4 @@ recreation rate** — was not alerted. Caught manually via the session-start Flu
 - **`guaranteed-instance-manager-cpu` (and any IM-spec change) is a rolling-replica-wipe, and it can't apply while a node has running engine instances** (`"...It will be eventually applied"`). On a cluster where nodes never all hit a zero-engine window, it stays `applied=false` and **re-cycles IMs indefinitely** → oscillating degraded waves. Treat every such change as a deliberate, drain-backed, node-by-node maintenance op; confirm it reaches `applied=true`.
 - **`auto-salvage=true` does NOT mean a faulted volume is recoverable.** Here it fired and logged `Failed to auto salvage volume: no data exists` — when no replica has valid data (all `healthyAt` empty), salvage can't help. Recovery then requires a *logical* backup (pg_dump/S3), not a block-replica salvage. Check `replica.spec.healthyAt`/`lastHealthyAt` to know if salvage is even possible.
 - **Tier-4 DBs (`guac-db`) are designed to be lost** — no WAL archiving, nightly `pg_dump` to S3 + rebuild from re-ingested data. Don't over-invest in salvaging them; restore-the-dump or re-init is the valid recovery.
-- See memory `longhorn-guaranteed-im-cpu-delayed-detonation` and the [longhorn-capacity-remediation runbook](../runbooks/longhorn-capacity-remediation.md).
+- Durable guidance now lives in the `longhorn` skill and [longhorn-im-cpu-converge runbook](../runbooks/longhorn-im-cpu-converge.md) (the capacity-remediation runbook was retired 2026-07-02).

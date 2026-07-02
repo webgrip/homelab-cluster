@@ -1,6 +1,6 @@
 # Runbook: Talos rolling upgrade
 
-This is the detailed procedure for upgrading Talos across the cluster, one node at a time.
+Detailed procedure for upgrading Talos across the cluster, one node at a time. Node ops in general (apply-config, drains, adding nodes): `talos` skill.
 
 ## Safety model
 
@@ -9,21 +9,10 @@ This is the detailed procedure for upgrading Talos across the cluster, one node 
 
 ## Update pins
 
-1) Update tool pin (client)
+1) Tool pin (client) — `.mise.toml`: `aqua:siderolabs/talos = <version>`
+2) Cluster target — `talos/talenv.yaml`: `talosVersion: vX.Y.Z`
 
-- Edit `.mise.toml`:
-  - `aqua:siderolabs/talos = <version>`
-
-2) Update cluster target version
-
-- Edit `talos/talenv.yaml`:
-  - `talosVersion: vX.Y.Z`
-
-## Install tools
-
-- `mise install`
-- Confirm:
-  - `mise exec -- talosctl version --client`
+Then `mise install` and confirm: `mise exec -- talosctl version --client`
 
 ## Preflight checks
 
@@ -32,34 +21,17 @@ This is the detailed procedure for upgrading Talos across the cluster, one node 
 - etcd members via a single node:
   - `mise exec -- talosctl etcd members --endpoints <any-node-ip> --nodes <same-node-ip>`
 
-### Talos 1.13 preflight (v1.12 -> v1.13)
-
-Run these checks before upgrading to `talosVersion: v1.13.x`:
-
-- Confirm no legacy `.machine.env` usage (migrate to `EnvironmentConfig` if found):
-  - `grep -RniE "machine\\.env|EnvironmentConfig" talos/`
-- If GPU workloads are used, migrate from NVIDIA device plugin/runtime class to GPU Operator (CDI-based) before upgrading:
-  - `mise exec -- kubectl get ds -A | grep -i nvidia`
-  - `mise exec -- kubectl get runtimeclass`
-- Validate Talos API automation and upgrade tasks still use standard `talosctl upgrade`/`talhelper` flows (LifecycleService-backed in 1.13):
-  - `grep -RniE "upgrade-node|talosctl upgrade|talhelper gencommand upgrade" justfile .taskfiles talos docs`
-
-Recommended follow-up improvements after upgrade:
-
-- When custom Talos component env vars are needed, manage them explicitly via `EnvironmentConfig` documents.
-- For future GPU enablement, prefer CDI-compatible deployment patterns (GPU Operator) over legacy device plugin-only setup.
-
 ## Upgrade one node
 
 > **Force-drain single-replica-PDB workloads first.** The drain built into the
-> Talos node-upgrade flow (`task talos:upgrade-node`) stalls indefinitely on
-> single-replica workloads protected by a PodDisruptionBudget — it cannot evict
-> them, so it hits the internal drain timeout and the node never actually
-> reboots onto the new image (even though the task may print "upgrade
-> completed"). This has bitten all 5 nodes. The two recurring offenders are the
-> kyverno admission/background controllers and the single-instance CNPG
-> databases. Remedy: **before** running the upgrade, drain the node yourself
-> with eviction disabled (which bypasses the PDB by deleting pods directly):
+> Talos node-upgrade flow stalls indefinitely on single-replica workloads
+> protected by a PodDisruptionBudget — it cannot evict them, so it hits the
+> internal drain timeout and the node never actually reboots onto the new image
+> (even though the task may print "upgrade completed"). This has bitten all 5
+> nodes. The two recurring offenders are the kyverno admission/background
+> controllers and the single-instance CNPG databases. Remedy: **before** running
+> the upgrade, drain the node yourself with eviction disabled (which bypasses
+> the PDB by deleting pods directly):
 >
 > ```sh
 > mise exec -- kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data --disable-eviction
@@ -69,7 +41,14 @@ Recommended follow-up improvements after upgrade:
 > workloads. A stalled upgrade is safe to Ctrl+C; retry it after the node is
 > drained.
 
-- `mise exec -- just talos-upgrade-node IP=<node-ip>`
+```bash
+mise exec -- just talos-upgrade-node <node-ip>
+# equivalently: mise exec -- task talos:upgrade-node IP=<node-ip>
+```
+
+> **`IP` is a positional just argument.** `just talos-upgrade-node IP=<node-ip>` is broken — just
+> treats `IP=…` as a variable override, so the recipe's yq selector receives the literal string
+> `IP=<node-ip>` and matches no node. Only the `task` form takes `IP=` as a named var.
 
 Verify:
 
@@ -82,5 +61,7 @@ At `talosVersion: v1.13.4` the bundled etcd is `v3.6.12`.
 
 - If `etcd members` is flaky or gets canceled, always pin to a single endpoint/node:
   - `mise exec -- talosctl etcd members --endpoints <ip> --nodes <ip>`
-- If you need to upgrade a maintenance-mode node, the tasks support `INSECURE=true`:
-  - `mise exec -- just talos-upgrade-node IP=<ip> INSECURE=true`
+- Upgrading a maintenance-mode node (no machine config yet) needs the insecure variant —
+  `INSECURE` is the second positional argument to just:
+  - `mise exec -- just talos-upgrade-node <ip> true`
+  - (or `mise exec -- task talos:upgrade-node IP=<ip> INSECURE=true`)

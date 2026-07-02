@@ -25,6 +25,20 @@ kubectl get kustomization -A | awk '$4!="True"'
 
 `count(up)` should be triple digits and `count(up == 0)` empty. `count by (job)(up)` must include `kubelet`, `cadvisor`, `kubernetes` (apiserver), `talos-etcd`, `coredns`, `kube-state-metrics`, `prometheus-node-exporter` plus every app job.
 
+## Namespace triage (pods not ready / restart storms / OOMKills in `observability`)
+
+```sh
+kubectl -n observability get pods -o wide
+kubectl -n observability get deploy,sts -o wide
+kubectl -n observability describe pod <pod>
+kubectl -n observability logs <pod> -c <container> --tail=200            # add --previous if restarting
+```
+
+Common failure modes for Loki/Tempo/VM components: PVC full or degraded volumes
+(`kubectl -n observability get pvc`, then the `longhorn` skill /
+[longhorn-rebuild-wedge](longhorn-rebuild-wedge.md)), object-store connectivity/creds, DNS.
+Fix the first failing dependency in that order: DNS → storage → network → app.
+
 ## Known failure modes
 
 ### vm-operator HelmRelease install fails: `no matches for kind "VMServiceScrape"`

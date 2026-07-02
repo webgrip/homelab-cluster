@@ -14,29 +14,29 @@ This runbook covers diagnosing etcd instability and the operational procedures f
 
 ```bash
 # Who is the etcd leader right now?
+# MEMBER column = member ID; LEADER column = which member ID is currently leader.
+# If MEMBER == LEADER on a row, that NODE is the leader.
 mise exec -- talosctl --talosconfig talos/clusterconfig/talosconfig \
   --nodes 10.0.0.20 etcd status
+```
 
-# All three members at once (run from any CP node)
-# MEMBER column = member ID; LEADER column = which member ID is currently leader
-# If MEMBER == LEADER on a row, that NODE is the leader.
+Metrics live in VictoriaMetrics (VMSingle speaks the Prometheus query API on `:8429`).
+Either query it directly, or — for agents — use the grafana MCP
+(`query_prometheus`, `datasourceUid=prometheus`) with the same expressions:
+
+```bash
+mise exec -- kubectl -n observability port-forward svc/vmsingle-vmsingle 8429:8429 &
+q() { curl -s 'http://127.0.0.1:8429/api/v1/query' --data-urlencode "query=$1" \
+  | jq -r '.data.result[]? | [.metric.instance, .value[1]] | @tsv'; }
 
 # Fragmentation ratio (>1.5 = run defrag soon; >2.0 = run defrag now)
-mise exec -- kubectl -n observability exec \
-  $(mise exec -- kubectl -n observability get pod -l app.kubernetes.io/name=prometheus -o jsonpath='{.items[0].metadata.name}') \
-  -c prometheus -- wget -qO- \
-  --post-data 'query=etcd_mvcc_db_total_size_in_bytes / etcd_mvcc_db_total_size_in_use_in_bytes' \
-  'http://127.0.0.1:9090/api/v1/query' | jq -r '.data.result[]? | [.metric.instance, .value[1]] | @tsv'
+q 'etcd_mvcc_db_total_size_in_bytes / etcd_mvcc_db_total_size_in_use_in_bytes'
 
 # Leader change rate (healthy = near 0/hour; >10/hour = investigate)
-mise exec -- kubectl -n observability exec ... -- wget -qO- \
-  --post-data 'query=rate(etcd_server_leader_changes_seen_total[1h]) * 3600' \
-  'http://127.0.0.1:9090/api/v1/query' | jq -r '.data.result[]? | [.metric.instance, .value[1]] | @tsv'
+q 'rate(etcd_server_leader_changes_seen_total[1h]) * 3600'
 
 # WAL fsync p99 (must stay well below 500ms; >1s = leader changes imminent)
-mise exec -- kubectl -n observability exec ... -- wget -qO- \
-  --post-data 'query=histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m]))' \
-  'http://127.0.0.1:9090/api/v1/query' | jq -r '.data.result[]? | [.metric.instance, .value[1]] | @tsv'
+q 'histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m]))'
 ```
 
 ## Defragmentation
@@ -71,33 +71,15 @@ Expected result: DB size shrinks from ~430–450 MB to ~165 MB per member. Backe
 
 ## Applying Talos config changes (e.g. etcd tuning)
 
-When changes are made to `talos/patches/` (such as the etcd heartbeat/election-timeout tuning), they must be regenerated and applied to the cluster.
+Changes to `talos/patches/` (such as the etcd heartbeat/election-timeout tuning) must be regenerated and applied node by node — the full staged procedure is in the **`talos` skill**; don't improvise it.
 
-> ⚠️ **`--mode=auto` almost always triggers a reboot on these nodes.** Even etcd-only config changes cause a reboot if the running config differs in feature flags or other fields from what talhelper generates. A reboot with Longhorn-mounted pods causes SIGKILL races that can leave orphaned application locks in databases (see *Known issues* below). Always use the safe task.
-
-**Preferred method — safe rolling apply with drain:**
+> ⚠️ **`--mode=auto` almost always triggers a reboot on these nodes.** Even etcd-only config changes cause a reboot if the running config differs in feature flags or other fields from what talhelper generates. A reboot with Longhorn-mounted pods causes SIGKILL races that can leave orphaned application locks in databases (see *Known issues* below). Always use the safe task:
 
 ```bash
-# Applies one node at a time: drains workloads, applies config, waits for Ready, uncordons
+# Drains workloads, applies config, waits for Ready, uncordons — one node at a time
 task talos:apply-node-safe IP=10.0.0.20 HOSTNAME=soyo-1
 task talos:apply-node-safe IP=10.0.0.21 HOSTNAME=soyo-2
 task talos:apply-node-safe IP=10.0.0.22 HOSTNAME=soyo-3
-```
-
-**Manual method (if task runner unavailable):**
-
-```bash
-# 1. Regenerate all node configs from talconfig + patches
-mise exec -- talhelper genconfig
-TC="--talosconfig talos/clusterconfig/talosconfig"
-
-# 2. For each node: drain → apply → wait → uncordon
-mise exec -- kubectl drain soyo-1 --ignore-daemonsets --delete-emptydir-data --timeout=120s
-mise exec -- talosctl $TC --nodes 10.0.0.20 apply-config \
-  --file talos/clusterconfig/kubernetes-soyo-1.yaml --mode=auto
-mise exec -- kubectl wait node/soyo-1 --for=condition=Ready --timeout=300s
-mise exec -- kubectl uncordon soyo-1
-# Repeat for soyo-2 (10.0.0.21) and soyo-3 (10.0.0.22)
 ```
 
 ## Known issues after node reboots
@@ -123,6 +105,7 @@ If Grafana's PostgreSQL pod is SIGKILL'd mid-migration, a stale row in `server_l
 **Symptom:** `grafana-deployment` CrashLoopBackOff with error: `there is already a lock for this actionName: oss-ac-basic-role-seeder`
 
 **Fix:**
+
 ```bash
 kubectl exec -n observability grafana-db-1 -c postgres -- \
   psql -U postgres -d grafana -c \
@@ -134,26 +117,20 @@ kubectl delete pod -n observability -l app=grafana
 
 ## Diagnosing disk I/O contention
 
-If WAL fsync p99 is elevated but etcd fragmentation looks healthy, the cause is likely disk I/O contention from a workload on the same node:
+If WAL fsync p99 is elevated but etcd fragmentation looks healthy, the cause is likely disk I/O contention from a workload on the same node. Using the `q` helper (or grafana MCP) from *Quick status checks* — note the node-exporter job label is `prometheus-node-exporter`:
 
 ```bash
-# Check IO utilisation per disk per node-exporter node
-# High values on sda (the only local SSD) on a CP node = disk contention
-mise exec -- kubectl -n observability exec <prometheus-pod> -c prometheus -- wget -qO- \
-  --post-data "query=rate(node_disk_io_time_seconds_total{job='node-exporter',instance=~'10.0.0.2[012]:9100',device='sda'}[5m])" \
-  'http://127.0.0.1:9090/api/v1/query' | jq -r '.data.result[]? | [.metric.instance, .value[1]] | @tsv'
+# IO utilisation per disk — high values on sda (the only local SSD) on a CP node = disk contention
+q "rate(node_disk_io_time_seconds_total{job='prometheus-node-exporter',instance=~'10.0.0.2[012]:9100',device='sda'}[5m])"
 
-# Check average write latency per disk
-# >20ms on sda of a CP node while etcd spikes = a workload is saturating the disk
-mise exec -- kubectl -n observability exec <prometheus-pod> -c prometheus -- wget -qO- \
-  --post-data "query=rate(node_disk_write_time_seconds_total{job='node-exporter',device='sda'}[5m]) / rate(node_disk_writes_completed_total{job='node-exporter',device='sda'}[5m])" \
-  'http://127.0.0.1:9090/api/v1/query' | jq -r '.data.result[]? | [.metric.instance, (.value[1] | tonumber * 1000 | floor | tostring + "ms")] | @tsv'
+# Average write latency per disk — >20ms on a CP node's sda while etcd spikes = a workload is saturating the disk
+q "rate(node_disk_write_time_seconds_total{job='prometheus-node-exporter',device='sda'}[5m]) / rate(node_disk_writes_completed_total{job='prometheus-node-exporter',device='sda'}[5m])"
 
-# Check which pods are on a given CP node
+# Which pods are on a given CP node
 mise exec -- kubectl get pods -A -o wide --field-selector spec.nodeName=soyo-1 | grep -v Completed
 ```
 
-**Key constraint:** Never schedule write-heavy workloads on control-plane nodes. The only local disk is shared with etcd. This includes: Pyroscope, Loki (if using local storage), any database with high write throughput.
+**Key constraint:** Never schedule write-heavy workloads on control-plane nodes. The only local disk is shared with etcd. This includes: Pyroscope, Loki (if using local storage), any database with high write throughput. Placement rules: `workload-placement` skill.
 
 > **Example (2026-06-21):** a write-heavy CNPG tenant DB (`dependency-track-db`, ~1.5 cores of SBOM-ingestion WAL writes) scheduled on soyo-3 starved etcd — WAL-fsync p99 went 3.5ms → 222ms and tripped a leader election (`etcd_server_leader_changes_seen_total` +1) plus a brief apiserver blip. Fix: hard-pin tenant DBs to `pool=worker` (native CNPG `spec.affinity.nodeSelector: {node.webgrip.io/pool: worker}`), never the soyo etcd nodes.
 
@@ -168,6 +145,7 @@ mise exec -- kubectl get pods -A -o wide --field-selector spec.nodeName=soyo-1 |
 3. **Default heartbeat/election timeouts too tight** — 100ms heartbeat + 1000ms election timeout. A single 200ms fsync spike caused a missed heartbeat; followers would trigger an election after 1s. Raised to 500ms / 5000ms.
 
 **Actions taken:**
+
 - Pyroscope suspended in Flux and HelmRelease deleted (pod + service removed, PVC preserved).
 - `talos/patches/controller/cluster.yaml`: etcd `heartbeat-interval: 500`, `election-timeout: 5000`.
 - Config applied to all 3 nodes via `task talos:apply-node` (each node rebooted). Confirmed via `talosctl get machineconfig`.
@@ -175,6 +153,7 @@ mise exec -- kubectl get pods -A -o wide --field-selector spec.nodeName=soyo-1 |
 - **Still required:** `talosctl etcd defrag` (one member at a time) — reclaims fragmented boltdb pages.
 
 **Side effect of rolling reboot:**
+
 - All 3 nodes rebooted; stranded Error pods in longhorn-system, kube-system, security cleaned up manually.
 - `grafana-db-1` was SIGKILL'd mid-operation on soyo-2 reboot → `server_lock` orphaned → Grafana CrashLoopBackOff. Fixed by deleting the stale lock row and restarting the pod.
 - **Mitigation added:** `task talos:apply-node-safe` (drain → apply → wait → uncordon) added to `.taskfiles/talos/Taskfile.yaml` to prevent this in future.

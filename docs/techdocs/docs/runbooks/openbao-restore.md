@@ -1,7 +1,7 @@
 # Runbook: restore OpenBao from a Garage S3 raft snapshot
 
-OpenBao is the cluster's secrets backend (ESO `ClusterSecretStore/openbao` → ~48 ExternalSecrets across
-16 namespaces). It's a **single-node raft** instance (`openbao-0`, 3Gi `longhorn` PVC) with a nightly raft
+OpenBao is the cluster's secrets backend (ESO `ClusterSecretStore/openbao` → 66 ExternalSecrets,
+2026-07-02). It's a **single-node raft** instance (`openbao-0`, 3Gi `longhorn` PVC) with a nightly raft
 snapshot shipped to the **external Garage S3** (`openbao-snapshot` CronJob, `0 3 * * *`, last 14 retained
 at `s3://cnpg-backups-bucket/openbao-snapshots/openbao-<ts>.snap`). Auto-unseal is handled by the
 `openbao-unsealer` Deployment using the `openbao-keys` Secret (single `unseal-key`).
@@ -70,11 +70,11 @@ Already-running pods keep their ESO-written K8s Secrets, so live workloads toler
 a while; only **pod restarts** and **secret rotation** need openbao back. Recovery order: bring a worker
 back (or let the volume re-attach) → `openbao-0` schedules on a worker → unsealer unseals from
 `openbao-keys` → ESO resumes. A snapshot restore is only needed if the **raft data itself** was lost (both
-Longhorn replicas gone). This is why ADR-0026 keeps openbao's DR on external Garage S3 rather than a soyo
-replica — see the [migration-status runbook](node-taxonomy-migration-status.md).
+Longhorn replicas gone). This is why [ADR-0026](../adr/adr-0026-confine-longhorn-to-workers.md) keeps
+openbao's DR on external Garage S3 rather than a soyo replica.
 
 ## Related
 
-- [cnpg-restore-playbook](cnpg-restore-playbook.md) (the DB side — forgejo-db etc.).
+- [CNPG backups & restore](cnpg-backups.md#restore-dr-drill) (the DB side — forgejo-db etc.).
 - [external-secrets](external-secrets.md) (ESO + OpenBao backend).
 - Snapshot CronJob + scripts: `kubernetes/apps/security/openbao/bootstrap/{snapshot-cronjob,snapshot.sh,upload.sh}`.
