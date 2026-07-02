@@ -25,6 +25,18 @@ entries:
       title: Set up multi-factor authentication
       designation: enrollment
 
+  # Define the password stage BEFORE the identification stage that references it
+  # via !KeyOf. Authentik applies blueprint entries top-to-bottom and !KeyOf only
+  # resolves to an already-created instance — a forward reference resolves to null,
+  # leaving password_stage unset (password_fields=false, no inline password field).
+  - model: authentik_stages_password.passwordstage
+    id: homelab-password
+    identifiers:
+      name: homelab-password
+    attrs:
+      backends:
+        - authentik.core.auth.InbuiltBackend
+
   - model: authentik_stages_identification.identificationstage
     id: homelab-identification
     identifiers:
@@ -35,14 +47,6 @@ entries:
         - username
       # Render the password field on the same page as identification (single-page login)
       password_stage: !KeyOf homelab-password
-
-  - model: authentik_stages_password.passwordstage
-    id: homelab-password
-    identifiers:
-      name: homelab-password
-    attrs:
-      backends:
-        - authentik.core.auth.InbuiltBackend
 
   - model: authentik_stages_authenticator_totp.authenticatortotpstage
     id: homelab-mfa-totp
