@@ -34,24 +34,21 @@ semantic-release must publish via `@saithodev/semantic-release-gitea` on Forgejo
 (`GITHUB_ACTIONS` is set on *both*, so it can't discriminate). Verified on the cluster runner 2026-06-27.
 Zero config: no org var, no composite-action edit, no literal to maintain.
 
+The two load-bearing lines (full real config: `webgrip/infrastructure` `.releaserc.js`):
+
 ```js
-const onForgejo = !!process.env.GITEA_ACTIONS;              // intrinsic; never a vars.* lookup
-const publishPlugin = onForgejo ? '@saithodev/semantic-release-gitea' : '@semantic-release/github';
-// version bump + commit-back ONLY on Forgejo (sole release authority); the GitHub mirror must never re-version
-const commitBack = onForgejo ? [['@semantic-release/git', { assets: ['CHANGELOG.md'],
-  message: 'chore(release): v${nextRelease.version} [skip ci]\n\n${nextRelease.notes}' }]] : [];
-module.exports = { branches, plugins: [commitAnalyzer, releaseNotes, changelog, ...commitBack, publishPlugin] };
+const onForgejo = !!process.env.GITEA_ACTIONS;   // the gate — intrinsic; never a vars.* lookup
+// commit-back (Forgejo only): message: 'chore(release): v${nextRelease.version} [skip ci]\n\n${nextRelease.notes}'
 ```
 
 Always `.releaserc.js`, never `.json` (logic needs a module; the action's config-picker prefers `.js`).
-Full real example: `webgrip/infrastructure` `.releaserc.js`. The shared Forgejo `semantic-release.yml`
-reusable sets `GITEA_URL`/`GITEA_TOKEN` for the gitea plugin — don't unset them.
+The shared Forgejo `semantic-release.yml` reusable sets `GITEA_URL`/`GITEA_TOKEN` for the gitea plugin —
+don't unset them.
 
-## Settings parity + Releases unit
+## Settings parity
 
-After porting: `scripts/forgejo-sync.sh --repo <name> --apply` enables the Actions + **Releases** units
-(gitea-mirror leaves both OFF), the Forgejo→GitHub push-mirror, and branch protection. Without the
-Releases unit (`has_releases`) the Releases tab/API **404s** and semantic-release has nowhere to publish.
+Post-port parity (`scripts/forgejo-sync.sh`) → the **forgejo-leading** skill. Port-specific fact: without
+the **Releases** unit (`has_releases`) the Releases tab/API **404s** and semantic-release has nowhere to publish.
 
 ## Gotchas
 

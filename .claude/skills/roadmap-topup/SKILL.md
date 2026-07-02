@@ -56,10 +56,7 @@ Tell them to verify, not guess (e.g. is policy X still Audit? does ns Y still la
 
 ### 5. Validate, commit, push
 - Cosmetic markdownlint (MD029/MD022/MD060) is expected — ignore.
-- The owner commits concurrently on the **same local `main`**. **Stage only your own files**
-  (`git add docs/techdocs/docs/general/roadmap.md` + any skill file) — never `git add -A`. Commit with
-  `git -c commit.gpgsign=false commit` (via `mise exec --` so lefthook's zizmor resolves), then
-  `git fetch` + push (clean fast-forward; their WIP stays untouched).
+- Stage only your own files (`roadmap.md` + any skill file) — `main` has concurrent writers, see CLAUDE.md.
 
 ## Notes
 - The number is a forcing function: holding at 100 forces you to keep finding real work, not to pad.

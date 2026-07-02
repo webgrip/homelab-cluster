@@ -23,7 +23,7 @@ Read-only Kubernetes/Talos/Flux/GitOps reliability auditor for this repo. Diagno
 5. **Storage** — Longhorn health, PVC binding, VolumeAttachments, RWX/RWO conflicts.
 6. **Network/ingress** — Cilium, CoreDNS, Services/EndpointSlices, Gateway API, HTTPRoutes, NetworkPolicies.
 7. **Certificates/edges** — cert-manager, issuers, ACME challenges, external-dns/cloudflared (by reference only).
-8. **Observability** — Prometheus, Alertmanager, Grafana, Loki/Mimir/Tempo/Pyroscope, blackbox/k6 probes.
+8. **Observability** — VictoriaMetrics CRs (VMSingle/VMAgent/VMAlert/VMAlertmanager via vm-operator), Grafana, Loki, Tempo, blackbox/k6 probes. The `pyroscope` Kustomization is suspended by intent (pending ADR-0032) — not a failure.
 9. **Applications** — only after their dependencies are validated.
 
 Every durable fix is a manifest change in Git, not an imperative one-off.
@@ -63,8 +63,9 @@ kubectl get svc,endpointslices,gateway,httproute,tlsroute,referencegrant,network
 # 6 Certs
 kubectl get certificate,certificaterequest,clusterissuer,challenges,orders -A 2>/dev/null; kubectl -n cert-manager get pods
 
-# 7 Observability
-kubectl -n observability get pods; kubectl get servicemonitor,podmonitor,prometheusrule,probe -A 2>/dev/null
+# 7 Observability — VictoriaMetrics stack + the scrape/rule CRs vm-operator converts
+kubectl -n observability get pods; kubectl get vmsingle,vmagent,vmalert,vmalertmanager -A 2>/dev/null
+kubectl get servicemonitor,podmonitor,prometheusrule,probe -A 2>/dev/null   # kept CRs — converted to VM CRDs
 
 # 8 Apps (last)
 kubectl get helmrelease -A; kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded 2>/dev/null
@@ -84,7 +85,7 @@ flux get kustomizations -A --no-header | awk '$5=="False"{print $1,$2}' | while 
 - **Admission webhook down → all kustomizations fail.** Many kustomizations `READY=False` with identical `dry-run failed ... failed calling webhook ... no endpoints available` pointing at one service; that webhook's pod is CrashLoop/0-ready. Fix the controller first, then force-reconcile all.
 - **Node OOM → control-plane static pod restarts.** OOM-killed DaemonSet pod starves kubelet/CRI health checks → static controller-manager/scheduler pods restart on that node. Signal: high static-pod restart count on one node + `talosctl dmesg` OOM at the same timestamps. Fix: raise the OOM'd workload's memory limit, not the control-plane pods.
 - **Stale projected SA token → 401.** Long CrashLoopBackOff prevents token refresh → `Unauthorized` despite `auth can-i` = yes. Fix: `kubectl rollout restart`.
-- **Grafana notification 401:** Grafana SA tokens are wiped on Helm upgrades that recreate the pod/DB. Stale token in the Secret → Flux annotation posts 401. Durable fix recreates the SA/token and re-encrypts the SOPS secret (human action).
+- **Grafana notification 401:** Grafana SA tokens are wiped on Helm upgrades that recreate the pod/DB. Stale token in the Secret → Flux annotation posts 401. Grafana admin creds are ESO-managed — check the `grafana-admin` ExternalSecret in `observability` reports `SecretSynced` (`kubectl -n observability get externalsecret grafana-admin`), then recreate the SA/token.
 - **k6/CronJob `FailedCreate: failed calling webhook`** is a secondary symptom of a webhook outage; resolves when the admission controller recovers.
 
 ## Severity & output

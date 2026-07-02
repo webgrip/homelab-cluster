@@ -6,7 +6,7 @@ when_to_use: Use when adding/creating a new app, service, workload, or deploymen
 
 # Add an application
 
-**Copy a comparable existing app** (`freshrss`, `searxng`) under `kubernetes/apps/<ns>/<app>/` — don't write from scratch. Files + the non-obvious wiring:
+**Copy a comparable existing app** (`searxng` — `kubernetes/apps/searxng/searxng/`) under `kubernetes/apps/<ns>/<app>/` — don't write from scratch. Files + the non-obvious wiring:
 
 1. **`ks.yaml`** — Flux `Kustomization`: `targetNamespace: <ns>`, `path: ./kubernetes/apps/<ns>/<app>/app`, `sourceRef` flux-system GitRepository, `prune: true`, `wait: false`, `dependsOn` (DB/operators), `postBuild.substituteFrom` Secret `cluster-secrets` (gives `$${SECRET_DOMAIN}`). Do **not** add `decryption`/install-upgrade-rollback remediation — the root `cluster-apps` ks injects them (enforced by `guard-skills.sh`).
 2. **`app/kustomization.yaml`** — lists `./helmrelease.yaml` (+ `./httproute.yaml`, `./database/`, secrets).
@@ -27,7 +27,7 @@ Default SC is `longhorn` (SSD, 2-replica). Full StorageClass table + when to use
 
 ## Observability
 - Logs: JSON to stdout/stderr → Loki automatically. Traces: OTLP/HTTP → `http://alloy-gateway.observability.svc.cluster.local:4318`.
-- Metrics/alerts: `ServiceMonitor` + `PrometheusRule`, both **need label `release: kube-prometheus-stack`** (enforced) + low cardinality. Dashboard/alert specifics → the `grafana-dashboard` skill.
+- Metrics/alerts: `ServiceMonitor` + `PrometheusRule`, low cardinality; add label `release: kube-prometheus-stack` — required by the guard-skills hook (legacy), scraping itself keys on VM `selectAllByDefault` (see the `victoriametrics` skill). Dashboard/alert specifics → the `grafana-dashboard` skill.
 
 ## Secrets
 **ESO + OpenBao, never a new `*.sops.yaml`** — use the `external-secrets` skill (random entropy → generate in-cluster; provided value → OpenBao). Consume via `existingSecret`/`envFromSecret`/`secretKeyRef`.

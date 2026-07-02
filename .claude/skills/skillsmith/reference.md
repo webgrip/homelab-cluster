@@ -3,6 +3,7 @@
 Contents: [Frontmatter fields](#frontmatter-fields) · [Command name & discovery](#command-name--discovery)
 · [String substitutions](#string-substitutions) · [Advanced levers + when each fits](#advanced-levers--when-each-fits)
 · [Adopt/skip for this repo](#adoptskip-for-this-repos-skills) · [Measure trigger accuracy & cost](#measure-trigger-accuracy--cost)
+· [Evaluate an installed skill](#evaluate-an-installed-skill)
 
 ## Frontmatter fields
 
@@ -95,5 +96,25 @@ This repo's skills are **intent-triggered procedure/reference** guides for a Git
 - Budget knobs: `skillListingBudgetFraction` (default 1% of context window), `maxSkillDescriptionChars`
   (1,536), `SLASH_COMMAND_TOOL_CHAR_BUDGET`; demote low-priority skills to `"name-only"` via
   `skillOverrides` to free budget.
+
+## Evaluate an installed skill
+
+Full pass = qualitative audit → triggering eval → output-quality benchmark.
+
+- **Triggering: faithful probe, not `run_eval.py`.** The `skill-creator` harness injects each description as
+  a *duplicate command twin* and only counts that twin firing — it **systematically undercounts an
+  already-installed skill** (the real skill wins the match, twin never fires). Instead run `claude -p <query>`
+  in the real repo, parse stream-json for the `Skill` tool call, compare to expected (~9s/query). Probe
+  *symptom* phrasings, not just canonical ones — under-triggering hides there.
+- **When the benchmark ties, the value is the gotchas, not the scaffolding.** On greenfield scaffolding a
+  skill-on/skill-off benchmark can tie 9/9 — enforcing hooks + strong reference apps already carry the happy
+  path; the skill's measurable win is speed/economy. Read that as: invest the skill's body in
+  **debugging/gotcha knowledge and symptom-triggering**, not more happy-path prose.
+- **Baseline isolation:** `claude -p --disable-slash-commands --disallowed-tools Skill` (skills off, same
+  repo/CLAUDE.md/hooks).
+- **Sensitive-path / worktree traps:** benchmark worktrees MUST live **outside `.claude/`** — anything under
+  it trips built-in sensitive-path protection (auto-denies every write under headless `acceptEdits`); put them
+  in `/tmp`. A `claude -p` run *inside* a worktree can still write into the MAIN checkout (worktree `.git` is a
+  gitfile → project-root resolves to main) — capture outputs, then `git checkout`/`rm` the pollution.
 
 Source of truth: <https://code.claude.com/docs/en/skills>. Re-verify here before changing the SKILL.md guide.

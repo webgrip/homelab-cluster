@@ -1,7 +1,10 @@
 ---
 name: victoriametrics
-description: Author and operate the VictoriaMetrics metrics backend — vm-operator + VMSingle/VMAgent/VMAlert/VMAlertmanager CRs, the control-plane scrape CRs (VMServiceScrape/VMPodScrape/VMNodeScrape/VMStaticScrape), and the operator's ServiceMonitor/PrometheusRule conversion. Use when adding/editing a VM CR or a scrape, choosing scrape coverage for a new target, debugging a failed vm-operator install or a missing scrape target, or repointing something at the metrics backend. NOT Grafana dashboards/datasource CRs (grafana-dashboard skill) nor incident triage (runbooks/victoriametrics.md).
+description: Author and operate the VictoriaMetrics metrics backend — vm-operator + VMSingle/VMAgent/VMAlert/VMAlertmanager CRs, the control-plane scrape CRs (VMServiceScrape/VMPodScrape/VMNodeScrape/VMStaticScrape), and the operator's ServiceMonitor/PrometheusRule conversion.
+when_to_use: Use when adding/editing a VM CR or a scrape, choosing scrape coverage for a new target, debugging a failed vm-operator install or a missing scrape target, or repointing something at the metrics backend. NOT Grafana dashboards/datasource CRs (grafana-dashboard skill) nor incident triage (runbooks/victoriametrics.md).
 ---
+
+# VictoriaMetrics — the metrics backend
 
 Metrics backend = **modular VictoriaMetrics** (ADR-0038), grafana-operator-style: `observability/vm-operator/` (operator HR) + `observability/victoria-metrics/app/` (the CRs). Runbook for firefighting: `docs/techdocs/docs/runbooks/victoriametrics.md`.
 

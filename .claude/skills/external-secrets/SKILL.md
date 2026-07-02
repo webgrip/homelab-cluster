@@ -5,9 +5,9 @@ description: Add or manage secrets via External Secrets Operator + OpenBao — t
 
 # External Secrets (ESO + OpenBao)
 
-Secrets are migrating off SOPS to **ESO** (engine) + **OpenBao** KV v2 (backend, ns `security`).
-Background + rollout plan: `docs/techdocs/docs/runbooks/external-secrets.md`,
-`docs/techdocs/docs/runbooks/secret-migration-rollout.md`.
+Secrets live in **ESO** (engine) + **OpenBao** KV v2 (backend, ns `security`); the SOPS
+migration is complete except `zomboid` (+ the SOPS floor). Background + ops/DR:
+`docs/techdocs/docs/runbooks/external-secrets.md`.
 
 ## Stores + generator (cluster-scoped)
 - `ClusterSecretStore/openbao` — **READ** (apps source secrets here). Vault provider, mount `secret`, v2, k8s-auth role `external-secrets`.

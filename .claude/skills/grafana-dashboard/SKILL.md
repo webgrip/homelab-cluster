@@ -6,7 +6,7 @@ when_to_use: Use when creating/editing a GrafanaDashboard/GrafanaFolder/GrafanaD
 
 # Grafana resources (Operator-managed)
 
-All `grafana.integreatly.org/v1beta1` CRDs — never dashboard ConfigMaps or HelmRelease values. Operator reconciles ~10m and **reverts UI edits** (Git is truth). Instance: `observability/grafana/app/grafana-instance.yaml` (no helmrelease). Inventory: `kubectl get grafanadashboards,grafanafolders,grafanadatasources -A`.
+All `grafana.integreatly.org/v1beta1` CRDs — never dashboard ConfigMaps or HelmRelease values. Operator reconciles ~10m and **reverts UI edits** (Git is truth). Instance: `observability/grafana/app/grafana-instance.yaml`; the chart HelmRelease (`observability/grafana/app/helmrelease.yaml`) also provisions core datasources via `values.datasources` — the duplicate to keep in sync when repointing (see the `victoriametrics` skill). Inventory: `kubectl get grafanadashboards,grafanafolders,grafanadatasources -A`.
 
 **Shape** (enforced by `guard-skills.sh` — fix-up message if you miss one):
 - Every CRD: `spec.instanceSelector.matchLabels: {grafana.internal/instance: grafana}`; add `allowCrossNamespaceImport: true` outside `observability`.
@@ -19,7 +19,7 @@ All `grafana.integreatly.org/v1beta1` CRDs — never dashboard ConfigMaps or Hel
 
 **Bind folders by `folderRef`, never `spec.folder: "<Title>"`.** A title string makes the operator create+own a *second* folder separate from the GrafanaFolder CRD of the same title → two identical folders, each resurrected on reconcile (UI deletes never stick). `folderRef: <crd-name>` ties the dashboard to the CRD-owned folder. (Fixed 2026-06-20 across the Claude Code dashboards.)
 
-Folder CRD names (use as `folderRef`): `apps` · `claude-code` · `data` · `executive` · `infrastructure` · `kubernetes` · `networking` · `observability` · `platform` · `security` · `storage` · `synthetics`. (`executive` = leadership KPI operating system: `exec-kpi-scorecard` + per-dimension drill-downs.)
+Folder CRD names (use as `folderRef`) = the files in `kubernetes/apps/observability/grafana/app/folders/` (e.g. `apps`, `infrastructure`, `executive` — the leadership KPI scorecard + drill-downs).
 
 ## Escaping (Flux envsubst) — enforced by `guard-skills.sh`
 Double **every** Grafana token (`$$__range`, `$$__rate_interval`, `$$var`, `$$__all`). Single `$` before `{`/`(` fails the *whole* grafana Kustomization; single `$model`/`$__range` is silently blanked → No data. Double as you write to avoid fix loops. No literal `$` in titles/`line_format` — write `USD`.

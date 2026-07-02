@@ -10,8 +10,7 @@ Operator in `cnpg-system`. One `Cluster` per app namespace; wire backups/monitor
 
 ## Add a database
 1. `kubernetes/apps/<ns>/<app>/app/database/cluster.yaml` — `kind: Cluster` (`postgresql.cnpg.io/v1`): `instances: 2`, `storage.storageClass: longhorn` (the reserved class, **not** longhorn-general), and **always `walStorage`** (own volume, same class). Both rules enforced by `guard-skills.sh`.
-   - **Why walStorage:** WAL only recycles after archiving to Garage S3; if Garage is down, `pg_wal` on a shared volume fills the data disk → DB CrashLoops `no free disk space for WALs` (took Grafana + Dependency-Track down). 5Gi default, ~10Gi heavy writers (Grafana, Dependency-Track). Addable in-place (rolling restart), **never removable**.
-   - **Size with headroom — an undersized `walStorage` deadlocks the same way.** WAL fills the WAL volume → DB CrashLoops `no free disk space for WALs` (worst when Garage S3 archiving is down, so nothing drains). Adding a walStorage to an *already-backlogged* writer is worse: on first start CNPG *migrates* `pg_wal` into it, and if the backlog > `walStorage.size` the instance-manager dies at the move (`no space left on device`) **before Postgres starts** — so it can never archive out. Size it ≥ the *current* `pg_wal` backlog (measure via `kubelet_volume_stats_used_bytes`), not the steady state.
+   - **Why walStorage + sizing:** WAL only recycles after archiving to Garage S3 — if archiving stalls, `pg_wal` fills its volume and the DB CrashLoops `no free disk space for WALs` (took Grafana + Dependency-Track down); a dedicated volume keeps that off the data disk, but an *undersized* one deadlocks the same way. 5Gi default, ~10Gi heavy writers (Grafana, Dependency-Track). Adding one to an *already-backlogged* writer: size it ≥ the **current** `pg_wal` backlog (measure via `kubelet_volume_stats_used_bytes`), not steady state — on first start CNPG *migrates* `pg_wal` into it, and a backlog > `walStorage.size` kills the instance-manager (`no space left on device`) **before Postgres starts**, so it can never archive out. Addable in-place (rolling restart), **never removable**.
    - Operator auto-creates `<app>-db-app` / `<app>-db-rw` / `<app>-db-ro` secrets — reference via `existingSecret`/`envFromSecret`, never inline.
 2. Add `database/` to the app `kustomization.yaml`; app `ks.yaml` `dependsOn` the DB.
 
@@ -19,8 +18,8 @@ Operator in `cnpg-system`. One `Cluster` per app namespace; wire backups/monitor
 A CNPG DB is a stateful app → **worker pool**: add `components/placement/worker-pool` to the kustomization
 that builds `database/` (it patches `Cluster.spec.affinity.nodeSelector`). CNPG DBs use the `longhorn` SC
 (Immediate binding → no PV node lock), so an *existing* DB pins **immediately** — no eviction wait, the WFFC
-caveat doesn't apply. **forgejo-db + openbao** are the gitops-critical exception → `longhorn-gitops`
-(3 replicas incl. one soyo). Full placement/sequencing rule → the `workload-placement` skill.
+caveat doesn't apply. StorageClass guidance → the `longhorn` skill. Full placement/sequencing rule → the
+`workload-placement` skill.
 
 ## Backups & DR — TWO parts, both required
 1. **Destination** (components): `components: [../../../components/cnpg-backup]` — also `cnpg-monitoring`,
@@ -45,4 +44,4 @@ caveat doesn't apply. **forgejo-db + openbao** are the gitops-critical exception
 - **Operator + `plugin-barman-cloud` both run 1 replica → leader election OFF.** Their HelmRelease values set `additionalArgs: [--leader-elect=false]`. With a single replica, leader election only *causes* "leader election lost" restarts (a missed lease renewal during a transient API/etcd blip → the controller-runtime manager exits/restarts → can interrupt an in-progress backup). Keep this on any reinstall/upgrade. The chart hardcodes `--leader-elect`; the appended `--leader-elect=false` wins (pflag last value).
 
 ## Validate
-Schema `kubernetes/schemas/cnpg-cluster.schema.json` (via `# yaml-language-server: $schema=`). PITR: `docs/techdocs/docs/runbooks/cnpg-restore-playbook.md`. `./scripts/run-flux-local-test.sh`.
+Schema `kubernetes/schemas/cnpg-cluster.schema.json` (via `# yaml-language-server: $schema=`). PITR/restore drill: `docs/techdocs/docs/runbooks/cnpg-backups.md`. `./scripts/run-flux-local-test.sh`.
