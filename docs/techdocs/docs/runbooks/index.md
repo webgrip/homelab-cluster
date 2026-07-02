@@ -36,12 +36,13 @@ This page is intentionally a **links-only index**. Each runbook has its own dedi
 ## Secrets
 
 - External Secrets (ESO): [docs/techdocs/docs/runbooks/external-secrets.md](external-secrets.md)
+- OpenBao restore (unseal / raft snapshot): [docs/techdocs/docs/runbooks/openbao-restore.md](openbao-restore.md)
+- cosign Transit key rotation: [docs/techdocs/docs/runbooks/cosign-transit-key-rotation.md](cosign-transit-key-rotation.md)
 
 ## Observability
 
 - Observability stack: [docs/techdocs/docs/runbooks/observability-stack.md](observability-stack.md)
-- Prometheus remote_write: [docs/techdocs/docs/runbooks/prometheus-remote-write.md](prometheus-remote-write.md)
-- Mimir Kafka: [docs/techdocs/docs/runbooks/mimir-kafka.md](mimir-kafka.md)
+- VictoriaMetrics (metrics backend — empty dashboards, failed vm-operator install, missing scrape target): [docs/techdocs/docs/runbooks/victoriametrics.md](victoriametrics.md)
 
 ## Apps
 
