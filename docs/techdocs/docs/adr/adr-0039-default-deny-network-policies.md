@@ -1,6 +1,6 @@
 # ADR-0039: Opt-in per-namespace default-deny NetworkPolicies (zero-trust)
 
-> Status: **Proposed** · Date: 2026-07-01 · Part of [RFC: Security Hardening](../rfc/rfc-security-hardening.md)
+> Status: **Accepted** · Date: 2026-07-01 · Part of [RFC: Security Hardening](../rfc/rfc-security-hardening.md)
 
 ## Context
 
