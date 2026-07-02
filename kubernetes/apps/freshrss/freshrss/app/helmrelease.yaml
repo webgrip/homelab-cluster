@@ -21,11 +21,7 @@ spec:
     controllers:
       freshrss:
         annotations:
-          # Zero-downtime dynamic-cred rotation (ADR-0010): the rotating freshrss-pgbouncer-backend
-          # Secret must NOT restart the pod (the pgbouncer-reload sidecar reloads PgBouncer via
-          # SIGHUP), so we do NOT use reloader auto. Only the static app config restarts the pod.
-          secret.reloader.stakater.com/reload: "freshrss-secrets"
-          configmap.reloader.stakater.com/reload: "freshrss-pgbouncer-config"
+          reloader.stakater.com/auto: "true"
         # RWO longhorn-general volume → Recreate avoids the Multi-Attach deadlock
         # when the pod relocates; pin to the worker pool off the soyos (ADR-0028).
         # Lands on fringe — the WFFC-era volume predates worker-1 (use native
@@ -33,15 +29,6 @@ spec:
         strategy: Recreate
         pod:
           hostUsers: false
-          # Shared PID namespace lets the pgbouncer-reload sidecar SIGHUP the pgbouncer process
-          # (pod-internal only, NOT hostPID → passes pod-security-baseline-enforce).
-          shareProcessNamespace: true
-          # fsGroup 70 so the NON-root pgbouncer (uid 70) can write the /var/run/pgbouncer
-          # emptyDir (socket + pidfile). OnRootMismatch avoids re-chowning the data PVC each mount
-          # (owner is unchanged; only the group is set, so freshrss's own access is unaffected).
-          securityContext:
-            fsGroup: 70
-            fsGroupChangePolicy: OnRootMismatch
           nodeSelector:
             node.webgrip.io/pool: worker
         containers:
@@ -56,16 +43,7 @@ spec:
               CRON_MIN: "*"
               DOMAIN: freshrss.${SECRET_DOMAIN}
               LISTEN: &port 8080
-              # Connect to the local PgBouncer sidecar (loopback), NOT the DB directly, so the
-              # backend credential rotates with zero downtime. POSTGRES_USER/PASSWORD are the
-              # STABLE app->pooler identity (override the values from the freshrss-secrets envFrom).
-              POSTGRES_HOST: "127.0.0.1"
-              POSTGRES_USER: "freshrss"
-              POSTGRES_PASSWORD:
-                valueFrom:
-                  secretKeyRef:
-                    name: freshrss-pooler-app-cred
-                    key: password
+              POSTGRES_HOST: "freshrss-db-rw.freshrss.svc.cluster.local"
             probes:
               liveness:
                 enabled: true
@@ -77,65 +55,6 @@ spec:
                 memory: 128M
               limits:
                 memory: 512M
-          # PgBouncer pooler: app talks to it on loopback with a STABLE cred; only its BACKEND
-          # cred to Postgres rotates -> zero-downtime rotation, no app restart.
-          pgbouncer:
-            image:
-              repository: docker.io/edoburu/pgbouncer
-              tag: v1.25.2-p0@sha256:7d7a27d9e90985cab5cf42256f5c13a3120baa4b055b69df37beb272b89b2340
-            command:
-              - "pgbouncer"
-              - "/etc/pgbouncer/pgbouncer.ini"
-            securityContext:
-              # pgbouncer refuses to run as root; run as its own uid 70. The pod fsGroup 70 lets
-              # it write the /var/run/pgbouncer emptyDir. readOnlyRootFilesystem + drop all caps.
-              runAsNonRoot: true
-              runAsUser: 70
-              allowPrivilegeEscalation: false
-              readOnlyRootFilesystem: true
-              capabilities: {drop: ["ALL"]}
-            resources:
-              requests:
-                cpu: 10m
-                memory: 24Mi
-              limits:
-                memory: 64Mi
-          # Watches the rotating backend cred file; SIGHUPs pgbouncer to reload it without
-          # dropping client connections (needs the shared PID namespace above).
-          pgbouncer-reload:
-            image:
-              repository: docker.io/edoburu/pgbouncer
-              tag: v1.25.2-p0@sha256:7d7a27d9e90985cab5cf42256f5c13a3120baa4b055b69df37beb272b89b2340
-            command:
-              - /bin/sh
-              - -c
-              - |
-                set -eu
-                BACKEND=/etc/pgbouncer/backend/databases.ini
-                PIDFILE=/var/run/pgbouncer/pgbouncer.pid
-                last=""
-                while true; do
-                  cur="$(sha256sum "$BACKEND" 2>/dev/null | cut -d' ' -f1 || true)"
-                  if [ -n "$cur" ] && [ "$cur" != "$last" ] && [ -f "$PIDFILE" ]; then
-                    if kill -HUP "$(cat "$PIDFILE")" 2>/dev/null; then
-                      echo "SIGHUP -> pgbouncer reloaded onto rotated backend cred"
-                      last="$cur"
-                    fi
-                  fi
-                  sleep 10
-                done
-            securityContext:
-              runAsNonRoot: true
-              runAsUser: 70
-              allowPrivilegeEscalation: false
-              readOnlyRootFilesystem: true
-              capabilities: {drop: ["ALL"]}
-            resources:
-              requests:
-                cpu: 5m
-                memory: 16Mi
-              limits:
-                memory: 32Mi
     service:
       app:
         ports:
@@ -153,44 +72,3 @@ spec:
               - path: /var/www/FreshRSS/extensions
                 subPath: extensions
                 readOnly: false
-      # PgBouncer static config (subPath OK — never changes).
-      pgbouncer-config:
-        type: configMap
-        name: freshrss-pgbouncer-config
-        advancedMounts:
-          freshrss:
-            pgbouncer:
-              - path: /etc/pgbouncer/pgbouncer.ini
-                subPath: pgbouncer.ini
-                readOnly: true
-      pgbouncer-userlist:
-        type: secret
-        name: freshrss-pooler-app-cred
-        advancedMounts:
-          freshrss:
-            pgbouncer:
-              - path: /etc/pgbouncer/userlist.txt
-                subPath: userlist.txt
-                readOnly: true
-      # The ROTATING backend cred — WHOLE-DIR mount (NOT subPath) so kubelet updates it in place
-      # on rotation; subPath mounts are frozen at pod start and would never see the new cred.
-      pgbouncer-backend:
-        type: secret
-        name: freshrss-pgbouncer-backend
-        advancedMounts:
-          freshrss:
-            pgbouncer:
-              - path: /etc/pgbouncer/backend
-                readOnly: true
-            pgbouncer-reload:
-              - path: /etc/pgbouncer/backend
-                readOnly: true
-      # Writable runtime dir for the pgbouncer socket + pidfile (shared so the reloader reads the pid).
-      pgbouncer-run:
-        type: emptyDir
-        advancedMounts:
-          freshrss:
-            pgbouncer:
-              - path: /var/run/pgbouncer
-            pgbouncer-reload:
-              - path: /var/run/pgbouncer
