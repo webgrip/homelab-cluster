@@ -98,7 +98,13 @@ entries:
       stage: !KeyOf homelab-identification
       target: !KeyOf homelab-auth-flow
 
+  # The password stage is rendered INLINE by the identification stage above
+  # (password_stage: !KeyOf homelab-password). Authentik requires that the
+  # password stage NOT also be bound separately in the same flow, or the
+  # single-page rendering breaks. state: absent deletes the previously-created
+  # order-20 binding on the live cluster; it is a harmless no-op on a fresh one.
   - model: authentik_flows.flowstagebinding
+    state: absent
     identifiers:
       order: 20
       stage: !KeyOf homelab-password
