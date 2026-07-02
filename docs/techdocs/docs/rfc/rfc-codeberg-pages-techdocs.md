@@ -4,6 +4,11 @@
 > · Decisions: [ADR-0022 (Codeberg Pages, now)](../adr/adr-0022-codeberg-pages-techdocs.md) ·
 > [ADR-0023 (Backstage TechDocs, target)](../adr/adr-0023-backstage-techdocs.md)
 > · Companion: [Bringing the Forge Home](../blogs/2026-06-12-bringing-the-forge-home.md)
+>
+> Implementation status (2026-07-02): DNS (`codeberg-pages-dnsendpoint.yaml`) + token machinery
+> (`codeberg-pages.externalsecret.yaml`, forgejo-actions-secrets CronJob) are landed, but no
+> docs-publish workflow exists in this repo's `.forgejo/workflows/` — the publish path is
+> **unproven**; these docs may currently be unpublished anywhere.
 
 ## 1. Problem
 

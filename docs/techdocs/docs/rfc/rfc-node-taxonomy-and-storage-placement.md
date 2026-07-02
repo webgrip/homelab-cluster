@@ -1,6 +1,6 @@
 # RFC: Node taxonomy & storage placement (current 5-node cluster)
 
-> Status: **Proposed** · Date: 2026-06-19 · Umbrella for [ADR-0025](../adr/adr-0025-node-taxonomy.md), [ADR-0026](../adr/adr-0026-confine-longhorn-to-workers.md), [ADR-0027](../adr/adr-0027-longhorn-hot-cold-tiers.md), [ADR-0028](../adr/adr-0028-application-workload-placement.md)
+> Status: **Implemented** (executed 2026-06-16 → 06-21) · Date: 2026-06-19 · Umbrella for [ADR-0025](../adr/adr-0025-node-taxonomy.md), [ADR-0026](../adr/adr-0026-confine-longhorn-to-workers.md), [ADR-0027](../adr/adr-0027-longhorn-hot-cold-tiers.md), [ADR-0028](../adr/adr-0028-application-workload-placement.md) — 0025/0026/0028 Accepted; 0027 (hot/cold tiers) remains Proposed, gated on [ADR-0037](../adr/adr-0037-storage-engine-gated-on-dedicated-disks.md)'s disk plan.
 
 > **TL;DR.** Stop Longhorn from destabilising etcd by moving **all replicas off the soyo
 > control-planes onto the two workers** (worker-1 + fringe), and replace today's ad-hoc placement

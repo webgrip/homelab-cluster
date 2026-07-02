@@ -1,32 +1,32 @@
 # Talos Cluster Reference
 
-_Kubernetes/Talos versions track `talos/talenv.yaml` (Talos v1.13.3 / Kubernetes v1.36.1). Node inventory + hardware were refreshed live on 2026-06-19; the service/etcd/health snapshots further down are from 2025-12-08 — re-run the shown commands to refresh._
+_Kubernetes/Talos versions track `talos/talenv.yaml` (Talos v1.13.4 / Kubernetes v1.36.1). Versions re-verified live 2026-07-02 (all five nodes converged on v1.13.4); node inventory + hardware refreshed 2026-06-19; the service/etcd/health snapshots further down are from 2025-12-08 — re-run the shown commands to refresh._
 
 ## Node Inventory
 
 | Node | IP | Roles | Talos | Kubernetes | Kernel | Container Runtime |
 | --- | --- | --- | --- | --- | --- | --- |
-| soyo-1 | 10.0.0.20 | control-plane, schedulable | v1.13.2 | v1.36.1 | 6.18.29-talos | containerd 2.2.3 |
-| soyo-2 | 10.0.0.21 | control-plane, schedulable | v1.13.2 | v1.36.1 | 6.18.29-talos | containerd 2.2.3 |
-| soyo-3 | 10.0.0.22 | control-plane, schedulable | v1.13.2 | v1.36.1 | 6.18.29-talos | containerd 2.2.3 |
-| fringe-workstation | 10.0.0.23 | worker, schedulable | v1.13.2 | v1.36.1 | 6.18.29-talos | containerd 2.2.3 |
-| worker-1 | 10.0.0.24 | worker, schedulable | v1.13.3 | v1.36.1 | 6.18.33-talos | containerd 2.2.4 |
+| soyo-1 | 10.0.0.20 | control-plane, schedulable | v1.13.4 | v1.36.1 | 6.18.34-talos | containerd 2.2.4 |
+| soyo-2 | 10.0.0.21 | control-plane, schedulable | v1.13.4 | v1.36.1 | 6.18.34-talos | containerd 2.2.4 |
+| soyo-3 | 10.0.0.22 | control-plane, schedulable | v1.13.4 | v1.36.1 | 6.18.34-talos | containerd 2.2.4 |
+| fringe-workstation | 10.0.0.23 | worker, schedulable | v1.13.4 | v1.36.1 | 6.18.34-talos | containerd 2.2.4 |
+| worker-1 | 10.0.0.24 | worker, schedulable | v1.13.4 | v1.36.1 | 6.18.34-talos | containerd 2.2.4 |
 
 Captured via:
 
 ```bash
 $ kubectl get nodes -o wide
 NAME                 STATUS   ROLES           VERSION   INTERNAL-IP   KERNEL-VERSION   CONTAINER-RUNTIME
-soyo-1               Ready    control-plane   v1.36.1   10.0.0.20     6.18.29-talos    containerd://2.2.3
-soyo-2               Ready    control-plane   v1.36.1   10.0.0.21     6.18.29-talos    containerd://2.2.3
-soyo-3               Ready    control-plane   v1.36.1   10.0.0.22     6.18.29-talos    containerd://2.2.3
-fringe-workstation   Ready    <none>          v1.36.1   10.0.0.23     6.18.29-talos    containerd://2.2.3
-worker-1             Ready    <none>          v1.36.1   10.0.0.24     6.18.33-talos    containerd://2.2.4
+soyo-1               Ready    control-plane   v1.36.1   10.0.0.20     6.18.34-talos    containerd://2.2.4
+soyo-2               Ready    control-plane   v1.36.1   10.0.0.21     6.18.34-talos    containerd://2.2.4
+soyo-3               Ready    control-plane   v1.36.1   10.0.0.22     6.18.34-talos    containerd://2.2.4
+fringe-workstation   Ready    <none>          v1.36.1   10.0.0.23     6.18.34-talos    containerd://2.2.4
+worker-1             Ready    <none>          v1.36.1   10.0.0.24     6.18.34-talos    containerd://2.2.4
 ```
 
 ## Talos Versions
 
-`talosctl version` confirms every node runs Talos `v1.13.3`:
+`talosctl version` confirms every node runs Talos `v1.13.4`:
 
 ```bash
 $ talosctl version

@@ -5,6 +5,12 @@
 > instead of the static long-lived passwords they hold today. The headline choice is
 > [ADR-0010](../adr/adr-0010-openbao-dynamic-postgres-credentials.md). It flips to **Accepted** when the
 > pilot succeeds and the first app cuts over.
+>
+> Pilot status (2026-07-02): engine/store/`vault_admin` infrastructure is live; the freshrss
+> cutover was applied (`678b1da`), reverted (`03f222e`, PG16 `ADMIN OPTION` mint failure),
+> accidentally re-applied (`e805c83a`), and re-reverted (`391eeb19` — the PgBouncer sidecar
+> needs hands-on runtime iteration). Flip condition **unmet**; full churn in ADR-0010's
+> Status log.
 
 ## Why
 

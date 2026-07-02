@@ -53,6 +53,7 @@ e.g. `guac-db`'s actual data is ~1 GiB; the rest was WAL.
 | `forgejo-db` | forgejo | **2** | 0.15 GiB | Issues, PRs, reviews, users, tokens, webhooks — none of it in git. Irreplaceable user content. |
 | `n8n-db` | n8n | **2** | 0.16 GiB | User-authored workflows + (encrypted) credentials. Hand-built automation, not regenerable. |
 | `sparkyfitness-db` | sparkyfitness | **2** | 0.24 GiB | Personal health/fitness logs. Irreplaceable personal data. |
+| `devex-db` | observability | **2** | new (2026-06-30) | Raw DevEx survey answers — irreplaceable human input (unlike `grafana-db`). Deliberately keeps **30d** retention, above the Tier-2 default. |
 | `dependency-track-db` | security | **3** | 27 GiB | Findings re-derive from re-uploaded SBOMs, but audit state (suppressions, project tags) is user-authored. Heavy WAL writer. |
 | `backstage-db` | backstage | **3** | 2.3 GiB | Catalog largely re-discovered from SCM, but holds local TechDocs/state. |
 | `grafana-db` | observability | **4** | 0.5 GiB | Dashboards/datasources/alerts are Grafana Operator CRDs in git. DB = sessions/prefs/annotations — regenerable. |

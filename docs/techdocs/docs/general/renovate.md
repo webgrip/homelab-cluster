@@ -59,20 +59,26 @@ Notable HelmRelease settings:
 - Metrics enabled with a ServiceMonitor (`values.metrics.enabled: true` + `serviceMonitor.enabled: true`).
 - Webhook enabled with an external route host `renovate-webhook.${SECRET_DOMAIN}` via the Gateway API parent `envoy-external`.
 
-### RenovateJob execution model
+### RenovateJob execution model — dual-run (GitHub + Forgejo)
 
-The main RenovateJob is:
+Two RenovateJobs run side by side ([ADR-0011](../adr/adr-0011-dual-run-renovate-forgejo.md) dual-run;
+[RFC: Renovate on Forgejo](../rfc/rfc-renovate-forgejo.md)):
 
-- [kubernetes/apps/renovate/renovate-operator/jobs/webgrip-gitops.yaml](../../../../kubernetes/apps/renovate/renovate-operator/jobs/webgrip-gitops.yaml)
+| RenovateJob | Platform | Scope | Schedule |
+| --- | --- | --- | --- |
+| [`webgrip-gitops`](../../../../kubernetes/apps/renovate/renovate-operator/jobs/webgrip-gitops.yaml) | GitHub | `webgrip/*` | `17 */6 * * *` |
+| [`webgrip-forgejo`](../../../../kubernetes/apps/renovate/renovate-operator/jobs/webgrip-forgejo.yaml) | Forgejo (in-cluster endpoint `forgejo-http.forgejo.svc:3000/api/v1`) | explicit list of Forgejo-authoritative repos (+ pilot) — grows as repos flip Forgejo-leading; no `webgrip/*` glob because pull-mirrors are read-only | `47 */6 * * *` (offset to avoid overlap) |
 
-What it does (as configured):
+Shared mechanics (both jobs):
 
-- Discovers repositories matching `webgrip/*`.
-- Runs on cron schedule `17 */6 * * *` (every 6 hours, offset by 17 minutes).
-- Runs one repository at a time (`parallelism: 1`).
-- Uses `RENOVATE_CONFIG_FILE=/config/renovate.json` mounted from a ConfigMap.
-- Uses webhook authentication from Secret `renovate-webhook-auth`.
-- Runs as a non-root user with `RENOVATE_BASE_DIR=/tmp`.
+- One repository at a time (`parallelism: 1`), non-root, `RENOVATE_BASE_DIR=/tmp`.
+- `RENOVATE_CONFIG_FILE=/config/renovate.json` mounted from a per-platform ConfigMap
+  (`configmap-gitops.yaml` / `configmap-forgejo.yaml`).
+- Webhook authentication from Secret `renovate-webhook-auth`.
+
+**Migration status:** the Forgejo path is live; the **GitHub path retires only at the Flux-source
+cutover** (`homelab-cluster` flips last — gated on [ADR-0014](../adr/adr-0014-flux-source-forgejo.md)).
+At that point `webgrip-gitops`, its ConfigMap, and the GitHub-App token CronJob get deleted.
 
 Operational implication:
 
@@ -197,7 +203,7 @@ Renovate-operator exposes metrics and this repo ships both a Grafana dashboard a
 
 ### Prometheus alert rules
 
-- PrometheusRule: [kubernetes/apps/observability/kube-prometheus-stack/app/prometheusrule-platform-renovate-operator.yaml](../../../../kubernetes/apps/observability/kube-prometheus-stack/app/prometheusrule-platform-renovate-operator.yaml)
+- PrometheusRule: [kubernetes/apps/observability/victoria-metrics/app/rules/prometheusrule-platform-renovate-operator.yaml](../../../../kubernetes/apps/observability/victoria-metrics/app/rules/prometheusrule-platform-renovate-operator.yaml)
 
 Alerts include:
 
@@ -210,22 +216,18 @@ Each alert annotation points to the Renovate section in the runbooks page:
 - Runbooks index: [docs/techdocs/docs/runbooks.md](../runbooks/index.md)
 - Renovate runbook: [docs/techdocs/docs/runbooks/renovate.md](../runbooks/renovate.md)
 
-## Secrets and credentials (SOPS policy)
+## Secrets and credentials (ESO)
 
-This repo is GitOps-managed and uses SOPS for secrets.
+Renovate secrets are **ExternalSecrets** (OpenBao-backed, no SOPS), in
+`kubernetes/apps/renovate/renovate-operator/jobs/`:
 
-Renovate-related secrets in this repo:
+- `renovate-secrets.externalsecret.yaml` — GitHub App credentials (+ optional Docker Hub
+  `RENOVATE_DOCKERHUB_USERNAME`/`RENOVATE_DOCKERHUB_TOKEN` to reduce registry throttling).
+- `renovate-webhook-auth.externalsecret.yaml` — webhook auth token.
+- `renovate-forgejo-token` — minted in-cluster by the Forgejo provisioner Job
+  (`renovate-operator/forgejo-provisioner/`), not human-typed.
 
-- GitHub App credentials: kubernetes/apps/renovate/renovate-operator/jobs/secret.sops.yaml
-- Webhook auth token: kubernetes/apps/renovate/renovate-operator/jobs/webhook-auth.secret.sops.yaml
-
-Optional credentials to reduce registry throttling:
-
-- Docker Hub account + token in `renovate-secrets` (`RENOVATE_DOCKERHUB_USERNAME`, `RENOVATE_DOCKERHUB_TOKEN`)
-
-Human note:
-
-- SOPS-encrypted secrets require human-encryption workflows; never commit plaintext secrets.
+To change or re-seed one, use the `external-secrets` skill.
 
 ### Runtime token minting
 

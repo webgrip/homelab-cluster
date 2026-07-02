@@ -5,6 +5,11 @@ running pod with **zero downtime**. For the operational side (verify, troublesho
 the [runbook](../runbooks/dynamic-db-credentials.md); for the decision, [ADR-0010](../adr/adr-0010-openbao-dynamic-postgres-credentials.md).
 
 > These diagrams render on GitHub and in the techdocs site (Mermaid). Pilot app: **freshrss**.
+>
+> **Status (2026-07-02):** the pipeline below is staged (engine, store, `vault_admin` live), but
+> the freshrss app cutover is **rolled back** — applied (`678b1da`), reverted (`03f222e`, PG16
+> `ADMIN OPTION` mint failure), re-applied by accident (`e805c83a`), re-reverted (`391eeb19`;
+> the PgBouncer sidecar needs hands-on runtime iteration). Track it in ADR-0010's Status log.
 
 ## 1. The core idea — store a *recipe*, not a *value*
 

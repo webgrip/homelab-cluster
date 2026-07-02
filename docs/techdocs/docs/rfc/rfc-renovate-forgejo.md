@@ -8,8 +8,8 @@
 > [ADR-0013](../adr/adr-0013-github-as-renovate-data-oracle.md). **Accepted** on 2026-06-16, when the
 > `webgrip-forgejo` RenovateJob opened its first real PR (PR #1, alpine `3.x`) on the pilot repo
 > `renovate/forgejo-renovate-pilot` — provisioned zero-touch by the bot/token Job ([ADR-0019](../adr/adr-0019-bootstrap-task-pattern.md)).
-> The step-by-step execution checklist lives in [Renovate → Forgejo migration](../general/renovate-forgejo-migration.md); how
-> Renovate runs today is in [Renovate](../general/renovate.md).
+> The migration executed; the retired execution checklist's one live remainder (GitHub-path
+> retirement, gated on the Flux-source cutover) is tracked in [Renovate](../general/renovate.md).
 
 ## Why
 
@@ -150,9 +150,8 @@ and the `github-app-token` CronJob stay **only** until the GitHub path is retire
 
 ## Implementation (phased)
 
-GitOps, under `kubernetes/apps/renovate/renovate-operator/jobs/`. Full step-by-step (with the manual
-Forgejo/OpenBao bootstrap) is in [Renovate → Forgejo migration](../general/renovate-forgejo-migration.md);
-the design-level phases:
+GitOps, under `kubernetes/apps/renovate/renovate-operator/jobs/`. Current runtime layout (both
+RenovateJobs, dual-run) is documented in [Renovate](../general/renovate.md); the design-level phases:
 
 **Phase 0 — Forgejo bot identity + token (manual, one-time).** Create a local `renovate` bot user
 (`gitea_admin` break-glass / `forgejo admin user create` — SSO is the only front door, so this is
@@ -225,7 +224,7 @@ Renovate holds no state; re-running a job is idempotent.
 
 - ADRs [0011](../adr/adr-0011-dual-run-renovate-forgejo.md), [0012](../adr/adr-0012-forgejo-static-bot-pat.md),
   [0013](../adr/adr-0013-github-as-renovate-data-oracle.md)
-- [Renovate → Forgejo migration](../general/renovate-forgejo-migration.md) · [Renovate](../general/renovate.md) ·
+- [Renovate](../general/renovate.md) ·
   [Forgejo](../general/forgejo.md) · [RFC: Harbor](rfc-harbor-registry.md)
 - [Bringing the Forge Home](../blogs/2026-06-12-bringing-the-forge-home.md) ·
   [External Secrets](external-secrets-plan.md)

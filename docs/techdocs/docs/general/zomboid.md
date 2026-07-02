@@ -1,6 +1,10 @@
 # Project Zomboid Dedicated Server
 
-This cluster runs the Project Zomboid dedicated server as a Flux-managed HelmRelease using the `bjw-s/app-template` chart.
+> **Currently disabled** — commented out of `kubernetes/apps/kustomization.yaml` pending its
+> SOPS→ESO secret migration (it is the last app secret on SOPS). The design below still applies
+> when re-enabled.
+
+This app deploys the Project Zomboid dedicated server as a Flux-managed HelmRelease using the `bjw-s/app-template` chart.
 
 ## Why Zomboid is different (UDP)
 
@@ -30,9 +34,11 @@ The server exposes:
 
 If you run into join/slot issues, consider expanding the forwarded port range (e.g. UDP `16261-16272`) on both OPNsense and the Kubernetes Service.
 
-## Required Secret (SOPS)
+## Required Secret (ESO + OpenBao)
 
 The workload consumes a Secret named `zomboid-secrets` in the `zomboid` namespace via `envFrom`.
+Provide it as an OpenBao KV entry + `ExternalSecret` (see the `external-secrets` skill) — policy
+forbids new `*.sops.yaml`. This migration is the gate for re-enabling the app.
 
 ### Required keys
 
@@ -48,25 +54,17 @@ The workload consumes a Secret named `zomboid-secrets` in the `zomboid` namespac
 
 Non-sensitive environment variables are provided via the `zomboid-config` ConfigMap.
 
-- Applied config: [kubernetes/apps/zomboid/zomboid/app/configmap.yaml](../../../../kubernetes/apps/zomboid/zomboid/app/configmap.yaml)
-- Template (not applied): kubernetes/apps/zomboid/zomboid/app/configmap.template.yaml
+- Applied config: `kubernetes/apps/zomboid/zomboid/app/configmap.yaml`
 
 Keep passwords and credentials in the Secret only (not the ConfigMap).
 
 Note: `zomboid-config` contains placeholder keys for sensitive variables so the full set of supported env vars is visible in one place, but the real values should still come from `zomboid-secrets` (the Secret is loaded after the ConfigMap and overrides it).
 
-### Template
+### Creating the secret
 
-Use the template file below and encrypt it with SOPS before applying it:
-
-- kubernetes/apps/zomboid/zomboid/app/secret.template.yaml
-
-Suggested workflow:
-
-1. Copy the template to a new file named `secret.sops.yaml`.
-2. Replace the placeholder values.
-3. Encrypt with SOPS and commit the encrypted file.
-4. Add `secret.sops.yaml` to the app kustomization resources.
+Seed the values into OpenBao KV (`secret/zomboid`) and add an `ExternalSecret` targeting
+`zomboid-secrets` — the `external-secrets` skill has the recipe. Then re-enable the app in
+`kubernetes/apps/kustomization.yaml`.
 
 ## Internet exposure (OPNsense + DNS)
 

@@ -195,7 +195,7 @@ The honest footnote is capacity. The runners are pinned to the `fringe` nodegrou
 that's **one node**. Asking for two warm runners got one `Running` and one stuck
 `Pending: Insufficient memory` — two privileged dind pods (each able to balloon to gigabytes) don't
 both fit alongside everything else on a single workstation-class node. Given this cluster's
-[history with memory pressure](2026-06-09-longhorn-oom-cascade.md), the right move was not to shave
+[history with memory pressure](../incidents/2026-06-09-longhorn-oom-cascade.md), the right move was not to shave
 requests until it wedged in, but to set the warm pool to **one** and write down *why* — bump it back
 when `fringe` grows. A warm pool is a comfort you pay rent on.
 

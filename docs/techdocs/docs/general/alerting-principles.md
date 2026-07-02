@@ -1,6 +1,6 @@
 # Alerting principles
 
-This cluster uses Prometheus + Alertmanager (kube-prometheus-stack) to evaluate and route alerts.
+This cluster uses **VMAlert + VMAlertmanager** (VictoriaMetrics; [ADR-0038](../adr/adr-0038-victoriametrics-metrics-backend.md)) to evaluate and route alerts. Rules are authored as `PrometheusRule` CRs (converted to VMRules by the operator) under `kubernetes/apps/observability/victoria-metrics/app/rules/`.
 
 The goal is simple: when an alert fires, the recipient should be able to answer **“What's broken, What's the impact, and what should I do next?”** in under 60 seconds.
 
@@ -43,7 +43,7 @@ Labels are for routing, grouping, inhibiting, and deduplication.
 Strongly recommended (this unlocks good routing + clean silences):
 
 - `owner`: who is responsible (e.g. `platform`)
-- `service`: the owning subsystem (e.g. `mimir`, `flux`, `longhorn`, `cert-manager`, `apps`)
+- `service`: the owning subsystem (e.g. `victoriametrics`, `observability`, `flux`, `longhorn`, `cert-manager`, `apps`)
 
 Principles:
 
@@ -56,7 +56,7 @@ Annotations are the “message”. Keep them concise and action-oriented.
 
 Required:
 
-- `summary`: 1 line, name the failure + key scope. Example: “Prometheus remote_write backlog (mimir)”
+- `summary`: 1 line, name the failure + key scope. Example: “High VictoriaMetrics series creation rate (victoriametrics)”
 - `description`: 3–8 lines:
   - What's happening
   - why it matters / impact
@@ -72,8 +72,8 @@ Strongly recommended:
 
 Avoid “random dashboard links”. Prefer a small, curated set of dashboards that cover the majority of incidents.
 
-- Observability stack overview: `https://grafana.${SECRET_DOMAIN}/d/obs-stack-overview/observability-stack-overview`
-- LGTM+P health (Mimir/Loki/Tempo/Prometheus): `https://grafana.${SECRET_DOMAIN}/d/obs-lgtmp-health/observability-lgtmp-health`
+- Platform / cluster operations overview: `https://grafana.${SECRET_DOMAIN}/d/obs-stack-overview/cluster-ops-overview`
+- Observability LGTM health (`observability-lgtm-health`, VictoriaMetrics/Loki/Grafana): `https://grafana.${SECRET_DOMAIN}/d/obs-lgtmp-health/observability-lgtm-health`
 - Kubernetes cluster health: `https://grafana.${SECRET_DOMAIN}/d/k8s-cluster-health/kubernetes-cluster-health`
 - Kubernetes workloads & capacity: `https://grafana.${SECRET_DOMAIN}/d/k8s-workloads-capacity/kubernetes-workloads-capacity`
 - PVC usage (Longhorn): `https://grafana.${SECRET_DOMAIN}/d/storage-pvc-usage/storage-pvc-longhorn`
@@ -81,7 +81,7 @@ Avoid “random dashboard links”. Prefer a small, curated set of dashboards th
 - Flux health: `https://grafana.${SECRET_DOMAIN}/d/gitops-flux-health/flux-gitops-health`
 - cert-manager certificates: `https://grafana.${SECRET_DOMAIN}/d/security-cert-manager/cert-manager-certificates`
 - Synthetic blackbox: `https://grafana.${SECRET_DOMAIN}/d/synthetic-blackbox/synthetic-blackbox`
-- Synthetic k6 canaries: `https://grafana.${SECRET_DOMAIN}/d/synthetic-k6-canaries/synthetic-k6-canaries`
+- Synthetic k6 canaries (*suspended* — k6 is off; board shows no data): `https://grafana.${SECRET_DOMAIN}/d/synthetic-k6-canaries/synthetic-k6-canaries`
 
 Optional (add when you have a good target):
 
@@ -126,7 +126,7 @@ These labels are *machine-facing*. They should be stable, low-cardinality, and h
 
 - `severity`: `info` | `warning` | `critical`
 - `owner`: who owns remediation (e.g. `platform`)
-- `service`: the subsystem (e.g. `mimir`, `flux`, `longhorn`, `cert-manager`, `apps`, `synthetics`)
+- `service`: the subsystem (e.g. `victoriametrics`, `observability`, `flux`, `longhorn`, `cert-manager`, `apps`, `synthetics`)
 
 Conditional:
 
@@ -156,7 +156,7 @@ Optional (only if the link is stable and useful):
 
 ### Message structure (recommended)
 
-For chat targets (Discord), the message should be formatted like this:
+For chat-style contact points, the message should be formatted like this:
 
 #### Header (always shown)
 
@@ -193,7 +193,7 @@ Use this for new PrometheusRule alerts.
    labels:
       severity: <info|warning|critical>
       owner: <platform|...>
-      service: <mimir|flux|longhorn|cert-manager|apps|synthetics|...>
+      service: <victoriametrics|observability|flux|longhorn|cert-manager|apps|synthetics|...>
       # namespace: <only if it changes routing/action>
       # remote_name: <only if truly per-remote>
    annotations:
@@ -239,17 +239,19 @@ Good scope enables fast triage without creating alert floods.
 
 ### Worked examples (what “good” looks like)
 
-#### Example A: backlog (warning)
+Both are live rules in `victoria-metrics/app/rules/`.
 
-- `summary`: “Prometheus remote_write backlog (mimir)”
-- `impact`: “Long-term metrics may become delayed; drops indicate loss.”
-- `first actions`: “Check dropped/failed samples; check Mimir gateway health; check Prometheus logs for 429/5xx.”
+#### Example A: cardinality regression (warning) — `VictoriaMetricsSeriesCreationHigh`
 
-#### Example B: data loss (critical)
+- `summary`: “High VictoriaMetrics series creation rate (victoriametrics)”
+- `impact`: “Cardinality regression can increase memory/CPU and destabilize scraping/alerting.”
+- `first actions`: “Identify the top churn sources (targets/metrics) in VMUI/Grafana; roll back or fix the change that introduced new labels; apply relabeling/drop rules.”
 
-- `summary`: “Prometheus remote_write is dropping samples (mimir)”
-- `impact`: “Long-term metrics are incomplete right now.”
-- `first actions`: “Treat as Mimir ingestion incident first; verify gateway errors/overload; verify network/DNS.”
+#### Example B: data loss (critical) — `LonghornVolumeFault`
+
+- `summary`: a faulted Longhorn volume, named by scope
+- `impact`: “The workload's data is unavailable and may be lost — act now.”
+- `first actions`: “Check volume/replica state in the Longhorn UI; check node/disk health; follow the Longhorn runbook before touching replicas.”
 
 ## Ownership + maintenance
 

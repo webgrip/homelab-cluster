@@ -1,6 +1,8 @@
 # RFC: Harbor Pull-Through Proxy Cache
 
-> Status: **Accepted (2026-06-23).** This RFC routes the cluster's *third-party* image pulls
+> Status: **Implemented** · Date: 2026-06-13 · Implemented by: [ADR-0016](../adr/adr-0016-harbor-pull-through-proxy-cache.md) · [ADR-0017](../adr/adr-0017-registry-mirror-talos-spegel.md) · [ADR-0018](../adr/adr-0018-harbor-config-idempotent-job.md) (cutover + drill 2026-06-23)
+>
+> This RFC routes the cluster's *third-party* image pulls
 > (`docker.io`, `ghcr.io`, …) through Harbor pull-through **proxy-cache projects**, wired at the
 > containerd registry-mirror layer so manifests keep their upstream image references and
 > containerd transparently tries the cache first and **falls back to upstream when Harbor is
@@ -181,5 +183,4 @@ running" gates on the proxy projects, and proxy-cache retention/TTL to bound Gar
   [ADR-0005 LAN-only exposure](../adr/adr-0005-lan-only-exposure.md)
 - [Harbor — Configure Proxy Cache][harbor-proxy] · [Spegel][spegel] ·
   [Talos RegistryMirrorConfig][talos-registries]
-- [Platform Components](../general/platform-components.md) (Spegel) ·
-  [Blog: Harbor as a pull-through cache](../blogs/2026-06-13-harbor-as-a-pull-through-cache.md)
+- [Blog: Harbor as a pull-through cache](../blogs/2026-06-13-harbor-as-a-pull-through-cache.md)

@@ -37,7 +37,7 @@ With an error like:
 
 ### Important: `--insecure` is not a global flag
 
-With Talos v1.11.x, `--insecure` is a flag on certain subcommands (e.g. `talosctl get`, `talosctl apply-config`).
+In this repo's `talosctl` (v1.13 line), `--insecure` is a flag on certain subcommands (e.g. `talosctl get`, `talosctl apply-config`).
 
 This is **wrong** (it won’t parse the way you expect):
 
@@ -268,7 +268,7 @@ Usually indicates the node is rebooting or the API service is restarting after `
 
 ### D) `talosctl --version` fails
 
-This repo’s Talos v1.11 `talosctl` uses `talosctl version`.
+`talosctl` has no `--version` flag — use `talosctl version`.
 
 ```bash
 talosctl version

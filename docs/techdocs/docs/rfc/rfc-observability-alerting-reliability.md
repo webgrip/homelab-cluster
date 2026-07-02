@@ -1,6 +1,6 @@
 # RFC: Observability alerting reliability
 
-> Status: **Accepted** · Date: 2026-06-21 · Umbrella for [ADR-0030](../adr/adr-0030-grafana-threshold-rule-shape.md), [ADR-0031](../adr/adr-0031-meta-monitoring-alert-rule-health.md)
+> Status: **Implemented** · Date: 2026-06-21 · Umbrella for [ADR-0030](../adr/adr-0030-grafana-threshold-rule-shape.md), [ADR-0031](../adr/adr-0031-meta-monitoring-alert-rule-health.md) — both Accepted; the lint (`scripts/validate_grafana_alert_expr.py`) and meta-rule are live in CI and the cluster.
 
 > **TL;DR.** The cluster's primary alerting layer — the 16 Grafana SLO alert rules — **silently
 > errored on every evaluation for ~3 weeks** (2026-05-30 → 2026-06-21) and nobody noticed,

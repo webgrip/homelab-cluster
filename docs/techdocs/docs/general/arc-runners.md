@@ -6,10 +6,15 @@ The cluster exposes two runner pools:
 
 | Pool | Scale set name | Node placement | Labels | Use for |
 | --- | --- | --- | --- | --- |
-| Normal (SOYO) | `arc-runner-set` | `nodegroup: soyo` | `arc-runner-set`, `arc`, `homelab`, `normal` | linting, unit tests, small validation jobs, non-privileged automation |
-| Heavy (Fringe) | `arc-runner-set-heavy` | `nodegroup: fringe` | `arc-runner-set-heavy`, `arc`, `homelab`, `fringe`, `heavy`, `dind` | Docker image builds, Buildx, multi-arch builds, heavier integration jobs |
+| Normal | `arc-runner-set` | `node.webgrip.io/pool: worker` ([ADR-0025](../adr/adr-0025-node-taxonomy.md)) | `arc-runner-set`, `arc`, `homelab`, `normal` | linting, unit tests, small validation jobs, non-privileged automation |
+| Heavy | `arc-runner-set-heavy` | `node.webgrip.io/pool: worker` ([ADR-0025](../adr/adr-0025-node-taxonomy.md)) | `arc-runner-set-heavy`, `arc`, `homelab`, `fringe`, `heavy`, `dind` | Docker image builds, Buildx, multi-arch builds, heavier integration jobs |
 
-`arc-runner-set` is the default scale set name. Existing jobs targeting `arc-runner-set` land on the normal/SOYO pool. Heavy jobs must explicitly target `arc-runner-set-heavy`.
+`arc-runner-set` is the default scale set name. Heavy jobs must explicitly target `arc-runner-set-heavy`.
+
+> **Current state (since 2026-06-18, Longhorn IM-cpu incident): both pools are scaled to 0**
+> (`minRunners: 0` / `maxRunners: 0`) to keep runner load off the nodes while storage converges —
+> the heavy/DinD pool especially. Restore targets per the HelmRelease comments: normal → 1/3,
+> heavy → 0/2. In-cluster CI runs on the Forgejo runner instead ([Forgejo](forgejo.md)).
 
 ## Workflow labels
 

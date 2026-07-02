@@ -1,47 +1,40 @@
 # Homelab Platform Docs
 
-This TechDocs space mirrors the updated README so Backstage shows the same diagrams, wiring tables, and GitOps context that exist in the repository. Everything below is kept in lock-step with the Flux-managed manifests and Talos configs.
+TechDocs for the Flux-managed Talos homelab. Everything here mirrors the manifests in
+`webgrip/homelab-cluster`; when the docs and the repo disagree, the repo wins.
 
-## Scope
+## Platform at a glance
 
-- Talos cluster layout, versions, health checks, and etcd membership
-- Flux GitOps flow, bootstrap steps, and security posture
-- Networking (fiber → Protectli → switches → Wi-Fi), DHCP reservations, and split DNS
-- Runtime inventory (pods and services) captured from `kubectl`
+| Concern | Implementation |
+| --- | --- |
+| GitOps | Flux (flux-operator + flux-instance); 3 layers: root `kubernetes/flux/cluster/ks.yaml` → per-app `ks.yaml` → `app/` manifests |
+| Nodes | 5 × bare-metal Talos (3 soyo control-plane + 2 workers) — [Talos cluster](general/talos-cluster.md) |
+| Ingress | Gateway API via Envoy Gateway: `envoy-internal` (LAN) + `envoy-external` (public via Cloudflare Tunnel) |
+| DNS | Split-horizon: `k8s-gateway` answers `*.${SECRET_DOMAIN}` on the LAN; ExternalDNS → Cloudflare for public records |
+| Secrets | **ESO + OpenBao** (`ExternalSecret`/`PushSecret`; see the [ESO reference](rfc/external-secrets-plan.md)). Minimal SOPS floor remains: age key, `cluster-secrets`, `talsecret` (+ one zomboid straggler) |
+| Storage | Longhorn (replicas confined to the worker pool); Garage S3 off-cluster for object storage |
+| Databases | CloudNativePG Postgres per app namespace, barman-cloud backups to Garage |
+| Observability | VictoriaMetrics + Loki + Grafana (grafana-operator) — [Observability](general/observability.md) |
+| Security | Kyverno, Trivy Operator, cosign/OpenBao Transit signing, DT + GUAC — [Security platform](general/security-platform.md) |
+| CI | Forgejo Actions (in-cluster, release authority) + ARC GitHub runners — [Forgejo](general/forgejo.md), [ARC](general/arc-runners.md) |
+| Identity | Authentik OIDC SSO — [Authentik](general/authentik.md) |
 
-Commit refreshed TechDocs whenever the physical wiring, workloads, or Talos facts change so Backstage stays authoritative.
+**Workloads:** the full per-app inventory (hostnames, gateways, LoadBalancers, disabled apps)
+lives in [Applications — canonical inventory](general/applications.md).
 
-## Featured Workloads
+## Endpoints & VIPs
 
-| Category | Namespace(s) | Highlights |
-| --- | --- | --- |
-| Platform control | `flux-system`, `kube-system` | Flux controllers, notification receiver, Weave GitOps UI, Cilium, CoreDNS, metrics-server, Spegel, Reloader. |
-| Networking & ingress | `network` | Envoy internal/external gateways, Cloudflare DNS + Tunnel, `k8s-gateway` split DNS. |
-| PKI & security | `cert-manager`, `components/sops` | ACME HTTP-01 + DNS-01 issuers, SOPS secrets rendered into namespaces. |
-| CI infrastructure | `arc-systems` | Actions Runner Controller with gha-runner-scale-set for GitHub burst capacity. |
-| Applications | `default`, `freshrss`, `invoiceninja` | Echo sample service, FreshRSS backed by a namespace-local CNPG PostgreSQL cluster, and Invoice Ninja 5.12.39 riding on an app-template-managed MariaDB 11.8.5 StatefulSet backed by Longhorn PVCs. |
+| Endpoint | Purpose | Source | Address |
+| --- | --- | --- | --- |
+| `cluster_api_addr` | Talos + Kubernetes API VIP | `cluster.yaml` | `10.0.0.25` |
+| `cluster_dns_gateway_addr` | `k8s-gateway` LoadBalancer (split DNS) | `kubernetes/apps/network/k8s-gateway` | `10.0.0.26` |
+| `cluster_gateway_addr` | `envoy-internal` LoadBalancer (LAN-only) | `kubernetes/apps/network/envoy-gateway` | `10.0.0.27` |
+| `cloudflare_gateway_addr` | `envoy-external` / Cloudflare Tunnel origin | `kubernetes/apps/network/cloudflare-tunnel` | `10.0.0.28` |
+| Garage S3 | Object storage (off-cluster VM) | — | `10.0.0.110:3900` |
 
-TechDocs sources live under `docs/techdocs/` and are referenced in `catalog/catalog-info.yaml` so every catalog entity links back here.
-
-## Flux Workflow
-
-```mermaid
-graph TD
-	FS>Kustomization: flux-system] --> |Installs| Flux[Flux Controllers + Operator]
-	Net>Kustomization: network] --> |Publishes| Gateways[Envoy + Cloudflare Tunnel]
-	Net --> DNS[k8s-gateway + ExternalDNS]
-	Certs>Kustomization: cert-manager] --> |Issues| TLS[Wildcard Certificates]
-	Arc>Kustomization: arc-systems] --> |Deploys| Runners[ARC + gha-runner-scale-set]
-	Apps>Kustomization: freshrss] --> |Consumes| Gateways
-	Apps --> |Consumes| TLS
-	Runners --> |Serve| GitHub
-	Flux --> |Reconciles| Net
-	Flux --> |Reconciles| Certs
-	Flux --> |Reconciles| Arc
-	Flux --> |Reconciles| Apps
-```
-
-Flux reconciles every directory listed in the mermaid diagram. Renovate watches for drift, GitHub Actions runs `flux diff --cached`, and Talos bootstrap scripts live under `bootstrap/`.
+Supporting controllers in `kubernetes/apps/network/`: `k8s-gateway` (split DNS, watches
+`HTTPRoute` + `Service`), `envoy-gateway` (both `Gateway` resources), `cloudflare-tunnel`
+(`cloudflared` → `envoy-external`), `cloudflare-dns` (ExternalDNS → Cloudflare).
 
 ## Networking Overview
 
@@ -65,7 +58,10 @@ graph TD
 	W --> |Guest SSID| W3([Guest access])
 ```
 
-Everything is 1 GbE from the Protectli firewall through the TP-Link fan-out and Q-Link downstream switch. No LACP/10G trunks exist, so plan bandwidth assuming single-gigabit hop-by-hop throughput.
+Everything is 1 GbE from the Protectli firewall through the TP-Link fan-out and Q-Link
+downstream switch. No LACP/10G trunks exist, so plan bandwidth assuming single-gigabit
+hop-by-hop throughput. (The two workers hang off the same switching path; per-port wiring for
+them is in [Talos cluster → Network Wiring](general/talos-cluster.md#network-wiring).)
 
 ### Flat LAN
 
@@ -98,17 +94,25 @@ Static infrastructure keeps IPs below `.50`, reserved in OPNsense so DHCP drift 
 ```mermaid
 graph TD
 	Clients -->|Queries| Router[OPNsense split DNS]
-	Router -->|webgrip.dev| K8sGW[k8s-gateway LB 10.0.0.26]
+	Router -->|cluster domain| K8sGW[k8s-gateway LB 10.0.0.26]
 	Router -->|Other domains| WAN[Upstream DNS]
 	K8sGW -->|Routes hostnames| Envoy[envoy-internal / envoy-external]
 	Envoy -->|Publishes| Cloudflare
 ```
 
-`k8s-gateway` answers `*.webgrip.dev` lookups inside the LAN while Cloudflare + tunnels continue to serve public DNS. This lets on-prem clients stay on-LAN without hairpinning through Cloudflare.
+`k8s-gateway` answers `*.${SECRET_DOMAIN}` lookups inside the LAN while Cloudflare + tunnels
+serve public DNS. On-prem clients stay on-LAN without hairpinning through Cloudflare.
 
-## Maintenance Checklist
+## Where to go next
 
-1. Capture fresh `kubectl get nodes -o wide`, `kubectl get pods -A -o wide`, and `kubectl get svc -A` outputs for the runtime page.
-2. Record `talosctl version`, `talosctl -n <node> services`, `talosctl etcd members`, and `talosctl health` for the Talos reference.
-3. Update wiring diagrams or tables when physical cabling changes.
-4. Commit updates to `docs/techdocs/` with the same PR that modifies manifests so Backstage TechDocs match the repo.
+- [General docs](general/index.md) — architecture and reference pages
+- [Runbooks](runbooks/index.md) — incident-driven operational procedures
+- [ADRs](adr/index.md) · [RFCs](rfc/index.md) — decisions and designs
+- [Incidents](incidents/index.md) · [Blogs](blogs/index.md)
+
+## Maintenance
+
+Update these docs in the same commit as the manifest change. For live snapshots use the
+verify commands in [Applications](general/applications.md) and the re-capture commands in
+[Talos cluster](general/talos-cluster.md#re-capturing-hardware-specs); update wiring diagrams
+whenever physical cabling changes.

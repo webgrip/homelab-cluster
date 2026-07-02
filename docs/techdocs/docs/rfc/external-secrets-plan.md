@@ -10,7 +10,7 @@
 > `hostAPI`, or `ENCRYPTION_KEY`).
 
 [openbao]: https://openbao.org/
-[blog]: blog/2026-06-12-the-long-goodbye-to-sops.md
+[blog]: ../blogs/2026-06-12-the-long-goodbye-to-sops.md
 
 ## Why
 
@@ -74,7 +74,8 @@ down OpenBao never crashes running apps. This is the core argument for ESO over
 sidecar-injection models.
 
 ESO installs in the existing `security` namespace next to the other operators
-(kyverno / falco / tetragon / trivy / …), mirroring the cert-manager app layout.
+(kyverno / trivy / … — falco/tetragon have since been suspended), mirroring the cert-manager
+app layout.
 
 ## Secret taxonomy + full inventory mapping
 

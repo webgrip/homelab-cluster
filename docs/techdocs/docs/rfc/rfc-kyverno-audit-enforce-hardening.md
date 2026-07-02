@@ -96,3 +96,46 @@ one admission cycle. One wave per commit, spaced apart (the batched-rollout stor
   `require-approved-registries` enforceable — its own future work
   ([RFC: Harbor proxy cache](rfc-harbor-proxy-cache.md)).
 - Restricting Helm/OCI source registries (a follow-up noted in the supply-chain policy).
+
+## Deferred items (from retired enforcement roadmap, 2026-07-02)
+
+The earlier standalone enforcement-roadmap RFC was retired (it assumed keyless GHCR + an
+enforceable registry allowlist, both since overturned — see
+[supply-chain-pipeline](../general/supply-chain-pipeline.md) and ADR-0034). These are the
+still-open items it owned that live nowhere else:
+
+**Flux chart-source verification** (Kyverno never sees Flux's chart pulls):
+
+- No `OCIRepository`/`HelmRelease` uses `spec.verify.provider: cosign` today — chart *signature*
+  verification is unbuilt (digest pinning is enforced by `flux-governance-enforce`).
+- Flux verify is **enforce-only** (failed verify → `Ready=False`, artifact withheld; no audit
+  mode). For an audit phase, run a side-channel CronJob that `cosign verify`s charts → alert;
+  add `spec.verify` only when ready to enforce.
+- Keyed verification needs the `cosign-webgrip` public key mirrored as a Secret in `flux-system`
+  (Flux can't read the `security`-ns ConfigMap).
+- Harbor-only *chart* sources: mirror upstream OCI charts through Harbor, repoint
+  `OCIRepository.spec.url`, and guard with a `flux-governance-enforce` rule pinning chart hosts —
+  sequence after image mirroring is stable (a broken chart source fails reconciliation hard).
+
+**Harbor-side hardening** (project settings, not yet captured as IaC):
+
+- Tag immutability on `webgrip/**` release tags — the keyed path has no Rekor; immutability +
+  sign-by-digest close the tag-mutation gap.
+- Robot least privilege: CI push robot and Kyverno pull-only robot (`harbor-pull`) stay separate;
+  neither gets project admin. Project storage quota + retention/GC that never prunes a digest a
+  running pod or signature still references.
+- CVE-severity pull-gating last, observe-mode first (a fresh CVE can otherwise block the cluster
+  pulling its own runner images).
+- Capture all of the above as IaC (Harbor API/Terraform) instead of clicked-in settings.
+
+**Runner hardening** (privileged DinD path):
+
+- Gate who can trigger the release path (protected tags / protected branches) — the OpenBao
+  claim binding delegates signing authorization to the forge event, so forge-side protection is
+  the real boundary.
+- Move off privileged DinD (rootless/sysbox or a shared locked-down buildkitd); the LXC/VM
+  runner variant is explicitly backbenched as P2 ([ADR-0008](../adr/adr-0008-rootless-ci-image-builds.md) owns the rootless move).
+- Scope the runner ServiceAccount + NetworkPolicy to Harbor/OpenBao/Dependency-Track only.
+- Pin Forgejo action installers (`cosign-installer`, `sbom-action`) by digest/SHA.
+- Forgejo-native SLSA provenance for the Harbor path (no `attest-build-provenance` analog) —
+  research item; Harbor images carry signature + CycloneDX SBOM but no build provenance.

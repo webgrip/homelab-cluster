@@ -158,7 +158,7 @@ Document it. Confirm the push-mirror keeps GitHub current.
 
 A `runbooks/flux-source.md` (break-glass repoint, webhook re-registration, mirror-direction recovery) is
 written with the Phase-3 implementation. Disaster recovery for the forge itself follows the
-[CNPG Restore Playbook](../runbooks/cnpg-restore-playbook.md).
+[CNPG backups & restore runbook](../runbooks/cnpg-backups.md#restore-dr-drill).
 
 ## References
 

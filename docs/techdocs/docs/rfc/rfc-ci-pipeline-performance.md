@@ -1,6 +1,7 @@
 # RFC: CI pipeline performance — kill the per-job cold start
 
-> Status: **Accepted** · Date: 2026-06-25 · Owner: Ryan
+> Status: **Accepted** · Date: 2026-06-25 · Owner: Ryan · Implementation lives in
+> `webgrip/workflows` (constrictor fast-build, ADR-0036) — not verifiable from this repo.
 >
 > Sibling of [RFC: Security Hardening](rfc-security-hardening.md) (which owns the *rootless*
 > build-engine move, [ADR-0008](../adr/adr-0008-rootless-ci-image-builds.md)). This RFC is about

@@ -249,7 +249,7 @@ evaluates the bootstrapped policies, and aggregates portfolio metrics.
 
 The DT metrics exporter polls `GET /api/v1/metrics/portfolio/current` every 5 minutes and
 exposes `dt_portfolio_*` metrics (vulnerabilities by severity, policy violations by state,
-projects, components, risk score, last-scrape timestamp) to Prometheus.
+projects, components, risk score, last-scrape timestamp) to VictoriaMetrics.
 
 - Public URL: `https://dependency-track.${SECRET_DOMAIN}`
 - The portfolio dashboard aggregates from `PROJECTMETRICS` on an hourly cycle — fresh uploads
@@ -305,9 +305,9 @@ Operator says *this running pod has the CVE*.
 | Sun 02:10 | `dependency-track/sbom-uploader` | Scans ~160 running images → DT + Garage S3 |
 | ~hourly | DT `PROJECTMETRICS` aggregation | Portfolio metric rollup |
 | every 30 min | `cosign-pubkey` CronJob | Publishes Transit public key(s) → `cosign-webgrip-pub` |
-| every 5 min | DT metrics exporter | Exposes `dt_portfolio_*` to Prometheus |
+| every 5 min | DT metrics exporter | Exposes `dt_portfolio_*` to VictoriaMetrics |
 | continuous | GUAC `oci-collector` | Polls registries for attestations |
-| daily | GUAC `s3-collector` | Ingests S3 SBOMs into the graph |
+| weekly (Sun 05:20) | GUAC `s3-collector` | Ingests S3 SBOMs into the graph |
 
 ---
 

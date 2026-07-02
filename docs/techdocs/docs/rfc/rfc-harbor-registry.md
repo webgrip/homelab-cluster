@@ -1,12 +1,11 @@
 # RFC: Harbor Container Registry
 
-> Status: **Proposed.** This RFC proposes deploying [Harbor][harbor] as the cluster's private
+> Status: **Implemented** · Date: 2026-06-12 · Implemented by: [ADR-0001](../adr/adr-0001-adopt-harbor.md) … [ADR-0006](../adr/adr-0006-authentik-oidc-phased.md)
+>
+> [Harbor][harbor] runs in-cluster (chart 1.19.1, `kubernetes/apps/harbor/`) as the private
 > OCI registry and artifact store — container images, Helm charts, and generic OCI artifacts —
 > with Trivy scanning, Prometheus metrics, S3-backed blob storage, a CNPG Postgres with backups,
-> and Authentik SSO, all GitOps-managed by Flux. The individual decisions are recorded as
-> [ADR-0001](../adr/adr-0001-adopt-harbor.md) … [ADR-0006](../adr/adr-0006-authentik-oidc-phased.md). This
-> document is the umbrella; it flips to **Accepted** when the design is approved and the
-> Phase-1 manifests merge.
+> and Authentik SSO, all GitOps-managed by Flux.
 
 [harbor]: https://goharbor.io/
 [eso]: https://external-secrets.io/
@@ -92,8 +91,8 @@ flowchart LR
 ```
 
 **Dependency ordering (Flux):** `harbor-db` Kustomization depends on `cloudnative-pg`
-(cnpg-system); the `harbor` Kustomization depends on `harbor-db` plus `kube-prometheus-stack`
-(for the ServiceMonitor CRD). TLS terminates at the gateway's wildcard `*.${SECRET_DOMAIN}`
+(cnpg-system); the `harbor` Kustomization depends on `harbor-db` plus `victoria-metrics`
+(for the ServiceMonitor CRD conversion). TLS terminates at the gateway's wildcard `*.${SECRET_DOMAIN}`
 certificate, so Harbor itself runs `expose.type: clusterIP` with TLS disabled.
 
 ## Secrets (ESO)
@@ -170,7 +169,7 @@ requires `walStorage` and the `monitoring.webgrip.io/enabled` label. See
 A `runbooks/harbor.md` operational runbook (bring-up steps: Garage bucket/key creation, the
 `bao kv put` keys, OIDC configuration, and a restore drill) is written alongside the Phase-1
 implementation, not in this RFC. Disaster recovery follows the standard
-[CNPG Restore Playbook](../runbooks/cnpg-restore-playbook.md).
+[CNPG backups & restore runbook](../runbooks/cnpg-backups.md#restore-dr-drill).
 
 ## References
 

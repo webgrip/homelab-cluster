@@ -1,6 +1,7 @@
 # Container Supply Chain — Architecture Overview
 
-> Status: living · Companion to [Enforcement roadmap](../rfc/supply-chain-enforcement-roadmap.md),
+> Status: living · Companion to the [Supply Chain Intelligence Pipeline](supply-chain-pipeline.md),
+> [RFC: Kyverno audit→enforce hardening](../rfc/rfc-kyverno-audit-enforce-hardening.md),
 > the [Transit key-rotation runbook](../runbooks/cosign-transit-key-rotation.md), and
 > [ADR-0020 (Codeberg mirror)](../adr/adr-0020-codeberg-offsite-push-mirror.md).
 
@@ -38,8 +39,8 @@ flowchart TB
   end
 
   subgraph REG["📦 REGISTRY"]
-    harbor["Harbor · private/LAN<br/>harbor.webgrip.dev/webgrip/*"]
-    ghcr["ghcr.io/webgrip/*<br/><i>dual-publish during migration</i>"]
+    harbor["Harbor · private/LAN<br/>harbor.${SECRET_DOMAIN}/webgrip/*"]
+    ghcr["ghcr.io/webgrip/*<br/><i>dual-published by Forgejo CI, same key</i>"]
     dhproxy["Docker Hub pull-through cache"]
   end
 
@@ -72,8 +73,10 @@ flowchart TB
   repo -->|ops/docker/** changed| srel
   srel -->|release published| build
   build -->|push image| harbor
+  build -->|push image| ghcr
   build --> syft --> sign
   sign -->|attach sig + SBOM| harbor
+  sign -->|attach sig + SBOM| ghcr
 
   sign ==>|"1 · per-job OIDC token"| fjoidc
   fjoidc ==>|"2 · present JWT"| jwtauth
@@ -101,9 +104,8 @@ flowchart TB
   authentik -->|SSO| repo
   oidcp -.->|machine OIDC → cloud · future| ghcr
 
-  repo -->|push-mirror| gh
+  repo -->|push-mirror · zero release Actions| gh
   repo -->|push-mirror| codeberg
-  gh -->|.github CI| ghcr
   docs --> codeberg
 
   classDef forge fill:#e8eaf6,stroke:#3949ab,color:#102027;
@@ -226,7 +228,7 @@ sequenceDiagram
 
 ## 3. Prerequisites to go live
 
-See the [enforcement roadmap §1.4](../rfc/supply-chain-enforcement-roadmap.md) for the full gate list.
+See the [Kyverno audit→enforce RFC](../rfc/rfc-kyverno-audit-enforce-hardening.md) for the full gate list (the standalone enforcement roadmap was retired into it, 2026-07-02).
 In short: Forgejo server ≥ v15 (for `enable-openid-connect`); a one-time OpenBao break-glass on the
 *existing* cluster to enable Transit + the `forgejo` jwt auth and create the key (a fresh rebuild does
 this automatically via init.sh); the `cosign-pubkey` CronJob then publishes the public key to the

@@ -8,10 +8,12 @@
 
 ## Why
 
-The homelab already runs an unusually complete security stack: Kyverno admission control, Falco and
-Tetragon runtime detection, Trivy scanning, a cosign/SLSA/SBOM supply-chain pipeline, ESO + OpenBao
-for secrets, Talos (immutable OS, etcd `secretbox` at rest), Authentik SSO with an MFA group, and
-Cilium (eBPF, kube-proxy-replacement). The apparatus is there. What's missing is **closure** — in
+The homelab already runs an unusually complete security stack: Kyverno admission control, Trivy
+scanning, a cosign/SLSA/SBOM supply-chain pipeline, ESO + OpenBao for secrets, Talos (immutable
+OS, etcd `secretbox` at rest), Authentik SSO with an MFA group, and Cilium (eBPF,
+kube-proxy-replacement). Falco + Tetragon runtime detection ran too, until both were **suspended
+2026-06-19** (they destabilized the cluster) — reinstating them is itself an open hardening item.
+The apparatus is there. What's missing is **closure** — in
 several places the mechanism is built but left in the safe, observe-only, or long-lived position:
 
 - Image-verification policies are **`image-verify-audit` / `image-attestations-audit`** — they
@@ -20,8 +22,9 @@ several places the mechanism is built but left in the safe, observe-only, or lon
 - CI builds images in a **privileged** Docker-in-Docker container — the one privileged workload, in
   the one place that runs repo-controlled code.
 - Database credentials are **static and long-lived** (now in OpenBao, but still values that exist).
-- Network policy is **sparse** — 6 `NetworkPolicy`, 0 `CiliumNetworkPolicy` across ~25 namespaces;
-  no default-deny baseline to contain lateral movement.
+- Network policy **was sparse** at writing (6 `NetworkPolicy`, no default-deny) — since closed:
+  opt-in per-namespace default-deny landed via
+  [ADR-0039](../adr/adr-0039-default-deny-network-policies.md) (Accepted 2026-07-01).
 
 "Running on the edge" is interpreted here as **least-privilege + defense-in-depth + short-lived
 credentials + enforce-not-observe, applied consistently** — not chasing the newest CRD. Novelty has
@@ -49,14 +52,15 @@ loop); the high-leverage moves are flips, not green-field builds.
 
 **Out of scope for now (candidate future ADRs):**
 
-- **Default-deny networking** — a baseline `CiliumClusterwideNetworkPolicy` deny + per-namespace
-  allows, authored from observed flows. Prerequisite: **enable Hubble** (currently
-  `hubble.enabled: false`) to see the flows before locking them down.
+- **Default-deny networking** — **landed 2026-07-01** as opt-in per-namespace default-deny
+  ([ADR-0039](../adr/adr-0039-default-deny-network-policies.md)), sidestepping the
+  Hubble-first clusterwide approach sketched here. Still open from that sketch: L7 policies.
 - **Disk encryption at rest** — Talos **LUKS2 + TPM**-sealed STATE/EPHEMERAL partitions. etcd is
   already `secretbox`-encrypted; this protects PVC/image data against physical disk theft. Needs a
   careful rolling Talos apply.
-- **Detect → respond** — Falco/Tetragon already detect; add **Falco Talon** / Falcosidekick to
-  auto-kill or quarantine on high-severity runtime events, closing detection to containment.
+- **Detect → respond** — reinstate Falco/Tetragon (suspended 2026-06-19), then add **Falco
+  Talon** / Falcosidekick to auto-kill or quarantine on high-severity runtime events, closing
+  detection to containment.
 - **Workload identity (SPIFFE/SPIRE or Cilium mutual auth)** — cryptographic service identity +
   mTLS, so services authenticate by identity not network position. Highest effort; revisit after the
   basics and only if L7 identity policy is actually needed.
@@ -72,9 +76,9 @@ Where the cluster is today vs. the edge, ranked by leverage-per-effort:
 | CI builds | privileged DinD | rootless BuildKit | low–med | ADR-0008 (queued) |
 | DB creds | static long-lived | short-lived dynamic | med | [dynamic RFC](rfc-dynamic-database-credentials.md) |
 | Supply chain | **audit** | **enforce** | med | Forge + Harbor track |
-| Network | 6 policies, no default-deny | default-deny + L7 | med | future ADR (needs Hubble) |
+| Network | opt-in default-deny **done** ([ADR-0039](../adr/adr-0039-default-deny-network-policies.md)) | + L7 | med | done 2026-07-01; L7 open |
 | Disk at rest | etcd only | + LUKS/TPM | med | future ADR |
-| Detect→respond | detect only | auto-contain | med | future ADR |
+| Detect→respond | detection suspended (2026-06-19) | reinstate + auto-contain | med | future ADR |
 | Workload identity | none | SPIFFE/mTLS | high | future RFC |
 
 ## Sequencing & risks

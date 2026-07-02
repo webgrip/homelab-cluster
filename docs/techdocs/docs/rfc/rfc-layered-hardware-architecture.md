@@ -274,7 +274,7 @@ collapse). The three migration styles are not a choice — they are **distances 
   [roadmap](../general/roadmap.md)).
 - Bolt **PiKVM OOB** onto each node — Talos is API-only; OOB is the only recovery path for a bricked
   node.
-- Runbooks: [CNPG backups](../runbooks/cnpg-backups.md), [Longhorn](../runbooks/longhorn.md).
+- Runbooks: [CNPG backups](../runbooks/cnpg-backups.md), [Longhorn rebuild-wedge](../runbooks/longhorn-rebuild-wedge.md), [Longhorn IM-cpu](../runbooks/longhorn-im-cpu-converge.md).
 
 **Phase 1 — Lay the network spine** — stand up the L1 storage/replication network (25 or 100 GbE) and
 NICs. Target-agnostic; this is the seed of the _new core_.
@@ -339,7 +339,7 @@ When the answers converge, ratify the matching rows in
   (see the [storage note](../general/talos-cluster.md#storage-physical-vs-longhorn)); install-disk
   selection and any storage automation must key on stable IDs/WWIDs, not letters.
 - **Data-migration risk** — Phase 2 moves live data (Longhorn → new); CNPG failover churn and PVC-copy
-  windows need a rehearsed [restore drill](../runbooks/cnpg-restore-playbook.md) before cutover.
+  windows need a rehearsed [restore drill](../runbooks/cnpg-backups.md#restore-dr-drill) before cutover.
 - **Next-gen engine readiness** — both in-cluster upgrade paths carry a catch on this hardware:
   Longhorn v2 only reached GA in **1.12.0 (2026-06)** and still locks ~2 GiB hugepages + busy-spins
   1–2 cores per node; LINSTOR/Piraeus (DRBD) is lighter but its **out-of-tree module must be rebuilt
@@ -359,7 +359,7 @@ When the answers converge, ratify the matching rows in
 
 - Storage replication traffic rides a network plane separate from workload traffic.
 - The cluster survives the loss of any one node / disk / PSU / switch (to the redundancy the path buys).
-- A [CNPG restore drill](../runbooks/cnpg-restore-playbook.md) passes against the new storage layer.
+- A [CNPG restore drill](../runbooks/cnpg-backups.md#restore-dr-drill) passes against the new storage layer.
 - No single backup target can fail all data protection (3-2-1 satisfied).
 
 ## Glossary
@@ -404,10 +404,9 @@ Terms used above, plainest-first — this RFC should be readable without prior h
   [placement](../general/talos-cluster.md#workload-placement-consequence)
 - **Incidents:** [Longhorn OOM cascade](../incidents/2026-06-09-longhorn-oom-cascade.md) ·
   [IM-cpu rolling detonation](../incidents/2026-06-18-longhorn-im-cpu-rolling-detonation.md)
-- **Runbooks:** [Longhorn](../runbooks/longhorn.md) ·
-  [Longhorn capacity](../runbooks/longhorn-capacity-remediation.md) ·
+- **Runbooks:** [Longhorn rebuild-wedge](../runbooks/longhorn-rebuild-wedge.md) ·
   [Longhorn IM-cpu](../runbooks/longhorn-im-cpu-converge.md) ·
-  [CNPG backups](../runbooks/cnpg-backups.md) · [CNPG restore](../runbooks/cnpg-restore-playbook.md)
+  [CNPG backups & restore](../runbooks/cnpg-backups.md)
 - **ADRs:** [0002 Garage blob storage](../adr/adr-0002-registry-blob-storage-garage-s3.md) ·
   [0003 external CNPG](../adr/adr-0003-external-cnpg-database.md) ·
   [0005 LAN-only](../adr/adr-0005-lan-only-exposure.md) ·
