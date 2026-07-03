@@ -2,7 +2,7 @@
 
 > Status: **Proposed** · Date: 2026-07-02 · Part of the [decision-landscape gap register](../adr/landscape.md)
 
-> **TL;DR.** Eleven CloudNativePG clusters run every stateful app's database; ADR-0003 calls CNPG
+> **TL;DR.** Eleven CloudNativePG clusters run every stateful app's database; ADR-0019 calls CNPG
 > "the cluster standard" — a standard no record established. All eleven are `instances: 1` by an
 > unstated policy, guac silently deviates from the backup pattern, and connection pooling is
 > unresolved after the freshrss PgBouncer pause. This RFC backfills the standard, makes
@@ -28,12 +28,12 @@ Why the posture matters enough to record:
   [layered-hardware RFC](rfc-layered-hardware-architecture.md) names "single-instance CNPG" the
   L4 gap and "sync replicas + anti-affinity" the edge.
 - **The constraint is real, not laziness**: with two storage nodes and 12 GiB soyos
-  ([ADR-0026](../adr/adr-0026-confine-longhorn-to-workers.md)/[0028](../adr/adr-0028-application-workload-placement.md)),
+  ([ADR-0008](../adr/adr-0008-confine-longhorn-to-workers.md)/[0028](../adr/adr-0002-application-workload-placement.md)),
   a second synchronous instance per DB doubles the footprint of eleven databases on the
   RAM-tightest resource. Accepting downtime-on-restart is a defensible trade — but today it is an
   *implicit* trade.
 - **Pooling is unfinished business**: the freshrss PgBouncer sidecar
-  ([ADR-0010](../adr/adr-0010-openbao-dynamic-postgres-credentials.md), paused 2026-07-02) exists
+  ([ADR-0016](../adr/adr-0016-openbao-dynamic-postgres-credentials.md), paused 2026-07-02) exists
   only as a dynamic-credentials enabler; CNPG's native `Pooler` CR was never evaluated. Whatever
   is chosen shapes both the dynamic-creds endgame and any future replica topology.
 
@@ -42,14 +42,14 @@ Why the posture matters enough to record:
 1. **Backfill the standard as a retroactive ADR**: every app database is an external CNPG
    `Cluster` (never chart-bundled), `longhorn` + `walStorage`, monitoring label, barman
    `ObjectStore` + `ScheduledBackup` via the `cnpg-backup` component, CNPG-generated `-app`
-   secret (the forgejo pattern, per ADR-0003). Alternatives that lost: chart-bundled Postgres
+   secret (the forgejo pattern, per ADR-0019). Alternatives that lost: chart-bundled Postgres
    (un-backed-up snowflakes), a single shared Postgres for all apps (blast radius, no per-app
    restore), operator alternatives (Zalando/Percona).
 2. **Record the single-instance posture as an explicit decision** with the exception test:
    a database earns `instances: 2` only when (a) its app is genuinely restart-intolerant *and*
    user-facing, (b) worker RAM headroom demonstrably allows it, and (c) the app's own tier in the
    [backup-tiers doc](../general/database-backup-tiers.md) justifies it. Candidates to evaluate
-   against the test when hardware allows (L4): forgejo (the GitOps source once ADR-0014 lands)
+   against the test when hardware allows (L4): forgejo (the GitOps source once ADR-0011 lands)
    and authentik (login availability). Everything else stays 1 by policy, not accident.
 3. **Normalize guac**: either bring it onto the barman pattern like the other ten, or record its
    pg_dump-only status as a deliberate tier decision (its data is re-derivable from SBOM
@@ -79,6 +79,6 @@ Why the posture matters enough to record:
 
 - [database-backup-tiers](../general/database-backup-tiers.md) · [cnpg-backups runbook](../runbooks/cnpg-backups.md) ·
   the `cnpg-database` skill
-- [ADR-0003](../adr/adr-0003-external-cnpg-database.md) ·
-  [ADR-0010](../adr/adr-0010-openbao-dynamic-postgres-credentials.md) ·
+- [ADR-0019](../adr/adr-0019-external-cnpg-database.md) ·
+  [ADR-0016](../adr/adr-0016-openbao-dynamic-postgres-credentials.md) ·
   memory: authentik restarts ← CNPG operator OOM

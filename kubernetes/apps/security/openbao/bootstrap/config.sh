@@ -116,7 +116,7 @@ else
   echo "   oidc not enabled yet; skipping group-alias"
 fi
 
-echo "==> database engine (dynamic Postgres creds — ADR-0010)"
+echo "==> database engine (dynamic Postgres creds — ADR-0016)"
 # Mount the database engine on the RUNNING cluster if init.sh (fresh-only) never did.
 # config-admin holds a narrow sys/mounts/database* grant (see config-admin.hcl).
 if ! bao secrets list -format=json 2>/dev/null | grep -q '"database/"'; then

@@ -51,7 +51,7 @@ Sequenced *after* alert delivery exists — detection without delivery is theate
      single-operator cluster; if the RAM/stability price outbids the marginal detection value,
      record *that* and delete the manifests instead of carrying dead YAML.
    Leaning: Tetragon, pending the investigation's verdict on who caused the outages.
-3. **Gate the return like Pyroscope's** ([ADR-0032](../adr/adr-0032-reenable-pyroscope-worker-pool.md)
+3. **Gate the return like Pyroscope's** ([ADR-0037](../adr/adr-0037-reenable-pyroscope-worker-pool.md)
    is the template): explicit resource requests/limits sized for the soyos (or a worker-only
    DaemonSet if node coverage can be traded), Guaranteed QoS, a canary window with defined
    abort-criteria (etcd health, node memory pressure), one isolated revertible commit.
@@ -73,7 +73,7 @@ Sequenced *after* alert delivery exists — detection without delivery is theate
 
 - Admission-time policy — Kyverno ([RFC](rfc-kyverno-audit-enforce-hardening.md)).
 - Vulnerability scanning at rest — trivy-operator (live and unaffected).
-- Network-layer policy — [ADR-0039](../adr/adr-0039-default-deny-network-policies.md).
+- Network-layer policy — [ADR-0006](../adr/adr-0006-default-deny-network-policies.md).
 
 ## References
 

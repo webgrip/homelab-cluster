@@ -17,7 +17,7 @@ every evaluation:
 …and the entire SLO/SLA alerting layer was silently broken for ~3 weeks. kubeconform
 and the Grafana operator CRD do NOT validate model internals (the model is a
 preserve-unknown-fields blob), so this passed every existing gate. This guard closes
-that hole. See ADR-0030.
+that hole. See ADR-0035.
 
 Invariant enforced
 ------------------

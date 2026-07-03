@@ -2,8 +2,8 @@
 
 > Status: **Proposed.** This RFC frames the cluster's security-hardening program. The thesis is that
 > "state of the art" here is **not new tooling** — it's *finishing the loops the cluster has already
-> built*. The individual choices are recorded as [ADR-0007](../adr/adr-0007-cilium-wireguard-encryption.md)
-> … [ADR-0009](../adr/adr-0009-secret-rotation-model.md) (with dynamic credentials split into its own
+> built*. The individual choices are recorded as [ADR-0004](../adr/adr-0004-cilium-wireguard-encryption.md)
+> … [ADR-0015](../adr/adr-0015-secret-rotation-model.md) (with dynamic credentials split into its own
 > [RFC](rfc-dynamic-database-credentials.md)). It flips to **Accepted** as each loop closes.
 
 ## Why
@@ -24,7 +24,7 @@ several places the mechanism is built but left in the safe, observe-only, or lon
 - Database credentials are **static and long-lived** (now in OpenBao, but still values that exist).
 - Network policy **was sparse** at writing (6 `NetworkPolicy`, no default-deny) — since closed:
   opt-in per-namespace default-deny landed via
-  [ADR-0039](../adr/adr-0039-default-deny-network-policies.md) (Accepted 2026-07-01).
+  [ADR-0006](../adr/adr-0006-default-deny-network-policies.md) (Accepted 2026-07-01).
 
 "Running on the edge" is interpreted here as **least-privilege + defense-in-depth + short-lived
 credentials + enforce-not-observe, applied consistently** — not chasing the newest CRD. Novelty has
@@ -37,9 +37,9 @@ loop); the high-leverage moves are flips, not green-field builds.
 
 | # | Decision | Choice | Status |
 |---|----------|--------|--------|
-| [ADR-0007](../adr/adr-0007-cilium-wireguard-encryption.md) | Wire encryption | Cilium **WireGuard** pod-to-pod, `nodeEncryption: false` | **Accepted** (shipped) |
-| [ADR-0008](../adr/adr-0008-rootless-ci-image-builds.md) | CI build isolation | **Rootless BuildKit**, drop privileged DinD | **Proposed** (after runner proof) |
-| [ADR-0009](../adr/adr-0009-secret-rotation-model.md) | Rotation model | OpenBao write → ESO refresh → Reloader restart | **Accepted** |
+| [ADR-0004](../adr/adr-0004-cilium-wireguard-encryption.md) | Wire encryption | Cilium **WireGuard** pod-to-pod, `nodeEncryption: false` | **Accepted** (shipped) |
+| [ADR-0026](../adr/adr-0026-rootless-ci-image-builds.md) | CI build isolation | **Rootless BuildKit**, drop privileged DinD | **Proposed** (after runner proof) |
+| [ADR-0015](../adr/adr-0015-secret-rotation-model.md) | Rotation model | OpenBao write → ESO refresh → Reloader restart | **Accepted** |
 
 **Linked, sequenced elsewhere:**
 
@@ -53,7 +53,7 @@ loop); the high-leverage moves are flips, not green-field builds.
 **Out of scope for now (candidate future ADRs):**
 
 - **Default-deny networking** — **landed 2026-07-01** as opt-in per-namespace default-deny
-  ([ADR-0039](../adr/adr-0039-default-deny-network-policies.md)), sidestepping the
+  ([ADR-0006](../adr/adr-0006-default-deny-network-policies.md)), sidestepping the
   Hubble-first clusterwide approach sketched here. Still open from that sketch: L7 policies.
 - **Disk encryption at rest** — Talos **LUKS2 + TPM**-sealed STATE/EPHEMERAL partitions. etcd is
   already `secretbox`-encrypted; this protects PVC/image data against physical disk theft. Needs a
@@ -71,12 +71,12 @@ Where the cluster is today vs. the edge, ranked by leverage-per-effort:
 
 | Area | Today | Edge | Effort | Where |
 |------|-------|------|--------|-------|
-| Wire encryption | cleartext pod traffic | WireGuard | low | **done** — ADR-0007 |
-| Rotation | manual, undocumented | vault-write + Reloader | low | **done** — ADR-0009 |
-| CI builds | privileged DinD | rootless BuildKit | low–med | ADR-0008 (queued) |
+| Wire encryption | cleartext pod traffic | WireGuard | low | **done** — ADR-0004 |
+| Rotation | manual, undocumented | vault-write + Reloader | low | **done** — ADR-0015 |
+| CI builds | privileged DinD | rootless BuildKit | low–med | ADR-0026 (queued) |
 | DB creds | static long-lived | short-lived dynamic | med | [dynamic RFC](rfc-dynamic-database-credentials.md) |
 | Supply chain | **audit** | **enforce** | med | Forge + Harbor track |
-| Network | opt-in default-deny **done** ([ADR-0039](../adr/adr-0039-default-deny-network-policies.md)) | + L7 | med | done 2026-07-01; L7 open |
+| Network | opt-in default-deny **done** ([ADR-0006](../adr/adr-0006-default-deny-network-policies.md)) | + L7 | med | done 2026-07-01; L7 open |
 | Disk at rest | etcd only | + LUKS/TPM | med | future ADR |
 | Detect→respond | detection suspended (2026-06-19) | reinstate + auto-contain | med | future ADR |
 | Workload identity | none | SPIFFE/mTLS | high | future RFC |
@@ -99,8 +99,8 @@ landing several CNI/CI/admission changes in a short window compounds blast radiu
 
 ## References
 
-- ADRs [0007](../adr/adr-0007-cilium-wireguard-encryption.md),
-  [0008](../adr/adr-0008-rootless-ci-image-builds.md), [0009](../adr/adr-0009-secret-rotation-model.md)
+- ADRs [0007](../adr/adr-0004-cilium-wireguard-encryption.md),
+  [0008](../adr/adr-0026-rootless-ci-image-builds.md), [0009](../adr/adr-0015-secret-rotation-model.md)
 - [RFC: Dynamic Database Credentials](rfc-dynamic-database-credentials.md) ·
   [RFC: Harbor Registry](rfc-harbor-registry.md)
 - [Supply Chain Pipeline](../general/supply-chain-pipeline.md) · [Authentik](../general/authentik.md) ·

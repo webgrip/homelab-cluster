@@ -1,5 +1,5 @@
 ---
-# Tier-1 "do-once, gated, idempotent" bootstrap task (see ADR-0019).
+# Tier-1 "do-once, gated, idempotent" bootstrap task (see ADR-0003).
 # A bare Job (not a CronJob): it runs on first apply and re-runs ONLY when this spec changes,
 # because its Flux Kustomization (ks-forgejo-provisioner.yaml) sets force: true and the completed
 # Job is left as the "done" marker. No timer, so no recurring cluster load. To re-run on demand:
@@ -59,7 +59,7 @@ spec:
               # Container env vars are referenced UNBRACED ($FORGEJO_URL) on purpose: Flux postBuild
               # substitution (substituteFrom cluster-secrets — only SECRET_DOMAIN is defined) blanks a
               # braced reference to an undefined var, while the unbraced form is left for the shell to
-              # expand. (Dollar-dollar escaping is rejected by Flux's envsubst here.) See ADR-0019.
+              # expand. (Dollar-dollar escaping is rejected by Flux's envsubst here.) See ADR-0003.
               api="$FORGEJO_URL/api/v1"
               admin="$ADMIN_USERNAME:$ADMIN_PASSWORD"
               bot="$BOT_USERNAME:$BOT_PASSWORD"

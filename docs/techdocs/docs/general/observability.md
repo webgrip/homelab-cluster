@@ -4,7 +4,7 @@ Flux-managed, Grafana-centric observability platform in the `observability` name
 
 Current stack:
 
-- **Metrics**: VictoriaMetrics (vm-operator + VMSingle/VMAgent/VMAlert/VMAlertmanager; [ADR-0038](../adr/adr-0038-victoriametrics-metrics-backend.md))
+- **Metrics**: VictoriaMetrics (vm-operator + VMSingle/VMAgent/VMAlert/VMAlertmanager; [ADR-0034](../adr/adr-0034-victoriametrics-metrics-backend.md))
 - **Logs**: Loki (SingleBinary, S3-backed)
 - **Collection / routing**: Grafana Alloy (node agent + OTLP gateway)
 - **Visualization**: Grafana via **grafana-operator** CRDs
@@ -24,7 +24,7 @@ All manifests live under `kubernetes/apps/observability/` (entry point:
 
 ## VictoriaMetrics (metrics backend)
 
-Replaced kube-prometheus-stack on 2026-07-01 — see [ADR-0038](../adr/adr-0038-victoriametrics-metrics-backend.md) and the [VictoriaMetrics runbook](../runbooks/victoriametrics.md). Modular, operator-style:
+Replaced kube-prometheus-stack on 2026-07-01 — see [ADR-0034](../adr/adr-0034-victoriametrics-metrics-backend.md) and the [VictoriaMetrics runbook](../runbooks/victoriametrics.md). Modular, operator-style:
 
 - **`vm-operator`** HelmRelease — installs the VM CRDs and **converts** existing `ServiceMonitor`/`PodMonitor`/`Probe`/`PrometheusRule` CRs into VM CRDs, so app scrape/rule CRs are unchanged and the `release: kube-prometheus-stack` labels are harmless no-ops. (Its own `serviceMonitor` is intentionally disabled — enabling it races the VMServiceScrape CRD on first install; see the runbook.)
 - **`prometheus-operator-crds`** HelmRelease — keeps the `monitoring.coreos.com` CRDs (needed for conversion + a from-scratch bootstrap).
@@ -74,7 +74,7 @@ wiring/troubleshooting → `authentik-oidc` skill + [Authentik OIDC login runboo
 | Component | State | Why + gate |
 | --- | --- | --- |
 | **Tempo** (traces) | commented out of the ns kustomization 2026-06-19 | freed ~1Gi on the overcommitted fringe node; re-enable by uncommenting `./tempo/ks.yaml` |
-| **Pyroscope** (profiles) | `suspend: true` in its ks.yaml | gate = owner-run etcd defrag, then flip per [ADR-0032](../adr/adr-0032-reenable-pyroscope-worker-pool.md) (re-enable on the worker pool) |
+| **Pyroscope** (profiles) | `suspend: true` in its ks.yaml | gate = owner-run etcd defrag, then flip per [ADR-0037](../adr/adr-0037-reenable-pyroscope-worker-pool.md) (re-enable on the worker pool) |
 | **Beyla** (eBPF auto-instrumentation) | `suspend: true` | disabled temporarily for stability |
 | **k6** (operator + canaries) | commented out 2026-06-19 | freed fringe resources; synthetic-check annotations on routes are no-ops until restored |
 

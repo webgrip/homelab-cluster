@@ -1,13 +1,13 @@
 # RFC: Backstage TechDocs as the in-cluster docs surface
 
 > Status: **Proposed** · Date: 2026-06-18 · Owner: Ryan Grippeling (`ryan@webgrip.nl`)
-> · Decision: [ADR-0023 (Backstage TechDocs)](../adr/adr-0023-backstage-techdocs.md)
+> · Decision: [ADR-0039 (Backstage TechDocs)](../adr/adr-0039-backstage-techdocs.md)
 > · Plan: [Backstage TechDocs plan](plan-backstage-techdocs.md)
-> · Supersedes (as primary): [ADR-0022 (Codeberg Pages, interim)](../adr/adr-0022-codeberg-pages-techdocs.md)
+> · Supersedes (as primary): [ADR-0038 (Codeberg Pages, interim)](../adr/adr-0038-codeberg-pages-techdocs.md)
 
 ## 1. Why
 
-The interim host ([ADR-0022](../adr/adr-0022-codeberg-pages-techdocs.md)) gets the docs *served* and gives
+The interim host ([ADR-0038](../adr/adr-0038-codeberg-pages-techdocs.md)) gets the docs *served* and gives
 us off-site DR, but it is a bare static site: public-only, no search, no link from the service
 catalog. Our docs are authored as **Backstage TechDocs**, and **Backstage already runs in-cluster**
 — so the integrated experience is config away, not a new platform. This RFC designs that step and
@@ -30,7 +30,7 @@ Key choices:
 - **`builder: external`** — Backstage **never builds docs on read**; it only serves what CI
   published. This keeps the Backstage pods light and avoids giving the frontend a toolchain.
 - **`publisher.type: awsS3`** against **Garage** — Garage is S3-compatible and already our blob
-  store ([ADR-0002](../adr/adr-0002-registry-blob-storage-garage-s3.md)). A dedicated `techdocs` bucket,
+  store ([ADR-0018](../adr/adr-0018-registry-blob-storage-garage-s3.md)). A dedicated `techdocs` bucket,
   path-style addressing, plain-HTTP in-cluster endpoint, creds from OpenBao.
 - **Entity-keyed layout** — `techdocs-cli publish --entity <ns>/<kind>/<name>` writes under a path
   Backstage resolves from each entity's `backstage.io/techdocs-ref` annotation.
@@ -66,7 +66,7 @@ rule). `techdocs-cli publish --entity default/component/homelab-cluster` then ta
   `techdocs-site` artifact and runs
   `techdocs-cli publish --publisher-type awsS3 --storage-name techdocs --entity <…>` with the Garage
   S3 endpoint + creds (org Actions secrets from OpenBao).
-- `deploy-codeberg` — unchanged from [ADR-0022](../adr/adr-0022-codeberg-pages-techdocs.md); stays as the
+- `deploy-codeberg` — unchanged from [ADR-0038](../adr/adr-0038-codeberg-pages-techdocs.md); stays as the
   off-site DR copy.
 
 Both consume the same artifact, so there is **no second build**.

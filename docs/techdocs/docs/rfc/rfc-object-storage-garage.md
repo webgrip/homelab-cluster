@@ -20,10 +20,10 @@ Every consumer verified in-tree (2026-07-02):
 | OpenBao snapshot CronJob | nightly raft snapshots (same bucket, `openbao-snapshots/`) |
 | Loki | `loki-chunks` / `loki-ruler` / `loki-admin` (30d of logs) |
 | Tempo | `tempo` (14d of traces) |
-| Harbor | registry blobs, `harbor` bucket ([ADR-0002](../adr/adr-0002-registry-blob-storage-garage-s3.md)) |
+| Harbor | registry blobs, `harbor` bucket ([ADR-0018](../adr/adr-0018-registry-blob-storage-garage-s3.md)) |
 | Forgejo | LFS/attachments (MinIO-mode config) |
 | GUAC | `guac` blobstore (SBOMs) |
-| Backstage TechDocs (planned) | `techdocs` ([ADR-0023](../adr/adr-0023-backstage-techdocs.md)) |
+| Backstage TechDocs (planned) | `techdocs` ([ADR-0039](../adr/adr-0039-backstage-techdocs.md)) |
 
 Individual ADRs treat Garage as a given ("the cluster already runs Garage") — but adopting Garage,
 running it *outside* the cluster, and running it *un-replicated* were all real decisions with real
@@ -44,7 +44,7 @@ different one-bucket-per-consumer shape; credentials arrive variously via `obser
 ## Proposal
 
 1. **Backfill the adoption ADR**: Garage as the S3 provider, deliberately **off-cluster** (so
-   storage-of-last-resort survives a cluster loss — the property ADR-0026 leans on for DR), with
+   storage-of-last-resort survives a cluster loss — the property ADR-0008 leans on for DR), with
    the accepted consequence that it is a hard dependency for WAL, backups, logs, traces, and
    registry blobs. Alternatives and why they lost, as originally reasoned.
 2. **Bring the host under declared management** (new decision): record the host's hardware, OS,
@@ -76,11 +76,11 @@ different one-bucket-per-consumer shape; credentials arrive variously via `obser
 
 - What *data* must survive *which* failure — the [backup & DR RFC](rfc-backup-dr.md) owns the
   tier map; this RFC owns the substrate.
-- In-cluster storage (Longhorn) — ADR-0026/0027/0029/0037.
+- In-cluster storage (Longhorn) — ADR-0008/0027/0029/0037.
 - Buying hardware — [layered-hardware RFC](rfc-layered-hardware-architecture.md) L5.
 
 ## References
 
-- [ADR-0002](../adr/adr-0002-registry-blob-storage-garage-s3.md) — the first "Garage is already
+- [ADR-0018](../adr/adr-0018-registry-blob-storage-garage-s3.md) — the first "Garage is already
   there" decision · [cnpg-backups runbook](../runbooks/cnpg-backups.md) ·
   [openbao-restore runbook](../runbooks/openbao-restore.md)

@@ -36,10 +36,10 @@ Three gaps:
    ecosystem-fit for sovereignty and non-exportability (`rekor.ignoreTlog: true` follows from
    it). It exists only as `init.sh` + policy YAML, while rfc-security-hardening still points at
    the superseded Authentik-keyless plan.
-2. **Enforce has no owner.** ADR-0033 built the promotion machinery and ADR-0034 decided the
+2. **Enforce has no owner.** ADR-0032 built the promotion machinery and ADR-0033 decided the
    *registries* rule stays Audit — but nobody owns promoting the *verify* policies. The wave
    exists in principle; scoping it (start: `harbor webgrip/*` signatures — narrow, all first-party,
-   no Harbor-SPOF concern beyond what ADR-0034 already analyzed) is this RFC's job. Note the
+   no Harbor-SPOF concern beyond what ADR-0033 already analyzed) is this RFC's job. Note the
    circularity to resolve: verification must not block the components that produce/serve
    verification (harbor itself, openbao, kyverno).
 3. **DT + GUAC duplication is undecided.** Two platforms, two databases (one un-barman'd — see
@@ -54,9 +54,9 @@ Three gaps:
    the keyless/static alternatives, the `ignoreTlog` consequence, key-rotation model (multi-version
    trust via the ConfigMap), and the accepted coupling: **OpenBao availability gates CI signing**.
    Update rfc-security-hardening's stale re-anchor language to point here.
-2. **Scope the verify-enforce wave** (new ADR, executes via ADR-0033 machinery):
+2. **Scope the verify-enforce wave** (new ADR, executes via ADR-0032 machinery):
    `image-verify-harbor` signatures → Enforce first (first-party images only, small blast
-   radius), attestations next, ghcr third; each wave gated on a clean PolicyReport per ADR-0033,
+   radius), attestations next, ghcr third; each wave gated on a clean PolicyReport per ADR-0032,
    with the verification-infrastructure namespaces carved out to break the circularity.
 3. **Decide the SBOM-platform question** (new ADR): keep both with recorded roles (DT =
    operational CVE triage/alerting, GUAC = graph forensics), or consolidate to DT and shelve GUAC
@@ -75,9 +75,9 @@ Three gaps:
 
 ## Out of scope
 
-- `require-approved-registries` — decided, stays Audit ([ADR-0034](../adr/adr-0034-approved-registries-stays-audit.md)).
-- The promotion *mechanism* — [ADR-0033](../adr/adr-0033-kyverno-enforce-promotion-policy.md).
-- CI build isolation (rootless BuildKit) — [ADR-0008](../adr/adr-0008-rootless-ci-image-builds.md).
+- `require-approved-registries` — decided, stays Audit ([ADR-0033](../adr/adr-0033-approved-registries-stays-audit.md)).
+- The promotion *mechanism* — [ADR-0032](../adr/adr-0032-kyverno-enforce-promotion-policy.md).
+- CI build isolation (rootless BuildKit) — [ADR-0026](../adr/adr-0026-rootless-ci-image-builds.md).
 
 ## References
 

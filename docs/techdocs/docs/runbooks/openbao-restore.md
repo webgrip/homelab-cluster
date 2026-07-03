@@ -70,7 +70,7 @@ Already-running pods keep their ESO-written K8s Secrets, so live workloads toler
 a while; only **pod restarts** and **secret rotation** need openbao back. Recovery order: bring a worker
 back (or let the volume re-attach) → `openbao-0` schedules on a worker → unsealer unseals from
 `openbao-keys` → ESO resumes. A snapshot restore is only needed if the **raft data itself** was lost (both
-Longhorn replicas gone). This is why [ADR-0026](../adr/adr-0026-confine-longhorn-to-workers.md) keeps
+Longhorn replicas gone). This is why [ADR-0008](../adr/adr-0008-confine-longhorn-to-workers.md) keeps
 openbao's DR on external Garage S3 rather than a soyo replica.
 
 ## Related

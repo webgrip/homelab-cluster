@@ -1,6 +1,6 @@
 # RFC: Harbor Container Registry
 
-> Status: **Implemented** · Date: 2026-06-12 · Implemented by: [ADR-0001](../adr/adr-0001-adopt-harbor.md) … [ADR-0006](../adr/adr-0006-authentik-oidc-phased.md)
+> Status: **Implemented** · Date: 2026-06-12 · Implemented by: [ADR-0017](../adr/adr-0017-adopt-harbor.md) … [ADR-0022](../adr/adr-0022-authentik-oidc-phased.md)
 >
 > [Harbor][harbor] runs in-cluster (chart 1.19.1, `kubernetes/apps/harbor/`) as the private
 > OCI registry and artifact store — container images, Helm charts, and generic OCI artifacts —
@@ -45,12 +45,12 @@ Each row links its ADR.
 
 | # | Decision | Choice |
 |---|----------|--------|
-| [ADR-0001](../adr/adr-0001-adopt-harbor.md) | Registry product | **Harbor 2.x** via the official Helm chart, under `kubernetes/apps/harbor/` |
-| [ADR-0002](../adr/adr-0002-registry-blob-storage-garage-s3.md) | Blob storage | **Garage S3** bucket `harbor` (path-style, `disableredirect`) |
-| [ADR-0003](../adr/adr-0003-external-cnpg-database.md) | Database | **External CNPG** `harbor-db` (db `registry`), no bootstrap secret |
-| [ADR-0004](../adr/adr-0004-chart-internal-redis.md) | Redis | **Chart-bundled** `redis-photon` (`redis.type: internal`) |
-| [ADR-0005](../adr/adr-0005-lan-only-exposure.md) | Exposure | **LAN-only** via `envoy-internal` (`10.0.0.27`) |
-| [ADR-0006](../adr/adr-0006-authentik-oidc-phased.md) | Authentication | **Authentik OIDC**, layered in Phase 2; local admin fallback |
+| [ADR-0017](../adr/adr-0017-adopt-harbor.md) | Registry product | **Harbor 2.x** via the official Helm chart, under `kubernetes/apps/harbor/` |
+| [ADR-0018](../adr/adr-0018-registry-blob-storage-garage-s3.md) | Blob storage | **Garage S3** bucket `harbor` (path-style, `disableredirect`) |
+| [ADR-0019](../adr/adr-0019-external-cnpg-database.md) | Database | **External CNPG** `harbor-db` (db `registry`), no bootstrap secret |
+| [ADR-0020](../adr/adr-0020-chart-internal-redis.md) | Redis | **Chart-bundled** `redis-photon` (`redis.type: internal`) |
+| [ADR-0021](../adr/adr-0021-lan-only-exposure.md) | Exposure | **LAN-only** via `envoy-internal` (`10.0.0.27`) |
+| [ADR-0022](../adr/adr-0022-authentik-oidc-phased.md) | Authentication | **Authentik OIDC**, layered in Phase 2; local admin fallback |
 
 ## Architecture
 
@@ -117,7 +117,7 @@ bring-up). `secretKey` is the at-rest encryption key: generate-once + `deletionP
 it stable; deleting the Secret on a populated Harbor mints a new key and orphans encrypted data.
 
 The CNPG database needs **no** ExternalSecret — CNPG emits `harbor-db-app` itself
-([ADR-0003](../adr/adr-0003-external-cnpg-database.md)) — and backup credentials come from the shared
+([ADR-0019](../adr/adr-0019-external-cnpg-database.md)) — and backup credentials come from the shared
 `cnpg-backup` component, which renders its own ExternalSecret into the namespace.
 
 ## Implementation
@@ -155,7 +155,7 @@ requires `walStorage` and the `monitoring.webgrip.io/enabled` label. See
 ## Risks
 
 - **Garage is a hard dependency** for blob I/O once blobs live on S3
-  ([ADR-0002](../adr/adr-0002-registry-blob-storage-garage-s3.md); analogous to the
+  ([ADR-0018](../adr/adr-0018-registry-blob-storage-garage-s3.md); analogous to the
   [CNPG ↔ Garage WAL risk](../runbooks/cnpg-backups.md)).
 - **Pending PVCs** if any `storageClass` is omitted — the #1 silent failure given no cluster default.
 - **An un-synced ExternalSecret blocks the HelmRelease** — if `harbor-admin` / `harbor-s3` are not
@@ -173,9 +173,9 @@ implementation, not in this RFC. Disaster recovery follows the standard
 
 ## References
 
-- ADRs [0001](../adr/adr-0001-adopt-harbor.md), [0002](../adr/adr-0002-registry-blob-storage-garage-s3.md),
-  [0003](../adr/adr-0003-external-cnpg-database.md), [0004](../adr/adr-0004-chart-internal-redis.md),
-  [0005](../adr/adr-0005-lan-only-exposure.md), [0006](../adr/adr-0006-authentik-oidc-phased.md)
+- ADRs [0001](../adr/adr-0017-adopt-harbor.md), [0002](../adr/adr-0018-registry-blob-storage-garage-s3.md),
+  [0003](../adr/adr-0019-external-cnpg-database.md), [0004](../adr/adr-0020-chart-internal-redis.md),
+  [0005](../adr/adr-0021-lan-only-exposure.md), [0006](../adr/adr-0022-authentik-oidc-phased.md)
 - [External Secrets](external-secrets-plan.md) · [CNPG Backups](../runbooks/cnpg-backups.md) ·
   [Authentik](../general/authentik.md) · [Supply Chain Pipeline](../general/supply-chain-pipeline.md) ·
   [Adding Applications](../general/adding-applications.md)

@@ -4,10 +4,10 @@
 > the in-cluster [Forgejo](../general/forgejo.md) — one thread of the [forge migration](../blogs/2026-06-12-bringing-the-forge-home.md).
 > It does so by standing up a **second, Forgejo-targeted RenovateJob alongside the existing GitHub
 > one** (dual-run) and cutting repos over as each becomes Forgejo-authoritative. The individual
-> choices are recorded as [ADR-0011](../adr/adr-0011-dual-run-renovate-forgejo.md) …
-> [ADR-0013](../adr/adr-0013-github-as-renovate-data-oracle.md). **Accepted** on 2026-06-16, when the
+> choices are recorded as [ADR-0029](../adr/adr-0029-dual-run-renovate-forgejo.md) …
+> [ADR-0031](../adr/adr-0031-github-as-renovate-data-oracle.md). **Accepted** on 2026-06-16, when the
 > `webgrip-forgejo` RenovateJob opened its first real PR (PR #1, alpine `3.x`) on the pilot repo
-> `renovate/forgejo-renovate-pilot` — provisioned zero-touch by the bot/token Job ([ADR-0019](../adr/adr-0019-bootstrap-task-pattern.md)).
+> `renovate/forgejo-renovate-pilot` — provisioned zero-touch by the bot/token Job ([ADR-0003](../adr/adr-0003-bootstrap-task-pattern.md)).
 > The migration executed; the retired execution checklist's one live remainder (GitHub-path
 > retirement, gated on the Flux-source cutover) is tracked in [Renovate](../general/renovate.md).
 
@@ -47,7 +47,7 @@ each repo as that repo flips. `homelab-cluster` itself — the repo Flux reconci
 repo Flux reads.
 
 This single fact is why the answer is **dual-run, not flip-in-place**
-([ADR-0011](../adr/adr-0011-dual-run-renovate-forgejo.md)): flipping `webgrip-gitops` to Forgejo today would
+([ADR-0029](../adr/adr-0029-dual-run-renovate-forgejo.md)): flipping `webgrip-gitops` to Forgejo today would
 strand every repo still authoritative on GitHub *and* find only mirrors on the Forgejo side — a
 double miss.
 
@@ -62,7 +62,7 @@ de-mirrored repo; and the retirement sequence for the GitHub path at final cutov
 
 - **Porting `.github/workflows/`** (including `renovate-dry-run` and `renovate-trigger`) to Forgejo
   Actions — the CI thread of the forge migration.
-- **GHCR → Harbor** — the `read:packages` PAT ([ADR-0013](../adr/adr-0013-github-as-renovate-data-oracle.md))
+- **GHCR → Harbor** — the `read:packages` PAT ([ADR-0031](../adr/adr-0031-github-as-renovate-data-oracle.md))
   is the deliberate stopgap; registry auth re-homes to Harbor under
   [RFC: Harbor](rfc-harbor-registry.md) when it exists.
 - **The GitOps source cutover** — Flux still reconciles from GitHub; this RFC must not precede that
@@ -76,9 +76,9 @@ Each row links its ADR.
 
 | # | Decision | Choice |
 |---|----------|--------|
-| [ADR-0011](../adr/adr-0011-dual-run-renovate-forgejo.md) | Rollout shape | **Dual-run** — a second RenovateJob `webgrip-forgejo` beside `webgrip-gitops`; retire GitHub at final cutover. Not an in-place flip. |
-| [ADR-0012](../adr/adr-0012-forgejo-static-bot-pat.md) | Forgejo authentication | **Static bot PAT** via ESO/OpenBao; **delete the GitHub-App token-minter CronJob** on the Forgejo path. |
-| [ADR-0013](../adr/adr-0013-github-as-renovate-data-oracle.md) | GitHub during transition | Keep GitHub as a **read-only data oracle** — datasources, `github>` presets, and GHCR via a `read:packages` PAT. |
+| [ADR-0029](../adr/adr-0029-dual-run-renovate-forgejo.md) | Rollout shape | **Dual-run** — a second RenovateJob `webgrip-forgejo` beside `webgrip-gitops`; retire GitHub at final cutover. Not an in-place flip. |
+| [ADR-0030](../adr/adr-0030-forgejo-static-bot-pat.md) | Forgejo authentication | **Static bot PAT** via ESO/OpenBao; **delete the GitHub-App token-minter CronJob** on the Forgejo path. |
+| [ADR-0031](../adr/adr-0031-github-as-renovate-data-oracle.md) | GitHub during transition | Keep GitHub as a **read-only data oracle** — datasources, `github>` presets, and GHCR via a `read:packages` PAT. |
 
 Two technical choices are settled and uncontested (folded here rather than given their own ADRs):
 
@@ -135,7 +135,7 @@ final cutover, when the GitHub column is deleted wholesale.
 
 The Forgejo path adds **one** ExternalSecret and reuses the existing webhook-auth secret. Crucially,
 it introduces **no new minting machinery** — the Forgejo PAT is long-lived, so the value is stored
-once in OpenBao and projected verbatim ([ADR-0012](../adr/adr-0012-forgejo-static-bot-pat.md)).
+once in OpenBao and projected verbatim ([ADR-0030](../adr/adr-0030-forgejo-static-bot-pat.md)).
 
 | Secret | Source | Keys | Consumed by |
 |--------|--------|------|-------------|
@@ -201,7 +201,7 @@ GitOps cutover (`homelab-cluster` last): delete `webgrip-gitops`, `renovate-conf
   `discoveryFilters`; treat "is this repo Forgejo-authoritative?" as the gate for every repo.
 - **GHCR access after the App token.** Drop the GitHub App and GHCR auth disappears with it unless the
   `read:packages` PAT is in place first — hence Phase 1 precedes Phase 2.
-  ([ADR-0013](../adr/adr-0013-github-as-renovate-data-oracle.md).)
+  ([ADR-0031](../adr/adr-0031-github-as-renovate-data-oracle.md).)
 - **Preset resolution.** `github>webgrip/renovate-config#vX` must stay reachable (public GitHub) until
   the preset repo is Forgejo-authoritative; a premature switch to `forgejo>` against a mirror breaks
   every repo's config resolution at once.
@@ -222,8 +222,8 @@ Renovate holds no state; re-running a job is idempotent.
 
 ## References
 
-- ADRs [0011](../adr/adr-0011-dual-run-renovate-forgejo.md), [0012](../adr/adr-0012-forgejo-static-bot-pat.md),
-  [0013](../adr/adr-0013-github-as-renovate-data-oracle.md)
+- ADRs [0011](../adr/adr-0029-dual-run-renovate-forgejo.md), [0012](../adr/adr-0030-forgejo-static-bot-pat.md),
+  [0013](../adr/adr-0031-github-as-renovate-data-oracle.md)
 - [Renovate](../general/renovate.md) ·
   [Forgejo](../general/forgejo.md) · [RFC: Harbor](rfc-harbor-registry.md)
 - [Bringing the Forge Home](../blogs/2026-06-12-bringing-the-forge-home.md) ·

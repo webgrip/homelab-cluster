@@ -46,7 +46,7 @@ init that copies the static `forgejo-runner` binary out of its image, a privileg
 the toolchain container the steps actually run inside — and it advertises exactly **one honest label,
 `docker`** (no `ubuntu-latest`/`default` masks; the label is true, not a costume). It builds images
 with a **privileged** Docker-in-Docker today — rootless BuildKit is the destination, not the present
-([ADR-0008](../adr/adr-0008-rootless-ci-image-builds.md)) — and `forgejo` is an *application* namespace,
+([ADR-0026](../adr/adr-0026-rootless-ci-image-builds.md)) — and `forgejo` is an *application* namespace,
 where Kyverno's `pod-security-baseline-enforce` policy forbids privileged containers. So KEDA created
 the Job, the Job was rejected at admission, no pod ever existed, and the workflow sat pending forever. The runner
 had, in fact, *never successfully created a pod* since it shipped — the smoke test that "proved" it
@@ -100,7 +100,7 @@ runner identity. The runner had nothing to register *as*.
 
 There was no provisioner for it, either — the CI-bot token had one, the *runner registration* did
 not. So this door took the most actual work: a Tier-1 idempotent Job
-([the bootstrap pattern](../adr/adr-0019-bootstrap-task-pattern.md), mirroring the CI-bot
+([the bootstrap pattern](../adr/adr-0003-bootstrap-task-pattern.md), mirroring the CI-bot
 provisioner) that registers one persistent global runner through Forgejo's admin API
 (`POST /api/v1/admin/actions/runners`, `ephemeral: false` — an *ephemeral* registration gets deleted
 by Forgejo after one job, which would shatter a shared identity), captures the server-issued UUID and
@@ -132,7 +132,7 @@ not findable. The fix is a single line in the runner's command — prepend
 `/home/runner/externals/node20/bin` to `PATH` before exec'ing the agent — and the JS actions resolve.
 
 Four doors. The runner now registers, schedules, admits, finds Node, and runs real jobs end to end.
-ADR-0008's "prove the runner first" — the prerequisite the whole rootless-BuildKit plan waits behind —
+ADR-0026's "prove the runner first" — the prerequisite the whole rootless-BuildKit plan waits behind —
 is, at last, actually true.
 
 ---
@@ -167,7 +167,7 @@ force-overwrite any tag Forgejo created. **"Forgejo runs the write-back CI" and 
 read-only mirror" are mutually exclusive.**
 
 Which forced the decision the migration was always going to reach, just sooner than planned for this
-repo: stop mirroring it, and make Forgejo *authoritative*. That's [ADR-0024](../adr/adr-0024-forgejo-leading-application-repos.md) —
+repo: stop mirroring it, and make Forgejo *authoritative*. That's [ADR-0013](../adr/adr-0013-forgejo-leading-application-repos.md) —
 de-mirror, convert the Forgejo repo to a normal writable one, re-point `origin` at Forgejo and demote
 GitHub to a named `github` remote, archive GitHub later. `webgrip/infrastructure` is the first repo
 through it. Content-first, cutover-last, exactly as the umbilical section promised — only now the
@@ -232,7 +232,7 @@ at runtime:
 - **The dominant CI cost was emulated arm64, not action clones.** The shared build composite defaulted
   to `linux/amd64,linux/arm64`; this cluster is amd64-only Talos, so every image spent minutes
   building an arm64 artifact *nothing here runs*, under QEMU. Defaulting builds to `linux/amd64` and
-  gating `setup-qemu-action` behind a non-amd64 request ([ADR-0036](../adr/adr-0036-amd64-default-constrictor-build.md))
+  gating `setup-qemu-action` behind a non-amd64 request ([ADR-0027](../adr/adr-0027-amd64-default-constrictor-build.md))
   is the single biggest, lowest-risk speedup — far ahead of caching action checkouts. (A caller that
   passes an explicit `platforms: "linux/amd64,linux/arm64"` defeats the gate, so the caller's
   `platforms` has to change too.)
@@ -240,7 +240,7 @@ at runtime:
   re-fetching already-cached actions at any layer — `exec` has *stripped* upstream act's
   `--action-offline-mode`, and even a warm baked `~/.cache/act` `git fetch`es every job. So the
   action-clone wall is measure-first, not pre-bake-first
-  ([ADR-0035](../adr/adr-0035-action-clone-wall.md)): ship the amd64 fix, re-time, and only then
+  ([ADR-0028](../adr/adr-0028-action-clone-wall.md)): ship the amd64 fix, re-time, and only then
   consider a scoped LAN mirror of the handful of build actions.
 
 ---
@@ -253,7 +253,7 @@ clears both privileged gates, keeps a warm runner ready, and runs `webgrip/infra
 to end. The image-release path is unblocked the moment the repo finishes becoming authoritative —
 which is no longer a someday-cutover but an in-progress one, started here.
 
-Two things are still honest about being unfinished. The runner is still **privileged**; ADR-0008's
+Two things are still honest about being unfinished. The runner is still **privileged**; ADR-0026's
 destination — a shared, rootless BuildKit reached as a Service — is unchanged, and step one (this
 one) was always the prerequisite, not the goal. And the cutover has *begun*, not finished: one repo
 de-mirrored, the rest still pull-mirrors, and the `homelab-cluster` repo — the GitOps source, the one

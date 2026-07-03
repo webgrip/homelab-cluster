@@ -31,7 +31,7 @@ export BAO_TOKEN="$ROOT"
 
 echo "==> one-time root setup (KV, database engine, auth methods, config-admin role)"
 bao secrets enable -path=secret kv-v2
-# Dynamic database credentials (RFC: Dynamic Database Credentials / ADR-0010). Mounting a
+# Dynamic database credentials (RFC: Dynamic Database Credentials / ADR-0016). Mounting a
 # secrets engine needs root, which only exists here, on a fresh cluster — config-admin
 # deliberately cannot mount. config.sh (config-admin) then owns the connections/roles.
 # NB: an ALREADY-bootstrapped cluster has no live root, so it needs a one-time break-glass

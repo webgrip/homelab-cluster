@@ -26,7 +26,7 @@ At the bottom sits **OpenBao** — the OSS, MPL‑2.0 fork of HashiCorp Vault �
 
 > **ESO writes real, cached Kubernetes Secrets.** A backend outage blocks *creating* or *rotating* a secret; it never blocks a running pod from *reading* one.
 
-That guarantee is what lets us treat secrets as ordinary infrastructure rather than a fragile ceremony. Rotation becomes a value written to a vault, not a `sops --encrypt` ritual with a human in the critical path. The endgame — short‑lived, per‑workload database credentials that expire on their own — is sketched in [ADR‑0010](../adr/adr-0010-openbao-dynamic-postgres-credentials.md), with the rotation model it builds on in [ADR‑0009](../adr/adr-0009-secret-rotation-model.md).
+That guarantee is what lets us treat secrets as ordinary infrastructure rather than a fragile ceremony. Rotation becomes a value written to a vault, not a `sops --encrypt` ritual with a human in the critical path. The endgame — short‑lived, per‑workload database credentials that expire on their own — is sketched in [ADR‑0010](../adr/adr-0016-openbao-dynamic-postgres-credentials.md), with the rotation model it builds on in [ADR‑0009](../adr/adr-0015-secret-rotation-model.md).
 
 ### Admission: deciding what's allowed to land
 
@@ -44,9 +44,9 @@ This is the deepest layer and the one most homelabs skip. **Trivy Operator** is 
 
 The single admission gate that *consumes* all this is **Kyverno's `verifyImages`** — and it is, like everything else here, in **audit** mode, not enforce. The cluster signs its own images and is wired to verify them, but the three verify policies still have to clear one latent bug before anyone flips them to enforce: a `--tlog-upload=false` signature has no Rekor entry, yet Kyverno's bundled cosign verifies the transparency log *by default*, so each policy needs an explicit `rekor: { ignoreTlog: true }` per `verifyImages` entry or it will reject a perfectly valid signed release. Audit mode is the only reason this hasn't bitten — which is exactly the point of audit mode. That fix is the named gate in front of any audit‑to‑enforce promotion for image verification.
 
-The honest gap, stated plainly because pretending otherwise is how security theatre starts: the verification side is ready, but the chain is only as good as the weakest pipeline that still has to *produce* its attestations — the arc runner's own image being the standing example. [ADR‑0008](../adr/adr-0008-rootless-ci-image-builds.md) tracks the related work of getting the build side rootless and attesting.
+The honest gap, stated plainly because pretending otherwise is how security theatre starts: the verification side is ready, but the chain is only as good as the weakest pipeline that still has to *produce* its attestations — the arc runner's own image being the standing example. [ADR‑0008](../adr/adr-0026-rootless-ci-image-builds.md) tracks the related work of getting the build side rootless and attesting.
 
-And underneath all of it, two foundations that aren't in the `security` namespace but make it possible: transparent pod‑to‑pod **WireGuard encryption via Cilium** ([ADR‑0007](../adr/adr-0007-cilium-wireguard-encryption.md)), and **Talos** giving us an immutable, drift‑resistant node OS. Identity for every human‑facing app flows through **Authentik** ([docs](../general/authentik.md)).
+And underneath all of it, two foundations that aren't in the `security` namespace but make it possible: transparent pod‑to‑pod **WireGuard encryption via Cilium** ([ADR‑0007](../adr/adr-0004-cilium-wireguard-encryption.md)), and **Talos** giving us an immutable, drift‑resistant node OS. Identity for every human‑facing app flows through **Authentik** ([docs](../general/authentik.md)).
 
 That's the stack. Now the report card.
 

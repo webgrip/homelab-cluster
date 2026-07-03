@@ -83,7 +83,7 @@ also did **not** catch this: archiving reported healthy while the WAL still fill
 | # | Action | Type | Status |
 |---|---|---|---|
 | 1 | Give `longhorn-manager` **Guaranteed QoS** so it's not the first OOM target. | prevention (root) | ✅ done — `5fb9390` (postRenderer, both DS containers req==lim; applies on Flux reconcile) |
-| 2 | Finish **CNPG 3→2 replicas + add the HDD** — less rebuild memory + reservation headroom. Capacity work *is* stability work. | prevention | ✅ done 2026-06-12 (remediation runbook since retired; history in [ADR-0026](../adr/adr-0026-confine-longhorn-to-workers.md)/[0029](../adr/adr-0029-storageclass-consolidation.md) status logs) |
+| 2 | Finish **CNPG 3→2 replicas + add the HDD** — less rebuild memory + reservation headroom. Capacity work *is* stability work. | prevention | ✅ done 2026-06-12 (remediation runbook since retired; history in [ADR-0008](../adr/adr-0008-confine-longhorn-to-workers.md)/[0029](../adr/adr-0010-storageclass-consolidation.md) status logs) |
 | 3 | Keep **`replica-auto-balance: disabled`**; rebalance manually after deliberate changes. | prevention | ✅ done — `058ca9d` |
 | 4 | De-spike `snapshot-cleanup` so it isn't a synchronized 03:00 load event. | prevention | ✅ already gentle — RecurringJob runs `concurrency=1` (sequential); auto-balance was the real spike. No change needed. |
 | 5 | Document that **CNPG `walStorage` resize needs a manual PVC expand** (git size alone won't apply). Add to the CNPG runbook. | docs | ⏳ open (P2) |

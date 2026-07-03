@@ -16,7 +16,7 @@ mise exec -- kubectl get replicas.longhorn.io -n longhorn-system -o json | mise 
 
 [longhorn-rebuild-wedge](docs/techdocs/docs/runbooks/longhorn-rebuild-wedge.md) ·
 [longhorn-im-cpu-converge](docs/techdocs/docs/runbooks/longhorn-im-cpu-converge.md)
-(capacity/taxonomy history → [ADR-0026](docs/techdocs/docs/adr/adr-0026-confine-longhorn-to-workers.md)–[0029](docs/techdocs/docs/adr/adr-0029-storageclass-consolidation.md) status logs)
+(capacity/taxonomy history → [ADR-0008](docs/techdocs/docs/adr/adr-0008-confine-longhorn-to-workers.md)–[0029](docs/techdocs/docs/adr/adr-0010-storageclass-consolidation.md) status logs)
 
 ## Incidents
 

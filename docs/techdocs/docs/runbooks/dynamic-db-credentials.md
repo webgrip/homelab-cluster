@@ -1,8 +1,8 @@
 # Runbook: Dynamic Postgres credentials (OpenBao database engine)
 
 **Status:** pilot (freshrss) · **Scope:** OpenBao `database` secrets engine minting short-lived,
-auto-revoked Postgres credentials · **Design:** [ADR-0010](../adr/adr-0010-openbao-dynamic-postgres-credentials.md)
-· [RFC](../rfc/rfc-dynamic-database-credentials.md) · **Rotation model:** [ADR-0009](../adr/adr-0009-secret-rotation-model.md)
+auto-revoked Postgres credentials · **Design:** [ADR-0016](../adr/adr-0016-openbao-dynamic-postgres-credentials.md)
+· [RFC](../rfc/rfc-dynamic-database-credentials.md) · **Rotation model:** [ADR-0015](../adr/adr-0015-secret-rotation-model.md)
 
 > **What this gives you.** Instead of a static password that lives forever, OpenBao mints a fresh
 > Postgres role (`v-freshrss-<random>`) valid for ~1h, hands it to the app via ESO, and `DROP`s it
@@ -35,7 +35,7 @@ freshrss-db-rw:5432  ◀──backend conn (rotating v-role)──  PgBouncer si
 
 ## Rollout state
 
-Rollout state is tracked in [ADR-0010's Status log](../adr/adr-0010-openbao-dynamic-postgres-credentials.md), not here.
+Rollout state is tracked in [ADR-0016's Status log](../adr/adr-0016-openbao-dynamic-postgres-credentials.md), not here.
 As of 2026-07-02 the freshrss pilot is in-flight and churning: cutover `678b1da` → reverted `03f222e`
 (PG16 ADMIN OPTION grant failure: `permission denied to grant role freshrss`) → re-applied → reverted again
 `391eeb1` (pooler needs hands-on runtime iteration). **Verify live state before using this runbook:**
@@ -125,4 +125,4 @@ Reuse this as a template: add a `vault_admin` managed role + shared-password ES 
 a `database/config/<app>` + `database/roles/<app>` block in `config.sh`, a netpol allowing
 `security → <app>-db:5432`. Then — **surge-capable app** (multi-replica / no RWO): just an
 ExternalSecret on `creds/<app>` + a (longer-TTL) rolling restart, **no pooler**. **RWO single-attach
-app:** add the PgBouncer sidecar as on freshrss. See ADR-0010's workload-shape table.
+app:** add the PgBouncer sidecar as on freshrss. See ADR-0016's workload-shape table.

@@ -12,11 +12,11 @@
 ## Why
 
 The 3-week silent alert outage (2026-05-30 → 06-21) taught the cluster to watch its watchers:
-ADR-0030 linted the rule shape, ADR-0031 added the page-on-failure meta-rule. But "page" is
+ADR-0035 linted the rule shape, ADR-0036 added the page-on-failure meta-rule. But "page" is
 figurative — verified 2026-07-02:
 
 - **VMAlertmanager** (`victoria-metrics/app/vmalertmanager.yaml`): a single `"null"` receiver;
-  every route, including the `Watchdog` deadman that ADR-0038 carefully re-fed, delivers nowhere.
+  every route, including the `Watchdog` deadman that ADR-0034 carefully re-fed, delivers nowhere.
 - **Grafana**: no `GrafanaContactPoint` or `GrafanaNotificationPolicy` exists in the repo; the
   16 SLO rules — including `slo-grafana-alert-rule-eval-failing`, the meta-rule designed to page —
   fall through to Grafana's unconfigured default contact point.
@@ -62,7 +62,7 @@ and message templates *for* a delivery layer that doesn't exist.
 
 ## Out of scope
 
-- Alert rule content, shape, health — done ([ADR-0030](../adr/adr-0030-grafana-threshold-rule-shape.md)/[0031](../adr/adr-0031-meta-monitoring-alert-rule-health.md)).
+- Alert rule content, shape, health — done ([ADR-0035](../adr/adr-0035-grafana-threshold-rule-shape.md)/[0031](../adr/adr-0036-meta-monitoring-alert-rule-health.md)).
 - Consolidating the two alerting planes into one — worth considering *after* delivery exists.
 - Paging schedules/escalation (single-operator homelab: everything routes to the same human).
 
@@ -71,4 +71,4 @@ and message templates *for* a delivery layer that doesn't exist.
 - [alerting-principles](../general/alerting-principles.md) — severity/label taxonomy this RFC routes by
 - [RFC: observability alerting reliability](rfc-observability-alerting-reliability.md) — explicitly
   deferred delivery here
-- [ADR-0038](../adr/adr-0038-victoriametrics-metrics-backend.md) — restored the Watchdog feeding alert
+- [ADR-0034](../adr/adr-0034-victoriametrics-metrics-backend.md) — restored the Watchdog feeding alert

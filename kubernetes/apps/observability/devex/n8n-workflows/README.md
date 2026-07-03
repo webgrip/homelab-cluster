@@ -69,7 +69,7 @@ spec:
 ```
 
 > Cilium egress is enforced on the **post-DNAT backend identity**, not a VIP (see the
-> `cilium-service-vip-egress-identity` memory + ADR-0021). Select the backend pods by label as
+> `cilium-service-vip-egress-identity` memory + ADR-0005). Select the backend pods by label as
 > above, not the service IP. Confirm the exact pod labels with
 > `kubectl -n observability get pod -l cnpg.io/cluster=devex-db --show-labels`.
 

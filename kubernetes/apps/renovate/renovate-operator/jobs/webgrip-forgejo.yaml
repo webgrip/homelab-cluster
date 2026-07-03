@@ -1,5 +1,5 @@
 ---
-# Forgejo-targeted RenovateJob — runs alongside webgrip-gitops (ADR-0011 dual-run).
+# Forgejo-targeted RenovateJob — runs alongside webgrip-gitops (ADR-0029 dual-run).
 # Dormant until activated from kustomization.yaml; see the gated block there and
 # docs/techdocs/docs/renovate-forgejo-migration.md.
 apiVersion: renovate-operator.mogenius.com/v1alpha1
@@ -81,7 +81,7 @@ spec:
     # GHCR/Docker Hub auth: reuse the GitHub-App token-minter's output (renovate-runtime-token),
     # which already runs for the dual-run GitHub path — no separate GHCR PAT or OpenBao entry
     # needed. optional: tolerates the secret not existing yet (GHCR falls back to anonymous until
-    # the first mint). At GitHub-path retirement this re-homes to Harbor (ADR-0013).
+    # the first mint). At GitHub-path retirement this re-homes to Harbor (ADR-0031).
     - name: RENOVATE_HOST_RULES
       valueFrom:
         secretKeyRef:
@@ -93,7 +93,7 @@ spec:
     # api.github.com anonymously and rate-limit ("Please set a GITHUB_COM_TOKEN"). Reuse the same
     # GitHub-App installation token the GitHub path already uses for these datasources (the gitops path
     # proves it can read them) — it authenticates public reads and lifts 60→5000/h. GITHUB_COM_TOKEN is
-    # Renovate's purpose-built env for a non-github platform querying github.com (ADR-0013: GitHub stays
+    # Renovate's purpose-built env for a non-github platform querying github.com (ADR-0031: GitHub stays
     # the version oracle during dual-run). optional: falls back to anonymous until the first token mint.
     - name: GITHUB_COM_TOKEN
       valueFrom:

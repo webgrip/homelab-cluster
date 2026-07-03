@@ -19,9 +19,9 @@ What is protected today (verified in-tree 2026-07-02), and the holes:
 | guac DB | nightly `pg_dump` → Garage | no PITR; deviation unrecorded ([Postgres RFC](rfc-postgres-data-layer.md)) |
 | Longhorn volumes | `BackupTarget` → Garage | **which** volumes have RecurringJobs is undecided/unaudited |
 | OpenBao | nightly raft snapshot → Garage (14 kept) | **unseal key exists only in the in-cluster `openbao-keys` Secret** — the [restore runbook](../runbooks/openbao-restore.md) itself says the snapshots are "not a complete DR story" without it |
-| Git (the cluster's definition) | GitHub today; Forgejo→GitHub/Codeberg mirrors planned | solid — [ADR-0015](../adr/adr-0015-external-bootstrap-fallback-source.md)/[0020](../adr/adr-0020-codeberg-offsite-push-mirror.md) own it |
-| Docs | Codeberg Pages (off-site) | solid — [ADR-0022](../adr/adr-0022-codeberg-pages-techdocs.md) |
-| Metrics (VMSingle, 15d) | **nothing** | explicitly none (ADR-0038); never decided as acceptable |
+| Git (the cluster's definition) | GitHub today; Forgejo→GitHub/Codeberg mirrors planned | solid — [ADR-0012](../adr/adr-0012-external-bootstrap-fallback-source.md)/[0020](../adr/adr-0014-codeberg-offsite-push-mirror.md) own it |
+| Docs | Codeberg Pages (off-site) | solid — [ADR-0038](../adr/adr-0038-codeberg-pages-techdocs.md) |
+| Metrics (VMSingle, 15d) | **nothing** | explicitly none (ADR-0034); never decided as acceptable |
 | Logs (Loki, 30d) / traces (Tempo, 14d) | data *lives on* Garage but Garage has no second copy | loss-tolerance never decided |
 | Harbor blobs | on Garage; proxy-cache re-derivable, `webgrip/*` artifacts are not | rebuild-vs-backup never decided |
 | The Garage host itself | **nothing backs up the backup target** | the L5 SPOF, in one line |
@@ -64,7 +64,7 @@ Three structural problems cut across the table:
 5. **Set the drill cadence** (new ADR): the CNPG restore drill exists (skill + runbook); extend to
    a quarterly rotation — one CNPG PITR, one Longhorn volume restore, one OpenBao
    snapshot-restore-and-unseal (proves the escrowed key), and, once per hardware cycle, the
-   cold-bootstrap path of ADR-0015. A backup that has never restored is a hypothesis.
+   cold-bootstrap path of ADR-0012. A backup that has never restored is a hypothesis.
 
 ## Decisions
 
@@ -78,7 +78,7 @@ Three structural problems cut across the table:
 
 ## Out of scope
 
-- The Git/GitOps DR ring — decided (ADR-0015/0020), only referenced here.
+- The Git/GitOps DR ring — decided (ADR-0012/0020), only referenced here.
 - The S3 substrate's own architecture — the [object-storage RFC](rfc-object-storage-garage.md).
 - Hardware purchases for a second target — [layered-hardware](rfc-layered-hardware-architecture.md) L5.
 
@@ -87,5 +87,5 @@ Three structural problems cut across the table:
 - [database-backup-tiers](../general/database-backup-tiers.md) ·
   [cnpg-backups runbook](../runbooks/cnpg-backups.md) ·
   [openbao-restore runbook](../runbooks/openbao-restore.md) · the `restore-drill` skill
-- [ADR-0026](../adr/adr-0026-confine-longhorn-to-workers.md) — the "DR via external Garage"
+- [ADR-0008](../adr/adr-0008-confine-longhorn-to-workers.md) — the "DR via external Garage"
   assumption this RFC stress-tests

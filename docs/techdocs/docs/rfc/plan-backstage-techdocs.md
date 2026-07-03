@@ -1,8 +1,8 @@
 # Plan: Backstage TechDocs (Option 2) — implementation checklist
 
-> Status: **Planned** · Date: 2026-06-18 · For [ADR-0023](../adr/adr-0023-backstage-techdocs.md) /
+> Status: **Planned** · Date: 2026-06-18 · For [ADR-0039](../adr/adr-0039-backstage-techdocs.md) /
 > [RFC: Backstage TechDocs](rfc-backstage-techdocs.md). Sequenced **after** the Codeberg interim
-> ([ADR-0022](../adr/adr-0022-codeberg-pages-techdocs.md)) is live.
+> ([ADR-0038](../adr/adr-0038-codeberg-pages-techdocs.md)) is live.
 
 This is the concrete, ordered work to make Backstage the primary TechDocs surface while keeping
 Codeberg as the off-site DR mirror. Each phase is independently revertable.
@@ -10,7 +10,7 @@ Codeberg as the off-site DR mirror. Each phase is independently revertable.
 ## Phase 0 — Prerequisites
 - [ ] Confirm Backstage is healthy and SSO (Authentik) login works.
 - [ ] Confirm Garage is reachable in-cluster (S3 endpoint, e.g. `http://10.0.0.110:3900`,
-      path-style) — same store as [ADR-0002](../adr/adr-0002-registry-blob-storage-garage-s3.md).
+      path-style) — same store as [ADR-0018](../adr/adr-0018-registry-blob-storage-garage-s3.md).
 - [ ] Decide the bucket name (`techdocs`) and the canonical entity ref
       (`default/component/homelab-cluster`).
 

@@ -118,7 +118,7 @@ spec:
           reloader.stakater.com/auto: "true"   # restart on ESO secret rotation
         pod:
           nodeSelector:
-            node.webgrip.io/pool: worker       # ADR-0028; or use the worker-pool component
+            node.webgrip.io/pool: worker       # ADR-0002; or use the worker-pool component
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000
@@ -149,7 +149,7 @@ spec:
       data:
         accessMode: ReadWriteOnce
         size: 5Gi
-        storageClass: longhorn                  # default SC (ADR-0029); table → longhorn skill
+        storageClass: longhorn                  # default SC (ADR-0010); table → longhorn skill
         globalMounts:
           - path: /data
 ```

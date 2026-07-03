@@ -6,8 +6,8 @@ The cluster exposes two runner pools:
 
 | Pool | Scale set name | Node placement | Labels | Use for |
 | --- | --- | --- | --- | --- |
-| Normal | `arc-runner-set` | `node.webgrip.io/pool: worker` ([ADR-0025](../adr/adr-0025-node-taxonomy.md)) | `arc-runner-set`, `arc`, `homelab`, `normal` | linting, unit tests, small validation jobs, non-privileged automation |
-| Heavy | `arc-runner-set-heavy` | `node.webgrip.io/pool: worker` ([ADR-0025](../adr/adr-0025-node-taxonomy.md)) | `arc-runner-set-heavy`, `arc`, `homelab`, `fringe`, `heavy`, `dind` | Docker image builds, Buildx, multi-arch builds, heavier integration jobs |
+| Normal | `arc-runner-set` | `node.webgrip.io/pool: worker` ([ADR-0001](../adr/adr-0001-node-taxonomy.md)) | `arc-runner-set`, `arc`, `homelab`, `normal` | linting, unit tests, small validation jobs, non-privileged automation |
+| Heavy | `arc-runner-set-heavy` | `node.webgrip.io/pool: worker` ([ADR-0001](../adr/adr-0001-node-taxonomy.md)) | `arc-runner-set-heavy`, `arc`, `homelab`, `fringe`, `heavy`, `dind` | Docker image builds, Buildx, multi-arch builds, heavier integration jobs |
 
 `arc-runner-set` is the default scale set name. Heavy jobs must explicitly target `arc-runner-set-heavy`.
 

@@ -21,13 +21,13 @@ spec:
     controllers:
       freshrss:
         annotations:
-          # Zero-downtime dynamic-cred rotation (ADR-0010): the rotating freshrss-pgbouncer-backend
+          # Zero-downtime dynamic-cred rotation (ADR-0016): the rotating freshrss-pgbouncer-backend
           # Secret must NOT restart the pod (the pgbouncer-reload sidecar reloads PgBouncer via
           # SIGHUP), so we do NOT use reloader auto. Only the static app config restarts the pod.
           secret.reloader.stakater.com/reload: "freshrss-secrets"
           configmap.reloader.stakater.com/reload: "freshrss-pgbouncer-config"
         # RWO longhorn-general volume → Recreate avoids the Multi-Attach deadlock
-        # when the pod relocates; pin to the worker pool off the soyos (ADR-0028).
+        # when the pod relocates; pin to the worker pool off the soyos (ADR-0002).
         # Lands on fringe — the WFFC-era volume predates worker-1 (use native
         # nodeSelector, not the postRenderer component, which deadlocks on RWO moves).
         strategy: Recreate

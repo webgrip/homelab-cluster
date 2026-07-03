@@ -74,7 +74,7 @@ flowchart TB
 
   subgraph MIRR["🌐 OFF-SITE MIRRORS & DOCS"]
     gh["GitHub<br/><i>push-mirror = break-glass source</i>"]
-    codeberg["Codeberg<br/><i>2nd off-site mirror · ADR-0020</i>"]
+    codeberg["Codeberg<br/><i>2nd off-site mirror · ADR-0014</i>"]
     docs["TechDocs → pages"]
   end
 
@@ -194,7 +194,7 @@ That privileged sidecar is worth pausing on, because it is the one place this ot
 
 Getting even that far surfaced a row of small truths, learned the hard way. The runner had never actually run a job, so it advertised only the single label it was registered with — and the label set had to stop pretending to be a GitHub-ARC pool (`arc-runner-set`, `ubuntu-latest`) and tell the plain truth: it's a `docker` runner, nothing more. Then *where* steps run turned out to matter more than it sounds: a job container spawned off to the side can't reach the daemon at `localhost`, but a job that runs *in the same container as the agent* shares the pod's network namespace and reaches the sidecar for free. So step one is **host-mode** — the agent runs inside webgrip's own `github-runner` toolchain image (it already carries the docker CLI and the buildx plugin; an init container slips the `forgejo-runner` binary in beside them), and a real job can finally execute end to end.
 
-And the privileged daemon itself is on borrowed time. [ADR-0008](../adr/adr-0008-rootless-ci-image-builds.md) already records the destination, and the order: prove the runner first — this host-mode step — then replace Docker-in-Docker with a **shared, rootless BuildKit** reached as an ordinary Service. No privileged container anywhere; a build cache that survives the ephemeral runners instead of starting cold every time (exported to Harbor); and, as a free consequence, the whole `localhost:2376` network-namespace puzzle simply gone. The runners get smaller, the one wart gets removed, and the cache finally warms.
+And the privileged daemon itself is on borrowed time. [ADR-0026](../adr/adr-0026-rootless-ci-image-builds.md) already records the destination, and the order: prove the runner first — this host-mode step — then replace Docker-in-Docker with a **shared, rootless BuildKit** reached as an ordinary Service. No privileged container anywhere; a build cache that survives the ephemeral runners instead of starting cold every time (exported to Harbor); and, as a free consequence, the whole `localhost:2376` network-namespace puzzle simply gone. The runners get smaller, the one wart gets removed, and the cache finally warms.
 
 It is everything ARC gave us — ephemeral, autoscaling, DinD-capable runners — rebuilt on event-driven primitives we control, pointed at a forge we own. It is proven to sit correctly at zero. There is exactly one honest caveat, and the manifest says so out loud in a code comment: the precise `one-job` invocation hasn't been confirmed against a *real* job yet. Which is the perfect segue, because the thing that proves a runner is a workflow.
 
@@ -348,7 +348,7 @@ So the boss fight named at the end of the first draft — *"GitHub built this"* 
 
 The full picture is written up next door, for when prose stops being enough: a [supply-chain architecture overview](../general/supply-chain-overview.md) (the system map and this sequence diagram, with the read-the-arrows notes), an [enforcement roadmap](../rfc/rfc-kyverno-audit-enforce-hardening.md) that enumerates every gate between Audit and Enforce, and a [Transit key-rotation runbook](../runbooks/cosign-transit-key-rotation.md) for the day the key turns over.
 
-(One small scar from getting here, in the spirit of "go look": Harbor does its *own* OIDC discovery to Authentik server-side, and that call hairpins back out through the gateway VIP. Under the cluster's zero-trust default-deny, Cilium enforces egress on the post-NAT *backend* identity, not the VIP address or port — so a CIDR/port rule silently dropped it and Harbor login returned a 500 until an identity-based egress allow went in. The fix became its own [ADR](../adr/adr-0021-cilium-gateway-egress-for-oidc.md). Leaving the managed world means meeting, in person, the networking a managed gateway used to hide.)
+(One small scar from getting here, in the spirit of "go look": Harbor does its *own* OIDC discovery to Authentik server-side, and that call hairpins back out through the gateway VIP. Under the cluster's zero-trust default-deny, Cilium enforces egress on the post-NAT *backend* identity, not the VIP address or port — so a CIDR/port rule silently dropped it and Harbor login returned a 500 until an identity-based egress allow went in. The fix became its own [ADR](../adr/adr-0005-cilium-gateway-egress-for-oidc.md). Leaving the managed world means meeting, in person, the networking a managed gateway used to hide.)
 
 ---
 

@@ -1,8 +1,8 @@
 ---
 machine:
   nodeLabels:
-    # Capability taxonomy (ADR-0025). fringe = the high-CPU worker and a Longhorn
-    # storage node (SSD hot; HDD cold tier pending a disk wipe — ADR-0027).
+    # Capability taxonomy (ADR-0001). fringe = the high-CPU worker and a Longhorn
+    # storage node (SSD hot; HDD cold tier pending a disk wipe — ADR-0009).
     node.webgrip.io/pool: worker
     node.webgrip.io/cpu: high
     node.webgrip.io/ram: standard
@@ -12,7 +12,7 @@ machine:
     # envoy + the rest to pool=worker; cilium's zomboid L2 policy to pool=worker).
   kubelet:
     extraArgs: {}
-    # The `dedicated=fringe:NoSchedule` taint was RETIRED 2026-06-19 (ADR-0028):
+    # The `dedicated=fringe:NoSchedule` taint was RETIRED 2026-06-19 (ADR-0002):
     # apps now opt *onto* the workers via pool=worker affinity, so fringe is just
     # a normal worker. `register-with-taints` only applies at node registration,
     # so a live taint must be removed once by hand — dropping it here only stops
@@ -22,6 +22,6 @@ machine:
     # It never worked: the disk still holds an NTFS filesystem from an old Windows
     # install, and Talos refuses to mkfs.xfs over it without --force, which wedged
     # the boot in a format-retry loop (block.VolumeManagerController failed). The
-    # cold tier is re-introduced properly under ADR-0027 (Phase C) with an explicit
+    # cold tier is re-introduced properly under ADR-0009 (Phase C) with an explicit
     # disk wipe first. Longhorn data lives on fringe's SSD (/var/lib/longhorn), not
     # this disk, so removing it loses nothing.

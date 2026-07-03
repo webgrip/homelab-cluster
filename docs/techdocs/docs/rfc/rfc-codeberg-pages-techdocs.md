@@ -1,8 +1,8 @@
 # RFC: TechDocs hosting after GitHub Pages
 
 > Status: **Accepted** (interim) · Date: 2026-06-18 · Owner: Ryan Grippeling (`ryan@webgrip.nl`)
-> · Decisions: [ADR-0022 (Codeberg Pages, now)](../adr/adr-0022-codeberg-pages-techdocs.md) ·
-> [ADR-0023 (Backstage TechDocs, target)](../adr/adr-0023-backstage-techdocs.md)
+> · Decisions: [ADR-0038 (Codeberg Pages, now)](../adr/adr-0038-codeberg-pages-techdocs.md) ·
+> [ADR-0039 (Backstage TechDocs, target)](../adr/adr-0039-backstage-techdocs.md)
 > · Companion: [Bringing the Forge Home](../blogs/2026-06-12-bringing-the-forge-home.md)
 >
 > Implementation status (2026-07-02): DNS (`codeberg-pages-dnsendpoint.yaml`) + token machinery
@@ -43,7 +43,7 @@ No single option maximizes all of these, so we **phase** it.
    cosign-sign, serve via a Flux Deployment, Kyverno-verify. Most cohesive with the supply-chain
    work; immutable + rollbackable. Image build per change; in-cluster only.
 4. **Codeberg Pages** — push the site to a Codeberg repo's `pages` branch; Codeberg serves it.
-   Off-site (R2), zero in-cluster infra (R3), matches [ADR-0020](../adr/adr-0020-codeberg-offsite-push-mirror.md).
+   Off-site (R2), zero in-cluster infra (R3), matches [ADR-0014](../adr/adr-0014-codeberg-offsite-push-mirror.md).
    Public-only; external dependency.
 5. **Self-hosted Forgejo Pages server** (`pages-server` / `git-pages` / `forgejo-pages`) — serve
    the `pages` branch in-cluster; general-purpose for all repos; no CI change. Another service to
@@ -51,11 +51,11 @@ No single option maximizes all of these, so we **phase** it.
 
 ## 4. Decision: phase it — Codeberg now, Backstage later
 
-- **Now → Option 4, Codeberg Pages** ([ADR-0022](../adr/adr-0022-codeberg-pages-techdocs.md)). It uniquely
+- **Now → Option 4, Codeberg Pages** ([ADR-0038](../adr/adr-0038-codeberg-pages-techdocs.md)). It uniquely
   satisfies R2 (off-site DR) with the least effort (R3) and no in-cluster footprint, and it is the
-  documentation companion to the off-site Git mirror already chosen in ADR-0020. Accepts public-only
+  documentation companion to the off-site Git mirror already chosen in ADR-0014. Accepts public-only
   (R4 deferred).
-- **Later → Option 2, Backstage TechDocs** ([ADR-0023](../adr/adr-0023-backstage-techdocs.md)) as the
+- **Later → Option 2, Backstage TechDocs** ([ADR-0039](../adr/adr-0039-backstage-techdocs.md)) as the
   primary in-cluster surface (R4: search, catalog, SSO). At that point **Codeberg is retained as the
   off-site DR mirror**, so R2 still holds.
 
@@ -100,14 +100,14 @@ Two are external (a Codeberg account action + a root-seeded secret); the DNS rec
 ## 7. Risks & mitigations
 
 - **External availability** — Codeberg outage = docs down. Mitigated long-term by Backstage as the
-  in-cluster primary (ADR-0023), with Codeberg demoted to mirror.
+  in-cluster primary (ADR-0039), with Codeberg demoted to mirror.
 - **Public exposure** — never publish access-controlled docs to Codeberg; gate those behind
-  Backstage + Authentik (ADR-0023).
+  Backstage + Authentik (ADR-0039).
 - **Token leakage** — scoped PAT, masked in logs, rotated via the standard OpenBao path; never
   echoed (push URL is constructed inline, not printed).
 
 ## 8. Migration to the target
 
-When [ADR-0023](../adr/adr-0023-backstage-techdocs.md) lands, `on_docs_change` gains a Backstage-publish
+When [ADR-0039](../adr/adr-0039-backstage-techdocs.md) lands, `on_docs_change` gains a Backstage-publish
 job (S3) as the **primary**; the Codeberg deploy stays as a second job (off-site DR). No re-build —
 both consume the same `techdocs-site` artifact.

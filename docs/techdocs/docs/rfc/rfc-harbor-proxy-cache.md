@@ -1,14 +1,14 @@
 # RFC: Harbor Pull-Through Proxy Cache
 
-> Status: **Implemented** · Date: 2026-06-13 · Implemented by: [ADR-0016](../adr/adr-0016-harbor-pull-through-proxy-cache.md) · [ADR-0017](../adr/adr-0017-registry-mirror-talos-spegel.md) · [ADR-0018](../adr/adr-0018-harbor-config-idempotent-job.md) (cutover + drill 2026-06-23)
+> Status: **Implemented** · Date: 2026-06-13 · Implemented by: [ADR-0023](../adr/adr-0023-harbor-pull-through-proxy-cache.md) · [ADR-0024](../adr/adr-0024-registry-mirror-talos-spegel.md) · [ADR-0025](../adr/adr-0025-harbor-config-idempotent-job.md) (cutover + drill 2026-06-23)
 >
 > This RFC routes the cluster's *third-party* image pulls
 > (`docker.io`, `ghcr.io`, …) through Harbor pull-through **proxy-cache projects**, wired at the
 > containerd registry-mirror layer so manifests keep their upstream image references and
 > containerd transparently tries the cache first and **falls back to upstream when Harbor is
-> down**. The individual decisions are [ADR-0016](../adr/adr-0016-harbor-pull-through-proxy-cache.md)
-> (adopt the cache), [ADR-0017](../adr/adr-0017-registry-mirror-talos-spegel.md) (where the mirror is
-> injected), and [ADR-0018](../adr/adr-0018-harbor-config-idempotent-job.md) (how the Harbor side is
+> down**. The individual decisions are [ADR-0023](../adr/adr-0023-harbor-pull-through-proxy-cache.md)
+> (adopt the cache), [ADR-0024](../adr/adr-0024-registry-mirror-talos-spegel.md) (where the mirror is
+> injected), and [ADR-0025](../adr/adr-0025-harbor-config-idempotent-job.md) (how the Harbor side is
 > provisioned in GitOps). It extends — does not replace — the
 > [Harbor Container Registry RFC](rfc-harbor-registry.md), whose "replication to/from a remote
 > Harbor" was explicitly deferred.
@@ -19,7 +19,7 @@
 > A follow-on extended the same proxies to **non-bootstrap OCI Helm charts** by rewriting their
 > `OCIRepository` url (charts bypass containerd, so they can't use the transparent mirror); that
 > path is **not** fail-open, so its scope is bounded to non-bootstrap charts — see
-> [ADR-0016](../adr/adr-0016-harbor-pull-through-proxy-cache.md) consequences.
+> [ADR-0023](../adr/adr-0023-harbor-pull-through-proxy-cache.md) consequences.
 
 [harbor-proxy]: https://goharbor.io/docs/2.10.0/administration/configure-proxy-cache/
 [spegel]: https://spegel.dev/
@@ -55,11 +55,11 @@ with upstream fallback; idempotent GitOps provisioning of the Harbor-side config
 
 - **Hosting webgrip's *own* images** (the `ghcr.io/webgrip/*` publish target). That is a separate
   initiative landing in the **`webgrip/workflows`** repo (CI push from in-cluster runners), not
-  here — Harbor is LAN-only ([ADR-0005](../adr/adr-0005-lan-only-exposure.md)), so GitHub-hosted Actions
+  here — Harbor is LAN-only ([ADR-0021](../adr/adr-0021-lan-only-exposure.md)), so GitHub-hosted Actions
   can't push to it.
 - **Proxying the bootstrap/storage chain** (Talos, Cilium, CoreDNS, cert-manager, Longhorn CSI,
   CNPG, ESO, OpenBao, Garage). These must come up *before* Harbor exists; they keep pulling
-  upstream directly. Fallback makes this automatic — see [ADR-0017](../adr/adr-0017-registry-mirror-talos-spegel.md).
+  upstream directly. Fallback makes this automatic — see [ADR-0024](../adr/adr-0024-registry-mirror-talos-spegel.md).
 - **Additional registries** (`quay.io`, `registry.k8s.io`, `mirror.gcr.io`). Trivially added once
   the pattern is proven; deferred to keep Phase 1 small.
 
@@ -67,9 +67,9 @@ with upstream fallback; idempotent GitOps provisioning of the Harbor-side config
 
 | # | Decision | Choice |
 |---|----------|--------|
-| [ADR-0016](../adr/adr-0016-harbor-pull-through-proxy-cache.md) | Adopt a pull-through cache | **Six Harbor proxy-cache projects** (`dockerhub`, `ghcr`, `quay`, `gcrmirror`, `k8s`, `forgejo`); started as two (docker.io, ghcr.io) and extended to all upstreams at cutover |
-| [ADR-0017](../adr/adr-0017-registry-mirror-talos-spegel.md) | Where to inject the mirror | **Talos `machine.registries.mirrors`** (per-registry, `overridePath`) composed with **Spegel `prependExisting: true`**; upstream fallback on |
-| [ADR-0018](../adr/adr-0018-harbor-config-idempotent-job.md) | How to provision Harbor | **Idempotent CronJob** against the Harbor v2 API (no operator exists); creds via ESO/OpenBao |
+| [ADR-0023](../adr/adr-0023-harbor-pull-through-proxy-cache.md) | Adopt a pull-through cache | **Six Harbor proxy-cache projects** (`dockerhub`, `ghcr`, `quay`, `gcrmirror`, `k8s`, `forgejo`); started as two (docker.io, ghcr.io) and extended to all upstreams at cutover |
+| [ADR-0024](../adr/adr-0024-registry-mirror-talos-spegel.md) | Where to inject the mirror | **Talos `machine.registries.mirrors`** (per-registry, `overridePath`) composed with **Spegel `prependExisting: true`**; upstream fallback on |
+| [ADR-0025](../adr/adr-0025-harbor-config-idempotent-job.md) | How to provision Harbor | **Idempotent CronJob** against the Harbor v2 API (no operator exists); creds via ESO/OpenBao |
 
 ## Architecture
 
@@ -105,7 +105,7 @@ weren't configured.
 
 ## The SPOF question (and why fallback is the whole design)
 
-Harbor's blobs live on **Garage S3** ([ADR-0002](../adr/adr-0002-registry-blob-storage-garage-s3.md)) —
+Harbor's blobs live on **Garage S3** ([ADR-0018](../adr/adr-0018-registry-blob-storage-garage-s3.md)) —
 the exact dependency whose outage cascaded into the
 [2026-06-12 storage collapse](../blogs/2026-06-13-harbor-as-a-pull-through-cache.md). Putting
 Harbor in the image pull path therefore *adds a local dependency to every pull*. This RFC accepts
@@ -129,7 +129,7 @@ not a new hard dependency.
   (`secret/harbor/registry-proxy`). Used only to *raise upstream rate limits*; the proxy projects
   themselves are public for anonymous in-cluster pulls.
 - `harbor-proxy-config` CronJob + script — idempotently ensures the two registry endpoints and
-  two proxy projects exist via the Harbor v2 API ([ADR-0018](../adr/adr-0018-harbor-config-idempotent-job.md)).
+  two proxy projects exist via the Harbor v2 API ([ADR-0025](../adr/adr-0025-harbor-config-idempotent-job.md)).
   **Fail-soft**: if the credentials aren't populated yet, it logs and exits 0 — Harbor is
   unaffected, no alert noise.
 - Human step: `bao kv put secret/harbor/registry-proxy …` (the upstream tokens are external). On
@@ -140,7 +140,7 @@ not a new hard dependency.
 **Phase 1 — pull-path cutover (node-touching, human-gated). ✅ done 2026-06-23.**
 
 - Applied the Talos `machine.registries.mirrors` patch from
-  [ADR-0017](../adr/adr-0017-registry-mirror-talos-spegel.md) on all 5 nodes (`MODE=no-reboot` — a
+  [ADR-0024](../adr/adr-0024-registry-mirror-talos-spegel.md) on all 5 nodes (`MODE=no-reboot` — a
   containerd config reload, so no drain/reboot was needed).
 - Set Spegel `prependExisting: true` in its HelmRelease values.
 - **Drill passed:** with `harbor-core`/`harbor-registry` scaled to zero, a fresh pull of an
@@ -175,12 +175,12 @@ running" gates on the proxy projects, and proxy-cache retention/TTL to bound Gar
 
 ## References
 
-- ADRs [0016](../adr/adr-0016-harbor-pull-through-proxy-cache.md),
-  [0017](../adr/adr-0017-registry-mirror-talos-spegel.md),
-  [0018](../adr/adr-0018-harbor-config-idempotent-job.md)
+- ADRs [0016](../adr/adr-0023-harbor-pull-through-proxy-cache.md),
+  [0017](../adr/adr-0024-registry-mirror-talos-spegel.md),
+  [0018](../adr/adr-0025-harbor-config-idempotent-job.md)
 - Extends [RFC: Harbor Container Registry](rfc-harbor-registry.md);
-  [ADR-0002 Blob storage (Garage S3)](../adr/adr-0002-registry-blob-storage-garage-s3.md);
-  [ADR-0005 LAN-only exposure](../adr/adr-0005-lan-only-exposure.md)
+  [ADR-0018 Blob storage (Garage S3)](../adr/adr-0018-registry-blob-storage-garage-s3.md);
+  [ADR-0021 LAN-only exposure](../adr/adr-0021-lan-only-exposure.md)
 - [Harbor — Configure Proxy Cache][harbor-proxy] · [Spegel][spegel] ·
   [Talos RegistryMirrorConfig][talos-registries]
 - [Blog: Harbor as a pull-through cache](../blogs/2026-06-13-harbor-as-a-pull-through-cache.md)

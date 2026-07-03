@@ -7,7 +7,7 @@
 ## Summary
 
 During **Phase B** of the node-taxonomy migration (adding `node.webgrip.io/*` capability labels to every
-node, [ADR-0025](../adr/adr-0025-node-taxonomy.md)), a **label-only** Talos `apply-node` to
+node, [ADR-0001](../adr/adr-0001-node-taxonomy.md)), a **label-only** Talos `apply-node` to
 `fringe-workstation` unexpectedly **rebooted** it. `worker-1` (freshly added that day) had taken the same
 label change with **no reboot**, but `fringe` had a stale stored `install.image` (an old `v1.12.4`
 pointer; running OS was `v1.13.2`), so `--mode=auto` chose to reboot to reconcile the drift. On reboot,
@@ -101,7 +101,7 @@ Both states were caught manually mid-migration, not paged. A "rebuild queue stal
 
 1. **Recover fringe — drop the broken HDD config.** Removed the `machine.disks` + `extraMounts` cold-tier
    entry from `talos/patches/worker/fringe-dedicated.yaml`; re-applied → fringe booted in ~20 s. The cold
-   tier is re-introduced properly under [ADR-0027](../adr/adr-0027-longhorn-hot-cold-tiers.md) **with an
+   tier is re-introduced properly under [ADR-0009](../adr/adr-0009-longhorn-hot-cold-tiers.md) **with an
    explicit disk wipe first**.
 2. **Un-wedge Longhorn — delete the zombie replicas.** See the
    [longhorn-rebuild-wedge runbook](../runbooks/longhorn-rebuild-wedge.md): verify a surviving RW replica
@@ -111,7 +111,7 @@ Both states were caught manually mid-migration, not paged. A "rebuild queue stal
 3. **GC the orphan `slab` node** — patch `allowScheduling=false` (Longhorn refuses the delete otherwise),
    then `kubectl delete nodes.longhorn.io slab`.
 4. **Relieve the storm — reduce over-replication.** Patched the 9 degraded 3-replica volumes to
-   `numberOfReplicas: 2` (the [ADR-0026](../adr/adr-0026-confine-longhorn-to-workers.md) ceiling),
+   `numberOfReplicas: 2` (the [ADR-0008](../adr/adr-0008-confine-longhorn-to-workers.md) ceiling),
    cancelling their queued rebuilds.
 5. **Finish Phase B safely — `MODE=no-reboot` on the soyos.** The remaining label applies used
    `task talos:apply-node IP=<ip> MODE=no-reboot` → labels applied live, install-image drift staged, **no
@@ -122,11 +122,11 @@ Both states were caught manually mid-migration, not paged. A "rebuild queue stal
 | # | Action | Type | Status |
 | --- | --- | --- | --- |
 | 1 | **`MODE=no-reboot` for label/annotation-only Talos applies**, especially on etcd nodes — applies live, stages drift, never reboots (and refuses if a change genuinely needs one). | process (root) | ✅ done this session; talos skill corrected |
-| 2 | **Never ship a `machine.disks` entry over a disk that still holds a filesystem** — Talos won't `mkfs` without `--force` and wedges boot. Wipe the disk first; validate the mount actually came up before committing. | prevention (root) | ✅ broken config removed; ADR-0027 adds an explicit wipe step |
+| 2 | **Never ship a `machine.disks` entry over a disk that still holds a filesystem** — Talos won't `mkfs` without `--force` and wedges boot. Wipe the disk first; validate the mount actually came up before committing. | prevention (root) | ✅ broken config removed; ADR-0009 adds an explicit wipe step |
 | 3 | **Zombie-replica rebuild-wedge runbook** — fingerprint (degraded>0, rebuilding==0) + the verified-delete SOP. | recovery | ✅ [runbook written](../runbooks/longhorn-rebuild-wedge.md) |
 | 4 | Alert on **`faulted > 0`** and on **rebuild-queue stalled** (`degraded>0 and rebuilding==0 for 15m`). | detection | ⏳ open (P2) — same gap as 06-18 |
 | 5 | Treat **storage-node reboots as deliberate, drained ops** — don't reboot a replica-holding node incidentally; expect a degraded wave. | process | ⏳ open (P2) |
-| 6 | Re-introduce the fringe HDD **cold tier** with an explicit wipe (ADR-0027), then validate before relying on `longhorn-cold`. | prevention | ⏳ open (P3) |
+| 6 | Re-introduce the fringe HDD **cold tier** with an explicit wipe (ADR-0009), then validate before relying on `longhorn-cold`. | prevention | ⏳ open (P3) |
 
 ## Reusable nuggets
 
@@ -146,4 +146,4 @@ Both states were caught manually mid-migration, not paged. A "rebuild queue stal
   111-day-old PV `nodeAffinity` listed soyos+fringe but **not** `worker-1` (joined that day). A stateful
   pod hard-pinned to a pool containing only `worker-1` went `Pending` — the volume can't attach there
   until Longhorn places a replica on it (eviction). So **eviction must precede stateful worker-pinning**
-  (see [ADR-0026](../adr/adr-0026-confine-longhorn-to-workers.md) / the migration status runbook).
+  (see [ADR-0008](../adr/adr-0008-confine-longhorn-to-workers.md) / the migration status runbook).

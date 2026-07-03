@@ -18,7 +18,7 @@ Cilium enforces egress on the **post-DNAT backend identity + targetPort**, not t
 port. So CIDR/port rules do **not** govern Service/gateway traffic — a `0.0.0.0/0 except pod-CIDR` rule
 looks permissive but silently drops gateway hairpins + kube-apiserver calls. Govern Service/gateway flows
 by **identity** (`namespaceSelector`/`toEntities`), port-less.
-([ADR-0021](docs/techdocs/docs/adr/adr-0021-cilium-gateway-egress-for-oidc.md)).
+([ADR-0005](docs/techdocs/docs/adr/adr-0005-cilium-gateway-egress-for-oidc.md)).
 
 ## The two reusable components (don't hand-roll these)
 - **`components/gateway-egress`** — `allow-gateway-egress`: egress to `namespaceSelector: network`, **no

@@ -1,6 +1,6 @@
 # Alerting principles
 
-This cluster uses **VMAlert + VMAlertmanager** (VictoriaMetrics; [ADR-0038](../adr/adr-0038-victoriametrics-metrics-backend.md)) to evaluate and route alerts. Rules are authored as `PrometheusRule` CRs (converted to VMRules by the operator) under `kubernetes/apps/observability/victoria-metrics/app/rules/`.
+This cluster uses **VMAlert + VMAlertmanager** (VictoriaMetrics; [ADR-0034](../adr/adr-0034-victoriametrics-metrics-backend.md)) to evaluate and route alerts. Rules are authored as `PrometheusRule` CRs (converted to VMRules by the operator) under `kubernetes/apps/observability/victoria-metrics/app/rules/`.
 
 The goal is simple: when an alert fires, the recipient should be able to answer **“What's broken, What's the impact, and what should I do next?”** in under 60 seconds.
 

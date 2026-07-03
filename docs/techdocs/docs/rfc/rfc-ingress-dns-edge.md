@@ -25,7 +25,7 @@ The edge, as built (verified in-tree 2026-07-02):
   rules** on the LAN ([dns-split-dns runbook](../runbooks/dns-split-dns.md)).
 - **TLS**: one ClusterIssuer (`letsencrypt-production`, DNS01 via Cloudflare), one wildcard
   `Certificate`, consumed only by the two gateway listeners. No staging issuer.
-- **The convention**: internal is the default (~25 internal routes vs ~9 external). ADR-0005
+- **The convention**: internal is the default (~25 internal routes vs ~9 external). ADR-0021
   applied it to Harbor; the general rule was never recorded, and nothing *enforces* it.
 
 Nothing above is written down as a decision. Two concrete risks ride on that:
@@ -41,13 +41,13 @@ Nothing above is written down as a decision. Two concrete risks ride on that:
 ## Proposal
 
 1. **Backfill three retroactive ADRs**: (a) the dual-gateway topology + internal-by-default
-   exposure posture (generalizing ADR-0005); (b) public exposure exclusively via the Cloudflare
+   exposure posture (generalizing ADR-0021); (b) public exposure exclusively via the Cloudflare
    tunnel (no port-forwards; the CF dependency accepted with eyes open — including the ~100 MB
-   body cap ADR-0005 documented and the sovereignty tension with the forge-exit program);
+   body cap ADR-0021 documented and the sovereignty tension with the forge-exit program);
    (c) split-horizon DNS via external-dns + k8s-gateway, including the OPNsense dependency.
 2. **Enforce the exposure posture** (new decision): a Kyverno policy requiring an explicit opt-in
    label/annotation on any HTTPRoute whose `parentRefs` is `envoy-external` — Audit first, then
-   Enforce via the [ADR-0033](../adr/adr-0033-kyverno-enforce-promotion-policy.md) wave process.
+   Enforce via the [ADR-0032](../adr/adr-0032-kyverno-enforce-promotion-policy.md) wave process.
    Accidental publication becomes a build/admission failure instead of a silent DNS record.
 3. **Declare the LAN DNS dependency**: document the exact OPNsense configuration in the runbook as
    the source of truth (or, if OPNsense config can be exported, commit the export alongside).
@@ -67,7 +67,7 @@ Nothing above is written down as a decision. Two concrete risks ride on that:
 
 ## Out of scope
 
-- East-west network policy — owned by [ADR-0039](../adr/adr-0039-default-deny-network-policies.md).
+- East-west network policy — owned by [ADR-0006](../adr/adr-0006-default-deny-network-policies.md).
 - Authentication on exposed apps — the [identity RFC](rfc-identity-sso.md).
 - Gateway hardware/bandwidth (1 GbE flat LAN) — the [layered-hardware RFC](rfc-layered-hardware-architecture.md) L1.
 
@@ -75,4 +75,4 @@ Nothing above is written down as a decision. Two concrete risks ride on that:
 
 - [envoy-gateway runbook](../runbooks/envoy-gateway.md) · [dns-split-dns runbook](../runbooks/dns-split-dns.md) ·
   [cert-manager runbook](../runbooks/cert-manager.md)
-- [ADR-0005](../adr/adr-0005-lan-only-exposure.md) — the Harbor-scoped instance of the posture
+- [ADR-0021](../adr/adr-0021-lan-only-exposure.md) — the Harbor-scoped instance of the posture

@@ -60,12 +60,12 @@ kubectl -n harbor get secret harbor-admin -o jsonpath='{.data.HARBOR_ADMIN_PASSW
 
 Two distinct flows — pulling *third-party* images through the cache, and publishing *your own*.
 Design: [RFC: Harbor Pull-Through Proxy Cache](../rfc/rfc-harbor-proxy-cache.md) and
-[ADR-0016–0018](../adr/index.md).
+[ADR-0023–0018](../adr/index.md).
 
 ### Pull third-party images through the proxy cache
 
 **Seven** proxy-cache projects are created idempotently by the `harbor-proxy-config` CronJob (creds from
-OpenBao `secret/harbor/registry-proxy`, [ADR-0018](../adr/adr-0018-harbor-config-idempotent-job.md)):
+OpenBao `secret/harbor/registry-proxy`, [ADR-0025](../adr/adr-0025-harbor-config-idempotent-job.md)):
 `dockerhub` → `docker.io`, `ghcr` → `ghcr.io`, `quay` → `quay.io`, `gcrmirror` → `mirror.gcr.io`,
 `k8s` → `registry.k8s.io`, `forgejo` → `code.forgejo.org`, and `mcr` → `mcr.microsoft.com` (playwright base).
 `dockerhub` uses Harbor's **native `docker-hub` provider** (url `hub.docker.com`), not a generic
@@ -78,11 +78,11 @@ with no Talos `machine.registries.mirrors` entry. Two ways to consume them:
 - **Transparent** (live — `talos/patches/global/machine-registries.yaml`): your manifests keep their
   `docker.io/…` / `ghcr.io/…` references and containerd routes them through Harbor automatically —
   **Spegel peers → Harbor proxy → upstream**, with containerd falling back to upstream if Harbor is
-  down ([ADR-0017](../adr/adr-0017-registry-mirror-talos-spegel.md)).
+  down ([ADR-0024](../adr/adr-0024-registry-mirror-talos-spegel.md)).
 
 ### Publish & consume your own private images
 
-Harbor is **LAN-only** ([ADR-0005](../adr/adr-0005-lan-only-exposure.md)), so the push must come
+Harbor is **LAN-only** ([ADR-0021](../adr/adr-0021-lan-only-exposure.md)), so the push must come
 from a host that can reach `envoy-internal` — i.e. an **in-cluster runner** (`arc-systems` / `forgejo-runner`).
 GitHub-hosted Actions cannot reach it. The build-and-push therefore lives in **`webgrip/workflows`**, not here.
 
@@ -144,7 +144,7 @@ run. Caveats:
 | HelmRelease stuck `not ready`; `harbor-admin`/`harbor-s3` not `SecretSynced` | OpenBao path missing or sealed | `kubectl -n harbor get externalsecret`; populate `secret/harbor/s3` (`just harbor-s3-cred`); check `ClusterSecretStore/openbao` Ready |
 | PVC `Pending` | no default StorageClass | every PVC must set `storageClass` (`longhorn-general`) — already pinned in the HelmRelease |
 | `registry` pod errors talking to S3 / redirect loops | Garage path-style not honored | `disableredirect: true` + `secure: false` + HTTP `regionendpoint` are mandatory (set already); check Garage at `10.0.0.110:3900` |
-| Registry 5xx / blob I/O failing | Garage down | Garage is a hard dependency (ADR-0002 / [CNPG ↔ Garage](cnpg-backups.md)); restore Garage |
+| Registry 5xx / blob I/O failing | Garage down | Garage is a hard dependency (ADR-0018 / [CNPG ↔ Garage](cnpg-backups.md)); restore Garage |
 | OIDC login fails | redirect URI / RS256 | redirect must equal `https://harbor.${SECRET_DOMAIN}/c/oidc/callback`; see [Authentik OIDC login](authentik-oidc-login.md) |
 | New pinned pod stuck `ContainerCreating` (Multi-Attach) when a single-replica RWO Deployment moves nodes | goharbor chart hardcodes `RollingUpdate` (can't switch to `Recreate` via values); old pod still holds the RWO volume — deleting the old *pod* alone fails (the ReplicaSet recreates it) | Delete the **old ReplicaSet** — the Deployment won't recreate a superseded revision, the volume frees, HR goes `UpgradeSucceeded`. Must beat the HR timeout (20m). The Dependency-Track api-server was instead converted to a **StatefulSet** (ordered recreate frees the RWO volume natively); note a StatefulSet's `volumeClaimTemplates.storageClassName` is **immutable** — repointing a chart-rendered STS PVC to a different SC is API-rejected and breaks the HR until STS+PVC are deleted/recreated |
 

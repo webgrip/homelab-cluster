@@ -1,18 +1,18 @@
 # RFC: CI pipeline performance — kill the per-job cold start
 
 > Status: **Accepted** · Date: 2026-06-25 · Owner: Ryan · Implementation lives in
-> `webgrip/workflows` (constrictor fast-build, ADR-0036) — not verifiable from this repo.
+> `webgrip/workflows` (constrictor fast-build, ADR-0027) — not verifiable from this repo.
 >
 > Sibling of [RFC: Security Hardening](rfc-security-hardening.md) (which owns the *rootless*
-> build-engine move, [ADR-0008](../adr/adr-0008-rootless-ci-image-builds.md)). This RFC is about
-> **speed**, not isolation — but it lands the **warm-cache half** of ADR-0008's "topology C" early,
+> build-engine move, [ADR-0026](../adr/adr-0026-rootless-ci-image-builds.md)). This RFC is about
+> **speed**, not isolation — but it lands the **warm-cache half** of ADR-0026's "topology C" early,
 > independent of the rootless engine.
 
 ## Context
 
 The Forgejo CI runner ([`kubernetes/apps/forgejo/forgejo-runner/`](https://forgejo.webgrip.dev/webgrip/homelab-cluster))
 is a KEDA `ScaledJob` — **one ephemeral pod per job**, whose only storage is `emptyDir`. That shape
-is correct for isolation (ADR-0008) but it means **every job pays a full cold start** before doing
+is correct for isolation (ADR-0026) but it means **every job pays a full cold start** before doing
 any useful work. A representative Harbor build (`release-distribute-harbor.build.build`) spends
 **minutes** in setup. Two costs dominate, both visible in the runner log:
 
@@ -37,7 +37,7 @@ push, not by setup. Keep the one-job-per-pod isolation model intact (no shared m
 state, no RWX). Stay GitOps-reconciled.
 
 **Non-goals.** The rootless build engine (topology C's *other* half — dropping `privileged: true`)
-stays with [ADR-0008](../adr/adr-0008-rootless-ci-image-builds.md); this RFC does not touch
+stays with [ADR-0026](../adr/adr-0026-rootless-ci-image-builds.md); this RFC does not touch
 privilege. No shared cross-node cache (see *Why not RWX*).
 
 ## Approach
@@ -46,9 +46,9 @@ Three levers, two of them new decisions:
 
 | Lever | Decision | Where it lives |
 |---|---|---|
-| Stop building **arm64** by default | [ADR-0036](../adr/adr-0036-amd64-default-constrictor-build.md) — **amd64-default** image builds via a **new** "fast" reusable workflow, migrated constrictor-style | `webgrip/workflows` |
+| Stop building **arm64** by default | [ADR-0027](../adr/adr-0027-amd64-default-constrictor-build.md) — **amd64-default** image builds via a **new** "fast" reusable workflow, migrated constrictor-style | `webgrip/workflows` |
 | **Layer** cache to Harbor | *(no new ADR)* — already shipped in the `docker-build-push-registry` composite; **verify it's effective**, inherit it in the fast workflow | `webgrip/workflows` |
-| The **action-clone** wall | [ADR-0035](../adr/adr-0035-action-clone-wall.md) — **measure first** (offline mode verified absent); scoped LAN mirror only if it still dominates | runner / Forgejo server *(deferred)* |
+| The **action-clone** wall | [ADR-0028](../adr/adr-0028-action-clone-wall.md) — **measure first** (offline mode verified absent); scoped LAN mirror only if it still dominates | runner / Forgejo server *(deferred)* |
 
 ### Why the action cache is deferred (offline mode does not exist)
 
@@ -58,7 +58,7 @@ killed that: there is **no offline mode at any layer** — not in `generate-conf
 `one-job --help`, and this Forgejo act fork has even stripped `--action-offline-mode` /
 `--action-cache-path` from `exec`. The only action lever is the server's `DEFAULT_ACTIONS_URL`.
 
-Consequences, captured in [ADR-0035](../adr/adr-0035-action-clone-wall.md):
+Consequences, captured in [ADR-0028](../adr/adr-0028-action-clone-wall.md):
 
 - **Pre-baking is rejected.** With no offline mode, a baked `~/.cache/act` would still `git fetch`
   upstream every job (only *clone* → *fetch*), and the cache path's run-to-run stability is
@@ -93,7 +93,7 @@ Routing build-time base-image pulls (the `FROM` in `docker build`) through the i
 
 ### Constrictor (strangler) migration for the build workflow
 
-[ADR-0036](../adr/adr-0036-amd64-default-constrictor-build.md) ships as **new** files —
+[ADR-0027](../adr/adr-0027-amd64-default-constrictor-build.md) ships as **new** files —
 a `docker-build-push-registry-fast` composite + a `docker-build-and-push-registry-fast.yml`
 reusable workflow — leaving the existing composite untouched. Callers move **one at a time**; the
 old composite is deleted only once nothing references it. This avoids a flag-day rewrite of every
@@ -107,21 +107,21 @@ build job and keeps each migration independently revertible.
 - **Two build stacks during migration.** The intended constrictor state; cleaned up by deleting the
   non-fast chain once nothing references it.
 - **The measurement might say the clone wall still hurts.** Then we execute the scoped LAN mirror
-  from [ADR-0035](../adr/adr-0035-action-clone-wall.md) — a bounded, already-designed follow-up, not
+  from [ADR-0028](../adr/adr-0028-action-clone-wall.md) — a bounded, already-designed follow-up, not
   a re-think.
 
-## Relationship to ADR-0008
+## Relationship to ADR-0026
 
-ADR-0008's topology-C table promises a **warm** build cache (PVC + Harbor registry cache) as part of
+ADR-0026's topology-C table promises a **warm** build cache (PVC + Harbor registry cache) as part of
 the rootless end-state. This RFC realizes the **layer-cache** dimension now (Harbor registry cache,
 already shipped), on topology A, without waiting for the rootless engine — they are orthogonal. When
 the rootless `buildkitd` Service eventually lands, the registry layer cache carries over unchanged;
-only the build *engine* swaps. The *action* cache is deferred (ADR-0035) and is likewise
+only the build *engine* swaps. The *action* cache is deferred (ADR-0028) and is likewise
 engine-independent.
 
 ## Decisions
 
 | ADR | Decision |
 |-----|----------|
-| [ADR-0036](../adr/adr-0036-amd64-default-constrictor-build.md) | Default image builds to linux/amd64 (QEMU only on demand) via a new constrictor "fast" workflow; keep buildx (registry-cache driver) and the Harbor layer cache. |
-| [ADR-0035](../adr/adr-0035-action-clone-wall.md) | The action-clone wall: no runner offline mode exists (verified), so measure after the amd64 fix; scoped LAN mirror if still needed; reject pre-bake / global DEFAULT_ACTIONS_URL / RWX. |
+| [ADR-0027](../adr/adr-0027-amd64-default-constrictor-build.md) | Default image builds to linux/amd64 (QEMU only on demand) via a new constrictor "fast" workflow; keep buildx (registry-cache driver) and the Harbor layer cache. |
+| [ADR-0028](../adr/adr-0028-action-clone-wall.md) | The action-clone wall: no runner offline mode exists (verified), so measure after the amd64 fix; scoped LAN mirror if still needed; reject pre-bake / global DEFAULT_ACTIONS_URL / RWX. |

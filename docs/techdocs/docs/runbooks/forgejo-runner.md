@@ -2,7 +2,7 @@
 
 The in-cluster CI runner: a KEDA **ScaledJob** that turns "jobs pending in Forgejo" into
 ephemeral `forgejo-runner one-job` pods, each with a privileged Docker-in-Docker sidecar for
-image builds. This is **Topology A, host-mode** from [ADR-0008](../adr/adr-0008-rootless-ci-image-builds.md)
+image builds. This is **Topology A, host-mode** from [ADR-0026](../adr/adr-0026-rootless-ci-image-builds.md)
 — proven on a real job 2026-06-18.
 
 - **Manifests:** `kubernetes/apps/forgejo/forgejo-runner/`
@@ -44,7 +44,7 @@ registration (the KEDA Forgejo pattern; it is registered **non-ephemeral** so Fo
 delete it after one job).
 
 That identity is **minted, not hand-seeded**, by `forgejo-runner-provisioner` (a Tier-1 idempotent
-Job, [ADR-0019](../adr/adr-0019-bootstrap-task-pattern.md), mirroring `forgejo-ci-provisioner`):
+Job, [ADR-0003](../adr/adr-0003-bootstrap-task-pattern.md), mirroring `forgejo-ci-provisioner`):
 
 - It registers **one persistent global runner** via `POST /api/v1/admin/actions/runners`
   (`{name: keda-global-docker, ephemeral: false}`) using the admin Secret, and writes the
@@ -96,7 +96,7 @@ Two **workflow-side** failures that look like runner bugs but live in the repo's
 | Symptom | Cause | Fix |
 |---|---|---|
 | `failed to read action 'X', no files found after reading paths: action.yml, action.yaml, Dockerfile` | a job uses a local `uses: ./...` action **without checking out the repo first** (the workspace is empty until `actions/checkout`) | add an `actions/checkout@v5` step before the local-action step (each ephemeral job runs in a fresh pod, so every job that uses a local action must check out) |
-| semantic-release: `remote: mirror repository is read-only` (HTTP 403) on `git push` | the Forgejo repo is a **read-only pull-mirror**; semantic-release must push a tag | make the repo authoritative — see [ADR-0024](../adr/adr-0024-forgejo-leading-application-repos.md) |
+| semantic-release: `remote: mirror repository is read-only` (HTTP 403) on `git push` | the Forgejo repo is a **read-only pull-mirror**; semantic-release must push a tag | make the repo authoritative — see [ADR-0013](../adr/adr-0013-forgejo-leading-application-repos.md) |
 
 ## Operations
 
@@ -118,4 +118,4 @@ kubectl -n keda logs deploy/keda-operator --tail=40 | grep -E 'Scaling Jobs|Crea
 > Imperative `kubectl delete job` on a KEDA-generated runner is blocked by the cluster's
 > GitOps-only guardrails (and unnecessary — KEDA backfills). Drive everything through manifests.
 
-The privileged DinD is deliberate but interim ([ADR-0008](../adr/adr-0008-rootless-ci-image-builds.md) Topology C is the endgame — see roadmap).
+The privileged DinD is deliberate but interim ([ADR-0026](../adr/adr-0026-rootless-ci-image-builds.md) Topology C is the endgame — see roadmap).

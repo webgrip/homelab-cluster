@@ -13,7 +13,7 @@ check_cli docker mktemp rsync awk grep sort wc python3
 # Shift-left guard: every Grafana alert-rule SSE node must carry an `expression:`
 # pointer. Missing it silently broke all 16 SLO rules for ~3 weeks (kubeconform and
 # the operator CRD can't see model internals). See scripts/validate_grafana_alert_expr.py
-# and ADR-0030.
+# and ADR-0035.
 log info "Validating Grafana alert-rule expressions"
 python3 "${SCRIPT_DIR}/validate_grafana_alert_expr.py" "${ROOT_DIR}"
 

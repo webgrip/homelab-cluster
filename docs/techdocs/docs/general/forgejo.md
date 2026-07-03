@@ -88,11 +88,11 @@ admission gates opened on this namespace — a Kyverno `PolicyException` **and**
 `pod-security.kubernetes.io/enforce: privileged` (a plain kyverno hardening exception is not
 enough). Full architecture, scaling knobs, and the runtime troubleshooting table:
 [Forgejo runner runbook](../runbooks/forgejo-runner.md); the destination (rootless BuildKit, drop
-the privilege) is [ADR-0008](../adr/adr-0008-rootless-ci-image-builds.md).
+the privilege) is [ADR-0026](../adr/adr-0026-rootless-ci-image-builds.md).
 
 **Repo authority.** `webgrip/infrastructure` is de-mirrored and **Forgejo-authoritative** (done)
 so its in-cluster CI can cut releases — a read-only pull-mirror can't be pushed to, which blocks
-`semantic-release`. See [ADR-0024](../adr/adr-0024-forgejo-leading-application-repos.md) and the
+`semantic-release`. See [ADR-0013](../adr/adr-0013-forgejo-leading-application-repos.md) and the
 `forgejo-leading` skill for cutting over further repos.
 
 ## Follow-ups (not yet deployed)

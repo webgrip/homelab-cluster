@@ -9,7 +9,7 @@
 ## Where we stand (live, 2026-07-02)
 
 - **Flux:** one NOT-READY: `kepler/kepler` (Helm upgrade timeout on the DaemonSet — #67). Suspended
-  by design: `observability/pyroscope` (ADR-0032; sole gate = owner etcd defrag). Commented out of
+  by design: `observability/pyroscope` (ADR-0037; sole gate = owner etcd defrag). Commented out of
   kustomizations (zombie state): **tempo, beyla, k6-operator, k6-canaries** (observability), **drawio**
   (RAM), **zomboid** (last SOPS secret) — #68/#40.
 - **Nodes:** control-plane RAM **80 / 71 / 64 %** (worst soyo regressed from 73 % on 06-21 — #38);
@@ -25,9 +25,9 @@
   foundations, ingress/DNS, identity, Postgres layer, observability pipeline, image signing, ARC).
   Many items below are those RFCs' implementation legs.
 - **Active owner workstreams (in flight at re-inventory):** the freshrss PgBouncer dynamic-creds
-  iteration (ADR-0010 — sidecar SIGHUP-reload shape in the working tree), the MADR ADR conversion
+  iteration (ADR-0016 — sidecar SIGHUP-reload shape in the working tree), the MADR ADR conversion
   (`adr-writer` skill), and a docs link-checker landing in e2e CI. The Flux-source cutover
-  (ADR-0014/0015) remains the big gate.
+  (ADR-0011/0015) remains the big gate.
 
 ## ✅ Done log (recent)
 
@@ -35,24 +35,24 @@
   docs (`adr/landscape.md`), 11 gap RFCs written and registered. ADR corpus normalized with
   corrected statuses (`57b1d15c`); 7 dead runbooks pruned; general docs refreshed; nav rebuilt;
   vestigial `release: kube-prometheus-stack` guard-hook check retired.
-- **VictoriaMetrics swap (2026-07-01→02, ADR-0038, PR #360):** kube-prometheus-stack →
+- **VictoriaMetrics swap (2026-07-01→02, ADR-0034, PR #360):** kube-prometheus-stack →
   modular vm-operator + VMSingle/VMAgent/VMAlert/VMAlertmanager + standalone KSM/node-exporter;
   CoreDNS scrape + vmagent deadlock + CRD-race fixed; VMSingle right-sized + backend-health
   dashboard; Watchdog/KubeNodeNotReady/KubeJobFailed house rules restored; umbrella-chart
   re-evaluation done — stayed modular. Mimir + Kafka removed (all Mimir roadmap items obsolete).
-- **Default-deny ratified (2026-07-01, ADR-0039 `7051e70d`):** opt-in per-namespace generator +
+- **Default-deny ratified (2026-07-01, ADR-0006 `7051e70d`):** opt-in per-namespace generator +
   `cnpg-netpol`/`gateway-egress` components + CI guard — recorded and Accepted (mechanism had
   shipped W7). Supersedes the old Hubble-first cluster-wide plan.
-- **Dynamic DB creds (ADR-0010, 2026-07-01→02):** database engine + `vault_admin` + `openbao-db`
+- **Dynamic DB creds (ADR-0016, 2026-07-01→02):** database engine + `vault_admin` + `openbao-db`
   store + PgBouncer pipeline built; freshrss pilot cut over, then reverted ×2 (PG16 ADMIN OPTION +
   sidecar startup) — infra stands, pilot iteration continuing (#41).
-- **Harbor proxy Phase-1 cutover (2026-06-23, ADR-0016/17/18):** mirror on all 5 nodes, fallback
+- **Harbor proxy Phase-1 cutover (2026-06-23, ADR-0023/17/18):** mirror on all 5 nodes, fallback
   drill passed, six upstreams, non-bootstrap OCI charts through the proxy. CI perf decisions
-  (ADR-0035/36) accepted 06-25.
+  (ADR-0028/36) accepted 06-25.
 - **Authentik login repair (2026-06-30→07-02):** inline single-page password flow fixed (KeyOf
   forward-ref bug); dead n8n/authentik OIDC half-config removed. Renovate presets re-homed to
   Forgejo (`local>webgrip/renovate-config:forgejo`, prCreation:immediate).
-- **Node-taxonomy + storage migration (2026-06-16→21, ADR-0025…0029):** every app + all Longhorn
+- **Node-taxonomy + storage migration (2026-06-16→21, ADR-0001…0029):** every app + all Longhorn
   replicas off the soyos; capability labels; Longhorn Garage backup target + gitops-backup
   RecurringJob; openbao-restore runbook. (Detail in git history / the ADRs.)
 
@@ -67,7 +67,7 @@ webhook HA · `#55` prove the Longhorn backup · `#8` security-ns default-deny �
 
 ## The 100
 
-### Security — Kyverno audit→enforce (11 policies still Audit; ADR-0033 waves)
+### Security — Kyverno audit→enforce (11 policies still Audit; ADR-0032 waves)
 
 1. Promote `require-probes` → Enforce (cleanest next wave; app probes already conformant) — `[P1 · M · S]`
 2. Promote `namespace-tenancy` → Enforce — `[P2 · M · S]`
@@ -79,7 +79,7 @@ webhook HA · `#55` prove the Longhorn backup · `#8` security-ns default-deny �
    verification-infra namespaces carved out ([RFC](../rfc/rfc-image-signing-verification.md)) — `[P2 · H · M]`
 7. Burn down the `storage-cnpg-governance` test-coverage debt + add pass-cases to the enforce suites — `[P2 · M · M]`
 
-### Security — network containment (ADR-0039 rollout beyond app namespaces)
+### Security — network containment (ADR-0006 rollout beyond app namespaces)
 
 8. Default-deny the `security` namespace — OpenBao/ESO/cosign crown jewels currently sit on a flat
    network — `[P1 · H · M]`
@@ -121,13 +121,13 @@ webhook HA · `#55` prove the Longhorn backup · `#8` security-ns default-deny �
     "re-anchor to Authentik" narrative — `[P2 · M · S]`
 28. Dependency-Track vs GUAC consolidation decision (two platforms ingest the same weekly SBOMs) — `[P2 · M · M]`
 29. Scheduled re-verification job: cosign verify + OCI-digest drift on deployed images — `[P3 · M · M]`
-30. ADR-0008 step 2: shared rootless BuildKit service; drop the privileged DinD sidecar — `[P2 · H · L]`
+30. ADR-0026 step 2: shared rootless BuildKit service; drop the privileged DinD sidecar — `[P2 · H · L]`
 
 ### Security — runtime detection ([RFC](../rfc/rfc-runtime-detection-response.md))
 
 31. RCA the 2026-06-19 "runtime agents destabilized the cluster" attribution (which agent, what
     mechanism — the 06-18 Longhorn incident is a confounder) — `[P2 · M · M]`
-32. Reinstate ONE detector (Tetragon leaning) under ADR-0032-style gates, wired into alert
+32. Reinstate ONE detector (Tetragon leaning) under ADR-0037-style gates, wired into alert
     delivery — or record retiring both and delete the manifests — `[P2 · H · M]`
 
 ### Talos / nodes
@@ -150,7 +150,7 @@ webhook HA · `#55` prove the Longhorn backup · `#8` security-ns default-deny �
 40. zomboid: migrate the last app SOPS secret → ESO, then re-wire or delete the suspended app; add a
     CI guard failing any new `*.sops.yaml` outside the floor — `[P2 · M · S]`
 41. Land the freshrss dynamic-creds pilot: PgBouncer SIGHUP-reload sidecar iteration is in the
-    working tree — verify mint→rotate→reload end-to-end, then declare ADR-0010 phase 1 — `[P2 · H · M]`
+    working tree — verify mint→rotate→reload end-to-end, then declare ADR-0016 phase 1 — `[P2 · H · M]`
 42. Pooling decision: CNPG `Pooler` CR vs per-app sidecar — one mechanism for dynamic creds + future
     replicas ([RFC](../rfc/rfc-postgres-data-layer.md)) — `[P2 · M · M]`
 
@@ -216,7 +216,7 @@ webhook HA · `#55` prove the Longhorn backup · `#8` security-ns default-deny �
 68. Decide the commented-out telemetry: tempo, beyla, k6-operator/k6-canaries (k6 dashboards +
     rules point at data never collected), and unwired twitch-exporter — re-enable worker-pinned or
     remove — `[P2 · M · M]`
-69. Pyroscope: owner-run etcd defrag → flip `suspend: false` (ADR-0032's sole gate; fsync p99 is
+69. Pyroscope: owner-run etcd defrag → flip `suspend: false` (ADR-0037's sole gate; fsync p99 is
     3.9 ms) — `[P2 · M · S]`
 70. Telemetry retention/durability tier ADR (15d metrics / 30d logs / 14d traces; the
     VMSingle-backup decision) — `[P3 · M · S]`
@@ -232,21 +232,21 @@ webhook HA · `#55` prove the Longhorn backup · `#8` security-ns default-deny �
 
 ### Flux / GitOps / capacity
 
-76. **Execute the ADR-0014/0015 cutover pack:** pull→push mirror flip, `sync.url` repoint to the
+76. **Execute the ADR-0011/0015 cutover pack:** pull→push mirror flip, `sync.url` repoint to the
     in-cluster Forgejo Service, Forgejo webhook on the existing Receiver, break-glass runbook,
     GHCR re-home, GitHub RenovateJob retirement — `[P1 · H · L]`
-77. ADR-0020 Codeberg push-mirror (post-cutover; resolve the ToS question first) — `[P3 · M · M]`
+77. ADR-0014 Codeberg push-mirror (post-cutover; resolve the ToS question first) — `[P3 · M · M]`
 78. Platform-tier `healthChecks`/`wait` audit + `driftDetection.ignore` tuning on noisy HRs — `[P3 · L · S]`
 79. Compute ResourceQuotas: label namespaces for the existing Kyverno quota generator (zero
     carriers today; count-only quotas everywhere) — `[P3 · M · S]`
 
-### Storage tails (ADR-0026/0027/0029)
+### Storage tails (ADR-0008/0027/0029)
 
-80. ADR-0029 stage 2: recreate the chart `longhorn` SC at 2 replicas (every volume on it is
+80. ADR-0010 stage 2: recreate the chart `longhorn` SC at 2 replicas (every volume on it is
     perpetually Degraded at 3) + migrate the ~18 `longhorn-general` references — `[P2 · M · M]`
 81. Restrict the longhorn-manager DaemonSet to storage nodes (stale fringe toleration only today)
     + converge the soyo-2 straggler replica — `[P2 · M · S]`
-82. ADR-0027 cold tier: supervised HDD wipe + node-annotation disk topology (the ADR-0037 disk
+82. ADR-0009 cold tier: supervised HDD wipe + node-annotation disk topology (the ADR-0007 disk
     gate; unlocks the v2/LINSTOR revisit too) — `[P3 · M · M]`
 
 ### CI / shift-left
@@ -285,7 +285,7 @@ webhook HA · `#55` prove the Longhorn backup · `#8` security-ns default-deny �
 98. ARC end-state: retire-or-restore decision + teardown/sunset checklist
     ([RFC](../rfc/rfc-github-actions-retirement.md); 0/0 "TEMP" since 06-18) — `[P2 · M · S]`
 99. 3rd worker node / layered-hardware Phase-2 path choice — unlocks a 3-replica ceiling, real
-    node-level HA, and the ADR-0037 engine revisit — `[P2 · H · L]`
+    node-level HA, and the ADR-0007 engine revisit — `[P2 · H · L]`
 100. Dedicated etcd SSD per soyo (L2/L3 isolation; lower urgency post-migration, still the clean
      fix) — `[P3 · M · L]`
 
@@ -301,7 +301,7 @@ webhook HA · `#55` prove the Longhorn backup · `#8` security-ns default-deny �
   stub; port the gates first, then cut over, then #77 (Codeberg) and the GitHub RenovateJob
   retirement follow.
 - **#21–26 gate #5**, **#4 gates image-hygiene**, and **#6 needs the verify-namespace carve-outs**
-  — the enforce waves stay one-policy-per-commit per ADR-0033.
+  — the enforce waves stay one-policy-per-commit per ADR-0032.
 - **#38 is the lever for #60's drill re-enable** (CP RAM < 70 %) and lowers the risk of every
   rollout-heavy item; treat the RAM regression as the first reliability move.
 - **#49 before #50** — authentik can't be meaningfully 2-instance while both replicas are pinned
@@ -309,4 +309,4 @@ webhook HA · `#55` prove the Longhorn backup · `#8` security-ns default-deny �
 - **#80–82 are window work** — storage changes ship isolated, spaced from other rollout-heavy
   commits (the batched-rollout collapse lesson).
 - **#99 unlocks the horizon** — a third worker reopens 3-replica Longhorn, real node HA, and the
-  ADR-0037 storage-engine gate; decide the layered-hardware path before buying.
+  ADR-0007 storage-engine gate; decide the layered-hardware path before buying.

@@ -6,7 +6,7 @@ when_to_use: Use when adding/editing a VM CR or a scrape, choosing scrape covera
 
 # VictoriaMetrics — the metrics backend
 
-Metrics backend = **modular VictoriaMetrics** (ADR-0038), grafana-operator-style: `observability/vm-operator/` (operator HR) + `observability/victoria-metrics/app/` (the CRs). Runbook for firefighting: `docs/techdocs/docs/runbooks/victoriametrics.md`.
+Metrics backend = **modular VictoriaMetrics** (ADR-0034), grafana-operator-style: `observability/vm-operator/` (operator HR) + `observability/victoria-metrics/app/` (the CRs). Runbook for firefighting: `docs/techdocs/docs/runbooks/victoriametrics.md`.
 
 ## The one rule that took the cluster down
 

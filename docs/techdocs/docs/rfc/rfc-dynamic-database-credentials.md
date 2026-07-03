@@ -3,20 +3,20 @@
 > Status: **Proposed.** This RFC proposes giving applications **short-lived, per-workload,
 > auto-revoked** Postgres credentials minted on demand by OpenBao's `database` secrets engine,
 > instead of the static long-lived passwords they hold today. The headline choice is
-> [ADR-0010](../adr/adr-0010-openbao-dynamic-postgres-credentials.md). It flips to **Accepted** when the
+> [ADR-0016](../adr/adr-0016-openbao-dynamic-postgres-credentials.md). It flips to **Accepted** when the
 > pilot succeeds and the first app cuts over.
 >
 > Pilot status (2026-07-02): engine/store/`vault_admin` infrastructure is live; the freshrss
 > cutover was applied (`678b1da`), reverted (`03f222e`, PG16 `ADMIN OPTION` mint failure),
 > accidentally re-applied (`e805c83a`), and re-reverted (`391eeb19` — the PgBouncer sidecar
-> needs hands-on runtime iteration). Flip condition **unmet**; full churn in ADR-0010's
+> needs hands-on runtime iteration). Flip condition **unmet**; full churn in ADR-0016's
 > Status log.
 
 ## Why
 
 After the [SOPS → OpenBao migration](../blogs/2026-06-12-the-long-goodbye-to-sops.md), database
 passwords are no longer encrypted files — but they are still **static, long-lived values that
-exist**. [ADR-0009](../adr/adr-0009-secret-rotation-model.md) makes rotating them easy; this RFC makes
+exist**. [ADR-0015](../adr/adr-0015-secret-rotation-model.md) makes rotating them easy; this RFC makes
 rotation **irrelevant** for the database class, which is the genuinely state-of-the-art posture:
 
 - A credential that lives for **one hour** and is then revoked has a blast radius measured in
@@ -122,7 +122,7 @@ connection churn, revocation lag, app reconnect behavior.
 
 **Phase 2 — expand by appetite.** Roll to other apps **only** where the connection model tolerates
 periodic credential change. Apps with large/long-lived connection pools or poor reconnect behavior
-stay on static (ADR-0009) creds — dynamic is a *fit-for-purpose* tool, not a mandate.
+stay on static (ADR-0015) creds — dynamic is a *fit-for-purpose* tool, not a mandate.
 
 ## Risks & open questions
 
@@ -153,8 +153,8 @@ stay on static (ADR-0009) creds — dynamic is a *fit-for-purpose* tool, not a m
 
 ## References
 
-- [ADR-0010](../adr/adr-0010-openbao-dynamic-postgres-credentials.md) ·
+- [ADR-0016](../adr/adr-0016-openbao-dynamic-postgres-credentials.md) ·
   [RFC: Security Hardening](rfc-security-hardening.md) ·
-  [ADR-0009: Rotation model](../adr/adr-0009-secret-rotation-model.md)
+  [ADR-0015: Rotation model](../adr/adr-0015-secret-rotation-model.md)
 - [The Long Goodbye to SOPS](../blogs/2026-06-12-the-long-goodbye-to-sops.md) ·
   [CNPG Backups](../runbooks/cnpg-backups.md) · [External Secrets](external-secrets-plan.md)

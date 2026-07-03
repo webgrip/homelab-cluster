@@ -1,6 +1,6 @@
 # [short title of solved problem and solution]
 
-* Status: [proposed | rejected | accepted | deprecated | … | superseded by [ADR-0005](adr-0005-example.md)] <!-- optional -->
+* Status: [proposed | rejected | accepted | deprecated | … | superseded by [ADR-0021](adr-0021-example.md)] <!-- optional -->
 * Deciders: [list everyone involved in the decision] <!-- optional -->
 * Date: [YYYY-MM-DD when the decision was last updated] <!-- optional -->
 
@@ -61,7 +61,7 @@ criterion decision driver | which resolves force force | … | comes out best (s
 
 ## Links <!-- optional -->
 
-* [Link type] [Link to ADR] <!-- example: Refined by [ADR-0005](adr-0005-example.md) -->
+* [Link type] [Link to ADR] <!-- example: Refined by [ADR-0021](adr-0021-example.md) -->
 * … <!-- numbers of links can vary -->
 
 <!-- MADR 2.1.2 (https://adr.github.io/madr/) — house conventions (numbering, Date semantics,

@@ -89,7 +89,7 @@ mise exec -- kubectl get volumes.longhorn.io -n longhorn-system -o json \
   mise exec -- kubectl -n longhorn-system patch nodes.longhorn.io <name> --type=merge -p '{"spec":{"allowScheduling":false}}'
   mise exec -- kubectl -n longhorn-system delete nodes.longhorn.io <name>
   ```
-- **Over-replicated volumes** (3 replicas on a 2-storage-node design — [ADR-0026](../adr/adr-0026-confine-longhorn-to-workers.md)):
+- **Over-replicated volumes** (3 replicas on a 2-storage-node design — [ADR-0008](../adr/adr-0008-confine-longhorn-to-workers.md)):
   reducing them relieves the storm by cancelling queued rebuilds:
   ```bash
   mise exec -- kubectl -n longhorn-system patch volumes.longhorn.io <vol> --type=merge -p '{"spec":{"numberOfReplicas":2}}'

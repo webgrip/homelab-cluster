@@ -20,7 +20,7 @@ Tree: `kubernetes/apps/<ns>/kustomization.yaml` (+ `namespace.yaml`) → registe
    from the menu below. The root `cluster-apps` ks injects `decryption` + remediation into every
    child — re-declaring them is hook-blocked.
 3. **Chart** (skeleton §3) — `OCIRepository` through the Harbor proxy
-   (`oci://harbor.webgrip.dev/ghcr/…`, [ADR-0016](docs/techdocs/docs/adr/adr-0016-harbor-pull-through-proxy-cache.md)),
+   (`oci://harbor.webgrip.dev/ghcr/…`, [ADR-0023](docs/techdocs/docs/adr/adr-0023-harbor-pull-through-proxy-cache.md)),
    pinned by **tag + digest** — refresh pins with `./scripts/update-oci-digests.sh`. Generic
    apps: bjw-s **app-template**, `HelmRelease.spec.chartRef` → the OCIRepository, values under
    `controllers`/`service`/`persistence`.
@@ -50,13 +50,13 @@ Tree: `kubernetes/apps/<ns>/kustomization.yaml` (+ `namespace.yaml`) → registe
 
 | Component | Gives the app | Use when |
 | --- | --- | --- |
-| `placement/worker-pool` | post-render hard `nodeSelector` to `pool=worker` ([ADR-0028](docs/techdocs/docs/adr/adr-0028-application-workload-placement.md)) | chart has no native nodeSelector values |
+| `placement/worker-pool` | post-render hard `nodeSelector` to `pool=worker` ([ADR-0002](docs/techdocs/docs/adr/adr-0002-application-workload-placement.md)) | chart has no native nodeSelector values |
 | `cnpg-netpol` | DB-layer NetworkPolicy + CiliumNetworkPolicy | every CNPG cluster in a default-deny ns (avoids the `ClusterIsNotReady` deadlock) |
 | `cnpg-backup` | `cnpg-backup-s3` ExternalSecret (+PushSecret) in the app ns | every CNPG cluster with barman backups |
 | `cnpg-monitoring` | CNPG PodMonitor + alert-rule pack | every CNPG cluster |
 | `cnpg-restore-test` | restore-drill CronJob + RBAC | per the DB's [backup tier](docs/techdocs/docs/general/database-backup-tiers.md) |
 | `cnpg-disaster-recovery` | DR verify cluster + drill CronJob + queries | top-tier DBs per the same tiers doc |
-| `gateway-egress` | identity-based egress allow to the envoy gateways | app does server-side OIDC discovery under default-deny ([ADR-0039](docs/techdocs/docs/adr/adr-0039-default-deny-network-policies.md)) |
+| `gateway-egress` | identity-based egress allow to the envoy gateways | app does server-side OIDC discovery under default-deny ([ADR-0006](docs/techdocs/docs/adr/adr-0006-default-deny-network-policies.md)) |
 | `observability-s3` / `security-s3` | Garage S3 credential ES for that namespace's workloads | S3-writing workloads in those namespaces |
 | `resource-quota` | namespace ResourceQuota | every new app namespace |
 | `sops` | SOPS-decrypted `cluster-secrets` in-ns | legacy only — new secrets go via ESO |

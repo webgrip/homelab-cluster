@@ -23,7 +23,7 @@ Read-only Kubernetes/Talos/Flux/GitOps reliability auditor for this repo. Diagno
 5. **Storage** — Longhorn health, PVC binding, VolumeAttachments, RWX/RWO conflicts.
 6. **Network/ingress** — Cilium, CoreDNS, Services/EndpointSlices, Gateway API, HTTPRoutes, NetworkPolicies.
 7. **Certificates/edges** — cert-manager, issuers, ACME challenges, external-dns/cloudflared (by reference only).
-8. **Observability** — VictoriaMetrics CRs (VMSingle/VMAgent/VMAlert/VMAlertmanager via vm-operator), Grafana, Loki, Tempo, blackbox/k6 probes. The `pyroscope` Kustomization is suspended by intent (pending ADR-0032) — not a failure.
+8. **Observability** — VictoriaMetrics CRs (VMSingle/VMAgent/VMAlert/VMAlertmanager via vm-operator), Grafana, Loki, Tempo, blackbox/k6 probes. The `pyroscope` Kustomization is suspended by intent (pending ADR-0037) — not a failure.
 9. **Applications** — only after their dependencies are validated.
 
 Every durable fix is a manifest change in Git, not an imperative one-off.

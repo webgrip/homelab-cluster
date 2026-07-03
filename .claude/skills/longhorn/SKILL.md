@@ -9,17 +9,17 @@ allowed-tools: Bash(mise exec -- kubectl get volumes.longhorn.io*), Bash(mise ex
 
 Longhorn 1.11.x, Helm-managed at `kubernetes/apps/longhorn-system/longhorn/`. The soyo control-planes are
 RAM-tight and share one SSD with etcd, so Longhorn churn there has repeatedly destabilised the cluster —
-the strategic direction ([ADR-0026](docs/techdocs/docs/adr/adr-0026-confine-longhorn-to-workers.md))
+the strategic direction ([ADR-0008](docs/techdocs/docs/adr/adr-0008-confine-longhorn-to-workers.md))
 is **replicas only on the workers (worker-1 + fringe); soyos hold zero**.
 
-## StorageClasses (ADR-0029 consolidated set — canonical)
+## StorageClasses (ADR-0010 consolidated set — canonical)
 
 `kubernetes/apps/longhorn-system/longhorn/storageclass/`. The 2-replica ceiling is structural (2 storage
 nodes + HARD anti-affinity).
 
 | Class | Replicas | Disk | Use |
 |---|---|---|---|
-| `longhorn` | 2 (target) | SSD | default / general — the "hot" tier. **NOTE: the chart's `longhorn` SC still carries `numberOfReplicas: 3`** (immutable param; needs a recreate to converge — ADR-0029 Stage 2). |
+| `longhorn` | 2 (target) | SSD | default / general — the "hot" tier. **NOTE: the chart's `longhorn` SC still carries `numberOfReplicas: 3`** (immutable param; needs a recreate to converge — ADR-0010 Stage 2). |
 | `longhorn-general` | 2 | SSD | app volumes (16 PVCs) — being folded into `longhorn` |
 | `longhorn-cold` | 1 | HDD (`cold` tag) | bulk/low-IOPS (backups, archives). **Never** Postgres/WAL — HDD-speed sync writes. Inert until the fringe HDD is wiped + tagged. |
 | `longhorn-rwx` | 2 | SSD (NFS) | ReadWriteMany — **blocked by Kyverno `disallow-rwx-pvcs`** (allowlist-gated). Shared-volume apps stay single-node instead — see `workload-placement`. |
@@ -27,7 +27,7 @@ nodes + HARD anti-affinity).
 
 `defaultReplicaCount: 2` in the HelmRelease. CNPG DBs use `longhorn` (reserved) — see the `cnpg-database` skill.
 **Soyos stay Longhorn-free** — the `longhorn-gitops` soyo-replica SC was retired; gitops DR is external-S3
-backups + a GitHub fallback Flux source (ADR-0026), not a soyo replica.
+backups + a GitHub fallback Flux source (ADR-0008), not a soyo replica.
 
 ## Backups → external Garage S3
 
@@ -70,7 +70,7 @@ via a postRenderer (don't let it go BestEffort → OOM).
 - **Don't ship a Talos `machine.disks` entry over a disk that still has a filesystem** — Talos won't
   `mkfs` without `--force` and wedges boot (06-19). Wipe first.
 
-## Eviction (move replicas off a node — ADR-0026 / Phase E)
+## Eviction (move replicas off a node — ADR-0008 / Phase E)
 
 One node at a time, **evict (don't drain)** so etcd quorum is untouched:
 

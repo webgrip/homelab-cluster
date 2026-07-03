@@ -2,7 +2,7 @@
 
 > Status: **Proposed** · Date: 2026-07-02 · Part of the [decision-landscape gap register](../adr/landscape.md)
 
-> **TL;DR.** ADR-0038 gave the metrics backend a record; the rest of the telemetry pipeline —
+> **TL;DR.** ADR-0034 gave the metrics backend a record; the rest of the telemetry pipeline —
 > Loki, Tempo, the two-Alloy collector topology, Beyla, Pyroscope, the synthetics fleet — has
 > none. The composition is genuinely good and deserves ratifying; the open decisions hiding in it
 > (retention tiers chosen app-by-app, single-replica everything, an unauthenticated Loki, a
@@ -20,13 +20,13 @@ The pipeline as built (verified in-tree 2026-07-02):
   graphs into VMSingle), logs → Loki, metrics → VMSingle. **Beyla** (eBPF, opt-in via the
   `beyla.instrument: "true"` annotation, 10% sampling, metrics export disabled) feeds it.
 - **Profiles**: Pyroscope — suspended; re-enable gated on the owner-run etcd defrag
-  ([ADR-0032](../adr/adr-0032-reenable-pyroscope-worker-pool.md)).
+  ([ADR-0037](../adr/adr-0037-reenable-pyroscope-worker-pool.md)).
 - **Synthetics & meta**: blackbox-exporter `Probe`s (incl. Garage), k6-canaries every 30 min
   writing into VMSingle, Sloth-generated SLOs, kepler (power), twitch-exporter, OpenCost reading
   VMSingle.
 
 None of this has a decision record — which is not just bookkeeping. The pattern that produced
-ADR-0038's "scrape coverage is now our responsibility" lesson applies pipeline-wide: hand-built
+ADR-0034's "scrape coverage is now our responsibility" lesson applies pipeline-wide: hand-built
 composition means silent gaps are *ours*, and without records the load-bearing choices can't be
 distinguished from accidents. Specific undecided choices found in the audit:
 
@@ -49,7 +49,7 @@ distinguished from accidents. Specific undecided choices found in the audit:
 1. **Backfill three retroactive ADRs**:
    (a) **Loki as the log backend** with the alloy-agent collection set — the Talos syslog
    ingestion is the distinctive, easy-to-lose piece; alternatives (VictoriaLogs — natural
-   post-ADR-0038 candidate, Elastic) recorded;
+   post-ADR-0034 candidate, Elastic) recorded;
    (b) **Tempo + OTLP via alloy-gateway as the tracing spine**, Beyla's opt-in annotation
    convention included;
    (c) **the two-Alloy topology** — per-node *agent* for node-bound sources vs central *gateway*
@@ -76,10 +76,10 @@ distinguished from accidents. Specific undecided choices found in the audit:
 
 ## Out of scope
 
-- The metrics backend — [ADR-0038](../adr/adr-0038-victoriametrics-metrics-backend.md).
+- The metrics backend — [ADR-0034](../adr/adr-0034-victoriametrics-metrics-backend.md).
 - Alert rule shape/health — the [alerting-reliability RFC](rfc-observability-alerting-reliability.md).
 - Alert **delivery** — the [alert-delivery RFC](rfc-alert-delivery.md).
-- Pyroscope re-enablement — decided, gated, tracked in ADR-0032.
+- Pyroscope re-enablement — decided, gated, tracked in ADR-0037.
 
 ## References
 

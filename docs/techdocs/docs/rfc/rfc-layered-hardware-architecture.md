@@ -5,7 +5,7 @@
 > lives in a layer that was never isolated — and that "extremely fast" is only worth buying where
 > speed is actually scarce (storage and east-west network). It draws **four end-state paths (A–D) as
 > equals** rather than picking one, and commits to a single **migration spine** that reaches any of
-> them. Individual choices become **candidate ADRs** (next free number ADR-0029 — 0025–0028 are taken by [RFC: Node taxonomy & storage placement](rfc-node-taxonomy-and-storage-placement.md)), assigned as each is
+> them. Individual choices become **candidate ADRs** (next free number ADR-0010 — 0025–0028 are taken by [RFC: Node taxonomy & storage placement](rfc-node-taxonomy-and-storage-placement.md)), assigned as each is
 > ratified. **Phase 0 ("stop the bleeding") is actionable now** and maps to existing roadmap
 > reliability items. It flips to **Accepted** as a target path is chosen and each layer's ADR lands.
 
@@ -217,7 +217,7 @@ walls, shared by both:
 1. **Both need a clean, dedicated block device.** v1's filesystem path (`/var/lib/longhorn`) does not
    carry over — v2 wants a raw block-type disk, and DRBD wants a raw device to auto-prepare into an
    LVM/ZFS pool. Today **neither storage node has one free**: fringe's 1 TB HDD is still unwiped NTFS
-   (the inert cold-tier, [ADR-0027](../adr/adr-0027-longhorn-hot-cold-tiers.md)) and worker-1's SSD is
+   (the inert cold-tier, [ADR-0009](../adr/adr-0009-longhorn-hot-cold-tiers.md)) and worker-1's SSD is
    fully consumed. So both are **blocked on exactly the L3 boot/etcd-≠-data disk split this RFC already
    calls for** — you cannot adopt either until dedicated data disks exist.
 2. **Both add a permanent per-node reservation that lands on this cluster's weak spots** (RAM-tightness
@@ -240,7 +240,7 @@ Longhorn v1 stays the default.** When disks land, the pick is path-shaped: **Lon
 hyperconverged all-NVMe **Path A** (no kernel tax, keeps the UI/backup) if you can spare the
 cores/hugepages; **LINSTOR/Piraeus** suits a perf-per-watt-max node willing to pay the per-upgrade
 rebuild tax; **Rook-Ceph** / **ZFS-HA** remain the Path B/C answers. This gate is ratified as
-[ADR-0037](../adr/adr-0037-storage-engine-gated-on-dedicated-disks.md) — Longhorn v1 stays until
+[ADR-0007](../adr/adr-0007-storage-engine-gated-on-dedicated-disks.md) — Longhorn v1 stays until
 dedicated data disks exist; the engine pick is deferred to Phase 2.
 
 **Dedicated networks & disks.** Whichever model: put **replication on the L1 storage plane** (so a
@@ -250,13 +250,13 @@ rebuild can never again starve app traffic — the batched-rollout collapse), gi
 **Data services (L4).** Move CNPG from single-instance to **synchronous replicas with hard
 anti-affinity** across worker nodes; make WAL archive **dual-target — a local MinIO on the NVMe tier
 _and_ offsite** — which directly removes the Garage WAL SPOF and complements
-[ADR-0002](../adr/adr-0002-registry-blob-storage-garage-s3.md)'s Garage-for-blobs decision. Schedule
+[ADR-0018](../adr/adr-0018-registry-blob-storage-garage-s3.md)'s Garage-for-blobs decision. Schedule
 topology-aware so replicas never co-locate on one node or disk.
 
 **Interactions to honor.** This relayering touches standing decisions and must stay compatible with
-[external CNPG](../adr/adr-0003-external-cnpg-database.md),
-[LAN-only exposure](../adr/adr-0005-lan-only-exposure.md), and
-[Cilium WireGuard pod encryption](../adr/adr-0007-cilium-wireguard-encryption.md) (a dedicated storage
+[external CNPG](../adr/adr-0019-external-cnpg-database.md),
+[LAN-only exposure](../adr/adr-0021-lan-only-exposure.md), and
+[Cilium WireGuard pod encryption](../adr/adr-0004-cilium-wireguard-encryption.md) (a dedicated storage
 network must still ride encrypted or be an explicitly trusted L2 segment). Each interaction becomes a
 _Consequences_ note in the spawned ADRs.
 
@@ -291,7 +291,7 @@ cluster (B), or TrueNAS HA pair (C). Migrate via **CNPG replica failover + PVC c
 ## Decisions (candidate future ADRs)
 
 Nothing here is ratified, so per the [ADR conventions](../adr/index.md) these are **candidate ADRs
-without numbers** — each takes the next free number (starting **ADR-0029**; 0025–0028 are taken by
+without numbers** — each takes the next free number (starting **ADR-0010**; 0025–0028 are taken by
 [RFC: Node taxonomy & storage placement](rfc-node-taxonomy-and-storage-placement.md)) when it is
 actually decided. The RFC's job is to enumerate the decisions and what gates them.
 
@@ -324,7 +324,7 @@ Because the posture is a **menu**, this RFC ends with criteria rather than a sin
 > choice — default to **A**, or **C** for enterprise-grade storage at moderate power.
 
 When the answers converge, ratify the matching rows in
-[Decisions](#decisions-candidate-future-adrs) as ADR-0029+.
+[Decisions](#decisions-candidate-future-adrs) as ADR-0010+.
 
 ## Risks & open questions
 
@@ -407,11 +407,11 @@ Terms used above, plainest-first — this RFC should be readable without prior h
 - **Runbooks:** [Longhorn rebuild-wedge](../runbooks/longhorn-rebuild-wedge.md) ·
   [Longhorn IM-cpu](../runbooks/longhorn-im-cpu-converge.md) ·
   [CNPG backups & restore](../runbooks/cnpg-backups.md)
-- **ADRs:** [0002 Garage blob storage](../adr/adr-0002-registry-blob-storage-garage-s3.md) ·
-  [0003 external CNPG](../adr/adr-0003-external-cnpg-database.md) ·
-  [0005 LAN-only](../adr/adr-0005-lan-only-exposure.md) ·
-  [0007 Cilium WireGuard](../adr/adr-0007-cilium-wireguard-encryption.md) ·
-  [0021 Cilium gateway egress](../adr/adr-0021-cilium-gateway-egress-for-oidc.md)
+- **ADRs:** [0002 Garage blob storage](../adr/adr-0018-registry-blob-storage-garage-s3.md) ·
+  [0003 external CNPG](../adr/adr-0019-external-cnpg-database.md) ·
+  [0005 LAN-only](../adr/adr-0021-lan-only-exposure.md) ·
+  [0007 Cilium WireGuard](../adr/adr-0004-cilium-wireguard-encryption.md) ·
+  [0021 Cilium gateway egress](../adr/adr-0005-cilium-gateway-egress-for-oidc.md)
 - **Roadmap:** reliability — HA/resources/PDBs, backup & DR, Garage SPOF ([roadmap](../general/roadmap.md))
 - **Sibling RFCs:** [Security Hardening](rfc-security-hardening.md) ·
   [Dynamic Database Credentials](rfc-dynamic-database-credentials.md)

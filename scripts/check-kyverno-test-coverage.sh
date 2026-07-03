@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# No-enforce-without-tests gate (roadmap #83, ADR-0033).
+# No-enforce-without-tests gate (roadmap #83, ADR-0032).
 #
 # Every Kyverno ClusterPolicy that enforces at admission (blocks a request) MUST be
 # exercised by a CLI test that proves it catches a violation (>=1 `result: fail`).

@@ -1,6 +1,6 @@
 # RFC: Node taxonomy & storage placement (current 5-node cluster)
 
-> Status: **Implemented** (executed 2026-06-16 → 06-21) · Date: 2026-06-19 · Umbrella for [ADR-0025](../adr/adr-0025-node-taxonomy.md), [ADR-0026](../adr/adr-0026-confine-longhorn-to-workers.md), [ADR-0027](../adr/adr-0027-longhorn-hot-cold-tiers.md), [ADR-0028](../adr/adr-0028-application-workload-placement.md) — 0025/0026/0028 Accepted; 0027 (hot/cold tiers) remains Proposed, gated on [ADR-0037](../adr/adr-0037-storage-engine-gated-on-dedicated-disks.md)'s disk plan.
+> Status: **Implemented** (executed 2026-06-16 → 06-21) · Date: 2026-06-19 · Umbrella for [ADR-0001](../adr/adr-0001-node-taxonomy.md), [ADR-0008](../adr/adr-0008-confine-longhorn-to-workers.md), [ADR-0009](../adr/adr-0009-longhorn-hot-cold-tiers.md), [ADR-0002](../adr/adr-0002-application-workload-placement.md) — 0025/0026/0028 Accepted; 0027 (hot/cold tiers) remains Proposed, gated on [ADR-0007](../adr/adr-0007-storage-engine-gated-on-dedicated-disks.md)'s disk plan.
 
 > **TL;DR.** Stop Longhorn from destabilising etcd by moving **all replicas off the soyo
 > control-planes onto the two workers** (worker-1 + fringe), and replace today's ad-hoc placement
@@ -105,28 +105,28 @@ Measured today: 47 Longhorn volumes · **541 GiB provisioned / 115 GiB actual** 
 
 | Decision | ADR | Status |
 |---|---|---|
-| Capability node taxonomy (labels; retire the `fringe` taint/`nodegroup` scheme) | [ADR-0025](../adr/adr-0025-node-taxonomy.md) | Proposed |
-| Confine Longhorn storage to the workers (protect etcd) + forgejo exception | [ADR-0026](../adr/adr-0026-confine-longhorn-to-workers.md) | Proposed |
-| Longhorn hot/cold storage tiers (SSD/HDD) via node-annotation disk config | [ADR-0027](../adr/adr-0027-longhorn-hot-cold-tiers.md) | Proposed |
-| Pin application workloads to the worker pool (hard; forgejo excepted) | [ADR-0028](../adr/adr-0028-application-workload-placement.md) | Proposed |
-| Consolidate Longhorn StorageClasses to a minimal intent-named set (one 2-replica default) | [ADR-0029](../adr/adr-0029-storageclass-consolidation.md) | Proposed |
+| Capability node taxonomy (labels; retire the `fringe` taint/`nodegroup` scheme) | [ADR-0001](../adr/adr-0001-node-taxonomy.md) | Proposed |
+| Confine Longhorn storage to the workers (protect etcd) + forgejo exception | [ADR-0008](../adr/adr-0008-confine-longhorn-to-workers.md) | Proposed |
+| Longhorn hot/cold storage tiers (SSD/HDD) via node-annotation disk config | [ADR-0009](../adr/adr-0009-longhorn-hot-cold-tiers.md) | Proposed |
+| Pin application workloads to the worker pool (hard; forgejo excepted) | [ADR-0002](../adr/adr-0002-application-workload-placement.md) | Proposed |
+| Consolidate Longhorn StorageClasses to a minimal intent-named set (one 2-replica default) | [ADR-0010](../adr/adr-0010-storageclass-consolidation.md) | Proposed |
 
 ## Phased migration
 
 One reversible change per commit, **spaced apart** (batched reconciles have caused storage collapse).
 
 - **A — Docs.** This RFC + the four ADRs (flips to Accepted as each lands).
-- **B — Taxonomy labels** (ADR-0025): add `node.webgrip.io/*` + `storage.webgrip.io/longhorn` +
+- **B — Taxonomy labels** (ADR-0001): add `node.webgrip.io/*` + `storage.webgrip.io/longhorn` +
   Longhorn disk-config annotations via Talos patches; apply per node (no reboot).
-- **C — Hot/cold tiers** (ADR-0027): `createDefaultDiskLabeledNodes=true`; create
+- **C — Hot/cold tiers** (ADR-0009): `createDefaultDiskLabeledNodes=true`; create
   `longhorn-hot`/`longhorn-cold`/`longhorn-gitops`; verify disks/tags; move bulk volumes to cold.
-- **D1 — Pin stateless apps** (ADR-0028): add `components/placement/worker-pool` to each no-PVC app's
+- **D1 — Pin stateless apps** (ADR-0002): add `components/placement/worker-pool` to each no-PVC app's
   `app/kustomization.yaml`; convert the `workload-tier=apps` soft affinities to hard. Stateless apps
   reach either worker freely, so this is safe before eviction.
 - **Retire the fringe taint** — owner removes it manually or via a controlled fringe re-register
   (`register-with-taints` applies only at registration; `kubectl taint` is hook-blocked), then drop it
   from the Talos patch. fringe becomes a normal worker.
-- **E — Soyo eviction** (ADR-0026): open worker-1 in Longhorn + GC the orphan `slab` node; reduce
+- **E — Soyo eviction** (ADR-0008): open worker-1 in Longhorn + GC the orphan `slab` node; reduce
   3-replica volumes → 2; **evict soyos one at a time** (`allowScheduling=false` + `evictionRequested`,
   waiting for 0 replicas + all-healthy before the next); lock soyos storage-free and lower
   `guaranteedInstanceManagerCPU`. This also **opens the PV node-affinity for worker-1** (existing PVs

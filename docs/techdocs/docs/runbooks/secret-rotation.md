@@ -1,7 +1,7 @@
 # Runbook: Rotating a secret in OpenBao (and how it reaches your pods)
 
 **Status:** active · **Scope:** any *provided/external* value held in OpenBao KV v2 and surfaced
-into a pod by External Secrets · **Model:** [ADR-0009 — Secret rotation model](../adr/adr-0009-secret-rotation-model.md)
+into a pod by External Secrets · **Model:** [ADR-0015 — Secret rotation model](../adr/adr-0015-secret-rotation-model.md)
 · **Backend ops:** [External Secrets runbook](external-secrets.md), [OpenBao restore](openbao-restore.md)
 
 > Rotation here is a **single OpenBao write**, propagated automatically. There is no
@@ -38,7 +38,7 @@ data.
 | --- | --- | --- |
 | **Provided / external** — a value that originates *outside* the cluster (provider API token, OIDC client secret you set, Garage S3 key, a DB password you chose). Lives in OpenBao; its `ExternalSecret` uses `ClusterSecretStore/openbao` and `refreshInterval: 1h`. | `kubectl get es <name> -n <ns> -o yaml` shows `secretStoreRef.name: openbao` and `data[].remoteRef` / `dataFrom.extract`. | **✅ Yes — §3 (planned) / §4 (urgent).** |
 | **Generated entropy** — random in-cluster value no human ever knows (admin pw, session/CSRF key). `ExternalSecret` uses `generatorRef: password-generator*` with `refreshInterval: "0"` (generate-once). | The ExternalSecret has `dataFrom.sourceRef.generatorRef` and `refreshInterval: "0"`. | **⚠️ Not "rotated" — regenerated.** See §5.3. Safe **only** before the app stores data. |
-| **At-rest encryption key** — decrypts data already on disk (`AUTHENTIK_SECRET_KEY`, Dependency-Track `secret.key`, any `*_ENCRYPTION_KEY`, Harbor `secretKey`). | Generate-once **and** the consumer has **no** auto-reload annotation. | **❌ NEVER.** Regenerating corrupts every row encrypted with the old key. Out of scope by [ADR-0009](../adr/adr-0009-secret-rotation-model.md). |
+| **At-rest encryption key** — decrypts data already on disk (`AUTHENTIK_SECRET_KEY`, Dependency-Track `secret.key`, any `*_ENCRYPTION_KEY`, Harbor `secretKey`). | Generate-once **and** the consumer has **no** auto-reload annotation. | **❌ NEVER.** Regenerating corrupts every row encrypted with the old key. Out of scope by [ADR-0015](../adr/adr-0015-secret-rotation-model.md). |
 | **Transit / cosign signing key** | OpenBao Transit, not KV. | ❌ Not here — use [cosign transit key rotation](cosign-transit-key-rotation.md). |
 
 The rest of this runbook is the **provided/external** path unless a section says otherwise.
@@ -170,7 +170,7 @@ corrupts data — do not.
 ### 5.4 At-rest encryption keys — do not rotate
 
 `AUTHENTIK_SECRET_KEY`, Dependency-Track `secret.key`, Harbor `secretKey`, any `*_ENCRYPTION_KEY`:
-changing them makes existing ciphertext undecryptable. By [ADR-0009](../adr/adr-0009-secret-rotation-model.md)
+changing them makes existing ciphertext undecryptable. By [ADR-0015](../adr/adr-0015-secret-rotation-model.md)
 their consumers deliberately carry **no** auto-reload annotation. A genuine compromise is a
 data-migration/re-encryption project, not a rotation — escalate, don't `bao kv put`.
 
@@ -227,7 +227,7 @@ Inspection: `kubectl describe externalsecret <name> -n <ns>` · ESO logs
 
 ## See also
 
-- [ADR-0009 — Secret rotation model](../adr/adr-0009-secret-rotation-model.md) — the *why* (vault-write + Reloader, dynamic creds as endgame).
+- [ADR-0015 — Secret rotation model](../adr/adr-0015-secret-rotation-model.md) — the *why* (vault-write + Reloader, dynamic creds as endgame).
 - [External Secrets runbook](external-secrets.md) — store/generator topology, migration recipes, ESO diagnostics.
 - [OpenBao restore](openbao-restore.md) — unseal, raft snapshot restore, lost-contents recovery.
 - [cosign transit key rotation](cosign-transit-key-rotation.md) — the *Transit*-key path (different mechanism).

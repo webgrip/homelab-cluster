@@ -1,6 +1,6 @@
 # RFC: Kyverno audit→enforce hardening
 
-> Status: **Proposed** · Date: 2026-06-21 · Umbrella for [ADR-0033](../adr/adr-0033-kyverno-enforce-promotion-policy.md), [ADR-0034](../adr/adr-0034-approved-registries-stays-audit.md)
+> Status: **Proposed** · Date: 2026-06-21 · Umbrella for [ADR-0032](../adr/adr-0032-kyverno-enforce-promotion-policy.md), [ADR-0033](../adr/adr-0033-approved-registries-stays-audit.md)
 
 > **TL;DR.** 11 Kyverno ClusterPolicies run in `Audit` (observe-only); ~108–114 live FAILs sit
 > unenforced. This RFC sequences their promotion to `Enforce` as **gated, one-at-a-time waves**,
@@ -48,7 +48,7 @@ workload at admission.** Two structural facts shape everything:
 ### Gated wave sequence
 
 The 14-wave order, gating, and prerequisites live in
-[the implementation plan](rfc-kyverno-audit-enforce-hardening.md#waves) and ADR-0033. Each wave:
+[the implementation plan](rfc-kyverno-audit-enforce-hardening.md#waves) and ADR-0032. Each wave:
 clean PolicyReport for the promoted rules (base **and** autogen = 0 unwaived) for ≥1 reconcile
 cycle → CLI/chainsaw test added → `mise exec -- just kyverno-test` + flux-local green → flip → watch
 one admission cycle. One wave per commit, spaced apart (the batched-rollout storage-collapse memory).
@@ -71,7 +71,7 @@ one admission cycle. One wave per commit, spaced apart (the batched-rollout stor
 | 12 | `namespace-tenancy` — require-{netpol,quota,labels} | merge→Enforce | roadmap #13 |
 | 13 | `image-verify` — `verify-webgrip-images` | merge→Enforce | confirm CI signing + digest pins |
 | 14 | `image-attestations` | Enforce | SLSA+CycloneDX publishing confirmed |
-| — | approved-registries, image-verify-harbor, advanced invasive rules, secrets PDB/topology/cm-keys | **stay Audit** | see ADR-0034 |
+| — | approved-registries, image-verify-harbor, advanced invasive rules, secrets PDB/topology/cm-keys | **stay Audit** | see ADR-0033 |
 
 ### Test harness fixes (prerequisite, shipped first)
 
@@ -87,8 +87,8 @@ one admission cycle. One wave per commit, spaced apart (the batched-rollout stor
 
 | ADR | Status | Decision |
 |-----|--------|----------|
-| [ADR-0033](../adr/adr-0033-kyverno-enforce-promotion-policy.md) | Proposed | Gated wave promotion via split + overrides; mandatory test-coverage gate before any Enforce merge. |
-| [ADR-0034](../adr/adr-0034-approved-registries-stays-audit.md) | Proposed | `require-approved-registries` stays Audit; enforce only ever via Harbor proxy + admission mutate-rewrite. |
+| [ADR-0032](../adr/adr-0032-kyverno-enforce-promotion-policy.md) | Proposed | Gated wave promotion via split + overrides; mandatory test-coverage gate before any Enforce merge. |
+| [ADR-0033](../adr/adr-0033-approved-registries-stays-audit.md) | Proposed | `require-approved-registries` stays Audit; enforce only ever via Harbor proxy + admission mutate-rewrite. |
 
 ## Out of scope
 
@@ -101,7 +101,7 @@ one admission cycle. One wave per commit, spaced apart (the batched-rollout stor
 
 The earlier standalone enforcement-roadmap RFC was retired (it assumed keyless GHCR + an
 enforceable registry allowlist, both since overturned — see
-[supply-chain-pipeline](../general/supply-chain-pipeline.md) and ADR-0034). These are the
+[supply-chain-pipeline](../general/supply-chain-pipeline.md) and ADR-0033). These are the
 still-open items it owned that live nowhere else:
 
 **Flux chart-source verification** (Kyverno never sees Flux's chart pulls):
@@ -134,7 +134,7 @@ still-open items it owned that live nowhere else:
   claim binding delegates signing authorization to the forge event, so forge-side protection is
   the real boundary.
 - Move off privileged DinD (rootless/sysbox or a shared locked-down buildkitd); the LXC/VM
-  runner variant is explicitly backbenched as P2 ([ADR-0008](../adr/adr-0008-rootless-ci-image-builds.md) owns the rootless move).
+  runner variant is explicitly backbenched as P2 ([ADR-0026](../adr/adr-0026-rootless-ci-image-builds.md) owns the rootless move).
 - Scope the runner ServiceAccount + NetworkPolicy to Harbor/OpenBao/Dependency-Track only.
 - Pin Forgejo action installers (`cosign-installer`, `sbom-action`) by digest/SHA.
 - Forgejo-native SLSA provenance for the Harbor path (no `attest-build-provenance` analog) —

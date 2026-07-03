@@ -8,7 +8,7 @@ when_to_use: Use when creating a new ADR, recording or ratifying a decision, upd
 
 Format = faithful [MADR 2.1.2](https://adr.github.io/madr/). Template:
 `docs/techdocs/docs/adr/adr-0000-template.md`. Gold-standard example:
-`docs/techdocs/docs/adr/adr-0001-adopt-harbor.md`. Status legend + conventions:
+`docs/techdocs/docs/adr/adr-0017-adopt-harbor.md`. Status legend + conventions:
 `docs/techdocs/docs/adr/index.md`.
 
 ## New ADR
@@ -25,8 +25,9 @@ Format = faithful [MADR 2.1.2](https://adr.github.io/madr/). Template:
    omit the section when no real alternative was weighed).
 4. History → `## Links`: dated bullets `* YYYY-MM-DD — <event> (<commit>)`, oldest first;
    cross-ADR relations (Supersedes / Refined by / Supported by) live here too.
-5. Register: row in the index.md Records table + `docs/techdocs/mkdocs.yml` nav (numeric slot).
-   Verify: `./scripts/check-docs-links.sh`.
+5. Register: row in the index.md Records table (pick the matching **layer section** — the set
+   was re-baselined 2026-07-03 into layer order, but a new ADR just takes the next free number)
+   + `docs/techdocs/mkdocs.yml` nav (numeric slot). Verify: `./scripts/check-docs-links.sh`.
 
 ## Amend / status change
 
@@ -41,4 +42,6 @@ one's Status becomes `superseded by [ADR-NNNN](…)`.
   memory. No ratification commit exists? Log `status corrected in audit YYYY-MM-DD`; don't
   backdate acceptance.
 - Table delimiter rows need spaced pipes (`| --- |`) — repo markdownlint MD060.
-- Numbers are never reused; files never renamed (inbound links).
+- Numbers are never reused; files never renamed (inbound links). Sole exception on record: the
+  2026-07-03 layered re-baseline renumbered 0001–0039 once (old→new map in index.md; mkdocs
+  redirects cover old URLs). Pre-re-baseline references (commits, PRs) use old numbers.

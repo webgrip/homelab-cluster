@@ -19,18 +19,18 @@ What exists (verified in-tree 2026-07-02):
   operations; no record says why Authentik (vs Keycloak, Zitadel, Dex, or nothing).
 - **Configuration-as-code is total**: providers/flows/groups land via blueprints (apply-order
   matters — see the [authentik-oidc-login runbook](../runbooks/authentik-oidc-login.md)); the
-  client secrets ride ESO+OpenBao. This is a house pattern other decisions build on (ADR-0006
+  client secrets ride ESO+OpenBao. This is a house pattern other decisions build on (ADR-0022
   Phase 2) and it has no parent record.
 - **Machine identity is deliberately outside SSO** — the Renovate bot
-  ([ADR-0012](../adr/adr-0012-forgejo-static-bot-pat.md)), Harbor's break-glass local admin
-  ([ADR-0006](../adr/adr-0006-authentik-oidc-phased.md)) — decided per-app, never as a principle.
+  ([ADR-0030](../adr/adr-0030-forgejo-static-bot-pat.md)), Harbor's break-glass local admin
+  ([ADR-0022](../adr/adr-0022-authentik-oidc-phased.md)) — decided per-app, never as a principle.
 - **No outpost, no proxy provider, no forward-auth** exists anywhere in the tree. Repo-wide, the
   only "outpost" hit is an alert-description comment. So the integration menu is: native OIDC, or
   nothing.
 
 The hole: of ~25 apps routed on `envoy-internal`, only five authenticate via Authentik and a few
 more have app-local logins. The rest are protected solely by "you must be on the LAN" — which
-default-deny (ADR-0039) does nothing about (it governs pod-to-pod, not human-to-gateway), and
+default-deny (ADR-0006) does nothing about (it governs pod-to-pod, not human-to-gateway), and
 which erodes with every device that joins the network. Longhorn's UI can **delete volumes**;
 flux-ui can inspect the cluster; the observability routes leak everything the cluster knows.
 A single phished/compromised LAN device inherits all of it.
@@ -76,6 +76,6 @@ A single phished/compromised LAN device inherits all of it.
 
 - [Authentik](../general/authentik.md) · [authentik-oidc-login runbook](../runbooks/authentik-oidc-login.md) ·
   the `authentik-oidc` skill
-- [ADR-0006](../adr/adr-0006-authentik-oidc-phased.md) ·
-  [ADR-0012](../adr/adr-0012-forgejo-static-bot-pat.md) ·
+- [ADR-0022](../adr/adr-0022-authentik-oidc-phased.md) ·
+  [ADR-0030](../adr/adr-0030-forgejo-static-bot-pat.md) ·
   [observability-auth runbook](../runbooks/observability-auth.md)

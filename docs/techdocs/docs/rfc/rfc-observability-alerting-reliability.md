@@ -1,6 +1,6 @@
 # RFC: Observability alerting reliability
 
-> Status: **Implemented** · Date: 2026-06-21 · Umbrella for [ADR-0030](../adr/adr-0030-grafana-threshold-rule-shape.md), [ADR-0031](../adr/adr-0031-meta-monitoring-alert-rule-health.md) — both Accepted; the lint (`scripts/validate_grafana_alert_expr.py`) and meta-rule are live in CI and the cluster.
+> Status: **Implemented** · Date: 2026-06-21 · Umbrella for [ADR-0035](../adr/adr-0035-grafana-threshold-rule-shape.md), [ADR-0036](../adr/adr-0036-meta-monitoring-alert-rule-health.md) — both Accepted; the lint (`scripts/validate_grafana_alert_expr.py`) and meta-rule are live in CI and the cluster.
 
 > **TL;DR.** The cluster's primary alerting layer — the 16 Grafana SLO alert rules — **silently
 > errored on every evaluation for ~3 weeks** (2026-05-30 → 2026-06-21) and nobody noticed,
@@ -49,14 +49,14 @@ datasources are missing.
 
 Three moves, realized by the two ADRs below.
 
-1. **Fix + standardize the rule shape (ADR-0030).** Add `expression: query` to all 16 threshold
+1. **Fix + standardize the rule shape (ADR-0035).** Add `expression: query` to all 16 threshold
    models (the bare input refId, confirmed against the live Grafana via a throwaway rule). Then
    prevent recurrence with a dependency-free lint
    ([`scripts/validate_grafana_alert_expr.py`](../../../../scripts/validate_grafana_alert_expr.py))
    that fails CI if any `type: {threshold,math,reduce}` SSE node lacks a sibling `expression:`.
    Wired into `e2e.yaml` and `run-flux-local-test.sh`.
 
-2. **Monitor the alerting system itself (ADR-0031).** Fix the `ServiceMonitor/grafana` so
+2. **Monitor the alerting system itself (ADR-0036).** Fix the `ServiceMonitor/grafana` so
    Prometheus scrapes Grafana `/metrics`, then add a meta-rule
    `slo-grafana-alert-rule-eval-failing` on `grafana_alerting_rule_evaluation_failures_total`
    with `noDataState`/`execErrState: Alerting` — a blind watcher must page, never go quiet.
@@ -71,8 +71,8 @@ Three moves, realized by the two ADRs below.
 
 | ADR | Status | Decision |
 |-----|--------|----------|
-| [ADR-0030](../adr/adr-0030-grafana-threshold-rule-shape.md) | Accepted | Canonical Grafana threshold-rule shape (`expression: <refId>`) + a dependency-free lint guard in CI and flux-local. |
-| [ADR-0031](../adr/adr-0031-meta-monitoring-alert-rule-health.md) | Accepted | Fix the Grafana ServiceMonitor scrape + add a page-on-failure meta-rule for alert-rule evaluation health. |
+| [ADR-0035](../adr/adr-0035-grafana-threshold-rule-shape.md) | Accepted | Canonical Grafana threshold-rule shape (`expression: <refId>`) + a dependency-free lint guard in CI and flux-local. |
+| [ADR-0036](../adr/adr-0036-meta-monitoring-alert-rule-health.md) | Accepted | Fix the Grafana ServiceMonitor scrape + add a page-on-failure meta-rule for alert-rule evaluation health. |
 
 ## Out of scope
 

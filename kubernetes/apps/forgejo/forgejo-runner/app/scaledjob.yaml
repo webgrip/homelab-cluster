@@ -5,7 +5,7 @@
 # exactly one job, exits; KEDA backfills to maintain the floor) with a privileged DinD
 # native-sidecar for image builds.
 #
-# Topology A, host-mode (ADR-0008 step 1, "prove the runner first"). The MAIN container is the
+# Topology A, host-mode (ADR-0026 step 1, "prove the runner first"). The MAIN container is the
 # webgrip github-runner toolchain image (docker CLI + buildx plugin, git, php, dotnet); workflow
 # steps run inside it (config.yaml maps `docker` -> host). It shares the pod netns with the dind
 # sidecar, so DOCKER_HOST=tcp://localhost:2376 reaches the daemon directly. The github-runner image
@@ -67,7 +67,7 @@ spec:
         initContainers:
           # Inject the forgejo-runner agent into the toolchain image: copy the static binary out
           # of the pinned forgejo/runner image into a shared volume the main container execs from.
-          # No bespoke image rebuild needed to prove the runner (ADR-0008).
+          # No bespoke image rebuild needed to prove the runner (ADR-0026).
           - name: runner-bin
             image: code.forgejo.org/forgejo/runner:12.10.2@sha256:379b324d6942824b7487706c0a06be4d63e546c17b62bece4ae18c74364a8fae
             command:

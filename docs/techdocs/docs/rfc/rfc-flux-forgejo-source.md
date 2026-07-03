@@ -4,8 +4,8 @@
 > `github.com/webgrip/homelab-cluster` to the in-cluster [Forgejo](../general/forgejo.md), so the cluster
 > reconciles from a forge it owns — the **last and most load-bearing** thread of the
 > [forge migration](../blogs/2026-06-12-bringing-the-forge-home.md). The decisions are
-> [ADR-0014](../adr/adr-0014-flux-source-forgejo.md) (cut over the steady-state source) and
-> [ADR-0015](../adr/adr-0015-external-bootstrap-fallback-source.md) (keep an external source for cold
+> [ADR-0011](../adr/adr-0011-flux-source-forgejo.md) (cut over the steady-state source) and
+> [ADR-0012](../adr/adr-0012-external-bootstrap-fallback-source.md) (keep an external source for cold
 > bootstrap + break-glass). It flips to **Accepted** when Flux reconciles a commit pulled from
 > Forgejo and the GitHub fallback is proven.
 
@@ -37,7 +37,7 @@ Inspecting the live manifests shrinks this from "scary" to "almost a one-liner":
 
 The `github-deploy.key` / `github-push-token.txt` at the repo root are **bootstrap-time** credentials
 (Talos/`flux bootstrap`), not used by the running `FluxInstance` — which matters for
-[ADR-0015](../adr/adr-0015-external-bootstrap-fallback-source.md).
+[ADR-0012](../adr/adr-0012-external-bootstrap-fallback-source.md).
 
 ## The hard part: the circular dependency
 
@@ -52,16 +52,16 @@ Forgejo runs **inside** the cluster Flux manages. Make Flux's source Forgejo and
   cluster does.** An in-cluster Forgejo does not — it is deployed *by* Flux. So the bootstrap source
   **cannot** be Forgejo.
 
-This is the whole reason for [ADR-0015](../adr/adr-0015-external-bootstrap-fallback-source.md): **decouple the
+This is the whole reason for [ADR-0012](../adr/adr-0012-external-bootstrap-fallback-source.md): **decouple the
 steady-state source (Forgejo) from the disaster-recovery / bootstrap source (an external mirror).**
 
 ## Decisions
 
 | # | Decision | Choice |
 |---|----------|--------|
-| [ADR-0014](../adr/adr-0014-flux-source-forgejo.md) | Steady-state GitOps source | **Forgejo**, via the **in-cluster Service URL** (`http://forgejo-http.forgejo.svc.cluster.local:3000/...`) — no dependency on public DNS/ingress/TLS for the reconcile loop. |
-| [ADR-0015](../adr/adr-0015-external-bootstrap-fallback-source.md) | Bootstrap + break-glass source | **Keep GitHub** (demoted to a Forgejo→GitHub **push-mirror**) as the cold-bootstrap and break-glass source. Codeberg later as a second off-site mirror. |
-| [ADR-0020](../adr/adr-0020-codeberg-offsite-push-mirror.md) | Second off-site mirror (Codeberg) | **Forgejo→Codeberg** via native push-mirror for all `webgrip` org repos, reconciled by a Tier-2 CronJob. Decided now, **built after cutover**; gated on Codeberg's usage policy. |
+| [ADR-0011](../adr/adr-0011-flux-source-forgejo.md) | Steady-state GitOps source | **Forgejo**, via the **in-cluster Service URL** (`http://forgejo-http.forgejo.svc.cluster.local:3000/...`) — no dependency on public DNS/ingress/TLS for the reconcile loop. |
+| [ADR-0012](../adr/adr-0012-external-bootstrap-fallback-source.md) | Bootstrap + break-glass source | **Keep GitHub** (demoted to a Forgejo→GitHub **push-mirror**) as the cold-bootstrap and break-glass source. Codeberg later as a second off-site mirror. |
+| [ADR-0014](../adr/adr-0014-codeberg-offsite-push-mirror.md) | Second off-site mirror (Codeberg) | **Forgejo→Codeberg** via native push-mirror for all `webgrip` org repos, reconciled by a Tier-2 CronJob. Decided now, **built after cutover**; gated on Codeberg's usage policy. |
 
 Two settled sub-choices folded in:
 
@@ -105,7 +105,7 @@ downstream copy that *also* serves as the break-glass and cold-bootstrap source.
 [blog's ouroboros](../blogs/2026-06-12-bringing-the-forge-home.md)), push current `main`, and
 **flip the mirror direction**: stop the inbound GitHub→Forgejo pull-mirror for this repo and configure a
 Forgejo→GitHub **push-mirror** so GitHub becomes the downstream copy. This is also the gate that lets the
-Forgejo Renovate path adopt `homelab-cluster` ([ADR-0011](../adr/adr-0011-dual-run-renovate-forgejo.md)).
+Forgejo Renovate path adopt `homelab-cluster` ([ADR-0029](../adr/adr-0029-dual-run-renovate-forgejo.md)).
 
 **Phase 1 — prove read access (no cutover yet).** Create a *second, paused/parallel* `GitRepository`
 (or a throwaway FluxInstance in a test ns) pointing at the Forgejo Service URL and confirm
@@ -140,9 +140,9 @@ Document it. Confirm the push-mirror keeps GitHub current.
 
 - **Forgejo availability = cluster self-management.** Single-replica forge on CNPG; while it's down you
   can't GitOps your way out (including fixing the forge). **Mitigation:** the GitHub fallback +
-  rehearsed break-glass ([ADR-0015](../adr/adr-0015-external-bootstrap-fallback-source.md)); CNPG backups for
+  rehearsed break-glass ([ADR-0012](../adr/adr-0012-external-bootstrap-fallback-source.md)); CNPG backups for
   `forgejo-db`; keep Forgejo's *own* manifests trivially reconstructible.
-- **Cold bootstrap can't use Forgejo** — covered by keeping the bootstrap source external (ADR-0015).
+- **Cold bootstrap can't use Forgejo** — covered by keeping the bootstrap source external (ADR-0012).
 - **Webhook signature mismatch** — `type: github` against a Forgejo webhook is per Flux docs but unproven
   here; verify in Phase 2 (fall back to the poll interval if it misbehaves — non-fatal).
 - **Mirror-direction flip** — if the inbound pull-mirror isn't stopped, Forgejo force-syncs from GitHub
@@ -162,9 +162,9 @@ written with the Phase-3 implementation. Disaster recovery for the forge itself 
 
 ## References
 
-- ADRs [0014](../adr/adr-0014-flux-source-forgejo.md), [0015](../adr/adr-0015-external-bootstrap-fallback-source.md)
+- ADRs [0014](../adr/adr-0011-flux-source-forgejo.md), [0015](../adr/adr-0012-external-bootstrap-fallback-source.md)
 - [Forgejo](../general/forgejo.md) · [Bringing the Forge Home](../blogs/2026-06-12-bringing-the-forge-home.md)
-  · [RFC: Renovate on Forgejo](rfc-renovate-forgejo.md) ([ADR-0011](../adr/adr-0011-dual-run-renovate-forgejo.md):
+  · [RFC: Renovate on Forgejo](rfc-renovate-forgejo.md) ([ADR-0029](../adr/adr-0029-dual-run-renovate-forgejo.md):
   `homelab-cluster` last)
 - Upstream: [Flux Receivers](https://fluxcd.io/flux/components/notification/receivers/) ·
   [FluxInstance sync](https://fluxoperator.dev/docs/instance/sync/)

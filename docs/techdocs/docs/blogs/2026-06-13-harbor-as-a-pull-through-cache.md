@@ -82,7 +82,7 @@ itself — never routes through Harbor, and never needs to.
 I verified all of this against the upstream docs before writing a line of node config, because
 "fails open" is a claim you have to *earn*: Talos leaves `skipFallback` off by default, and since
 1.9 it matches the CRI fallback behaviour (these nodes run 1.13.3). The full reasoning, with the
-exact config, is in [ADR-0017](../adr/adr-0017-registry-mirror-talos-spegel.md).
+exact config, is in [ADR-0024](../adr/adr-0024-registry-mirror-talos-spegel.md).
 
 There's a subtler way the same "fails open" property can betray you: a mirror that fails open *all
 the time*. The mirror endpoints point at `https://harbor.${SECRET_DOMAIN}/v2/…`, but Harbor is
@@ -182,7 +182,7 @@ credentials aren't in OpenBao yet, or Harbor is mid-restart, it logs and exits c
 crashlooping. (That last detail is a scar from the same incident week — a different bootstrap Job
 had been quietly piling up failed pods until they tripped the cluster's own health alerts. The
 fix, `ttlSecondsAfterFinished` plus a history limit of one, is baked into this CronJob from the
-start.) The rationale is [ADR-0018](../adr/adr-0018-harbor-config-idempotent-job.md).
+start.) The rationale is [ADR-0025](../adr/adr-0025-harbor-config-idempotent-job.md).
 
 The credentials themselves — a Docker Hub token, a GitHub PAT — exist only to lift the *upstream's*
 anonymous rate limit. The Harbor proxy projects are public, so in-cluster pulls stay anonymous. The
@@ -232,7 +232,7 @@ chart can't install or upgrade (already-running releases keep running), so the b
 reach-Harbor chart sources are deliberately left pointing upstream.
 
 Publishing *my own* images is the deliberately-separate other half, and Harbor being
-[LAN-only by design](../adr/adr-0005-lan-only-exposure.md) turns out to quietly answer "who's
+[LAN-only by design](../adr/adr-0021-lan-only-exposure.md) turns out to quietly answer "who's
 allowed to push": only something already inside the perimeter. So the build-and-push runs on an
 **in-cluster runner** (the ARC / Forgejo runners already on the LAN), authenticated as a scoped Harbor
 *robot account*, into a private `webgrip` project:

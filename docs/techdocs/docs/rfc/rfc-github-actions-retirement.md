@@ -18,9 +18,9 @@ Verified state (2026-07-02), `kubernetes/apps/arc-systems/`:
   `arc-runner-set-heavy` (hand-rolled **privileged DinD** sidecar) — are pinned `0/0` with the
   comment "TEMP (2026-06-18 Longhorn IM-cpu detonation) … suspended to 0 runners" and restore
   notes (light 1/3, heavy 0/2). GitHub App credentials ride OpenBao (`arc/runners`).
-- Meanwhile the **Forgejo runner** (KEDA ScaledJob, 2–6, [ADR-0008](../adr/adr-0008-rootless-ci-image-builds.md)
+- Meanwhile the **Forgejo runner** (KEDA ScaledJob, 2–6, [ADR-0026](../adr/adr-0026-rootless-ci-image-builds.md)
   step 1) is proven on real jobs, and repos become Forgejo-authoritative one by one
-  ([ADR-0024](../adr/adr-0024-forgejo-leading-application-repos.md)).
+  ([ADR-0013](../adr/adr-0013-forgejo-leading-application-repos.md)).
 
 The undecided part is what the zero *means*:
 
@@ -34,7 +34,7 @@ The undecided part is what the zero *means*:
   surface without function. The forge-exit RFCs plan the *Renovate* and *Flux* GitHub retirements
   precisely; the runner leg has no plan at all.
 
-There is also a policy echo: the heavy set's privileged DinD predates the ADR-0008 analysis and
+There is also a policy echo: the heavy set's privileged DinD predates the ADR-0026 analysis and
 carries none of its topology reasoning — if ARC *did* return, it should return under the same
 "privilege and secrets never share a container" rule, not the 2026-06-12 shape.
 
@@ -50,11 +50,11 @@ carries none of its topology reasoning — if ARC *did* return, it should return
    `kubernetes/apps/arc-systems/`, revoke + remove the GitHub App / `arc/runners` OpenBao entry,
    and record that GitHub-hosted runners serve any straggler workflow until its repo migrates
    (public repos: free minutes; nothing in the tail is build-heavy once images build on Forgejo).
-   The [ADR-0011](../adr/adr-0011-dual-run-renovate-forgejo.md) precedent applies: retirement is
+   The [ADR-0029](../adr/adr-0029-dual-run-renovate-forgejo.md) precedent applies: retirement is
    a deletion, proven safe by the period in which the thing was already effectively off.
 3. **Path B — Restore deliberately** (if step 1 finds real consumers): un-throttle to the restore
    counts as an explicit bridge with a sunset tied to the last consumer repo's Forgejo cutover —
-   and re-shape the heavy set per ADR-0008's topology rules rather than resurrecting the old
+   and re-shape the heavy set per ADR-0026's topology rules rather than resurrecting the old
    privileged template unchanged.
 
 Either path ends the "TEMP" state with a record; the teardown list (namespace, App credential,
@@ -68,8 +68,8 @@ OpenBao path, any org runner-group config) is the ADR's checklist so nothing orp
 
 ## Out of scope
 
-- The Forgejo runner and its hardening — [ADR-0008](../adr/adr-0008-rootless-ci-image-builds.md).
-- Repo migration order — [ADR-0024](../adr/adr-0024-forgejo-leading-application-repos.md).
+- The Forgejo runner and its hardening — [ADR-0026](../adr/adr-0026-rootless-ci-image-builds.md).
+- Repo migration order — [ADR-0013](../adr/adr-0013-forgejo-leading-application-repos.md).
 - CI performance — the [CI-pipeline RFC](rfc-ci-pipeline-performance.md).
 
 ## References

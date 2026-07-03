@@ -9,7 +9,7 @@
 # Cilium drops the post-DNAT egress to the envoy backend ("dial tcp
 # 10.0.0.27:443: i/o timeout") and OIDC login returns 500. This failure passes
 # kubeconform + flux-local render and only surfaces on a live login, so we gate
-# it at build time instead. See components/gateway-egress and ADR-0021.
+# it at build time instead. See components/gateway-egress and ADR-0005.
 set -Eeuo pipefail
 ROOT_DIR="${1:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

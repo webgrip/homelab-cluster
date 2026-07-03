@@ -61,7 +61,7 @@ Notable HelmRelease settings:
 
 ### RenovateJob execution model — dual-run (GitHub + Forgejo)
 
-Two RenovateJobs run side by side ([ADR-0011](../adr/adr-0011-dual-run-renovate-forgejo.md) dual-run;
+Two RenovateJobs run side by side ([ADR-0029](../adr/adr-0029-dual-run-renovate-forgejo.md) dual-run;
 [RFC: Renovate on Forgejo](../rfc/rfc-renovate-forgejo.md)):
 
 | RenovateJob | Platform | Scope | Schedule |
@@ -77,7 +77,7 @@ Shared mechanics (both jobs):
 - Webhook authentication from Secret `renovate-webhook-auth`.
 
 **Migration status:** the Forgejo path is live; the **GitHub path retires only at the Flux-source
-cutover** (`homelab-cluster` flips last — gated on [ADR-0014](../adr/adr-0014-flux-source-forgejo.md)).
+cutover** (`homelab-cluster` flips last — gated on [ADR-0011](../adr/adr-0011-flux-source-forgejo.md)).
 At that point `webgrip-gitops`, its ConfigMap, and the GitHub-App token CronJob get deleted.
 
 Operational implication:

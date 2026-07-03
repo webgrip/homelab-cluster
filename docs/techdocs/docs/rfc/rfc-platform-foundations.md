@@ -6,15 +6,15 @@
 > Flux (via flux-operator) with the three-layer Kustomization topology, and Cilium as the CNI in
 > its specific datapath configuration — predate the ADR practice (started 2026-06-12) and exist
 > only as running configuration. This RFC backfills them as **retroactive ADRs**, the same move
-> [ADR-0039](../adr/adr-0039-default-deny-network-policies.md) made for default-deny. No behaviour
+> [ADR-0006](../adr/adr-0006-default-deny-network-policies.md) made for default-deny. No behaviour
 > changes; the deliverable is records.
 
 ## Why
 
-Later ADRs constantly *lean on* these decisions without a record to point at: ADR-0007 configures
+Later ADRs constantly *lean on* these decisions without a record to point at: ADR-0004 configures
 WireGuard "compatible with the existing native-routing + kubeProxyReplacement datapath" — decided
-nowhere. ADR-0017 injects registry mirrors "at the Talos/containerd layer" — Talos itself is
-decided nowhere. ADR-0014 repoints the `FluxInstance` `sync.url` — the FluxInstance/flux-operator
+nowhere. ADR-0024 injects registry mirrors "at the Talos/containerd layer" — Talos itself is
+decided nowhere. ADR-0011 repoints the `FluxInstance` `sync.url` — the FluxInstance/flux-operator
 arrangement is decided nowhere. Each of these was a genuine choice with genuine alternatives
 (k3s/NixOS vs Talos; ArgoCD vs Flux; the umbrella `flux2` chart vs flux-operator; Calico/flannel
 vs Cilium), and the reasoning is currently only in the owner's head. The cost shows up two ways:
@@ -34,7 +34,7 @@ What exists today (verified in-tree, 2026-07-02):
   topology every skill and doc assumes.
 - **Cilium** — `kubeProxyReplacement: true`, `routingMode: native` (`10.42.0.0/16`,
   `autoDirectNodeRoutes`), DSR + maglev, `bpf.hostLegacyRouting: true` (Talos requirement),
-  WireGuard (ADR-0007), Hubble metrics-only (no relay/UI), `gatewayAPI.enabled: false`
+  WireGuard (ADR-0004), Hubble metrics-only (no relay/UI), `gatewayAPI.enabled: false`
   (Envoy Gateway owns Gateway API), L2 announcements + a single `CiliumLoadBalancerIPPool`
   (`10.0.0.0/24`) providing every LoadBalancer VIP — no BGP.
 
@@ -45,19 +45,19 @@ plus a dated status log of how it has evolved:
 
 1. **Adopt Talos Linux as the node OS.** Context: immutable, API-driven, no SSH/shell, machine
    config as GitOps artifact; the trade-offs it forces (no node-local debugging, out-of-tree
-   kernel modules effectively unavailable — which ADR-0037 later hit with DRBD; `hostLegacyRouting`
+   kernel modules effectively unavailable — which ADR-0007 later hit with DRBD; `hostLegacyRouting`
    for Cilium). Alternatives: k3s on Debian/NixOS, kubeadm. Consequences include the Talos-specific
    operational surface (`talosctl`, upgrade path, maintenance mode).
 2. **Adopt Flux with the flux-operator/FluxInstance shape and the three-layer Kustomization
    topology.** Records why flux-operator over `flux bootstrap`/umbrella chart (CRD-managed
-   lifecycle, the `sync.url` as a single cutover point — load-bearing for ADR-0014/0015), the
+   lifecycle, the `sync.url` as a single cutover point — load-bearing for ADR-0011/0015), the
    root→ks→app layering, HelmRelease-defaults-by-patch, and SOPS decryption at the root (now the
    minimal floor per the [external-secrets plan](external-secrets-plan.md)). Alternatives: ArgoCD,
    plain flux2 chart.
 3. **Adopt Cilium as the CNI, in this datapath configuration.** Records kube-proxy replacement +
    native routing + DSR/maglev as a package, L2/LB-IPAM for VIPs (vs MetalLB/BGP), Hubble
    metrics-only, and `gatewayAPI: false` (the split with Envoy Gateway). This becomes the parent
-   record for the post-DNAT identity-enforcement lesson (ADR-0021/0039) and WireGuard (ADR-0007).
+   record for the post-DNAT identity-enforcement lesson (ADR-0005/0039) and WireGuard (ADR-0004).
 
 House rules for retroactive records: the ADR body describes the decision **as of its original
 date** (best-effort from git history); everything since goes in the Status log. Status:
@@ -83,4 +83,4 @@ date** (best-effort from git history); everything since goes in the Status log. 
 
 - [Talos cluster doc](../general/talos-cluster.md) · [flux runbook](../runbooks/flux.md) ·
   [cilium runbook](../runbooks/cilium.md)
-- [ADR-0039](../adr/adr-0039-default-deny-network-policies.md) — the retroactive-recording precedent
+- [ADR-0006](../adr/adr-0006-default-deny-network-policies.md) — the retroactive-recording precedent

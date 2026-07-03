@@ -6,7 +6,7 @@ when_to_use: Use when adding/placing a workload, choosing nodeAffinity/nodeSelec
 
 # Workload placement
 
-Placement is keyed off a **capability taxonomy** ([ADR-0025](docs/techdocs/docs/adr/adr-0025-node-taxonomy.md)),
+Placement is keyed off a **capability taxonomy** ([ADR-0001](docs/techdocs/docs/adr/adr-0001-node-taxonomy.md)),
 not "is it control-plane" or hostnames. Set via Talos `machine.nodeLabels`:
 
 | Label | Values | Meaning |
@@ -20,7 +20,7 @@ not "is it control-plane" or hostnames. Set via Talos `machine.nodeLabels`:
 retiring/renaming one.** `CiliumL2AnnouncementPolicy.spec.nodeSelector` selects LB-IP-announcing nodes by
 node label too; dropping one silently breaks L2 ARP announcement (an LB VIP goes dark), no scheduling error.
 
-## The tier model ([ADR-0028](docs/techdocs/docs/adr/adr-0028-application-workload-placement.md)) — every workload resolves to one
+## The tier model ([ADR-0002](docs/techdocs/docs/adr/adr-0002-application-workload-placement.md)) — every workload resolves to one
 
 - **Control-plane** (apiserver/etcd/scheduler, coredns) → soyos. Leave as-is.
 - **Node DaemonSets** (cilium, longhorn-manager/csi, node-exporter, alloy-agent, spegel) → all nodes. No decision.
@@ -31,7 +31,7 @@ node label too; dropping one silently breaks L2 ARP announcement (an LB VIP goes
   aren't worth crushing the 12 GiB soyos for). User-facing apps + their CNPG DBs.
 - **gitops-critical** (forgejo, openbao) → **also just hard-pinned to `pool=worker`** like any app; resilience
   to a both-worker outage comes from external-Garage-S3 backups + a GitHub fallback Flux source, not a soyo
-  replica (ADR-0026, `longhorn` skill).
+  replica (ADR-0008, `longhorn` skill).
 
 ## How to pin — the DRY component
 
@@ -73,7 +73,7 @@ worker**. **All Longhorn SCs are now `Immediate`** → volumes bound since have 
 nodes present at first bind and never refresh — eviction can't rewrite an immutable PV `nodeAffinity`.
 Check before pinning: `kubectl get pv <pv> -o jsonpath='{.spec.nodeAffinity}'` (empty = free). Symptom of
 pinning a still-locked one: `Pending` / `didn't match PersistentVolume's node affinity` (stranded n8n).
-ADR-0028 D2 + the `longhorn` skill.
+ADR-0002 D2 + the `longhorn` skill.
 
 ## Gotchas
 

@@ -3,7 +3,7 @@
 > Status: living · Companion to the [Supply Chain Intelligence Pipeline](supply-chain-pipeline.md),
 > [RFC: Kyverno audit→enforce hardening](../rfc/rfc-kyverno-audit-enforce-hardening.md),
 > the [Transit key-rotation runbook](../runbooks/cosign-transit-key-rotation.md), and
-> [ADR-0020 (Codeberg mirror)](../adr/adr-0020-codeberg-offsite-push-mirror.md).
+> [ADR-0014 (Codeberg mirror)](../adr/adr-0014-codeberg-offsite-push-mirror.md).
 
 How webgrip images get built, signed, published, verified, and analysed — and where identity and
 secrets come from. **Solid arrows = built/active flow; dotted = trust / verify / planned.**
@@ -65,7 +65,7 @@ flowchart TB
 
   subgraph MIRR["🌐 OFF-SITE MIRRORS & DOCS"]
     gh["GitHub<br/><i>push-mirror = break-glass source</i>"]
-    codeberg["Codeberg<br/><i>2nd off-site mirror · ADR-0020</i>"]
+    codeberg["Codeberg<br/><i>2nd off-site mirror · ADR-0014</i>"]
     docs["TechDocs → pages"]
   end
 

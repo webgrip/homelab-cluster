@@ -31,12 +31,12 @@ spec:
       createDefaultDiskLabeledNodes: false
       defaultDataLocality: best-effort
       defaultLonghornStaticStorageClass: longhorn
-      # 2-replica ceiling (ADR-0026): only 2 storage nodes (worker-1 + fringe)
+      # 2-replica ceiling (ADR-0008): only 2 storage nodes (worker-1 + fringe)
       # with HARD anti-affinity, so 2 is the max anyway. NOTE: the chart-created
       # default `longhorn` StorageClass still carries numberOfReplicas=3 from
       # persistence.defaultClassReplicaCount (an immutable SC param — not changed
       # here to avoid breaking the HR upgrade). The proper fix is migrating volumes
-      # onto the `longhorn-hot` class (2 replicas, ADR-0027); existing 3-replica
+      # onto the `longhorn-hot` class (2 replicas, ADR-0009); existing 3-replica
       # volumes were already reduced to 2 at runtime on 2026-06-19.
       defaultReplicaCount: "2"
       defaultSharedVolumeType: nfs
@@ -61,12 +61,12 @@ spec:
       storageReservedPercentageForDefaultDisk: "10"
       # Volumes are heavily thin/over-provisioned: ~541Gi reserved vs ~109Gi
       # actually used (one copy) — every CNPG DB reserves 20-30Gi for <0.5Gi of
-      # data. To get BOTH replicas off the soyos (ADR-0026) the second copy must
+      # data. To get BOTH replicas off the soyos (ADR-0008) the second copy must
       # reserve onto fringe's 236Gi SSD, which can't fit 541Gi at the default
       # 100%. Raise to 300% so the thin volumes schedule there; real usage stays
       # ~46% of fringe's SSD. WATCH fringe SSD free — the only unbounded growers
       # are prometheus (50Gi cap) and WAL (capped by walStorage + Garage archive).
-      # Durable fix is right-sizing the volumes / adding the fringe HDD (ADR-0027).
+      # Durable fix is right-sizing the volumes / adding the fringe HDD (ADR-0009).
       storageOverProvisioningPercentage: "300"
       # Allow system-managed components (like longhorn-csi-plugin) to run on the tainted fringe node.
       taintToleration: "dedicated=fringe:NoSchedule"

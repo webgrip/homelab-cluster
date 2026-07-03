@@ -6,7 +6,7 @@ path "secret/data/*" {
 path "secret/metadata/*" {
   capabilities = ["read", "list"]
 }
-# Dynamic Postgres credentials (ADR-0010): ESO mints a fresh lease on each refresh by
+# Dynamic Postgres credentials (ADR-0016): ESO mints a fresh lease on each refresh by
 # reading the database engine's creds path. Read-only; the config-admin policy manages the
 # connections/roles, ESO only issues from them.
 path "database/creds/*" {

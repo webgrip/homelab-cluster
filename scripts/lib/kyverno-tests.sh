@@ -27,7 +27,7 @@ prepare_kyverno_test_workspace() {
     # image-hygiene, image-verify-harbor, storage-cnpg) — so one could promote those
     # to Enforce with ZERO CLI test coverage and CI would stay green. Discovering by
     # kind closes that hole and keeps the test set in lock-step with the policies on
-    # disk. See ADR-0033 + scripts/check-kyverno-test-coverage.sh.
+    # disk. See ADR-0032 + scripts/check-kyverno-test-coverage.sh.
     local policy
     while IFS= read -r -d '' policy; do
         sed "s|\${SECRET_DOMAIN}|${KYVERNO_TEST_SECRET_DOMAIN}|g; s|__SECRET_DOMAIN__|${KYVERNO_TEST_SECRET_DOMAIN}|g" \
