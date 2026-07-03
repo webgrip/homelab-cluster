@@ -1,39 +1,69 @@
 ---
 name: add-app
-description: Scaffold a new application in the Flux GitOps tree — ks.yaml + bjw-s app-template HelmRelease + HTTPRoute (Gateway API) + secrets/DB wiring.
-when_to_use: Use when adding/creating a new app, service, workload, or deployment to the cluster under kubernetes/apps/<namespace>/<app>.
+description: Scaffold a new application in the Flux GitOps tree — namespace + ks.yaml wiring, bjw-s app-template HelmRelease via the Harbor OCI proxy (digest-pinned), HTTPRoute, ESO secrets, and the reusable platform components (placement, CNPG set, gateway-egress, S3 creds, resource-quota).
+when_to_use: Use when adding/creating/deploying a new app, service, or workload under kubernetes/apps/<namespace>/<app>, wiring a new namespace, or choosing which platform components and dependsOn targets a new app needs.
 ---
 
 # Add an application
 
-**Copy a comparable existing app** (`searxng` — `kubernetes/apps/searxng/searxng/`) under `kubernetes/apps/<ns>/<app>/` — don't write from scratch. Files + the non-obvious wiring:
+Tree: `kubernetes/apps/<ns>/kustomization.yaml` (+ `namespace.yaml`) → registers `<app>/ks.yaml`
+(Flux wiring) → `<app>/app/` (resources). Compose from the **verified skeletons in
+[reference.md](reference.md)** and the component catalog below — never by copying another app
+(apps change and disappear; the skeletons and components are the stable contract).
 
-1. **`ks.yaml`** — Flux `Kustomization`: `targetNamespace: <ns>`, `path: ./kubernetes/apps/<ns>/<app>/app`, `sourceRef` flux-system GitRepository, `prune: true`, `wait: false`, `dependsOn` (DB/operators), `postBuild.substituteFrom` Secret `cluster-secrets` (gives `$${SECRET_DOMAIN}`). Do **not** add `decryption`/install-upgrade-rollback remediation — the root `cluster-apps` ks injects them (enforced by `guard-skills.sh`).
-2. **`app/kustomization.yaml`** — lists `./helmrelease.yaml` (+ `./httproute.yaml`, `./database/`, secrets).
-3. **`app/helmrelease.yaml`** — default chart is bjw-s **app-template** via an `OCIRepository` (`oci://ghcr.io/bjw-s-labs/helm/app-template`, pinned `ref.tag`); `HelmRelease.spec.chartRef` → that OCIRepository; values: `controllers`/`service`/`persistence`.
-4. **Ingress** = `app/httproute.yaml`, **Gateway API not Ingress** (enforced). `parentRefs` → `envoy-internal` (LAN) or `envoy-external` (public via Cloudflare Tunnel), `namespace: network`, `sectionName: https`; `hostnames: ["<app>.${SECRET_DOMAIN}"]` (single `$` — the hostname is meant to be substituted by Flux postBuild; `$$` would render the literal string and break the route). TLS terminates at the gateway (wildcard cert) — HTTPRoutes don't manage certs.
-5. **Database** → `cnpg-database` skill.
-6. **New namespace?** add `namespace.yaml` + ensure the ns `kustomization.yaml` includes `../../components/sops`. For zero-trust (default-deny + per-app netpols) → the `network-policy` skill.
-7. **Register** the app in `kubernetes/apps/<ns>/kustomization.yaml`.
+## Pipeline
 
-## Placement
-Apps **hard-pin to the worker pool** — add one line to `app/kustomization.yaml`:
-`components: [../../../../components/placement/worker-pool]`. See the `workload-placement` skill for the
-tier model + the stateful sequencing gotcha (only `WaitForFirstConsumer` volumes like `longhorn-general`
-are node-locked to pre-worker-1 nodes; `longhorn`/`Immediate` volumes — incl. CNPG DBs — pin freely).
+1. **Namespace** — `namespace.yaml` + ns-level `kustomization.yaml`; register `<ns>` in
+   `kubernetes/apps/kustomization.yaml`. Zero-trust opt-in + per-app netpols → `network-policy` skill.
+2. **`ks.yaml`** (skeleton §1) — `targetNamespace`, `path`, `postBuild.substituteFrom:
+   cluster-secrets` (provides `${SECRET_DOMAIN}`), `prune: true`, `wait: false`, `dependsOn`
+   from the menu below. The root `cluster-apps` ks injects `decryption` + remediation into every
+   child — re-declaring them is hook-blocked.
+3. **Chart** (skeleton §3) — `OCIRepository` through the Harbor proxy
+   (`oci://harbor.webgrip.dev/ghcr/…`, [ADR-0016](docs/techdocs/docs/adr/adr-0016-harbor-pull-through-proxy-cache.md)),
+   pinned by **tag + digest** — refresh pins with `./scripts/update-oci-digests.sh`. Generic
+   apps: bjw-s **app-template**, `HelmRelease.spec.chartRef` → the OCIRepository, values under
+   `controllers`/`service`/`persistence`.
+4. **Route** (skeleton §4) — `hostnames: ["<app>.${SECRET_DOMAIN}"]` (single `$`: Flux
+   substitutes it; `$$` renders literally and breaks the route). `parentRefs` →
+   `envoy-internal` (LAN default) or `envoy-external` (public — a deliberate exposure choice),
+   `namespace: network`, `sectionName: https`. TLS terminates at the gateway. Gateway API only —
+   `Ingress` is hook-blocked.
+5. **Secrets** — ESO + OpenBao, never a new `*.sops.yaml` → `external-secrets` skill (random →
+   in-cluster generator; provided → OpenBao KV). Consume via `existingSecret`/`envFrom`; put
+   `reloader.stakater.com/auto: "true"` on the controller so rotations restart the pod.
+6. **Database** → `cnpg-database` skill, plus the cnpg components below.
+7. **Placement** → `workload-placement` skill: pin to workers — native
+   `pod.nodeSelector: {node.webgrip.io/pool: worker}` when the chart exposes it, else the
+   `placement/worker-pool` component. Storage: default SC `longhorn`; full table → `longhorn` skill.
+8. **Observability** — logs: JSON to stdout/stderr → Loki automatically. Traces: OTLP/HTTP →
+   `http://alloy-gateway.observability.svc.cluster.local:4318`. Metrics: `ServiceMonitor`
+   (vm-operator converts it; no `release:` label needed) or native VM CRs → `victoriametrics`
+   skill. Alerts: `PrometheusRule` meeting the CI-gated annotation contract — summary ends with
+   a `(scope)`, description carries a `Likely causes:` section
+   ([alerting-principles](docs/techdocs/docs/general/alerting-principles.md)). Dashboards →
+   `grafana-dashboard` skill.
+9. **Provisioner Job** (bootstrap against an admin API) → `provisioner-job` skill.
+10. **Validate** — `./scripts/run-flux-local-test.sh`; render/diff → `flux-validate` skill.
 
-## Storage (Longhorn)
-Default SC is `longhorn` (SSD, 2-replica). Full StorageClass table + when to use each → the `longhorn` skill ([ADR-0029](docs/techdocs/docs/adr/adr-0029-storageclass-consolidation.md)).
+## Component catalog — `kubernetes/components/`, wired via `components:` in `app/kustomization.yaml` (skeleton §2)
 
-## Observability
-- Logs: JSON to stdout/stderr → Loki automatically. Traces: OTLP/HTTP → `http://alloy-gateway.observability.svc.cluster.local:4318`.
-- Metrics/alerts: `ServiceMonitor` + `PrometheusRule`, low cardinality; no `release:` label needed — VM `selectAllByDefault` scrapes every CR (see the `victoriametrics` skill; hook check retired 2026-07-02). Dashboard/alert specifics → the `grafana-dashboard` skill.
+| Component | Gives the app | Use when |
+| --- | --- | --- |
+| `placement/worker-pool` | post-render hard `nodeSelector` to `pool=worker` ([ADR-0028](docs/techdocs/docs/adr/adr-0028-application-workload-placement.md)) | chart has no native nodeSelector values |
+| `cnpg-netpol` | DB-layer NetworkPolicy + CiliumNetworkPolicy | every CNPG cluster in a default-deny ns (avoids the `ClusterIsNotReady` deadlock) |
+| `cnpg-backup` | `cnpg-backup-s3` ExternalSecret (+PushSecret) in the app ns | every CNPG cluster with barman backups |
+| `cnpg-monitoring` | CNPG PodMonitor + alert-rule pack | every CNPG cluster |
+| `cnpg-restore-test` | restore-drill CronJob + RBAC | per the DB's [backup tier](docs/techdocs/docs/general/database-backup-tiers.md) |
+| `cnpg-disaster-recovery` | DR verify cluster + drill CronJob + queries | top-tier DBs per the same tiers doc |
+| `gateway-egress` | identity-based egress allow to the envoy gateways | app does server-side OIDC discovery under default-deny ([ADR-0039](docs/techdocs/docs/adr/adr-0039-default-deny-network-policies.md)) |
+| `observability-s3` / `security-s3` | Garage S3 credential ES for that namespace's workloads | S3-writing workloads in those namespaces |
+| `resource-quota` | namespace ResourceQuota | every new app namespace |
+| `sops` | SOPS-decrypted `cluster-secrets` in-ns | legacy only — new secrets go via ESO |
 
-## Secrets
-**ESO + OpenBao, never a new `*.sops.yaml`** — use the `external-secrets` skill (random entropy → generate in-cluster; provided value → OpenBao). Consume via `existingSecret`/`envFromSecret`/`secretKeyRef`.
+## dependsOn menu (`ks.yaml`)
 
-## In-cluster provisioner Job/CronJob (optional)
-App needs a bootstrap/reconcile Job that hits an admin API or writes a Secret/ConfigMap → the `provisioner-job` skill.
-
-## Validate
-`./scripts/run-flux-local-test.sh` before committing.
+`external-secrets-stores` (security) — app has any ExternalSecret · `cloudnative-pg`
+(cnpg-system) — app has a CNPG DB · `grafana-operator` (observability) — app ships
+dashboards/folders · `victoria-metrics` (observability) — app ships scrape/rule CRs · plus
+app-specific Kustomizations (e.g. a split `<app>-db`).
