@@ -176,7 +176,7 @@ Map each repo to a `team`/`service` so the correlation dashboard can JOIN survey
 at it (apply once the webhook exists — adding a dangling receiver makes Alertmanager error):
 
 ```yaml
-# kube-prometheus-stack values → alertmanager.config
+# VMAlertmanager config (alertmanager.config shape)
 receivers:
   - name: devex-incidents
     webhook_configs:
