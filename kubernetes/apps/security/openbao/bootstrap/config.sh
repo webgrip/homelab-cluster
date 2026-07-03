@@ -140,14 +140,18 @@ if [ -n "${FRESHRSS_VA_PW}" ]; then
     && echo "   freshrss-db connection configured" \
     || echo "   WARN: freshrss-db connection write FAILED (netpol? vault_admin in PG yet? TLS?)"
 
-  # Ephemeral login role: member of freshrss, TTL-bounded. Revocation is DEFENSIVE — a bare
-  # DROP ROLE fails if the role owns objects or has live sessions, so terminate + reassign +
-  # drop-owned first (order matters).
+  # Ephemeral login role, TTL-bounded. Creation grants object privileges via `SET ROLE freshrss`
+  # (vault_admin is a MEMBER of freshrss via CNPG managed.roles inRoles — declarative, in Git), NOT
+  # `GRANT freshrss TO ...`. The membership form needs vault_admin to hold ADMIN OPTION on freshrss
+  # (PG16+), which only a superuser can grant — a manual, non-reproducible bootstrap step. Granting
+  # object privileges as the owner needs no admin option and no superuser, so the whole role is
+  # reproducible from Git on a fresh cluster. Revocation is DEFENSIVE — a bare DROP ROLE fails if the
+  # role owns objects or has live sessions, so terminate + reassign + drop-owned first (order matters).
   bao write database/roles/freshrss \
     db_name=freshrss-db \
     default_ttl="1h" \
     max_ttl="2h" \
-    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; GRANT freshrss TO \"{{name}}\";" \
+    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; SET ROLE freshrss; GRANT USAGE, CREATE ON SCHEMA public TO \"{{name}}\"; GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO \"{{name}}\"; GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO \"{{name}}\"; RESET ROLE;" \
     revocation_statements="SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = '{{name}}'; REASSIGN OWNED BY \"{{name}}\" TO freshrss; DROP OWNED BY \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
     >/dev/null 2>&1 \
     && echo "   freshrss role configured" \
