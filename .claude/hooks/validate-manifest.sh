@@ -24,6 +24,18 @@ case "$file" in *kubernetes/*.yaml|*kubernetes/*.yml) ;; *) exit 0;; esac
 case "$file" in */authentik/app/blueprints/*) exit 0;; esac
 [ -f "$file" ] || exit 0
 
+# Flux postBuild placeholders (${VAR}) fail pattern-constrained schema fields
+# (e.g. HTTPRoute hostnames), so kubeconform validates a copy with placeholders
+# swapped for a schema-safe dummy. $${...} (runtime-escaped) is left untouched.
+vfile="$file"
+if grep -q '\${' "$file" 2>/dev/null; then
+  vfile="$(mktemp --suffix=.yaml)"
+  trap 'rm -f "$vfile"' EXIT
+  sed -e 's/\$\${/__ESC_DB__/g' \
+      -e 's/\${[^}]*}/placeholder/g' \
+      -e 's/__ESC_DB__/$${/g' "$file" > "$vfile"
+fi
+
 problems=""
 yl="$(resolve yamllint || true)"
 if [ -n "$yl" ]; then
@@ -36,7 +48,7 @@ if [ -n "$kc" ]; then
   out="$($kc -strict -ignore-missing-schemas \
     -schema-location default \
     -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
-    "$file" 2>&1)" || problems+="[kubeconform]
+    "$vfile" 2>&1)" || problems+="[kubeconform]
 $out
 "
 fi
