@@ -27,13 +27,15 @@ spec:
               What's happening:
               - This alert is DESIGNED to fire at all times. It proves the whole
                 pipeline works: VMAlert evaluates rules and delivers to
-                VMAlertmanager, which routes alertname="Watchdog" to the null
-                receiver.
+                VMAlertmanager, which routes alertname="Watchdog" to the deadman
+                webhook receiver — a healthchecks.io heartbeat pinged every ~2m.
 
               Impact/risk:
               - None while firing — that is the healthy state.
               - If this alert STOPS firing, rule evaluation or alert delivery is
-                broken and every other alert is silently dead.
+                broken and every other alert is silently dead. healthchecks.io
+                notices the missing pings (period 5m + grace 5m) and pages —
+                the ABSENCE is the alarm.
 
               Likely causes:
               - (when absent) VMAlert down, not evaluating VMRules, or unable to

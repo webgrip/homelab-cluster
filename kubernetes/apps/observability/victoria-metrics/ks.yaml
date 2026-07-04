@@ -8,6 +8,10 @@ spec:
   dependsOn:
     - name: vm-operator
       namespace: observability
+      # NOTE: vmalertmanager-config.externalsecret.yaml needs the openbao
+      # ClusterSecretStore, but dependsOn external-secrets-stores would be a cycle
+      # (external-secrets dependsOn victoria-metrics for the VM CRDs). ESO simply
+      # retries the ExternalSecret until the store exists — acceptable.
   interval: 1h
   path: ./kubernetes/apps/observability/victoria-metrics/app
   postBuild:

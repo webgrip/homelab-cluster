@@ -1,0 +1,26 @@
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ntfy
+  namespace: observability
+  annotations:
+    # Public on purpose: the phone must reach ntfy off-LAN for push delivery.
+    # Access is gated by ntfy's own auth (deny-all + per-user ACLs/tokens).
+    monitoring.webgrip.io/synthetic-check: k6-ingress-canary
+spec:
+  hostnames:
+    - ntfy.${SECRET_DOMAIN}
+  parentRefs:
+    - name: envoy-external
+      namespace: network
+      sectionName: https
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: ntfy
+          namespace: observability
+          port: 8080

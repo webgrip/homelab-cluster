@@ -1,0 +1,25 @@
+---
+# Root notification policy: everything → the vmalertmanager contact point.
+# Provisioned = routing is read-only in the Grafana UI (Git is truth).
+#
+# repeat_interval MUST stay < VMAlertmanager's resolve_timeout (5m): the
+# prometheus-alertmanager contact point re-posts firing alerts only on repeat,
+# and anything slower auto-resolves in VMAlertmanager between posts (flapping).
+# Dedup-safe: the receiver is an Alertmanager, humans never see the repeats.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaNotificationPolicy
+metadata:
+  name: root
+  namespace: observability
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  route:
+    receiver: vmalertmanager
+    group_by:
+      - alertname
+      - grafana_folder
+    group_wait: 30s
+    group_interval: 1m
+    repeat_interval: 4m

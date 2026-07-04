@@ -1,0 +1,20 @@
+---
+# Unified alert delivery (RFC alert-delivery): Grafana does NOT deliver to
+# channels itself — it forwards every alert to VMAlertmanager, whose git-owned
+# routing tree (victoria-metrics/app/vmalertmanager-config.externalsecret.yaml)
+# is the single place severity routing / silences / inhibition live.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaContactPoint
+metadata:
+  name: vmalertmanager
+  namespace: observability
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  name: vmalertmanager
+  receivers:
+    - type: prometheus-alertmanager
+      uid: cp-vmalertmanager
+      settings:
+        url: http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093

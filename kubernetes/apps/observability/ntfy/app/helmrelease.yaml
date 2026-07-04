@@ -1,0 +1,100 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: ntfy
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: ntfy
+  interval: 30m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  values:
+    controllers:
+      ntfy:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        # Single replica on a RWO Longhorn PVC: rolling update would Multi-Attach deadlock.
+        strategy: Recreate
+        pod:
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+            fsGroupChangePolicy: OnRootMismatch
+        containers:
+          app:
+            image:
+              # Declarative auth provisioning (NTFY_AUTH_USERS/ACCESS/TOKENS) and the
+              # built-in ?template=alertmanager output both require ntfy >= v2.14.0.
+              repository: docker.io/binwiederhier/ntfy
+              tag: v2.25.0@sha256:cfbbb1bac9196cb711e29ef0ac4adaeb033be6235f1df857705dc39c14384a1d
+            args:
+              - serve
+            env:
+              NTFY_BASE_URL: https://ntfy.${SECRET_DOMAIN}
+              NTFY_LISTEN_HTTP: ":8080"
+              NTFY_BEHIND_PROXY: "true"
+              NTFY_CACHE_FILE: /var/cache/ntfy/cache.db
+              # Queue undelivered messages across edge/tunnel outages; the phone
+              # catches up when connectivity returns.
+              NTFY_CACHE_DURATION: 72h
+              NTFY_ATTACHMENT_CACHE_DIR: /var/cache/ntfy/attachments
+              NTFY_AUTH_FILE: /var/lib/ntfy/auth.db
+              NTFY_AUTH_DEFAULT_ACCESS: deny-all
+              # ACLs are not secret; users' bcrypt hashes and tokens come from the
+              # ntfy-auth ExternalSecret (NTFY_AUTH_USERS / NTFY_AUTH_TOKENS).
+              NTFY_AUTH_ACCESS: "alertmanager:alerts-*:write-only,phone:alerts-*:read-only"
+              NTFY_ENABLE_LOGIN: "true"
+              NTFY_LOG_FORMAT: json
+            envFrom:
+              - secretRef:
+                  name: ntfy-auth
+            probes:
+              liveness: &probes
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /v1/health
+                    port: 8080
+              readiness: *probes
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop:
+                  - ALL
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+              limits:
+                memory: 128Mi
+    service:
+      app:
+        controller: ntfy
+        ports:
+          http:
+            port: 8080
+    persistence:
+      data:
+        accessMode: ReadWriteOnce
+        size: 1Gi
+        storageClass: longhorn
+        globalMounts:
+          - path: /var/lib/ntfy
+            subPath: lib
+          - path: /var/cache/ntfy
+            subPath: cache
