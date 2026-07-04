@@ -14,7 +14,7 @@ at all.**
 | **A — Dynamic DB creds** | Postgres / MySQL app logins | **Yes** — `database` engine | Minted short-lived; auto-revoked. *No human in the loop.* |
 | **B — Provided external creds** | API tokens (GitHub, Cloudflare), S3/object keys, OIDC client secrets, webhook tokens | **No** — the external system owns the value | Rotate at the source → write to OpenBao KV → ESO re-reads → consumer reloads |
 | **C — Generated entropy** | session/CSRF keys, bot/robot passwords, admin passwords | Generated *in-cluster* (ESO generator), not minted per-request | Regenerate + (for bot creds) re-register at the target |
-| **D — At-rest encryption keys** | `N8N_ENCRYPTION_KEY`, `AUTHENTIK_SECRET_KEY`, DT `secret.key`, invoiceninja `APP_KEY`, harbor `secretKey` | **No** | **Un-rotatable** — regenerating corrupts stored data. Pinned, generate-once. |
+| **D — At-rest encryption keys** | `N8N_ENCRYPTION_KEY`, DT `secret.key`, invoiceninja `APP_KEY`, harbor `secretKey` | **No** (it *encrypts*) | **Rotatable only if the key isn't the direct data key** — via envelope encryption, app-native rekey, or disk-level encryption. Some apps support it, some don't (see §D). |
 | **E — TLS / PKI** | leaf certs, issuer creds | cert-manager mints/renews certs | Already auto-rotated by cert-manager (out of scope here) |
 
 **The hard truth about "easily rotatable API tokens":** OpenBao has dynamic engines for databases
@@ -68,12 +68,61 @@ consumer.** To make it *easy* and *fast*:
 - **Bot/robot passwords** (Forgejo/Harbor): two-sided — the value must be re-registered on the
   target. Each already has a provisioner that does exactly that; scheduled rotation = a small job that
   regenerates then re-triggers the provisioner. (Deferred; modest value.)
+- **Break-glass (on suspected compromise): the label sweep.** The mechanism to regenerate a C secret
+  is `kubectl delete secret <name>` → ESO recreates it with a fresh value → Reloader restarts the
+  consumer → the provisioner re-registers (bot creds). The **sharp edge**: D-level at-rest keys are
+  *also* generate-once ESO secrets, so a blind "delete all generated" would regenerate a data key and
+  corrupt data. Make it safe by driving it off a label: put `rotate.webgrip.io/on-compromise: "true"`
+  on every C secret (**never** a D key), then break-glass is one action —
+  `kubectl delete secret -l rotate.webgrip.io/on-compromise=true -A` — with D structurally excluded.
+  (See the OpenBao-side break-glass — `bao lease revoke -prefix <mount>/` — in the
+  [dynamic-db-credentials runbook](../runbooks/dynamic-db-credentials.md); the two are complementary:
+  leases for dynamically-minted creds, the label sweep for generated ones.)
 
-### D — At-rest encryption keys → do not rotate
-Genuinely un-rotatable without an app-level re-encryption migration (regenerating corrupts stored
-data). OpenBao's **transit** engine is *not* a workaround, because none of these apps support an
-external KMS — they hold a local key. Leave them pinned (`refreshInterval: "0"`), un-annotated for
-Reloader, and documented as out-of-scope. This is the honest boundary.
+### D — At-rest encryption keys → rotatable *if the key isn't the direct data key*
+
+The earlier "un-rotatable" framing was too absolute. **The principle: never let the rotatable secret
+directly encrypt the data.** Put a cheap-to-re-wrap key between them (**envelope encryption**:
+data → **DEK** (data key) → wrapped by a **KEK** (key-encryption key); rotating the KEK just re-wraps
+the tiny DEK, no bulk re-encryption), or move encryption below the app (disk), or use the app's own
+rekey path. Search terms: *envelope encryption, KEK/DEK, key wrapping, rewrap, TDE*.
+
+Four approaches, most-achievable first:
+
+1. **Disk-level encryption — the baseline win (app-agnostic).** An encrypted StorageClass / LUKS under
+   the PVCs (CNPG delegates at-rest encryption to the StorageClass — it doesn't encrypt volumes
+   itself). LUKS *is* envelope encryption: passphrases occupy **key slots** wrapping one master volume
+   key, so you rotate by adding a new slot key and removing the old — **no disk re-encryption**. Root
+   the LUKS/StorageClass key in OpenBao so *that* is centrally rotatable. Defends **stolen disk / PVC /
+   backup** — not a live app compromise (the app still sees plaintext). Highest leverage, zero app
+   cooperation.
+2. **App-native rekey — free security where it exists:**
+   - **n8n** ✅ — native envelope encryption + rotation (`N8N_ENV_FEAT_ENCRYPTION_KEY_ROTATION`): the
+     master key wraps a rotating data key; existing records re-encrypt lazily on next write. (One-way,
+     no downgrade after enabling — back up first.)
+   - **InvoiceNinja / Laravel** ✅-with-work — `APP_PREVIOUS_KEYS` keeps old ciphertext decryptable
+     during a transition, then a re-encrypt migration job upgrades rows. (Rotating logs out sessions.)
+   - **Dependency-Track** ⚠️ partial — Tink file-keyset KEK rotation for *new* secrets only; no
+     re-crypt of existing (external-KMS providers are planned).
+   - **Harbor `secretKey`** ❌ — maintainers confirm no rotation without full DB re-encryption; treat
+     as fixed for the deployment's life, store in OpenBao, restrict access, "rebuild + re-enter" on
+     compromise rather than rotate.
+   - **Authentik `SECRET_KEY`** — **reclassify: it's a signing key, not an at-rest data key.** Rotating
+     it just invalidates sessions (users re-login); no data migration, no corruption. Rotatable anytime.
+3. **OpenBao `transit` as a KMS (encryption-as-a-service):** apps call transit to encrypt/decrypt;
+   `rotate` adds a key version, old ciphertext still decrypts, `rewrap` upgrades lazily. **Only works
+   for code you write, or apps that natively support a KMS backend** — not the stock apps above. The
+   direction to prefer as apps grow KMS support (DT's planned providers, pg_tde below).
+4. **DB-engine TDE (`pg_tde`, Percona/EDB):** KMS-rooted, re-wrap-only rotation for *all* DB data at
+   once, principal key held in OpenBao — but needs a TDE-capable Postgres, not stock CNPG. A future
+   upgrade for the highest-value databases; overkill cluster-wide today.
+
+**Recommendation:** (1) do **disk-level encryption rooted in OpenBao** as the baseline — it makes the
+app key stop being the only boundary and is rotatable via LUKS slots; (2) turn on **native rekey**
+where the app has it (n8n, Laravel); (3) **reclassify Authentik** as a signing key (rotate freely);
+(4) accept **Harbor as fixed-and-guarded**; (5) reserve **transit / pg_tde** for code-you-write and
+future hot-DB upgrades. Threat-model note: disk/DB encryption defends stolen media; app-level DEKs
+defend the leaked-DB-dump/column case — pick per asset.
 
 ## The "hard" cases — single-replica RWO reading a secret at startup
 
@@ -101,17 +150,33 @@ pragmatic default**, reserving the pooler/file-reread effort for genuinely hot p
    is the cheapest, highest-coverage win for "easily rotatable API tokens."*
 3. **Class A rollout Phase 2** — the surge-capable Postgres apps (rolling-restart, no pooler).
 4. **Class A rollout Phase 3** — the RWO Postgres apps via the freshrss pooler template; then MySQL.
-5. **Class C** (bot-cred scheduled rotation) and **provider-side automation** for Class B — lower
+5. **Class C break-glass** — add `rotate.webgrip.io/on-compromise: "true"` to the C secrets and a
+   one-command label sweep + incident runbook (safe because D keys are never labeled). Cheap, and it's
+   the thing you actually want the day something is compromised.
+6. **Class D baseline** — **disk-level encryption (encrypted StorageClass / LUKS) rooted in OpenBao**,
+   app-agnostic and rotatable via key slots. Then turn on **native rekey** where the app supports it
+   (n8n, Laravel), and **reclassify Authentik** as a signing key.
+7. **Class C** scheduled bot-cred rotation and **provider-side automation** for Class B — lower
    priority, modest value.
-6. **Class D** — no action; document the boundary.
+8. **Class D advanced** (transit-as-KMS for own code, `pg_tde` for hot DBs) — future.
 
 ## Honest limits
 
-- **API tokens can't be dynamic** — no OpenBao engine for our providers; best case is fast, automatic
-  *propagation* of a value you still rotate at the source.
-- **At-rest keys can't rotate at all** without re-encryption.
+- **SaaS API tokens can't be minted dynamically by *our* OpenBao today** — no in-core engine for
+  GitHub/Cloudflare/DockerHub. But the space is moving: OpenBao ships an official
+  [`openbao-plugin-secrets-oauthapp`](https://github.com/openbao/openbao-plugin-secrets-oauthapp)
+  (OAuth brokering, incl. a "Custom" provider), there's a community
+  [`vault-plugin-secrets-github`](https://github.com/martinbaillie/vault-plugin-secrets-github)
+  (1-hour GitHub App tokens), and Terraform Cloud tokens are native. Cloudflare/DockerHub need a
+  custom plugin or stay static-with-fast-propagation. Follow it in the
+  [OpenBao GitHub Discussions](https://github.com/orgs/openbao/discussions) and the
+  [`openbao/openbao-plugins`](https://github.com/openbao/openbao-plugins) repo.
+- **At-rest keys are rotatable only indirectly** — via envelope encryption, app-native rekey, or
+  disk-level encryption (see §D). A few of our apps genuinely can't (Harbor); Authentik's key isn't
+  even an at-rest key.
 - **Single-replica RWO apps** pay a restart to rotate anything read at startup, unless fronted by a
-  pooler (DB) or reworked to re-read at runtime — worth it only for hot paths.
+  pooler (**PgBouncer** for Postgres, **ProxySQL** for MySQL) or made HA — worth it only for hot paths.
+  Redis needs neither (ACL multi-password); prefer making an app HA over adding a pooler where you can.
 
 ## See also
 
