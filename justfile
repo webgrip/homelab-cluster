@@ -33,6 +33,31 @@ harbor-s3-cred:
         REGISTRY_STORAGE_S3_SECRETKEY="${secret}"
     echo "wrote secret/harbor/s3 — ESO syncs the harbor-s3 Secret within ~1m"
 
+# One-time seeding of ntfy's declarative auth into OpenBao (secret/ntfy/auth):
+# users (bcrypt), tokens, and the bare alertmanager_token that the Alertmanager
+# routing config templates in as the Bearer credential. Only the "phone" password
+# is human-known (you type it into the ntfy app); "alertmanager" is token-only.
+ntfy-auth-cred:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    python3 -c 'import bcrypt' 2>/dev/null || { echo "needs python3 bcrypt module (pip install bcrypt)"; exit 1; }
+    BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
+    bao token lookup >/dev/null 2>&1 || bao login -method=oidc
+    phone_pw="$(gum input --password --placeholder 'password for user "phone" (typed into the ntfy app)')"
+    phone_pw2="$(gum input --password --placeholder 'repeat phone password')"
+    [ -n "${phone_pw}" ] && [ "${phone_pw}" = "${phone_pw2}" ] || { echo "empty or mismatched password, aborting"; exit 1; }
+    am_pw="$(python3 -c 'import secrets; print(secrets.token_urlsafe(36))')"
+    token="tk_$(python3 -c 'import secrets, string; print("".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(29)))')"
+    bhash() { PW="$1" python3 -c 'import bcrypt, os; print(bcrypt.hashpw(os.environ["PW"].encode(), bcrypt.gensalt(10)).decode())'; }
+    bao kv put secret/ntfy/auth \
+        users="alertmanager:$(bhash "${am_pw}"):user,phone:$(bhash "${phone_pw}"):user" \
+        tokens="alertmanager:${token}:alertmanager-publish" \
+        alertmanager_token="${token}"
+    echo 'wrote secret/ntfy/auth (users, tokens, alertmanager_token)'
+    echo 'force the ESO refresh now (or wait out the 1h interval):'
+    echo '  kubectl -n observability annotate externalsecret ntfy-auth force-sync=$(date +%s) --overwrite'
+    echo '  kubectl -n observability annotate externalsecret vmalertmanager-config force-sync=$(date +%s) --overwrite'
+
 verify-oci-digests:
     ./scripts/verify-oci-digests.sh {{ justfile_directory() }}
 
