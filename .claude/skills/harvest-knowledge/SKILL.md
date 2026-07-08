@@ -33,7 +33,12 @@ Phase 2 → feed Phase 2's knowledge set into Phase 3.
 ## Where Phase 3 lands things (this repo)
 Docs → `docs/techdocs/docs/` (+ `runbooks/`, `adr/`) · always-on rules → `CLAUDE.md` · repeatable
 procedure or behavior-changing gotcha → a new skill under `.claude/skills/<name>/` (use the `skillsmith`
-skill) · preferences / incident state → memory (`MEMORY.md` index) · open items → a TODO list, not docs.
+skill, installed as a plugin) · preferences / incident state → memory (`MEMORY.md` index) · open items → a TODO list, not docs.
+
+New skills here: adopt `when_to_use`, sibling `reference.md`/`scripts/`, and `allowed-tools` for
+read-only diagnostics (`kubectl get`/`talosctl health`); skip `paths:` (skills trigger on intent, not
+file edits), `context: fork` (inline guides), bang-backtick injection (how-to skills, not state
+dashboards), and `disable-model-invocation`/`user-invocable`.
 
 ## Gotchas
 - **Verbatim is the whole point.** The three prompts are the deliverable; reproduce them unchanged.
