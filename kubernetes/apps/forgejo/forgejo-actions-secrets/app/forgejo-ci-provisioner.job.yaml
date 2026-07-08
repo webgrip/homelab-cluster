@@ -71,9 +71,12 @@ spec:
                 echo "unexpected status probing bot user: $code" >&2; exit 1
               fi
 
-              # 2) Reuse the stored token if it still authenticates; else (re)mint.
+              # 2) Reuse the stored token if it still authenticates AND can reach the package
+              #    API (a token minted before write:package was added authenticates fine but
+              #    401s package uploads — reqPackageAccess); else (re)mint with current scopes.
               tok="$(kubectl -n "$NAMESPACE" get secret "$TOKEN_SECRET" -o jsonpath='{.data.FORGEJO_TOKEN}' 2>/dev/null | base64 -d 2>/dev/null || true)"
-              if [ -n "$tok" ] && curl -fsS -o /dev/null -H "Authorization: token $tok" "$api/user"; then
+              if [ -n "$tok" ] && curl -fsS -o /dev/null -H "Authorization: token $tok" "$api/user" \
+                 && curl -fsS -o /dev/null -H "Authorization: token $tok" "$api/packages/${ORG}?limit=1"; then
                 echo "existing token still valid — no change"
               else
                 echo "minting a fresh token"
@@ -81,7 +84,7 @@ spec:
                   -d "{\"login_name\":\"${BOT_USERNAME}\",\"source_id\":0,\"password\":\"${BOT_PASSWORD}\",\"must_change_password\":false}" >/dev/null
                 curl -sS -o /dev/null -u "$bot" -X DELETE "$api/users/${BOT_USERNAME}/tokens/${TOKEN_NAME}" || true
                 tok="$(curl -fsS -u "$bot" -H 'Content-Type: application/json' -X POST "$api/users/${BOT_USERNAME}/tokens" \
-                  -d "{\"name\":\"${TOKEN_NAME}\",\"scopes\":[\"write:repository\",\"read:user\",\"write:issue\",\"read:organization\"]}" | jq -r '.sha1')"
+                  -d "{\"name\":\"${TOKEN_NAME}\",\"scopes\":[\"write:repository\",\"write:package\",\"read:user\",\"write:issue\",\"read:organization\"]}" | jq -r '.sha1')"
                 [ -n "$tok" ] && [ "$tok" != "null" ] || { echo "token mint failed" >&2; exit 1; }
                 kubectl -n "$NAMESPACE" create secret generic "$TOKEN_SECRET" \
                   --from-literal="FORGEJO_TOKEN=$tok" \
@@ -90,7 +93,8 @@ spec:
               fi
 
               # 3) Give the bot org-wide write in webgrip (team 'ci', write, all repos) so
-              #    semantic-release can create releases/tags and techdocs can push. Idempotent.
+              #    semantic-release can create releases/tags, publish org packages, and
+              #    techdocs can push. Idempotent.
               tid="$(curl -fsS -u "$admin" "$api/orgs/${ORG}/teams" 2>/dev/null | jq -r '.[] | select(.name=="ci") | .id' | head -1)"
               if [ -z "$tid" ]; then
                 tid="$(curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST "$api/orgs/${ORG}/teams" \
