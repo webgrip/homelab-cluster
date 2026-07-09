@@ -105,14 +105,13 @@ entries:
   # The password stage is rendered INLINE by the identification stage above
   # (password_stage: !KeyOf homelab-password). Authentik requires that the
   # password stage NOT also be bound separately in the same flow, or the
-  # single-page rendering breaks. state: absent deletes the previously-created
-  # order-20 binding on the live cluster; it is a harmless no-op on a fresh one.
-  - model: authentik_flows.flowstagebinding
-    state: absent
-    identifiers:
-      order: 20
-      stage: !KeyOf homelab-password
-      target: !KeyOf homelab-auth-flow
+  # single-page rendering breaks. A `state: absent` entry used to delete the
+  # previously-created order-20 binding here; removed 2026-07-09 — the live
+  # unbind completed long ago, and re-applying the delete started crashing the
+  # whole blueprint (RelatedObjectDoesNotExist: FlowStageBinding has no
+  # policybindingmodel_ptr — an orphaned child row the cascade can't collect),
+  # which blocked every blueprint that metaapplyblueprint-requires this one.
+  # Nothing creates that binding anymore, so a fresh cluster needs no delete.
 
   - model: authentik_flows.flowstagebinding
     identifiers:
