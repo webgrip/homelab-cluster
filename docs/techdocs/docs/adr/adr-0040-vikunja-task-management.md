@@ -128,3 +128,9 @@ stays the git-owned strategy layer, Vikunja owns operational/recurring/personal 
 * 2026-07-09 — implementation landed: `kubernetes/apps/vikunja/` (app-template, CNPG `vikunja-db`
   Tier 2, zero-trust ns, LAN HTTPRoute) + Authentik blueprint 37 with the generated-client-secret
   loop; status stays proposed until the end-to-end OIDC login + first backup are verified live
+* 2026-07-09 — verified live: HR Ready, `vikunja-db` healthy (2 instances), first barman backup
+  `completed`, `/api/v1/info` serves v2.3.0 with CalDAV on + the Authentik OIDC provider, and
+  the provider's `.well-known` answers 200. Two platform bugs fixed en route: CNPG bootstrap
+  job pods lacked the kube-apiserver CNP allow (cnpg-netpol component), and the flows
+  blueprint's stale `state: absent` delete crashed all blueprint applies. Remaining for
+  acceptance: a real browser OIDC login
