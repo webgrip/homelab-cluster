@@ -136,6 +136,14 @@ The Harbor family — adoption, backing services, exposure, SSO — then the cac
 | [0038](adr-0038-codeberg-pages-techdocs.md) | Serve TechDocs from Codeberg Pages (interim + off-site) | accepted | 2026-06-21 |
 | [0039](adr-0039-backstage-techdocs.md) | TechDocs served by Backstage + Garage S3 (target) | proposed | 2026-07-02 |
 
+### 11. Applications
+
+Tenant apps the platform hosts — decisions about *what* runs, not how the platform works.
+
+| ADR | Decision | Status | Last updated |
+| --- | -------- | ------ | ------------ |
+| [0040](adr-0040-vikunja-task-management.md) | Vikunja as the task-management system, complementing Forgejo issues | proposed | 2026-07-09 |
+
 ## Renumbering (2026-07-03)
 
 The set was renumbered **once** so it reads bottom-up through the stack. Slugs never changed —

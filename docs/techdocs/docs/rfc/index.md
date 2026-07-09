@@ -17,7 +17,8 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
   [dynamic database credentials](rfc-dynamic-database-credentials.md) (pilot rolled back),
   [Backstage TechDocs](rfc-backstage-techdocs.md) (+ [implementation
   plan](plan-backstage-techdocs.md)), [layered hardware
-  architecture](rfc-layered-hardware-architecture.md) (program doc).
+  architecture](rfc-layered-hardware-architecture.md) (program doc),
+  [task management](rfc-task-management.md) (top-20 field survey → Vikunja, ADR-0040).
 
 ## Decision-landscape gap RFCs (2026-07-02)
 
