@@ -1,0 +1,125 @@
+---
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+version: 1
+metadata:
+  name: Homelab - Vikunja OIDC
+  labels:
+    blueprints.goauthentik.io/description: Vikunja OIDC provider and application.
+    blueprints.goauthentik.io/instantiate: "true"
+context:
+  domain: webgrip.dev
+  app_host: vikunja
+  # Vikunja callback: /auth/openid/<provider-id>; provider id "authentik" comes from
+  # VIKUNJA_AUTH_OPENID_PROVIDERS_AUTHENTIK_* in the app's HelmRelease env.
+  redirect_path: /auth/openid/authentik
+entries:
+  # --- Dependencies: ensure prerequisite blueprints are applied first ---
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: Homelab - Core groups and users
+      required: true
+
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: Homelab - Policies
+      required: true
+
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: Homelab - Authentication and MFA flows
+      required: true
+
+  # --- OIDC provider and application ---
+  - model: authentik_providers_oauth2.oauth2provider
+    id: vikunja-oidc-provider
+    identifiers:
+      name: vikunja-oidc
+    attrs:
+      name: Vikunja OIDC
+      client_type: confidential
+      client_id: vikunja
+      # Generated in-cluster (vikunja-oidc-client ExternalSecret) and injected via
+      # global.env in the authentik HelmRelease; mirrored to OpenBao secret/vikunja/oidc
+      # by the matching PushSecret for Vikunja's side. No CLI ceremony.
+      client_secret: !Env VIKUNJA_OIDC_CLIENT_SECRET
+      # Pin RS256: without a signing_key Authentik falls back to HS256, which Go
+      # oidc clients (Vikunja included) reject — same fix as Harbor and OpenBao.
+      signing_key: !Find
+        - authentik_crypto.certificatekeypair
+        - - name
+          - authentik Self-signed Certificate
+      grant_types:
+        - authorization_code
+        - refresh_token
+      redirect_uris:
+        - matching_mode: strict
+          url: !Format
+            - "https://%s.%s%s"
+            - !Context app_host
+            - !Context domain
+            - !Context redirect_path
+      authentication_flow: !Find
+        - authentik_flows.flow
+        - - slug
+          - homelab-authentication
+      authorization_flow: !Find
+        - authentik_flows.flow
+        - - slug
+          - default-provider-authorization-explicit-consent
+      invalidation_flow: !Find
+        - authentik_flows.flow
+        - - slug
+          - default-provider-invalidation-flow
+      property_mappings:
+        - !Find
+          - authentik_providers_oauth2.scopemapping
+          - - scope_name
+            - "openid"
+        - !Find
+          - authentik_providers_oauth2.scopemapping
+          - - scope_name
+            - "profile"
+        - !Find
+          - authentik_providers_oauth2.scopemapping
+          - - scope_name
+            - "email"
+
+  - model: authentik_core.application
+    id: vikunja-oidc-app
+    identifiers:
+      slug: vikunja
+    attrs:
+      name: Vikunja
+      provider: !KeyOf vikunja-oidc-provider
+      meta_launch_url: !Format
+        - "https://%s.%s"
+        - !Context app_host
+        - !Context domain
+      meta_description: Vikunja task management login via Authentik OIDC.
+      open_in_new_tab: true
+      policy_engine_mode: all
+
+  - model: authentik_policies.policybinding
+    identifiers:
+      order: 0
+      policy: !Find
+        - authentik_policies_expression.expressionpolicy
+        - - name
+          - homelab-users-only
+      target: !KeyOf vikunja-oidc-app
+    attrs:
+      enabled: true
+
+  - model: authentik_policies.policybinding
+    identifiers:
+      order: 10
+      policy: !Find
+        - authentik_policies_expression.expressionpolicy
+        - - name
+          - homelab-mfa-required
+      target: !KeyOf vikunja-oidc-app
+    attrs:
+      enabled: true
