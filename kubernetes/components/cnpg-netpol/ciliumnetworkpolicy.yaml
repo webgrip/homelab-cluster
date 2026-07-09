@@ -20,3 +20,21 @@ spec:
   egress:
     - toEntities:
         - kube-apiserver
+---
+# Same allow for CNPG BOOTSTRAP JOB pods (initdb/join/full-recovery): they carry
+# cnpg.io/jobRole=… but NOT cnpg.io/podRole=instance, so the policy above misses
+# them and a brand-new Cluster wedges before first start — wait-for-get-cluster
+# times out on 10.43.0.1:443 and the initdb Job errors forever (hit by vikunja-db
+# 2026-07-09; older DBs predate the W7 default-deny so never saw it).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-cnpg-bootstrap-apiserver
+spec:
+  endpointSelector:
+    matchExpressions:
+      - key: cnpg.io/jobRole
+        operator: Exists
+  egress:
+    - toEntities:
+        - kube-apiserver
