@@ -1,0 +1,42 @@
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: vikunja-db
+  namespace: vikunja
+  labels:
+    monitoring.webgrip.io/enabled: "true"
+spec:
+  instances: 2
+  # Pin the DB off the soyo control-planes onto the worker pool (ADR-0002).
+  affinity:
+    nodeSelector:
+      node.webgrip.io/pool: worker
+  inheritedMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
+  storage:
+    resizeInUseVolumes: true
+    size: 5Gi
+    storageClass: longhorn
+  walStorage:
+    resizeInUseVolumes: true
+    size: 5Gi
+    storageClass: longhorn
+  postgresql:
+    shared_preload_libraries:
+      - pg_stat_statements
+    parameters:
+      # Backup-tier policy (Tier 2): compress WAL full-page images to shrink the
+      # S3 archive and local WAL. See docs/techdocs/docs/general/database-backup-tiers.md
+      wal_compression: "zstd"
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: vikunja-db-store
+        serverName: vikunja-db
+  bootstrap:
+    initdb:
+      database: app
+      owner: app

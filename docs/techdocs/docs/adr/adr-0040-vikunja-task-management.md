@@ -125,3 +125,6 @@ stays the git-owned strategy layer, Vikunja owns operational/recurring/personal 
 * Spawned by [RFC: task management](../rfc/rfc-task-management.md) (field survey, ranked top-20,
   watch-list re-open triggers)
 * 2026-07-09 — proposed; nothing deployed yet (`kubernetes/apps/vikunja/` does not exist)
+* 2026-07-09 — implementation landed: `kubernetes/apps/vikunja/` (app-template, CNPG `vikunja-db`
+  Tier 2, zero-trust ns, LAN HTTPRoute) + Authentik blueprint 37 with the generated-client-secret
+  loop; status stays proposed until the end-to-end OIDC login + first backup are verified live

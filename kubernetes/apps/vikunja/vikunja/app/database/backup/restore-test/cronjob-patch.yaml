@@ -1,0 +1,28 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cnpg-restore-test
+spec:
+  # Disabled: restore drills spin up a full CNPG cluster and cause significant
+  # storage/control-plane load, so they stay off for now. Flip suspend to false
+  # (staggered overnight, one app per hour) to re-enable.
+  suspend: true
+  schedule: "0 6 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: restore-test
+              env:
+                - name: SOURCE_CLUSTER
+                  value: vikunja-db
+                - name: RESTORE_CLUSTER
+                  value: vikunja-db-restore
+                - name: EXPECTED_DATABASE
+                  value: app
+                - name: EXPECTED_ROLE
+                  value: app
+                - name: BARMAN_OBJECT_NAME
+                  value: vikunja-db-store

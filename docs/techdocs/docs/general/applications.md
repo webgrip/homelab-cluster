@@ -34,6 +34,7 @@ Hostnames follow `<app>.${SECRET_DOMAIN}` (`cluster-secrets`, SOPS-encrypted). G
 | GUAC | `security` | `guac.${SECRET_DOMAIN}` | Supply-chain graph; CNPG DB |
 | OpenBao | `security` | `openbao.${SECRET_DOMAIN}` | Secrets backend (ESO source) |
 | SparkyFitness | `sparkyfitness` | `sparkyfitness.${SECRET_DOMAIN}` | Fitness tracker; CNPG DB |
+| Vikunja | `vikunja` | `vikunja.${SECRET_DOMAIN}` | Task management (ADR-0040); CNPG DB; Authentik OIDC |
 
 ## Routed via envoy-external (public, via Cloudflare Tunnel)
 

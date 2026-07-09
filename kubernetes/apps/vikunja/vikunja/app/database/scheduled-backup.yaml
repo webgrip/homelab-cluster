@@ -1,0 +1,16 @@
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: vikunja-db-daily
+  namespace: vikunja
+spec:
+  # 6-field cron, staggered across apps (02:40 is a free slot).
+  schedule: "0 40 2 * * *"
+  backupOwnerReference: cluster
+  immediate: true
+  cluster:
+    name: vikunja-db
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io

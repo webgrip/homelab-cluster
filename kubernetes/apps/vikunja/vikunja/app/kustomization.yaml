@@ -1,0 +1,16 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./ocirepository.yaml
+  - ./helmrelease.yaml
+  - ./httproute.yaml
+  - ./vikunja-secret.externalsecret.yaml
+  - ./vikunja-oidc.externalsecret.yaml
+  - ./networkpolicy.yaml
+  - ./database
+components:
+  # Server-side OIDC to authentik.${SECRET_DOMAIN} hairpins through the
+  # envoy-internal VIP — needs the identity-based gateway egress allow (ADR-0005).
+  - ../../../../components/gateway-egress

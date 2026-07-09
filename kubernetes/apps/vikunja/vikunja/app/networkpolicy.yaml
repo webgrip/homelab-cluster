@@ -1,0 +1,87 @@
+---
+# Zero-trust for vikunja (W7). The namespace label generates default-deny
+# (ingress+egress) + allow-dns. Flow: gateway -> vikunja:3456 -> db:5432 (CNPG).
+# The db archives WAL to Garage S3 and talks to the kube-apiserver. Server-side
+# OIDC egress to the envoy gateways is the gateway-egress component (ADR-0005).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vikunja-allow-ingress
+  labels:
+    app.kubernetes.io/part-of: vikunja
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    # intra-namespace: app -> db, db replication (all ports)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vikunja
+    # gateway (network ns) + LAN (gateway traffic can masquerade to a node IP) -> app
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: network
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16
+        - ipBlock:
+            cidr: 127.0.0.0/8
+        - ipBlock:
+            cidr: fd00::/8
+        - ipBlock:
+            cidr: ::1/128
+      ports:
+        - protocol: TCP
+          port: 3456
+    # Prometheus (observability ns) scraping db metrics (cnpg-monitoring)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+    # CNPG operator (cnpg-system) -> instance status (8000) + Postgres (5432).
+    # Without this the operator can't extract instance status, so the Cluster
+    # never reports Ready (CNPG-managed control-plane, not the app).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vikunja-allow-egress
+  labels:
+    app.kubernetes.io/part-of: vikunja
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # intra-namespace: app -> db, db replication
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vikunja
+    # LAN: Garage S3 (10.0.0.110:3900) for CNPG WAL/backups, nodes, API VIP.
+    # CRITICAL: blocking this breaks WAL archiving -> the Garage-WAL SPOF outage.
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/24
+    # kube-apiserver ClusterIP (CNPG instance manager needs the k8s API)
+    - to:
+        - ipBlock:
+            cidr: 10.43.0.1/32
+      ports:
+        - protocol: TCP
+          port: 443

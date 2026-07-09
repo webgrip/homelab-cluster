@@ -1,0 +1,108 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: vikunja
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: vikunja
+  interval: 30m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  values:
+    controllers:
+      vikunja:
+        annotations:
+          reloader.stakater.com/auto: "true" # restart on ESO secret rotation
+        # RWO files PVC + 1 replica: rolling update would deadlock on Multi-Attach.
+        strategy: Recreate
+        pod:
+          nodeSelector:
+            node.webgrip.io/pool: worker # ADR-0002
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+            fsGroupChangePolicy: OnRootMismatch
+        containers:
+          app:
+            image:
+              repository: docker.io/vikunja/vikunja
+              tag: 2.3.0@sha256:f6b80393c1998cd5cd0dc38d24762c59ab4c10000a6f1032ef5b554e262cab93
+            env:
+              # --- database (CNPG vikunja-db; app secret is operator-generated) ---
+              - name: VIKUNJA_DATABASE_TYPE
+                value: postgres
+              - name: VIKUNJA_DATABASE_HOST
+                value: vikunja-db-rw
+              - name: VIKUNJA_DATABASE_DATABASE
+                value: app
+              - name: VIKUNJA_DATABASE_USER
+                valueFrom:
+                  secretKeyRef:
+                    name: vikunja-db-app
+                    key: username
+              - name: VIKUNJA_DATABASE_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: vikunja-db-app
+                    key: password
+              - name: VIKUNJA_DATABASE_SSLMODE
+                value: require
+              # --- service ---
+              - name: VIKUNJA_SERVICE_PUBLICURL
+                value: https://vikunja.${SECRET_DOMAIN}/
+              - name: VIKUNJA_SERVICE_ENABLEREGISTRATION
+                value: "false" # accounts come from Authentik OIDC
+              - name: VIKUNJA_FILES_BASEPATH
+                value: /files
+              # --- OIDC (Authentik; blueprint 37-oidc-vikunja) ---
+              # Provider id "authentik" → callback /auth/openid/authentik.
+              - name: VIKUNJA_AUTH_OPENID_ENABLED
+                value: "true"
+              - name: VIKUNJA_AUTH_OPENID_PROVIDERS_AUTHENTIK_NAME
+                value: Authentik
+              - name: VIKUNJA_AUTH_OPENID_PROVIDERS_AUTHENTIK_AUTHURL
+                value: https://authentik.${SECRET_DOMAIN}/application/o/vikunja/
+              - name: VIKUNJA_AUTH_OPENID_PROVIDERS_AUTHENTIK_CLIENTID
+                value: vikunja
+              - name: VIKUNJA_AUTH_OPENID_PROVIDERS_AUTHENTIK_SCOPE
+                value: openid profile email
+            envFrom:
+              - secretRef:
+                  name: vikunja-secret # VIKUNJA_SERVICE_SECRET (JWT)
+              - secretRef:
+                  name: vikunja-oidc # ..._AUTHENTIK_CLIENTSECRET
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                  - "ALL"
+            probes:
+              liveness: {enabled: true}
+              readiness: {enabled: true}
+            resources:
+              requests: {cpu: 10m, memory: 128Mi}
+              limits: {memory: 512Mi}
+    service:
+      app:
+        controller: vikunja
+        ports:
+          http:
+            port: 3456
+    persistence:
+      files:
+        accessMode: ReadWriteOnce
+        size: 5Gi
+        storageClass: longhorn
+        globalMounts:
+          - path: /files
