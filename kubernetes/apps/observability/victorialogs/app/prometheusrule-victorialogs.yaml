@@ -1,0 +1,102 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: victorialogs-rules
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: victorialogs
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: observability.victorialogs
+      rules:
+        - alert: VictoriaLogsDown
+          expr: |
+            up{job="vlsingle-victorialogs"} == 0
+          for: 10m
+          labels:
+            severity: critical
+            owner: platform
+            service: victorialogs
+          annotations:
+            summary: "VictoriaLogs (vlsingle-victorialogs) is down"
+            description: |
+              What's happening:
+              - The VLSingle scrape target has been down for 10m.
+
+              Impact/risk:
+              - All log ingestion (pod logs, k8s events, OTLP/Faro) is failing;
+                alloy buffers briefly, then logs are lost.
+
+              First steps:
+              - kubectl get vlsingle,pods -n observability
+              - See runbooks/victorialogs.md
+
+        - alert: VictoriaLogsNoIngest
+          # Catches a silent ingest break (e.g. a bad alloy repoint): the pod is
+          # up but no rows arrive. Pod logs alone are a steady multi-row/s feed.
+          expr: |
+            sum(rate(vl_rows_ingested_total{job="vlsingle-victorialogs"}[15m])) == 0
+          for: 15m
+          labels:
+            severity: critical
+            owner: platform
+            service: victorialogs
+          annotations:
+            summary: "VictoriaLogs is up but ingesting zero log rows"
+            description: |
+              What's happening:
+              - vl_rows_ingested_total has been flat for 15m while the server is up.
+
+              Impact/risk:
+              - Log shippers (alloy-agent/alloy-gateway) are not delivering;
+                logs are being dropped upstream.
+
+              First steps:
+              - kubectl logs -n observability ds/alloy-agent | grep -i error
+              - Check the loki.write endpoint URL in both alloy HelmReleases.
+
+        - alert: VictoriaLogsDiskAlmostFull
+          # PVC is 20Gi with retention.maxDiskSpaceUsageBytes=18GiB as the safety
+          # valve; alert before the valve starts dropping the oldest data.
+          expr: |
+            vl_free_disk_space_bytes{job="vlsingle-victorialogs"} < 4 * 1024^3
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: victorialogs
+          annotations:
+            summary: "VictoriaLogs data volume has <4GiB free"
+            description: |
+              What's happening:
+              - Free space on /victoria-logs-data is below 4GiB for 30m.
+
+              Impact/risk:
+              - At 2GiB headroom the retention valve drops the oldest data early;
+                a full disk makes storage read-only.
+
+              First steps:
+              - Check ingest volume for a runaway log producer (stats by stream).
+              - Grow the PVC (Longhorn expands online) or lower retentionPeriod.
+
+        - alert: VictoriaLogsHttpErrors
+          expr: |
+            sum(rate(vl_http_errors_total{job="vlsingle-victorialogs"}[5m])) > 0.1
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: victorialogs
+          annotations:
+            summary: "VictoriaLogs is returning HTTP errors"
+            description: |-
+              What's happening:
+              - Sustained HTTP error responses from vlsingle for 15m.
+
+              Impact/risk:
+              - Ingest or queries (Grafana, mcp-victorialogs) may be failing.
+
+              First steps:
+              - kubectl logs -n observability deploy/vlsingle-victorialogs
