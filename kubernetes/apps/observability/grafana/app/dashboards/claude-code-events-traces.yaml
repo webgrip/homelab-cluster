@@ -44,66 +44,66 @@ spec:
         {"id": 2, "type": "row", "title": "1. Event & error overview", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 3}, "panels": []},
         {
           "id": 3, "type": "timeseries", "title": "Event volume by event name", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
-          "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "sum by (event_name) (count_over_time({service_name=\"claude-code\"}[$$__interval]))", "queryType": "range", "legendFormat": "{{event_name}}"}],
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\"} | stats by (event_name) count()", "queryType": "statsRange", "legendFormat": "{{event_name}}"}],
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "fieldConfig": {"defaults": {"unit": "short", "custom": {"lineWidth": 2, "fillOpacity": 12, "showPoints": "never"}}, "overrides": []}
         },
         {
           "id": 4, "type": "timeseries", "title": "API errors by status & model", "gridPos": {"h": 8, "w": 8, "x": 12, "y": 4},
-          "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "sum by (status_code, model) (count_over_time({service_name=\"claude-code\", event_name=\"api_error\"} | json status_code=\"attributes.status_code\", model=\"attributes.model\" [$$__interval]))", "queryType": "range", "legendFormat": "{{model}} / {{status_code}}"}],
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"api_error\"} | rename attributes.status_code as status_code, attributes.model as model | stats by (status_code, model) count()", "queryType": "statsRange", "legendFormat": "{{model}} / {{status_code}}"}],
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
           "fieldConfig": {"defaults": {"unit": "short", "custom": {"lineWidth": 2, "fillOpacity": 10, "showPoints": "auto", "drawStyle": "bars"}, "color": {"mode": "fixed", "fixedColor": "red"}}, "overrides": []}
         },
         {
           "id": 5, "type": "stat", "title": "API refusals (range)", "description": "Responses with stop_reason=refusal.", "gridPos": {"h": 4, "w": 4, "x": 20, "y": 4},
-          "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "sum(count_over_time({service_name=\"claude-code\", event_name=\"api_refusal\"}[$$__range])) or vector(0)", "queryType": "instant"}],
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"api_refusal\"} | stats count()", "queryType": "stats"}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "red", "value": 1}]}}, "overrides": []}
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "noValue": "0", "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "red", "value": 1}]}}, "overrides": []}
         },
         {
           "id": 6, "type": "stat", "title": "Internal errors (range)", "gridPos": {"h": 4, "w": 4, "x": 20, "y": 8},
-          "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "sum(count_over_time({service_name=\"claude-code\", event_name=\"internal_error\"}[$$__range])) or vector(0)", "queryType": "instant"}],
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"internal_error\"} | stats count()", "queryType": "stats"}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}, "overrides": []}
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "noValue": "0", "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}, "overrides": []}
         },
         {"id": 7, "type": "row", "title": "2. Request & tool detail", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 12}, "panels": []},
         {
           "id": 8, "type": "logs", "title": "Recent API requests", "description": "Expand a line for model, cost_usd, duration_ms, input/output/cache tokens.", "gridPos": {"h": 10, "w": 12, "x": 0, "y": 13},
-          "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"api_request\"} | json | line_format \"{{.attributes_model}} · {{.attributes_cost_usd}} USD · {{.attributes_duration_ms}}ms · in {{.attributes_input_tokens}} / out {{.attributes_output_tokens}} / cacheR {{.attributes_cache_read_tokens}} / cacheW {{.attributes_cache_creation_tokens}} · {{.attributes_query_source}}\"", "queryType": "range", "direction": "backward", "maxLines": 100}],
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"api_request\"} | format \"<attributes.model> · <attributes.cost_usd> USD · <attributes.duration_ms>ms · in <attributes.input_tokens> / out <attributes.output_tokens> / cacheR <attributes.cache_read_tokens> / cacheW <attributes.cache_creation_tokens> · <attributes.query_source>\" as _msg", "queryType": "instant", "direction": "backward", "maxLines": 100}],
           "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
           "fieldConfig": {"defaults": {}, "overrides": []}
         },
         {
           "id": 9, "type": "logs", "title": "Recent tool results", "description": "Expand a line for tool_name, success, duration_ms, error_type, file_path / full_command.", "gridPos": {"h": 10, "w": 12, "x": 12, "y": 13},
-          "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"tool_result\"} | json | line_format \"{{.attributes_tool_name}} · {{.attributes_success}} · {{.attributes_duration_ms}}ms\"", "queryType": "range", "direction": "backward", "maxLines": 200}],
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"tool_result\"} | format \"<attributes.tool_name> · <attributes.success> · <attributes.duration_ms>ms\" as _msg", "queryType": "instant", "direction": "backward", "maxLines": 200}],
           "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
           "fieldConfig": {"defaults": {}, "overrides": []}
         },
         {"id": 10, "type": "row", "title": "3. Prompts, permissions & MCP", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 23}, "panels": []},
         {
           "id": 11, "type": "logs", "title": "Prompt search", "description": "Requires OTEL_LOG_USER_PROMPTS=1. Type in the Prompt search box to grep prompt text (empty = all).", "gridPos": {"h": 10, "w": 12, "x": 0, "y": 24},
-          "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"user_prompt\"} |~ \"$$search\" | json | line_format \"{{.attributes_prompt}}\"", "queryType": "range", "direction": "backward", "maxLines": 300}],
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"user_prompt\"} attributes.prompt:~\"$$search\" | format \"<attributes.prompt>\" as _msg", "queryType": "instant", "direction": "backward", "maxLines": 300}],
           "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
           "fieldConfig": {"defaults": {}, "overrides": []}
         },
         {
           "id": 12, "type": "logs", "title": "Permission mode changes", "description": "Shift+Tab cycling, exiting plan mode, auto-gate checks.", "gridPos": {"h": 10, "w": 6, "x": 12, "y": 24},
-          "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"permission_mode_changed\"} | json", "queryType": "range", "direction": "backward", "maxLines": 100}],
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"permission_mode_changed\"}", "queryType": "instant", "direction": "backward", "maxLines": 100}],
           "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
           "fieldConfig": {"defaults": {}, "overrides": []}
         },
         {
           "id": 13, "type": "table", "title": "MCP server connections", "description": "Connection outcomes by status & transport over the range.", "gridPos": {"h": 10, "w": 6, "x": 18, "y": 24},
-          "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "sum by (status, transport_type) (count_over_time({service_name=\"claude-code\", event_name=\"mcp_server_connection\"} | json status=\"attributes.status\", transport_type=\"attributes.transport_type\" [$$__range]))", "queryType": "instant"}],
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"mcp_server_connection\"} | rename attributes.status as status, attributes.transport_type as transport_type | stats by (status, transport_type) count()", "queryType": "stats"}],
           "transformations": [{"id": "organize", "options": {"excludeByName": {"Time": true}, "renameByName": {"status": "Status", "transport_type": "Transport", "Value": "Count"}}}],
           "options": {"showHeader": true, "sortBy": [{"displayName": "Count", "desc": true}]},
           "fieldConfig": {"defaults": {"decimals": 0, "custom": {"align": "auto"}}, "overrides": []}

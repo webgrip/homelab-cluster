@@ -155,11 +155,11 @@ spec:
         },
         {
           "id": 21, "type": "timeseries", "title": "Tokens per request (p50 / p90 / p99)", "description": "From api_request events. Works without content capture.", "gridPos": {"h": 8, "w": 8, "x": 16, "y": 35},
-          "datasource": {"type": "loki", "uid": "loki"},
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
           "targets": [
-            {"refId": "A", "expr": "quantile_over_time(0.5, {service_name=\"claude-code\", event_name=\"api_request\"} | json output_tokens=\"attributes.output_tokens\" | unwrap output_tokens [$$__interval])", "queryType": "range", "legendFormat": "output p50"},
-            {"refId": "B", "expr": "quantile_over_time(0.9, {service_name=\"claude-code\", event_name=\"api_request\"} | json output_tokens=\"attributes.output_tokens\" | unwrap output_tokens [$$__interval])", "queryType": "range", "legendFormat": "output p90"},
-            {"refId": "C", "expr": "quantile_over_time(0.9, {service_name=\"claude-code\", event_name=\"api_request\"} | json input_tokens=\"attributes.input_tokens\" | unwrap input_tokens [$$__interval])", "queryType": "range", "legendFormat": "input p90"}
+            {"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"api_request\"} | rename attributes.output_tokens as output_tokens | stats quantile(0.5, output_tokens)", "queryType": "statsRange", "legendFormat": "output p50"},
+            {"refId": "B", "expr": "{service_name=\"claude-code\", event_name=\"api_request\"} | rename attributes.output_tokens as output_tokens | stats quantile(0.9, output_tokens)", "queryType": "statsRange", "legendFormat": "output p90"},
+            {"refId": "C", "expr": "{service_name=\"claude-code\", event_name=\"api_request\"} | rename attributes.input_tokens as input_tokens | stats quantile(0.9, input_tokens)", "queryType": "statsRange", "legendFormat": "input p90"}
           ],
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
           "fieldConfig": {"defaults": {"unit": "short", "custom": {"lineWidth": 2, "fillOpacity": 5, "showPoints": "never"}}, "overrides": []}

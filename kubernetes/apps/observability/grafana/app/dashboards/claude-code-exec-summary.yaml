@@ -83,15 +83,15 @@ spec:
         },
         {
           "id": 9, "type": "stat", "title": "API errors 24h", "description": "Count of api_error events over the last 24h (0 = healthy).", "gridPos": {"h": 4, "w": 3, "x": 18, "y": 4},
-          "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "sum(count_over_time({service_name=\"claude-code\", event_name=\"api_error\"}[24h])) or vector(0)", "queryType": "instant"}],
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"api_error\"} | stats count()", "queryType": "stats"}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []}
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "noValue": "0", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []}
         },
         {
           "id": 10, "type": "stat", "title": "Request p90 latency (24h)", "description": "p90 of api_request duration_ms over the last 24h.", "gridPos": {"h": 4, "w": 3, "x": 21, "y": 4},
-          "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "quantile_over_time(0.9, {service_name=\"claude-code\", event_name=\"api_request\"} | json duration_ms=\"attributes.duration_ms\" | unwrap duration_ms [24h])", "queryType": "instant"}],
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"api_request\"} | stats quantile(0.9, attributes.duration_ms) p90", "queryType": "stats"}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
           "fieldConfig": {"defaults": {"unit": "ms", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
         },
@@ -112,10 +112,10 @@ spec:
         },
         {
           "id": 14, "type": "timeseries", "title": "Request volume vs errors", "description": "api_request vs api_error event counts over time (from Loki).", "gridPos": {"h": 7, "w": 12, "x": 0, "y": 16},
-          "datasource": {"type": "loki", "uid": "loki"},
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
           "targets": [
-            {"refId": "A", "expr": "sum(count_over_time({service_name=\"claude-code\", event_name=\"api_request\"}[$$__interval]))", "queryType": "range", "legendFormat": "api_request"},
-            {"refId": "B", "expr": "sum(count_over_time({service_name=\"claude-code\", event_name=\"api_error\"}[$$__interval]))", "queryType": "range", "legendFormat": "api_error"}
+            {"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"api_request\"} | stats count()", "queryType": "statsRange", "legendFormat": "api_request"},
+            {"refId": "B", "expr": "{service_name=\"claude-code\", event_name=\"api_error\"} | stats count()", "queryType": "statsRange", "legendFormat": "api_error"}
           ],
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "custom": {"lineWidth": 1, "fillOpacity": 10, "showPoints": "never"}}, "overrides": [{"matcher": {"id": "byName", "options": "api_error"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]}, {"matcher": {"id": "byName", "options": "api_request"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]}]}

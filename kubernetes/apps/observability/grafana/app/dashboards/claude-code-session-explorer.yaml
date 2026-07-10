@@ -66,24 +66,24 @@ spec:
         },
         {
           "id": 6, "type": "stat", "title": "Prompts", "description": "user_prompt events emitted by this session over the range.", "gridPos": {"h": 4, "w": 4, "x": 12, "y": 4},
-          "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "sum(count_over_time({service_name=\"claude-code\", event_name=\"user_prompt\"} | json session_id=\"attributes.session_id\" | session_id=\"$$session\" [$$__range])) or vector(0)", "queryType": "instant"}],
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"user_prompt\"} | filter attributes.session.id:=\"$$session\" | stats count()", "queryType": "stats"}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}]}}, "overrides": []}
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "noValue": "0", "thresholds": {"mode": "absolute", "steps": [{"color": "green"}]}}, "overrides": []}
         },
         {
           "id": 7, "type": "stat", "title": "Tool calls", "description": "tool_result events emitted by this session over the range.", "gridPos": {"h": 4, "w": 4, "x": 16, "y": 4},
-          "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "sum(count_over_time({service_name=\"claude-code\", event_name=\"tool_result\"} | json session_id=\"attributes.session_id\" | session_id=\"$$session\" [$$__range])) or vector(0)", "queryType": "instant"}],
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"tool_result\"} | filter attributes.session.id:=\"$$session\" | stats count()", "queryType": "stats"}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "orange"}]}}, "overrides": []}
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "noValue": "0", "thresholds": {"mode": "absolute", "steps": [{"color": "orange"}]}}, "overrides": []}
         },
         {
           "id": 8, "type": "stat", "title": "API requests", "description": "api_request events emitted by this session over the range.", "gridPos": {"h": 4, "w": 4, "x": 20, "y": 4},
-          "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "sum(count_over_time({service_name=\"claude-code\", event_name=\"api_request\"} | json session_id=\"attributes.session_id\" | session_id=\"$$session\" [$$__range])) or vector(0)", "queryType": "instant"}],
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"api_request\"} | filter attributes.session.id:=\"$$session\" | stats count()", "queryType": "stats"}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "blue"}]}}, "overrides": []}
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "noValue": "0", "thresholds": {"mode": "absolute", "steps": [{"color": "blue"}]}}, "overrides": []}
         },
         {"id": 9, "type": "row", "title": "Timeline", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 8}, "panels": []},
         {
@@ -102,23 +102,23 @@ spec:
         },
         {
           "id": 12, "type": "timeseries", "title": "Event volume by name (this session)", "description": "Per-interval count of Loki events for the selected session, split by event_name.", "gridPos": {"h": 8, "w": 8, "x": 16, "y": 9},
-          "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "sum by (event_name) (count_over_time({service_name=\"claude-code\"} | json session_id=\"attributes.session_id\" | session_id=\"$$session\" [$$__interval]))", "queryType": "range", "legendFormat": "{{event_name}}"}],
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\"} | filter attributes.session.id:=\"$$session\" | stats by (event_name) count()", "queryType": "statsRange", "legendFormat": "{{event_name}}"}],
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "fieldConfig": {"defaults": {"unit": "short", "custom": {"lineWidth": 2, "fillOpacity": 12, "showPoints": "never", "drawStyle": "line"}}, "overrides": []}
         },
         {"id": 13, "type": "row", "title": "Detail", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 17}, "panels": []},
         {
           "id": 14, "type": "bargauge", "title": "Tool calls by tool (this session)", "description": "Top 15 tools by tool_result count for the selected session over the range.", "gridPos": {"h": 10, "w": 8, "x": 0, "y": 18},
-          "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "topk(15, sum by (tool_name) (count_over_time({service_name=\"claude-code\", event_name=\"tool_result\"} | json session_id=\"attributes.session_id\", tool_name=\"attributes.tool_name\" | session_id=\"$$session\" [$$__range])))", "queryType": "instant", "legendFormat": "{{tool_name}}"}],
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\", event_name=\"tool_result\"} | filter attributes.session.id:=\"$$session\" | rename attributes.tool_name as tool_name | stats by (tool_name) count() hits | sort by (hits) desc | limit 15", "queryType": "stats", "legendFormat": "{{tool_name}}"}],
           "options": {"displayMode": "gradient", "orientation": "horizontal", "showUnfilled": true, "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
           "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "continuous-GrYlRd"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}]}}, "overrides": []}
         },
         {
           "id": 15, "type": "logs", "title": "Session events", "description": "All Loki events for the selected session. Expand a line for the full field set.", "gridPos": {"h": 10, "w": 16, "x": 8, "y": 18},
-          "datasource": {"type": "loki", "uid": "loki"},
-          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\"} | json | session_id=\"$$session\"", "queryType": "range", "direction": "backward", "maxLines": 300}],
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "expr": "{service_name=\"claude-code\"} | filter attributes.session.id:=\"$$session\"", "queryType": "instant", "direction": "backward", "maxLines": 300}],
           "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
           "fieldConfig": {"defaults": {}, "overrides": []}
         },

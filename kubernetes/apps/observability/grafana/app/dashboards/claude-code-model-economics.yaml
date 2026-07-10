@@ -103,9 +103,9 @@ spec:
         },
         {
           "id": 10, "type": "timeseries", "title": "Output-token latency p90 by model", "description": "p90 api_request latency (ms) from Loki, grouped by model. Explicit duration_ms extraction; no clamp.", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32},
-          "datasource": {"type": "loki", "uid": "loki"},
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
           "targets": [
-            {"refId": "A", "expr": "quantile_over_time(0.9, {service_name=\"claude-code\"} | json duration_ms=\"attributes.duration_ms\", model=\"attributes.model\" | duration_ms != \"\" | unwrap duration_ms [$$__interval]) by (model)", "legendFormat": "{{model}}"}
+            {"refId": "A", "expr": "{service_name=\"claude-code\"} | rename attributes.duration_ms as duration_ms, attributes.model as model | filter -duration_ms:\"\" | stats by (model) quantile(0.9, duration_ms)", "queryType": "statsRange", "legendFormat": "{{model}}"}
           ],
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "fieldConfig": {"defaults": {"unit": "ms", "decimals": 0, "custom": {"lineWidth": 2, "fillOpacity": 5, "showPoints": "never"}}, "overrides": []}
