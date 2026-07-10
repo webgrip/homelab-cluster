@@ -1,0 +1,22 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: victorialogs
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  datasource:
+    name: VictoriaLogs
+    type: victoriametrics-logs-datasource
+    uid: victorialogs
+    editable: true
+    access: proxy
+    url: http://vlsingle-victorialogs.observability.svc.cluster.local:9428
+    jsonData:
+      derivedFields:
+        - name: TraceID
+          matcherRegex: '"trace_id"\\s*:\\s*"([0-9a-fA-F]{32})"'
+          datasourceUid: tempo
+          url: "$${__value.raw}"
