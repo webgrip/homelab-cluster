@@ -5,7 +5,7 @@ Flux-managed, Grafana-centric observability platform in the `observability` name
 Current stack:
 
 - **Metrics**: VictoriaMetrics (vm-operator + VMSingle/VMAgent/VMAlert/VMAlertmanager; [ADR-0034](../adr/adr-0034-victoriametrics-metrics-backend.md))
-- **Logs**: Loki (SingleBinary, S3-backed)
+- **Logs**: VictoriaLogs (VLSingle via vm-operator; Loki read-only during the migration grace period)
 - **Collection / routing**: Grafana Alloy (node agent + OTLP gateway)
 - **Visualization**: Grafana via **grafana-operator** CRDs
 - **Alerting**: VMAlert + VMAlertmanager + Grafana Alerting
@@ -52,7 +52,7 @@ Grafana is managed by **grafana-operator** — instance, datasources, folders, d
 alert rules are all CRDs (no ConfigMap sidecar):
 
 - Instance: `kubernetes/apps/observability/grafana/app/grafana-instance.yaml` (+ chart-managed image renderer)
-- Datasources: `grafana/app/datasources/` — prometheus → VMSingle `:8429`, alertmanager → VMAlertmanager `:9093`, loki, plus tempo/pyroscope (no-data while those are suspended) and opencost/github/devex extras
+- Datasources: `grafana/app/datasources/` — prometheus → VMSingle `:8429`, alertmanager → VMAlertmanager `:9093`, victorialogs → VLSingle `:9428`, loki (read-only history, grace period), plus tempo/pyroscope (no-data while those are suspended) and opencost/github/devex extras
 - Folders / dashboards / alerting: `grafana/app/folders/`, `grafana/app/dashboards/`, `grafana/app/alerting/` — authoring recipe = **`grafana-dashboard` skill**
 - Database: CNPG `grafana-db` in-namespace (dashboards/datasources are CRDs in Git; the DB holds sessions/prefs — Tier 4 in [backup tiers](database-backup-tiers.md))
 
@@ -62,12 +62,14 @@ Secrets are **ESO-managed** (no SOPS): `grafana-admin.externalsecret.yaml` (admi
 wiring/troubleshooting → `authentik-oidc` skill + [Authentik OIDC login runbook](../runbooks/authentik-oidc-login.md)
 (DNS resolution of `authentik.${SECRET_DOMAIN}` from the pod is the usual failure — [split-DNS runbook](../runbooks/dns-split-dns.md)).
 
-## Loki
+## VictoriaLogs
 
-- HelmRelease: `kubernetes/apps/observability/loki/app/helmrelease.yaml`
-- **SingleBinary** mode; S3-compatible object storage (buckets `loki-chunks`, `loki-ruler`, `loki-admin`) + a Longhorn PVC for WAL/compaction scratch so restarts are safe.
-- Retention ~30 days (`720h`) via compactor + `limits_config.retention_period`.
-- S3 credentials from the `observability-s3` **ExternalSecret** (`kubernetes/components/observability-s3/`), injected via `extraEnvFrom`.
+- VLSingle CR: `kubernetes/apps/observability/victorialogs/app/vlsingle.yaml` (managed by vm-operator; apiVersion `operator.victoriametrics.com/v1`).
+- Query + ingest endpoint `vlsingle-victorialogs.observability.svc:9428`; vmui at `https://victorialogs.${SECRET_DOMAIN}/select/vmui` (LAN-only).
+- Retention 30d on a 20Gi Longhorn PVC (no object storage — Garage is off the logging path); safety valve `retention.maxDiskSpaceUsageBytes: 18GiB`.
+- Ingest speaks the **Loki push protocol** (`/insert/loki/api/v1/push`), so shippers use plain `loki.write`; query language is **LogsQL** (not LogQL). Grafana datasource uid `victorialogs` (`victoriametrics-logs-datasource` plugin); agent access via **mcp-victorialogs** (`.mcp.json`).
+- Alerts: `victorialogs/app/prometheusrule-victorialogs.yaml` (down / no-ingest / disk / http errors). Triage → [victorialogs runbook](../runbooks/victorialogs.md). Decision: [ADR-0041](../adr/adr-0041-victorialogs-logging-backend.md).
+- **Loki (grace period, until ~2026-08-07)**: still deployed read-only (`kubernetes/apps/observability/loki/`) so the pre-migration 30d of history stays queryable via the `loki` datasource in Explore; receives no new writes. Removal commit deletes the app dir + datasource and repoints Tempo `tracesToLogsV2`; PVC `storage-loki-0` and Garage buckets `loki-chunks`/`loki-ruler`/`loki-admin` are cleaned up out-of-repo. The `observability-s3` component stays (Tempo uses it).
 
 ## Suspended components
 
@@ -85,11 +87,11 @@ the Grafana tempo datasource shows no data.
 
 Two installations:
 
-1. **alloy-agent** (DaemonSet) — collects pod logs from each node (`/var/log/pods/...`) and writes to Loki. No per-app log agents needed; stdout/stderr is collected automatically.
+1. **alloy-agent** (DaemonSet) — collects pod logs from each node (`/var/log/pods/...`) and pushes to VictoriaLogs (Loki push protocol). No per-app log agents needed; stdout/stderr is collected automatically.
 2. **alloy-gateway** (Deployment) — stable OTLP endpoint for applications:
    - OTLP gRPC `alloy-gateway.observability.svc.cluster.local:4317`, HTTP `:4318`
    - **Metrics** → `remote_write` to VMSingle (`:8429/api/v1/write`)
-   - **Logs** → Loki
+   - **Logs** → VictoriaLogs
    - **Traces** → Tempo endpoint (dropped while Tempo is suspended)
    - **Faro** browser telemetry receiver: `http://alloy-gateway.observability.svc.cluster.local:12347/api/faro/receiver`
    - Also routed at `https://otlp.${SECRET_DOMAIN}` for off-cluster clients.
@@ -149,7 +151,7 @@ Blackbox exporter + `Probe` CRs for ingress-level uptime checks
 
 After Flux reconciles:
 
-- Grafana reachable; prometheus (VMSingle), loki, alertmanager datasources connect
+- Grafana reachable; prometheus (VMSingle), victorialogs, alertmanager datasources connect
 - VMAgent targets healthy (`https://prometheus.${SECRET_DOMAIN}` → vmagent targets)
-- Alloy agent writing logs to Loki; blackbox probes green
+- Alloy agent writing logs to VictoriaLogs (`vl_rows_ingested_total` increasing); blackbox probes green
 - VMAlert evaluating rules; test alert reaches VMAlertmanager

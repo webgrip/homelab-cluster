@@ -47,9 +47,9 @@ distinguished from accidents. Specific undecided choices found in the audit:
 ## Proposal
 
 1. **Backfill three retroactive ADRs**:
-   (a) **Loki as the log backend** with the alloy-agent collection set — the Talos syslog
-   ingestion is the distinctive, easy-to-lose piece; alternatives (VictoriaLogs — natural
-   post-ADR-0034 candidate, Elastic) recorded;
+   (a) ~~**Loki as the log backend**~~ — overtaken by events: VictoriaLogs was adopted as the
+   log backend on 2026-07-10 ([ADR-0041](../adr/adr-0041-victorialogs-logging-backend.md)),
+   which also records the Loki-era context; the Talos syslog ingestion piece moves to (c);
    (b) **Tempo + OTLP via alloy-gateway as the tracing spine**, Beyla's opt-in annotation
    convention included;
    (c) **the two-Alloy topology** — per-node *agent* for node-bound sources vs central *gateway*

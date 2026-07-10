@@ -132,7 +132,7 @@ webhook HA · `#55` prove the Longhorn backup · `#8` security-ns default-deny �
 
 ### Talos / nodes
 
-33. kube-apiserver audit logging → Loki — `[P2 · M · M]`
+33. kube-apiserver audit logging → VictoriaLogs — `[P2 · M · M]`
 34. KubePrism: enable explicitly + verify (relies on implicit default today) — `[P3 · L · S]`
 35. Re-enable the in-apiserver PodSecurity admission (currently `$patch: delete`d — Kyverno is the
     only admission layer) — `[P2 · M · S]`
@@ -220,7 +220,7 @@ webhook HA · `#55` prove the Longhorn backup · `#8` security-ns default-deny �
     3.9 ms) — `[P2 · M · S]`
 70. Telemetry retention/durability tier ADR (15d metrics / 30d logs / 14d traces; the
     VMSingle-backup decision) — `[P3 · M · S]`
-71. Retroactive pipeline ADRs via `adr-writer`: Loki logging + the two-Alloy collector topology — `[P2 · M · S]`
+71. Retroactive pipeline ADRs via `adr-writer`: ~~Loki logging~~ (done — [ADR-0041](../adr/adr-0041-victorialogs-logging-backend.md) covers the log backend incl. Loki-era context) + the two-Alloy collector topology — `[P2 · S · S]`
 72. Alert-coverage bundle: cloudflared tunnel-down, OpenBao TLS expiry, Garage capacity — `[P2 · M · S]`
 73. Per-app Sloth SLOs (forgejo, authentik, ingress) + burn-rate alerts — `[P3 · M · M]`
 
