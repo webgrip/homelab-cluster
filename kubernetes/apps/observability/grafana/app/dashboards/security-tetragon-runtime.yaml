@@ -484,14 +484,14 @@ spec:
             "y": 6
           },
           "datasource": {
-            "type": "loki",
-            "uid": "loki"
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
           },
           "targets": [
             {
               "refId": "A",
-              "expr": "{namespace=\"security\", container=~\"export-stdout\"} |~ \"process_exec\" | json binary=\"process_exec.process.binary\", ns=\"process_exec.process.pod.namespace\", pod=\"process_exec.process.pod.name\", args=\"process_exec.process.arguments\" | line_format \"{{.ns}}/{{.pod}} -> {{.binary}} {{.args}}\"",
-              "queryType": "range"
+              "expr": "{namespace=\"security\", container=~\"export-stdout\"} | unpack_json | filter process_exec.process.binary:* | rename process_exec.process.binary as binary, process_exec.process.pod.namespace as ns, process_exec.process.pod.name as pod, process_exec.process.arguments as args | format \"<ns>/<pod> -> <binary> <args>\" as _msg",
+              "queryType": "instant"
             }
           ],
           "options": {
@@ -516,14 +516,14 @@ spec:
             "y": 6
           },
           "datasource": {
-            "type": "loki",
-            "uid": "loki"
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
           },
           "targets": [
             {
               "refId": "A",
-              "expr": "{namespace=\"security\", container=~\"export-stdout\"} |~ \"process_exec\" |~ \"/bin/bash|/bin/sh|/usr/bin/python|/usr/bin/perl|/bin/python3|/usr/bin/python3|\\bnc\\b|ncat|netcat|curl|wget\" | json binary=\"process_exec.process.binary\", ns=\"process_exec.process.pod.namespace\", pod=\"process_exec.process.pod.name\", args=\"process_exec.process.arguments\" | line_format \"[ALERT] {{.ns}}/{{.pod}} -> {{.binary}} {{.args}}\"",
-              "queryType": "range"
+              "expr": "{namespace=\"security\", container=~\"export-stdout\"} | unpack_json | filter process_exec.process.binary:* | rename process_exec.process.binary as binary, process_exec.process.pod.namespace as ns, process_exec.process.pod.name as pod, process_exec.process.arguments as args | filter (binary:~\"/bin/bash|/bin/sh|/usr/bin/python|/usr/bin/perl|/bin/python3|/usr/bin/python3|\\\\bnc\\\\b|ncat|netcat|curl|wget\" or args:~\"/bin/bash|/bin/sh|/usr/bin/python|/usr/bin/perl|/bin/python3|/usr/bin/python3|\\\\bnc\\\\b|ncat|netcat|curl|wget\") | format \"[ALERT] <ns>/<pod> -> <binary> <args>\" as _msg",
+              "queryType": "instant"
             }
           ],
           "options": {
@@ -987,14 +987,14 @@ spec:
             "y": 33
           },
           "datasource": {
-            "type": "loki",
-            "uid": "loki"
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
           },
           "targets": [
             {
               "refId": "A",
-              "expr": "{namespace=\"security\", container=~\"export-stdout\"} |~ \"process_kprobe\" | json fn=\"process_kprobe.function_name\", ns=\"process_kprobe.process.pod.namespace\", pod=\"process_kprobe.process.pod.name\", binary=\"process_kprobe.process.binary\" | line_format \"{{.ns}}/{{.pod}} -> {{.fn}} [{{.binary}}]\"",
-              "queryType": "range"
+              "expr": "{namespace=\"security\", container=~\"export-stdout\"} | unpack_json | filter process_kprobe.function_name:* | rename process_kprobe.function_name as fn, process_kprobe.process.pod.namespace as ns, process_kprobe.process.pod.name as pod, process_kprobe.process.binary as binary | format \"<ns>/<pod> -> <fn> [<binary>]\" as _msg",
+              "queryType": "instant"
             }
           ],
           "options": {
@@ -1279,14 +1279,14 @@ spec:
             "y": 51
           },
           "datasource": {
-            "type": "loki",
-            "uid": "loki"
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
           },
           "targets": [
             {
               "refId": "A",
               "expr": "{namespace=\"security\", container=~\"export-stdout\"}",
-              "queryType": "range"
+              "queryType": "instant"
             }
           ],
           "options": {

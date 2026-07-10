@@ -761,14 +761,14 @@ spec:
             "y": 26
           },
           "datasource": {
-            "type": "loki",
-            "uid": "loki"
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
           },
           "targets": [
             {
               "refId": "A",
-              "expr": "{namespace=\"security\", container=\"falco\"} | json | priority =~ \"(?i)critical|error\"",
-              "queryType": "range"
+              "expr": "{namespace=\"security\", container=\"falco\"} | unpack_json | filter priority:~\"(?i)critical|error\"",
+              "queryType": "instant"
             }
           ],
           "options": {
@@ -793,14 +793,14 @@ spec:
             "y": 26
           },
           "datasource": {
-            "type": "loki",
-            "uid": "loki"
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
           },
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (rule, priority) (count_over_time({namespace=\"security\", container=\"falco\"} | json [$$__range]))",
-              "queryType": "instant"
+              "expr": "{namespace=\"security\", container=\"falco\"} | unpack_json | stats by (rule, priority) count()",
+              "queryType": "stats"
             }
           ],
           "options": {
@@ -1040,14 +1040,14 @@ spec:
             "y": 46
           },
           "datasource": {
-            "type": "loki",
-            "uid": "loki"
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
           },
           "targets": [
             {
               "refId": "A",
-              "expr": "{namespace=\"security\", container=\"falco\"} | json",
-              "queryType": "range"
+              "expr": "{namespace=\"security\", container=\"falco\"} | unpack_json",
+              "queryType": "instant"
             }
           ],
           "options": {
