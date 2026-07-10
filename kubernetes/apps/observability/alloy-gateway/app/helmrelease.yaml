@@ -60,9 +60,12 @@ spec:
             }
           }
 
+          // VictoriaLogs Loki-protocol ingest; _stream_fields pins the stream shape
+          // for the OTLP->loki label set + Faro's app/kind labels (absent fields
+          // on an entry are ignored).
           loki.write "main" {
             endpoint {
-              url = "http://loki-gateway.observability.svc.cluster.local/loki/api/v1/push"
+              url = "http://vlsingle-victorialogs.observability.svc.cluster.local:9428/insert/loki/api/v1/push?_stream_fields=service_name,service_namespace,deployment_environment,event_name,event_domain,job,app,kind"
             }
           }
 

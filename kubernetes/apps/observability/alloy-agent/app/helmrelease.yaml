@@ -28,9 +28,9 @@ spec:
       # so Talos OS (pre-pod) can reach the syslog listener at 127.0.0.1:6514.
       hostNetwork: true
       # hostNetwork silently downgrades dnsPolicy: ClusterFirst to the host resolver,
-      # which can't resolve *.svc.cluster.local -> loki.write to loki-gateway fails
-      # ("no such host") and ALL pod stdout is dropped before reaching Loki. Force
-      # CoreDNS for these hostNetwork pods so the Loki push resolves.
+      # which can't resolve *.svc.cluster.local -> loki.write to VictoriaLogs fails
+      # ("no such host") and ALL pod stdout is dropped before reaching the backend.
+      # Force CoreDNS for these hostNetwork pods so the log push resolves.
       dnsPolicy: ClusterFirstWithHostNet
 
     alloy:
@@ -112,7 +112,7 @@ spec:
 
           // Talos kernel/service logs forwarded over TCP syslog from each node's machined.
           // Receives Talos json_lines format; syslog parse is best-effort — raw JSON lines
-          // are stored in Loki and can be parsed at query time with | json.
+          // are stored as-is and can be parsed at query time (LogsQL: | unpack_json).
           // Requires machine.logging.destinations configured via talosctl apply-config.
           loki.source.syslog "talos" {
             listener {
@@ -148,8 +148,11 @@ spec:
             forward_to = [loki.write.local.receiver]
           }
 
+          // VictoriaLogs speaks the Loki push protocol natively; _stream_fields pins
+          // today's Loki stream shape explicitly (fields absent on an entry are
+          // ignored, so one list serves pod logs + events + Talos syslog).
           loki.write "local" {
             endpoint {
-              url = "http://loki-gateway.observability.svc.cluster.local/loki/api/v1/push"
+              url = "http://vlsingle-victorialogs.observability.svc.cluster.local:9428/insert/loki/api/v1/push?_stream_fields=cluster,namespace,pod,container,job,node,instance"
             }
           }
