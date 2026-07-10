@@ -617,7 +617,7 @@ spec:
           "type": "logs",
           "title": "Live CI run feed (pod → task → repo)",
           "description": "Each runner pod logs `task <N> repo is <owner/repo>` when it picks up a job — this is the authoritative pod→run mapping. Expand a line to see its `pod` label. NOTE: populates only after the alloy-agent DNS fix reconciles (runner stdout → Loki) AND a new CI run lands; until then it reads 'No data'.",
-          "datasource": { "type": "loki", "uid": "loki" },
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
           "gridPos": { "h": 9, "w": 24, "x": 0, "y": 73 },
           "options": {
             "showTime": true,
@@ -630,8 +630,8 @@ spec:
             "sortOrder": "Descending"
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "loki", "uid": "loki" },
-              "expr": "{namespace=\"forgejo\", container=\"runner\"} |= \"repo is\"" }
+            { "refId": "A", "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" }, "queryType": "instant",
+              "expr": "{namespace=\"forgejo\", container=\"runner\"} ~\"repo is\"" }
           ]
         },
         {
@@ -639,7 +639,7 @@ spec:
           "type": "timeseries",
           "title": "CI runs started over time",
           "description": "Accurate run-start throughput: counts the `task … repo is …` log lines per bucket (one per job a runner actually picked up). The reliable counterpart to the GC-limited k8s-Job metric above.",
-          "datasource": { "type": "loki", "uid": "loki" },
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
           "gridPos": { "h": 8, "w": 12, "x": 0, "y": 82 },
           "fieldConfig": {
             "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60, "showPoints": "never" } },
@@ -650,9 +650,9 @@ spec:
             "tooltip": { "mode": "single" }
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "loki", "uid": "loki" },
+            { "refId": "A", "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" }, "queryType": "statsRange",
               "legendFormat": "runs started",
-              "expr": "sum(count_over_time({namespace=\"forgejo\", container=\"runner\"} |= \"repo is\" [$$__interval]))" }
+              "expr": "{namespace=\"forgejo\", container=\"runner\"} ~\"repo is\" | stats count()" }
           ]
         },
         {
@@ -660,7 +660,7 @@ spec:
           "type": "bargauge",
           "title": "Runs by repo (dashboard range)",
           "description": "Which repos drove CI over the selected time range — parsed from the runner `repo is <owner/repo>` lines.",
-          "datasource": { "type": "loki", "uid": "loki" },
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
           "gridPos": { "h": 8, "w": 12, "x": 12, "y": 82 },
           "fieldConfig": {
             "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] } },
@@ -673,9 +673,9 @@ spec:
             "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "queryType": "instant",
+            { "refId": "A", "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" }, "queryType": "stats",
               "legendFormat": "{{repo}}",
-              "expr": "sum by (repo) (count_over_time({namespace=\"forgejo\", container=\"runner\"} |= \"repo is\" | regexp `repo is (?P<repo>\\S+)` | repo != \"\" [$$__range]))" }
+              "expr": "{namespace=\"forgejo\", container=\"runner\"} ~\"repo is\" | extract_regexp \"repo is (?P<repo>\\\\S+)\" | filter -repo:\"\" | stats by (repo) count()" }
           ]
         }
       ]

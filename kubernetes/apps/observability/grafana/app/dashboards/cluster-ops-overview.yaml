@@ -1270,11 +1270,12 @@ spec:
               "title": "Flux logs (changes & failures)",
               "description": "Raw controller logs for quick context. Prefer the annotation markers for change detection; use this panel for details.",
               "gridPos": {"h": 12, "w": 24, "x": 0, "y": 106},
-              "datasource": {"type": "loki", "uid": "loki"},
+              "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
               "targets": [
                 {
                   "refId": "A",
-                  "expr": "{namespace=\"flux-system\", pod=~\"($$flux_controller).*\"} |~ \"(?i)(configured|created|deleted|applied revision|reconciliation failed|helm (upgrade|install|rollback) succeeded|upgrade succeeded|release.*upgraded|chart.*upgraded)\""
+                  "queryType": "instant",
+                  "expr": "{namespace=\"flux-system\", pod=~\"($$flux_controller).*\"} | pack_json | filter _msg:~\"(?i)(configured|created|deleted|applied revision|reconciliation failed|helm (upgrade|install|rollback) succeeded|upgrade succeeded|release.*upgraded|chart.*upgraded)\""
                 }
               ],
               "options": {
