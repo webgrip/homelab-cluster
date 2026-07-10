@@ -1,0 +1,42 @@
+---
+# VLSingle serves v1 (not v1beta1 like VMSingle) — the apiserver rejects v1beta1.
+apiVersion: operator.victoriametrics.com/v1
+kind: VLSingle
+metadata:
+  name: victorialogs
+spec:
+  # 30d retention — matches the Loki limits_config.retention_period (720h) this
+  # replaces. Query + ingest endpoint: vlsingle-victorialogs:9428.
+  retentionPeriod: "30d"
+  replicaCount: 1
+  storage:
+    accessModes:
+      - ReadWriteOnce
+    storageClassName: longhorn
+    resources:
+      requests:
+        storage: 20Gi
+  # Safety valve below the PVC size: drop oldest data before the disk fills.
+  extraArgs:
+    retention.maxDiskSpaceUsageBytes: "18GiB"
+  podMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
+  nodeSelector:
+    node.webgrip.io/pool: worker
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: fringe
+      effect: NoSchedule
+  # Sized from measured ingest (~21 KB/s ≈ 1.8 GB/day raw; VictoriaLogs
+  # compresses 10-50x, so 30d ≈ 2-6 GB on disk — 20Gi is >3x headroom and
+  # Longhorn can't shrink online, so don't overshoot). Requests start at half
+  # of Loki's; right-size after two weeks of steady state like vmsingle.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
