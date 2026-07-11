@@ -23,6 +23,13 @@ spec:
   podMetadata:
     annotations:
       reloader.stakater.com/auto: "true"
+  # The Longhorn data volume mounts root-owned (0:0, 755) with no fsGroup, so
+  # alertmanager (nobody) couldn't persist silences/nflog — "permission denied"
+  # maintenance errors; silences were lost on every restart.
+  securityContext:
+    runAsUser: 65534
+    runAsGroup: 65534
+    fsGroup: 65534
   nodeSelector:
     node.webgrip.io/pool: worker
   tolerations:
