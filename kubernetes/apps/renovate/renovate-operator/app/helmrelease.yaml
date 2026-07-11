@@ -19,6 +19,14 @@ spec:
       retries: 3
       remediateLastFailure: true
   values:
+    # Burstable, not BestEffort — the Talos PSI OOM controller strikes BestEffort
+    # first (killed alongside the CNPG DBs on fringe, 2026-07-11 01:27).
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
     nodeSelector:
       node.webgrip.io/pool: worker
     tolerations:

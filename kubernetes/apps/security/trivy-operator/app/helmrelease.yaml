@@ -149,8 +149,13 @@ spec:
 
     podAnnotations:
       reloader.stakater.com/auto: "true"
+    # ram=high (worker-1, ADR-0001 taxonomy) instead of the whole worker pool:
+    # sheds ~550Mi from the chronically-full fringe node (86% mem, Talos OOM
+    # sweeps). Required-not-preferred per ADR-0002 (soft affinity loses to
+    # image-locality). Non-critical scanner: Pending during a worker-1 outage
+    # is acceptable. Operator Deployment has no PVC — no RWO move deadlock.
     nodeSelector:
-      node.webgrip.io/pool: worker
+      node.webgrip.io/ram: high
     tolerations:
       - key: dedicated
         operator: Equal

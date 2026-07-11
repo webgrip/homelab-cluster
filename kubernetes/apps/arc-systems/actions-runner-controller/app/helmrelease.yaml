@@ -20,6 +20,14 @@ spec:
       remediateLastFailure: true
   values:
     replicaCount: 1
+    # Burstable, not BestEffort — the Talos PSI OOM controller strikes BestEffort
+    # first (killed alongside the CNPG DBs on fringe, 2026-07-11 01:27).
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
     flags:
       healthProbeBindAddress: ":8081"
     metrics:
