@@ -41,6 +41,20 @@ spec:
       # Tolerate ALL taints so the power DaemonSet covers every node.
       tolerations:
         - operator: Exists
+      # /metrics doubles as the liveness endpoint (kepler has no healthz —
+      # upstream #2282) and blocks on a fresh power computation: 3-3.6s on
+      # fringe-workstation (10s worst case), ~1.5s peaks even on the soyo minis.
+      # The chart sets no timeoutSeconds, so the k8s default 1s probe-killed the
+      # pod every ~10min (1441 restarts in 10 days). 15s covers the worst case
+      # while still catching a truly hung process within failureThreshold*period.
+      livenessProbe:
+        httpGet:
+          path: /metrics
+          port: http
+        initialDelaySeconds: 10
+        periodSeconds: 60
+        timeoutSeconds: 15
+        failureThreshold: 3
     config:
       log:
         level: info
