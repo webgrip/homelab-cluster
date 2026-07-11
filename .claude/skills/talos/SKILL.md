@@ -59,7 +59,8 @@ skill); prefer `MODE=no-reboot` and reboot deliberately when unavoidable.
 - **dmesg is not durable forensics; auditd can be silently dead.** SELinux runs permissive and
   Longhorn volumes are `unlabeled_t` → a constant benign AVC stream (~10–18/s/node; noise, don't
   chase it). Normally auditd absorbs it, but a Talos bug (transient netlink error treated as fatal
-  in `receiveEvents()` — `EINTR && EAGAIN`, dead code) kills auditd silently: service still shows
+  in `receiveEvents()` — `EINTR && EAGAIN`, dead code; filed as
+  [siderolabs/talos#13744](https://github.com/siderolabs/talos/issues/13744)) kills auditd silently: service still shows
   `Running/OK`, kernel falls back to printk, dmesg becomes AVC spam (~9 min of history). Detect:
   `talosctl -n <ip> logs auditd | tail -1` timestamp frozen in the past. **Reboot-only recovery**
   (`service auditd restart` unsupported via API). Prefer `get oomactions` + VictoriaMetrics for

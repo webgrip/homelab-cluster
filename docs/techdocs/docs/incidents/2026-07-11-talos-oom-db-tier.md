@@ -34,7 +34,7 @@ instead.
 
 ## Root cause
 
-```
+```text
 all 12 CNPG Clusters set no spec.resources
   → every postgres pod is BestEffort QoS
   → Talos runtime.OOMController (PSI memory_full_avg10 threshold) selects
@@ -57,7 +57,7 @@ CPU-request-full (89–98%) → `0/5 nodes available: 1 Insufficient cpu, 1 Insu
 ## Fixes (commits, same day)
 
 | Commit | Change |
-|---|---|
+| --- | --- |
 | 2c9a3779 | `spec.resources` on all 12 CNPG clusters (memory 384Mi/768Mi; dependency-track 512Mi/1Gi) + de-BestEffort renovate-operator, ARC controller, flux-ui limit; trivy-operator → `ram=high` (worker-1) |
 | 9fe39561 | **Drop the CPU requests** — memory request alone keeps Burstable QoS; CPU requests only gate scheduling |
 | 6927cb47 | renovate job memory request 1Gi → 512Mi (no longer fit post-rebalance) |
@@ -79,7 +79,8 @@ memory, requests 98%→93%.
 5. dmesg is not durable forensics on this cluster while the auditd wedge exists — use
    `oomactions` + VictoriaMetrics. auditd bug: `receiveEvents()` treats transient netlink errors
    as fatal (`errors.Is(err, EINTR) && errors.Is(err, EAGAIN)` — impossible condition, should be
-   `||`); service still reports healthy; **reboot-only recovery**; upstream report drafted.
+   `||`); service still reports healthy; **reboot-only recovery**; filed upstream as
+   [siderolabs/talos#13744](https://github.com/siderolabs/talos/issues/13744).
 
 ## Related
 
