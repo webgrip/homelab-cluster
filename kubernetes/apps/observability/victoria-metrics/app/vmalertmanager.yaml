@@ -6,42 +6,11 @@ metadata:
 spec:
   replicaCount: 1
   externalURL: https://alertmanager.${SECRET_DOMAIN}
-  # Ported verbatim from the kube-prometheus-stack Alertmanager config: route all
-  # alerts to a "null" receiver (no paging wired up yet), silence Watchdog, and
-  # inhibit warnings when a matching critical fires. VMAlertmanager does NOT
-  # default to this, so it must be carried over or alerts route nowhere.
-  configRawYaml: |
-    global:
-      resolve_timeout: 5m
-    route:
-      receiver: "null"
-      group_by:
-        - alertname
-        - namespace
-        - severity
-        - service
-        - owner
-        - project
-        - pod
-        - job
-        - instance
-      group_wait: 30s
-      group_interval: 5m
-      repeat_interval: 12h
-      routes:
-        - receiver: "null"
-          matchers:
-            - alertname="Watchdog"
-    receivers:
-      - name: "null"
-    inhibit_rules:
-      - source_matchers:
-          - severity="critical"
-        target_matchers:
-          - severity="warning"
-        equal:
-          - namespace
-          - alertname
+  # Phase-2 flip (2026-07-11): routing now lives in the git-owned template of
+  # vmalertmanager-config.externalsecret.yaml (ntfy + Telegram legs), rendered
+  # by ESO once the OpenBao credentials exist. configRawYaml would take
+  # precedence over configSecret and must stay deleted.
+  configSecret: vmalertmanager-config
   storage:
     volumeClaimTemplate:
       spec:
