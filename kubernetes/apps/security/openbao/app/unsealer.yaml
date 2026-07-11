@@ -22,6 +22,10 @@ spec:
         app.kubernetes.io/name: openbao-unsealer
         app.kubernetes.io/part-of: openbao
     spec:
+      # Co-locate with openbao itself on the worker pool (2026-07-11 placement
+      # audit) — the unsealer is useless when its target is down anyway.
+      nodeSelector:
+        node.webgrip.io/pool: worker
       securityContext:
         runAsNonRoot: true
         runAsUser: 100

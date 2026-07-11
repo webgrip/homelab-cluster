@@ -26,6 +26,16 @@ spec:
     # Disable it (chart additionalArgs appends; last pflag value wins). Same fix as the plugin.
     additionalArgs:
       - --leader-elect=false
+    # Burstable, not BestEffort: this operator being OOM-killed (exit 137) is
+    # the proven cause of the June single-instance-DB recreation cascade, and
+    # BestEffort pods are first-strike for the Talos PSI OOM controller.
+    # Placement stays UNCONSTRAINED on purpose (ADR-0002 recovery-critical).
+    resources:
+      requests:
+        cpu: 25m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
     config:
       clusterWide: true
     monitoring:

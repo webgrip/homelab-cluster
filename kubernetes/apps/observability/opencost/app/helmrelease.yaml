@@ -24,6 +24,10 @@ spec:
         namespace: observability
   values:
     opencost:
+      # Off the soyo control-planes (2026-07-11 placement audit); observability
+      # tooling isn't recovery-critical, so worker-pinning costs nothing.
+      nodeSelector:
+        node.webgrip.io/pool: worker
       exporter:
         # Explicit requests keep the pod Burstable (never BestEffort — this
         # cluster OOM-kills BestEffort pods). No CPU limit (throttling antipattern).

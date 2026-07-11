@@ -90,6 +90,15 @@ spec:
           operator: Equal
           value: fringe
           effect: NoSchedule
+    # UI + driver-deployer off the soyo control-planes (2026-07-11 placement
+    # audit). Only these two — longhornManager is a DaemonSet (all nodes) and
+    # the csi-* controllers stay unconstrained (volume attach during recovery).
+    longhornUI:
+      nodeSelector:
+        node.webgrip.io/pool: worker
+    longhornDriver:
+      nodeSelector:
+        node.webgrip.io/pool: worker
   # Give longhorn-manager Guaranteed QoS (requests==limits on BOTH containers) so
   # the kernel does not OOM-kill it first under node memory pressure — the root
   # cause of the 2026-06-09 incident (it ran BestEffort). Observed usage is
