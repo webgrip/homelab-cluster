@@ -20,6 +20,12 @@ spec:
       memory: 384Mi
     limits:
       memory: 768Mi
+  # Pin the DB off the soyo control-planes onto the worker pool (ADR-0002).
+  # This was the missing pin that let harbor-db reschedule onto soyo-3 when
+  # the 2026-07-11 resources rollout recreated the pod.
+  affinity:
+    nodeSelector:
+      node.webgrip.io/pool: worker
   inheritedMetadata:
     annotations:
       reloader.stakater.com/auto: "true"
