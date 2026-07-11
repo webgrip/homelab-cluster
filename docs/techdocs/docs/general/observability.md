@@ -104,6 +104,11 @@ Two installations:
    - **Faro** browser telemetry receiver: `http://alloy-gateway.observability.svc.cluster.local:12347/api/faro/receiver`
    - Also routed at `https://otlp.${SECRET_DOMAIN}` for off-cluster clients.
 
+Gotcha: Alloy server blocks take `listen_address` (host only) + `listen_port` — an address with a
+port (`"0.0.0.0:12347"`) fails at runtime ("too many colons") while the pod stays Running/Ready.
+The Faro receiver was silently dead this way until 2026-07-11. After any Alloy config change,
+grep the new pod's logs for `level=error`; readiness alone proves nothing.
+
 ---
 
 ## Application instrumentation

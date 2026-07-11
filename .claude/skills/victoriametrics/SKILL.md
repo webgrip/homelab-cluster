@@ -22,7 +22,7 @@ Metrics backend = **modular VictoriaMetrics** (ADR-0034), grafana-operator-style
 
 ## Scrape coverage is OUR job (modular has no umbrella)
 
-A `*Scrape` with a **wrong `port` name matches nothing and emits zero targets — no `down` series, fully silent.** Always verify the real container/service port. Exception: the operator **auto-creates** `VMServiceScrape`s for its own managed CRs (vmsingle, vmagent, vlsingle, …; `job` = service name) — don't author those. Coverage lives in `victoria-metrics/app/scrapes/`:
+A `*Scrape` with a **wrong `port` name matches nothing and emits zero targets — no `down` series, fully silent.** Always verify the real container/service port. Exception: the operator **auto-creates** `VMServiceScrape`s for its own managed CRs (vmsingle, vmagent, vlsingle, vtsingle, …; `job` = service name) — don't author those. Coverage lives in `victoria-metrics/app/scrapes/`:
 
 - **kubelet + cAdvisor** — two `VMNodeScrape` (https, `insecureSkipVerify`, bearer token); cAdvisor is the same target with `path: /metrics/cadvisor`.
 - **kube-apiserver** — `VMServiceScrape` on the `kubernetes` service in `default` (port `https`); keep the metric-drop list.

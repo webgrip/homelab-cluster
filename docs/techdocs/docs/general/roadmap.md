@@ -216,7 +216,9 @@ webhook HA · `#55` prove the Longhorn backup · `#8` security-ns default-deny �
     now — `[P1 · M · S]`
 68. Decide the commented-out telemetry: beyla, k6-operator/k6-canaries (k6 dashboards +
     rules point at data never collected), and unwired twitch-exporter — re-enable worker-pinned or
-    remove (tempo decided 2026-07-11: replaced by VictoriaTraces, ADR-0042) — `[P2 · M · M]`
+    remove (tempo decided 2026-07-11: replaced by VictoriaTraces, ADR-0042). Note: Beyla is also
+    what would restore `SPAN_KIND_SERVER` span-metrics — the app-traffic alerts and apps SLO stay
+    legitimately quiet while current emitters produce mostly INTERNAL spans — `[P2 · M · M]`
 69. Pyroscope: owner-run etcd defrag → flip `suspend: false` (ADR-0037's sole gate; fsync p99 is
     3.9 ms) — `[P2 · M · S]`
 70. Telemetry retention/durability tier ADR (15d metrics / 30d logs / 14d traces; the
@@ -289,6 +291,9 @@ webhook HA · `#55` prove the Longhorn backup · `#8` security-ns default-deny �
     node-level HA, and the ADR-0007 engine revisit — `[P2 · H · L]`
 100. Dedicated etcd SSD per soyo (L2/L3 isolation; lower urgency post-migration, still the clean
      fix) — `[P3 · M · L]`
+101. Exercise the Faro browser-telemetry path end-to-end (receiver was silently dead until the
+     2026-07-11 `listen_address` fix; no real browser payload has ever been verified through
+     alloy-gateway → VictoriaLogs/VictoriaTraces) — `[P3 · L · S]`
 
 ---
 

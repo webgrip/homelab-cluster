@@ -28,6 +28,7 @@ Double **every** Grafana token (`$$__range`, `$$__rate_interval`, `$$var`, `$$__
 - Don't graph everything: `stat` for single values, `table` for many-row comparison, `timeseries` only when over-time shape matters.
 - Money: `currencyUSD`, `decimals: 2` (nl-NL). Pair counts with a derived rate. Log y-axis (`custom.scaleDistribution:{type:log,log:10}`) for series spanning magnitudes.
 - Datasource: hardcode `"uid": "prometheus"`/`"victorialogs"` on panels + variable `datasource` fields — never a `${datasource}` picker (Flux blanks braced `${…}` → silent fallback to the default datasource). Log panels are LogsQL (`victoriametrics-logs-datasource`) — query language + queryType mapping → the `victorialogs` skill.
+- Trace panels: Jaeger `search` targets against uid `victoriatraces` — there is no TraceQL (VictoriaTraces backend). Target shape + naming deltas → the `victoriatraces` skill.
 
 ## Additional resources
 - Panel hygiene, multi-query tables (`merge`+`organize`), the verified k8s-capacity metric catalog, and the Claude Code metric catalog → [reference.md](reference.md); log-query (LogsQL) rules → the `victorialogs` skill
