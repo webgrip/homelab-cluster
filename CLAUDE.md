@@ -17,6 +17,6 @@ GitOps homelab: Flux + HelmRelease + Kustomize, Talos nodes; secrets via Externa
 
 - **Task recipes → skills** (auto-load when relevant; full set in `.claude/skills/`): `add-app`, `external-secrets`, `cnpg-database`, `talos`, `longhorn`, `victoriametrics`, `workload-placement`, `network-policy`, and more — trust the skill descriptions over this list.
 - **Debug/health → `cluster-health` subagent**; trigger Renovate → `renovate-trigger` subagent.
-- **Live cluster (read-only) → MCP** (in-cluster, Flux-managed, connect over HTTP; committed `.mcp.json`): `grafana` (PromQL→VictoriaMetrics, Loki, Tempo) + `kubernetes` (read-only `view` role) + `opencost` (cost/efficiency). LAN-only; see `.claude/README.md`.
+- **Live cluster (read-only) → MCP** (in-cluster, Flux-managed, connect over HTTP; committed `.mcp.json`): `grafana` (PromQL→VictoriaMetrics, Tempo; its Loki tools only reach grace-period history) + `victorialogs` (LogsQL log queries) + `kubernetes` (read-only `view` role) + `opencost` (cost/efficiency). LAN-only; see `.claude/README.md`.
 - **Safety is enforced** by hooks + permissions in `.claude/` (block SOPS edits, plaintext secrets, destructive cluster commands; validate manifests on edit).
 - **Deep docs → `docs/techdocs/docs/`** (+ `runbooks/`). Endpoints: API VIP `10.0.0.25`, envoy-internal `10.0.0.27` (LAN), envoy-external `10.0.0.28` (public), k8s-gateway `10.0.0.26`, Garage S3 `10.0.0.110:3900`. Hostnames template as `<app>.${SECRET_DOMAIN}` (literal is SOPS-encrypted; docs disagree — don't hardcode it).

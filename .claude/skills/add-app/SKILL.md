@@ -23,7 +23,16 @@ Tree: `kubernetes/apps/<ns>/kustomization.yaml` (+ `namespace.yaml`) → registe
    (`oci://harbor.webgrip.dev/ghcr/…`, [ADR-0023](docs/techdocs/docs/adr/adr-0023-harbor-pull-through-proxy-cache.md)),
    pinned by **tag + digest** — refresh pins with `./scripts/update-oci-digests.sh`. Generic
    apps: bjw-s **app-template**, `HelmRelease.spec.chartRef` → the OCIRepository, values under
-   `controllers`/`service`/`persistence`.
+   `controllers`/`service`/`persistence`. Plain Deployment `image:` pins (the mcp-* pattern) have
+   no script and skopeo/crane aren't in mise — digest = sha256 of the manifest body fetched with an
+   anonymous Harbor token (Harbor's `docker-content-digest` header comes back empty on a
+   proxy-cache first pull):
+
+   ```sh
+   tok=$(curl -s 'https://harbor.webgrip.dev/service/token?service=harbor-registry&scope=repository:ghcr/<org>/<img>:pull' | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+   curl -s "https://harbor.webgrip.dev/v2/ghcr/<org>/<img>/manifests/<tag>" -H "Authorization: Bearer $tok" \
+     -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' -o /tmp/m.json && sha256sum /tmp/m.json
+   ```
 4. **Route** (skeleton §4) — `hostnames: ["<app>.${SECRET_DOMAIN}"]` (single `$`: Flux
    substitutes it; `$$` renders literally and breaks the route). `parentRefs` →
    `envoy-internal` (LAN default) or `envoy-external` (public — a deliberate exposure choice),

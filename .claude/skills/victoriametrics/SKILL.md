@@ -6,7 +6,7 @@ when_to_use: Use when adding/editing a VM CR or a scrape, choosing scrape covera
 
 # VictoriaMetrics — the metrics backend
 
-Metrics backend = **modular VictoriaMetrics** (ADR-0034), grafana-operator-style: `observability/vm-operator/` (operator HR) + `observability/victoria-metrics/app/` (the CRs). Runbook for firefighting: `docs/techdocs/docs/runbooks/victoriametrics.md`.
+Metrics backend = **modular VictoriaMetrics** (ADR-0034), grafana-operator-style: `observability/vm-operator/` (operator HR) + `observability/victoria-metrics/app/` (the CRs). Runbook for firefighting: `docs/techdocs/docs/runbooks/victoriametrics.md`. Logs backend (VLSingle, LogsQL, ingest) → the `victorialogs` skill — note VLSingle is apiVersion **v1**, unlike the v1beta1 CRs here.
 
 ## The one rule that took the cluster down
 
@@ -22,7 +22,7 @@ Metrics backend = **modular VictoriaMetrics** (ADR-0034), grafana-operator-style
 
 ## Scrape coverage is OUR job (modular has no umbrella)
 
-A `*Scrape` with a **wrong `port` name matches nothing and emits zero targets — no `down` series, fully silent.** Always verify the real container/service port. Coverage lives in `victoria-metrics/app/scrapes/`:
+A `*Scrape` with a **wrong `port` name matches nothing and emits zero targets — no `down` series, fully silent.** Always verify the real container/service port. Exception: the operator **auto-creates** `VMServiceScrape`s for its own managed CRs (vmsingle, vmagent, vlsingle, …; `job` = service name) — don't author those. Coverage lives in `victoria-metrics/app/scrapes/`:
 
 - **kubelet + cAdvisor** — two `VMNodeScrape` (https, `insecureSkipVerify`, bearer token); cAdvisor is the same target with `path: /metrics/cadvisor`.
 - **kube-apiserver** — `VMServiceScrape` on the `kubernetes` service in `default` (port `https`); keep the metric-drop list.

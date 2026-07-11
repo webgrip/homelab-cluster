@@ -1,13 +1,15 @@
 # Grafana dashboard reference — queries, panels, tables, metric catalogs
 
-Contents: [LogQL](#logql) · [Panel hygiene](#panel-hygiene) · [Multi-query tables](#multi-query-tables-merge--organize)
+Contents: [Log queries](#log-queries-logsql) · [Panel hygiene](#panel-hygiene) · [Multi-query tables](#multi-query-tables-merge--organize)
 · [k8s capacity metrics](#k8s-capacity-metrics-verified-present) · [Claude Code metrics](#claude-code-metrics)
 
 All hook-checked rules live in SKILL.md (shape, folderRef, Flux escaping). The below are NOT hook-checked.
 
-## LogQL
-- Fields nest under `attributes.*`. Aggregation/`unwrap`/`quantile` → explicit `| json field="attributes.x"` then use `x`; never bare `| json` for aggregation (cardinality blowup). Bare `| json` ok for display-only `logs` panels.
-- `clamp_min`/most Prom funcs are invalid in LogQL; `vector(0)` is valid.
+## Log queries (LogsQL)
+
+Log panels query VictoriaLogs (datasource uid `victorialogs`, LogsQL — not LogQL). Language rules,
+queryType mapping, and the LogQL→LogsQL translation table live in the `victorialogs` skill
+(single source; migrated 2026-07-10, ADR-0041).
 
 ## PromQL anti-patterns (boolean gauges & empty sets)
 - **`count()` over a boolean gauge counts SERIES, not the ones that are "true".** `count(up == 1)` and
