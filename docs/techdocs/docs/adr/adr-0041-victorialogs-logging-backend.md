@@ -64,7 +64,8 @@ Load-bearing specifics:
 * Grace period: Loki stays deployed **read-only** (no new writes) with its `loki` Grafana
   datasource until ~**2026-08-07** (~4 weeks), then a removal commit deletes
   `kubernetes/apps/observability/loki/`, the loki datasource, and repoints Tempo's
-  `tracesToLogsV2` to `victorialogs` (custom LogsQL query — the auto-builder is Loki-only);
+  `tracesToLogsV2` to `victorialogs` (natively supported — Grafana's Trace-to-logs builder
+  lists VictoriaMetrics Logs among its supported datasources);
   out-of-repo cleanup: PVC `storage-loki-0` and the three Garage buckets. The shared
   `observability-s3` component **stays** (suspended Tempo consumes it).
 
@@ -112,3 +113,5 @@ Load-bearing specifics:
 * 2026-07-10 — VLSingle deployed alongside Loki (e3fafc74)
 * 2026-07-10 — alloy ingest cut over; Loki read-only, grace period until ~2026-08-07 (699325db)
 * 2026-07-10 — accepted; datasource, mcp-victorialogs, dashboard rewrites landed (this change)
+* 2026-07-11 — corrected removal plan detail: Tempo Trace-to-logs supports VictoriaMetrics Logs
+  natively (per Grafana docs), no custom LogsQL query needed at cutover

@@ -57,5 +57,7 @@ Pre-flattened dotted paths: `attributes.tool_name`, `attributes.duration_ms`, `a
 `attributes.success` (string `"true"`/`"false"`), **`attributes.session.id`** (the old
 `attributes_session_id` LogQL filters never matched). Nested JSON-string fields needing
 `| unpack_json from ...`: `attributes.tool_parameters`, `attributes.tool_input`.
-Error-event fields (`attributes.status_code`, `attributes.error_name`, `attributes.attempt`) are
-parse-verified only (no error events existed at migration time) — confirm against a real entry first.
+Error-event fields (confirmed 2026-07-11 against real pre-migration events): `api_error` carries
+`attributes.status_code` + `attributes.attempt` (JSON **numbers** → numeral-string field values,
+e.g. `"429"`), `attributes.model`, `attributes.duration_ms`, and the message in `attributes.error`;
+`attributes.error_name` exists on `internal_error` events only.
