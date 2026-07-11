@@ -58,6 +58,24 @@ kubectl get pod -n kube-system -l k8s-app=kube-dns -o jsonpath='{.items[0].spec.
 
 After editing a scrape CR, the operator regenerates VMAgent's config and the sidecar hot-reloads (no pod restart); allow ~1 scrape interval (60s) before the target appears.
 
+### Alertmanager routing changes don't take effect (pod looks healthy)
+
+Two stacked traps (2026-07-11 alert-delivery flip):
+
+1. **`configRawYaml` takes precedence over `configSecret`.** As long as the VMAlertmanager spec
+   carries `configRawYaml`, the ESO-rendered Secret is ignored — the flip must *delete* the block,
+   not just add `configSecret: vmalertmanager-config`.
+2. **The operator validates the rendered config and silently keeps the OLD one on failure.** The
+   pod logs "Completed loading of configuration file" (of the *stale* config) and stays Ready; the
+   only failure surface is the CR:
+   `kubectl -n observability get vmalertmanager vmalertmanager -o jsonpath='{.status.updateStatus} {.status.reason}'`
+   → e.g. `failed … missing chat_id or chat_id_file on telegram_config` (an empty value renders as
+   missing; `chat_id` must be a bare integer — the template has it unquoted on purpose).
+
+Upstream of both: the config Secret comes from the `vmalertmanager-config` ExternalSecret — if that
+shows `refreshTime: null` it has never synced and the whole routing tree is still whatever shipped
+last (see the `external-secrets` skill for the first-failing-entry masking gotcha).
+
 ### vmagent pod stuck `Pending` after a rollout
 
 VMAgent is `replicaCount: 1` pinned to `pool=worker`; if the eligible nodes have no request headroom for a *second* pod, the default rollout (`maxSurge:1/maxUnavailable:0`) deadlocks — new pod `Pending`, old can't be removed. Scheduling is on **requests**, so `kubectl top` can look fine. Fix in `vmagent.yaml`: `rollingUpdate: { maxSurge: 0, maxUnavailable: 1 }` (terminate-then-recreate; a brief scrape gap is fine for a scraper).

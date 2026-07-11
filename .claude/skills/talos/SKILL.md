@@ -51,9 +51,27 @@ skill); prefer `MODE=no-reboot` and reboot deliberately when unavoidable.
   Talos patch won't remove a live taint, and `kubectl taint` is hook-blocked → removal needs a
   re-register (reboot) or a manual `kubectl taint … -` (e.g. retiring `dedicated=fringe`).
 - **soyo-3 hostname is flaky — always address it by IP** (10.0.0.22).
+- **Mass pod kills = the Talos userspace OOM controller, not the kernel.** `runtime.OOMController`
+  (PSI-triggered, default-on) kills the **largest BestEffort cgroups first**; kernel
+  `node_vmstat_oom_kill` stays flat. Ledger: `talosctl -n <ip> get oomactions`. Group identical
+  `Error/137` pod timestamps by node before per-app diagnosis
+  ([incident](docs/techdocs/docs/incidents/2026-07-11-talos-oom-db-tier.md)).
+- **dmesg is not durable forensics; auditd can be silently dead.** SELinux runs permissive and
+  Longhorn volumes are `unlabeled_t` → a constant benign AVC stream (~10–18/s/node; noise, don't
+  chase it). Normally auditd absorbs it, but a Talos bug (transient netlink error treated as fatal
+  in `receiveEvents()` — `EINTR && EAGAIN`, dead code) kills auditd silently: service still shows
+  `Running/OK`, kernel falls back to printk, dmesg becomes AVC spam (~9 min of history). Detect:
+  `talosctl -n <ip> logs auditd | tail -1` timestamp frozen in the past. **Reboot-only recovery**
+  (`service auditd restart` unsupported via API). Prefer `get oomactions` + VictoriaMetrics for
+  node forensics.
+- **UKI boot ignores `machine.install.extraKernelArgs`** (siderolabs/talos#10339) — kernel-arg
+  changes need a new Image Factory schematic (`talconfig.yaml` `customization.extraKernelArgs` +
+  new `talosImageURL`), applied per node with a reboot. `-selinux` strips SELinux; `audit=0` does
+  NOT silence auditd (Talos re-enables audit at startup). *Not yet exercised here — re-validate
+  the schematic ID against the factory before first use.*
 
 ## Read-only diagnostics
-`mise exec -- talosctl --talosconfig talos/clusterconfig/talosconfig -n <ip> {health,dmesg,get members}`
+`mise exec -- talosctl --talosconfig talos/clusterconfig/talosconfig -n <ip> {health,dmesg,get members,get oomactions,logs auditd}`
 
 ## Runbooks
 `docs/techdocs/docs/runbooks/{talos-rolling-upgrade,kubernetes-upgrade-via-talos,talos-maintenance-mode-add-node,node-taxonomy-migration-status}.md` · add-node tutorial `docs/techdocs/docs/general/talos-add-workstation-node.md` (incl. the no-reboot + PV-affinity gotchas). For storage on the nodes, see the `longhorn` skill.

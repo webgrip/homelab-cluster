@@ -10,16 +10,27 @@ Operator in `cnpg-system`. One `Cluster` per app namespace; wire backups/monitor
 
 ## Add a database
 1. `kubernetes/apps/<ns>/<app>/app/database/cluster.yaml` — `kind: Cluster` (`postgresql.cnpg.io/v1`): `instances: 2`, `storage.storageClass: longhorn` (the reserved class, **not** longhorn-general), and **always `walStorage`** (own volume, same class). Both rules enforced by `guard-skills.sh`.
+   - **Always set `spec.resources` — memory-only.** CNPG defaults to no resources = BestEffort =
+     first-strike for the Talos OOM controller, which killed the entire DB tier at once
+     (2026-07-11 incident). House values: `requests: {memory: 384Mi}, limits: {memory: 768Mi}`
+     (heavier writers 512Mi/1Gi). **No CPU request/limit**: a memory request alone grants
+     Burstable QoS; a CPU request wedged 7 DBs Pending on the bi-saturated pool (fringe
+     memory-request-full, worker-1 CPU-request-full), and a CPU limit throttles checkpoints/vacuum.
    - **Why walStorage + sizing:** WAL only recycles after archiving to Garage S3 — if archiving stalls, `pg_wal` fills its volume and the DB CrashLoops `no free disk space for WALs` (took Grafana + Dependency-Track down); a dedicated volume keeps that off the data disk, but an *undersized* one deadlocks the same way. 5Gi default, ~10Gi heavy writers (Grafana, Dependency-Track). Adding one to an *already-backlogged* writer: size it ≥ the **current** `pg_wal` backlog (measure via `kubelet_volume_stats_used_bytes`), not steady state — on first start CNPG *migrates* `pg_wal` into it, and a backlog > `walStorage.size` kills the instance-manager (`no space left on device`) **before Postgres starts**, so it can never archive out. Addable in-place (rolling restart), **never removable**.
    - Operator auto-creates `<app>-db-app` / `<app>-db-rw` / `<app>-db-ro` secrets — reference via `existingSecret`/`envFromSecret`, never inline.
 2. Add `database/` to the app `kustomization.yaml`; app `ks.yaml` `dependsOn` the DB.
 
 ## Placement
-A CNPG DB is a stateful app → **worker pool**: add `components/placement/worker-pool` to the kustomization
-that builds `database/` (it patches `Cluster.spec.affinity.nodeSelector`). CNPG DBs use the `longhorn` SC
-(Immediate binding → no PV node lock), so an *existing* DB pins **immediately** — no eviction wait, the WFFC
-caveat doesn't apply. StorageClass guidance → the `longhorn` skill. Full placement/sequencing rule → the
-`workload-placement` skill.
+A CNPG DB is a stateful app → **worker pool**. The repo pattern is inline in `cluster.yaml`:
+`spec.affinity.nodeSelector: {node.webgrip.io/pool: worker}` (all 12 clusters carry it). If you use
+the `components/placement/worker-pool` component instead, add it to **the kustomization that builds
+`database/`** — a DB in its own Flux Kustomization does NOT inherit the app kustomization's
+component (harbor-db + guac-db shipped unpinned that way and escaped to a soyo the first time
+their pods were recreated, 2026-07-11). The gap is invisible until pod recreation — verify with
+`kubectl get cluster <name> -o jsonpath='{.spec.affinity}'`. CNPG DBs use the `longhorn` SC
+(Immediate binding → no PV node lock), so an *existing* DB pins **immediately** — no eviction wait,
+the WFFC caveat doesn't apply. StorageClass guidance → the `longhorn` skill. Full
+placement/sequencing rule → the `workload-placement` skill.
 
 ## Backups & DR — TWO parts, both required
 1. **Destination** (components): `components: [../../../components/cnpg-backup]` — also `cnpg-monitoring`,

@@ -79,6 +79,21 @@ ADR-0002 D2 + the `longhorn` skill.
 
 - **Soft affinity is non-deterministic:** a `preferred` (weight-100) nodeAffinity lost to image-locality
   scoring (an app stuck on a soyo with worker capacity free). Use **`required`** for placement you want to hold.
+- **Before ANY requests change, check BOTH request axes on EVERY eligible node** —
+  `kubectl describe node <n> | grep -A6 "Allocated resources"`. The pool has been saturated on
+  *opposite* axes (fringe memory-request-full 94–98%, worker-1 CPU-request-full 89–98%): adding a
+  100m CPU request to the CNPG DBs made them fit **neither** node → 7 DBs Pending (2026-07-11
+  incident). A memory request alone grants Burstable QoS (the Talos-OOM protection); CPU requests
+  only gate scheduling — omit them on this pool. Also sweep for **new** `Pending` pods after a
+  requests rollout: raising requests displaces other marginal schedulers (renovate jobs, 1Gi→512Mi).
+- **The worker-pool component injects *affinity*, not nodeSelector** — when auditing "is X pinned?",
+  check `kubectl get deploy <d> -o jsonpath='{.spec.template.spec.affinity}'`, not just
+  `.nodeSelector` (keda + GUAC were false-flagged as unpinned this way). A DB/sub-resource in its
+  **own Flux Kustomization does not inherit** the app kustomization's component (harbor-db/guac-db gap).
+- **Chart-specific pin keys** (learned pinning the zero-risk tier, 859a5782): `longhornUI.nodeSelector`
+  + `longhornDriver.nodeSelector` (NEVER `longhornManager` — DaemonSet), `reloader.deployment.nodeSelector`,
+  `opencost.nodeSelector` (nested under `opencost:`), top-level `nodeSelector` for external-dns /
+  metrics-server / policy-reporter / plugin-barman-cloud.
 - **Don't taint the soyos:** a taint shoves *all* infra onto the workers and forces tolerations everywhere;
   apps opt *out* via the hard worker affinity. etcd protection is enforced at the **Longhorn layer**
   (replicas off soyos — `longhorn` skill), not via k8s taints.

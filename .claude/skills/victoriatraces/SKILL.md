@@ -52,6 +52,13 @@ Naming vs the old Tempo metrics-generator (queries written pre-2026-07-11 may us
 resolve from span attrs, then resource attrs; dots→underscores (`k8s.namespace.name` → `k8s_namespace_name`,
 present only when the emitter sets that resource attribute).
 
+⚠️ **An otelcol exporter pointing at a dead/removed backend is memory ballast, not just log noise.**
+The default `sending_queue` (1000 batches, in-memory) sits permanently full and amplifies any
+ingest surge into OOM territory — alloy-gateway's exporter kept targeting Tempo for 3 weeks after
+Tempo was pruned and turned a telemetry spike into a 132-restart OOM loop that also killed the LOG
+path. When repointing/retiring a backend, remove the exporter in the same change; if it must
+temporarily stay, set `retry_on_failure { enabled = false }` + a small `sending_queue { queue_size }`.
+
 ## Grafana
 
 - Datasource uid `victoriatraces`, type **`jaeger`**, URL `...:10428/select/jaeger`

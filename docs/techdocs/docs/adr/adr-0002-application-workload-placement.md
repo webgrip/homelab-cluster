@@ -66,6 +66,27 @@ was retired (see Links).
 | Infra / operators (incl. recovery critical-path) | flux, cert-manager, cnpg-operator, external-secrets, kyverno, longhorn csi-controllers, network gateways, observability operators | unconstrained (soyos + workers) |
 | **Apps** (stateless + stateful) | forgejo, openbao, authentik, harbor, n8n, all CNPG DBs, the observability stack, runners, … | **worker pool (hard)** |
 
+**2026-07-11 ratification — "soyos are the recovery brain".** After a full placement audit the
+owner restated the intent behind this ADR: *"if only the control plane survives, I can still make
+changes"* — the criterion for soyo residency is **recovery capability, not tidiness**. Consequences:
+
+* The recovery-critical set **stays** on/eligible-for the soyos: worker-pinning it would turn a
+  both-worker outage into a Fail-webhook API-write deadlock (kyverno alone: 22 Fail rule sets +
+  6 Enforce policies — admission would reject the very pod creations recovery needs) and, for
+  coredns, total DNS loss. k8s-gateway + cloudflare-tunnel also stay soyo-eligible (LAN DNS +
+  remote access *during* an outage).
+* Everything **not** needed for recovery is worker-pinned — the residual tier (echo, opencost,
+  policy-reporter, reloader, metrics-server, longhorn UI/driver-deployer, openbao-unsealer,
+  plugin-barman-cloud, cloudflare-dns) was evacuated in 859a5782.
+* Verified survivability facts: Flux sources GitHub directly (not in-cluster Forgejo). Accepted
+  residual gaps in a workers-down scenario: OpenBao and Harbor are worker-pinned → no *new*
+  Secrets and no *uncached* image/chart pulls until workers return (spegel mitigates for known
+  images; raw-manifest changes still apply); trust-manager (Fail webhook) is worker-pinned →
+  Bundle writes fail during the outage.
+* Capacity reality check from the audit: soyo memory is dominated by the static kube-apiservers,
+  not tenants — full tenant evacuation frees only ~1 GiB/soyo, so "empty soyos" was rejected as a
+  non-goal ([incident](../incidents/2026-07-11-talos-oom-db-tier.md) has the same day's QoS side).
+
 ### Migration traps (learned 2026-06-19 — [incident](../incidents/2026-06-19-node-taxonomy-migration-storage-churn.md))
 
 * The PV-exclusion blocker is **StorageClass-specific, keyed on `volumeBindingMode`** — not all
@@ -132,3 +153,4 @@ was retired (see Links).
   with `longhorn-gitops` replicas) retired with the ADR-0008 update; both are plain worker-pinned
 * 2026-07-02 — accepted (status corrected in ADR audit; implemented and in effect since 2026-06-19)
 * 2026-07-03 — renumbered from ADR-0028 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-07-11 — ratified + refined after the full placement audit: "soyos are the recovery brain" (recovery capability is the residency criterion); zero-risk tier evacuated (859a5782); harbor-db/guac-db pin gaps closed (2b0b03a9); residual worker-outage gaps documented (see the ratification note above)

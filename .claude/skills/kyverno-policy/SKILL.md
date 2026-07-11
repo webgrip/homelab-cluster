@@ -36,6 +36,16 @@ the `policyName`/rule names. Scope it tight — match the specific workload, nev
 - **Chainsaw (live KinD, slower):** `just kyverno-chainsaw` → `scripts/run-kyverno-chainsaw.sh`, fixtures
   `kubernetes/apps/kyverno/tests/chainsaw/<suite>/chainsaw-test.yaml` (suites: generate-defaults, network-guardrails).
 
+## Triage the violation backlog (PolicyReports, never events)
+Enumerate current violations from `kubectl get policyreport -A -o json` + `clusterpolicyreport`
+(`results[] | select(.result=="fail")`), **not** from PolicyViolation events — the event stream
+repeats each finding (~4× overstatement) and drowns real warnings. Excepted resources report
+`skip`, not `fail`, so **every `fail` is unwaived** — no cross-checking against PolicyExceptions
+needed. Dedup on (policy, rule, resource), then fold pod rows into their **owning controller**
+(autogen rules fire on both; pod names churn — the controller is the stable identity): 235 fails
+collapsed to ~60 real fixes, and extending two existing PolicyExceptions (kepler, forgejo-runner —
+they only covered `pod-security-baseline-enforce`) cleared ~70 rows (2026-07-11 triage).
+
 ## Generate policies
 `namespace-defaults-generate.yaml` generates per-namespace `default-deny` + `allow-dns` NetworkPolicies +
 ResourceQuota/LimitRange on the opt-in label `kyverno.io/default-network-policies: "true"` — see the

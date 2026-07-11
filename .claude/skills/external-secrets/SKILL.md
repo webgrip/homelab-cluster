@@ -49,6 +49,10 @@ There is **no static token / no root** — auth is Authentik OIDC. Helpers in th
 - `just bao-login` — `bao login -method=oidc` (browser); token caches in `~/.vault-token`.
 - `just harbor-s3-cred` — gum-prompted one-time write of `secret/harbor/s3` (value never hits history).
 The **agent can't run `bao`** (no token, OIDC is interactive) — entering a *provided* value is always a human step.
+Human-seeding footguns (both bit the 2026-07-11 telegram seed): `bao` targets localhost unless
+`export BAO_ADDR=https://openbao.${SECRET_DOMAIN}` is run in the same shell (bao-login prints it but
+doesn't export it); and `read -rs VAR` can silently capture nothing — echo `${VAR:-EMPTY}` before
+the `bao kv put`.
 
 ## Migrate a SOPS secret (proven recipe — value-preserving, reversible)
 1. **Seed:** add a `PushSecret` (`external-secrets.io/v1alpha1`, store `openbao-push`) with one `data[].match` per key → `secret/<app>/<name>`. Wait for `True/Synced`. (No "push all" shorthand — list every key.)
@@ -65,6 +69,15 @@ role (k8s auth, not root). Re-bootstrap: scale STS to 0 → delete PVC → scale
 `delete pod && delete pvc` fails — Longhorn re-grabs the PVC before the StatefulSet recreates it).
 
 ## Gotchas
+- **`refreshTime: null` on an ExternalSecret = it has NEVER synced** (not "pending"). And ESO
+  **aborts at the first failing `spec.data[]` entry** — later entries are masked, so "only key X is
+  missing" may really be "X and everything after it is unverified" (the vmalertmanager-config ES
+  failed on telegram for a week while the healthchecks entry behind it was also unseeded).
+  Force a refresh after seeding: `kubectl -n <ns> annotate externalsecret <name> force-sync=$(date +%s) --overwrite`.
+- **Debug a bad secret VALUE without printing it:** extract the field and print only derived facts
+  (length; matches `^-?[0-9]+$`; contains `:`; contains letters) — enough to distinguish
+  empty/quoted/swapped values while honoring the no-plaintext rule. This caught an empty `chat_id`
+  the pod logs couldn't explain.
 - **Generator + `refreshInterval: "0"` = truly generate-once.** Adding a NEW key to such an ExternalSecret is NOT picked up on a spec change (ESO sees the target Secret as fulfilled). To add/seed the key, delete the derived Secret once (`kubectl delete secret <name>` — ESO recreates it with all current `dataFrom` entries; safe only before the app stores at-rest data, since it also regenerates the existing values).
 - `dataFrom: [{extract: {key: <path>}}]` pulls ALL keys back (verified exact); the PushSecret still lists each.
 - **k8s API returns pretty-printed JSON** — shell parsers must tolerate whitespace: `grep '"k": *"[^"]*"'`, `sed 's/.*: *"//; s/"$//'`.
