@@ -101,7 +101,13 @@ spec:
                   -d '{"name":"ci","description":"webgrip CI bot — write, all repos","permission":"write","includes_all_repositories":true,"can_create_org_repo":false,"units":["repo.code","repo.issues","repo.pulls"]}' | jq -r '.id // empty')"
               fi
               if [ -n "$tid" ]; then
-                curl -sS -o /dev/null -u "$admin" -X PUT "$api/orgs/${ORG}/teams/$tid/members/${BOT_USERNAME}" && echo "bot in ${ORG}/ci (id $tid)"
+                # Member add lives at /teams/{id}/members — there is no /orgs/{org}/teams/{id}/...
+                # route (the old unchecked curl against it 404'd silently, so the bot was never in
+                # the team and semantic-release failed its push-permission check). -f + a read-back
+                # so a regression can't report success again.
+                curl -fsS -o /dev/null -u "$admin" -X PUT "$api/teams/$tid/members/${BOT_USERNAME}"
+                curl -fsS -o /dev/null -u "$admin" "$api/teams/$tid/members/${BOT_USERNAME}" \
+                  && echo "bot in ${ORG}/ci (id $tid)"
               else
                 echo "WARN: could not ensure ${ORG}/ci membership" >&2
               fi
