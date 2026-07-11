@@ -119,7 +119,11 @@ spec:
   resources:
     requests:
       cpu: 250m
-      memory: 1Gi
+      # 1Gi stopped fitting once the CNPG DBs got memory requests (fringe
+      # ~930Mi request-headroom, worker-1 CPU-request-full) — jobs sat Pending.
+      # A request is a scheduling promise, not a cap; the 4Gi limit still
+      # covers real usage bursts.
+      memory: 512Mi
     limits:
       cpu: "1500m"
       memory: 4Gi
