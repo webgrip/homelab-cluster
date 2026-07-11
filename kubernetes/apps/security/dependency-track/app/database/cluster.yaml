@@ -8,11 +8,12 @@ spec:
   instances: 1
   # Burstable, not BestEffort: the Talos PSI OOM controller kills the largest
   # BestEffort cgroups first — every CNPG DB was SIGKILLed at once on
-  # fringe-workstation (2026-07-11 01:27). Limits ~3x observed peak; no CPU
-  # limit (avoid throttling checkpoints/vacuum).
+  # fringe-workstation (2026-07-11 01:27). Limits ~3x observed peak. No CPU
+  # request/limit: worker-1 is CPU-request-saturated (98%) — a 100m request
+  # left 7 DBs Pending (fringe is memory-request-full); memory request alone
+  # keeps Burstable QoS, and no limit avoids throttling checkpoints/vacuum.
   resources:
     requests:
-      cpu: 100m
       memory: 512Mi
     limits:
       memory: 1Gi
