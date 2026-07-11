@@ -148,8 +148,14 @@ This repo uses Renovate to keep PR noise manageable:
 - Global defaults still provide coarse grouping by manager/datasource.
 - Repo-level packageRules then split `kubernetes/apps/*` updates by nearest package directory, so app/component areas get separate PRs instead of one repo-wide GitOps batch.
 - A small set of shared cross-namespace dependencies can override that split later in the rule order and stay repo-wide when that produces cleaner PRs.
-- Major updates are gated by the Dependency Dashboard approval checkbox and a release-age soak.
-- Minor updates for cluster-critical namespaces are also dashboard-gated.
+- The org preset gates **all normal update types** (major/minor/patch/pin/digest/replacement/rollback) behind the Dependency Dashboard approval checkbox; release-age soak (patch 1d / minor 3d / major 14d) applies independently.
+- Exception: **digest-only updates skip approval and automerge** (repo rule, 2026-07-11). A digest update changes which bytes a tag resolves to, not the version — and upstream tag re-pushes (coredns chart `1.46.0` has shipped three digests) otherwise wedge `verify-oci-digests` CI on every PR until a human clicks the dashboard. The shared gitops preset (renovate-config ≥ v1.5.0) captures `spec.ref.digest` in its OCIRepository regex manager so drift becomes a PR at all.
+
+How dashboard approval actually behaves (verified against debug logs, 2026-07-11):
+
+- The **issue body is Renovate's only approval state**. A tick is read at the next run (`dependencyDashboardCheck=approve`), consumed, and the body rewritten. If the approved branch then produces **zero file changes** (a failed auto-replace, a dead manager, an artifact error), no PR exists to carry the state and the item re-renders unchecked under Pending Approval — the click silently evaporates. A tick that "did nothing" almost always means a broken update, not a lost click; see the [Renovate runbook](../runbooks/renovate.md) for the known failure signatures.
+- Soak does **not** eat clicks: with `prCreation: immediate` (Forgejo path) the PR opens with a pending `renovate/stability-days` status; on the GitHub path (`prCreation: not-pending`) the branch waits for the age gate but the update stays tracked.
+- The dashboard-edit webhook can race the click: the run it triggers may read the pre-click body (observed 3s overlap). The next run honors it.
 
 Automerge behavior is defined in both places:
 
@@ -160,10 +166,11 @@ Automerge behavior is defined in both places:
 If a PR isn’t opening when you expect it to, check these in order:
 
 1. Is there actually an update available?
-2. Did the run execute successfully?
-3. Is it blocked by `minimumReleaseAge` / pending release-age checks?
-4. Is it blocked by Dependency Dashboard approval (major updates, or minor updates in cluster-critical namespaces)?
-5. Is it blocked by GitHub permissions/branch protections?
+2. Did the run execute successfully? (`kubectl get renovatejob -n renovate <job> -o json | jq '.status.projects[]'`)
+3. Is it blocked by `minimumReleaseAge` / pending release-age checks? (Docker Hub tag age: `curl -s https://hub.docker.com/v2/repositories/library/<img>/tags/<tag> | jq -r .last_updated`)
+4. Is it blocked by Dependency Dashboard approval (all normal update types except digest-only)?
+5. Did the branch silently produce no commit? Check the worker-pod debug log for `Cannot find replaceString`, `Digest is not updated`, or `artifactErrors` — see the [runbook's failure-signature table](../runbooks/renovate.md).
+6. Is it blocked by GitHub permissions/branch protections?
 
 ## GitHub repo conventions used with Renovate
 
