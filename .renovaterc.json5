@@ -52,6 +52,22 @@
   ],
   packageRules: [
     {
+      // Digest-only updates change WHICH bytes a tag resolves to, not the version;
+      // upstream tag re-pushes (e.g. coredns chart 1.46.0, three digests so far)
+      // otherwise wedge verify-oci-digests CI until a human approves the fix.
+      description: "Digest-only updates skip dashboard approval and automerge once checks pass",
+      matchUpdateTypes: [
+        "digest"
+      ],
+      dependencyDashboardApproval: false,
+      automerge: true,
+      automergeType: "pr",
+      minimumReleaseAge: "0 days",
+      schedule: [
+        "at any time"
+      ],
+    },
+    {
       description: "Prioritize vulnerability fixes ahead of all routine dependency updates",
       matchJsonata: [
         "$exists(vulnerabilityFixVersion)"
