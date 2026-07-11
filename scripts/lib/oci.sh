@@ -37,6 +37,15 @@ fetch_digest() {
       token="$(curl -fsSL "https://code.forgejo.org/v2/token?service=container_registry&scope=repository:${path}:pull" | jq -r .token)"
       auth_header=(-H "Authorization: Bearer ${token}")
       ;;
+    harbor.webgrip.dev)
+      # Proxy projects are public, but the registry protocol still requires an
+      # (anonymous) bearer token; without it every manifest HEAD returns 401,
+      # which failed the whole script — and with it every Renovate
+      # postUpgradeTask — for all harbor-proxied charts.
+      local token
+      token="$(curl -fsSL "https://harbor.webgrip.dev/service/token?service=harbor-registry&scope=repository:${path}:pull" | jq -r .token)"
+      auth_header=(-H "Authorization: Bearer ${token}")
+      ;;
   esac
 
   headers_file="$(mktemp)"
