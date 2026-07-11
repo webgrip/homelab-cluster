@@ -35,4 +35,4 @@ The operator converts existing `ServiceMonitor`/`PodMonitor`/`Probe`/`Prometheus
 
 ## Repointing the backend
 
-Consumers to grep for (endpoint string, not just `dependsOn`): the Grafana **HelmRelease `values.datasources`** (a duplicate of the datasource CRs), OpenCost `prometheus.internal.serviceName`, Tempo/alloy-gateway/k6 `remote_write`. Keep datasource `uid: prometheus`/`alertmanager`, change only the URL → dashboards need no edits.
+Consumers to grep for (endpoint string, not just `dependsOn`): the Grafana **HelmRelease `values.datasources`** (a duplicate of the datasource CRs), OpenCost `prometheus.internal.serviceName`, alloy-gateway/k6 `remote_write`. Keep datasource `uid: prometheus`/`alertmanager`, change only the URL → dashboards need no edits.

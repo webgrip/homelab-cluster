@@ -10,8 +10,9 @@
 
 - **Flux:** one NOT-READY: `kepler/kepler` (Helm upgrade timeout on the DaemonSet — #67). Suspended
   by design: `observability/pyroscope` (ADR-0037; sole gate = owner etcd defrag). Commented out of
-  kustomizations (zombie state): **tempo, beyla, k6-operator, k6-canaries** (observability), **drawio**
-  (RAM), **zomboid** (last SOPS secret) — #68/#40.
+  kustomizations (zombie state): **beyla, k6-operator, k6-canaries** (observability), **drawio**
+  (RAM), **zomboid** (last SOPS secret) — #68/#40. (tempo left the list 2026-07-11: replaced by
+  VictoriaTraces, ADR-0042.)
 - **Nodes:** control-plane RAM **80 / 71 / 64 %** (worst soyo regressed from 73 % on 06-21 — #38);
   workers 52 / 41 %. etcd healthy: WAL-fsync p99 **3.9 ms**, DB ~1.2 GiB total (defrag still pending).
 - **Hardening posture (verified):** **2 PodDisruptionBudgets** · **17 NetworkPolicies across 11
@@ -213,9 +214,9 @@ webhook HA · `#55` prove the Longhorn backup · `#8` security-ns default-deny �
 
 67. kepler: fix the failing DaemonSet rollout or retire it — the one NOT-READY HelmRelease right
     now — `[P1 · M · S]`
-68. Decide the commented-out telemetry: tempo, beyla, k6-operator/k6-canaries (k6 dashboards +
+68. Decide the commented-out telemetry: beyla, k6-operator/k6-canaries (k6 dashboards +
     rules point at data never collected), and unwired twitch-exporter — re-enable worker-pinned or
-    remove — `[P2 · M · M]`
+    remove (tempo decided 2026-07-11: replaced by VictoriaTraces, ADR-0042) — `[P2 · M · M]`
 69. Pyroscope: owner-run etcd defrag → flip `suspend: false` (ADR-0037's sole gate; fsync p99 is
     3.9 ms) — `[P2 · M · S]`
 70. Telemetry retention/durability tier ADR (15d metrics / 30d logs / 14d traces; the

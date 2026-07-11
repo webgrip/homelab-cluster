@@ -1,22 +1,24 @@
 ---
+# VictoriaTraces exposes the Jaeger query API under /select/jaeger, so Grafana
+# talks to it with the built-in jaeger datasource type (no TraceQL).
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDatasource
 metadata:
-  name: tempo
+  name: victoriatraces
 spec:
   instanceSelector:
     matchLabels:
       grafana.internal/instance: grafana
   datasource:
-    name: Tempo
-    type: tempo
-    uid: tempo
+    name: VictoriaTraces
+    type: jaeger
+    uid: victoriatraces
     editable: true
     access: proxy
-    url: http://tempo.observability.svc.cluster.local:3200
+    url: http://vtsingle-victoriatraces.observability.svc.cluster.local:10428/select/jaeger
     jsonData:
       tracesToLogsV2:
-        datasourceUid: loki
+        datasourceUid: victorialogs
         spanStartTimeShift: "-1h"
         spanEndTimeShift: "1h"
         tags:
@@ -32,9 +34,12 @@ spec:
         enabled: true
       tracesToMetrics:
         datasourceUid: prometheus
+        # Tags must exist on the span/resource; the resulting labels must match
+        # the names produced by the Alloy spanmetrics connector (dots become
+        # underscores; service.name becomes service_name).
         tags:
           - key: service.name
-            value: service
+            value: service_name
           - key: http.method
             value: http_method
           - key: http.status_code
@@ -47,15 +52,4 @@ spec:
             value: rpc_method
         queries:
           - name: Span metrics
-            query: "sum(rate(traces_spanmetrics_latency_bucket{$$__tags}[5m]))"
-      serviceMap:
-        datasourceUid: prometheus
-      tracesToProfiles:
-        datasourceUid: pyroscope
-        tags:
-          - "namespace"
-          - "pod"
-          - "service.name"
-          - "service.namespace"
-        profileTypeId: "process_cpu:cpu:nanoseconds:cpu:nanoseconds"
-        customQuery: false
+            query: "sum(rate(traces_spanmetrics_duration_seconds_bucket{$$__tags}[5m]))"

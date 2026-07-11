@@ -115,3 +115,7 @@ Load-bearing specifics:
 * 2026-07-10 — accepted; datasource, mcp-victorialogs, dashboard rewrites landed (this change)
 * 2026-07-11 — corrected removal plan detail: Tempo Trace-to-logs supports VictoriaMetrics Logs
   natively (per Grafana docs), no custom LogsQL query needed at cutover
+* 2026-07-11 — Tempo replaced by VictoriaTraces
+  ([ADR-0042](adr-0042-victoriatraces-tracing-backend.md)); the new trace datasource already
+  points Trace-to-logs at `victorialogs`, and `observability-s3`'s only remaining consumer is
+  Loki — the component leaves with the removal commit

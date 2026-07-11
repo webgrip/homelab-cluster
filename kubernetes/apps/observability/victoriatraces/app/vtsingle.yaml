@@ -1,0 +1,42 @@
+---
+# VTSingle serves v1 (like VLSingle; VMSingle is the v1beta1 outlier).
+apiVersion: operator.victoriametrics.com/v1
+kind: VTSingle
+metadata:
+  name: victoriatraces
+spec:
+  # 14d retention — matches the Tempo retention (336h) this replaces.
+  # Ingest (OTLP/HTTP under /insert/opentelemetry) + Jaeger query API
+  # (/select/jaeger) endpoint: vtsingle-victoriatraces:10428.
+  retentionPeriod: "14d"
+  replicaCount: 1
+  storage:
+    accessModes:
+      - ReadWriteOnce
+    storageClassName: longhorn
+    resources:
+      requests:
+        storage: 10Gi
+  # Safety valve below the PVC size: drop oldest data before the disk fills.
+  extraArgs:
+    retention.maxDiskSpaceUsageBytes: "8GiB"
+  podMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
+  nodeSelector:
+    node.webgrip.io/pool: worker
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: fringe
+      effect: NoSchedule
+  # Trace volume is modest (single alloy-gateway feeder; Beyla is suspended).
+  # Tempo needed 1-3Gi; VictoriaTraces runs the VictoriaLogs engine and is far
+  # lighter. Right-size after two weeks of steady state like vmsingle/vlsingle.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi

@@ -41,7 +41,7 @@ The MCP servers are **Flux-managed workloads in the cluster**; Claude Code conne
 
 | Server | In-cluster app | Endpoint (LAN-only via envoy-internal) |
 | --- | --- | --- |
-| `grafana` | `kubernetes/apps/observability/mcp-grafana/` | `https://mcp-grafana.${SECRET_DOMAIN}/mcp` — VictoriaMetrics (PromQL) / Loki / Tempo (Pyroscope suspended pending ADR-0037) |
+| `grafana` | `kubernetes/apps/observability/mcp-grafana/` | `https://mcp-grafana.${SECRET_DOMAIN}/mcp` — VictoriaMetrics (PromQL) / Loki grace-period history (traces = VictoriaTraces via the `victoriatraces` Jaeger datasource — the MCP's Tempo tools are dead since ADR-0042; Pyroscope suspended pending ADR-0037) |
 | `kubernetes` | `kubernetes/apps/observability/k8s-mcp/` | `https://k8s-mcp.${SECRET_DOMAIN}/mcp` — **read-only**, bound to the built-in `view` ClusterRole (no Secrets) |
 | `opencost` | `kubernetes/apps/observability/opencost/` | `https://opencost-mcp.${SECRET_DOMAIN}/` — cost allocation/efficiency queries |
 

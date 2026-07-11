@@ -31,11 +31,11 @@ resources:
   - ./loki/ks.yaml
   # Alert delivery: self-hosted push notifications (ADR pending; roadmap #64).
   - ./ntfy/ks.yaml
-  # Tempo (tracing) suspended 2026-06-19 to free ~1Gi on the overcommitted fringe
-  # node. Flux (cluster-apps, prune:true) garbage-collects it and Helm-uninstalls
-  # the StatefulSet. Grafana's tempo datasource will show no-data until restored.
-  # Re-enable by uncommenting the line below.
-  # - ./tempo/ks.yaml
+  # Traces backend: VictoriaTraces (VTSingle via vm-operator). Replaced Tempo,
+  # which had been suspended since 2026-06-19 (~1Gi on the fringe node); VT is
+  # far lighter and restores tracing. Span metrics/service graphs now come from
+  # the alloy-gateway spanmetrics/servicegraph connectors. See ADR-0042.
+  - ./victoriatraces/ks.yaml
   - ./pyroscope/ks.yaml
   - ./alloy-agent/ks.yaml
   - ./alloy-gateway/ks.yaml

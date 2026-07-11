@@ -42,10 +42,12 @@ spec:
       resources:
         requests:
           cpu: 100m
-          memory: 160Mi
+          memory: 192Mi
         limits:
           cpu: 500m
-          memory: 384Mi
+          # Headroom for the spanmetrics/servicegraph connector state
+          # (in-memory series + unpaired-span store) added for VictoriaTraces.
+          memory: 512Mi
       configMap:
         create: true
         content: |
@@ -125,16 +127,56 @@ spec:
 
           otelcol.processor.batch "main" {
             output {
-              traces = [otelcol.exporter.otlp.tempo.input]
+              traces = [
+                otelcol.exporter.otlphttp.victoriatraces.input,
+                otelcol.connector.spanmetrics.main.input,
+                otelcol.connector.servicegraph.main.input,
+              ]
             }
           }
 
-          otelcol.exporter.otlp "tempo" {
+          // VictoriaTraces OTLP/HTTP ingest; the otlphttp exporter appends
+          // /v1/traces to this base, giving /insert/opentelemetry/v1/traces.
+          otelcol.exporter.otlphttp "victoriatraces" {
             client {
-              endpoint = "tempo.observability.svc.cluster.local:4317"
-              tls {
-                insecure = true
-              }
+              endpoint = "http://vtsingle-victoriatraces.observability.svc.cluster.local:10428/insert/opentelemetry"
+            }
+          }
+
+          // Span metrics + service graphs used to come from Tempo's
+          // metrics-generator; VictoriaTraces has none, so generate them here.
+          // Metric names match Tempo's except the latency histogram:
+          // traces_spanmetrics_latency_bucket -> traces_spanmetrics_duration_seconds_bucket,
+          // and the service label is service_name (OTel) instead of service (Tempo).
+          otelcol.connector.spanmetrics "main" {
+            namespace = "traces.spanmetrics"
+
+            histogram {
+              unit = "s"
+              explicit { }
+            }
+
+            // Mirror the old Tempo intrinsic_dimensions (span_name: false) and
+            // keep cardinality sane: no http.target/url, pod names, user ids.
+            exclude_dimensions = ["span.name"]
+
+            dimension { name = "k8s.namespace.name" }
+            dimension { name = "http.method" }
+            dimension { name = "http.status_code" }
+            dimension { name = "rpc.system" }
+            dimension { name = "rpc.service" }
+            dimension { name = "rpc.method" }
+
+            output {
+              metrics = [otelcol.processor.batch.metrics.input]
+            }
+          }
+
+          // Keep service graphs low-cardinality: only client/server edges
+          // (same as the old Tempo service_graphs dimensions: []).
+          otelcol.connector.servicegraph "main" {
+            output {
+              metrics = [otelcol.processor.batch.metrics.input]
             }
           }
 

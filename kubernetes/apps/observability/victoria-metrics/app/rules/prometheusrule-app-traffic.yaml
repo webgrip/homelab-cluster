@@ -17,7 +17,7 @@ spec:
               histogram_quantile(
                 0.95,
                 sum by (k8s_namespace_name, le) (
-                  rate(traces_spanmetrics_latency_bucket{span_kind="SPAN_KIND_SERVER", k8s_namespace_name!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}[5m])
+                  rate(traces_spanmetrics_duration_seconds_bucket{span_kind="SPAN_KIND_SERVER", k8s_namespace_name!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}[5m])
                 )
               ) > 1.5
             )
@@ -36,7 +36,7 @@ spec:
             summary: "HTTP p95 latency high ({{ $labels.k8s_namespace_name }})"
             description: |
               What's happening:
-              - p95 server latency >1.5s for 15m in namespace {{ $labels.k8s_namespace_name }} (Tempo span-metrics).
+              - p95 server latency >1.5s for 15m in namespace {{ $labels.k8s_namespace_name }} (Alloy span-metrics).
 
               Impact/risk:
               - Users may see slow page loads and timeouts.
@@ -51,7 +51,7 @@ spec:
               - Check workload CPU/memory and request rate in the namespace
               - Check recent deploys/config changes in the namespace
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/tempo-service-graphs/tempo-service-graphs"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/traces-service-graphs/traces-service-graphs"
 
         - alert: AppHttpP95LatencyCritical
           expr: |
@@ -59,7 +59,7 @@ spec:
               histogram_quantile(
                 0.95,
                 sum by (k8s_namespace_name, le) (
-                  rate(traces_spanmetrics_latency_bucket{span_kind="SPAN_KIND_SERVER", k8s_namespace_name!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}[5m])
+                  rate(traces_spanmetrics_duration_seconds_bucket{span_kind="SPAN_KIND_SERVER", k8s_namespace_name!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}[5m])
                 )
               ) > 3
             )
@@ -78,7 +78,7 @@ spec:
             summary: "HTTP p95 latency critical ({{ $labels.k8s_namespace_name }})"
             description: |
               What's happening:
-              - p95 server latency >3s for 15m in namespace {{ $labels.k8s_namespace_name }} (Tempo span-metrics).
+              - p95 server latency >3s for 15m in namespace {{ $labels.k8s_namespace_name }} (Alloy span-metrics).
 
               Impact/risk:
               - Severe user impact likely (timeouts/unavailability).
@@ -93,4 +93,4 @@ spec:
               - Check errors and saturation for the top offender services
               - Roll back recent changes if the spike coincides with a deploy
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/tempo-service-graphs/tempo-service-graphs"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/traces-service-graphs/traces-service-graphs"

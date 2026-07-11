@@ -6,10 +6,11 @@ Current stack:
 
 - **Metrics**: VictoriaMetrics (vm-operator + VMSingle/VMAgent/VMAlert/VMAlertmanager; [ADR-0034](../adr/adr-0034-victoriametrics-metrics-backend.md))
 - **Logs**: VictoriaLogs (VLSingle via vm-operator; Loki read-only during the migration grace period)
-- **Collection / routing**: Grafana Alloy (node agent + OTLP gateway)
+- **Traces**: VictoriaTraces (VTSingle via vm-operator; replaced Tempo — [ADR-0042](../adr/adr-0042-victoriatraces-tracing-backend.md))
+- **Collection / routing**: Grafana Alloy (node agent + OTLP gateway; the gateway also generates span metrics + service graphs)
 - **Visualization**: Grafana via **grafana-operator** CRDs
 - **Alerting**: VMAlert + VMAlertmanager + Grafana Alerting
-- **Suspended**: Tempo (traces), Pyroscope (profiles), Beyla, k6 — see [Suspended components](#suspended-components)
+- **Suspended**: Pyroscope (profiles), Beyla, k6 — see [Suspended components](#suspended-components)
 
 All manifests live under `kubernetes/apps/observability/` (entry point:
 `kubernetes/apps/observability/kustomization.yaml`).
@@ -52,7 +53,7 @@ Grafana is managed by **grafana-operator** — instance, datasources, folders, d
 alert rules are all CRDs (no ConfigMap sidecar):
 
 - Instance: `kubernetes/apps/observability/grafana/app/grafana-instance.yaml` (+ chart-managed image renderer)
-- Datasources: `grafana/app/datasources/` — prometheus → VMSingle `:8429`, alertmanager → VMAlertmanager `:9093`, victorialogs → VLSingle `:9428`, loki (read-only history, grace period), plus tempo/pyroscope (no-data while those are suspended) and opencost/github/devex extras
+- Datasources: `grafana/app/datasources/` — prometheus → VMSingle `:8429`, alertmanager → VMAlertmanager `:9093`, victorialogs → VLSingle `:9428`, victoriatraces (type `jaeger`) → VTSingle `:10428/select/jaeger`, loki (read-only history, grace period), plus pyroscope (no-data while suspended) and opencost/github/devex extras
 - Folders / dashboards / alerting: `grafana/app/folders/`, `grafana/app/dashboards/`, `grafana/app/alerting/` — authoring recipe = **`grafana-dashboard` skill**
 - Database: CNPG `grafana-db` in-namespace (dashboards/datasources are CRDs in Git; the DB holds sessions/prefs — Tier 4 in [backup tiers](database-backup-tiers.md))
 
@@ -69,19 +70,26 @@ wiring/troubleshooting → `authentik-oidc` skill + [Authentik OIDC login runboo
 - Retention 30d on a 20Gi Longhorn PVC (no object storage — Garage is off the logging path); safety valve `retention.maxDiskSpaceUsageBytes: 18GiB`.
 - Ingest speaks the **Loki push protocol** (`/insert/loki/api/v1/push`), so shippers use plain `loki.write`; query language is **LogsQL** (not LogQL). Grafana datasource uid `victorialogs` (`victoriametrics-logs-datasource` plugin); agent access via **mcp-victorialogs** (`.mcp.json`).
 - Alerts: `victorialogs/app/prometheusrule-victorialogs.yaml` (down / no-ingest / disk / http errors). Triage → [victorialogs runbook](../runbooks/victorialogs.md). Decision: [ADR-0041](../adr/adr-0041-victorialogs-logging-backend.md).
-- **Loki (grace period, until ~2026-08-07)**: still deployed read-only (`kubernetes/apps/observability/loki/`) so the pre-migration 30d of history stays queryable via the `loki` datasource in Explore; receives no new writes. Removal commit deletes the app dir + datasource and repoints Tempo `tracesToLogsV2`; PVC `storage-loki-0` and Garage buckets `loki-chunks`/`loki-ruler`/`loki-admin` are cleaned up out-of-repo. The `observability-s3` component stays (Tempo uses it).
+- **Loki (grace period, until ~2026-08-07)**: still deployed read-only (`kubernetes/apps/observability/loki/`) so the pre-migration 30d of history stays queryable via the `loki` datasource in Explore; receives no new writes. Removal commit deletes the app dir + datasource **and the `observability-s3` component (Loki is its last consumer — Tempo, the other one, is gone)**; PVC `storage-loki-0` and Garage buckets `loki-chunks`/`loki-ruler`/`loki-admin` are cleaned up out-of-repo (the stale `tempo` bucket can go in the same sweep).
+
+## VictoriaTraces
+
+- VTSingle CR: `kubernetes/apps/observability/victoriatraces/app/vtsingle.yaml` (managed by vm-operator; apiVersion `operator.victoriametrics.com/v1`, like VLSingle).
+- Endpoint `vtsingle-victoriatraces.observability.svc:10428` — OTLP/HTTP ingest under `/insert/opentelemetry`, **Jaeger query API** under `/select/jaeger` (no TraceQL).
+- Retention 14d (Tempo's 336h equivalent) on a 10Gi Longhorn PVC; safety valve `retention.maxDiskSpaceUsageBytes: 8GiB`. No object storage — Garage is off the tracing path.
+- Grafana datasource uid `victoriatraces`, type **`jaeger`**; trace panels use Jaeger `search` queries. Trace-to-logs → `victorialogs`, trace-to-metrics → span metrics.
+- **Span metrics / service graphs** no longer come from a backend metrics-generator: the **alloy-gateway** `otelcol.connector.spanmetrics` + `servicegraph` connectors produce them and remote_write to VMSingle. Names: `traces_spanmetrics_calls_total` (unchanged), `traces_spanmetrics_duration_seconds_bucket` (was `..._latency_bucket`), label `service_name` (was `service`); `traces_service_graph_*` unchanged. Dashboard: `traces-service-graphs`. Decision: [ADR-0042](../adr/adr-0042-victoriatraces-tracing-backend.md).
 
 ## Suspended components
 
 | Component | State | Why + gate |
 | --- | --- | --- |
-| **Tempo** (traces) | commented out of the ns kustomization 2026-06-19 | freed ~1Gi on the overcommitted fringe node; re-enable by uncommenting `./tempo/ks.yaml` |
 | **Pyroscope** (profiles) | `suspend: true` in its ks.yaml | gate = owner-run etcd defrag, then flip per [ADR-0037](../adr/adr-0037-reenable-pyroscope-worker-pool.md) (re-enable on the worker pool) |
 | **Beyla** (eBPF auto-instrumentation) | `suspend: true` | disabled temporarily for stability |
 | **k6** (operator + canaries) | commented out 2026-06-19 | freed fringe resources; synthetic-check annotations on routes are no-ops until restored |
 
-While Tempo is down, traces sent to the Alloy gateway are exported to a dead endpoint (dropped);
-the Grafana tempo datasource shows no data.
+(Tempo was in this table from 2026-06-19 until 2026-07-11, when VictoriaTraces replaced it —
+[ADR-0042](../adr/adr-0042-victoriatraces-tracing-backend.md).)
 
 ## Grafana Alloy
 
@@ -92,7 +100,7 @@ Two installations:
    - OTLP gRPC `alloy-gateway.observability.svc.cluster.local:4317`, HTTP `:4318`
    - **Metrics** → `remote_write` to VMSingle (`:8429/api/v1/write`)
    - **Logs** → VictoriaLogs
-   - **Traces** → Tempo endpoint (dropped while Tempo is suspended)
+   - **Traces** → VictoriaTraces (OTLP/HTTP, `vtsingle-victoriatraces:10428/insert/opentelemetry`); the same stream feeds the `spanmetrics`/`servicegraph` connectors → VMSingle
    - **Faro** browser telemetry receiver: `http://alloy-gateway.observability.svc.cluster.local:12347/api/faro/receiver`
    - Also routed at `https://otlp.${SECRET_DOMAIN}` for off-cluster clients.
 
