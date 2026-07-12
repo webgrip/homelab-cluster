@@ -271,7 +271,7 @@ collapse). The three migration styles are not a choice — they are **distances 
 - Give etcd a dedicated disk / move write-heavy workloads off the shared control-plane SSD.
 - Add an **offsite WAL target** so a Garage outage no longer fails all archiving (roadmap **#52**
   etcd off-node backup, **#58** Longhorn external target, and the Garage-SPOF section in the
-  [roadmap](../general/roadmap.md)).
+  [roadmap](../adr/adr-0043-vikunja-roadmap-system-of-record.md)).
 - Bolt **PiKVM OOB** onto each node — Talos is API-only; OOB is the only recovery path for a bricked
   node.
 - Runbooks: [CNPG backups](../runbooks/cnpg-backups.md), [Longhorn rebuild-wedge](../runbooks/longhorn-rebuild-wedge.md), [Longhorn IM-cpu](../runbooks/longhorn-im-cpu-converge.md).
@@ -412,7 +412,7 @@ Terms used above, plainest-first — this RFC should be readable without prior h
   [0005 LAN-only](../adr/adr-0021-lan-only-exposure.md) ·
   [0007 Cilium WireGuard](../adr/adr-0004-cilium-wireguard-encryption.md) ·
   [0021 Cilium gateway egress](../adr/adr-0005-cilium-gateway-egress-for-oidc.md)
-- **Roadmap:** reliability — HA/resources/PDBs, backup & DR, Garage SPOF ([roadmap](../general/roadmap.md))
+- **Roadmap:** reliability — HA/resources/PDBs, backup & DR, Garage SPOF ([roadmap](../adr/adr-0043-vikunja-roadmap-system-of-record.md))
 - **Sibling RFCs:** [Security Hardening](rfc-security-hardening.md) ·
   [Dynamic Database Credentials](rfc-dynamic-database-credentials.md)
 - **Upstream:** Rook-Ceph · Longhorn v2 (SPDK) · LINSTOR/Piraeus (DRBD) · TrueNAS/ZFS · Cilium · Talos disks

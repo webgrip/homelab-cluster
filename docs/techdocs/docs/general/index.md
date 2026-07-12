@@ -18,5 +18,5 @@ Architecture and reference docs — what the platform *is*. Procedures live in
   explained](dynamic-db-credentials-explained.md).
 - **Forge & automation** — [Forgejo](forgejo.md), [Forgejo Actions engine
   quirks](forgejo-actions-engine.md), [Renovate](renovate.md), [ARC runners](arc-runners.md).
-- **Planning** — [roadmap](roadmap.md) (living backlog, kept at 100 open items).
+- **Planning** — the roadmap lives on the **Vikunja board** (`Homelab Roadmap` project, via the `vikunja` MCP; [ADR-0043](../adr/adr-0043-vikunja-roadmap-system-of-record.md)).
 - **Games** — [Project Zomboid](zomboid.md) (currently disabled).

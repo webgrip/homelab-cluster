@@ -161,6 +161,7 @@ Tenant apps the platform hosts — decisions about *what* runs, not how the plat
 | ADR | Decision | Status | Last updated |
 | --- | -------- | ------ | ------------ |
 | [0040](adr-0040-vikunja-task-management.md) | Vikunja as the task-management system, complementing Forgejo issues | proposed | 2026-07-09 |
+| [0043](adr-0043-vikunja-roadmap-system-of-record.md) | Vikunja board is the roadmap system of record; roadmap.md retired | accepted | 2026-07-12 |
 
 ## Renumbering (2026-07-03)
 

@@ -14,7 +14,7 @@ defaults), and **PolicyException** (waivers).
 ## Audit vs Enforce
 New validate policies land in **`validationFailureAction: Audit`** (reports violations to a PolicyReport,
 doesn't block) → promote to **Enforce** (admission-blocks) once the fleet is clean. ~10 policies sit in
-Audit; the promotion backlog is tracked in `docs/techdocs/docs/general/roadmap.md`. **Promote one at
+Audit; the promotion backlog is tracked on the Vikunja Homelab Roadmap board (label `theme/security-kyverno-audit-enforce`; ADR-0032 waves). **Promote one at
 a time** and check PolicyReports are clean first, or you'll block a legitimate workload at admission.
 
 ## Add a policy

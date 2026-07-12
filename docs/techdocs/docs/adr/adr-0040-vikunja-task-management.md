@@ -134,3 +134,5 @@ stays the git-owned strategy layer, Vikunja owns operational/recurring/personal 
   job pods lacked the kube-apiserver CNP allow (cnpg-netpol component), and the flows
   blueprint's stale `state: absent` delete crashed all blueprint applies. Remaining for
   acceptance: a real browser OIDC login
+* 2026-07-12 — amended by [ADR-0043](adr-0043-vikunja-roadmap-system-of-record.md): the
+  git-owned `roadmap.md` was retired; the Vikunja board became the roadmap system of record

@@ -3,7 +3,7 @@
 > Status: **Proposed** · Date: 2026-07-09
 
 > **TL;DR.** The cluster has no task-management system: work lives in a 100-item
-> [roadmap.md](../general/roadmap.md), Forgejo issues, and heads. Twenty OSS candidates were
+> [roadmap.md](../adr/adr-0043-vikunja-roadmap-system-of-record.md), Forgejo issues, and heads. Twenty OSS candidates were
 > surveyed (facts web-verified 2026-07-09 — licenses, paywalls, and maintenance status all
 > moved in 2025–2026, so training-data folklore is stale). Exactly **one** candidate clears
 > every cluster-derived constraint — FOSS license, CNPG Postgres, free OIDC, small footprint,

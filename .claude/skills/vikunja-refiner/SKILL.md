@@ -1,7 +1,7 @@
 ---
 name: vikunja-refiner
 description: Refine Homelab Roadmap tickets in Vikunja to a Definition of Ready — researched problem statement, checkbox acceptance criteria verifiable against real state, file-level approach, live verification step — written as HTML descriptions via the vikunja MCP.
-when_to_use: Use when asked to refine/groom/flesh out Vikunja tickets, make board items actionable, apply the definition of ready, prep the next work batch, split an oversized ticket, or when a ticket is too vague to start. NOT for board↔roadmap sync or MCP transport (vikunja skill).
+when_to_use: Use when asked to refine/groom/flesh out Vikunja tickets, make board items actionable, apply the definition of ready, prep the next work batch, split an oversized ticket, or when a ticket is too vague to start. NOT for MCP transport or board conventions (vikunja skill).
 ---
 
 # Vikunja refiner — raw items → Definition of Ready
@@ -18,11 +18,11 @@ when_to_use: Use when asked to refine/groom/flesh out Vikunja tickets, make boar
 
 ## Rules
 
-- **Never rename a ticket.** Title is the roadmap↔board match key (vikunja skill). Better title = edit roadmap.md first, sync, then refine.
+- **Rename only with reason.** The board is the roadmap system of record (ADR-0043) — no file sync constrains titles anymore, but other tickets and comments reference tickets by title, so keep renames deliberate and note them in a comment.
 - **Descriptions are HTML** (TipTap editor — raw markdown renders literally). Section template + checkbox markup + a worked example → [reference.md](reference.md). Keep paragraph 1 = theme + `[P · I · E]` tag (the import contract).
 - **Research before writing.** Fan out `Explore` agents over the repo (manifests, ADRs, RFCs, runbooks, sequencing notes) and check live state via the read-only MCPs; every Problem/criterion cites what they found. Respect recorded deferrals — an item deferred by an ADR/sequencing note gets that gate stated, not "fixed" away.
 - **Labels:** refined = add `ready`, remove `needs-refinement` — via `label_add_to_task`/`label_remove_from_task` (`labels_bulk_set_on_task` REPLACES the whole set; only use it with the full list).
-- Sanity-check `priority` and the `impact/·` `effort/·` labels against what research showed; correct drift in Vikunja AND flag it for roadmap.md (don't silently diverge).
+- Sanity-check `priority` and the `impact/·` `effort/·` labels against what research showed; correct drift on the board and say so in the run report.
 
 ## Procedure
 
