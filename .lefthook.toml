@@ -16,6 +16,14 @@ run = "mise exec -- yamlfmt {staged_files}"
 glob = ["*.yml", "*.yaml"]
 stage_fixed = true
 
+# Parse staged shell scripts with the local bash. On macOS that is bash 3.2, whose
+# parser chokes on constructs newer bashes accept (e.g. unbalanced ')' in case
+# patterns inside $()); CI runs bash 5 and would never catch it. Keeps every script
+# runnable on a stock Mac.
+[pre-commit.commands.check-sh-parse]
+glob = ["*.sh"]
+run = "for f in {staged_files}; do bash -n \"$f\" || exit 1; done"
+
 [pre-commit.commands.zizmor]
 glob = [".github/workflows/*.yaml", ".github/actions/**/action.yaml"]
-run = "zizmor --offline {staged_files}"
+run = "mise exec -- zizmor --offline {staged_files}"
