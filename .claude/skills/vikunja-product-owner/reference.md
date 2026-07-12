@@ -1,28 +1,30 @@
-# vikunja MCP — reference
+# vikunja MCP — transport & API reference
 
-Contents: [Bridge internals](#bridge-internals) · [Token bootstrap / rotation](#token-bootstrap--rotation) ·
-[Troubleshooting](#troubleshooting) · [Response formats](#response-formats) · [Tool catalog](#tool-catalog)
+Contents: [Scripted access](#scripted-access) · [Bridge internals](#bridge-internals) ·
+[Token bootstrap / rotation](#token-bootstrap--rotation) · [Troubleshooting](#troubleshooting) ·
+[Response formats](#response-formats) · [Tool catalog](#tool-catalog)
 
-## Scripted access (bulk operations / tools not loaded in-session)
+## Scripted access
 
-Run [scripts/mcp_client.py](scripts/mcp_client.py) — a minimal streamable-HTTP MCP client
-(`init()` + `call(tool, args)`); handles the session-id handshake, SSE parsing, and the 15-min
-session reaping. Use it when `.mcp.json` changed mid-session (native tools need a restart) or for
-bulk board passes; it is also the dispatcher's access pattern.
+Run [scripts/mcp_client.py](scripts/mcp_client.py) — minimal streamable-HTTP MCP client
+(`init()` + `call(tool, args)`); handles the session-id handshake, SSE parsing, and 15-min
+session reaping. Use for bulk board passes, when `.mcp.json` changed mid-session (native tools
+need a restart), and as the dispatcher's access pattern.
 
 ## Bridge internals
 
-`kubernetes/apps/vikunja/mcp-vikunja/` — a `supercorp/supergateway` Deployment (ns `vikunja`) that
-bridges the stdio-only npm server `@aimbitgmbh/vikunja-mcp` (pinned in `deployment.yaml` args) to
-streamable HTTP at `https://mcp-vikunja.${SECRET_DOMAIN}/mcp` (envoy-internal, external-dns-excluded,
-LAN-only, no client auth — same trust model as the other MCPs, but this one **writes**).
+`kubernetes/apps/vikunja/mcp-vikunja/` — a `supercorp/supergateway` Deployment (ns `vikunja`)
+bridging the stdio-only npm server `@aimbitgmbh/vikunja-mcp` (pinned in `deployment.yaml` args) to
+streamable HTTP at `https://mcp-vikunja.${SECRET_DOMAIN}/mcp` (envoy-internal,
+external-dns-excluded, LAN-only, no client auth — same trust model as the other MCPs, but this one
+**writes**).
 
-- Talks to Vikunja in-cluster: `http://vikunja.vikunja.svc.cluster.local:3456/api/v1` (the `/api/v1`
-  suffix is required by vikunja-mcp).
+- Talks to Vikunja in-cluster: `http://vikunja.vikunja.svc.cluster.local:3456/api/v1` (the
+  `/api/v1` suffix is required by vikunja-mcp).
 - `--stateful`: one npx child per MCP session; first session after a pod restart downloads the npm
-  package (internet-egress carve-out in `app/networkpolicy.yaml`), later spawns hit the `/tmp` cache.
-  Idle sessions are reaped after 15 min (`--sessionTimeout`) — a client whose session expired gets a
-  404 and must re-initialize. Without the timeout, accumulated sessions OOMKilled the pod (2026-07-12).
+  package (internet-egress carve-out in `app/networkpolicy.yaml`), later spawns hit the `/tmp`
+  cache. Idle sessions are reaped after 15 min (`--sessionTimeout`) — an expired client gets a 404
+  and must re-initialize. Without the timeout, accumulated sessions OOMKilled the pod (2026-07-12).
 - Hard-delete opt-ins `ENABLE_{PROJECT,TASK,LABEL}_DELETE` exist but stay unset (soft mode).
 - Bumping the vikunja-mcp version = edit the pinned `@aimbitgmbh/vikunja-mcp@<ver>` in
   `deployment.yaml` args (Renovate doesn't see inside args).
@@ -53,14 +55,16 @@ Rotation = same steps; step 2's `bao kv put` overwrites version-safely.
 | `/mcp` connect timeout | not on LAN, or pod not Ready (`mcp__kubernetes__pods_list_in_namespace` ns `vikunja`) |
 | first tool call slow / npx errors in logs | npm download on session spawn — check egress netpol + npmjs reachability; pinned version yanked? |
 | task ops fail with 403 | token missing that route-group permission — recreate token with wider scope |
-| `tasks_list`/`search` misses tasks you know exist | results are one server page (`maxitemsperpage`, raised to 250 in the vikunja HelmRelease) and search matches only within it; the MCP has no page param. `limit: 0` does NOT mean "all" — it falls back to 50. Verify the reported "Found N" against expected board size; fall back to `task_get` by ID |
+| pod OOMKilled (137) | session leak — confirm `--sessionTimeout` still in args |
+| `tasks_list`/`search` misses tasks you know exist | results are one server page (`maxitemsperpage`, raised to 250 in the vikunja HelmRelease) and search matches only within it; the MCP has no page param; `limit: 0` falls back to 50. Verify "Found N" against expected board size; fall back to `task_get` by ID |
 
 ## Response formats
 
-Verified live against v0.1.0 (2026-07-12). Tools return **formatted text, not JSON**. Parse with these shapes:
+Verified live against v0.1.0 (2026-07-12). Tools return **formatted text, not JSON**:
 
 - create tools → `Created <thing> "<title>"` then a line `ID: <n>`
-- list tools → `Found <N> <thing>(s)` then blocks `<i>. <title>` / detail lines / `[ID: <n>]` (tasks: `[ID: <n>, Project: <m>]`)
+- list tools → `Found <N> <thing>(s)` then blocks `<i>. <title>` / detail lines / `[ID: <n>]`
+  (tasks: `[ID: <n>, Project: <m>]`)
 - `task_get` → title line, then `Priority: …`, `Labels: <comma-joined>`, `Project ID: <n>` lines
 - `labels_list` appends the hex color to colored label titles — `impact/M (f5a524)` — strip the
   trailing space-plus-`(xxxxxx)` before using titles as map keys (caused a KeyError on 2026-07-12)
@@ -71,7 +75,8 @@ Verified live against v0.1.0 (2026-07-12). Tools return **formatted text, not JS
 
 ## Tool catalog
 
-`mcp__vikunja__*`, v0.1.0 — names verified live via tools/list (trust this over the upstream README, whose singular/plural naming is wrong for several tools).
+`mcp__vikunja__*`, v0.1.0 — names verified live via tools/list (trust this over the upstream
+README, whose singular/plural naming is wrong for several tools).
 
 | Area | Tools |
 |---|---|
@@ -80,7 +85,7 @@ Verified live against v0.1.0 (2026-07-12). Tools return **formatted text, not JS
 | Labels | `labels_list`, `label_get`, `label_create`, `label_update`, `label_delete`*, `label_add_to_task`, `label_remove_from_task`, `labels_bulk_set_on_task` |
 | Comments | `comments_list`, `comment_get`, `comment_create`, `comment_update`, `comment_delete` |
 | Assignees | `assignees_list`, `assignee_add`, `assignees_add_bulk`, `assignee_remove` |
-| Relations | `relation_create`, `relation_delete` |
+| Relations | `relation_create`, `relation_delete` (kinds: subtask/parenttask, related, blocking/blocked, precedes/follows, duplicateof/duplicates, copiedfrom/copiedto) |
 | Views/Kanban | `views_list`, `view_get`, `view_create`, `view_update`, `view_delete`, `buckets_list`, `bucket_create`, `bucket_update`, `bucket_delete` |
 | Filters | `filter_get`, `filter_create`, `filter_update`, `filter_delete` |
 | Notifications | `notifications_list`, `notification_get`, `notification_delete` |

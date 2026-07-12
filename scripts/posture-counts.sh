@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verified hardening-posture counts for the roadmap-topup skill (step 1).
+# Verified hardening-posture counts for the vikunja-product-owner top-up pass (step 1).
 # Prints a compact labeled count block from the manifests under kubernetes/.
 # Read-only; no cluster access. Single source of truth for these greps so they
 # don't rot inside the skill.

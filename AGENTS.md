@@ -13,10 +13,10 @@ roadmap file in git — see
 - **Find work**: `tasks_list` on the Homelab Roadmap project. `do-next` label = top of the stack;
   `ready` label = meets the Definition of Ready (actionable as-is); `needs-refinement` = do not
   start, refine first.
-- **Conventions** (labels, priority mapping, lifecycle): the `vikunja` skill
-  ([.claude/skills/vikunja/](.claude/skills/vikunja/SKILL.md)).
-- **Refining tickets** to the Definition of Ready: the `vikunja-refiner` skill.
-- **Topping up / triaging** the backlog: the `roadmap-topup` skill.
+- **Everything board-related** — conventions (labels, priority mapping, lifecycle), Definition-of-Ready
+  refinement, prioritization/top-up, and the agent claim/completion protocols — is the
+  `vikunja-product-owner` skill
+  ([.claude/skills/vikunja-product-owner/](.claude/skills/vikunja-product-owner/SKILL.md)).
 - **Completing**: `task_complete` + a closing comment citing the commit/evidence — never claim
   done without the verification the ticket's own Verification section names.
 

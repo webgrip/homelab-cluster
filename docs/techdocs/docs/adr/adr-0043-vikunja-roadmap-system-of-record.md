@@ -63,3 +63,4 @@ with no consumer — nothing reads the file that couldn't read the board.
 * Supersedes the roadmap.md contract in [RFC: task management](../rfc/rfc-task-management.md) §"Division of labour"
 * 2026-07-12 — accepted; roadmap.md deleted, skills (`roadmap-topup`, `vikunja`,
   `vikunja-refiner`) repointed at the board, `AGENTS.md` added
+* 2026-07-12 — the three skills consolidated into `vikunja-product-owner`
