@@ -1,7 +1,7 @@
 # vikunja MCP — reference
 
 Contents: [Bridge internals](#bridge-internals) · [Token bootstrap / rotation](#token-bootstrap--rotation) ·
-[Troubleshooting](#troubleshooting) · [Tool catalog](#tool-catalog)
+[Troubleshooting](#troubleshooting) · [Response formats](#response-formats) · [Tool catalog](#tool-catalog)
 
 ## Bridge internals
 
@@ -44,20 +44,33 @@ Rotation = same steps; step 2's `bao kv put` overwrites version-safely.
 | `/mcp` connect timeout | not on LAN, or pod not Ready (`mcp__kubernetes__pods_list_in_namespace` ns `vikunja`) |
 | first tool call slow / npx errors in logs | npm download on session spawn — check egress netpol + npmjs reachability; pinned version yanked? |
 | task ops fail with 403 | token missing that route-group permission — recreate token with wider scope |
+| `tasks_list`/`search` misses tasks you know exist | results are one server page (`maxitemsperpage`, raised to 250 in the vikunja HelmRelease) and search matches only within it; the MCP has no page param. `limit: 0` does NOT mean "all" — it falls back to 50. Verify the reported "Found N" against expected board size; fall back to `task_get` by ID |
 
-## Tool catalog (`mcp__vikunja__*`, v0.1.0)
+## Response formats
+
+Verified live against v0.1.0 (2026-07-12). Tools return **formatted text, not JSON**. Parse with these shapes:
+
+- create tools → `Created <thing> "<title>"` then a line `ID: <n>`
+- list tools → `Found <N> <thing>(s)` then blocks `<i>. <title>` / detail lines / `[ID: <n>]` (tasks: `[ID: <n>, Project: <m>]`)
+- `task_get` → title line, then `Priority: …`, `Labels: <comma-joined>`, `Project ID: <n>` lines
+- errors → `isError` content `Error: … Vikunja API error (<code>): …`
+- unset due dates render as `Due: 0001-01-01` — not a bug
+
+## Tool catalog
+
+`mcp__vikunja__*`, v0.1.0 — names verified live via tools/list (trust this over the upstream README, whose singular/plural naming is wrong for several tools).
 
 | Area | Tools |
 |---|---|
-| Tasks | `tasks_list`, `tasks_list_all`, `tasks_get`, `tasks_create`, `tasks_update`, `task_complete`, `task_delete`*, `tasks_bulk_update` |
+| Tasks | `tasks_list`, `tasks_list_all`, `task_get`, `task_create`, `task_update`, `task_complete`, `task_delete`*, `tasks_bulk_update` |
 | Projects | `projects_list`, `project_get`, `project_create`, `project_update`, `project_archive`, `project_delete`*, `project_duplicate` |
 | Labels | `labels_list`, `label_get`, `label_create`, `label_update`, `label_delete`*, `label_add_to_task`, `label_remove_from_task`, `labels_bulk_set_on_task` |
-| Comments | `comments_list`, `comments_get`, `comments_create`, `comments_update`, `comments_delete` |
-| Assignees | `assignees_list`, `assignees_add`, `assignees_add_bulk`, `assignees_remove` |
-| Relations | `relations_create`, `relations_delete` |
-| Views/Kanban | `views_list`, `views_get`, `views_create`, `views_update`, `views_delete`, `buckets_list`, `buckets_create`, `buckets_update`, `buckets_delete` |
+| Comments | `comments_list`, `comment_get`, `comment_create`, `comment_update`, `comment_delete` |
+| Assignees | `assignees_list`, `assignee_add`, `assignees_add_bulk`, `assignee_remove` |
+| Relations | `relation_create`, `relation_delete` |
+| Views/Kanban | `views_list`, `view_get`, `view_create`, `view_update`, `view_delete`, `buckets_list`, `bucket_create`, `bucket_update`, `bucket_delete` |
 | Filters | `filter_get`, `filter_create`, `filter_update`, `filter_delete` |
-| Notifications | `notifications_list`, `notifications_get`, `notifications_delete` |
+| Notifications | `notifications_list`, `notification_get`, `notification_delete` |
 | Subscriptions | `subscription_get`, `subscription_create`, `subscription_delete` |
 
 \* soft in safe mode: `project_delete`→archive, `task_delete`→complete, `label_delete`→blocked.
