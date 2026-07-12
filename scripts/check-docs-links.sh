@@ -24,16 +24,16 @@ while read -r f; do [ -f "docs/$f" ] || say "MISSING nav entry: $f"; done
 
 echo "check-docs-links: orphan pages (on disk, not in nav)"
 find docs -name '*.md' | sed 's|^docs/||' | sort | while read -r f; do
-  case " ${nav_whitelist} " in *" $f "*) continue ;; esac
+  case " ${nav_whitelist} " in (*" $f "*) continue ;; esac
   sed -n '/^nav:/,$p' mkdocs.yml | grep -q "$f" || say "NOT IN NAV: $f"
 done
 
 echo "check-docs-links: relative links"
 find docs -name '*.md' | while read -r f; do
-  case " ${nav_whitelist} " in *" ${f#docs/} "*) continue ;; esac
+  case " ${nav_whitelist} " in (*" ${f#docs/} "*) continue ;; esac
   dir=$(dirname "$f")
   grep -oE '\]\([^)#[:space:]]+\.md' "$f" | sed 's/](//' | while read -r target; do
-    case "$target" in http*|/*) continue ;; esac
+    case "$target" in (http*|/*) continue ;; esac
     [ -f "$dir/$target" ] || say "DEAD link: $f -> $target"
   done
 done
@@ -46,14 +46,14 @@ errors=$(
     sed -n '/^nav:/,$p' mkdocs.yml | grep -oE '[A-Za-z0-9./_-]+\.md' | sort -u |
       while read -r f; do [ -f "docs/$f" ] || echo x; done
     find docs -name '*.md' | sed 's|^docs/||' | while read -r f; do
-      case " ${nav_whitelist} " in *" $f "*) continue ;; esac
+      case " ${nav_whitelist} " in (*" $f "*) continue ;; esac
       sed -n '/^nav:/,$p' mkdocs.yml | grep -q "$f" || echo x
     done
     find docs -name '*.md' | while read -r f; do
-      case " ${nav_whitelist} " in *" ${f#docs/} "*) continue ;; esac
+      case " ${nav_whitelist} " in (*" ${f#docs/} "*) continue ;; esac
       dir=$(dirname "$f")
       grep -oE '\]\([^)#[:space:]]+\.md' "$f" | sed 's/](//' | while read -r t; do
-        case "$t" in http*|/*) continue ;; esac
+        case "$t" in (http*|/*) continue ;; esac
         [ -f "$dir/$t" ] || echo x
       done
     done
