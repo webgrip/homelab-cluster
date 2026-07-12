@@ -6,7 +6,7 @@ when_to_use: Use when creating/editing a GrafanaDashboard/GrafanaFolder/GrafanaD
 
 # Grafana resources (Operator-managed)
 
-All `grafana.integreatly.org/v1beta1` CRDs — never dashboard ConfigMaps or HelmRelease values. Operator reconciles ~10m and **reverts UI edits** (Git is truth). Instance: `observability/grafana/app/grafana-instance.yaml` — plugins install via its `GF_INSTALL_PLUGINS` env (grafana.com download at pod start; `Recreate` strategy ⇒ brief outage per change). The chart HelmRelease (`observability/grafana/app/helmrelease.yaml`) is **orphaned** — not in the kustomization; edits to it do nothing (verified 2026-07-10). Datasources = the `GrafanaDatasource` CRs only. Inventory: `kubectl get grafanadashboards,grafanafolders,grafanadatasources -A`.
+All `grafana.integreatly.org/v1beta1` CRDs — never dashboard ConfigMaps or HelmRelease values. Operator reconciles ~10m and **reverts UI edits** (Git is truth). Instance: `observability/grafana/app/grafana-instance.yaml` — plugins install via its `GF_INSTALL_PLUGINS` env (grafana.com download at pod start; `Recreate` strategy ⇒ brief outage per change). The Grafana version is pinned via the instance CR's `spec.version` (renovate-annotated); the orphaned chart HelmRelease + its HelmRepository were deleted 2026-07-12 (never applied; confused Renovate). Datasources = the `GrafanaDatasource` CRs only. Inventory: `kubectl get grafanadashboards,grafanafolders,grafanadatasources -A`.
 
 **Shape** (enforced by `guard-skills.sh` — fix-up message if you miss one):
 - Every CRD: `spec.instanceSelector.matchLabels: {grafana.internal/instance: grafana}`; add `allowCrossNamespaceImport: true` outside `observability`.
@@ -28,7 +28,7 @@ Double **every** Grafana token (`$$__range`, `$$__rate_interval`, `$$var`, `$$__
 - Don't graph everything: `stat` for single values, `table` for many-row comparison, `timeseries` only when over-time shape matters.
 - Money: `currencyUSD`, `decimals: 2` (nl-NL). Pair counts with a derived rate. Log y-axis (`custom.scaleDistribution:{type:log,log:10}`) for series spanning magnitudes.
 - Datasource: hardcode `"uid": "prometheus"`/`"victorialogs"` on panels + variable `datasource` fields — never a `${datasource}` picker (Flux blanks braced `${…}` → silent fallback to the default datasource). Log panels are LogsQL (`victoriametrics-logs-datasource`) — query language + queryType mapping → the `victorialogs` skill.
-- Trace panels: Jaeger `search` targets against uid `victoriatraces` — there is no TraceQL (VictoriaTraces backend). Target shape + naming deltas → the `victoriatraces` skill.
+- Trace panels: Jaeger `search` targets against uid `victoriatraces` — dashboards don't use TraceQL. (TraceQL exists only on the tempo-type DS uid `victoriatraces-tempo`, which serves the Traces Drilldown app; experimental, don't build dashboard panels on it.) Target shape + naming deltas → the `victoriatraces` skill.
 
 ## Additional resources
 - Panel hygiene, multi-query tables (`merge`+`organize`), the verified k8s-capacity metric catalog, and the Claude Code metric catalog → [reference.md](reference.md); log-query (LogsQL) rules → the `victorialogs` skill

@@ -1,7 +1,7 @@
 # VictoriaTraces replaces Tempo as the tracing backend
 
 * Status: accepted
-* Date: 2026-07-11
+* Date: 2026-07-12
 
 Technical Story: [rfc-observability-pipeline](../rfc/rfc-observability-pipeline.md) — the same
 consolidation line as ADR-0034 (metrics) and ADR-0041 (logs), extended to traces; also resolves
@@ -118,3 +118,10 @@ Load-bearing specifics:
 * [rfc-observability-pipeline](../rfc/rfc-observability-pipeline.md) — pipeline inventory
 * 2026-06-19 — Tempo suspended to relieve fringe-node memory pressure (context, not this ADR)
 * 2026-07-11 — accepted; VTSingle deployed, alloy-gateway rewired, Tempo removed (this change)
+* 2026-07-12 — the accepted "no TraceQL" trade-off is partially restored: VT v0.9.4 (via
+  vm-operator 0.66.2, 832d9e1f) ships an experimental **Tempo query API + TraceQL** at
+  `/select/tempo`; a second tempo-type Grafana datasource (`victoriatraces-tempo`) now serves
+  the Traces Drilldown app and serviceMap. Dashboards stay on the Jaeger datasource. Note:
+  Grafana **Logs Drilldown** remains impossible against VictoriaLogs (loki-type-only upstream;
+  [victorialogs-datasource#424](https://github.com/VictoriaMetrics/victorialogs-datasource/issues/424))
+  — the `victorialogs-explorer` dashboard is the fallback.

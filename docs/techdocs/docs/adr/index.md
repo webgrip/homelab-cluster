@@ -139,7 +139,7 @@ The Harbor family — adoption, backing services, exposure, SSO — then the cac
 | [0036](adr-0036-meta-monitoring-alert-rule-health.md) | Meta-monitoring of Grafana alert-rule health | accepted | 2026-07-01 |
 | [0037](adr-0037-reenable-pyroscope-worker-pool.md) | Re-enable Pyroscope, hard-pinned to the worker pool | accepted | 2026-07-02 |
 | [0041](adr-0041-victorialogs-logging-backend.md) | VictoriaLogs replaces Loki as the logging backend | accepted | 2026-07-10 |
-| [0042](adr-0042-victoriatraces-tracing-backend.md) | VictoriaTraces replaces Tempo as the tracing backend | accepted | 2026-07-11 |
+| [0042](adr-0042-victoriatraces-tracing-backend.md) | VictoriaTraces replaces Tempo as the tracing backend | accepted | 2026-07-12 |
 
 ### 10. Docs & developer portal
 
