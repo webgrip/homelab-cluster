@@ -9,7 +9,9 @@ when_to_use: Use when creating a new ADR, recording or ratifying a decision, upd
 Format = faithful [MADR 4.0.0](https://adr.github.io/madr/). Template:
 `docs/techdocs/docs/adr/adr-0000-template.md`. Gold-standard exemplar (structure + voice):
 `docs/techdocs/docs/adr/adr-0017-adopt-harbor.md`. Status legend + conventions:
-`docs/techdocs/docs/adr/index.md`.
+`docs/techdocs/docs/adr/index.md`. This file carries only THIS repo's wiring; the portable
+generalization (bootstrap, templates, validator) ships as the `adr-writer` plugin in
+webgrip-ai-skills — point other repos there.
 
 ## New ADR
 
