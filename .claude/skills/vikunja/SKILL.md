@@ -39,6 +39,9 @@ One Vikunja project **`Homelab Roadmap`** mirrors the open items of `docs/techdo
 4. **Reverse signal:** tasks completed *on the board* while still open in roadmap.md — don't reopen; report them as done-candidates for the next `roadmap-topup` run.
 5. Report counts (created/updated/completed/reverse-flagged); paste nothing secret — the MCP already authenticates server-side.
 
+Freshly imported tasks carry the `needs-refinement` label and a bare description — making them
+actionable (Definition of Ready, HTML description template) is the `vikunja-refiner` skill.
+
 ## Gotchas
 
 - **401 / auth errors** → the API token expired or was rotated: rotation steps in [reference.md](reference.md). Token is seeded by a human (agent can't write OpenBao — external-secrets skill).
