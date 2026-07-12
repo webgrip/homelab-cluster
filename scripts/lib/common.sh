@@ -1,41 +1,44 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# Map a log level to its priority. Case statements instead of associative
+# arrays: macOS ships bash 3.2, where `local -A` is a runtime error — these
+# libs must run on stock mac AND Linux CI (2026-07-12).
+function log_priority() {
+    case "$1" in
+        (debug) echo 1 ;;
+        (warn) echo 3 ;;
+        (error) echo 4 ;;
+        (*) echo 2 ;; # info + unknown levels
+    esac
+}
+
 # Log messages with different levels
 function log() {
     local level="${1:-info}"
     shift
 
-    # Define log levels with their priorities
-    local -A level_priority=(
-        [debug]=1
-        [info]=2
-        [warn]=3
-        [error]=4
-    )
-
     # Get the current log level's priority
-    local current_priority=${level_priority[$level]:-2} # Default to "info" priority
+    local current_priority
+    current_priority="$(log_priority "${level}")"
 
     # Get the configured log level from the environment, default to "info"
-    local configured_level=${LOG_LEVEL:-info}
-    local configured_priority=${level_priority[$configured_level]:-2}
+    local configured_priority
+    configured_priority="$(log_priority "${LOG_LEVEL:-info}")"
 
     # Skip log messages below the configured log level
     if ((current_priority < configured_priority)); then
         return
     fi
 
-    # Define log colors
-    local -A colors=(
-        [debug]="\033[1m\033[38;5;63m"  # Blue
-        [info]="\033[1m\033[38;5;87m"   # Cyan
-        [warn]="\033[1m\033[38;5;192m"  # Yellow
-        [error]="\033[1m\033[38;5;198m" # Red
-    )
-
-    # Fallback to "info" if the color for the given level is not defined
-    local color="${colors[$level]:-${colors[info]}}"
+    # Pick the log color, falling back to "info" cyan for unknown levels
+    local color
+    case "${level}" in
+        (debug) color="\033[1m\033[38;5;63m" ;;  # Blue
+        (warn) color="\033[1m\033[38;5;192m" ;;  # Yellow
+        (error) color="\033[1m\033[38;5;198m" ;; # Red
+        (*) color="\033[1m\033[38;5;87m" ;;      # Cyan (info)
+    esac
     local msg="$1"
     shift
 
@@ -57,9 +60,11 @@ function log() {
         output_stream="/dev/stderr"
     fi
 
-    # Print the log message
+    # Print the log message (tr, not ${level^^} — that's bash 4+)
+    local level_upper
+    level_upper="$(printf '%s' "${level}" | tr '[:lower:]' '[:upper:]')"
     printf "%s %b%s%b %s %b\n" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-        "${color}" "${level^^}" "\033[0m" "${msg}" "${data}" >"${output_stream}"
+        "${color}" "${level_upper}" "\033[0m" "${msg}" "${data}" >"${output_stream}"
 
     # Exit if the log level is error
     if [[ "$level" == "error" ]]; then

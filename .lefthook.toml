@@ -16,13 +16,15 @@ run = "mise exec -- yamlfmt {staged_files}"
 glob = ["*.yml", "*.yaml"]
 stage_fixed = true
 
-# Parse staged shell scripts with the local bash. On macOS that is bash 3.2, whose
-# parser chokes on constructs newer bashes accept (e.g. unbalanced ')' in case
-# patterns inside $()); CI runs bash 5 and would never catch it. Keeps every script
-# runnable on a stock Mac.
+# Keep every script runnable on a stock Mac (bash 3.2) AND Linux CI (bash 5):
+# 1) parse with the local bash — on macOS that catches 3.2 parser breakage
+#    (e.g. unbalanced ')' in case patterns inside $()) that CI's bash 5 accepts;
+# 2) deny-list bash-4-only constructs (associative arrays, mapfile, ${var^^}) —
+#    those parse fine everywhere but fail at RUNTIME on 3.2, beyond bash -n's
+#    reach. Comment lines are skipped so fixes may name the constructs.
 [pre-commit.commands.check-sh-parse]
 glob = ["*.sh"]
-run = "for f in {staged_files}; do bash -n \"$f\" || exit 1; done"
+run = "for f in {staged_files}; do bash -n \"$f\" || exit 1; if grep -nE '^[^#]*(declare -A|local -A|mapfile|readarray|\\$\\{[A-Za-z_]+(\\^\\^|,,))' \"$f\"; then echo \"$f: bash-4-only construct — scripts must run on stock macOS bash 3.2\" >&2; exit 1; fi; done"
 
 [pre-commit.commands.zizmor]
 glob = [".github/workflows/*.yaml", ".github/actions/**/action.yaml"]

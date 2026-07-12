@@ -34,27 +34,20 @@ print_relevant_flux_local_stderr "${stderr_file}"
 cat "${pull_list}" "${default_list}" | sort -u > "${combined_list}"
 : > "${OUTPUT_FILE}"
 
-declare -A in_pull=()
-declare -A in_default=()
-
-while IFS=$'\t' read -r namespace name; do
-    [[ -n "${namespace}" && -n "${name}" ]] || continue
-    in_pull["${namespace}/${name}"]=1
-done < "${pull_list}"
-
-while IFS=$'\t' read -r namespace name; do
-    [[ -n "${namespace}" && -n "${name}" ]] || continue
-    in_default["${namespace}/${name}"]=1
-done < "${default_list}"
+# Membership lookups grep the list files directly — associative arrays are
+# bash 4+, and these scripts must run on stock macOS bash 3.2 (2026-07-12).
+tab="$(printf '\t')"
+in_list() { grep -qxF "$2${tab}$3" "$1"; }
 
 log info "Generating per-kustomization flux-local diff" "output=${OUTPUT_FILE}" "kustomizations=$(wc -l < "${combined_list}")"
 
 while IFS=$'\t' read -r namespace name; do
     [[ -n "${namespace}" && -n "${name}" ]] || continue
 
-    key="${namespace}/${name}"
-    in_pull_repo="${in_pull[${key}]:-0}"
-    in_default_repo="${in_default[${key}]:-0}"
+    in_pull_repo=0
+    in_default_repo=0
+    in_list "${pull_list}" "${namespace}" "${name}" && in_pull_repo=1
+    in_list "${default_list}" "${namespace}" "${name}" && in_default_repo=1
 
     if [[ "${in_pull_repo}" == "1" && "${in_default_repo}" == "1" ]]; then
         if ! run_flux_local_diff "${pull_workspace}" "${default_workspace}" \

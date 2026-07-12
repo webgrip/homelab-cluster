@@ -87,7 +87,10 @@ mut()  { # mut <description> <curl-args...>
 
 # Resolve --all to every non-fork, non-mirror repo in the org (mirrors aren't ours to manage yet).
 if [ ${#REPOS[@]} -eq 0 ]; then
-  mapfile -t REPOS < <(fj "$FORGEJO_API/orgs/$ORG/repos?limit=100" 2>/dev/null \
+  # while-read, not mapfile — bash 3.2 (stock macOS) has no mapfile (2026-07-12)
+  while IFS= read -r repo_name; do
+    [ -n "$repo_name" ] && REPOS+=("$repo_name")
+  done < <(fj "$FORGEJO_API/orgs/$ORG/repos?limit=100" 2>/dev/null \
     | python3 -c 'import sys,json;[print(r["name"]) for r in json.load(sys.stdin) if not r.get("mirror") and not r.get("fork")]' 2>/dev/null || true)
   [ ${#REPOS[@]} -gt 0 ] || die "--all: could not list org repos (token needs read:organization scope, or pass --repo <name>)"
 fi

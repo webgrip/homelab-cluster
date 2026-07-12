@@ -64,7 +64,11 @@ for policy in "${POLICY_DIR}"/*.yaml; do
     fi
 
     checked=$((checked + 1))
-    mapfile -t refs < <(test_files_referencing "${base}")
+    # while-read, not mapfile — bash 3.2 (stock macOS) has no mapfile (2026-07-12)
+    refs=()
+    while IFS= read -r ref; do
+        [[ -n "${ref}" ]] && refs+=("${ref}")
+    done < <(test_files_referencing "${base}")
     if [[ ${#refs[@]} -eq 0 ]]; then
         echo "FAIL  ${base}: enforce policy has NO CLI test referencing it (add one under tests/cli/ with a pass AND a fail case)"
         failures=$((failures + 1))
