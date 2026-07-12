@@ -64,3 +64,5 @@ with no consumer — nothing reads the file that couldn't read the board.
 * 2026-07-12 — accepted; roadmap.md deleted, skills (`roadmap-topup`, `vikunja`,
   `vikunja-refiner`) repointed at the board, `AGENTS.md` added
 * 2026-07-12 — the three skills consolidated into `vikunja-product-owner`
+* 2026-07-12 — the skill moved to the `webgrip-ai-skills` marketplace (generic, board-contract
+  driven); homelab instance ops → `runbooks/mcp-vikunja.md`
