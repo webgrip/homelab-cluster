@@ -6,6 +6,8 @@
 set -uo pipefail
 input="$(cat)"
 JQ() { command -v jq >/dev/null 2>&1 && jq "$@" || mise exec -- jq "$@"; }
+# GNU timeout is absent on stock macOS; kubectl's --request-timeout is the real bound
+TMO="$(command -v timeout || command -v gtimeout || true)"
 j() { printf '%s' "$input" | JQ -r "$1" 2>/dev/null; }
 
 # ── ANSI ──────────────────────────────────────────────────────────────────────
@@ -38,10 +40,10 @@ cache="${TMPDIR:-/tmp}/claude-flux-$(printf '%s' "$cwd" | cksum | cut -d' ' -f1)
 lock="${cache}.lock"
 now="$(date +%s)"
 age=99999
-[ -f "$cache" ] && age=$(( now - $(stat -c %Y "$cache" 2>/dev/null || echo 0) ))
+[ -f "$cache" ] && age=$(( now - $(stat -c %Y "$cache" 2>/dev/null || stat -f %m "$cache" 2>/dev/null || echo 0) ))
 if [ "$age" -gt 30 ] && mkdir "$lock" 2>/dev/null; then
   ( trap 'rmdir "$lock" 2>/dev/null' EXIT
-    n="$(timeout 12 mise exec -- kubectl get kustomizations,helmreleases -A -o json 2>/dev/null \
+    n="$(${TMO:+$TMO 12} mise exec -- kubectl get kustomizations,helmreleases -A -o json --request-timeout=10s 2>/dev/null \
          | JQ '[.items[]|select(any(.status.conditions[]?; .type=="Ready" and .status!="True"))]|length' 2>/dev/null)"
     [ -n "$n" ] && printf '%s' "$n" > "$cache" || printf '?' > "$cache"
   ) >/dev/null 2>&1 &

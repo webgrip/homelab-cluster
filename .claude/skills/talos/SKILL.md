@@ -74,6 +74,9 @@ skill); prefer `MODE=no-reboot` and reboot deliberately when unavoidable.
 ## Read-only diagnostics
 `mise exec -- talosctl --talosconfig talos/clusterconfig/talosconfig -n <ip> {health,dmesg,get members,get oomactions,logs auditd}`
 
+## Kubeconfig
+Cluster credentials live in the repo-root `kubeconfig` (gitignored; `.mise.toml` exports it as `KUBECONFIG`), context named **`homelab`**. Re-fetch only when the admin cert expires (**2027-06-27**, check `talosctl config info`): `mise exec -- talosctl --talosconfig talos/clusterconfig/talosconfig kubeconfig --nodes 10.0.0.20 --force-context-name homelab` — it **merges** into the existing file (leaves duplicate `-1`-suffixed users/contexts; prune with `kubectl config delete-context`/`delete-user`). Workstation conventions: `docs/techdocs/docs/general/kubeconfig-setup.md`.
+
 ## Runbooks
 `docs/techdocs/docs/runbooks/{talos-rolling-upgrade,kubernetes-upgrade-via-talos,talos-maintenance-mode-add-node,node-taxonomy-migration-status}.md` · add-node tutorial `docs/techdocs/docs/general/talos-add-workstation-node.md` (incl. the no-reboot + PV-affinity gotchas). For storage on the nodes, see the `longhorn` skill.
 

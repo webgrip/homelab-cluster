@@ -3,7 +3,11 @@
 # opens cluster-aware instead of having to ask. stdout (exit 0) becomes additionalContext.
 # Strictly read-only and time-boxed — degrades to a short note if the LAN/API is unreachable.
 set -uo pipefail
-K() { timeout 8 mise exec -- kubectl "$@" 2>/dev/null; }
+# timeout(1) is a GNU-ism absent on stock macOS — wrapping made every probe exit 127, so the
+# hook always claimed the API was unreachable. kubectl's --request-timeout bounds the calls
+# instead; timeout stays as an outer guard where it exists.
+TMO="$(command -v timeout || command -v gtimeout || true)"
+K() { ${TMO:+$TMO 8} mise exec -- kubectl --request-timeout=7s "$@" 2>/dev/null; }
 
 echo "## Live homelab snapshot (SessionStart hook, $(date -u '+%Y-%m-%dT%H:%MZ'))"
 echo
@@ -14,7 +18,7 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 
 # ── reachability probe ─────────────────────────────────────────────────────────
-if ! K version --request-timeout=5s >/dev/null 2>&1 && ! K get --raw='/readyz' >/dev/null 2>&1; then
+if ! K version >/dev/null 2>&1 && ! K get --raw='/readyz' >/dev/null 2>&1; then
   echo
   echo "**Cluster:** API not reachable from here (off-LAN, or VIP 10.0.0.25 down). Skipping live state — use the read-only \`kubernetes\`/\`grafana\` MCP if needed."
   exit 0
