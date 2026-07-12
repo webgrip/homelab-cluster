@@ -1,9 +1,9 @@
+---
+status: "accepted"
+date: 2026-06-23
+---
+
 # Adopt Harbor as the self-hosted OCI registry
-
-* Status: accepted
-* Date: 2026-06-23
-
-Technical Story: [RFC: Harbor Container Registry](../rfc/rfc-harbor-registry.md)
 
 ## Context and Problem Statement
 
@@ -34,21 +34,27 @@ existing `kubernetes/apps/forgejo/` app (HelmRelease + external CNPG + Gateway A
 The supporting choices are recorded in ADR-0018…0006 (blob storage, database, Redis, exposure,
 auth).
 
-### Positive Consequences
+### Consequences
 
-* A private publish target, an at-rest scanning gate, projects/RBAC/robot-accounts, and
-  replication — closing the gaps in the RFC's *Why*.
-
-### Negative Consequences
-
-* Adds Harbor's multi-component pod set (core, portal, jobservice, registry, registryctl, trivy,
-  redis, exporter) plus the CNPG database — a meaningful but acceptable footprint, pinned to the
-  worker pool per [ADR-0002](adr-0002-application-workload-placement.md).
-* Introduces new dependencies — Postgres ([ADR-0019](adr-0019-external-cnpg-database.md)), Redis
+* Good, because it delivers a private publish target, an at-rest scanning gate,
+  projects/RBAC/robot-accounts, and replication — closing the gaps in the RFC's *Why*.
+* Bad, because it adds Harbor's multi-component pod set (core, portal, jobservice, registry,
+  registryctl, trivy, redis, exporter) plus the CNPG database — a meaningful but acceptable
+  footprint, pinned to the worker pool per
+  [ADR-0002](adr-0002-application-workload-placement.md).
+* Bad, because it introduces new dependencies — Postgres
+  ([ADR-0019](adr-0019-external-cnpg-database.md)), Redis
   ([ADR-0020](adr-0020-chart-internal-redis.md)), and S3 blob storage
   ([ADR-0018](adr-0018-registry-blob-storage-garage-s3.md)).
-* Commits us to operating Harbor's multi-component release (upgrades touch several images at
-  once).
+* Bad, because it commits us to operating Harbor's multi-component release (upgrades touch
+  several images at once).
+
+### Confirmation
+
+Flux keeps `kubernetes/apps/harbor/` reconciled — the `harbor` HelmRelease reports Ready
+(read-only kubernetes MCP, or `flux get helmrelease -n harbor`). Registry behaviour is confirmed
+by cluster pulls served through it ([ADR-0023](adr-0023-harbor-pull-through-proxy-cache.md)) and
+by Trivy scan reports appearing on pushed artifacts in the Harbor UI.
 
 ## Pros and Cons of the Options
 
@@ -75,8 +81,9 @@ auth).
 * Bad, because recurring cost, off-prem, and counter to the self-hosted homelab goal; no
   in-cluster scanning gate.
 
-## Links
+## More Information
 
+* Technical story: [RFC: Harbor Container Registry](../rfc/rfc-harbor-registry.md)
 * 2026-06-12 — accepted; Harbor deployed (CNPG + Garage S3 + ESO + OIDC)
 * 2026-06-21 — all Harbor components pinned to the worker pool
   ([ADR-0002](adr-0002-application-workload-placement.md)); the original soyo-pool placement note
@@ -87,3 +94,5 @@ auth).
   [ADR-0019](adr-0019-external-cnpg-database.md) · [ADR-0020](adr-0020-chart-internal-redis.md) ·
   [ADR-0021](adr-0021-lan-only-exposure.md) · [ADR-0022](adr-0022-authentik-oidc-phased.md)
 * 2026-07-03 — renumbered from ADR-0001 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-07-12 — restructured to MADR 4.0.0 (format-only, decision content unchanged); serves as
+  the exemplar for the format adopted in [index](index.md)

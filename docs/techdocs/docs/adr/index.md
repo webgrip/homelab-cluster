@@ -10,15 +10,23 @@ Coverage of the whole estate — which domains have records, which don't — is 
 
 - **Location:** `docs/techdocs/docs/adr/adr-NNNN-<kebab-title>.md`, zero-padded, monotonically
   increasing, never reused. Start from the template: [adr-0000-template.md](adr-0000-template.md).
-- **Format: [MADR 2.1.2](https://adr.github.io/madr/).** Bare-title `# H1`, then `* Status:` /
-  `* Date:` bullets (`Date` = when the decision was **last updated**, per MADR), optional
-  `Technical Story:` linking the parent RFC. Sections: Context and Problem Statement →
-  (Decision Drivers) → Considered Options (chosen option included) → Decision Outcome
-  ("Chosen option: …, because …" + Positive/Negative Consequences) → (Pros and Cons of the
-  Options) → Links. Exemplar: [ADR-0017](adr-0017-adopt-harbor.md).
+- **Format: [MADR 4.0.0](https://adr.github.io/madr/)** (new records since 2026-07-12).
+  `status` / `date` live in YAML frontmatter (`date` = when the decision was **last updated**,
+  per MADR; MkDocs does not render frontmatter, so status is also visible in the table below and
+  in the record's dated history). Bare-title `# H1`, then: Context and Problem Statement →
+  (Decision Drivers) → Considered Options (chosen option first) → Decision Outcome
+  ("Chosen option: …, because …" + Consequences as `Good/Bad, because` bullets + Confirmation:
+  the concrete check that proves compliance) → (Pros and Cons of the Options) → More
+  Information (parent RFC as `Technical story:`, dated history, cross-ADR relations).
+  Exemplar: [ADR-0017](adr-0017-adopt-harbor.md).
+- **Records keep their birth format.** ADRs written before 2026-07-12 are MADR 2.1.2
+  (`* Status:`/`* Date:` bullets, Positive/Negative Consequences, `## Links`) and are **not**
+  retro-migrated — amendments append in the record's own format. Sole exception: ADR-0017 was
+  restructured to 4.0.0 (format-only) to serve as the exemplar.
 - **ADRs are records, not living docs.** When reality changes (revert, partial rollout,
-  supersession), append a dated entry to the ADR's **Links** section and update `Status`/`Date` —
-  never silently rewrite the body. A reversed decision gets a *new* ADR that supersedes the old.
+  supersession), append a dated entry to the ADR's **More Information** section (`## Links` in
+  2.1.2-era records) and update `status`/`date` — never silently rewrite the body. A reversed
+  decision gets a *new* ADR that supersedes the old.
 - **Ordering (re-baselined 2026-07-03):** 0001–0039 read bottom-up through the stack — nodes
   first, then network, storage, delivery, and so on up to docs — so reading the set in order
   tells the story of the platform. This was a **one-time renumbering** (mapping
@@ -37,7 +45,7 @@ Coverage of the whole estate — which domains have records, which don't — is 
 | **deprecated** | No longer relevant, not directly replaced. |
 
 The `Date` column is the decision's **last update** (MADR semantics); the dated history behind
-any change lives in that ADR's **Links** section.
+any change lives in that ADR's **More Information** section (`## Links` in 2.1.2-era records).
 
 ## Records
 

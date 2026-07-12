@@ -1,68 +1,81 @@
-# [short title of solved problem and solution]
+---
+status: "{proposed | rejected | accepted | deprecated | superseded by [ADR-0123](adr-0123-example.md)}"
+date: "{YYYY-MM-DD when the decision was last updated}"
+---
 
-* Status: [proposed | rejected | accepted | deprecated | … | superseded by [ADR-0021](adr-0021-example.md)] <!-- optional -->
-* Deciders: [list everyone involved in the decision] <!-- optional -->
-* Date: [YYYY-MM-DD when the decision was last updated] <!-- optional -->
+<!-- MkDocs/TechDocs treats frontmatter as page metadata and does NOT render it. Every status
+     change must therefore also land where readers can see it: a dated bullet in More
+     Information and the index.md Records row. Upstream MADR also defines decision-makers /
+     consulted / informed; omitted here (one-person lab). -->
 
-Technical Story: [description | ticket/issue URL] <!-- optional -->
+# {short title, representative of solved problem and found solution}
 
 ## Context and Problem Statement
 
-[Describe the context and problem statement, e.g., in free form using two to three sentences.
-You may want to articulate the problem in form of a question.]
+{Describe the context and problem statement in two to three sentences, or as an illustrative
+story. You may phrase the problem as a question. Make the scope of the decision explicit —
+name the components, namespaces, or `kubernetes/apps/<ns>/<app>/…` paths it covers.}
 
-## Decision Drivers <!-- optional -->
+<!-- This is an optional element. Feel free to remove. -->
+## Decision Drivers
 
-* [driver 1, e.g., a force, facing concern, …]
-* [driver 2, e.g., a force, facing concern, …]
-* … <!-- numbers of drivers can vary -->
+* {decision driver 1 — a desired quality, faced concern, constraint or force}
+* {decision driver 2}
 
 ## Considered Options
 
-* [option 1]
-* [option 2]
-* [option 3]
-* … <!-- numbers of options can vary -->
+* {title of option 1 — the chosen option, listed first (house convention)}
+* {title of option 2}
+* {title of option 3}
 
 ## Decision Outcome
 
-Chosen option: "[option 1]", because [justification. e.g., only option, which meets k.o.
-criterion decision driver | which resolves force force | … | comes out best (see below)].
+Chosen option: "{title of option 1}", because {justification — e.g. only option meeting k.o.
+decision driver | resolves force X | comes out best (see below)}.
 
-### Positive Consequences <!-- optional -->
+{Then the load-bearing specifics: component, chart, config, the exact
+`kubernetes/apps/<ns>/<app>/…` paths that implement the decision.}
 
-* [e.g., improvement of quality attribute satisfaction, follow-up decisions required, …]
-* …
+<!-- This is an optional element. Feel free to remove. -->
+### Consequences
 
-### Negative Consequences <!-- optional -->
+* Good, because {positive consequence, e.g. improvement of one or more desired qualities}
+* Bad, because {negative consequence, e.g. compromised quality, follow-up decision required}
 
-* [e.g., compromising quality attribute, follow-up decisions required, …]
-* …
+<!-- Optional upstream; include it here whenever the decision is checkable (house verify
+     ethos: cite the actual check, not a proxy). -->
+### Confirmation
 
-## Pros and Cons of the Options <!-- optional -->
+{How implementation/compliance of this ADR can be confirmed — a live `kubectl`/MCP read, a
+flux-local test, a dashboard or alert, a Kyverno policy, a CI job. Name the concrete
+command/resource/panel.}
 
-### [option 1]
+<!-- This is an optional element (omit when no real alternative was weighed). -->
+## Pros and Cons of the Options
 
-[example | description | pointer to more information | …]
+### {title of option 1}
 
-* Good, because [argument a]
-* Good, because [argument b]
-* Bad, because [argument c]
-* … <!-- numbers of pros and cons can vary -->
+{example | description | pointer to more information} <!-- optional -->
 
-### [option 2]
+* Good, because {argument a}
+* Neutral, because {argument b} <!-- use "Neutral" when it weighs neither for nor against -->
+* Bad, because {argument c}
 
-[example | description | pointer to more information | …]
+### {title of other option}
 
-* Good, because [argument a]
-* Good, because [argument b]
-* Bad, because [argument c]
-* … <!-- numbers of pros and cons can vary -->
+* Good, because {argument a}
+* Bad, because {argument b}
 
-## Links <!-- optional -->
+## More Information
 
-* [Link type] [Link to ADR] <!-- example: Refined by [ADR-0021](adr-0021-example.md) -->
-* … <!-- numbers of links can vary -->
+<!-- Upstream optional; house-required — the record's dated history lives here.
+     Bullet shapes:
+       * Technical story: [RFC: example](../rfc/index.md)          — parent RFC / issue, first
+       * YYYY-MM-DD — {event} ({commit})                           — dated history, oldest first
+       * Supersedes | Refined by | Supported by [ADR-0123](adr-0123-example.md)  — relations -->
 
-<!-- MADR 2.1.2 (https://adr.github.io/madr/) — house conventions (numbering, Date semantics,
-     dated history entries in Links) live in index.md; procedure in the adr-writer skill. -->
+* Technical story: {parent RFC or issue link}
+* {YYYY-MM-DD} — {accepted | reverted | ratified | …} ({commit})
+
+<!-- MADR 4.0.0 (https://adr.github.io/madr/) — house conventions (numbering, Date semantics,
+     dated history in More Information) live in index.md; procedure in the adr-writer skill. -->
