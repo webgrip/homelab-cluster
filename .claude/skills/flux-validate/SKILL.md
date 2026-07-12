@@ -9,6 +9,9 @@ allowed-tools: Bash(./scripts/run-flux-local-test.sh*), Bash(./scripts/run-flux-
 CI runs the same checks — run before committing.
 
 - **Primary gate (offline render):** `./scripts/run-flux-local-test.sh` — renders every Kustomization + HelmRelease via flux-local in Docker; fails on broken builds. Needs Docker.
+- **Single Kustomization, manually** (faster than the full gate when iterating on one app): copy the repo **including `.git`** to a workspace, `chmod -R a+rwX`, then
+  `docker run --rm -e HOME=/tmp -v "$WS:/github/workspace" --entrypoint sh <flux-local image+digest from scripts/lib/flux-local.sh> -lc "git config --global --add safe.directory /github/workspace >/dev/null && flux-local build ks <name> -n <ns> --path /github/workspace/kubernetes/flux/cluster"`.
+  Without `.git` it fails with the misleading `Unable to find input path` (2026-07-12). The `dependsOn with invalid names` stderr is whitelisted noise (`scripts/lib/flux-local.sh`).
 - **Render ≠ apply — a real blind spot.** flux-local, `helm template`, and kubeconform *render* manifests; they never *install* them, so they miss install-time failures. A chart that creates a CR of its own not-yet-registered CRD (classic: an operator's own `serviceMonitor`) renders clean but fails `helm install` with `no matches for kind …`. Verify operators by their **live HelmRelease `Ready` status after merge**, not just the render.
 - **Diff vs live:** `./scripts/run-flux-local-diff.sh <pull-dir> <default-dir> <output-file>`.
 - **Policy/supply-chain:** `just kyverno-test` · `just kyverno-chainsaw` (KinD) · `just verify-oci-digests`.

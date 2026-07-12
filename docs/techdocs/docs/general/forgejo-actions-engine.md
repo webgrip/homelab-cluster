@@ -114,6 +114,38 @@ regardless; re-verify the underlying emptiness after a Forgejo upgrade.*
   to the dispatch/parse (it matches `^(.+)-v(.+)$`). **Never re-prefix it** — prepending
   `<package-name>-v` doubled it to `techdocs-builder-vtechdocs-builder-v...`.
 
+## Authorization is per-UNIT — token scope is not permission
+
+Forgejo checks two independent layers on every call: the token's **scopes** cap what the token
+*may* do; the user's **team unit permissions** (`repo.code`, `repo.releases`, `repo.packages`
+via org membership, …) decide what the user *can* do. A bot whose team grants `repo.code`
+write but not `repo.releases` git-pushes fine (200) while `POST /api/v1/repos/…/releases`
+fails `403 Forbidden @ v1.reqRepoWriter` — even with a `write:repository`-scoped token.
+The complementary hole: the built-in per-job Actions token can create releases but gets
+`401 reqPackageAccess` on the package registry.
+
+- Fix pattern: reconcile the team's unit set on every provisioner run — `PATCH
+  /api/v1/teams/{id}` with the full desired `units` list. Create-time units alone can't fix a
+  live team. (Applied 2026-07-12 in `forgejo-ci-provisioner.job.yaml` after webgrip-ai-skills
+  release runs 11–15 failed exactly this way.)
+- Triage signature: "auth works partially" (git ✓, one API family ✗) = missing unit, not a
+  bad token.
+
+## Triage CI failures without job-log access
+
+Job logs require authentication (`…/actions/runs/{n}/jobs/{j}/logs` → 404 unauthenticated),
+but two read-only sources reconstruct most failures:
+
+- **Run status (public):** `GET /api/v1/repos/{owner}/{repo}/commits/{sha}/status` — per-job
+  state + which job failed.
+- **The Forgejo server router log via VictoriaLogs** logs every API/git request with status
+  code and handler: `router: completed POST /api/v1/… 403 Forbidden … @ v1.reqRepoWriter`.
+  Time-bound a LogsQL query to the failure window:
+  `namespace:forgejo container:forgejo "POST /api/v1/repos/<owner>/<repo>"` — the exact
+  failing call, its code, and the enforcing handler. The hourly
+  `PUT /api/v1/orgs/webgrip/actions/secrets/<NAME> … 204` lines from the secrets provisioner
+  also prove whether an org Actions secret exists (values are write-only; existence isn't).
+
 ## See also
 
 - Forgejo app overview, ingress, SSO, runner pointer → [Forgejo](forgejo.md)
