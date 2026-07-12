@@ -3,6 +3,13 @@
 Contents: [Bridge internals](#bridge-internals) · [Token bootstrap / rotation](#token-bootstrap--rotation) ·
 [Troubleshooting](#troubleshooting) · [Response formats](#response-formats) · [Tool catalog](#tool-catalog)
 
+## Scripted access (bulk operations / tools not loaded in-session)
+
+Run [scripts/mcp_client.py](scripts/mcp_client.py) — a minimal streamable-HTTP MCP client
+(`init()` + `call(tool, args)`); handles the session-id handshake, SSE parsing, and the 15-min
+session reaping. Use it when `.mcp.json` changed mid-session (native tools need a restart) or for
+bulk board passes; it is also the dispatcher's access pattern.
+
 ## Bridge internals
 
 `kubernetes/apps/vikunja/mcp-vikunja/` — a `supercorp/supergateway` Deployment (ns `vikunja`) that
@@ -55,6 +62,10 @@ Verified live against v0.1.0 (2026-07-12). Tools return **formatted text, not JS
 - create tools → `Created <thing> "<title>"` then a line `ID: <n>`
 - list tools → `Found <N> <thing>(s)` then blocks `<i>. <title>` / detail lines / `[ID: <n>]` (tasks: `[ID: <n>, Project: <m>]`)
 - `task_get` → title line, then `Priority: …`, `Labels: <comma-joined>`, `Project ID: <n>` lines
+- `labels_list` appends the hex color to colored label titles — `impact/M (f5a524)` — strip the
+  trailing space-plus-`(xxxxxx)` before using titles as map keys (caused a KeyError on 2026-07-12)
+- **relations never render in `task_get`** — verify a `relation_create` persisted by re-creating
+  it: `Vikunja API error (409): The task relation already exists` IS the confirmation
 - errors → `isError` content `Error: … Vikunja API error (<code>): …`
 - unset due dates render as `Due: 0001-01-01` — not a bug
 
