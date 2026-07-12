@@ -46,8 +46,12 @@ spec:
             - --port
             - "8000"
             # stateful: one vikunja-mcp child per MCP session (stateless would
-            # respawn npx per request).
+            # respawn npx per request). Idle sessions MUST be reaped: without a
+            # timeout every client session leaves a node child alive forever —
+            # OOMKilled the pod on 2026-07-12. Clients re-initialize on 404.
             - --stateful
+            - --sessionTimeout
+            - "900000"
           env:
             # In-cluster direct to the app Service — no gateway hairpin.
             # The trailing /api/v1 is required by vikunja-mcp.
@@ -86,7 +90,7 @@ spec:
               memory: 128Mi
             limits:
               cpu: 500m
-              memory: 512Mi
+              memory: 768Mi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

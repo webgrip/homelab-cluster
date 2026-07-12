@@ -14,6 +14,8 @@ LAN-only, no client auth — same trust model as the other MCPs, but this one **
   suffix is required by vikunja-mcp).
 - `--stateful`: one npx child per MCP session; first session after a pod restart downloads the npm
   package (internet-egress carve-out in `app/networkpolicy.yaml`), later spawns hit the `/tmp` cache.
+  Idle sessions are reaped after 15 min (`--sessionTimeout`) — a client whose session expired gets a
+  404 and must re-initialize. Without the timeout, accumulated sessions OOMKilled the pod (2026-07-12).
 - Hard-delete opt-ins `ENABLE_{PROJECT,TASK,LABEL}_DELETE` exist but stay unset (soft mode).
 - Bumping the vikunja-mcp version = edit the pinned `@aimbitgmbh/vikunja-mcp@<ver>` in
   `deployment.yaml` args (Renovate doesn't see inside args).
