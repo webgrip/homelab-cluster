@@ -1,0 +1,63 @@
+---
+# Second datasource for the SAME VictoriaTraces backend, speaking the Tempo
+# query API (/select/tempo, VT >= v0.9.4, experimental). Exists so Grafana's
+# Traces Drilldown app works — it only accepts tempo-type datasources. The
+# jaeger-type datasource (uid victoriatraces) stays for existing dashboard
+# panels; TraceQL and Drilldown live here.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: victoriatraces-tempo
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  datasource:
+    name: VictoriaTraces (TraceQL)
+    type: tempo
+    uid: victoriatraces-tempo
+    editable: true
+    access: proxy
+    url: http://vtsingle-victoriatraces.observability.svc.cluster.local:10428/select/tempo
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: victorialogs
+        spanStartTimeShift: "-1h"
+        spanEndTimeShift: "1h"
+        tags:
+          - "job"
+          - "namespace"
+          - "pod"
+          - "service.name"
+          - "service.namespace"
+        filterByTraceID: true
+        filterBySpanID: false
+        customQuery: false
+      nodeGraph:
+        enabled: true
+      # Service map queries the traces_service_graph_* series the Alloy
+      # servicegraph connector writes to VMSingle (tempo-type DS only —
+      # the jaeger datasource cannot do this).
+      serviceMap:
+        datasourceUid: prometheus
+      tracesToMetrics:
+        datasourceUid: prometheus
+        # Tags must exist on the span/resource; the resulting labels must match
+        # the names produced by the Alloy spanmetrics connector (dots become
+        # underscores; service.name becomes service_name).
+        tags:
+          - key: service.name
+            value: service_name
+          - key: http.method
+            value: http_method
+          - key: http.status_code
+            value: http_status_code
+          - key: rpc.system
+            value: rpc_system
+          - key: rpc.service
+            value: rpc_service
+          - key: rpc.method
+            value: rpc_method
+        queries:
+          - name: Span metrics
+            query: "sum(rate(traces_spanmetrics_duration_seconds_bucket{$$__tags}[5m]))"
