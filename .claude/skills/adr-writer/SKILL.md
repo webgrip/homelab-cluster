@@ -31,7 +31,9 @@ Format = faithful [MADR 4.0.0](https://adr.github.io/madr/). Template:
    relations (Supersedes / Refined by / Supported by).
 5. Register: row in the index.md Records table (pick the matching **layer section** — the set
    was re-baselined 2026-07-03 into layer order, but a new ADR just takes the next free number)
-   + `docs/techdocs/mkdocs.yml` nav (numeric slot). Verify: `./scripts/check-docs-links.sh`.
+   + `docs/techdocs/mkdocs.yml` nav (numeric slot). Verify: `./scripts/check-docs-links.sh`
+   and `python3 scripts/validate_adr_consistency.py .` (status/date ↔ index drift, legal
+   status, required sections — also runs in e2e CI).
 
 ## Amend / status change
 

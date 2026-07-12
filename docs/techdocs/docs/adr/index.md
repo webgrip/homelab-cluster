@@ -33,6 +33,8 @@ Coverage of the whole estate — which domains have records, which don't — is 
   [below](#renumbering-2026-07-03)); from here on, a new ADR simply takes the next free number
   and its layer is expressed by the section it joins in the table below, not by its number.
 - Register every new ADR in the table below (the `adr-writer` skill automates all of this).
+  File ↔ table consistency (status, date, sections) is enforced by
+  `scripts/validate_adr_consistency.py` in e2e CI.
 
 ## Status legend
 
