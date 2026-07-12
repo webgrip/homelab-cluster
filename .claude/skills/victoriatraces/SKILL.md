@@ -88,6 +88,8 @@ mise exec -- kubectl get --raw "/api/v1/namespaces/observability/services/vmsing
 
 After any alloy-gateway config change, grep the **new pod's logs** for `level=error` — a broken
 receiver/exporter keeps the pod Running/Ready (the Faro listener was silently dead this way).
+Known-benign exclusion: exactly one `service=remotecfg ... err="noop client"` error per pod at
+startup (unused Grafana Fleet Management; Alloy ≥ 1.17) — `grep level=error | grep -v remotecfg`.
 
 ## Additional resources
 

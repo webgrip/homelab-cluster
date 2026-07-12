@@ -54,6 +54,8 @@ are **lazily registered** — absent (not 0) until first ingest, so `rate(...) =
 - LogsQL phrase filters are **word-tokenized**, not substring — translate LogQL `|=` to regex `~"..."` unless token alignment is proven.
 - Regex escapes are doubled in LogsQL strings: `extract_regexp "(?P<f>\\S+)"`, `~"i\\/o"` — a single backslash is an HTTP-400 parse error.
 - Grafana time range is injected by the datasource plugin — no `_time:` in panel exprs, and LogQL `[$__range]`/`[$__interval]` windows disappear in translation.
+- **VL ≥ v1.51.0 rejects bare filters after a pipe**: `foo | bar` is an error unless the segment starts with a known pipe name or `field:`; write `foo bar` or `foo | filter bar`. VL's version moves **invisibly on vm-operator chart bumps** (no image pin) — before one, sweep dashboard LogsQL: walk each GrafanaDashboard `spec.json` panels/targets **with datasource inheritance** (targets usually inherit the panel-level `datasource` — same-dict matching finds ~3 of 62 exprs), split exprs on top-level `|`, flag unknown first tokens. Swept clean 2026-07-12 (62 exprs).
+- **Anchor query windows to *cluster* time, not your guess of now** — a `start`/`_time` even minutes in the future returns 0 results, which reads as "ingest broken". Get cluster-now from any fresh PromQL result's epoch timestamp first.
 
 ## Additional resources
 
