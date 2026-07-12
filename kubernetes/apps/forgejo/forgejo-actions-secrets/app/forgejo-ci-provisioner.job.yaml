@@ -94,11 +94,18 @@ spec:
 
               # 3) Give the bot org-wide write in webgrip (team 'ci', write, all repos) so
               #    semantic-release can create releases/tags, publish org packages, and
-              #    techdocs can push. Idempotent.
+              #    techdocs can push. Idempotent. Forgejo authorizes per-UNIT: without
+              #    repo.releases the bot could git-push (repo.code) while POST /releases
+              #    403'd at reqRepoWriter (2026-07-12, webgrip-ai-skills run 15) — so the
+              #    units are PATCHed on every run; a create-time list can't fix a live team.
+              units='["repo.code","repo.issues","repo.pulls","repo.releases"]'
               tid="$(curl -fsS -u "$admin" "$api/orgs/${ORG}/teams" 2>/dev/null | jq -r '.[] | select(.name=="ci") | .id' | head -1)"
               if [ -z "$tid" ]; then
                 tid="$(curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST "$api/orgs/${ORG}/teams" \
-                  -d '{"name":"ci","description":"webgrip CI bot — write, all repos","permission":"write","includes_all_repositories":true,"can_create_org_repo":false,"units":["repo.code","repo.issues","repo.pulls"]}' | jq -r '.id // empty')"
+                  -d "{\"name\":\"ci\",\"description\":\"webgrip CI bot — write, all repos\",\"permission\":\"write\",\"includes_all_repositories\":true,\"can_create_org_repo\":false,\"units\":${units}}" | jq -r '.id // empty')"
+              else
+                curl -fsS -o /dev/null -u "$admin" -H 'Content-Type: application/json' -X PATCH "$api/teams/$tid" \
+                  -d "{\"name\":\"ci\",\"permission\":\"write\",\"includes_all_repositories\":true,\"can_create_org_repo\":false,\"units\":${units}}"
               fi
               if [ -n "$tid" ]; then
                 # Member add lives at /teams/{id}/members — there is no /orgs/{org}/teams/{id}/...
