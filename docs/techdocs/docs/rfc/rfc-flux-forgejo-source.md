@@ -126,6 +126,75 @@ in both, so there's no gap. Verify `flux get sources git -A` shows the Forgejo U
 generated `GitRepository`) back to the GitHub URL, confirm Flux recovers, then patch forward again.
 Document it. Confirm the push-mirror keeps GitHub current.
 
+## Execution addendum — verified change surface & stage plan (2026-07-12)
+
+A live sweep (manifests + Forgejo/GitHub APIs) ahead of execution confirmed the phased design and
+surfaced **two blockers the phases above don't mention**. Board mapping: Vikunja **#85** (Forgejo CI
+parity) gates **#77** (this cutover pack).
+
+**Verified facts.** GitHub `homelab-cluster` is public with **zero tags/releases** — so the
+org-enforced immutable-releases trap that wedged `infrastructure`'s push-mirror (tag names are
+permanently retired once their immutable release is deleted) cannot bite here; keep it that way by
+never cutting GitHub releases on the mirror. The Forgejo copy is public-read, still `mirror=true`,
+**Actions unit off**. The `sync` block carries no `pullSecret` (anonymous clone), so no read
+credential is needed.
+
+**Blocker 1 — Kyverno Enforce pin.** `kubernetes/apps/kyverno/policies/app/flux-governance-enforce.yaml:41`
+(`restrict-gitrepository-url`) validates `spec.url` **equals the GitHub URL** in Enforce mode: the
+flux-operator's regenerated `GitRepository` would be **denied admission** at cutover. Pre-widen the
+pattern to allow both the GitHub and Forgejo Service URLs in a prep commit; tighten to Forgejo-only
+post-cutover.
+
+**Blocker 2 — concurrent-writer window.** `main` has multiple writers (operator machines, agent
+sessions, the dark-factory dispatcher). Between the mirror flip (Stage B) and every writer
+re-pointing `origin`, a push to GitHub is a push to a **downstream copy**: it diverges GitHub,
+wedges the push-mirror (non-fast-forward), and the commit never reaches the authoritative repo.
+Re-point all writers in the same sitting as the flip; treat a push-mirror `last_error` as the alarm.
+
+### Stage A — prep commits (repo still GitHub-leading; each independently safe)
+
+1. **CI parity (#85, the gate).** Port the 12-step e2e gate from `.github/workflows/e2e.yaml` to
+   `.forgejo/workflows/` per the `forgejo-port-workflows` skill — move-not-copy. Also port
+   `flux-local.yaml` and `renovate-dry-run.yaml`; **retire** `labeler.yaml`/`label-sync.yaml`
+   (GitHub-label tooling, no Forgejo equivalent); decide `claude-review.yml` separately (needs a
+   Forgejo-side trigger design). Enable the Actions unit on the Forgejo repo to prove runs
+   pre-cutover; if mirror-synced pushes don't trigger runs, prove via `workflow_dispatch`.
+2. **Kyverno pre-widen** (Blocker 1).
+3. **Phase-1 probe:** a parallel, throwaway `GitRepository` pointing at
+   `http://forgejo-http.forgejo.svc.cluster.local:3000/webgrip/homelab-cluster.git` — prove
+   source-controller clones and resolves `main`.
+4. **Phase-2 webhook:** add the Forgejo repo webhook → `flux-webhook.${SECRET_DOMAIN}/hook/…` with
+   the existing HMAC secret; mirror-synced pushes exercise it for free while still GitHub-leading.
+   (A later optimization may target `webhook-receiver.flux-system.svc` directly, but that needs a
+   forgejo→flux-system egress allowance once the forgejo namespace goes default-deny.)
+
+### Stage B — the operational flip (no git changes; `forgejo-leading` skill order is load-bearing)
+
+Exclude `homelab-cluster` in the gitea-mirror UI (the one unscriptable step) → final sync → convert
+to regular repo (API) → `scripts/forgejo-sync.sh --repo homelab-cluster --apply` (Actions unit,
+push-mirror Forgejo→GitHub, branch protection sans GitHub check contexts) → re-point **every**
+writer's remotes (Blocker 2) → verify gap-free relay: push a trivial commit to Forgejo, confirm the
+same SHA lands on GitHub via the push-mirror and Flux (still reading GitHub) reconciles it. That
+relay is the Phase-3 mechanic, rehearsed before it matters.
+
+### Stage C — the cutover PR (opened on Forgejo, merged behind the #85 gate)
+
+One PR: `sync.url` → the Forgejo Service URL (`flux-instance/app/helmrelease.yaml:33`); move
+`webgrip/homelab-cluster` from the `webgrip-gitops` (GitHub) RenovateJob's discovery into
+`webgrip-forgejo`'s `discoveryFilters`; flip `.renovaterc.json5` presets `github>` → `local>`;
+write `runbooks/flux-source.md` (break-glass repoint, webhook re-registration, mirror-direction
+recovery). Merge → push-mirror lands the SHA on GitHub → Flux applies it from GitHub → next fetch
+comes from Forgejo. Gap-free.
+
+### Stage D — validation & hardening
+
+Success criteria below, plus: rehearse the ADR-0012 break-glass (`kubectl patch` back to GitHub,
+recover, patch forward — the one sanctioned imperative); tighten Kyverno to Forgejo-only; flip
+ADR-0011/0012 and this RFC to **Accepted**; alert on push-mirror staleness (`last_error`/stale
+`last_update` — a silently failed mirror is a stale DR copy); re-point the Backstage catalog
+`source-location` URLs (cosmetic, batched); fold the remaining GitHub-only workflows and the ARC
+runner sets into [RFC: GitHub Actions retirement](rfc-github-actions-retirement.md).
+
 ## Success criteria
 
 - `flux get sources git -n flux-system` shows the Forgejo (Service) URL, `Ready=True`, reconciling new
