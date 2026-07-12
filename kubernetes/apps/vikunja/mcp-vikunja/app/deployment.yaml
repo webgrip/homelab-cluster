@@ -1,0 +1,101 @@
+---
+# Vikunja MCP for Claude Code: supergateway bridges the stdio-only
+# @aimbitgmbh/vikunja-mcp npm server to streamable HTTP at /mcp (the npm
+# ecosystem has no native-HTTP Vikunja MCP). npx fetches the pinned package at
+# session spawn — hence the internet-egress NetworkPolicy carve-out; the npm
+# cache lives in the /tmp emptyDir so respawns within a pod's lifetime are
+# offline. WRITE-CAPABLE: acts as the token owner's Vikunja user.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-vikunja
+  labels:
+    app.kubernetes.io/name: mcp-vikunja
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-vikunja
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mcp-vikunja
+    spec:
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: fringe
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: mcp-vikunja
+          image: docker.io/supercorp/supergateway:3.4.3@sha256:095acf4471e142553c1a5514aa5e480abbc5885d00549d4a3481cc70eac53889
+          args:
+            - --stdio
+            - npx -y @aimbitgmbh/vikunja-mcp@0.1.0
+            - --outputTransport
+            - streamableHttp
+            - --port
+            - "8000"
+            # stateful: one vikunja-mcp child per MCP session (stateless would
+            # respawn npx per request).
+            - --stateful
+          env:
+            # In-cluster direct to the app Service — no gateway hairpin.
+            # The trailing /api/v1 is required by vikunja-mcp.
+            - name: VIKUNJA_URL
+              value: "http://vikunja.vikunja.svc.cluster.local:3456/api/v1"
+            # Hard deletes stay off (vikunja-mcp safe mode): project_delete
+            # archives, task_delete completes, label_delete is blocked.
+            # Opt-ins exist (ENABLE_{PROJECT,TASK,LABEL}_DELETE) — leave unset;
+            # Vikunja has no trash/undo.
+            - name: HOME
+              value: /tmp
+            - name: npm_config_cache
+              value: /tmp/npm-cache
+          envFrom:
+            - secretRef:
+                name: mcp-vikunja-token # VIKUNJA_API_TOKEN
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          # tcpSocket: supergateway serves /mcp only (no health endpoint in
+          # streamableHttp mode); the gateway listens before any child spawns.
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 25m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

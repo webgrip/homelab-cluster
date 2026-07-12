@@ -1,0 +1,60 @@
+---
+# Additive rules scoped to the mcp-vikunja pod, on top of the namespace-wide
+# vikunja default-deny + allow policies (which already grant intra-namespace
+# traffic, i.e. mcp -> vikunja:3456, and DNS).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-vikunja-allow-ingress
+  labels:
+    app.kubernetes.io/part-of: vikunja
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-vikunja
+  policyTypes:
+    - Ingress
+  ingress:
+    # gateway (network ns) + LAN (gateway traffic can masquerade to a node IP)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: network
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16
+        - ipBlock:
+            cidr: 127.0.0.0/8
+        - ipBlock:
+            cidr: fd00::/8
+        - ipBlock:
+            cidr: ::1/128
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-vikunja-allow-egress
+  labels:
+    app.kubernetes.io/part-of: vikunja
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-vikunja
+  policyTypes:
+    - Egress
+  egress:
+    # npm registry: npx fetches the pinned vikunja-mcp package when a MCP
+    # session spawns (cached in /tmp afterwards). Vikunja itself is reached
+    # in-cluster via the namespace-wide intra-ns allow, not this rule.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443

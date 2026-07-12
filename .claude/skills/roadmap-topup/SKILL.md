@@ -63,3 +63,4 @@ Tell them to verify, not guess (e.g. is policy X still Audit? does ns Y still la
   If you genuinely can't find 100 real items, record fewer and say so — don't invent filler.
 - This skill *plans*; it doesn't implement. Implementing an item is a separate, normal change.
 - Run cadence: after a big sprint, or on request. Each run is one well-scoped fan-out + one commit.
+- After the commit lands, mirror the delta to the Vikunja board (create/complete/re-tag tasks) — the `vikunja` skill owns the mapping + sync procedure; board completions it flags feed the next run's Done log.

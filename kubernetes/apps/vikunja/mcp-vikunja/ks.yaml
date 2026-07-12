@@ -1,0 +1,26 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: mcp-vikunja
+spec:
+  dependsOn:
+    - name: vikunja
+    - name: external-secrets-stores
+      namespace: security
+  interval: 1h
+  path: ./kubernetes/apps/vikunja/mcp-vikunja/app
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-secrets
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: vikunja
+  # wait: false — the pod stays Pending until a human seeds the API token into
+  # OpenBao (secret/vikunja/mcp); don't hold the ks NotReady on that.
+  wait: false
