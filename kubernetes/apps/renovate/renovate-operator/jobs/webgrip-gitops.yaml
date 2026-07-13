@@ -4,8 +4,49 @@ kind: RenovateJob
 metadata:
   name: webgrip-gitops
 spec:
+  # Explicit list, not `webgrip/*`: Forgejo-leading repos must NOT be processed on GitHub —
+  # their GitHub copies are downstream force-push-mirrors, so a Renovate branch/automerge
+  # commit there is silently destroyed by the next relay. Renovate's autodiscoverFilters
+  # have UNION semantics (a negation pattern does not subtract from a glob), so exclusion
+  # requires enumerating. This is the inverse of webgrip-forgejo's list; when a repo flips
+  # Forgejo-leading, move it there. Trade-off: brand-new GitHub repos are no longer
+  # auto-discovered (fine — the fleet is converging on Forgejo). Regenerate from live state:
+  # kubectl -n renovate get renovatejob webgrip-gitops -o jsonpath='{range .status.projects[*]}{.name}{"\n"}{end}'
   discoveryFilters:
-    - webgrip/*
+    - webgrip/.github
+    - webgrip/.github-private
+    - webgrip/GRIP
+    - webgrip/SparkyFitness
+    - webgrip/Tenants
+    - webgrip/action-typescript-template
+    - webgrip/agentic-workflows
+    - webgrip/application-template
+    - webgrip/awesome-copilot
+    - webgrip/backstage-application
+    - webgrip/code14-fullstack-assignment
+    - webgrip/common-charts
+    - webgrip/devops-is-a-philosophy
+    - webgrip/discord-moon
+    - webgrip/docker-github-actions-runner
+    - webgrip/freshrss-application
+    - webgrip/impacttu-poc
+    - webgrip/invoiceninja-application
+    - webgrip/kotlin-fintech-starter-app
+    - webgrip/ledgerflow
+    - webgrip/mkdocs-runner
+    - webgrip/monitoring-platform
+    - webgrip/opg-poc
+    - webgrip/poc-samenoptrekken
+    - webgrip/renovate
+    - webgrip/searxng-application
+    - webgrip/techdocs-builder
+    - webgrip/techdocs-runner
+    - webgrip/telemetry-service
+    - webgrip/traefik-local-development
+    - webgrip/twitch_exporter
+    - webgrip/webcore
+    - webgrip/webgrip.nl
+    - webgrip/whisperx-application
   provider:
     name: github
     endpoint: https://api.github.com/
