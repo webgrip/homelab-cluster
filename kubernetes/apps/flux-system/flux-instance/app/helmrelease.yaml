@@ -30,7 +30,11 @@ spec:
         - notification-controller
       sync:
         kind: GitRepository
-        url: "https://github.com/webgrip/homelab-cluster.git"
+        # In-cluster Forgejo is the authoritative source (ADR-0011); the internal Service URL
+        # keeps the reconcile loop off the external gateway/DNS/TLS. GitHub is a downstream
+        # push-mirror kept for cold bootstrap + break-glass (ADR-0012) — repoint procedure in
+        # runbooks/flux-source.md.
+        url: "http://forgejo-http.forgejo.svc.cluster.local:3000/webgrip/homelab-cluster.git"
         ref: "refs/heads/main"
         path: kubernetes/flux/cluster
       commonMetadata:
