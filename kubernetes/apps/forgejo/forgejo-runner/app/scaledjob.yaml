@@ -114,12 +114,15 @@ spec:
               failureThreshold: 30
             resources:
               # No CPU limit: let a lone build burst into the idle node (observed ~0.8 core peak).
-              # Mem peak ~649Mi over 7d, so 1.5Gi is ~2.3x headroom (was 4Gi, wildly over-provisioned).
+              # 3Gi limit: the e2e chainsaw step runs a KinD cluster + 4 Kyverno controllers
+              # INSIDE dind (~1.2-1.5Gi) — at the old 1536Mi ceiling `kind create --wait 2m`
+              # timed out on fringe-workstation (e2e runs 17/23, 2026-07-13) while fitting on
+              # worker-1. Requests stay low; the burst is short-lived and Burstable-class.
               requests:
                 cpu: 250m
                 memory: 512Mi
               limits:
-                memory: 1536Mi
+                memory: 3Gi
         containers:
           - name: runner
             # Host-mode toolchain image: docker CLI + buildx plugin, git, php, dotnet; runs as the
