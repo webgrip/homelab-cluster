@@ -49,7 +49,7 @@ reversible, and the CI gate physically blocks an Enforce flip that lacks a test.
 3. **Make test coverage load-bearing.** `scripts/lib/kyverno-tests.sh` discovers every policy +
    exception by kind (no allowlist);
    [`scripts/check-kyverno-test-coverage.sh`](../../../../scripts/check-kyverno-test-coverage.sh)
-   (wired into `e2e.yaml`) fails CI if an enforcing policy isn't exercised by a CLI test with a
+   (wired into `.forgejo/workflows/e2e.yml`) fails CI if an enforcing policy isn't exercised by a CLI test with a
    `fail` case (pass-case advisory for now). The pre-existing untested `storage-cnpg-governance` is
    baselined as debt to burn down, not a place to add new policies.
 
@@ -95,7 +95,7 @@ reversible, and the CI gate physically blocks an Enforce flip that lacks a test.
 ## Links
 
 * 2026-06-21 — proposed; the mechanism shipped in the same commit (701b6691): discovery-based test
-  lib, `check-kyverno-test-coverage.sh` gate in `e2e.yaml`, first `-enforce`/`-audit` splits
+  lib, `check-kyverno-test-coverage.sh` gate in `.forgejo/workflows/e2e.yml`, first `-enforce`/`-audit` splits
 * 2026-07-02 — accepted (status corrected in ADR audit): the gate is live in CI and the split is
   the operating mechanism; promotion waves are ongoing — most policies still run Audit
 * 2026-07-03 — renumbered from ADR-0033 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))

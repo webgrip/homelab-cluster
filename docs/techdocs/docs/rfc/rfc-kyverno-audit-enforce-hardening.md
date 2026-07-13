@@ -81,7 +81,7 @@ one admission cycle. One wave per commit, spaced apart (the batched-rollout stor
   zero CLI coverage and CI would stay green. Now discovered by kind (every policy + exception loads).
 - **Added the gate:** `scripts/check-kyverno-test-coverage.sh` fails CI if an enforcing policy isn't
   exercised by a CLI test with a `fail` case (pass-case advisory; pre-existing untested
-  `storage-cnpg-governance` is baselined as debt). Wired into `e2e.yaml` before the test run.
+  `storage-cnpg-governance` is baselined as debt). Wired into `.forgejo/workflows/e2e.yml` before the test run.
 
 ## Decisions
 

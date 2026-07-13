@@ -54,7 +54,7 @@ Three moves, realized by the two ADRs below.
    prevent recurrence with a dependency-free lint
    ([`scripts/validate_grafana_alert_expr.py`](../../../../scripts/validate_grafana_alert_expr.py))
    that fails CI if any `type: {threshold,math,reduce}` SSE node lacks a sibling `expression:`.
-   Wired into `e2e.yaml` and `run-flux-local-test.sh`.
+   Wired into `.forgejo/workflows/e2e.yml` and `run-flux-local-test.sh`.
 
 2. **Monitor the alerting system itself (ADR-0036).** Fix the `ServiceMonitor/grafana` so
    Prometheus scrapes Grafana `/metrics`, then add a meta-rule

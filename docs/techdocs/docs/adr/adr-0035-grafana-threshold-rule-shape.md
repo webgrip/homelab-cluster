@@ -56,7 +56,7 @@ and `flux-local build` render broken rules without complaint.
    — stdlib-only, no YAML deps (the `validate_alert_annotations.py` house convention, so it runs
    in bare CI `python3`) — fails if any `GrafanaAlertRuleGroup` has an SSE node of `type` in
    {threshold, math, reduce} without a sibling `expression:`. Wired into
-   [`.github/workflows/e2e.yaml`](../../../../.github/workflows/e2e.yaml) and
+   [`.forgejo/workflows/e2e.yml`](../../../../.forgejo/workflows/e2e.yml) and
    [`scripts/run-flux-local-test.sh`](../../../../scripts/run-flux-local-test.sh).
 
 ### Positive Consequences
