@@ -1,0 +1,86 @@
+---
+name: "e2e"
+
+# Forgejo port of .github/workflows/e2e.yaml (VIK-85; move-not-copy — the GitHub copy is
+# deleted in the same commit). Same 11-step gate, same scripts. Adaptations for the
+# in-cluster docker runner (host-mode toolchain container + DinD sidecar):
+#   - TMPDIR=/mnt/ci-shared: `docker run -v` bind-mounts resolve on the DAEMON's fs, so the
+#     mktemp workspaces the validator scripts mount must live on the emptyDir the scaledjob
+#     mounts into BOTH the runner and dind containers at this path.
+#   - yamllint runs in a container (the toolchain image ships python3 but no pip).
+#   - kind + kubectl are fetched as static binaries for the chainsaw step (the image has
+#     neither, nor a go toolchain for scripts/lib ensure_kind's fallback). kind's
+#     127.0.0.1 kubeconfig works because the runner shares the pod netns with dind.
+#   - checkout@v4: proven on this runner (see forgejo-runner scaledjob.yaml notes); v6 is
+#     GitHub-only.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "main"
+  pull_request:
+    branches:
+      - "main"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate rendered cluster config
+    runs-on: docker
+    env:
+      TMPDIR: /mnt/ci-shared
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate Renovate config
+        env:
+          GITHUB_COM_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+        run: npx --yes --package renovate@43.208.0 renovate-config-validator --no-global .renovaterc.json5
+
+      - name: Verify OCIRepository digests
+        run: ./scripts/verify-oci-digests.sh "$GITHUB_WORKSPACE"
+
+      - name: Lint YAML (yamllint, relaxed)
+        run: |
+          ws="$(mktemp -d)"
+          rsync -a --exclude='.git' "$GITHUB_WORKSPACE/kubernetes" "$ws/"
+          docker run --rm -v "$ws":/data -w /data python:3.12-slim \
+            sh -ec "pip install --quiet yamllint==1.38.0 && yamllint -d relaxed kubernetes"
+
+      - name: Check docs nav + links
+        run: ./scripts/check-docs-links.sh "$GITHUB_WORKSPACE"
+
+      - name: Validate ADR consistency
+        run: python3 scripts/validate_adr_consistency.py "$GITHUB_WORKSPACE"
+
+      - name: Validate alert annotations
+        run: python3 scripts/validate_alert_annotations.py "$GITHUB_WORKSPACE"
+
+      - name: Validate Grafana alert-rule expressions
+        run: python3 scripts/validate_grafana_alert_expr.py "$GITHUB_WORKSPACE"
+
+      - name: Run flux-local test
+        run: ./scripts/run-flux-local-test.sh "$GITHUB_WORKSPACE"
+
+      - name: Check Kyverno enforce test coverage
+        run: ./scripts/check-kyverno-test-coverage.sh "$GITHUB_WORKSPACE"
+
+      - name: Run Kyverno CLI tests
+        run: ./scripts/run-kyverno-cli-tests.sh "$GITHUB_WORKSPACE"
+
+      - name: Run Chainsaw tests
+        run: |-
+          bin="$TMPDIR/bin"
+          mkdir -p "$bin"
+          curl -fsSL -o "$bin/kind" "https://kind.sigs.k8s.io/dl/v0.27.0/kind-linux-amd64"
+          curl -fsSL -o "$bin/kubectl" "https://dl.k8s.io/release/v1.33.2/bin/linux/amd64/kubectl"
+          chmod +x "$bin/kind" "$bin/kubectl"
+          export PATH="$bin:$PATH"
+          ./scripts/run-kyverno-chainsaw.sh "$GITHUB_WORKSPACE"
