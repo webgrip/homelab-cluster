@@ -35,10 +35,15 @@ spec:
               kinds:
                 - GitRepository
       validate:
-        message: "GitRepository sources are restricted to the homelab GitOps repository."
-        pattern:
-          spec:
-            url: "https://github.com/webgrip/homelab-cluster.git"
+        message: "GitRepository sources are restricted to the homelab GitOps repository (GitHub or the in-cluster Forgejo)."
+        # Two allowed URLs during the Flux-source cutover (RFC rfc-flux-forgejo-source.md,
+        # Stage A2): GitHub is today's source, the Forgejo Service URL is the target (and the
+        # Stage-A3 probe). Re-tighten to Forgejo-only after Stage D.
+        anyPattern:
+          - spec:
+              url: "https://github.com/webgrip/homelab-cluster.git"
+          - spec:
+              url: "http://forgejo-http.forgejo.svc.cluster.local:3000/webgrip/homelab-cluster.git"
     - name: require-kustomization-prune
       match:
         any:
