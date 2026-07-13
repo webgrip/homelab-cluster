@@ -1,0 +1,16 @@
+---
+# TEMPORARY Stage-A3 probe (RFC rfc-flux-forgejo-source.md, Execution addendum): proves
+# source-controller can clone homelab-cluster from the in-cluster Forgejo Service URL and
+# resolve main, BEFORE the FluxInstance sync.url cutover bets the reconcile loop on it.
+# Nothing reconciles from this source — no Kustomization references it. Remove in the
+# Stage-C cutover PR (the real GitRepository/flux-system takes over this URL).
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: forgejo-probe
+  namespace: flux-system
+spec:
+  interval: 5m
+  url: http://forgejo-http.forgejo.svc.cluster.local:3000/webgrip/homelab-cluster.git
+  ref:
+    branch: main
