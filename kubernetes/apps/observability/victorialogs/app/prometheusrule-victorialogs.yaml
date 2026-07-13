@@ -29,7 +29,11 @@ spec:
               - All log ingestion (pod logs, k8s events, OTLP/Faro) is failing;
                 alloy buffers briefly, then logs are lost.
 
-              First steps:
+              Likely causes:
+              - Pod OOMKilled or evicted; PVC full or detached (Longhorn);
+                vm-operator rolled a bad VLSingle spec change.
+
+              First actions:
               - kubectl get vlsingle,pods -n observability
               - See runbooks/victorialogs.md
 
@@ -44,7 +48,7 @@ spec:
             owner: platform
             service: victorialogs
           annotations:
-            summary: "VictoriaLogs is up but ingesting zero log rows"
+            summary: "VictoriaLogs (vlsingle-victorialogs) is up but ingesting zero log rows"
             description: |
               What's happening:
               - vl_rows_ingested_total has been flat for 15m while the server is up.
@@ -53,7 +57,11 @@ spec:
               - Log shippers (alloy-agent/alloy-gateway) are not delivering;
                 logs are being dropped upstream.
 
-              First steps:
+              Likely causes:
+              - A bad loki.write repoint in an alloy HelmRelease; alloy pods
+                crashlooping; a NetworkPolicy cutting shipper egress.
+
+              First actions:
               - kubectl logs -n observability ds/alloy-agent | grep -i error
               - Check the loki.write endpoint URL in both alloy HelmReleases.
 
@@ -68,7 +76,7 @@ spec:
             owner: platform
             service: victorialogs
           annotations:
-            summary: "VictoriaLogs data volume has <4GiB free"
+            summary: "VictoriaLogs (vlsingle-victorialogs) data volume has <4GiB free"
             description: |
               What's happening:
               - Free space on /victoria-logs-data is below 4GiB for 30m.
@@ -77,7 +85,11 @@ spec:
               - At 2GiB headroom the retention valve drops the oldest data early;
                 a full disk makes storage read-only.
 
-              First steps:
+              Likely causes:
+              - A runaway log producer inflating ingest volume; retention set
+                longer than the PVC can hold.
+
+              First actions:
               - Check ingest volume for a runaway log producer (stats by stream).
               - Grow the PVC (Longhorn expands online) or lower retentionPeriod.
 
@@ -90,7 +102,7 @@ spec:
             owner: platform
             service: victorialogs
           annotations:
-            summary: "VictoriaLogs is returning HTTP errors"
+            summary: "VictoriaLogs (vlsingle-victorialogs) is returning HTTP errors"
             description: |-
               What's happening:
               - Sustained HTTP error responses from vlsingle for 15m.
@@ -98,5 +110,9 @@ spec:
               Impact/risk:
               - Ingest or queries (Grafana, mcp-victorialogs) may be failing.
 
-              First steps:
+              Likely causes:
+              - Malformed queries from a dashboard or MCP client; ingest
+                payloads rejected after a shipper config change; disk pressure.
+
+              First actions:
               - kubectl logs -n observability deploy/vlsingle-victorialogs
