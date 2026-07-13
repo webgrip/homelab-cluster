@@ -43,3 +43,19 @@ still applies on every push:
 - Stage **explicit pathspecs** for the files you changed — never `git add -A`
   blindly (it can sweep in or clobber another stream's work).
 - `git rebase origin/main` before you push.
+
+## Same-file variant: committing one hunk around someone else's WIP
+
+Pathspec staging can't separate changes **inside one file**. When a file carries another
+stream's uncommitted work and you need to commit a surgical change to it (proven 2026-07-12
+on `.claude/settings.json`, commit `11bda139`):
+
+```bash
+git stash push -m their-wip -- <file>   # park their change
+# edit the clean HEAD version with ONLY your change; commit it
+git stash pop                            # re-apply theirs; may conflict near your edit
+# resolve keeping BOTH (their layout + your change), then:
+git stash drop
+```
+
+Their work stays uncommitted in the working tree, exactly as found.
