@@ -49,6 +49,10 @@ jobs:
 
       - name: Lint YAML (yamllint, relaxed)
         run: |
+          # DinD is ephemeral (no image cache): every run re-pulls, and docker.io
+          # occasionally throttles/flakes (TLS handshake timeout — run 22). Retry the pull;
+          # routing DinD through the Harbor proxy is the durable follow-up.
+          for i in 1 2 3; do docker pull -q python:3.12-slim && break || sleep 15; done
           ws="$(mktemp -d)"
           rsync -a --exclude='.git' "$GITHUB_WORKSPACE/kubernetes" "$ws/"
           docker run --rm -v "$ws":/data -w /data python:3.12-slim \
