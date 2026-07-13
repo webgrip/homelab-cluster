@@ -11,6 +11,12 @@ cd "${techdocs}" || { echo "missing ${techdocs}" >&2; exit 1; }
 # Pages allowed to exist outside the nav (linked directly, not in the sidebar).
 nav_whitelist='adr/adr-0000-template.md'
 
+# One nav slice, reused everywhere. Load-bearing: `sed ... | grep -q` under pipefail is a
+# SIGPIPE race — grep -q exits on first match, sed gets SIGPIPE (141), and the pipeline
+# "fails" despite the match. Bit CI 2026-07-13 (14 false NOT-IN-NAV under concurrent-run
+# load). Herestrings avoid the pipeline entirely.
+nav_slice="$(sed -n '/^nav:/,$p' mkdocs.yml)"
+
 fail=0
 say() { echo "  $1"; fail=1; }
 
@@ -19,13 +25,13 @@ grep -E "^\s+'[^']+': '[^']+'" mkdocs.yml | sed -E "s/^[^:]+: '([^']+)'.*/\1/" |
 while read -r f; do [ -f "docs/$f" ] || say "MISSING redirect target: $f"; done
 
 echo "check-docs-links: nav entries"
-sed -n '/^nav:/,$p' mkdocs.yml | grep -oE '[A-Za-z0-9./_-]+\.md' | sort -u |
+grep -oE '[A-Za-z0-9./_-]+\.md' <<<"${nav_slice}" | sort -u |
 while read -r f; do [ -f "docs/$f" ] || say "MISSING nav entry: $f"; done
 
 echo "check-docs-links: orphan pages (on disk, not in nav)"
 find docs -name '*.md' | sed 's|^docs/||' | sort | while read -r f; do
   case " ${nav_whitelist} " in (*" $f "*) continue ;; esac
-  sed -n '/^nav:/,$p' mkdocs.yml | grep -q "$f" || say "NOT IN NAV: $f"
+  grep -q "$f" <<<"${nav_slice}" || say "NOT IN NAV: $f"
 done
 
 echo "check-docs-links: relative links"
@@ -43,11 +49,11 @@ errors=$(
   {
     grep -E "^\s+'[^']+': '[^']+'" mkdocs.yml | sed -E "s/^[^:]+: '([^']+)'.*/\1/" | sort -u |
       while read -r f; do [ -f "docs/$f" ] || echo x; done
-    sed -n '/^nav:/,$p' mkdocs.yml | grep -oE '[A-Za-z0-9./_-]+\.md' | sort -u |
+    grep -oE '[A-Za-z0-9./_-]+\.md' <<<"${nav_slice}" | sort -u |
       while read -r f; do [ -f "docs/$f" ] || echo x; done
     find docs -name '*.md' | sed 's|^docs/||' | while read -r f; do
       case " ${nav_whitelist} " in (*" $f "*) continue ;; esac
-      sed -n '/^nav:/,$p' mkdocs.yml | grep -q "$f" || echo x
+      grep -q "$f" <<<"${nav_slice}" || echo x
     done
     find docs -name '*.md' | while read -r f; do
       case " ${nav_whitelist} " in (*" ${f#docs/} "*) continue ;; esac
