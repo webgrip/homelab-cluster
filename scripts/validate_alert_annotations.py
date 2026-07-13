@@ -31,7 +31,9 @@ RE_ALERT_NAME = re.compile(r"^\s*-\s*alert:\s*(?P<name>\S+)\s*$")
 
 RE_ANNOTATIONS_LINE = re.compile(r"^(?P<indent>\s*)annotations:\s*$")
 RE_SUMMARY_LINE = re.compile(r"^\s*summary:\s*(?P<value>.+?)\s*$")
-RE_DESCRIPTION_BLOCK = re.compile(r"^(?P<indent>\s*)description:\s*\|\s*$")
+# |- as well as |: the format-yaml hook normalizes a file-final block scalar to |-
+# (strip chomping); the gate cares about the section structure, not the chomping.
+RE_DESCRIPTION_BLOCK = re.compile(r"^(?P<indent>\s*)description:\s*\|-?\s*$")
 
 RE_SLOTH_ALERTING = re.compile(r"^(?P<indent>\s*)alerting:\s*$")
 
@@ -161,7 +163,7 @@ def validate_file(path: Path) -> list[Failure]:
                         failures.append(Failure(path, alert_name, "annotations.summary must include scope in parentheses"))
 
                     if kv.get("has_description_block") != "true":
-                        failures.append(Failure(path, alert_name, "annotations.description must be a block scalar (description: |)"))
+                        failures.append(Failure(path, alert_name, "annotations.description must be a block scalar (description: | or |-)"))
                     else:
                         missing_sections = [s for s in REQUIRED_SECTIONS if s not in sections]
                         if missing_sections:
@@ -210,7 +212,7 @@ def validate_file(path: Path) -> list[Failure]:
                         failures.append(Failure(path, subject, "annotations.summary must include scope in parentheses"))
 
                     if kv.get("has_description_block") != "true":
-                        failures.append(Failure(path, subject, "annotations.description must be a block scalar (description: |)"))
+                        failures.append(Failure(path, subject, "annotations.description must be a block scalar (description: | or |-)"))
                     else:
                         missing_sections = [s for s in REQUIRED_SECTIONS if s not in sections]
                         if missing_sections:
