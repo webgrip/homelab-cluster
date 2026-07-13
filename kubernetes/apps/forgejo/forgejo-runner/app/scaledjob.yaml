@@ -96,6 +96,13 @@ spec:
                 mountPath: /certs
               - name: docker-storage
                 mountPath: /var/lib/docker
+              # Same path as in the runner container: `docker run -v` bind-mounts resolve on THIS
+              # daemon's fs, so a workspace the runner writes under /mnt/ci-shared is only visible
+              # to containers if dind mounts the same volume at the same absolute path. The e2e
+              # validators (flux-local, kyverno CLI, chainsaw) all `docker run -v $(mktemp -d)…`;
+              # the workflow sets TMPDIR=/mnt/ci-shared to land those workspaces here.
+              - name: ci-shared
+                mountPath: /mnt/ci-shared
             startupProbe:
               exec:
                 command:
@@ -161,6 +168,10 @@ spec:
               - name: docker-certs
                 mountPath: /certs
                 readOnly: true
+              # Shared with the dind sidecar (see there) so dockerized validators can bind-mount
+              # workspaces. Writable by the runner user via fsGroup 1000.
+              - name: ci-shared
+                mountPath: /mnt/ci-shared
             resources:
               # No CPU limit: steps run host-mode here and burst to ~1 core on an idle node.
               # Mem peak ~796Mi/1Gi (78%, tight) over 7d, so raise the ceiling to 1.25Gi.
@@ -181,6 +192,8 @@ spec:
           - name: docker-storage
             emptyDir: {}
           - name: runner-bin
+            emptyDir: {}
+          - name: ci-shared
             emptyDir: {}
   triggers:
     - type: forgejo-runner
