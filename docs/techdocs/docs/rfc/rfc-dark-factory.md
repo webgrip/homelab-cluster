@@ -118,8 +118,12 @@ human merges ─▶ Flux reconciles ─▶ org webhook ─▶ n8n ─▶ Vikunja
   destructive-command block-list as Forgejo `pre-receive` + CI. Load-bearing; see Decision 4.
 * **Runaway spend (HAZ-02).** Defence in depth: per-task LiteLLM `max_budget` (hard) + Job
   `activeDeadlineSeconds` + opencode max-turns + a global concurrency cap.
-* **Review independence (HAZ-05).** The reviewer agent uses a distinct key / model / context and an
-  adversarial prompt; CI gates independently of any agent verdict. An author never self-reviews.
+* **Review independence (HAZ-05).** The reviewer agent uses a distinct key, **a different model
+  *family* than the author** (not merely a different key — same-family review is measured to inflate
+  pass rates 9–17pp, and an LLM fails to fix its own errors ~64.5% of the time), a fresh context with
+  no access to the author's session, and an adversarial prompt. The reviewer bot's forge account is
+  scoped read + comment only (no write/merge). CI gates independently of any agent verdict; an author
+  never self-reviews.
 * **Skill portability (HAZ-06).** Prove one profile runs identically under opencode and Claude Code
   before converging, or fork skills; track via the `webgrip-ai-skills` AGENTS.md contract.
 * **State fan-out (HAZ-04).** Vikunja (why) / openspec change (how) / Forgejo PR (diff) drift, and

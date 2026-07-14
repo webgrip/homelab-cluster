@@ -54,7 +54,11 @@ Load-bearing specifics:
 * **Identity.** Keys map to **Authentik** users / teams, aligning with the identity system-of-record
   plan; agents are service identities (dedicated LiteLLM teams).
 * **Telemetry.** Spend, latency, and error metrics scrape into **VictoriaMetrics**; a Grafana panel
-  reports spend-per-key; a budget-breach alert routes to **ntfy**.
+  reports spend-per-key; a budget-breach alert routes to **ntfy**. **Caveat (2026-07-14):** OSS
+  LiteLLM ships **no Prometheus `/metrics`** endpoint (Enterprise-gated), so the metrics path is a
+  small exporter over the CNPG spend ledger / `/spend` API — which also yields **dollars** (a
+  token-only gateway never sees spend). Latency/error traces do come free via the `otel` callback →
+  VictoriaTraces.
 * **Kill-switch.** Revoking a key, or dropping a team budget to €0, is an instant, global,
   GitOps-reversible stop — the answer to the RFC's open "kill-switch convention" question.
 
@@ -119,6 +123,9 @@ dollar-budget key ledger, so it cannot be the metering layer this decision needs
 
 * Technical story: [RFC: Dark factory](../rfc/rfc-dark-factory.md) — Decision 3, phases 2 and 4.
 * 2026-07-14 — proposed; ratified in principle in the RFC's SOTA extension, pending phase-2 build.
+* 2026-07-14 — phase-2 scaffold shipped (`kubernetes/apps/ai/litellm`, commit c39b2b2f); proxy live
+  (DB-connected, health 200). Amended the Telemetry clause: OSS LiteLLM has no Prometheus `/metrics`
+  (Enterprise-gated) — the metrics path is a CNPG-ledger exporter, tracked as a follow-up.
 * Supported by [ADR-0045](adr-0045-opencode-runtime-server-side-guards.md) — the `opencode` runtime
   that consumes these keys.
 * Relates to [ADR-0043](adr-0043-vikunja-roadmap-system-of-record.md) and
