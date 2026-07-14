@@ -13,3 +13,10 @@ spec:
       path: /metrics
       interval: 60s
       scrapeTimeout: 30s
+      # Keep only the LiteLLM business metrics (+ exporter health). The built-in
+      # postgres-exporter pg_* collectors duplicate what cnpg-monitoring already
+      # scrapes off the CNPG cluster — drop them so VM isn't storing two copies.
+      metricRelabelConfigs:
+        - action: keep
+          sourceLabels: [__name__]
+          regex: "litellm_.*|pg_up"

@@ -132,6 +132,10 @@ spec:
             image:
               repository: quay.io/prometheuscommunity/postgres-exporter
               tag: v0.20.1@sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e
+            # The wal collector needs pg_monitor (pg_ls_waldir) — the app user lacks
+            # it and we only want the custom litellm_* queries anyway. Silence it.
+            args:
+              - "--no-collector.wal"
             env:
               DATA_SOURCE_URI: litellm-db-rw.ai.svc.cluster.local:5432/litellm?sslmode=require
               DATA_SOURCE_USER:
