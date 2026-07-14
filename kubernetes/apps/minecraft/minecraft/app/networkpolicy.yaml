@@ -1,0 +1,59 @@
+---
+# Zero-trust for minecraft (W7). The namespace label generates default-deny
+# (ingress+egress) + allow-dns. Ingress is a direct Cilium LB-IPAM VIP
+# (10.0.0.30), not routed through the envoy gateway, so LAN CIDRs cover game
+# clients directly. Egress needs real internet: Mojang session-server auth
+# (online-mode) and BlueMap's Mojang asset downloads (accept-download=true,
+# see bluemap-configmap.yaml) — same broad-internet-egress shape as harbor's
+# proxy-cache upstream pulls.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: minecraft-allow-ingress
+  labels:
+    app.kubernetes.io/part-of: minecraft
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16
+        - ipBlock:
+            cidr: 127.0.0.0/8
+        - ipBlock:
+            cidr: fd00::/8
+        - ipBlock:
+            cidr: ::1/128
+      ports:
+        - protocol: TCP
+          port: 25565
+        - protocol: UDP
+          port: 19132
+        - protocol: TCP
+          port: 8100
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: minecraft-allow-egress
+  labels:
+    app.kubernetes.io/part-of: minecraft
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # internet (Mojang auth + BlueMap asset downloads) + LAN; blocks only
+    # direct cross-namespace pod IPs.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.42.0.0/16
+              - 10.43.0.0/16
