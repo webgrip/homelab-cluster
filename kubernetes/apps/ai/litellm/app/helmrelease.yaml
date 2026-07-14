@@ -63,10 +63,27 @@ spec:
             resources:
               requests:
                 cpu: 50m
-                memory: 512Mi
+                # LiteLLM's boot (prisma migrate + provider-SDK imports) spikes
+                # well past steady-state (~500Mi). A 1Gi limit OOMKilled it mid-boot
+                # (exit 137) before it could bind :4000. 2Gi covers the spike;
+                # worker-1 has ~13Gi free so the modest request keeps it schedulable.
+                memory: 640Mi
               limits:
-                memory: 1Gi
+                memory: 2Gi
             probes:
+              # Decouple slow boot from liveness: the startup probe grants ~5 min
+              # for prisma migrate + first listen before liveness/readiness engage.
+              startup:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /health/liveliness
+                    port: 4000
+                  initialDelaySeconds: 15
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 30
               liveness:
                 enabled: true
                 custom: true
@@ -74,7 +91,7 @@ spec:
                   httpGet:
                     path: /health/liveliness
                     port: 4000
-                  initialDelaySeconds: 45
+                  initialDelaySeconds: 0
                   periodSeconds: 30
                   timeoutSeconds: 10
                   failureThreshold: 3
