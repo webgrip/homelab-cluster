@@ -1,0 +1,17 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ai
+
+components:
+  # sops: renders the SOPS-decrypted cluster-secrets Secret into this namespace —
+  # required for the Flux Kustomization postBuild.substituteFrom (${SECRET_DOMAIN}).
+  # This consumes the existing SOPS floor secret; it is NOT a new *.sops.yaml.
+  - ../../components/sops
+  - ../../components/resource-quota
+
+resources:
+  - ./namespace.yaml
+  - ./litellm/database/ks.yaml
+  - ./litellm/ks.yaml

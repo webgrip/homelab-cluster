@@ -1,0 +1,45 @@
+---
+# yaml-language-server: $schema=../../../../../schemas/cnpg-cluster.schema.json
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: litellm-db
+  namespace: ai
+spec:
+  instances: 1
+  # Burstable, not BestEffort: the Talos PSI OOM controller kills the largest
+  # BestEffort cgroups first (2026-07-11 incident). Memory request/limit only —
+  # no CPU request (worker CPU-request-saturated) or limit (throttles vacuum).
+  resources:
+    requests:
+      memory: 384Mi
+    limits:
+      memory: 768Mi
+  # Pin the DB off the soyo control planes onto the worker pool (ADR-0002).
+  affinity:
+    nodeSelector:
+      node.webgrip.io/pool: worker
+  inheritedMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
+  storage:
+    size: 10Gi
+    storageClass: longhorn
+  # Dedicated WAL volume — WAL only recycles after archiving to Garage S3; a
+  # separate volume keeps an archiving stall off the data disk (cnpg-database skill).
+  walStorage:
+    size: 5Gi
+    storageClass: longhorn
+  postgresql:
+    parameters:
+      wal_compression: "zstd"
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: litellm-db-store
+        serverName: litellm-db
+  bootstrap:
+    initdb:
+      database: litellm
+      owner: litellm

@@ -1,0 +1,43 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-config
+data:
+  # LiteLLM proxy configuration — the metered inference plane (ADR-0044).
+  # Carries NO secrets: os.environ/* is resolved at runtime from the pod env
+  # (ANTHROPIC_API_KEY + LITELLM_MASTER_KEY from the litellm-secret ExternalSecret;
+  # DATABASE_URL from the CNPG secret). Mounted at /etc/litellm/config.yaml.
+  config.yaml: |-
+    # ⚠️ Verify model IDs against the current Anthropic API catalog — the `model:`
+    # string must be a real Anthropic API model. The proxy starts regardless; a
+    # model is only contacted when a request names it. Add/rename freely.
+    model_list:
+      - model_name: claude-opus-4-8
+        litellm_params:
+          model: anthropic/claude-opus-4-8
+          api_key: os.environ/ANTHROPIC_API_KEY
+      - model_name: claude-sonnet-5
+        litellm_params:
+          model: anthropic/claude-sonnet-5
+          api_key: os.environ/ANTHROPIC_API_KEY
+      - model_name: claude-haiku-4-5
+        litellm_params:
+          model: anthropic/claude-haiku-4-5
+          api_key: os.environ/ANTHROPIC_API_KEY
+
+    general_settings:
+      # Admin credential used to mint virtual keys (per-dev / per-agent / per-task)
+      # with hard max_budget + tpm/rpm. Resolved from env at runtime.
+      master_key: os.environ/LITELLM_MASTER_KEY
+
+    litellm_settings:
+      # Drop provider-unsupported params instead of erroring — keeps heterogeneous
+      # clients (opencode, Claude Code, scripts) working through one endpoint.
+      drop_params: true
+      # Persist request/spend rows to the CNPG ledger (DATABASE_URL) — the
+      # dollars-per-key record ADR-0044 exists for. NOTE: OSS LiteLLM exposes no
+      # Prometheus /metrics endpoint (Enterprise-gated); a ledger→VictoriaMetrics
+      # exporter is the tracked follow-up. Data lands in the DB regardless.
+      success_callback: ["postgres"]
+      failure_callback: ["postgres"]

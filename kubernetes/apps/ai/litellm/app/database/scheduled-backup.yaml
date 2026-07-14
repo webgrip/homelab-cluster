@@ -1,0 +1,17 @@
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: litellm-db-daily
+  namespace: ai
+spec:
+  # Staggered off the other CNPG apps (authentik 02:05, …) to avoid a thundering
+  # herd against Garage. 6-field cron: sec min hour dom month dow.
+  schedule: "0 25 2 * * *"
+  immediate: true # never backed up before — take one now, then daily
+  backupOwnerReference: cluster
+  cluster:
+    name: litellm-db
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
