@@ -1,7 +1,7 @@
 # Keep an external mirror as the cold-bootstrap + break-glass GitOps source
 
-* Status: proposed
-* Date: 2026-06-13
+* Status: accepted
+* Date: 2026-07-14
 
 Technical Story: [RFC: Cutting the GitOps umbilical](../rfc/rfc-flux-forgejo-source.md)
 
@@ -55,6 +55,10 @@ cold-bootstrap and break-glass source.** Concretely:
   cluster**, not that the bytes vanish.
 * The push-mirror is a write path to keep honest: if it silently fails, the DR copy goes stale —
   cover it with alerting and verify it in the cutover validation.
+
+## Confirmation
+
+Break-glass rehearsed 2026-07-14 04:01Z: patch FluxInstance → GitHub URL, Ready from GitHub in 14s; patch forward, Ready from Forgejo in 5s; revision stable throughout (transcript in runbooks/flux-source.md). Admission note: the drill works because `restrict-gitrepository-url` allows BOTH URLs — that allowlist is deliberate and permanent.
 
 ## Links
 

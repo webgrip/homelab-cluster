@@ -1,6 +1,6 @@
 # RFC: Cutting the GitOps umbilical — Flux source → Forgejo
 
-> Status: **Proposed.** This RFC proposes repointing Flux's GitOps source from
+> Status: **Accepted (2026-07-14).** Executed: Flux reconciles from Forgejo (PR 347, merge 9a3b448a) and the GitHub fallback is rehearsed both directions. This RFC proposed repointing Flux's GitOps source from
 > `github.com/webgrip/homelab-cluster` to the in-cluster [Forgejo](../general/forgejo.md), so the cluster
 > reconciles from a forge it owns — the **last and most load-bearing** thread of the
 > [forge migration](../blogs/2026-06-12-bringing-the-forge-home.md). The decisions are
@@ -189,7 +189,8 @@ comes from Forgejo. Gap-free.
 ### Stage D — validation & hardening
 
 Success criteria below, plus: rehearse the ADR-0012 break-glass (`kubectl patch` back to GitHub,
-recover, patch forward — the one sanctioned imperative); tighten Kyverno to Forgejo-only; flip
+recover, patch forward — the one sanctioned imperative); keep the Kyverno two-URL allowlist
+(the break-glass patch must pass admission — drill-proven); flip
 ADR-0011/0012 and this RFC to **Accepted**; alert on push-mirror staleness (`last_error`/stale
 `last_update` — a silently failed mirror is a stale DR copy); re-point the Backstage catalog
 `source-location` URLs (cosmetic, batched); fold the remaining GitHub-only workflows and the ARC

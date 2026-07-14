@@ -1,7 +1,7 @@
 # Make Forgejo the authoritative GitOps source for Flux
 
-* Status: proposed
-* Date: 2026-07-02
+* Status: accepted
+* Date: 2026-07-14
 
 Technical Story: [RFC: Cutting the GitOps umbilical](../rfc/rfc-flux-forgejo-source.md)
 
@@ -87,6 +87,10 @@ cutover-commit mechanic: [RFC](../rfc/rfc-flux-forgejo-source.md).
 
 * Bad, because it is heavier and riskier than a one-line `sync.url` edit, which is gap-free because
   the commit lands in both hosts.
+
+## Confirmation
+
+Cut over 2026-07-14 04:00Z (PR 347, merge 9a3b448a): `GitRepository/flux-system` flipped to the Forgejo Service URL 21s after the merge relay, Ready=True at the merge SHA; all Kustomizations/HelmReleases Ready on the first post-flip cycle.
 
 ## Links
 

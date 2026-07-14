@@ -65,7 +65,12 @@ kubectl -n flux-system patch fluxinstance flux --type merge \
 flux get sources git -n flux-system
 ```
 
-Drill log: see the dated entries at the bottom of this file.
+Drill log:
+
+- **2026-07-14 04:01Z** (post-cutover rehearsal): patch → GitHub, `GitRepository` Ready from
+  GitHub in **14s**; patch forward, Ready from Forgejo in **5s**; revision stable at `9a3b448a`
+  throughout. Both patches passed Kyverno admission — the `restrict-gitrepository-url` two-URL
+  allowlist is deliberate and permanent for exactly this reason.
 
 ## Mirror-direction recovery (Forgejo restored after break-glass)
 

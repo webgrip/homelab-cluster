@@ -90,8 +90,8 @@ How change reaches the cluster — the forge, the Flux source, and the escape ha
 
 | ADR | Decision | Status | Last updated |
 | --- | -------- | ------ | ------------ |
-| [0011](adr-0011-flux-source-forgejo.md) | Make Forgejo the authoritative GitOps source for Flux | proposed | 2026-07-02 |
-| [0012](adr-0012-external-bootstrap-fallback-source.md) | External mirror as cold-bootstrap + break-glass source | proposed | 2026-06-13 |
+| [0011](adr-0011-flux-source-forgejo.md) | Make Forgejo the authoritative GitOps source for Flux | accepted | 2026-07-14 |
+| [0012](adr-0012-external-bootstrap-fallback-source.md) | External mirror as cold-bootstrap + break-glass source | accepted | 2026-07-14 |
 | [0013](adr-0013-forgejo-leading-application-repos.md) | Forgejo-authoritative application repos (de-mirror) | accepted | 2026-06-26 |
 | [0014](adr-0014-codeberg-offsite-push-mirror.md) | Codeberg as a second off-site push-mirror | proposed | 2026-06-17 |
 
