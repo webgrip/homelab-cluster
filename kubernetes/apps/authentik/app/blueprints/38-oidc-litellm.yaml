@@ -1,0 +1,145 @@
+---
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+version: 1
+metadata:
+  name: Homelab - LiteLLM OIDC
+  labels:
+    blueprints.goauthentik.io/description: LiteLLM Admin UI OIDC provider and application.
+    blueprints.goauthentik.io/instantiate: "true"
+context:
+  domain: webgrip.dev
+  app_host: litellm
+  # LiteLLM's generic-SSO callback is always <PROXY_BASE_URL>/sso/callback
+  # (PROXY_BASE_URL is set in the litellm HelmRelease env to this same host).
+  redirect_path: /sso/callback
+entries:
+  # --- Dependencies: ensure prerequisite blueprints are applied first ---
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: Homelab - Core groups and users
+      required: true
+
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: Homelab - Policies
+      required: true
+
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: Homelab - Authentication and MFA flows
+      required: true
+
+  # --- Role scope: emit a `litellm_role` claim mapping homelab-admins → proxy_admin.
+  # LiteLLM reads it via GENERIC_USER_ROLE_ATTRIBUTE=litellm_role (set in the app's
+  # HelmRelease env). This keeps admin designation fully declarative in git — it
+  # elevates whoever is in homelab-admins, with no hardcoded username / PROXY_ADMIN_ID.
+  # Everyone else lands as internal_user (a valid LitellmUserRoles value). ---
+  - model: authentik_providers_oauth2.scopemapping
+    id: litellm-oidc-role-scope
+    identifiers:
+      name: litellm-role
+    attrs:
+      name: litellm-role
+      scope_name: litellm_role
+      description: Emits litellm_role (proxy_admin for homelab-admins, else internal_user).
+      expression: |
+        if request.user.ak_groups.filter(name="homelab-admins").exists():
+            return {"litellm_role": "proxy_admin"}
+        return {"litellm_role": "internal_user"}
+
+  # --- OIDC provider and application ---
+  - model: authentik_providers_oauth2.oauth2provider
+    id: litellm-oidc-provider
+    identifiers:
+      name: litellm-oidc
+    attrs:
+      name: LiteLLM OIDC
+      client_type: confidential
+      client_id: litellm
+      # Generated in-cluster (litellm-oidc-client ExternalSecret) and injected via
+      # global.env in the authentik HelmRelease; mirrored to OpenBao secret/litellm/oidc
+      # by the matching PushSecret for LiteLLM's side. No CLI ceremony.
+      client_secret: !Env LITELLM_OIDC_CLIENT_SECRET
+      # Pin RS256: without a signing_key Authentik falls back to HS256 (HMAC w/
+      # client_secret). Same fix applied to Harbor / Vikunja / OpenBao — harmless
+      # and robust for LiteLLM's fastapi-sso client.
+      signing_key: !Find
+        - authentik_crypto.certificatekeypair
+        - - name
+          - authentik Self-signed Certificate
+      grant_types:
+        - authorization_code
+        - refresh_token
+      redirect_uris:
+        - matching_mode: strict
+          url: !Format
+            - "https://%s.%s%s"
+            - !Context app_host
+            - !Context domain
+            - !Context redirect_path
+      authentication_flow: !Find
+        - authentik_flows.flow
+        - - slug
+          - homelab-authentication
+      authorization_flow: !Find
+        - authentik_flows.flow
+        - - slug
+          - default-provider-authorization-explicit-consent
+      invalidation_flow: !Find
+        - authentik_flows.flow
+        - - slug
+          - default-provider-invalidation-flow
+      property_mappings:
+        - !Find
+          - authentik_providers_oauth2.scopemapping
+          - - scope_name
+            - "openid"
+        - !Find
+          - authentik_providers_oauth2.scopemapping
+          - - scope_name
+            - "profile"
+        - !Find
+          - authentik_providers_oauth2.scopemapping
+          - - scope_name
+            - "email"
+        - !KeyOf litellm-oidc-role-scope
+
+  - model: authentik_core.application
+    id: litellm-oidc-app
+    identifiers:
+      slug: litellm
+    attrs:
+      name: LiteLLM
+      provider: !KeyOf litellm-oidc-provider
+      meta_launch_url: !Format
+        - "https://%s.%s/ui"
+        - !Context app_host
+        - !Context domain
+      meta_description: LiteLLM proxy Admin UI login via Authentik OIDC.
+      open_in_new_tab: true
+      policy_engine_mode: all
+
+  - model: authentik_policies.policybinding
+    identifiers:
+      order: 0
+      policy: !Find
+        - authentik_policies_expression.expressionpolicy
+        - - name
+          - homelab-users-only
+      target: !KeyOf litellm-oidc-app
+    attrs:
+      enabled: true
+
+  - model: authentik_policies.policybinding
+    identifiers:
+      order: 10
+      policy: !Find
+        - authentik_policies_expression.expressionpolicy
+        - - name
+          - homelab-mfa-required
+      target: !KeyOf litellm-oidc-app
+    attrs:
+      enabled: true

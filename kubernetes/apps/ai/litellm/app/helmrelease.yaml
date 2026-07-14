@@ -43,6 +43,21 @@ spec:
             env:
               STORE_MODEL_IN_DB: "True"
               LITELLM_LOG: "INFO"
+              # --- Admin UI SSO via Authentik (generic OIDC). Non-secret half;
+              # the client secret arrives via envFrom (litellm-oidc ExternalSecret).
+              # Callback is <PROXY_BASE_URL>/sso/callback — registered as the strict
+              # redirect_uri in Authentik blueprint 38-oidc-litellm. Free tier allows
+              # SSO for up to 5 users (Enterprise-gated beyond that). ---
+              PROXY_BASE_URL: "https://litellm.${SECRET_DOMAIN}"
+              GENERIC_CLIENT_ID: litellm
+              GENERIC_AUTHORIZATION_ENDPOINT: "https://authentik.${SECRET_DOMAIN}/application/o/authorize/"
+              GENERIC_TOKEN_ENDPOINT: "https://authentik.${SECRET_DOMAIN}/application/o/token/"
+              GENERIC_USERINFO_ENDPOINT: "https://authentik.${SECRET_DOMAIN}/application/o/userinfo/"
+              # litellm_role is the custom scope/claim emitted by the blueprint's
+              # role scope mapping; GENERIC_USER_ROLE_ATTRIBUTE tells LiteLLM to read
+              # it, elevating homelab-admins to proxy_admin (everyone else internal_user).
+              GENERIC_SCOPE: "openid email profile litellm_role"
+              GENERIC_USER_ROLE_ATTRIBUTE: litellm_role
               # Connection string for the keys/spend ledger — the whole point of
               # ADR-0044 (budgets + per-key spend). Sourced from the CNPG-generated
               # secret, never inlined.
@@ -52,9 +67,12 @@ spec:
                     name: litellm-db-app
                     key: uri
             # LITELLM_MASTER_KEY + ANTHROPIC_API_KEY (ESO → OpenBao secret/litellm).
+            # GENERIC_CLIENT_SECRET (Admin UI SSO) from the litellm-oidc ExternalSecret.
             envFrom:
               - secretRef:
                   name: litellm-secret
+              - secretRef:
+                  name: litellm-oidc
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:
