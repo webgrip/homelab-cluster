@@ -162,6 +162,8 @@ Tenant apps the platform hosts — decisions about *what* runs, not how the plat
 | --- | -------- | ------ | ------------ |
 | [0040](adr-0040-vikunja-task-management.md) | Vikunja as the task-management system, complementing Forgejo issues | proposed | 2026-07-09 |
 | [0043](adr-0043-vikunja-roadmap-system-of-record.md) | Vikunja board is the roadmap system of record; roadmap.md retired | accepted | 2026-07-12 |
+| [0044](adr-0044-metered-inference-plane-litellm.md) | All inference is metered through a self-hosted LiteLLM proxy | proposed | 2026-07-14 |
+| [0045](adr-0045-opencode-runtime-server-side-guards.md) | opencode is the agent runtime; safety guards move server-side | proposed | 2026-07-14 |
 
 ## Renumbering (2026-07-03)
 
