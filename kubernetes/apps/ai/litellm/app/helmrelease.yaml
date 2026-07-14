@@ -124,12 +124,69 @@ spec:
                   periodSeconds: 15
                   timeoutSeconds: 10
                   failureThreshold: 3
+          # Sidecar: postgres-exporter over LiteLLM's own spend ledger — the
+          # metrics path ADR-0044 needs (OSS LiteLLM has no Prometheus /metrics).
+          # In the litellm Deployment so the existing kyverno third-party-image
+          # exception covers its quay.io image (no new exception needed).
+          exporter:
+            image:
+              repository: quay.io/prometheuscommunity/postgres-exporter
+              tag: v0.20.1@sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e
+            env:
+              DATA_SOURCE_URI: litellm-db-rw.ai.svc.cluster.local:5432/litellm?sslmode=require
+              DATA_SOURCE_USER:
+                valueFrom:
+                  secretKeyRef:
+                    name: litellm-db-app
+                    key: username
+              DATA_SOURCE_PASS:
+                valueFrom:
+                  secretKeyRef:
+                    name: litellm-db-app
+                    key: password
+              PG_EXPORTER_EXTEND_QUERY_PATH: /etc/pg-exporter/queries.yaml
+              PG_EXPORTER_DISABLE_DEFAULT_METRICS: "true"
+              PG_EXPORTER_DISABLE_SETTINGS_METRICS: "true"
+            securityContext:
+              allowPrivilegeEscalation: false
+              runAsNonRoot: true
+              runAsUser: 65534
+              capabilities:
+                drop:
+                  - "ALL"
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                memory: 96Mi
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /
+                    port: 9187
+                  initialDelaySeconds: 20
+                  periodSeconds: 30
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /
+                    port: 9187
+                  initialDelaySeconds: 20
+                  periodSeconds: 30
     service:
       app:
         controller: litellm
         ports:
           http:
             port: 4000
+          metrics:
+            port: 9187
     persistence:
       config:
         type: configMap
@@ -137,3 +194,11 @@ spec:
         globalMounts:
           - path: /etc/litellm
             readOnly: true
+      exporter-queries:
+        type: configMap
+        name: litellm-exporter-queries
+        advancedMounts:
+          litellm:
+            exporter:
+              - path: /etc/pg-exporter
+                readOnly: true
