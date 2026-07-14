@@ -1,0 +1,89 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: etcd-defrag
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: etcd-defrag
+  interval: 1h
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  values:
+    # Runs on a control-plane node, connects to the local Talos-managed etcd
+    # over the loopback client URL using the host's etcd PKI, then defrags every
+    # member (--cluster). Talos exposes the etcd certs at /system/secrets/etcd.
+    # kube-system is exempt from pod-security-baseline-enforce, so the
+    # privileged / hostPath / hostNetwork / hostPID pod needs no PolicyException.
+    defaultPodOptions:
+      hostNetwork: true
+      hostPID: true
+      securityContext:
+        runAsNonRoot: false
+        runAsUser: 0
+        runAsGroup: 0
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: ""
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+    controllers:
+      etcd-defrag:
+        type: cronjob
+        cronjob:
+          # Weekly, Sunday 03:00. Defrag is a brief stop-the-world per member;
+          # --move-leader + --wait-between-defrags keep it non-disruptive.
+          schedule: "0 3 * * 0"
+          concurrencyPolicy: Forbid
+          successfulJobsHistory: 1
+          failedJobsHistory: 1
+          backoffLimit: 0
+        containers:
+          app:
+            image:
+              repository: ghcr.io/ahrtr/etcd-defrag
+              tag: v0.42.0@sha256:22521435b870c41f0faca42197e0b4caf37822370ebd7ec84df492d21488ede9
+            args:
+              - --endpoints=https://127.0.0.1:2379
+              - --cluster
+              - --cacert=/certs/ca.crt
+              - --cert=/certs/server.crt
+              - --key=/certs/server.key
+              # Defrag when >50% of the 2GiB Talos quota is used, OR when a
+              # member has >100MiB of reclaimable free space (fragmentation).
+              - --defrag-rule=dbQuotaUsage > 0.5 || dbSizeFree > 100*1024*1024
+              - --move-leader
+              - --wait-between-defrags=30s
+              # Match the Talos etcd default quota-backend-bytes (2GiB), NOT the
+              # 8GiB in the upstream example — verified via etcd_server_quota_backend_bytes.
+              - --etcd-storage-quota-bytes=2147483648
+              - --auto-disalarm
+              - --disalarm-threshold=0.8
+            securityContext:
+              privileged: true
+            resources:
+              requests:
+                cpu: 25m
+                memory: 128Mi
+              limits:
+                memory: 128Mi
+    persistence:
+      certs:
+        type: hostPath
+        hostPath: /system/secrets/etcd
+        globalMounts:
+          - path: /certs
+            readOnly: true
+      tmp:
+        type: emptyDir
+        globalMounts:
+          - path: /tmp
