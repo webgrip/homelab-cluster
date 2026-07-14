@@ -29,24 +29,19 @@ list_flux_kustomizations "${repo_workspace}" "${ks_list}" "${stderr_file}"
 print_relevant_flux_local_stderr "${stderr_file}"
 
 total="$(wc -l < "${ks_list}")"
-count=0
 
-log info "Running per-kustomization flux-local builds" "workspace=${repo_workspace}" "kustomizations=${total}"
+# Render all kustomizations across PARALLELISM isolated workspace copies (see
+# run_flux_local_batch — flux-local mutates its tree, so workers can't share one). Tune
+# down if the DinD sidecar's memory ceiling (scaledjob.yaml) is hit; each concurrent
+# `flux-local build` runs an in-process helm template (~a few hundred MiB).
+PARALLELISM="${FLUX_LOCAL_PARALLELISM:-4}"
+stderr_dir="${workspace}/worker-stderr"
+mkdir -p "${stderr_dir}"
 
-while IFS=$'\t' read -r namespace name; do
-    [[ -n "${namespace}" && -n "${name}" ]] || continue
+log info "Running flux-local builds (sharded)" "workspace=${repo_workspace}" "kustomizations=${total}" "parallelism=${PARALLELISM}"
 
-    count=$((count + 1))
-    log info "Building kustomization" "index=${count}/${total}" "namespace=${namespace}" "name=${name}"
-
-    if ! run_flux_local "${repo_workspace}" \
-        "flux-local build ks ${name} -n ${namespace} --path ${FLUX_CLUSTER_PATH} >/dev/null" \
-        2>"${stderr_file}"; then
-        cat "${stderr_file}" >&2
-        exit 1
-    fi
-
-    print_relevant_flux_local_stderr "${stderr_file}"
-done < "${ks_list}"
+if ! run_flux_local_batch "${repo_workspace}" "${PARALLELISM}" "${ks_list}" "${stderr_dir}"; then
+    exit 1
+fi
 
 log info "Flux-local validation completed" "kustomizations=${total}"

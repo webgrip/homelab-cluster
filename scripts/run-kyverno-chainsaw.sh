@@ -27,18 +27,27 @@ prepare_kyverno_test_workspace "${ROOT_DIR}" "${workspace}"
 mkdir -p "${workspace}/chainsaw/reports"
 chmod -R a+rwX "${workspace}/chainsaw"
 
-log info "Creating KinD cluster for Chainsaw" "cluster=${cluster_name}"
-"${kind_bin}" create cluster --name "${cluster_name}" --kubeconfig "${kubeconfig}" --wait 2m
+log info "Creating KinD cluster for Chainsaw" "cluster=${cluster_name}" "node=${KIND_NODE_IMAGE}"
+# Pin the node image through the Harbor proxy so the ~1 GiB kindest/node pull is LAN-speed and
+# rate-limit-free instead of a cold docker.io pull on the runner's emptyDir daemon.
+"${kind_bin}" create cluster --name "${cluster_name}" --image "${KIND_NODE_IMAGE}" \
+    --kubeconfig "${kubeconfig}" --wait 2m
 chmod a+r "${kubeconfig}"
 
 log info "Installing Kyverno into KinD" "url=${KYVERNO_INSTALL_URL}"
 curl -fsSL "${KYVERNO_INSTALL_URL}" -o "${workspace}/kyverno-install.yaml"
+# Route the ghcr.io/kyverno/* controller images inside install.yaml through the Harbor proxy too
+# (same cold-pull tax as the node image). No-op when KYVERNO_IMAGE_PROXY is empty.
+if [[ -n "${KYVERNO_IMAGE_PROXY}" ]]; then
+    sed -i "s#ghcr.io/kyverno/#${KYVERNO_IMAGE_PROXY}kyverno/#g" "${workspace}/kyverno-install.yaml"
+fi
 kubectl_cmd --kubeconfig "${kubeconfig}" create -f "${workspace}/kyverno-install.yaml"
 kubectl_cmd --kubeconfig "${kubeconfig}" wait --for=condition=Established crd/clusterpolicies.kyverno.io --timeout=120s
+# Only the admission + background controllers are exercised by the suites (validate/enforce +
+# generate). The reports and cleanup controllers aren't asserted on by any chainsaw test
+# (grep-verified), so we don't block on their rollout — they still install, we just don't wait.
 kubectl_cmd --kubeconfig "${kubeconfig}" -n kyverno rollout status deploy/kyverno-admission-controller --timeout=180s
 kubectl_cmd --kubeconfig "${kubeconfig}" -n kyverno rollout status deploy/kyverno-background-controller --timeout=180s
-kubectl_cmd --kubeconfig "${kubeconfig}" -n kyverno rollout status deploy/kyverno-cleanup-controller --timeout=180s
-kubectl_cmd --kubeconfig "${kubeconfig}" -n kyverno rollout status deploy/kyverno-reports-controller --timeout=180s
 
 log info "Applying Kyverno policies under test"
 apply_with_webhook_retry() {
