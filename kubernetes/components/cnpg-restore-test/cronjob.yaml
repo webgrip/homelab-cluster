@@ -32,10 +32,14 @@ spec:
             - name: restore-test
               image: alpine/k8s:1.36.1@sha256:692239d739589247c4a791205ed9619c28ae85a21286e19a6211c04a62c56668
               imagePullPolicy: IfNotPresent
+              resources:
+                requests: {cpu: 25m, memory: 64Mi}
+                limits: {memory: 256Mi}
               securityContext:
                 allowPrivilegeEscalation: false
                 capabilities:
-                  drop: ["ALL"]
+                  drop:
+                    - "ALL"
               env:
                 - name: NAMESPACE
                   valueFrom:
@@ -60,7 +64,7 @@ spec:
               command:
                 - /bin/sh
                 - -ceu
-                - |
+                - |-
                   echo "[cnpg-restore-test] starting"
 
                   # Run once per new completed Backup object.
