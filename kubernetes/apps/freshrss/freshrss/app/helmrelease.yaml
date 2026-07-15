@@ -95,20 +95,34 @@ spec:
               readOnlyRootFilesystem: true
               capabilities: {drop: ["ALL"]}
             probes:
+              # pgbouncer binds ONLY 127.0.0.1:5432 (loopback -- app talks to it locally with a
+              # stable cred, see the comment above). Kubernetes' tcpSocket probe connects to the
+              # POD IP from the kubelet, not the pod's own loopback, so it can NEVER reach a
+              # loopback-only listener -- confirmed live: it 3x-failed and SIGTERM'd this
+              # container in a restart loop. An exec probe runs inside the pod's network
+              # namespace instead, where 127.0.0.1 correctly resolves to the shared pod loopback.
               liveness:
                 enabled: true
                 custom: true
                 spec:
-                  tcpSocket:
-                    port: 5432
+                  exec:
+                    command:
+                      - "nc"
+                      - "-z"
+                      - "127.0.0.1"
+                      - "5432"
                   initialDelaySeconds: 5
                   periodSeconds: 15
               readiness:
                 enabled: true
                 custom: true
                 spec:
-                  tcpSocket:
-                    port: 5432
+                  exec:
+                    command:
+                      - "nc"
+                      - "-z"
+                      - "127.0.0.1"
+                      - "5432"
                   initialDelaySeconds: 5
                   periodSeconds: 15
             resources:

@@ -130,15 +130,30 @@ spec:
               mountPath: /etc/supervisord.conf
               subPath: supervisord.conf
               readOnly: true
-          # php-fpm speaks FastCGI, not HTTP -- a TCP accept check is the natural probe.
+          # php-fpm speaks FastCGI, not HTTP. Verified live: this image's php-fpm binds
+          # [::]:9000 (IPv6 wildcard), not a plain IPv4 listener -- whether Kubernetes'
+          # tcpSocket probe (kubelet, outside the pod netns, connecting to the pod's
+          # IPv4 address) reliably reaches that via the kernel's dual-stack mapping is
+          # exactly the kind of assumption that just broke pgbouncer's probe the same
+          # way (loopback-only bind, tcpSocket connects to the pod IP not loopback).
+          # An exec probe runs inside the pod's own network namespace, so it reaches
+          # the FastCGI listener correctly regardless of which interface it bound.
           readinessProbe:
-            tcpSocket:
-              port: fpm
+            exec:
+              command:
+                - "nc"
+                - "-z"
+                - "127.0.0.1"
+                - "9000"
             initialDelaySeconds: 10
             periodSeconds: 10
           livenessProbe:
-            tcpSocket:
-              port: fpm
+            exec:
+              command:
+                - "nc"
+                - "-z"
+                - "127.0.0.1"
+                - "9000"
             initialDelaySeconds: 20
             periodSeconds: 15
           resources:
