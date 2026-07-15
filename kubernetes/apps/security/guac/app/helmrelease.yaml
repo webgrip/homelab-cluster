@@ -53,28 +53,18 @@ spec:
             operator: Equal
             value: fringe
             effect: NoSchedule
-        # NOTE: chart 0.8.0's rest-api template does NOT render resources — this
-        # block is aspirational until fixed upstream; the pod runs BestEffort.
-        resources:
-          requests:
-            cpu: 100m
-            memory: 256Mi
-          limits:
-            cpu: 500m
-            memory: 512Mi
+        # Chart 0.8.0's rest-api template does not render this key at all — it's
+        # dropped silently. Actual resources come from the postRenderer below.
+        resources: {}
       visualizer:
         tolerations:
           - key: dedicated
             operator: Equal
             value: fringe
             effect: NoSchedule
-        resources:
-          requests:
-            cpu: 50m
-            memory: 128Mi
-          limits:
-            cpu: 500m
-            memory: 512Mi
+        # Chart 0.8.0's visualizer template does not render this key at all — it's
+        # dropped silently. Actual resources come from the postRenderer below.
+        resources: {}
       observability:
         deployServiceMonitor: true
       sampleData:
@@ -190,9 +180,38 @@ spec:
                 name: security-s3
                 key: S3_GUAC_BUCKET
 
+    # guac-nats-0 ran BestEffort (chart sets no resources by default) and was
+    # repeatedly OOM-killed by Talos's PSI OOMController despite using <15Mi per
+    # container — BestEffort pods are first in line regardless of actual usage.
+    # Guaranteed QoS (req==limit) on all 3 containers, same fix class as the
+    # longhorn-manager OOM cascade:
+    # docs/techdocs/docs/incidents/2026-06-09-longhorn-oom-cascade.md.
     nats:
+      nats:
+        resources:
+          requests:
+            cpu: 50m
+            memory: 32Mi
+          limits:
+            cpu: 50m
+            memory: 32Mi
+      reloader:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 10m
+            memory: 16Mi
       exporter:
         enabled: true
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 10m
+            memory: 32Mi
         serviceMonitor:
           enabled: true
           namespace: observability
@@ -202,3 +221,66 @@ spec:
     # Use the cluster-wide Garage S3 instead of a chart-bundled MinIO.
     minio:
       enabled: false
+
+  # rest-api and visualizer ran BestEffort: chart 0.8.0's guacrest-deployment.yaml
+  # and visualizer-deployment.yaml templates never reference `.resources` at all
+  # (confirmed against the pulled chart source — not a values-naming issue, values
+  # set under guac.restApi.resources/guac.visualizer.resources are silently
+  # dropped). Patch resources onto the rendered Deployments directly, Guaranteed
+  # QoS (req==limit), same fix class as the longhorn-manager OOM cascade:
+  # docs/techdocs/docs/incidents/2026-06-09-longhorn-oom-cascade.md.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              group: apps
+              version: v1
+              kind: Deployment
+              name: rest-api
+            patch: |-
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: rest-api
+              spec:
+                template:
+                  spec:
+                    containers:
+                      - name: rest-api
+                        resources:
+                          requests:
+                            cpu: 50m
+                            memory: 128Mi
+                          limits:
+                            cpu: 50m
+                            memory: 128Mi
+          - target:
+              group: apps
+              version: v1
+              kind: Deployment
+              name: visualizer
+            patch: |-
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: visualizer
+              spec:
+                template:
+                  spec:
+                    containers:
+                      - name: nginx
+                        resources:
+                          requests:
+                            cpu: 25m
+                            memory: 32Mi
+                          limits:
+                            cpu: 25m
+                            memory: 32Mi
+                      - name: visualizer
+                        resources:
+                          requests:
+                            cpu: 50m
+                            memory: 128Mi
+                          limits:
+                            cpu: 50m
+                            memory: 128Mi
