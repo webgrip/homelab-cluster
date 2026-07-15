@@ -23,6 +23,21 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: forgejo
+    # flux-system's source-controller fetches THIS repo's git tarball straight from
+    # forgejo-http.forgejo.svc.cluster.local:3000 -- a genuine pod-to-service HTTP call
+    # into this namespace, unlike any other app here. An explicit namespace-identity
+    # rule, not the LAN ipBlock below: that ipBlock's /8 happens to mathematically cover
+    # the pod-network range too, but relying on that overlap for the one dependency that
+    # gates Flux reconciling the ENTIRE cluster (not just forgejo) isn't worth the risk
+    # given this repo's own documented Cilium Service-VIP/identity gotchas (see
+    # components/gateway-egress and components/cnpg-netpol).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: flux-system
+      ports:
+        - protocol: TCP
+          port: 3000
     # gateway (network ns) + LAN -- all ports (HTTP 3000, SSH 22, gitea-mirror UI 4321;
     # avoid port-guessing breaking git-over-ssh or the web UI, same rationale as harbor).
     - from:
