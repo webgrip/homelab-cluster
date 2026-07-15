@@ -117,3 +117,45 @@ spec:
               - Populate the value: `just harbor-s3-cred` (S3); see the Harbor runbook.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/harbor"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/harbor/harbor"
+
+        - alert: HarborProxyReconcileStale
+          # The reconcile CronJob exits non-zero (ADR-0046) when a credentialed upstream
+          # (docker-hub / ghcr) fails its Harbor health check, so a stale last-success
+          # timestamp is the alertable signal for an expired/revoked pull-through token —
+          # the exact condition that broke CI cold-pulls on 2026-07-15. Threshold > 2h
+          # spans two hourly cycles, so a single transient ping blip self-clears.
+          expr: |
+            time() - kube_cronjob_status_last_successful_time{namespace="harbor", cronjob="harbor-proxy-config"} > 7800
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: harbor
+          annotations:
+            summary: "Harbor proxy-cache reconcile stale >2h — upstream token likely expired (harbor)"
+            description: |
+              What's happening:
+              - The hourly harbor-proxy-config CronJob has not completed successfully for >2h.
+                Since ADR-0046 the job fails when a credentialed upstream (docker-hub / ghcr)
+                can't authenticate, so this most often means an EXPIRED or REVOKED token — not
+                a crashed job.
+
+              Impact/risk:
+              - Cold (un-cached) pulls of docker.io / ghcr.io images return 404/401 at pull time —
+                CI kind nodes, charts, base images. This is the failure that broke CI on 2026-07-15.
+
+              Likely causes:
+              - Docker Hub PAT or GHCR PAT expired/revoked.
+              - A stale token value in the Secret (reconcile now PUTs creds onto existing
+                registries, but a wrong value still fails upstream auth).
+              - CronJob not scheduling (suspended, or nodes unschedulable).
+
+              First actions:
+              - kubectl -n harbor logs job/$(kubectl -n harbor get job -l job-name -o name --sort-by=.metadata.creationTimestamp | tail -1 | cut -d/ -f2)
+                # look for "failed health check", "secret is expired", or "denied"
+              - Rotate the token in OpenBao (secret/harbor/registry-proxy: DOCKERHUB_TOKEN / GHCR_TOKEN),
+                let ESO sync, then force a run:
+                kubectl -n harbor create job --from=cronjob/harbor-proxy-config harbor-proxy-config-manual
+              - See the Harbor runbook (proxy-cache credential rotation).
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/harbor"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/harbor/harbor"

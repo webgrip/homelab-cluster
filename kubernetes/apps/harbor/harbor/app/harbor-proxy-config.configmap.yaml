@@ -22,6 +22,10 @@ data:
     # log to stderr: ensure_registry is called via $(...), so logging to stdout would be
     # captured into the returned registry id and corrupt it (the project-create bug).
     log() { echo "[harbor-proxy-config] $$*" >&2; }
+    # Set to 1 by verify_registry_health when a credentialed upstream cannot
+    # authenticate; the script then exits non-zero at the end so the Job fails
+    # and HarborProxyReconcileStale fires (ADR-0046 fail-loud on credential drift).
+    HEALTH_FAILED=0
 
     if [ -z "$${HARBOR_ADMIN_PASSWORD:-}" ]; then
       log "harbor-admin password not present; exiting 0 (will retry)"; exit 0
@@ -59,6 +63,20 @@ data:
       _name="$$1"; _type="$$2"; _url="$$3"; _user="$${4:-}"; _pass="$${5:-}"
       _id="$$(registry_id "$$_name")"
       if [ -n "$$_id" ] && [ "$$_id" != "null" ]; then
+        # Converge credentials onto the EXISTING endpoint. The create path below
+        # only runs on first provisioning, so without this a rotated token in
+        # secret/harbor/registry-proxy would never reach Harbor — the create-only
+        # gap that caused the 2026-07-15 cold-pull outage (ADR-0046). RegistryUpdate
+        # takes FLAT fields (credential_type/access_key/access_secret), NOT the
+        # nested `credential` object the create (POST /registries) shape uses.
+        if [ -n "$$_user" ] && [ -n "$$_pass" ]; then
+          _upd="{\"credential_type\":\"basic\",\"access_key\":\"$$_user\",\"access_secret\":\"$$_pass\"}"
+          if hc PUT "/registries/$$_id" "$$_upd" >/dev/null 2>&1; then
+            log "registry '$$_name' (id=$$_id) credentials converged"
+          else
+            log "WARN: failed to converge credentials on registry '$$_name' (id=$$_id)"
+          fi
+        fi
         log "registry '$$_name' already exists (id=$$_id)"; echo "$$_id"; return 0
       fi
       if [ -n "$$_user" ] && [ -n "$$_pass" ]; then
@@ -73,6 +91,23 @@ data:
         log "WARN: failed to create registry endpoint '$$_name': $$_out"; return 0
       fi
       registry_id "$$_name"
+    }
+
+    # verify_registry_health NAME ID -> actively ping the STORED credential via the
+    # Harbor API (POST /registries/ping {"id":N}). On failure — an expired/revoked
+    # upstream token — set HEALTH_FAILED so the run exits non-zero and alerts, rather
+    # than silently serving auth-failed cache misses to CI. Retries to ride out blips.
+    verify_registry_health() {
+      _name="$$1"; _id="$$2"; _n=0
+      while [ "$$_n" -lt 3 ]; do
+        if hc POST "/registries/ping" "{\"id\":$$_id}" >/dev/null 2>&1; then
+          log "registry '$$_name' (id=$$_id) health check OK"; return 0
+        fi
+        _n=$$((_n+1)); sleep 5
+      done
+      log "ERROR: registry '$$_name' (id=$$_id) failed health check — upstream auth likely expired/revoked"
+      HEALTH_FAILED=1
+      return 1
     }
 
     # ensure_proxy_project NAME REGISTRY_ID
@@ -202,12 +237,18 @@ data:
     # docker.io -> proxy project "dockerhub"
     DH_ID="$$(ensure_registry docker-hub docker-hub https://hub.docker.com \
       "$${DOCKERHUB_USERNAME:-}" "$${DOCKERHUB_TOKEN:-}")"
-    [ -n "$$DH_ID" ] && [ "$$DH_ID" != "null" ] && ensure_proxy_project dockerhub "$$DH_ID"
+    if [ -n "$$DH_ID" ] && [ "$$DH_ID" != "null" ]; then
+      ensure_proxy_project dockerhub "$$DH_ID"
+      [ -n "$${DOCKERHUB_TOKEN:-}" ] && verify_registry_health docker-hub "$$DH_ID" || true
+    fi
 
     # ghcr.io -> proxy project "ghcr" (generic docker-registry provider; robust for pull-through)
     GH_ID="$$(ensure_registry ghcr docker-registry https://ghcr.io \
       "$${GHCR_USERNAME:-}" "$${GHCR_TOKEN:-}")"
-    [ -n "$$GH_ID" ] && [ "$$GH_ID" != "null" ] && ensure_proxy_project ghcr "$$GH_ID"
+    if [ -n "$$GH_ID" ] && [ "$$GH_ID" != "null" ]; then
+      ensure_proxy_project ghcr "$$GH_ID"
+      [ -n "$${GHCR_TOKEN:-}" ] && verify_registry_health ghcr "$$GH_ID" || true
+    fi
 
     # Anonymous upstreams (no creds needed); each maps to a Talos machine.registries mirror.
     # quay.io -> proxy project "quay" (prometheus, jetstack/cert-manager)
@@ -240,4 +281,8 @@ data:
     ensure_retention webgrip
     ensure_project_scanning webgrip
 
+    if [ "$$HEALTH_FAILED" != "0" ]; then
+      log "reconcile finished but a credentialed upstream failed its health check — exiting 1 (HarborProxyReconcileStale will fire)"
+      exit 1
+    fi
     log "reconcile complete"
