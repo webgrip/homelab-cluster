@@ -33,10 +33,14 @@ spec:
             runAsGroup: 1000
             fsGroup: 1000
             fsGroupChangePolicy: OnRootMismatch
+            seccompProfile:
+              type: RuntimeDefault
         containers:
           app:
             image:
-              repository: docker.io/vikunja/vikunja
+              # Routed through the Harbor pull-through proxy-cache (ADR-0025).
+              # Same digest, verified via docker manifest inspect before landing.
+              repository: harbor.webgrip.dev/dockerhub/vikunja/vikunja
               tag: 2.3.0@sha256:f6b80393c1998cd5cd0dc38d24762c59ab4c10000a6f1032ef5b554e262cab93
             env:
               # --- database (CNPG vikunja-db; app secret is operator-generated) ---
