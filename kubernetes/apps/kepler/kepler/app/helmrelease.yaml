@@ -29,13 +29,32 @@ spec:
       # renovate: datasource=docker depName=quay.io/sustainable_computing_io/kepler
       tag: v0.11.4@sha256:1936d0e05276296cd4aeb0315b1c5fee5024c115bbead03daf3b3cf9b485dafc
     # DaemonSet: chart defaults already set hostPID + control-plane tolerations so
-    # it runs on every node. Privileged + root are required to read host RAPL via
-    # /sys powercap (paired with the kepler-privileged Kyverno exception). Explicit
-    # requests keep it Burstable (this cluster OOM-kills BestEffort pods).
+    # it runs on every node. Explicit requests keep it Burstable (this cluster
+    # OOM-kills BestEffort pods).
     daemonset:
+      # Real fix, not the blanket privileged:true the chart defaults to (ticket #68).
+      # Kepler 0.11.x's RAPL path is pure sysfs reads (github.com/prometheus/procfs/
+      # sysfs) -- no eBPF, so CAP_BPF/CAP_PERFMON are irrelevant. Kepler's own
+      # actively-maintained operator (sustainable-computing-io/kepler-operator
+      # pkg/components/power-monitor/deployment.go) runs unprivileged with exactly
+      # this capability set: "Kepler requires CAP_SYS_PTRACE to read /proc, hence
+      # drop ALL capabilities and set Privileged to false". Verified live after
+      # rollout: kepler_node_cpu_watts still reports real, changing RAPL wattage.
+      # runAsNonRoot/seccompProfile are NOT set: upstream's own hardened config
+      # still runs as root (RAPL energy_uj files are root-owned mode 0400; without
+      # CAP_DAC_READ_SEARCH, dropping to non-root would break reads) and doesn't
+      # set a seccomp profile either -- untested upstream, left as a follow-up
+      # rather than guessed at on a fleet-wide DaemonSet.
       securityContext:
-        privileged: true
+        privileged: false
         runAsNonRoot: false
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - "ALL"
+          add:
+            - "SYS_PTRACE"
       resources:
         requests:
           # Light sysfs reader — keep the request tiny so it also fits worker-1,
