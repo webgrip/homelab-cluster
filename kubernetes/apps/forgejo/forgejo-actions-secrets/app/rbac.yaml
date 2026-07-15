@@ -48,3 +48,13 @@ subjects:
   - kind: ServiceAccount
     name: forgejo-ci-provisioner
     namespace: forgejo
+---
+# Identity for the forgejo-actions-secrets sync CronJob. It only talks to the Forgejo
+# HTTP API (see the cronjob's own automountServiceAccountToken: false), never the k8s
+# API, so this SA carries no RBAC -- named identity only.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: forgejo-actions-secrets
+  namespace: forgejo
+automountServiceAccountToken: false
