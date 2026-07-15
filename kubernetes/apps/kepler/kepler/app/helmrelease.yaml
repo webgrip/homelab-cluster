@@ -19,8 +19,15 @@ spec:
       remediateLastFailure: true
   values:
     image:
+      # Routed through the Harbor pull-through proxy-cache (ADR-0025) instead of
+      # quay.io direct. Digest verified live (running pod imageID) and via
+      # `docker buildx imagetools inspect` against the Harbor proxy before
+      # landing -- same content, no version change. The chart has no separate
+      # digest field, so it's appended inline onto tag (repo:tag@digest), same
+      # pattern as gitea-mirror/KEDA. VIK-241/242, ticket #68.
+      repository: harbor.webgrip.dev/quay/sustainable_computing_io/kepler
       # renovate: datasource=docker depName=quay.io/sustainable_computing_io/kepler
-      tag: v0.11.4
+      tag: v0.11.4@sha256:1936d0e05276296cd4aeb0315b1c5fee5024c115bbead03daf3b3cf9b485dafc
     # DaemonSet: chart defaults already set hostPID + control-plane tolerations so
     # it runs on every node. Privileged + root are required to read host RAPL via
     # /sys powercap (paired with the kepler-privileged Kyverno exception). Explicit
