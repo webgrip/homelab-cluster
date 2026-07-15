@@ -27,6 +27,22 @@ spec:
     # KEDA bundles its CRDs in the chart.
     crds:
       install: true
+    # Route the chart's default ghcr.io/kedacore/* images through the Harbor
+    # pull-through proxy-cache (ADR-0025) instead of ghcr.io direct. The chart
+    # has no dedicated digest field, so digests are appended inline onto tag
+    # (repo:tag@digest) -- same pattern as gitea-mirror. Digests verified live
+    # (running pod imageIDs) and via `docker manifest inspect` against Harbor
+    # before landing. VIK-241/242.
+    image:
+      keda:
+        registry: harbor.webgrip.dev/ghcr
+        tag: "2.20.0@sha256:f9b156ce154d2557a284c4a11c258ccf8a4a02d7cfde339592b09267131c7df1"
+      metricsApiServer:
+        registry: harbor.webgrip.dev/ghcr
+        tag: "2.20.0@sha256:adbcb6f77a8e2a63f80723fe4cf9031dd204498f0d985d8856aaed15be03b0e6"
+      webhooks:
+        registry: harbor.webgrip.dev/ghcr
+        tag: "2.20.0@sha256:acb89f0fa76adf6cd2fb6f88c395619bd21b225ab0ef1bf4b9d2d50d537372a5"
     operator:
       replicaCount: 1
     metricsServer:

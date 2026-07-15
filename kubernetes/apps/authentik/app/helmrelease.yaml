@@ -29,8 +29,11 @@ spec:
     global:
       # Route the chart's default ghcr.io/goauthentik/server image through the
       # Harbor pull-through proxy-cache (ADR-0025) instead of ghcr.io direct.
+      # Digest verified live (running pod imageID) and via `docker buildx
+      # imagetools inspect` against the Harbor proxy before landing. VIK-242.
       image:
         repository: harbor.webgrip.dev/ghcr/goauthentik/server
+        digest: sha256:3ddf09bbf69ded6a9634ecd753a01608d477f811e99bb5ffe9fc2ef7ad1c6581
       # Pod-level hardening for all authentik components. The goauthentik image
       # already runs as uid 1000 (verified live), so runAsNonRoot formalizes it.
       securityContext:
