@@ -25,7 +25,20 @@ ks_list="${workspace}/kustomizations.tsv"
 stderr_file="${workspace}/flux-local.stderr"
 
 prepare_flux_local_workspace "${ROOT_DIR}" "${repo_workspace}"
-list_flux_kustomizations "${repo_workspace}" "${ks_list}" "${stderr_file}"
+
+# list_flux_kustomizations's underlying `flux build` mutates (renames-to-.original then
+# restores) every kustomization.yaml it resolves while walking the tree, and restores them
+# owned by the flux-local container's UID with mode 644 -- not the a+rwX prepare_flux_local_workspace
+# set. rsync (run as the host user, unprivileged) can't preserve that foreign UID on copy, so
+# any later worker fan-out copied FROM a workspace list_flux_kustomizations touched inherits
+# 644-owned-by-host-user files that the (different-UID) build containers can no longer write to
+# -- "open .../kustomization.yaml: permission denied" on the very first build. Give this step
+# its own disposable copy so its mutation never reaches repo_workspace, which run_flux_local_batch
+# fans out from for every parallel worker.
+list_workspace="${workspace}/list"
+rsync -a "${repo_workspace}/" "${list_workspace}/"
+list_flux_kustomizations "${list_workspace}" "${ks_list}" "${stderr_file}"
+rm -rf "${list_workspace}"
 print_relevant_flux_local_stderr "${stderr_file}"
 
 total="$(wc -l < "${ks_list}")"
