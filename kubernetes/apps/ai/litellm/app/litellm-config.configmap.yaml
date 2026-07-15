@@ -6,11 +6,12 @@ metadata:
 data:
   # LiteLLM proxy configuration — the metered inference plane (ADR-0044).
   # Carries NO secrets: os.environ/* is resolved at runtime from the pod env
-  # (ANTHROPIC_API_KEY + LITELLM_MASTER_KEY from the litellm-secret ExternalSecret;
-  # DATABASE_URL from the CNPG secret). Mounted at /etc/litellm/config.yaml.
+  # (ANTHROPIC_API_KEY + DEEPSEEK_API_KEY + LITELLM_MASTER_KEY from the
+  # litellm-secret ExternalSecret; DATABASE_URL from the CNPG secret).
+  # Mounted at /etc/litellm/config.yaml.
   config.yaml: |-
-    # ⚠️ Verify model IDs against the current Anthropic API catalog — the `model:`
-    # string must be a real Anthropic API model. The proxy starts regardless; a
+    # ⚠️ Verify model IDs against the current provider API catalogs — the `model:`
+    # string must be a real upstream model. The proxy starts regardless; a
     # model is only contacted when a request names it. Add/rename freely.
     model_list:
       - model_name: claude-opus-4-8
@@ -25,6 +26,14 @@ data:
         litellm_params:
           model: anthropic/claude-haiku-4-5
           api_key: os.environ/ANTHROPIC_API_KEY
+      - model_name: deepseek-chat
+        litellm_params:
+          model: deepseek/deepseek-chat
+          api_key: os.environ/DEEPSEEK_API_KEY
+      - model_name: deepseek-reasoner
+        litellm_params:
+          model: deepseek/deepseek-reasoner
+          api_key: os.environ/DEEPSEEK_API_KEY
 
     general_settings:
       # Admin credential used to mint virtual keys (per-dev / per-agent / per-task)
