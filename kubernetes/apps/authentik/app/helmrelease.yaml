@@ -134,6 +134,11 @@ spec:
       # node-level HA. Node-level HA needs media on Garage S3 first, then
       # unpinning from fringe (tracked as a follow-up).
       replicas: 2
+      # NOTE: serviceAccount.create below only creates a SA for the "managed outposts"
+      # (remote-cluster) subchart feature -- server/worker never consume it unless
+      # this field is set explicitly (verified live: pods ran under `default` despite
+      # serviceAccount.create: true). See serviceaccount.yaml.
+      serviceAccountName: authentik-app
       containerSecurityContext:
         allowPrivilegeEscalation: false
         capabilities:
@@ -168,6 +173,7 @@ spec:
 
     worker:
       replicas: 1
+      serviceAccountName: authentik-app
       containerSecurityContext:
         allowPrivilegeEscalation: false
         capabilities:
