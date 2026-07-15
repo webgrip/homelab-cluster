@@ -70,7 +70,7 @@ spec:
           # of the pinned forgejo/runner image into a shared volume the main container execs from.
           # No bespoke image rebuild needed to prove the runner (ADR-0026).
           - name: runner-bin
-            image: code.forgejo.org/forgejo/runner:12.10.2@sha256:379b324d6942824b7487706c0a06be4d63e546c17b62bece4ae18c74364a8fae
+            image: harbor.webgrip.dev/forgejo/forgejo/runner:12.10.2@sha256:379b324d6942824b7487706c0a06be4d63e546c17b62bece4ae18c74364a8fae
             command:
               - sh
               - -ec
@@ -94,7 +94,7 @@ spec:
               requests: {cpu: 10m, memory: 32Mi}
               limits: {memory: 64Mi}
           - name: dind
-            image: docker:29.5.3-dind@sha256:ad68e89b675740867a3bb96488a93fea9209ad36c6305bfba2664912d6dcf11a
+            image: harbor.webgrip.dev/dockerhub/library/docker:29.5.3-dind@sha256:ad68e89b675740867a3bb96488a93fea9209ad36c6305bfba2664912d6dcf11a
             restartPolicy: Always
             securityContext:
               privileged: true
@@ -142,6 +142,10 @@ spec:
             # glibc image and the dind sidecar is reachable. JS actions (actions/checkout,
             # tj-actions/changed-files) run on Node, which the actions-runner base bundles under
             # externals/ but does NOT put on PATH — so the args below prepend it (see there).
+            # Deliberately NOT Harbor-proxied like the sidecars above: image-verify-audit and
+            # image-verify-harbor-audit cosign-verify this first-party image by matching the
+            # literal "ghcr.io/webgrip/*" prefix (VIK-241 comment) -- proxying it through
+            # harbor.webgrip.dev/ghcr/webgrip/* would silently drop signature verification.
             image: ghcr.io/webgrip/github-runner@sha256:87be5b6502926b9fc128ab8804fe38672dbaf28f0f72fe63c791f9df88c2b5e9
             command:
               - bash
