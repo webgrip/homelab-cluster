@@ -1,0 +1,101 @@
+---
+# Zero-trust for forgejo (W7). The namespace label generates default-deny + allow-dns.
+# Handled conservatively (same posture as harbor): this is the git server this very
+# repo pushes/pulls through and Flux reconciles from, plus a general-purpose CI runner
+# with a privileged DinD sidecar -- broad outbound is a real, unavoidable requirement
+# here (arbitrary image pulls, arbitrary repo clones, package installs during CI
+# steps), not a shortcut. Components talk to each other intra-namespace (forgejo app,
+# forgejo-db, gitea-mirror, the runner, the secrets/token provisioner Jobs).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: forgejo-allow-ingress
+  labels:
+    app.kubernetes.io/part-of: forgejo
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    # intra-namespace component mesh (all ports) -- gitea-mirror/runner/provisioners
+    # all talk to forgejo's HTTP API; app talks to db.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: forgejo
+    # gateway (network ns) + LAN -- all ports (HTTP 3000, SSH 22, gitea-mirror UI 4321;
+    # avoid port-guessing breaking git-over-ssh or the web UI, same rationale as harbor).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: network
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16
+        - ipBlock:
+            cidr: 127.0.0.0/8
+        - ipBlock:
+            cidr: fd00::/8
+        - ipBlock:
+            cidr: ::1/128
+    # Prometheus (observability ns) scraping forgejo metrics
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+    # CNPG operator (cnpg-system) -> instance status (8000) + Postgres (5432).
+    # Without this the operator can't extract instance status, so the Cluster
+    # never reports Ready (CNPG-managed control-plane, not the app).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: forgejo-allow-egress
+  labels:
+    app.kubernetes.io/part-of: forgejo
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # intra-namespace component mesh
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: forgejo
+    # NOTE: egress to the envoy gateway (ns network) for forgejo's server-side OIDC
+    # discovery to authentik is granted by the shared components/gateway-egress
+    # component (see ADR-0005), NOT a rule here -- a CIDR/port rule cannot express it
+    # under Cilium.
+    # kube-apiserver ClusterIP: CNPG instance manager (db pod) needs the k8s API, and
+    # so do forgejo-runner-provisioner + forgejo-ci-provisioner (RBAC-scoped Secret
+    # read/write, SA token automounted -- unlike the other provisioner Jobs in this
+    # namespace, which don't touch the k8s API at all).
+    - to:
+        - ipBlock:
+            cidr: 10.43.0.1/32
+      ports:
+        - protocol: TCP
+          port: 443
+    # internet + LAN: Garage S3 (10.0.0.110:3900, forgejo's bulk-object storage +
+    # backups), gitea-mirror pulling from GitHub, the CI runner pulling arbitrary
+    # images/cloning arbitrary repos/installing packages during workflow steps.
+    # Blocks only direct cross-namespace pod IPs (same shape as harbor's egress).
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.42.0.0/16
+              - 10.43.0.0/16
