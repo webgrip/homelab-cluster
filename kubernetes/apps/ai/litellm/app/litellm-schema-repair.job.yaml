@@ -1,0 +1,62 @@
+---
+# One-shot repair for the v1.83.7 -> v1.83.14 image bump (2026-07-15): `prisma
+# migrate deploy` reports "no pending migrations" (118/118 applied) yet several
+# tables are missing columns the running code queries (LiteLLM_TeamMembership,
+# LiteLLM_TeamTable, LiteLLM_VerificationToken, LiteLLM_MCPServerTable). LiteLLM's
+# own startup log names this failure mode directly: "Using default (v1) migration
+# resolver... schema thrashing during rolling deploys... diff-and-force recovery" —
+# the migration ledger gets marked applied without the DDL actually landing.
+# `prisma db push` reconciles the live schema straight from schema.prisma,
+# bypassing the corrupted ledger. Same image/digest as the running Deployment so
+# it operates on the identical schema.prisma the app itself expects. Delete once
+# the Admin UI Team/Models pages are confirmed healthy.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: litellm-schema-repair
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      nodeSelector:
+        node.webgrip.io/pool: worker # ADR-0002 — off the soyo control planes
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: repair
+          image: ghcr.io/berriai/litellm-database:v1.83.14-stable@sha256:da4ab06d9d57da205263877425544d6df8e78147737b0dd8dc1e9e93a6d8ac2e
+          command:
+            - /bin/sh
+            - -ceu
+            - |
+              SCHEMA=$(find /app -maxdepth 8 -iname 'schema.prisma' 2>/dev/null | head -1)
+              echo "schema.prisma: ${SCHEMA:-NOT FOUND}"
+              [ -n "$SCHEMA" ] || { echo "FATAL: schema.prisma not found under /app" >&2; exit 1; }
+              PY=/app/.venv/bin/python3
+              [ -x "$PY" ] || PY=/app/.venv/bin/python
+              cd "$(dirname "$SCHEMA")"
+              echo "--- diff preview (informational, best-effort) ---"
+              "$PY" -m prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel "$SCHEMA" --script || true
+              echo "--- applying db push from $(pwd) with $PY ---"
+              "$PY" -m prisma db push --accept-data-loss --schema="$SCHEMA"
+              echo "--- schema repair complete ---"
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-db-app
+                  key: uri
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - "ALL"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
