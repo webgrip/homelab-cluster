@@ -210,8 +210,19 @@ spec:
             emptyDir: {}
           - name: runner-bin
             emptyDir: {}
+          # tmpfs (RAM), not disk. This is where the e2e validators land their mktemp
+          # workspaces (TMPDIR=/mnt/ci-shared). flux-local's render renames every
+          # kustomization.yaml in its tree to .original and back per build -- metadata/IOPS-heavy
+          # churn that pinned fringe-workstation's single disk at 57-91% busy for the whole
+          # render (measured 2026-07-15). On disk that made flux-local slow AND starved the
+          # concurrently-scheduled chainsaw job's KinD etcd of fsync IOPS ("etcdserver: request
+          # timed out"). In RAM the churn is free and the physical disk stays idle for etcd.
+          # sizeLimit caps RAM use (charged to the writing container's cgroup); the e2e
+          # workspaces are ~100 MiB, well under it.
           - name: ci-shared
-            emptyDir: {}
+            emptyDir:
+              medium: Memory
+              sizeLimit: 2Gi
   triggers:
     - type: forgejo-runner
       metadata:
