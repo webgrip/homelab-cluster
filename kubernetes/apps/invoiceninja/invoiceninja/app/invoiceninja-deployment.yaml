@@ -130,6 +130,17 @@ spec:
               mountPath: /etc/supervisord.conf
               subPath: supervisord.conf
               readOnly: true
+          # php-fpm speaks FastCGI, not HTTP -- a TCP accept check is the natural probe.
+          readinessProbe:
+            tcpSocket:
+              port: fpm
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: fpm
+            initialDelaySeconds: 20
+            periodSeconds: 15
           resources:
             requests:
               cpu: 75m
@@ -185,6 +196,24 @@ spec:
             - name: storage
               mountPath: /var/www/app/storage
               subPath: storage
+          # `schedule:work` is a foreground loop with no listening port -- an exec
+          # process check is the natural probe (its cmdline always contains this arg).
+          readinessProbe:
+            exec:
+              command:
+                - "pgrep"
+                - "-f"
+                - "schedule:work"
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          livenessProbe:
+            exec:
+              command:
+                - "pgrep"
+                - "-f"
+                - "schedule:work"
+            initialDelaySeconds: 10
+            periodSeconds: 30
           resources:
             requests:
               cpu: 40m

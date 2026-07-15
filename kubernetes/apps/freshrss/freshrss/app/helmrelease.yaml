@@ -94,6 +94,23 @@ spec:
               allowPrivilegeEscalation: false
               readOnlyRootFilesystem: true
               capabilities: {drop: ["ALL"]}
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  tcpSocket:
+                    port: 5432
+                  initialDelaySeconds: 5
+                  periodSeconds: 15
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  tcpSocket:
+                    port: 5432
+                  initialDelaySeconds: 5
+                  periodSeconds: 15
             resources:
               requests:
                 cpu: 10m
@@ -123,6 +140,9 @@ spec:
                       last="$$cur"
                     fi
                   fi
+                  # Heartbeat for the liveness/readiness probe below -- this is a foreground
+                  # watch loop with no listening port, so a fresh-mtime file is the probe signal.
+                  touch /var/run/pgbouncer/reload-heartbeat
                   sleep 10
                 done
             securityContext:
@@ -131,6 +151,34 @@ spec:
               allowPrivilegeEscalation: false
               readOnlyRootFilesystem: true
               capabilities: {drop: ["ALL"]}
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  exec:
+                    # Heartbeat touched every 10s; failing to refresh within a minute means the
+                    # loop is hung or dead. `find`'s own exit code ignores match results (it's
+                    # 0 as long as the path exists, even on a stale mtime) -- wrap in `[ -n ... ]`
+                    # to turn "did it print a match" into the exit code the probe actually needs.
+                    command:
+                      - "sh"
+                      - "-c"
+                      - "[ -n \"$(find /var/run/pgbouncer/reload-heartbeat -mmin -1)\" ]"
+                  initialDelaySeconds: 15
+                  periodSeconds: 20
+                  failureThreshold: 3
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  exec:
+                    command:
+                      - "sh"
+                      - "-c"
+                      - "[ -n \"$(find /var/run/pgbouncer/reload-heartbeat -mmin -1)\" ]"
+                  initialDelaySeconds: 15
+                  periodSeconds: 20
             resources:
               requests:
                 cpu: 5m
