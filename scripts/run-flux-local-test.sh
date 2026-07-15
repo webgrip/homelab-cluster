@@ -43,11 +43,17 @@ print_relevant_flux_local_stderr "${stderr_file}"
 
 total="$(wc -l < "${ks_list}")"
 
-# Render all kustomizations across PARALLELISM isolated workspace copies (see
-# run_flux_local_batch — flux-local mutates its tree, so workers can't share one). Tune
-# down if the DinD sidecar's memory ceiling (scaledjob.yaml) is hit; each concurrent
-# `flux-local build` runs an in-process helm template (~a few hundred MiB).
-PARALLELISM="${FLUX_LOCAL_PARALLELISM:-4}"
+# Render all kustomizations serially in ONE container (see run_flux_local_batch).
+#
+# PARALLELISM defaults to 1 on purpose. flux-local builds are NOT CPU-bound on the CI
+# runner — they're disk-iowait-bound: each `flux-local build` renames every
+# kustomization.yaml in its tree to .original and back (metadata-heavy, ~zero bytes). On
+# the shared worker node's disk this is the bottleneck. Fanning out to N workers on N
+# isolated tree copies just multiplies concurrent IOPS on the ONE disk -> seek-thrash. A
+# P=4 run measured 27min (node disk 57-91% busy the whole time, pod CPU <0.36 cores);
+# serial removes the thrash. Raise FLUX_LOCAL_PARALLELISM only on a runner with fast,
+# uncontended storage (e.g. a tmpfs workspace) where builds become CPU-bound.
+PARALLELISM="${FLUX_LOCAL_PARALLELISM:-1}"
 stderr_dir="${workspace}/worker-stderr"
 mkdir -p "${stderr_dir}"
 

@@ -38,16 +38,19 @@ function run_flux_local() {
         -lc "git config --global --add safe.directory /github/workspace >/dev/null && $*"
 }
 
-# Build EVERY kustomization across P parallel workers, instead of one serial
-# `docker run` per kustomization (97 container starts, fully serial — the dominant cost
-# of the e2e gate).
+# Build EVERY kustomization across P workers, instead of one `docker run` per
+# kustomization (the original spun up 97 containers, one per ks).
 #
 # `flux-local build` MUTATES its workspace in place (it renames kustomization.yaml ->
 # .original and back), so parallel builds against ONE shared tree race and corrupt each
-# other. We therefore give each worker its OWN copy of the workspace and shard the
-# kustomization list across them round-robin. Within a worker the builds stay serial
-# (the proven-safe original behaviour); parallelism is across the isolated trees. The
-# repo is tiny (~16 MiB incl. .git), so N copies are cheap next to 97 serial renders.
+# other. Each worker therefore gets its OWN copy of the workspace and the ks list is
+# sharded round-robin; within a worker the builds stay serial.
+#
+# IMPORTANT: parallelism (P>1) is a PESSIMISATION on the shared CI runner — these builds
+# are disk-iowait-bound (rename churn), not CPU-bound, so N parallel workers just thrash
+# the one node disk (measured: P=4 -> 27min, disk 57-91% busy, CPU <0.36 cores). The
+# caller defaults P=1 for that reason; only raise it on fast/uncontended storage. See
+# scripts/run-flux-local-test.sh.
 #
 # Args: BASE_WORKSPACE PARALLELISM KS_LIST STDERR_DIR
 function run_flux_local_batch() {
