@@ -18,16 +18,36 @@ metadata:
       ephemeral one-job runners can build images (DOCKER_HOST=tcp://localhost:2376).
       KEDA submits the runner as a Job, so pod-security-baseline-enforce blocks it via
       the autogen-privileged-containers rule before any runner pod exists — pending CI
-      jobs are then never picked up. This waives ONLY the privileged-containers rule for
-      runner Jobs/Pods; all other baseline controls (host namespaces, hostPath, host
-      ports) still apply. Tracking: ADR-0026 — revisit if the runner moves to a
-      rootless/sysbox DinD that no longer needs privileged.
+      jobs are then never picked up. dind's privileged:true also inherently trips
+      workload-hardening-audit's privilege-escalation/run-as-non-root/check-seccomp-strict
+      and workload-advanced-hardening-audit's require-drop-all-capabilities at the POD
+      level (Kyverno's foreach container check fails the whole rule if any one container
+      fails it) -- these are real requirements of the daemon itself (SYS_ADMIN and
+      friends, root, unconfined-ish seccomp), not something a manifest edit can satisfy.
+      The runner-bin init container and the runner main container do NOT need any of
+      this (runner-bin already runs fully hardened; runner already runs as its image's
+      non-root uid 1001, and doing the same for it is a live-untested change -- it's a
+      member of the image's `sudo` group, a common GH-Actions-runner pattern for CI
+      steps that `sudo apt-get install`, and allowPrivilegeEscalation:false would break
+      that without visibility into whether any current workflow relies on it) --
+      but Kyverno's exception model waives per-resource, not per-container, so this
+      necessarily covers the whole pod. Tracking: ADR-0026 — revisit if the runner moves
+      to a rootless/sysbox DinD that no longer needs privileged (also drops the
+      dependent rules below).
 spec:
   exceptions:
     - policyName: pod-security-baseline-enforce
       ruleNames:
         - privileged-containers
         - autogen-privileged-containers
+    - policyName: workload-hardening-audit
+      ruleNames:
+        - privilege-escalation
+        - run-as-non-root
+        - check-seccomp-strict
+    - policyName: workload-advanced-hardening-audit
+      ruleNames:
+        - require-drop-all-capabilities
   match:
     any:
       # The resource the webhook actually rejects: the KEDA-generated runner Job.

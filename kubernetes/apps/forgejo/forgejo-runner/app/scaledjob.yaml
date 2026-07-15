@@ -48,6 +48,7 @@ spec:
       spec:
         restartPolicy: Never
         terminationGracePeriodSeconds: 30
+        serviceAccountName: forgejo-runner
         # No ambient ServiceAccount token: CI signs via Forgejo Actions OIDC (a per-workflow
         # token exchanged at OpenBao's JWT auth) — it never needs the k8s SA token, so we
         # don't expose one to untrusted workflow code.
@@ -80,6 +81,15 @@ spec:
             volumeMounts:
               - name: runner-bin
                 mountPath: /dist
+            # Just a copy+chmod into a shared, fsGroup-writable emptyDir -- no root/privilege
+            # of any kind needed, unlike the dind sidecar below.
+            securityContext:
+              allowPrivilegeEscalation: false
+              runAsNonRoot: true
+              runAsUser: 1000
+              seccompProfile:
+                type: RuntimeDefault
+              capabilities: {drop: ["ALL"]}
             resources:
               requests: {cpu: 10m, memory: 32Mi}
               limits: {memory: 64Mi}

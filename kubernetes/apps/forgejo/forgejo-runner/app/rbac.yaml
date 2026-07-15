@@ -10,6 +10,17 @@ metadata:
   name: forgejo-runner-provisioner
   namespace: forgejo
 ---
+# Identity for the KEDA-scaled runner Job/Pod itself (scaledjob.yaml). CI auth is via
+# Forgejo Actions OIDC, not the k8s API, so this SA carries no RBAC and the pod already
+# sets automountServiceAccountToken: false -- this exists only so the pod runs under a
+# named, non-default identity rather than granting it any actual authority.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: forgejo-runner
+  namespace: forgejo
+automountServiceAccountToken: false
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
