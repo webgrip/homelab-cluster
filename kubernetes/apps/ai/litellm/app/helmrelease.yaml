@@ -198,6 +198,18 @@ spec:
         globalMounts:
           - path: /etc/litellm
             readOnly: true
+      # STOPGAP — httpx SSO-timeout patch, see litellm-sso-timeout-patch.configmap.yaml.
+      # subPath mounts just this one file so it doesn't shadow the rest of
+      # the venv's site-packages.
+      sso-timeout-patch:
+        type: configMap
+        name: litellm-sso-timeout-patch
+        advancedMounts:
+          litellm:
+            app:
+              - path: /app/.venv/lib/python3.13/site-packages/sitecustomize.py
+                subPath: sitecustomize.py
+                readOnly: true
       exporter-queries:
         type: configMap
         name: litellm-exporter-queries

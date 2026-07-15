@@ -1,0 +1,36 @@
+---
+# STOPGAP (2026-07-15): litellm's Admin UI SSO token exchange uses fastapi-sso,
+# which constructs `httpx.AsyncClient()` with NO timeout override in
+# process_login (upstream source: tomasvotava/fastapi-sso sso/base.py) —
+# that binds httpx's hardcoded 5.0s library default, with no constructor
+# param/env var exposed to raise it. Authentik's real token exchange (code
+# validate + group lookup + the litellm_role scope mapping + JWT sign + DB
+# write) is intermittently exceeding 5s because authentik-server is pinned
+# to the chronically memory-pressured fringe-workstation node (can't spread
+# — shared RWO volume, roadmap #47) — see the fringe-workstation
+# memory-pressure-incidents memory. Until that's resolved, every SSO login
+# 500s with httpx.ReadTimeout.
+#
+# This patches ONLY the default: httpx.AsyncClient calls that already pass
+# an explicit timeout (e.g. litellm's own LLM-provider httpx handlers) are
+# untouched. sitecustomize.py is auto-imported by Python at interpreter
+# startup from any dir on sys.path — mounted straight into the venv's
+# site-packages via subPath so it doesn't shadow the rest of the directory.
+# Remove this once fringe-workstation's load is resolved (or fastapi-sso
+# ships a configurable timeout) — it isn't a real fix, just a wider net.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-sso-timeout-patch
+data:
+  sitecustomize.py: |-
+    import httpx
+
+    _orig_init = httpx.AsyncClient.__init__
+
+    def _patched_init(self, *args, **kwargs):
+        if "timeout" not in kwargs:
+            kwargs["timeout"] = httpx.Timeout(30.0)
+        _orig_init(self, *args, **kwargs)
+
+    httpx.AsyncClient.__init__ = _patched_init
