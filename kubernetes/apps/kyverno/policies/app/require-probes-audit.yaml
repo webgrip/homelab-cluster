@@ -12,6 +12,12 @@ metadata:
     kyverno.io/kyverno-version: 1.18.1
     policies.kyverno.io/description: >-
       Audit application workloads missing liveness, readiness, or startup probes.
+      Excludes Job-owned pods (run-to-completion workloads, including CronJob-spawned
+      Jobs, whose direct pod owner is always the Job) via a precondition rather than a
+      per-workload PolicyException: probes are semantically inapplicable to pods that
+      exit rather than run steady-state, so this is a scope correction on the rule
+      itself, not a waiver. Verified 2026-07-15 with `kyverno apply` against
+      Job-owned/ReplicaSet-owned/bare pods before landing.
 spec:
   validationFailureAction: Audit
   background: true
@@ -51,6 +57,12 @@ spec:
             value:
               - CREATE
               - UPDATE
+          # Job-owned pods (direct Jobs and CronJob-spawned Jobs alike -- a CronJob's
+          # pods are always owned by the intermediate Job, never the CronJob itself)
+          # run to completion; liveness/readiness/startup probes don't apply to them.
+          - key: "{{ request.object.metadata.ownerReferences[?kind=='Job'] || `[]` | length(@) }}"
+            operator: Equals
+            value: 0
       validate:
         message: "Liveness, readiness, or startup probes are required for all containers."
         foreach:
