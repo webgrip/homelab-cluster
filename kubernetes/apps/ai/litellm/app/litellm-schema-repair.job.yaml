@@ -10,10 +10,20 @@
 # bypassing the corrupted ledger. Same image/digest as the running Deployment so
 # it operates on the identical schema.prisma the app itself expects. Delete once
 # the Admin UI Team/Models pages are confirmed healthy.
+#
+# v2: v1 (name litellm-schema-repair) OOMKilled at a 512Mi limit — this image's
+# prisma/python startup needs the same ~2Gi headroom the app container itself
+# documents for its own boot spike. v1 also guessed schema.prisma lived under
+# /app and found nothing; v2 locates it via the actual Python package import
+# (the same mechanism the running app uses) instead of guessing a path. Renamed
+# rather than edited in place — Jobs are immutable, so this relies on Kustomize
+# prune (old name removed from this file, new name added) rather than an
+# in-place patch, which would hard-fail Flux's dry-run (see the observability/
+# devex-db-demo-teardown Job for exactly that failure mode).
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: litellm-schema-repair
+  name: litellm-schema-repair-v2
 spec:
   backoffLimit: 2
   template:
@@ -32,11 +42,20 @@ spec:
             - /bin/sh
             - -ceu
             - |
-              SCHEMA=$(find /app -maxdepth 8 -iname 'schema.prisma' 2>/dev/null | head -1)
-              echo "schema.prisma: ${SCHEMA:-NOT FOUND}"
-              [ -n "$SCHEMA" ] || { echo "FATAL: schema.prisma not found under /app" >&2; exit 1; }
               PY=/app/.venv/bin/python3
               [ -x "$PY" ] || PY=/app/.venv/bin/python
+              [ -x "$PY" ] || PY=python3
+              echo "Using python: $PY"
+
+              PKGDIR=$("$PY" -c 'import litellm_proxy_extras, os; print(os.path.dirname(litellm_proxy_extras.__file__))' 2>/dev/null || true)
+              echo "litellm_proxy_extras dir: ${PKGDIR:-unknown}"
+
+              SCHEMA=""
+              [ -n "$PKGDIR" ] && SCHEMA=$(find "$PKGDIR" -iname 'schema.prisma' 2>/dev/null | head -1)
+              [ -n "$SCHEMA" ] || SCHEMA=$(find / -xdev -iname 'schema.prisma' 2>/dev/null | head -1)
+              echo "schema.prisma: ${SCHEMA:-NOT FOUND}"
+              [ -n "$SCHEMA" ] || { echo "FATAL: schema.prisma not found" >&2; exit 1; }
+
               cd "$(dirname "$SCHEMA")"
               echo "--- diff preview (informational, best-effort) ---"
               "$PY" -m prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel "$SCHEMA" --script || true
@@ -57,6 +76,6 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 256Mi
-            limits:
               memory: 512Mi
+            limits:
+              memory: 2Gi
