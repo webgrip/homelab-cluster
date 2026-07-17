@@ -25,6 +25,7 @@
     --sdk-bg: #e3ecf5;
     --code-bg: #efeee6;
     --shadow: 0 1px 2px rgba(30, 25, 15, 0.06), 0 6px 20px rgba(30, 25, 15, 0.05);
+    --shadow-lg: 0 4px 12px rgba(30, 25, 15, 0.10), 0 24px 64px rgba(30, 25, 15, 0.18);
     --radius: 10px;
   }
   @media (prefers-color-scheme: dark) {
@@ -34,6 +35,7 @@
       --live: #7fc494; --live-bg: #1c2b21; --ee: #b79bea; --ee-bg: #26203a;
       --sdk: #8fb6e6; --sdk-bg: #1c2733; --code-bg: #21242b;
       --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+      --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.5), 0 32px 80px rgba(0, 0, 0, 0.6);
     }
   }
   :root[data-theme="dark"] {
@@ -42,6 +44,7 @@
     --live: #7fc494; --live-bg: #1c2b21; --ee: #b79bea; --ee-bg: #26203a;
     --sdk: #8fb6e6; --sdk-bg: #1c2733; --code-bg: #21242b;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.5), 0 32px 80px rgba(0, 0, 0, 0.6);
   }
   :root[data-theme="light"] {
     --bg: #f6f5f1; --surface: #ffffff; --surface-2: #efeee8; --ink: #1b1d22;
@@ -49,6 +52,7 @@
     --live: #2f6b45; --live-bg: #e3efe4; --ee: #6d4fa0; --ee-bg: #ece6f5;
     --sdk: #3a6ea5; --sdk-bg: #e3ecf5; --code-bg: #efeee6;
     --shadow: 0 1px 2px rgba(30, 25, 15, 0.06), 0 6px 20px rgba(30, 25, 15, 0.05);
+    --shadow-lg: 0 4px 12px rgba(30, 25, 15, 0.10), 0 24px 64px rgba(30, 25, 15, 0.18);
   }
 
   * { box-sizing: border-box; }
@@ -58,11 +62,12 @@
     font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased;
   }
-  code, .mono, .key, input#search, textarea.htmlsrc { font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace; }
+  code, .mono, .key, input#search { font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace; }
   h1, h2, h3 { text-wrap: balance; }
   a { color: var(--accent); }
   ::selection { background: var(--accent); color: var(--accent-ink); }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  body.modal-open { overflow: hidden; }
 
   .wrap { max-width: 1180px; margin: 0 auto; padding: 0 20px 96px; }
 
@@ -70,7 +75,6 @@
   .eyebrow { font-size: 12px; letter-spacing: 0.11em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin: 0 0 10px; }
   h1.title { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.01em; margin: 0 0 12px; }
   .dek { max-width: 66ch; color: var(--muted); font-size: 16px; margin: 0 0 22px; }
-  .dek code { color: var(--ink); background: var(--code-bg); padding: 1px 6px; border-radius: 5px; font-size: 14px; }
   .config-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
   .config-pill {
     display: inline-flex; align-items: center; gap: 6px; background: var(--live-bg); color: var(--live);
@@ -111,7 +115,7 @@
   nav.jumpnav .active { border-color: var(--accent); color: var(--accent); }
   nav.jumpnav .pushright { margin-left: auto; }
 
-  section.block { margin-top: 40px; scroll-margin-top: 150px; }
+  section.block { margin-top: 40px; }
   .block-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
   h2.block-title { font-size: 22px; font-weight: 800; margin: 0; letter-spacing: -0.01em; }
   .block-count { font-size: 12.5px; color: var(--muted); font-weight: 600; }
@@ -128,22 +132,23 @@
     font-family: ui-monospace, Consolas, monospace; font-size: 13px;
   }
 
+  /* ---------- task cards ---------- */
   .rec-grid { display: grid; gap: 10px; margin-top: 12px; }
   .rec {
     background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
-    padding: 14px 16px; box-shadow: var(--shadow); display: grid; grid-template-columns: auto 1fr; gap: 4px 14px;
+    padding: 13px 16px; box-shadow: var(--shadow); display: grid; grid-template-columns: auto 1fr; gap: 4px 14px;
+    transition: border-color 120ms ease;
   }
-  .rec .priority { font-size: 10px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; padding: 3px 9px; border-radius: 5px; align-self: start; white-space: nowrap; }
-  .rec .priority.done { background: var(--live); color: var(--bg); }
-  .rec .priority.now { background: var(--live-bg); color: var(--live); }
-  .rec .priority.soon { background: var(--sdk-bg); color: var(--sdk); }
-  .rec .priority.skip { background: var(--ee-bg); color: var(--ee); }
-  .rec .priority.none { background: var(--surface-2); color: var(--muted); }
-  .rec h4 { margin: 0 0 4px; font-size: 14.5px; cursor: pointer; }
-  .rec h4:hover { color: var(--accent); }
+  .rec:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); cursor: pointer; }
+  .priority { font-size: 10px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; padding: 3px 9px; border-radius: 5px; align-self: start; white-space: nowrap; }
+  .priority.done { background: var(--live); color: var(--bg); }
+  .priority.now { background: var(--live-bg); color: var(--live); }
+  .priority.soon { background: var(--sdk-bg); color: var(--sdk); }
+  .priority.skip { background: var(--ee-bg); color: var(--ee); }
+  .priority.none { background: var(--surface-2); color: var(--muted); }
+  .rec h4 { margin: 0 0 4px; font-size: 14.5px; }
   .rec p.meta { margin: 0; font-size: 13.5px; color: var(--muted); }
-  .rec .rec-body { grid-column: 1 / -1; }
-  @media (min-width: 560px) { .rec { grid-template-columns: 64px 1fr; } .rec .rec-body { grid-column: 2; } }
+  @media (min-width: 560px) { .rec { grid-template-columns: 64px 1fr; } }
   .rec.is-done { opacity: 0.62; }
   .rec.is-done h4 { text-decoration: line-through; text-decoration-thickness: 1px; }
   .rec.can-drag { cursor: grab; }
@@ -157,10 +162,10 @@
   .integration-list span.l-ready { background: var(--live-bg); border-color: var(--live); color: var(--live); }
   .integration-list span.l-agent { background: var(--ee-bg); border-color: var(--ee); color: var(--ee); }
   .integration-list span.l-nr { background: var(--sdk-bg); border-color: var(--sdk); color: var(--sdk); }
-  .integration-list button.chip-x { border: none; background: none; color: inherit; cursor: pointer; font: inherit; font-weight: 800; padding: 0 0 0 5px; }
   .idtag { font-size: 11px; color: var(--muted); background: var(--code-bg); padding: 1px 6px; border-radius: 5px; white-space: nowrap; }
   .duetag { font-size: 12px; color: var(--accent); font-weight: 700; white-space: nowrap; }
 
+  /* ---------- prose (rendered TipTap) ---------- */
   .prose { max-width: 82ch; }
   .prose p { margin: 0 0 12px; font-size: 14.5px; }
   .prose ul, .prose ol { margin: 0 0 16px; padding-left: 20px; font-size: 14px; }
@@ -170,33 +175,123 @@
   .prose h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 18px 0 8px; }
   .prose ul[data-type="taskList"] { list-style: none; padding-left: 2px; }
   .prose ul[data-type="taskList"] li { display: flex; gap: 8px; align-items: baseline; }
-  .prose ul[data-type="taskList"] input { accent-color: var(--accent); }
+  .prose ul[data-type="taskList"] input { accent-color: var(--accent); cursor: pointer; }
+  .prose ul[data-type="taskList"] div { flex: 1; }
+  .prose ul[data-type="taskList"] p { margin: 0 0 4px; }
 
-  .taskdetail { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
-  .taskdetail .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0 14px; }
-  .taskdetail .actions button, .taskdetail .actions a, .taskdetail .actions select {
-    font-size: 12.5px; font-weight: 600; padding: 5px 12px; border-radius: 999px; cursor: pointer; text-decoration: none;
-    border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font-family: inherit;
+  /* ---------- task sheet (Linear-style modal) ---------- */
+  .overlay {
+    position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-start; justify-content: center;
+    padding: 5vh 16px 16px; background: color-mix(in srgb, var(--bg) 55%, transparent); backdrop-filter: blur(6px);
+    animation: fadein 120ms ease;
   }
-  .taskdetail .actions .primary { background: var(--live-bg); color: var(--live); border-color: var(--live); }
-  .taskdetail .actions button:hover, .taskdetail .actions a:hover { border-color: var(--accent); color: var(--accent); }
-  .labelbar { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin: 0 0 12px; }
-  .labelbar select { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px dashed var(--line); background: none; color: var(--muted); font-family: inherit; cursor: pointer; }
-  .editgrid { display: grid; gap: 10px; margin: 10px 0 16px; max-width: 720px; }
-  .editgrid label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; display: block; margin-bottom: 3px; }
-  .editgrid input, .editgrid select, .editgrid textarea {
-    width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
-    background: var(--surface); color: var(--ink); font-size: 13px; font-family: inherit;
+  @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+  .sheet {
+    width: min(1060px, 100%); max-height: 90vh; display: flex; flex-direction: column;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow-lg);
+    animation: sheetin 140ms ease;
   }
-  .editgrid textarea.htmlsrc { min-height: 220px; font-size: 12.5px; line-height: 1.5; }
-  .editgrid .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .comment { border-top: 1px solid var(--line); padding: 10px 0 2px; }
-  .comment .who { font-size: 12px; color: var(--muted); font-weight: 700; margin-bottom: 4px; }
-  .relchips { display: flex; flex-wrap: wrap; gap: 7px; margin: 4px 0 10px; }
+  @keyframes sheetin { from { transform: translateY(8px); opacity: 0.6; } to { transform: none; opacity: 1; } }
+  .sheet-top {
+    display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--line);
+    font-size: 12.5px; color: var(--muted);
+  }
+  .sheet-top .crumb { font-weight: 600; }
+  .sheet-top .saving { margin-left: auto; font-size: 11.5px; transition: opacity 300ms; }
+  .sheet-top .close {
+    border: none; background: none; color: var(--muted); font-size: 17px; cursor: pointer; padding: 2px 8px;
+    border-radius: 6px; font-family: inherit; line-height: 1;
+  }
+  .sheet-top .close:hover { background: var(--surface-2); color: var(--ink); }
+  .sheet-cols { display: grid; grid-template-columns: 1fr 264px; overflow: hidden; flex: 1; }
+  .sheet-main { padding: 22px 28px 28px; overflow-y: auto; }
+  .sheet-side {
+    border-left: 1px solid var(--line); background: color-mix(in srgb, var(--surface-2) 55%, var(--surface));
+    padding: 18px 16px; overflow-y: auto; border-radius: 0 0 13px 0;
+  }
+  @media (max-width: 760px) {
+    .sheet-cols { grid-template-columns: 1fr; }
+    .sheet-side { border-left: none; border-top: 1px solid var(--line); border-radius: 0 0 13px 13px; }
+  }
+
+  .t-title {
+    font-size: 21px; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 4px; line-height: 1.3;
+    border-radius: 6px; padding: 2px 6px; margin-left: -6px; outline: none;
+  }
+  .t-title:hover { background: var(--surface-2); }
+  .t-title:focus { background: var(--surface-2); }
+  .t-desc {
+    margin-top: 14px; border-radius: 8px; padding: 6px 8px; margin-left: -8px; outline: none; min-height: 60px;
+  }
+  .t-desc:hover { background: color-mix(in srgb, var(--surface-2) 55%, transparent); }
+  .t-desc:focus { background: color-mix(in srgb, var(--surface-2) 80%, transparent); }
+  .t-desc:empty::before { content: "Add a description…"; color: var(--muted); }
+
+  .fmtbar { display: flex; gap: 2px; margin: 16px 0 0; opacity: 0.85; }
+  .fmtbar button {
+    border: 1px solid transparent; background: none; color: var(--muted); font-size: 12.5px; font-weight: 700;
+    padding: 4px 9px; border-radius: 6px; cursor: pointer; font-family: inherit;
+  }
+  .fmtbar button:hover { background: var(--surface-2); color: var(--ink); border-color: var(--line); }
+
+  .comments { margin-top: 28px; border-top: 1px solid var(--line); padding-top: 16px; }
+  .comments h5 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+  .comment { padding: 8px 0; }
+  .comment .who { font-size: 12px; color: var(--muted); font-weight: 700; margin-bottom: 3px; }
+  .composer { display: grid; gap: 8px; margin-top: 10px; }
+  .composer textarea {
+    width: 100%; min-height: 64px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--ink); font-size: 13.5px; font-family: inherit; resize: vertical;
+  }
+  .composer button {
+    justify-self: end; font-size: 12.5px; font-weight: 700; padding: 6px 14px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--live); background: var(--live-bg); color: var(--live); font-family: inherit;
+  }
+  .composer button:hover { filter: brightness(1.05); }
+
+  .prop { display: grid; grid-template-columns: 88px 1fr; gap: 10px; align-items: start; padding: 5px 0; font-size: 13px; }
+  .prop .plabel { color: var(--muted); font-weight: 600; padding-top: 4px; font-size: 12px; }
+  .propbtn {
+    display: inline-flex; align-items: center; gap: 7px; width: 100%; text-align: left; border: 1px solid transparent;
+    background: none; color: var(--ink); font-size: 13px; font-family: inherit; padding: 4px 8px; border-radius: 7px; cursor: pointer;
+  }
+  .propbtn:hover { background: var(--surface-2); border-color: var(--line); }
+  .propbtn .hint { color: var(--muted); }
+  .prop input[type="date"] {
+    border: 1px solid transparent; background: none; color: var(--ink); font-family: inherit; font-size: 13px;
+    padding: 4px 8px; border-radius: 7px; width: 100%; cursor: pointer;
+  }
+  .prop input[type="date"]:hover { background: var(--surface-2); border-color: var(--line); }
+  .prop .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0; }
+  .sidelink { display: block; margin-top: 14px; font-size: 12.5px; font-weight: 600; }
+  .sidemeta { margin-top: 10px; font-size: 11.5px; color: var(--muted); }
+  .relchips { display: flex; flex-direction: column; gap: 5px; }
   .relchips span { font-size: 12px; background: var(--code-bg); border: 1px solid var(--line); padding: 2px 9px; border-radius: 6px; color: var(--muted); }
   .relchips b { color: var(--ink); font-weight: 600; }
 
-  #toast { position: fixed; right: 18px; bottom: 18px; z-index: 40; display: none; box-shadow: var(--shadow); }
+  /* ---------- popover menus ---------- */
+  .popover {
+    position: fixed; z-index: 60; min-width: 230px; max-width: 300px; max-height: 340px; overflow-y: auto;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow-lg);
+    padding: 6px; animation: sheetin 100ms ease;
+  }
+  .popover .psearch {
+    width: 100%; padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg);
+    color: var(--ink); font-size: 13px; font-family: inherit; margin-bottom: 6px;
+  }
+  .menu-item {
+    display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 9px; border: none; background: none;
+    color: var(--ink); font-size: 13px; font-family: inherit; border-radius: 7px; cursor: pointer; text-align: left;
+  }
+  .menu-item:hover { background: var(--surface-2); }
+  .menu-item .check { width: 14px; color: var(--accent); font-weight: 800; flex: none; }
+  .menu-item .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--line); }
+  .menu-item.create { color: var(--accent); font-weight: 600; border-top: 1px solid var(--line); border-radius: 0 0 7px 7px; margin-top: 4px; }
+  .menu-item .grow { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  #toast {
+    position: fixed; right: 18px; bottom: 18px; z-index: 70; display: none; box-shadow: var(--shadow);
+  }
   #toast.err { background: var(--ee-bg); color: var(--ee); border-color: var(--ee); }
 
   footer.colophon { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; }
@@ -209,7 +304,7 @@
 <header class="masthead">
   <p class="eyebrow">vikunja — homelab boards</p>
   <h1 class="title">The board, without the Vikunja front end</h1>
-  <p class="dek">Same Vikunja backend, API and MCP — different face. Filter, drag to re-order, edit, label and hand tickets to agents right here; anything heavier opens in the <a href="/" id="stock-link">stock UI</a>. Reuses your existing Vikunja login session.</p>
+  <p class="dek">Same Vikunja backend, API and MCP — different face. Click a ticket for the full sheet: everything edits in place and saves as you type. Drag cards to re-order. Reuses your existing Vikunja login session.</p>
   <div class="config-strip" id="stats"></div>
 </header>
 
@@ -264,8 +359,8 @@
 
   <footer class="colophon">
     Custom front end on the Vikunja API (<code>/api/v1</code>) — GitOps-served from
-    <code>kubernetes/apps/vikunja/board</code>. Drag cards in <code>Board order</code> to persist positions;
-    agent assignment writes the <code>agent/&lt;name&gt;</code> claim label per the board contract.
+    <code>kubernetes/apps/vikunja/board</code>. Agent assignment writes the <code>agent/&lt;name&gt;</code>
+    claim label per the board contract.
   </footer>
 </main>
 
@@ -277,10 +372,10 @@ const API = "/api/v1";
 const $ = (id) => document.getElementById(id);
 const state = {
   token: null, projects: [], project: null, viewId: null, tasks: [], labels: [],
-  expanded: new Set(), editing: new Set(), draggedId: null,
+  openId: null, draggedId: null,
 };
 
-/* ---------- theme toggle (stamps data-theme; media query is the default) ---------- */
+/* ---------- theme toggle ---------- */
 const themeBtn = document.createElement("button");
 themeBtn.textContent = "◐ theme";
 themeBtn.className = "pushright";
@@ -293,8 +388,8 @@ themeBtn.addEventListener("click", () => {
 });
 if (localStorage.getItem("board_theme")) document.documentElement.dataset.theme = localStorage.getItem("board_theme");
 
-/* ---------- tiny HTML sanitizer for TipTap task descriptions/comments ---------- */
-function sanitize(html) {
+/* ---------- sanitizer for TipTap HTML ---------- */
+function sanitize(html, interactive) {
   const t = document.createElement("template");
   t.innerHTML = html || "";
   t.content.querySelectorAll("script, style, iframe, object, embed, link, meta").forEach((n) => n.remove());
@@ -304,7 +399,10 @@ function sanitize(html) {
       if (n.startsWith("on") || ((n === "href" || n === "src") && a.value.trim().toLowerCase().startsWith("javascript:")))
         el.removeAttribute(a.name);
     });
-    if (el.tagName === "INPUT" && el.type === "checkbox") el.disabled = true;
+    if (el.tagName === "INPUT") {
+      if (el.type !== "checkbox") el.remove();
+      else if (!interactive) el.disabled = true;
+    }
     if (el.tagName === "A") { el.rel = "noopener"; el.target = "_blank"; }
   });
   return t.innerHTML;
@@ -332,6 +430,13 @@ async function pagedJSON(path) {
   }
   return out;
 }
+/* serialize writes per task so quick edits can't race each other */
+const queues = new Map();
+function enqueue(taskId, fn) {
+  const q = (queues.get(taskId) || Promise.resolve()).then(fn, fn);
+  queues.set(taskId, q.catch(() => {}));
+  return q;
+}
 
 function showAuth() { $("auth-callout").classList.remove("js-hidden"); }
 function showError(msg) { const e = $("error-callout"); e.textContent = msg; e.classList.remove("js-hidden"); }
@@ -342,10 +447,10 @@ function toast(msg, err) {
   t.classList.toggle("err", !!err);
   t.style.display = "inline-flex";
   clearTimeout(toastT);
-  toastT = setTimeout(() => { t.style.display = "none"; }, err ? 6000 : 2500);
+  toastT = setTimeout(() => { t.style.display = "none"; }, err ? 6000 : 2200);
 }
 
-/* ---------- auth: Vikunja UI JWT (same-origin localStorage) → saved API token ---------- */
+/* ---------- auth ---------- */
 async function findToken() {
   for (const cand of [localStorage.getItem("token"), localStorage.getItem("board_token")]) {
     if (!cand) continue;
@@ -373,8 +478,6 @@ async function loadLabels() {
   state.labels = (await pagedJSON("/labels")) || [];
 }
 async function loadTasks() {
-  // Prefer the project's List view: its task objects carry per-view positions,
-  // which is what drag-to-reorder persists against.
   state.viewId = null;
   try {
     const views = await apiJSON(`/projects/${state.project}/views`);
@@ -389,7 +492,8 @@ async function loadTasks() {
   state.tasks = await pagedJSON(`/projects/${state.project}/tasks`);
 }
 
-/* ---------- rendering ---------- */
+/* ---------- shared helpers ---------- */
+const PRIO_OPTS = [[0, "No priority", "none"], [2, "P3", "skip"], [3, "P2", "soon"], [4, "P1", "now"], [5, "P0", "now"]];
 const PRIO = (t) => t.done ? ["done", "done"] :
   t.priority >= 5 ? ["P0", "now"] : t.priority === 4 ? ["P1", "now"] :
   t.priority === 3 ? ["P2", "soon"] : t.priority === 2 ? ["P3", "skip"] : ["—", "none"];
@@ -398,23 +502,24 @@ const labelClass = (title) => LABEL_CLASS[title] || (title.startsWith("agent") ?
 const nlDate = new Intl.DateTimeFormat("nl-NL", { day: "2-digit", month: "short", year: "numeric" });
 const hasDue = (t) => t.due_date && !t.due_date.startsWith("0001-");
 const sortedLabels = (t) => (t.labels || []).slice().sort((a, b) => a.title.localeCompare(b.title));
+const isAgentLabel = (l) => l.title.startsWith("agent/");
 const canDrag = () => $("sortmode").value === "board" && state.viewId !== null;
+const getTask = (id) => state.tasks.find((x) => x.id === id);
 
+/* ---------- list rendering ---------- */
 function taskCard(t) {
   const [ptxt, pcls] = PRIO(t);
-  const open = state.expanded.has(t.id);
   const chips = sortedLabels(t).map((l) => `<span class="${labelClass(l.title)}">${esc(l.title)}</span>`).join("");
   return `<article class="rec ${t.done ? "is-done" : ""} ${canDrag() ? "can-drag" : ""}"
       data-id="${t.id}" ${canDrag() ? 'draggable="true"' : ""}>
     <span class="priority ${pcls}">${ptxt}</span>
-    <div class="rec-body">
-      <h4 data-act="toggle">${esc(t.title)}</h4>
+    <div>
+      <h4>${esc(t.title)}</h4>
       <p class="meta">
         <span class="idtag">VIK-${t.id}</span>
         ${hasDue(t) ? `<span class="duetag">due ${nlDate.format(new Date(t.due_date))}</span>` : ""}
         <span class="integration-list">${chips}</span>
       </p>
-      ${open ? `<div class="taskdetail" data-detail="${t.id}"><p class="meta">Loading…</p></div>` : ""}
     </div>
   </article>`;
 }
@@ -436,7 +541,6 @@ function applyFilters() {
     return true;
   });
 }
-
 const boardSort = (a, b) => (a.done - b.done) || ((a.position || 0) - (b.position || 0)) || (a.id - b.id);
 const prioSort = (a, b) => (a.done - b.done) || ((b.priority || 0) - (a.priority || 0)) || (a.id - b.id);
 
@@ -454,100 +558,34 @@ function render() {
     `<span class="config-pill pending"><span class="key">agent-ready</span> ${count("agent-ready")}</span>` +
     `<span class="config-pill pending"><span class="key">needs-refinement</span> ${count("needs-refinement")}</span>`;
   $("project-count").textContent = `${state.tasks.length} tasks · ${open.length} open`;
-  list.forEach((t) => { if (state.expanded.has(t.id)) fillDetail(t); });
 }
-
 function renderNav() {
   const nav = $("projectnav");
   nav.innerHTML = state.projects.map((p) =>
-    `<a href="#p${p.id}" data-project="${p.id}" class="${state.project === p.id ? "active" : ""}">${esc(p.title)}</a>`).join("");
+    `<a href="#" data-project="${p.id}" class="${state.project === p.id ? "active" : ""}">${esc(p.title)}</a>`).join("");
   nav.appendChild(themeBtn);
 }
 
-/* ---------- detail: description, relations, comments, labels, actions ---------- */
-const REL_LABEL = { precedes: "precedes", follows: "follows", blocked: "blocked by", blocking: "blocks",
-  related: "related", duplicateof: "duplicate of", duplicates: "duplicated by",
-  copiedfrom: "copied from", copiedto: "copied to", subtask: "subtask", parenttask: "parent" };
-const isAgentLabel = (l) => l.title.startsWith("agent/");
-
-function editForm(t) {
-  const dueVal = hasDue(t) ? t.due_date.slice(0, 10) : "";
-  const opt = (v, txt) => `<option value="${v}" ${(t.priority || 0) === v ? "selected" : ""}>${txt}</option>`;
-  return `<div class="editgrid">
-    <div><label>Title</label><input data-edit="title" value="${esc(t.title)}"></div>
-    <div class="row2">
-      <div><label>Priority</label><select data-edit="priority">
-        ${opt(0, "—")}${opt(2, "P3")}${opt(3, "P2")}${opt(4, "P1")}${opt(5, "P0")}</select></div>
-      <div><label>Due date</label><input type="date" data-edit="due" value="${dueVal}"></div>
-    </div>
-    <div><label>Description (TipTap HTML)</label><textarea class="htmlsrc" data-edit="desc">${esc(t.description || "")}</textarea></div>
-  </div>`;
-}
-
-async function fillDetail(t) {
-  const el = document.querySelector(`[data-detail="${t.id}"]`);
-  if (!el) return;
-  const editing = state.editing.has(t.id);
-  const rels = Object.entries(t.related_tasks || {}).flatMap(([kind, tasks]) =>
-    (tasks || []).map((r) => `<span>${REL_LABEL[kind] || kind} <b>VIK-${r.id}</b> ${esc(r.title).slice(0, 60)}</span>`));
-  let comments = [];
-  if (!editing) { try { comments = await apiJSON(`/tasks/${t.id}/comments`); } catch { /* keep going */ } }
-
-  const onTask = new Set((t.labels || []).map((l) => l.id));
-  const addable = state.labels.filter((l) => !onTask.has(l.id)).sort((a, b) => a.title.localeCompare(b.title));
-  const agents = state.labels.filter(isAgentLabel).sort((a, b) => a.title.localeCompare(b.title));
-  const curAgent = (t.labels || []).find(isAgentLabel);
-  const labelBar = `<div class="labelbar"><span class="integration-list">
-      ${sortedLabels(t).map((l) => `<span class="${labelClass(l.title)}">${esc(l.title)}
-        <button class="chip-x" data-act="unlabel" data-label="${l.id}" title="Remove label">×</button></span>`).join("")}
-    </span>
-    <select data-act="addlabel">
-      <option value="">+ label…</option>
-      ${addable.map((l) => `<option value="${l.id}">${esc(l.title)}</option>`).join("")}
-      <option value="__new">＋ new label…</option>
-    </select></div>`;
-
-  el.innerHTML = `
-    <div class="actions">
-      <button data-act="done" class="primary">${t.done ? "Reopen" : "Mark done"}</button>
-      <button data-act="edit">${editing ? "Cancel edit" : "Edit"}</button>
-      ${editing ? `<button data-act="save" class="primary">Save</button>` : ""}
-      <select data-act="assign" title="Assign to an agent (agent/* claim label)">
-        <option value="">${curAgent ? "agent: " + esc(curAgent.title.slice(6)) : "assign agent…"}</option>
-        ${agents.map((a) => `<option value="${a.id}">${esc(a.title)}</option>`).join("")}
-        <option value="__new">＋ new agent…</option>
-        ${curAgent ? `<option value="__none">unassign</option>` : ""}
-      </select>
-      <a href="/tasks/${t.id}" rel="noopener">Open in Vikunja ↗</a>
-    </div>
-    ${labelBar}
-    ${editing ? editForm(t) : `
-      ${rels.length ? `<div class="relchips">${rels.join("")}</div>` : ""}
-      <div class="prose">${sanitize(t.description) || "<p><em>No description.</em></p>"}</div>
-      ${comments.map((c) => `<div class="comment"><div class="who">${esc(c.author?.name || c.author?.username || "?")}
-        · ${nlDate.format(new Date(c.created))}</div><div class="prose">${sanitize(c.comment)}</div></div>`).join("")}`}`;
-}
-
-/* ---------- mutations (always read-modify-write; Vikunja updates replace) ---------- */
+/* ---------- mutations ---------- */
 function absorb(fresh) {
   const i = state.tasks.findIndex((x) => x.id === fresh.id);
   if (i >= 0) state.tasks[i] = { ...state.tasks[i], ...fresh };
 }
-async function updateTask(id, mutate) {
-  const fresh = await apiJSON(`/tasks/${id}`);
-  mutate(fresh);
-  const saved = await apiJSON(`/tasks/${id}`, { method: "POST", body: JSON.stringify(fresh) });
-  absorb(saved);
+function updateTask(id, mutate) {
+  return enqueue(id, async () => {
+    const fresh = await apiJSON(`/tasks/${id}`);
+    mutate(fresh);
+    absorb(await apiJSON(`/tasks/${id}`, { method: "POST", body: JSON.stringify(fresh) }));
+  });
 }
 async function addLabel(taskId, labelId) {
-  await apiJSON(`/tasks/${taskId}/labels`, { method: "PUT", body: JSON.stringify({ label_id: labelId }) });
-  const t = state.tasks.find((x) => x.id === taskId);
-  const l = state.labels.find((x) => x.id === labelId);
-  if (t && l) t.labels = [...(t.labels || []), l];
+  await enqueue(taskId, () => apiJSON(`/tasks/${taskId}/labels`, { method: "PUT", body: JSON.stringify({ label_id: labelId }) }));
+  const t = getTask(taskId), l = state.labels.find((x) => x.id === labelId);
+  if (t && l && !(t.labels || []).some((x) => x.id === labelId)) t.labels = [...(t.labels || []), l];
 }
 async function removeLabel(taskId, labelId) {
-  await api(`/tasks/${taskId}/labels/${labelId}`, { method: "DELETE" });
-  const t = state.tasks.find((x) => x.id === taskId);
+  await enqueue(taskId, () => api(`/tasks/${taskId}/labels/${labelId}`, { method: "DELETE" }));
+  const t = getTask(taskId);
   if (t) t.labels = (t.labels || []).filter((l) => l.id !== labelId);
 }
 async function createLabel(title) {
@@ -556,13 +594,314 @@ async function createLabel(title) {
   return l;
 }
 
-/* ---------- drag to re-order (persists per-view position) ---------- */
+/* ---------- popover menus ---------- */
+let popEl = null;
+function closePopover() { if (popEl) { popEl.remove(); popEl = null; } }
+function openPopover(anchor, build) {
+  closePopover();
+  popEl = document.createElement("div");
+  popEl.className = "popover";
+  build(popEl);
+  document.body.appendChild(popEl);
+  const r = anchor.getBoundingClientRect();
+  const w = popEl.offsetWidth, h = popEl.offsetHeight;
+  popEl.style.left = Math.min(r.left, innerWidth - w - 12) + "px";
+  popEl.style.top = (r.bottom + h + 8 > innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + "px";
+  const q = popEl.querySelector(".psearch");
+  if (q) q.focus();
+  setTimeout(() => addEventListener("pointerdown", onOutside), 0);
+  function onOutside(ev) {
+    if (popEl && !popEl.contains(ev.target)) { closePopover(); removeEventListener("pointerdown", onOutside); }
+  }
+}
+function menuItem({ label, checked, cls, dotColor, create }, onPick) {
+  const b = document.createElement("button");
+  b.className = "menu-item" + (create ? " create" : "");
+  b.innerHTML = `<span class="check">${checked ? "✓" : ""}</span>` +
+    (dotColor ? `<span class="dot" style="background:${dotColor}"></span>` : "") +
+    `<span class="grow ${cls || ""}">${esc(label)}</span>`;
+  b.addEventListener("click", onPick);
+  return b;
+}
+
+function priorityMenu(anchor, t) {
+  openPopover(anchor, (pop) => {
+    PRIO_OPTS.forEach(([val, name]) => {
+      pop.appendChild(menuItem({ label: name, checked: (t.priority || 0) === val }, async () => {
+        closePopover();
+        try { await updateTask(t.id, (f) => { f.priority = val; }); refreshOpen(); render(); }
+        catch (e) { toast("Save failed: " + e.message, true); }
+      }));
+    });
+  });
+}
+
+function labelsMenu(anchor, t) {
+  openPopover(anchor, (pop) => {
+    const search = document.createElement("input");
+    search.className = "psearch"; search.placeholder = "Label…";
+    const listEl = document.createElement("div");
+    pop.append(search, listEl);
+    const draw = () => {
+      const q = search.value.trim().toLowerCase();
+      const on = new Set((getTask(t.id).labels || []).map((l) => l.id));
+      listEl.innerHTML = "";
+      state.labels
+        .filter((l) => !q || l.title.toLowerCase().includes(q))
+        .sort((a, b) => (on.has(b.id) - on.has(a.id)) || a.title.localeCompare(b.title))
+        .slice(0, 30)
+        .forEach((l) => listEl.appendChild(menuItem(
+          { label: l.title, checked: on.has(l.id), dotColor: l.hex_color ? "#" + l.hex_color : null },
+          async () => {
+            try { on.has(l.id) ? await removeLabel(t.id, l.id) : await addLabel(t.id, l.id); refreshOpen(); render(); draw(); }
+            catch (e) { toast("Label failed: " + e.message, true); }
+          })));
+      if (q && !state.labels.some((l) => l.title.toLowerCase() === q))
+        listEl.appendChild(menuItem({ label: `Create "${search.value.trim()}"`, create: true }, async () => {
+          try { await addLabel(t.id, (await createLabel(search.value.trim())).id); refreshOpen(); render(); draw(); }
+          catch (e) { toast("Create failed: " + e.message, true); }
+        }));
+    };
+    search.addEventListener("input", draw);
+    draw();
+  });
+}
+
+function agentMenu(anchor, t) {
+  openPopover(anchor, (pop) => {
+    const search = document.createElement("input");
+    search.className = "psearch"; search.placeholder = "Agent name…";
+    const listEl = document.createElement("div");
+    pop.append(search, listEl);
+    const assign = async (labelId) => {
+      closePopover();
+      try {
+        for (const l of (getTask(t.id).labels || []).filter(isAgentLabel)) await removeLabel(t.id, l.id);
+        if (labelId) await addLabel(t.id, labelId);
+        refreshOpen(); render();
+        toast(labelId ? `VIK-${t.id} → ${state.labels.find((l) => l.id === labelId)?.title}` : `VIK-${t.id} unassigned`);
+      } catch (e) { toast("Assign failed: " + e.message, true); }
+    };
+    const draw = () => {
+      const q = search.value.trim().toLowerCase();
+      const cur = (getTask(t.id).labels || []).find(isAgentLabel);
+      listEl.innerHTML = "";
+      state.labels.filter(isAgentLabel)
+        .filter((l) => !q || l.title.toLowerCase().includes(q))
+        .sort((a, b) => a.title.localeCompare(b.title))
+        .forEach((l) => listEl.appendChild(menuItem({ label: l.title.slice(6), checked: cur?.id === l.id },
+          () => assign(cur?.id === l.id ? null : l.id))));
+      if (cur) listEl.appendChild(menuItem({ label: "Unassign" }, () => assign(null)));
+      const name = search.value.trim().replace(/^agent\//, "");
+      if (name && !state.labels.some((l) => l.title === "agent/" + name))
+        listEl.appendChild(menuItem({ label: `Assign new agent "${name}"`, create: true }, async () => {
+          try { assign((await createLabel("agent/" + name)).id); }
+          catch (e) { toast("Create failed: " + e.message, true); }
+        }));
+    };
+    search.addEventListener("input", draw);
+    draw();
+  });
+}
+
+/* ---------- task sheet ---------- */
+let sheetEl = null, descDirty = false, descTimer = null;
+const savingNote = (txt) => { const s = sheetEl?.querySelector(".saving"); if (s) s.textContent = txt || ""; };
+
+function syncCheckboxes(descEl) {
+  descEl.querySelectorAll('ul[data-type="taskList"] li').forEach((li) => {
+    const cb = li.querySelector('input[type="checkbox"]');
+    if (!cb) return;
+    li.dataset.checked = cb.checked ? "true" : "false";
+    cb.checked ? cb.setAttribute("checked", "checked") : cb.removeAttribute("checked");
+  });
+}
+function flushDesc() {
+  if (!descDirty || !sheetEl || state.openId == null) return Promise.resolve();
+  descDirty = false;
+  clearTimeout(descTimer);
+  const descEl = sheetEl.querySelector(".t-desc");
+  syncCheckboxes(descEl);
+  const html = sanitize(descEl.innerHTML, true);
+  const id = state.openId;
+  savingNote("Saving…");
+  return updateTask(id, (f) => { f.description = html; })
+    .then(() => savingNote("Saved"))
+    .catch((e) => { savingNote(""); toast("Save failed: " + e.message, true); });
+}
+function flushTitle() {
+  if (!sheetEl || state.openId == null) return Promise.resolve();
+  const el = sheetEl.querySelector(".t-title");
+  const t = getTask(state.openId);
+  const txt = el.textContent.trim();
+  if (!t || !txt || txt === t.title) return Promise.resolve();
+  savingNote("Saving…");
+  return updateTask(t.id, (f) => { f.title = txt; })
+    .then(() => { savingNote("Saved"); render(); })
+    .catch((e) => { savingNote(""); toast("Save failed: " + e.message, true); });
+}
+
+function refreshOpen() {
+  if (state.openId != null && sheetEl) renderProps(getTask(state.openId));
+}
+
+function renderProps(t) {
+  if (!t) return;
+  const side = sheetEl.querySelector(".sheet-side");
+  const [ptxt, pcls] = PRIO({ ...t, done: false });
+  const curAgent = (t.labels || []).find(isAgentLabel);
+  const rels = Object.entries(t.related_tasks || {}).flatMap(([kind, tasks]) =>
+    (tasks || []).map((r) => `<span>${esc(kind)} <b>VIK-${r.id}</b> ${esc(r.title).slice(0, 46)}</span>`));
+  side.innerHTML = `
+    <div class="prop"><span class="plabel">Status</span>
+      <button class="propbtn" data-p="done">${t.done
+        ? '<span class="priority done">done</span> reopen'
+        : '<span class="hint">○ open</span> — mark done'}</button></div>
+    <div class="prop"><span class="plabel">Priority</span>
+      <button class="propbtn" data-p="prio"><span class="priority ${pcls}">${ptxt}</span></button></div>
+    <div class="prop"><span class="plabel">Due</span>
+      <input type="date" data-p="due" value="${hasDue(t) ? t.due_date.slice(0, 10) : ""}"></div>
+    <div class="prop"><span class="plabel">Labels</span>
+      <button class="propbtn" data-p="labels"><span class="chips">
+        ${sortedLabels(t).map((l) => `<span class="integration-list"><span class="${labelClass(l.title)}">${esc(l.title)}</span></span>`).join("") || '<span class="hint">add labels…</span>'}
+      </span></button></div>
+    <div class="prop"><span class="plabel">Agent</span>
+      <button class="propbtn" data-p="agent">${curAgent
+        ? `<span class="integration-list"><span class="l-agent">${esc(curAgent.title)}</span></span>`
+        : '<span class="hint">assign agent…</span>'}</button></div>
+    ${rels.length ? `<div class="prop"><span class="plabel">Linked</span><div class="relchips">${rels.join("")}</div></div>` : ""}
+    <a class="sidelink" href="/tasks/${t.id}" rel="noopener" target="_blank">Open in Vikunja ↗</a>
+    <div class="sidemeta">created ${nlDate.format(new Date(t.created))}${t.updated ? " · updated " + nlDate.format(new Date(t.updated)) : ""}</div>`;
+
+  side.querySelector('[data-p="done"]').addEventListener("click", async (ev) => {
+    try {
+      await updateTask(t.id, (f) => { f.done = !f.done; });
+      toast(getTask(t.id).done ? `VIK-${t.id} done` : `VIK-${t.id} reopened`);
+      refreshOpen(); render();
+    } catch (e) { toast("Save failed: " + e.message, true); }
+  });
+  side.querySelector('[data-p="prio"]').addEventListener("click", (ev) => priorityMenu(ev.currentTarget, getTask(t.id)));
+  side.querySelector('[data-p="labels"]').addEventListener("click", (ev) => labelsMenu(ev.currentTarget, getTask(t.id)));
+  side.querySelector('[data-p="agent"]').addEventListener("click", (ev) => agentMenu(ev.currentTarget, getTask(t.id)));
+  side.querySelector('[data-p="due"]').addEventListener("change", async (ev) => {
+    const v = ev.target.value;
+    try {
+      await updateTask(t.id, (f) => { f.due_date = v ? v + "T12:00:00Z" : "0001-01-01T00:00:00Z"; });
+      savingNote("Saved"); render();
+    } catch (e) { toast("Save failed: " + e.message, true); }
+  });
+}
+
+async function openTask(id) {
+  const t = getTask(id);
+  if (!t) return;
+  await closeTask();
+  state.openId = id;
+  history.replaceState(null, "", "#VIK-" + id);
+  document.body.classList.add("modal-open");
+  sheetEl = document.createElement("div");
+  sheetEl.className = "overlay";
+  sheetEl.innerHTML = `
+    <div class="sheet" role="dialog" aria-modal="true">
+      <div class="sheet-top">
+        <span class="idtag">VIK-${t.id}</span>
+        <span class="crumb">${esc(state.projects.find((p) => p.id === state.project)?.title || "")}</span>
+        <span class="saving"></span>
+        <button class="close" title="Close (Esc)">✕</button>
+      </div>
+      <div class="sheet-cols">
+        <div class="sheet-main">
+          <h1 class="t-title" contenteditable="true" spellcheck="false">${esc(t.title)}</h1>
+          <div class="fmtbar">
+            <button data-cmd="bold" title="Bold"><b>B</b></button>
+            <button data-cmd="italic" title="Italic"><i>I</i></button>
+            <button data-cmd="insertUnorderedList" title="Bullet list">•≡</button>
+            <button data-block="h3" title="Heading">H</button>
+            <button data-block="p" title="Paragraph">¶</button>
+          </div>
+          <div class="t-desc prose" contenteditable="true">${sanitize(t.description, true)}</div>
+          <div class="comments">
+            <h5>Comments</h5>
+            <div class="comment-list"><p class="meta">Loading…</p></div>
+            <div class="composer">
+              <textarea placeholder="Leave a comment… (plain text, saved as a paragraph)"></textarea>
+              <button>Comment</button>
+            </div>
+          </div>
+        </div>
+        <aside class="sheet-side"></aside>
+      </div>
+    </div>`;
+  document.body.appendChild(sheetEl);
+  renderProps(t);
+
+  const descEl = sheetEl.querySelector(".t-desc");
+  const titleEl = sheetEl.querySelector(".t-title");
+  sheetEl.addEventListener("pointerdown", (ev) => { if (ev.target === sheetEl) closeTask(); });
+  sheetEl.querySelector(".close").addEventListener("click", () => closeTask());
+  titleEl.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); titleEl.blur(); } });
+  titleEl.addEventListener("blur", flushTitle);
+  descEl.addEventListener("input", () => {
+    descDirty = true; savingNote("Editing…");
+    clearTimeout(descTimer);
+    descTimer = setTimeout(flushDesc, 1400);
+  });
+  descEl.addEventListener("blur", flushDesc);
+  descEl.addEventListener("change", (ev) => {          /* checkbox toggles */
+    if (ev.target.matches('input[type="checkbox"]')) { descDirty = true; flushDesc(); }
+  });
+  sheetEl.querySelectorAll(".fmtbar button").forEach((b) => b.addEventListener("click", () => {
+    descEl.focus();
+    if (b.dataset.cmd) document.execCommand(b.dataset.cmd);
+    else document.execCommand("formatBlock", false, b.dataset.block);
+    descDirty = true;
+  }));
+  const composer = sheetEl.querySelector(".composer");
+  composer.querySelector("button").addEventListener("click", async () => {
+    const ta = composer.querySelector("textarea");
+    const txt = ta.value.trim();
+    if (!txt) return;
+    try {
+      await apiJSON(`/tasks/${t.id}/comments`, { method: "PUT", body: JSON.stringify({
+        comment: txt.split(/\n{2,}/).map((p) => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`).join("") }) });
+      ta.value = "";
+      loadComments(t.id);
+    } catch (e) { toast("Comment failed: " + e.message, true); }
+  });
+  loadComments(id);
+}
+async function loadComments(id) {
+  const box = sheetEl?.querySelector(".comment-list");
+  if (!box) return;
+  try {
+    const comments = await apiJSON(`/tasks/${id}/comments`);
+    box.innerHTML = (comments || []).map((c) => `<div class="comment">
+        <div class="who">${esc(c.author?.name || c.author?.username || "?")} · ${nlDate.format(new Date(c.created))}</div>
+        <div class="prose">${sanitize(c.comment)}</div></div>`).join("") ||
+      `<p class="meta">No comments yet.</p>`;
+  } catch { box.innerHTML = `<p class="meta">Comments unavailable.</p>`; }
+}
+async function closeTask() {
+  if (!sheetEl) return;
+  await flushTitle();
+  await flushDesc();
+  closePopover();
+  sheetEl.remove();
+  sheetEl = null;
+  state.openId = null;
+  document.body.classList.remove("modal-open");
+  history.replaceState(null, "", location.pathname);
+  render();
+}
+addEventListener("keydown", (ev) => { if (ev.key === "Escape") { closePopover(); closeTask(); } });
+
+/* ---------- drag to re-order ---------- */
 const STEP = 65536;
 async function setPosition(taskId, position) {
   await apiJSON(`/tasks/${taskId}/position`, {
     method: "POST", body: JSON.stringify({ position, project_view_id: state.viewId, task_id: taskId }),
   });
-  const t = state.tasks.find((x) => x.id === taskId);
+  const t = getTask(taskId);
   if (t) t.position = position;
 }
 async function reindexAll(order) {
@@ -571,7 +910,7 @@ async function reindexAll(order) {
 }
 async function dropTask(draggedId, targetId, before) {
   const order = state.tasks.slice().sort(boardSort).filter((t) => t.id !== draggedId);
-  const dragged = state.tasks.find((t) => t.id === draggedId);
+  const dragged = getTask(draggedId);
   let idx = order.findIndex((t) => t.id === targetId);
   if (idx < 0 || !dragged) return;
   if (!before) idx += 1;
@@ -586,85 +925,18 @@ async function dropTask(draggedId, targetId, before) {
   toast(`VIK-${draggedId} moved`);
   render();
 }
-
-/* ---------- events ---------- */
-$("tasks").addEventListener("click", async (ev) => {
-  const card = ev.target.closest(".rec"); if (!card) return;
-  const id = +card.dataset.id;
-  const t = state.tasks.find((x) => x.id === id); if (!t) return;
-  const act = ev.target.dataset.act;
-  try {
-    if (act === "toggle") {
-      state.expanded.has(id) ? state.expanded.delete(id) : state.expanded.add(id);
-      state.editing.delete(id);
-      render();
-    } else if (act === "done") {
-      await updateTask(id, (f) => { f.done = !f.done; });
-      toast(t.done ? `VIK-${id} reopened` : `VIK-${id} done`);
-      render();
-    } else if (act === "edit") {
-      state.editing.has(id) ? state.editing.delete(id) : state.editing.add(id);
-      render();
-    } else if (act === "save") {
-      const g = (k) => card.querySelector(`[data-edit="${k}"]`).value;
-      await updateTask(id, (f) => {
-        f.title = g("title").trim() || f.title;
-        f.priority = +g("priority");
-        f.due_date = g("due") ? g("due") + "T12:00:00Z" : "0001-01-01T00:00:00Z";
-        f.description = g("desc");
-      });
-      state.editing.delete(id);
-      toast(`VIK-${id} saved`);
-      render();
-    } else if (act === "unlabel") {
-      await removeLabel(id, +ev.target.dataset.label);
-      render();
-    }
-  } catch (e) { toast(`Write failed: ${e.message}`, true); }
-});
-
-$("tasks").addEventListener("change", async (ev) => {
-  const card = ev.target.closest(".rec"); if (!card) return;
-  const id = +card.dataset.id;
-  const t = state.tasks.find((x) => x.id === id); if (!t) return;
-  const act = ev.target.dataset.act;
-  try {
-    if (act === "addlabel" && ev.target.value) {
-      let lid = ev.target.value;
-      if (lid === "__new") {
-        const name = prompt("New label name:");
-        if (!name) { render(); return; }
-        lid = (await createLabel(name.trim())).id;
-      }
-      await addLabel(id, +lid);
-      render();
-    } else if (act === "assign" && ev.target.value) {
-      const v = ev.target.value;
-      for (const l of (t.labels || []).filter(isAgentLabel)) await removeLabel(id, l.id);
-      if (v === "__new") {
-        const name = prompt("Agent name (label becomes agent/<name>):");
-        if (name) await addLabel(id, (await createLabel("agent/" + name.trim().replace(/^agent\//, ""))).id);
-      } else if (v !== "__none") {
-        await addLabel(id, +v);
-        toast(`VIK-${id} → ${state.labels.find((l) => l.id === +v)?.title}`);
-      }
-      render();
-    }
-  } catch (e) { toast(`Write failed: ${e.message}`, true); render(); }
-});
-
-/* drag events */
-$("tasks").addEventListener("dragstart", (ev) => {
+const tasksEl = $("tasks");
+tasksEl.addEventListener("dragstart", (ev) => {
   const card = ev.target.closest(".rec"); if (!card || !canDrag()) return;
   state.draggedId = +card.dataset.id;
   card.classList.add("dragging");
   ev.dataTransfer.effectAllowed = "move";
 });
-$("tasks").addEventListener("dragend", () => {
+tasksEl.addEventListener("dragend", () => {
   state.draggedId = null;
   document.querySelectorAll(".rec").forEach((c) => c.classList.remove("dragging", "drag-above", "drag-below"));
 });
-$("tasks").addEventListener("dragover", (ev) => {
+tasksEl.addEventListener("dragover", (ev) => {
   const card = ev.target.closest(".rec");
   if (!card || state.draggedId == null || +card.dataset.id === state.draggedId) return;
   ev.preventDefault();
@@ -673,11 +945,11 @@ $("tasks").addEventListener("dragover", (ev) => {
   card.classList.toggle("drag-above", before);
   card.classList.toggle("drag-below", !before);
 });
-$("tasks").addEventListener("dragleave", (ev) => {
+tasksEl.addEventListener("dragleave", (ev) => {
   const card = ev.target.closest(".rec");
   if (card) card.classList.remove("drag-above", "drag-below");
 });
-$("tasks").addEventListener("drop", async (ev) => {
+tasksEl.addEventListener("drop", async (ev) => {
   const card = ev.target.closest(".rec");
   if (!card || state.draggedId == null) return;
   ev.preventDefault();
@@ -687,7 +959,12 @@ $("tasks").addEventListener("drop", async (ev) => {
   try { await dropTask(dragged, +card.dataset.id, before); }
   catch (e) { toast(`Re-order failed: ${e.message}`, true); }
 });
+tasksEl.addEventListener("click", (ev) => {
+  const card = ev.target.closest(".rec");
+  if (card) openTask(+card.dataset.id);
+});
 
+/* ---------- top-level events ---------- */
 $("projectnav").addEventListener("click", async (ev) => {
   const a = ev.target.closest("a[data-project]"); if (!a) return;
   ev.preventDefault();
@@ -695,15 +972,13 @@ $("projectnav").addEventListener("click", async (ev) => {
 });
 ["search", "statefilter", "priofilter", "sortmode"].forEach((id) => $(id).addEventListener("input", render));
 addEventListener("keydown", (e) => {
-  if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
+  if (e.key === "/" && !sheetEl && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
     e.preventDefault(); $("search").focus();
   }
 });
 
 async function selectProject(id) {
   state.project = id;
-  state.expanded.clear();
-  state.editing.clear();
   localStorage.setItem("board_project", id);
   const p = state.projects.find((x) => x.id === id);
   $("project-title").textContent = p ? p.title : `Project ${id}`;
@@ -712,6 +987,8 @@ async function selectProject(id) {
   $("tasks").innerHTML = `<div class="callout">Loading tasks…</div>`;
   await loadTasks();
   render();
+  const m = location.hash.match(/^#VIK-(\d+)$/);
+  if (m && getTask(+m[1])) openTask(+m[1]);
 }
 
 async function boot() {
