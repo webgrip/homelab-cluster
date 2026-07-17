@@ -91,6 +91,22 @@ spec:
         enabled: true
         minAvailable: 2
         unhealthyPodEvictionPolicy: AlwaysAllow
+      # Recovery-set placement made EXPLICIT: kyverno belongs on the soyos (ADR-0002;
+      # the 2026-07-11 audit kept it there only passively, by worker-pinning everything
+      # else). Left unconstrained, a restarted replica drifted onto fringe-workstation
+      # (pool=worker) and its webhook calls timed out whenever that node thrashed —
+      # 2026-07-17 this blocked the kyverno-policies Kustomization cluster-wide, since
+      # the policy-validate webhook is svc-fail. With 3 soyos + the hostname spread
+      # below this pins exactly one replica per soyo; during a single-soyo drain one
+      # replica goes Pending, which the PDB (minAvailable 2) tolerates.
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node.webgrip.io/pool
+                  operator: In
+                  values:
+                    - soyo
       topologySpreadConstraints:
         # DoNotSchedule, not ScheduleAnyway: the svc-fail webhooks make co-located
         # replicas a cluster-wide Flux outage risk if that one node degrades
