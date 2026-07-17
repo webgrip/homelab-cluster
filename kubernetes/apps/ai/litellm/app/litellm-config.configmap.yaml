@@ -50,3 +50,27 @@ data:
       # exporter is the tracked follow-up. Data lands in the DB regardless.
       success_callback: ["postgres"]
       failure_callback: ["postgres"]
+      # --- Valkey (redis-protocol, litellm-valkey.yaml). mode: default_off =
+      # response caching is OPT-IN per request (body: {"cache": {"use-cache":
+      # true}}) so agents never get surprise-stale completions; the always-on
+      # wins are the auth cache below and the router counters in
+      # router_settings. REDIS_* env comes from the litellm-valkey secret. ---
+      cache: true
+      cache_params:
+        type: redis
+        host: os.environ/REDIS_HOST
+        port: os.environ/REDIS_PORT
+        password: os.environ/REDIS_PASSWORD
+        mode: default_off
+        ttl: 86400
+      # Virtual-key auth lookups served from Valkey instead of a Postgres
+      # round-trip per request (requires cache: true + type: redis).
+      enable_redis_auth_cache: true
+
+    router_settings:
+      # Shared tpm/rpm counters + cooldown state in Valkey. Single replica today,
+      # so this is future-proofing for a second replica — but provider budgets
+      # and accurate rate-limit windows already benefit from surviving restarts.
+      redis_host: os.environ/REDIS_HOST
+      redis_port: os.environ/REDIS_PORT
+      redis_password: os.environ/REDIS_PASSWORD

@@ -66,6 +66,16 @@ spec:
                   secretKeyRef:
                     name: litellm-db-app
                     key: uri
+              # --- Valkey (redis-protocol) for auth cache, router tpm/rpm
+              # counters, and opt-in response caching. Referenced from
+              # config.yaml via os.environ/REDIS_* (see litellm-config). ---
+              REDIS_HOST: litellm-valkey.ai.svc.cluster.local
+              REDIS_PORT: "6379"
+              REDIS_PASSWORD:
+                valueFrom:
+                  secretKeyRef:
+                    name: litellm-valkey
+                    key: password
             # LITELLM_MASTER_KEY + ANTHROPIC_API_KEY + DEEPSEEK_API_KEY (ESO → OpenBao secret/litellm).
             # GENERIC_CLIENT_SECRET (Admin UI SSO) from the litellm-oidc ExternalSecret.
             envFrom:
