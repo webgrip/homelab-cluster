@@ -1,0 +1,26 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./deployment.yaml
+  - ./service.yaml
+  - ./httproute.yaml
+  - ./networkpolicy.yaml
+# Hash-suffixed generators: an index.html/default.conf change renames the
+# ConfigMap, which rolls the Deployment automatically (no reloader needed).
+# substitute: disabled — the SPA's JS template literals and nginx's $uri would
+# otherwise be mangled/failed by the ks-level postBuild envsubst.
+configMapGenerator:
+  - name: vikunja-board-html
+    files:
+      - ./index.html
+    options:
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled
+  - name: vikunja-board-nginx
+    files:
+      - ./default.conf
+    options:
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled

@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<title>Homelab Board</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23a8641f'/%3E%3C/svg%3E">
+<style>
+  /* Design system ported 1:1 from the LiteLLM config-reference artifact. */
+  :root {
+    --bg: #f6f5f1;
+    --surface: #ffffff;
+    --surface-2: #efeee8;
+    --ink: #1b1d22;
+    --muted: #6b6f76;
+    --line: #dedbd2;
+    --accent: #a8641f;
+    --accent-ink: #ffffff;
+    --live: #2f6b45;
+    --live-bg: #e3efe4;
+    --ee: #6d4fa0;
+    --ee-bg: #ece6f5;
+    --sdk: #3a6ea5;
+    --sdk-bg: #e3ecf5;
+    --code-bg: #efeee6;
+    --shadow: 0 1px 2px rgba(30, 25, 15, 0.06), 0 6px 20px rgba(30, 25, 15, 0.05);
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15171b; --surface: #1c1f25; --surface-2: #21242b; --ink: #e9e7e1;
+      --muted: #9a9ea6; --line: #2b2e35; --accent: #e0a050; --accent-ink: #1b1300;
+      --live: #7fc494; --live-bg: #1c2b21; --ee: #b79bea; --ee-bg: #26203a;
+      --sdk: #8fb6e6; --sdk-bg: #1c2733; --code-bg: #21242b;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171b; --surface: #1c1f25; --surface-2: #21242b; --ink: #e9e7e1;
+    --muted: #9a9ea6; --line: #2b2e35; --accent: #e0a050; --accent-ink: #1b1300;
+    --live: #7fc494; --live-bg: #1c2b21; --ee: #b79bea; --ee-bg: #26203a;
+    --sdk: #8fb6e6; --sdk-bg: #1c2733; --code-bg: #21242b;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f5f1; --surface: #ffffff; --surface-2: #efeee8; --ink: #1b1d22;
+    --muted: #6b6f76; --line: #dedbd2; --accent: #a8641f; --accent-ink: #ffffff;
+    --live: #2f6b45; --live-bg: #e3efe4; --ee: #6d4fa0; --ee-bg: #ece6f5;
+    --sdk: #3a6ea5; --sdk-bg: #e3ecf5; --code-bg: #efeee6;
+    --shadow: 0 1px 2px rgba(30, 25, 15, 0.06), 0 6px 20px rgba(30, 25, 15, 0.05);
+  }
+
+  * { box-sizing: border-box; }
+  html { color-scheme: light dark; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased;
+  }
+  code, .mono, .key, input#search { font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace; }
+  h1, h2, h3 { text-wrap: balance; }
+  a { color: var(--accent); }
+  ::selection { background: var(--accent); color: var(--accent-ink); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 20px 96px; }
+
+  header.masthead { padding: 44px 20px 28px; max-width: 1180px; margin: 0 auto; }
+  .eyebrow { font-size: 12px; letter-spacing: 0.11em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin: 0 0 10px; }
+  h1.title { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.01em; margin: 0 0 12px; }
+  .dek { max-width: 66ch; color: var(--muted); font-size: 16px; margin: 0 0 22px; }
+  .dek code { color: var(--ink); background: var(--code-bg); padding: 1px 6px; border-radius: 5px; font-size: 14px; }
+  .config-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .config-pill {
+    display: inline-flex; align-items: center; gap: 6px; background: var(--live-bg); color: var(--live);
+    border: 1px solid var(--live); border-radius: 999px; padding: 4px 12px 4px 10px; font-size: 12.5px; font-weight: 600;
+  }
+  .config-pill .key { font-weight: 600; }
+  .config-pill::before { content: "●"; font-size: 8px; }
+  .config-pill.pending { background: var(--sdk-bg); color: var(--sdk); border-color: var(--sdk); }
+  .config-pill.next { background: transparent; color: var(--accent); border-color: var(--accent); }
+
+  .controlbar {
+    position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); padding: 12px 20px;
+  }
+  .controlbar-inner { max-width: 1180px; margin: 0 auto; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .search-box { position: relative; flex: 1 1 240px; min-width: 200px; }
+  .search-box svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); opacity: 0.5; pointer-events: none; }
+  input#search {
+    width: 100%; padding: 9px 14px 9px 36px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--ink); font-size: 13.5px;
+  }
+  input#search::placeholder { color: var(--muted); font-family: ui-sans-serif, sans-serif; }
+  select.filter {
+    padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface);
+    color: var(--ink); font-size: 13px; font-family: inherit;
+  }
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--muted); }
+  .legend .chip { display: inline-flex; align-items: center; gap: 5px; }
+  .legend .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .result-count { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+  nav.jumpnav { max-width: 1180px; margin: 0 auto; padding: 10px 20px 0; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  nav.jumpnav a, nav.jumpnav button {
+    text-decoration: none; color: var(--muted); font-size: 12.5px; font-weight: 600; padding: 6px 10px;
+    border-radius: 7px; border: 1px solid transparent; background: none; font-family: inherit; cursor: pointer;
+  }
+  nav.jumpnav a:hover, nav.jumpnav button:hover { border-color: var(--line); color: var(--ink); }
+  nav.jumpnav .active { border-color: var(--accent); color: var(--accent); }
+  nav.jumpnav .pushright { margin-left: auto; }
+
+  section.block { margin-top: 40px; scroll-margin-top: 150px; }
+  .block-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+  h2.block-title { font-size: 22px; font-weight: 800; margin: 0; letter-spacing: -0.01em; }
+  .block-count { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+  .block-note { color: var(--muted); max-width: 76ch; margin: 4px 0 22px; font-size: 14px; }
+
+  .callout {
+    background: var(--surface-2); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    border-radius: 8px; padding: 14px 16px; font-size: 13.5px; margin: 12px 0 24px;
+  }
+  .callout strong { color: var(--accent); }
+  .callout input {
+    width: 100%; max-width: 420px; margin-top: 8px; padding: 8px 12px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+    font-family: ui-monospace, Consolas, monospace; font-size: 13px;
+  }
+
+  .rec-grid { display: grid; gap: 10px; margin-top: 12px; }
+  .rec {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 14px 16px; box-shadow: var(--shadow); display: grid; grid-template-columns: auto 1fr; gap: 4px 14px;
+  }
+  .rec .priority { font-size: 10px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; padding: 3px 9px; border-radius: 5px; align-self: start; white-space: nowrap; }
+  .rec .priority.done { background: var(--live); color: var(--bg); }
+  .rec .priority.now { background: var(--live-bg); color: var(--live); }
+  .rec .priority.soon { background: var(--sdk-bg); color: var(--sdk); }
+  .rec .priority.skip { background: var(--ee-bg); color: var(--ee); }
+  .rec .priority.none { background: var(--surface-2); color: var(--muted); }
+  .rec h4 { margin: 0 0 4px; font-size: 14.5px; cursor: pointer; }
+  .rec h4:hover { color: var(--accent); }
+  .rec p.meta { margin: 0; font-size: 13.5px; color: var(--muted); }
+  .rec .rec-body { grid-column: 1 / -1; }
+  @media (min-width: 560px) { .rec { grid-template-columns: 64px 1fr; } .rec .rec-body { grid-column: 2; } }
+  .rec.is-done { opacity: 0.62; }
+  .rec.is-done h4 { text-decoration: line-through; text-decoration-thickness: 1px; }
+
+  .integration-list { display: inline-flex; flex-wrap: wrap; gap: 7px; margin: 6px 0 0; padding: 0; vertical-align: middle; }
+  .integration-list span { font-size: 12.5px; background: var(--surface-2); border: 1px solid var(--line); padding: 2px 10px; border-radius: 999px; color: var(--ink); }
+  .integration-list span.l-next { background: transparent; border-color: var(--accent); color: var(--accent); font-weight: 700; }
+  .integration-list span.l-ready { background: var(--live-bg); border-color: var(--live); color: var(--live); }
+  .integration-list span.l-agent { background: var(--ee-bg); border-color: var(--ee); color: var(--ee); }
+  .integration-list span.l-nr { background: var(--sdk-bg); border-color: var(--sdk); color: var(--sdk); }
+  .idtag { font-size: 11px; color: var(--muted); background: var(--code-bg); padding: 1px 6px; border-radius: 5px; white-space: nowrap; }
+  .duetag { font-size: 12px; color: var(--accent); font-weight: 700; white-space: nowrap; }
+
+  .prose { max-width: 82ch; }
+  .prose p { margin: 0 0 12px; font-size: 14.5px; }
+  .prose ul, .prose ol { margin: 0 0 16px; padding-left: 20px; font-size: 14px; }
+  .prose li { margin-bottom: 5px; }
+  .prose strong { font-weight: 700; }
+  .prose code { color: var(--ink); background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+  .prose h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 18px 0 8px; }
+  .prose ul[data-type="taskList"] { list-style: none; padding-left: 2px; }
+  .prose ul[data-type="taskList"] li { display: flex; gap: 8px; align-items: baseline; }
+  .prose ul[data-type="taskList"] input { accent-color: var(--accent); }
+
+  .taskdetail { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
+  .taskdetail .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 14px; }
+  .taskdetail .actions button, .taskdetail .actions a {
+    font-size: 12.5px; font-weight: 600; padding: 5px 12px; border-radius: 999px; cursor: pointer; text-decoration: none;
+    border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font-family: inherit;
+  }
+  .taskdetail .actions .primary { background: var(--live-bg); color: var(--live); border-color: var(--live); }
+  .taskdetail .actions button:hover, .taskdetail .actions a:hover { border-color: var(--accent); color: var(--accent); }
+  .comment { border-top: 1px solid var(--line); padding: 10px 0 2px; }
+  .comment .who { font-size: 12px; color: var(--muted); font-weight: 700; margin-bottom: 4px; }
+  .relchips { display: flex; flex-wrap: wrap; gap: 7px; margin: 4px 0 10px; }
+  .relchips span { font-size: 12px; background: var(--code-bg); border: 1px solid var(--line); padding: 2px 9px; border-radius: 6px; color: var(--muted); }
+  .relchips b { color: var(--ink); font-weight: 600; }
+
+  footer.colophon { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; }
+  footer.colophon code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  .js-hidden { display: none; }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">vikunja — homelab boards</p>
+  <h1 class="title">The board, without the Vikunja front end</h1>
+  <p class="dek">Same Vikunja backend, API and MCP — different face. Read, filter and complete tasks here; deep edits open in the <a href="/" id="stock-link">stock UI</a>. Reuses your existing Vikunja login session.</p>
+  <div class="config-strip" id="stats"></div>
+</header>
+
+<div class="controlbar">
+  <div class="controlbar-inner">
+    <div class="search-box">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="search" type="text" placeholder="Filter tasks — title, label, VIK-id…" autocomplete="off" />
+    </div>
+    <select id="statefilter" class="filter" aria-label="Filter by state">
+      <option value="open">Open</option>
+      <option value="done">Done</option>
+      <option value="all">All</option>
+    </select>
+    <select id="priofilter" class="filter" aria-label="Filter by priority">
+      <option value="all">All priorities</option>
+      <option value="4">P0–P1 — urgent</option>
+      <option value="3">P2+</option>
+      <option value="next">do-next</option>
+      <option value="agent">agent-ready</option>
+    </select>
+    <div class="legend">
+      <span class="chip"><span class="dot" style="background:var(--live)"></span> ready</span>
+      <span class="chip"><span class="dot" style="background:var(--sdk)"></span> needs-refinement</span>
+      <span class="chip"><span class="dot" style="background:var(--ee)"></span> agent-ready</span>
+    </div>
+    <span class="result-count" id="result-count"></span>
+  </div>
+  <nav class="jumpnav" id="projectnav"></nav>
+</div>
+
+<main class="wrap">
+  <div class="callout js-hidden" id="auth-callout">
+    <strong>Not signed in.</strong> Log in to <a href="/">Vikunja</a> in this browser first (this page reuses that
+    session), or paste a personal API token (Settings → API tokens):
+    <br><input id="token-input" type="password" placeholder="tk_…" autocomplete="off">
+  </div>
+  <div class="callout js-hidden" id="error-callout"></div>
+
+  <section class="block">
+    <div class="block-head">
+      <h2 class="block-title" id="project-title">Loading…</h2>
+      <span class="block-count" id="project-count"></span>
+    </div>
+    <p class="block-note" id="project-desc"></p>
+    <div class="rec-grid" id="tasks"></div>
+  </section>
+
+  <footer class="colophon">
+    Custom front end on the Vikunja API (<code>/api/v1</code>) — GitOps-served from
+    <code>kubernetes/apps/vikunja/board</code>. Design ported from the LiteLLM config-reference artifact.
+    Priority chips map the board convention <code>P0/P1 · P2 · P3</code>.
+  </footer>
+</main>
+
+<script>
+"use strict";
+const API = "/api/v1";
+const $ = (id) => document.getElementById(id);
+const state = { token: null, projects: [], tasks: [], project: null, expanded: new Set() };
+
+/* ---------- theme toggle (stamps data-theme; media query is the default) ---------- */
+const themeBtn = document.createElement("button");
+themeBtn.textContent = "◐ theme";
+themeBtn.className = "pushright";
+themeBtn.addEventListener("click", () => {
+  const cur = document.documentElement.dataset.theme ||
+    (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  const next = cur === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem("board_theme", next);
+});
+if (localStorage.getItem("board_theme")) document.documentElement.dataset.theme = localStorage.getItem("board_theme");
+
+/* ---------- tiny HTML sanitizer for TipTap task descriptions/comments ---------- */
+function sanitize(html) {
+  const t = document.createElement("template");
+  t.innerHTML = html || "";
+  t.content.querySelectorAll("script, style, iframe, object, embed, link, meta").forEach((n) => n.remove());
+  t.content.querySelectorAll("*").forEach((el) => {
+    [...el.attributes].forEach((a) => {
+      const n = a.name.toLowerCase();
+      if (n.startsWith("on") || ((n === "href" || n === "src") && a.value.trim().toLowerCase().startsWith("javascript:")))
+        el.removeAttribute(a.name);
+    });
+    if (el.tagName === "INPUT" && el.type === "checkbox") el.disabled = true;
+    if (el.tagName === "A") { el.rel = "noopener"; el.target = "_blank"; }
+  });
+  return t.innerHTML;
+}
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* ---------- API ---------- */
+async function api(path, opts = {}) {
+  const r = await fetch(API + path, {
+    ...opts,
+    headers: { Authorization: "Bearer " + state.token, "Content-Type": "application/json", ...(opts.headers || {}) },
+  });
+  if (r.status === 401) { state.token = null; showAuth(); throw new Error("unauthorized"); }
+  if (!r.ok) throw new Error(`${path} → HTTP ${r.status}`);
+  return r;
+}
+const apiJSON = async (path, opts) => (await api(path, opts)).json();
+
+function showAuth() { $("auth-callout").classList.remove("js-hidden"); }
+function showError(msg) { const e = $("error-callout"); e.textContent = msg; e.classList.remove("js-hidden"); }
+
+/* ---------- auth: Vikunja UI JWT (same-origin localStorage) → saved API token ---------- */
+async function findToken() {
+  for (const cand of [localStorage.getItem("token"), localStorage.getItem("board_token")]) {
+    if (!cand) continue;
+    state.token = cand;
+    try { await apiJSON("/user"); return true; } catch { state.token = null; }
+  }
+  return false;
+}
+$("token-input").addEventListener("change", async () => {
+  state.token = $("token-input").value.trim();
+  try {
+    await apiJSON("/user");
+    localStorage.setItem("board_token", state.token);
+    $("auth-callout").classList.add("js-hidden");
+    boot();
+  } catch { showError("That token was rejected by /api/v1/user."); }
+});
+
+/* ---------- data ---------- */
+async function loadProjects() {
+  const all = await apiJSON("/projects");
+  state.projects = all.filter((p) => !p.is_archived && p.id > 0);
+}
+async function loadTasks(projectId) {
+  const tasks = [];
+  for (let page = 1; page <= 8; page++) {
+    const r = await api(`/projects/${projectId}/tasks?per_page=250&page=${page}`);
+    const batch = await r.json();
+    tasks.push(...batch);
+    if (batch.length < 250) break;
+  }
+  state.tasks = tasks;
+}
+
+/* ---------- rendering ---------- */
+const PRIO = (t) => t.done ? ["done", "done"] :
+  t.priority >= 5 ? ["P0", "now"] : t.priority === 4 ? ["P1", "now"] :
+  t.priority === 3 ? ["P2", "soon"] : t.priority === 2 ? ["P3", "skip"] : ["—", "none"];
+const LABEL_CLASS = { "do-next": "l-next", ready: "l-ready", "agent-ready": "l-agent", "needs-refinement": "l-nr" };
+const nlDate = new Intl.DateTimeFormat("nl-NL", { day: "2-digit", month: "short", year: "numeric" });
+const hasDue = (t) => t.due_date && !t.due_date.startsWith("0001-");
+
+function labelChips(t) {
+  const labels = (t.labels || []).slice().sort((a, b) => a.title.localeCompare(b.title));
+  return labels.map((l) => `<span class="${LABEL_CLASS[l.title] || ""}">${esc(l.title)}</span>`).join("");
+}
+
+function taskCard(t) {
+  const [ptxt, pcls] = PRIO(t);
+  const open = state.expanded.has(t.id);
+  return `<article class="rec ${t.done ? "is-done" : ""}" data-id="${t.id}">
+    <span class="priority ${pcls}">${ptxt}</span>
+    <div class="rec-body">
+      <h4 data-act="toggle">${esc(t.title)}</h4>
+      <p class="meta">
+        <span class="idtag">VIK-${t.id}</span>
+        ${hasDue(t) ? `<span class="duetag">due ${nlDate.format(new Date(t.due_date))}</span>` : ""}
+        <span class="integration-list">${labelChips(t)}</span>
+      </p>
+      ${open ? `<div class="taskdetail" data-detail="${t.id}"><p class="meta">Loading…</p></div>` : ""}
+    </div>
+  </article>`;
+}
+
+function applyFilters() {
+  const q = $("search").value.trim().toLowerCase();
+  const st = $("statefilter").value;
+  const pf = $("priofilter").value;
+  return state.tasks.filter((t) => {
+    if (st === "open" && t.done) return false;
+    if (st === "done" && !t.done) return false;
+    if (pf === "next" && !(t.labels || []).some((l) => l.title === "do-next")) return false;
+    if (pf === "agent" && !(t.labels || []).some((l) => l.title === "agent-ready")) return false;
+    if ((pf === "4" || pf === "3") && (t.priority || 0) < +pf) return false;
+    if (q) {
+      const hay = (t.title + " vik-" + t.id + " " + (t.labels || []).map((l) => l.title).join(" ")).toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function render() {
+  const list = applyFilters().sort((a, b) =>
+    (a.done - b.done) || ((b.priority || 0) - (a.priority || 0)) || (a.id - b.id));
+  $("tasks").innerHTML = list.map(taskCard).join("") ||
+    `<div class="callout">Nothing matches the current filters.</div>`;
+  $("result-count").textContent = `${list.length} of ${state.tasks.length} tasks`;
+  const open = state.tasks.filter((t) => !t.done);
+  const count = (name) => open.filter((t) => (t.labels || []).some((l) => l.title === name)).length;
+  $("stats").innerHTML =
+    `<span class="config-pill"><span class="key">open</span> ${open.length}</span>` +
+    `<span class="config-pill next"><span class="key">do-next</span> ${count("do-next")}</span>` +
+    `<span class="config-pill"><span class="key">ready</span> ${count("ready")}</span>` +
+    `<span class="config-pill pending"><span class="key">agent-ready</span> ${count("agent-ready")}</span>` +
+    `<span class="config-pill pending"><span class="key">needs-refinement</span> ${count("needs-refinement")}</span>`;
+  $("project-count").textContent = `${state.tasks.length} tasks · ${open.length} open`;
+  list.forEach((t) => { if (state.expanded.has(t.id)) fillDetail(t); });
+}
+
+function renderNav() {
+  const nav = $("projectnav");
+  nav.innerHTML = state.projects.map((p) =>
+    `<a href="#p${p.id}" data-project="${p.id}" class="${state.project === p.id ? "active" : ""}">${esc(p.title)}</a>`).join("");
+  nav.appendChild(themeBtn);
+}
+
+/* ---------- detail: description, relations, comments, actions ---------- */
+const REL_LABEL = { precedes: "precedes", follows: "follows", blocked: "blocked by", blocking: "blocks",
+  related: "related", duplicateof: "duplicate of", duplicates: "duplicated by",
+  copiedfrom: "copied from", copiedto: "copied to", subtask: "subtask", parenttask: "parent" };
+
+async function fillDetail(t) {
+  const el = document.querySelector(`[data-detail="${t.id}"]`);
+  if (!el) return;
+  const rels = Object.entries(t.related_tasks || {}).flatMap(([kind, tasks]) =>
+    (tasks || []).map((r) => `<span>${REL_LABEL[kind] || kind} <b>VIK-${r.id}</b> ${esc(r.title).slice(0, 60)}</span>`));
+  let comments = [];
+  try { comments = await apiJSON(`/tasks/${t.id}/comments`); } catch { /* keep going */ }
+  el.innerHTML = `
+    <div class="actions">
+      <button data-act="done" class="primary">${t.done ? "Reopen" : "Mark done"}</button>
+      <a href="/tasks/${t.id}" rel="noopener">Open in Vikunja ↗</a>
+    </div>
+    ${rels.length ? `<div class="relchips">${rels.join("")}</div>` : ""}
+    <div class="prose">${sanitize(t.description) || "<p><em>No description.</em></p>"}</div>
+    ${comments.map((c) => `<div class="comment"><div class="who">${esc(c.author?.name || c.author?.username || "?")}
+      · ${nlDate.format(new Date(c.created))}</div><div class="prose">${sanitize(c.comment)}</div></div>`).join("")}`;
+}
+
+/* ---------- events ---------- */
+$("tasks").addEventListener("click", async (ev) => {
+  const card = ev.target.closest(".rec"); if (!card) return;
+  const id = +card.dataset.id;
+  const t = state.tasks.find((x) => x.id === id); if (!t) return;
+  if (ev.target.dataset.act === "toggle") {
+    state.expanded.has(id) ? state.expanded.delete(id) : state.expanded.add(id);
+    render();
+  } else if (ev.target.dataset.act === "done") {
+    // read-modify-write: Vikunja's update replaces the object, never send a partial
+    const fresh = await apiJSON(`/tasks/${id}`);
+    fresh.done = !fresh.done;
+    await apiJSON(`/tasks/${id}`, { method: "POST", body: JSON.stringify(fresh) });
+    await loadTasks(state.project);
+    render();
+  }
+});
+$("projectnav").addEventListener("click", async (ev) => {
+  const a = ev.target.closest("a[data-project]"); if (!a) return;
+  ev.preventDefault();
+  selectProject(+a.dataset.project);
+});
+["search", "statefilter", "priofilter"].forEach((id) => $(id).addEventListener("input", render));
+addEventListener("keydown", (e) => {
+  if (e.key === "/" && document.activeElement !== $("search")) { e.preventDefault(); $("search").focus(); }
+});
+
+async function selectProject(id) {
+  state.project = id;
+  state.expanded.clear();
+  localStorage.setItem("board_project", id);
+  const p = state.projects.find((x) => x.id === id);
+  $("project-title").textContent = p ? p.title : `Project ${id}`;
+  $("project-desc").innerHTML = p?.description ? sanitize(p.description) : "";
+  renderNav();
+  $("tasks").innerHTML = `<div class="callout">Loading tasks…</div>`;
+  await loadTasks(id);
+  render();
+}
+
+async function boot() {
+  try {
+    if (!state.token && !(await findToken())) { showAuth(); $("project-title").textContent = "Sign in"; return; }
+    await loadProjects();
+    if (!state.projects.length) { showError("No projects visible for this account."); return; }
+    const saved = +localStorage.getItem("board_project");
+    await selectProject(state.projects.some((p) => p.id === saved) ? saved : state.projects[0].id);
+  } catch (e) {
+    if (e.message !== "unauthorized") showError("Could not reach the Vikunja API: " + e.message);
+  }
+}
+boot();
+</script>
+</body>
+</html>
