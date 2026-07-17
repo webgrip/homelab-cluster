@@ -22,6 +22,20 @@ reconcile into a ConfigMap) · gate it with a Flux ks like
   the k8s API.
 - **Fail-soft + idempotent.** Mark inputs `optional: true`, guard missing values (`exit 0`, retry next
   tick), and make writes create-or-update so re-runs converge.
+- **Self-heal — every Flux-managed one-shot Job needs BOTH (2026-07-17 outage learning):**
+  1. *Immutable-template wedge:* Job `spec.template` is immutable, so a Renovate digest bump wedges the
+     owning Kustomization on "field is immutable" forever. Fix: ks-level `spec.force: true` when the ks
+     holds only the Job (renovate/forgejo provisioner pattern), else per-resource annotation
+     `kustomize.toolkit.fluxcd.io/force: enabled` (value is `enabled`, NOT `true`). Force = delete+
+     recreate, which re-runs the Job — fine because idempotent (above).
+  2. *Failed-exhausted:* a Job past `backoffLimit` is terminal — k8s never retries, Flux never replaces
+     it while spec matches git (both forgejo provisioners sat dead 22–45h post-outage). Fix: label
+     `cleanup.webgrip.io/retry-failed: "true"` → the `cleanup-opt-in-failed-jobs` ClusterCleanupPolicy
+     (kubernetes/apps/kyverno/policies/app/cleanup-opt-in.yaml) deletes it hourly → Flux recreates =
+     retry. Failure-only: Complete Jobs survive as the do-once "done" marker (ADR-0003). Don't use
+     `ttlSecondsAfterFinished` for this on do-once Jobs — TTL also deletes Complete Jobs, which makes
+     Flux re-run them every TTL+interval (fine for the devex jobs where that's intended; wrong for a
+     token-minting provisioner).
 - **Harden the pod:** `runAsNonRoot`, `seccompProfile: {type: RuntimeDefault}`, `readOnlyRootFilesystem:
   true`, `capabilities: {drop: [ALL]}`.
 - **Secrets** the job consumes/produces → the `external-secrets` skill (ESO+OpenBao, never SOPS).

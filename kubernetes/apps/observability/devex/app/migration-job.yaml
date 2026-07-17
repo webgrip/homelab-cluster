@@ -10,6 +10,10 @@ metadata:
   namespace: observability
   annotations:
     schema-rev: "1"
+    # Job spec.template is immutable; a Renovate digest bump on the psql image
+    # would wedge the devex Kustomization (2026-07-15). force = delete+recreate
+    # (re-runs the idempotent migration — intended, same as a schema-rev bump).
+    kustomize.toolkit.fluxcd.io/force: enabled
 spec:
   backoffLimit: 10 # retries until the CNPG cluster + managed `devex` role are ready
   ttlSecondsAfterFinished: 86400

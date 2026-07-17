@@ -3,6 +3,11 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: guac-sample-data
+  annotations:
+    # Job spec.template is immutable; without force, any template change (e.g. a
+    # Renovate image-digest bump) wedges the owning Kustomization until the Job
+    # is hand-deleted (the 2026-07-15 devex failure mode). force = delete+recreate.
+    kustomize.toolkit.fluxcd.io/force: enabled
 spec:
   activeDeadlineSeconds: 900
   backoffLimit: 2

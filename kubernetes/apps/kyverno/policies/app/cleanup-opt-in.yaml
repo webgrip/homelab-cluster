@@ -27,6 +27,43 @@ spec:
         value: 0
   schedule: "17 * * * *"
 ---
+# Self-heal for Flux-managed one-shot Jobs: a Failed (backoff-exhausted) Job is
+# terminal — Kubernetes never retries it and Flux won't replace it while its spec
+# matches git. Deleting it lets the owning Flux Kustomization recreate it on the
+# next reconcile = an automatic retry, no kubectl needed (2026-07-17: both forgejo
+# provisioners sat Failed for ~22-45h after the netpol outage until hand-deleted).
+# Failure-only on purpose: Complete Jobs are the "done" markers of the ADR-0003
+# do-once bootstrap pattern and must survive. Opt-in via label so only Jobs that
+# something (Flux) will recreate are ever deleted.
+apiVersion: kyverno.io/v2
+kind: ClusterCleanupPolicy
+metadata:
+  name: cleanup-opt-in-failed-jobs
+  annotations:
+    policies.kyverno.io/title: Cleanup Opt-In Failed Jobs
+    policies.kyverno.io/category: Cleanup, Operations
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/subject: Job
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Remove terminally-Failed Jobs that opt in via cleanup.webgrip.io/retry-failed,
+      so their owning Flux Kustomization recreates them (automatic retry).
+spec:
+  match:
+    any:
+      - resources:
+          kinds:
+            - Job
+          selector:
+            matchLabels:
+              cleanup.webgrip.io/retry-failed: "true"
+  conditions:
+    all:
+      - key: "{{ target.status.conditions[?type == 'Failed' && status == 'True'] | length(@) }}"
+        operator: GreaterThan
+        value: 0
+  schedule: "41 * * * *"
+---
 apiVersion: kyverno.io/v2
 kind: ClusterCleanupPolicy
 metadata:

@@ -10,6 +10,12 @@ metadata:
   namespace: observability
   annotations:
     seed-rev: "1"
+    # Job spec.template is immutable; without this, any template change (e.g. a
+    # Renovate image-digest bump) wedges the devex Kustomization on a dry-run
+    # "field is immutable" error until someone hand-deletes the Job (2026-07-15).
+    # With it, Flux deletes+recreates the Job instead (which re-runs it — same
+    # effect as the manual fix).
+    kustomize.toolkit.fluxcd.io/force: enabled
 spec:
   backoffLimit: 20 # retries until devex-db-migrate has applied the schema
   ttlSecondsAfterFinished: 86400

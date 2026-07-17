@@ -11,6 +11,11 @@ kind: Job
 metadata:
   name: forgejo-ci-provisioner
   namespace: forgejo
+  labels:
+    # If this Job exhausts its backoff (terminal Failed), the Kyverno
+    # cleanup-opt-in-failed-jobs policy deletes it hourly and Flux recreates it =
+    # automatic retry. Complete runs are never touched (do-once marker, ADR-0003).
+    cleanup.webgrip.io/retry-failed: "true"
 spec:
   backoffLimit: 4
   template:

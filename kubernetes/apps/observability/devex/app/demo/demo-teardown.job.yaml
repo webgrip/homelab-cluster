@@ -7,6 +7,12 @@ kind: Job
 metadata:
   name: devex-db-demo-teardown
   namespace: observability
+  annotations:
+    # Job spec.template is immutable, and this Job sits suspended (never finishes)
+    # so ttlSecondsAfterFinished can never clean it up — a template change (e.g. a
+    # Renovate digest bump) wedges the devex Kustomization forever (2026-07-15/17).
+    # With force, Flux deletes+recreates it; recreated with suspend:true = stays dormant.
+    kustomize.toolkit.fluxcd.io/force: enabled
 spec:
   suspend: true
   backoffLimit: 6
