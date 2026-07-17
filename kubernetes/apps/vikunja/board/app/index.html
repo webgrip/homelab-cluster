@@ -58,7 +58,7 @@
     font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased;
   }
-  code, .mono, .key, input#search { font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace; }
+  code, .mono, .key, input#search, textarea.htmlsrc { font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace; }
   h1, h2, h3 { text-wrap: balance; }
   a { color: var(--accent); }
   ::selection { background: var(--accent); color: var(--accent-ink); }
@@ -146,6 +146,10 @@
   @media (min-width: 560px) { .rec { grid-template-columns: 64px 1fr; } .rec .rec-body { grid-column: 2; } }
   .rec.is-done { opacity: 0.62; }
   .rec.is-done h4 { text-decoration: line-through; text-decoration-thickness: 1px; }
+  .rec.can-drag { cursor: grab; }
+  .rec.dragging { opacity: 0.45; }
+  .rec.drag-above { box-shadow: 0 -3px 0 0 var(--accent), var(--shadow); }
+  .rec.drag-below { box-shadow: 0 3px 0 0 var(--accent), var(--shadow); }
 
   .integration-list { display: inline-flex; flex-wrap: wrap; gap: 7px; margin: 6px 0 0; padding: 0; vertical-align: middle; }
   .integration-list span { font-size: 12.5px; background: var(--surface-2); border: 1px solid var(--line); padding: 2px 10px; border-radius: 999px; color: var(--ink); }
@@ -153,6 +157,7 @@
   .integration-list span.l-ready { background: var(--live-bg); border-color: var(--live); color: var(--live); }
   .integration-list span.l-agent { background: var(--ee-bg); border-color: var(--ee); color: var(--ee); }
   .integration-list span.l-nr { background: var(--sdk-bg); border-color: var(--sdk); color: var(--sdk); }
+  .integration-list button.chip-x { border: none; background: none; color: inherit; cursor: pointer; font: inherit; font-weight: 800; padding: 0 0 0 5px; }
   .idtag { font-size: 11px; color: var(--muted); background: var(--code-bg); padding: 1px 6px; border-radius: 5px; white-space: nowrap; }
   .duetag { font-size: 12px; color: var(--accent); font-weight: 700; white-space: nowrap; }
 
@@ -168,18 +173,31 @@
   .prose ul[data-type="taskList"] input { accent-color: var(--accent); }
 
   .taskdetail { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
-  .taskdetail .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 14px; }
-  .taskdetail .actions button, .taskdetail .actions a {
+  .taskdetail .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0 14px; }
+  .taskdetail .actions button, .taskdetail .actions a, .taskdetail .actions select {
     font-size: 12.5px; font-weight: 600; padding: 5px 12px; border-radius: 999px; cursor: pointer; text-decoration: none;
     border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font-family: inherit;
   }
   .taskdetail .actions .primary { background: var(--live-bg); color: var(--live); border-color: var(--live); }
   .taskdetail .actions button:hover, .taskdetail .actions a:hover { border-color: var(--accent); color: var(--accent); }
+  .labelbar { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin: 0 0 12px; }
+  .labelbar select { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px dashed var(--line); background: none; color: var(--muted); font-family: inherit; cursor: pointer; }
+  .editgrid { display: grid; gap: 10px; margin: 10px 0 16px; max-width: 720px; }
+  .editgrid label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; display: block; margin-bottom: 3px; }
+  .editgrid input, .editgrid select, .editgrid textarea {
+    width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--ink); font-size: 13px; font-family: inherit;
+  }
+  .editgrid textarea.htmlsrc { min-height: 220px; font-size: 12.5px; line-height: 1.5; }
+  .editgrid .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .comment { border-top: 1px solid var(--line); padding: 10px 0 2px; }
   .comment .who { font-size: 12px; color: var(--muted); font-weight: 700; margin-bottom: 4px; }
   .relchips { display: flex; flex-wrap: wrap; gap: 7px; margin: 4px 0 10px; }
   .relchips span { font-size: 12px; background: var(--code-bg); border: 1px solid var(--line); padding: 2px 9px; border-radius: 6px; color: var(--muted); }
   .relchips b { color: var(--ink); font-weight: 600; }
+
+  #toast { position: fixed; right: 18px; bottom: 18px; z-index: 40; display: none; box-shadow: var(--shadow); }
+  #toast.err { background: var(--ee-bg); color: var(--ee); border-color: var(--ee); }
 
   footer.colophon { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; }
   footer.colophon code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
@@ -191,7 +209,7 @@
 <header class="masthead">
   <p class="eyebrow">vikunja — homelab boards</p>
   <h1 class="title">The board, without the Vikunja front end</h1>
-  <p class="dek">Same Vikunja backend, API and MCP — different face. Read, filter and complete tasks here; deep edits open in the <a href="/" id="stock-link">stock UI</a>. Reuses your existing Vikunja login session.</p>
+  <p class="dek">Same Vikunja backend, API and MCP — different face. Filter, drag to re-order, edit, label and hand tickets to agents right here; anything heavier opens in the <a href="/" id="stock-link">stock UI</a>. Reuses your existing Vikunja login session.</p>
   <div class="config-strip" id="stats"></div>
 </header>
 
@@ -201,6 +219,10 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input id="search" type="text" placeholder="Filter tasks — title, label, VIK-id…" autocomplete="off" />
     </div>
+    <select id="sortmode" class="filter" aria-label="Sort order">
+      <option value="board">Board order</option>
+      <option value="prio">By priority</option>
+    </select>
     <select id="statefilter" class="filter" aria-label="Filter by state">
       <option value="open">Open</option>
       <option value="done">Done</option>
@@ -226,7 +248,7 @@
 <main class="wrap">
   <div class="callout js-hidden" id="auth-callout">
     <strong>Not signed in.</strong> Log in to <a href="/">Vikunja</a> in this browser first (this page reuses that
-    session), or paste a personal API token (Settings → API tokens):
+    session — including for edits), or paste a personal API token (Settings → API tokens):
     <br><input id="token-input" type="password" placeholder="tk_…" autocomplete="off">
   </div>
   <div class="callout js-hidden" id="error-callout"></div>
@@ -242,16 +264,21 @@
 
   <footer class="colophon">
     Custom front end on the Vikunja API (<code>/api/v1</code>) — GitOps-served from
-    <code>kubernetes/apps/vikunja/board</code>. Design ported from the LiteLLM config-reference artifact.
-    Priority chips map the board convention <code>P0/P1 · P2 · P3</code>.
+    <code>kubernetes/apps/vikunja/board</code>. Drag cards in <code>Board order</code> to persist positions;
+    agent assignment writes the <code>agent/&lt;name&gt;</code> claim label per the board contract.
   </footer>
 </main>
+
+<span class="config-pill" id="toast"></span>
 
 <script>
 "use strict";
 const API = "/api/v1";
 const $ = (id) => document.getElementById(id);
-const state = { token: null, projects: [], tasks: [], project: null, expanded: new Set() };
+const state = {
+  token: null, projects: [], project: null, viewId: null, tasks: [], labels: [],
+  expanded: new Set(), editing: new Set(), draggedId: null,
+};
 
 /* ---------- theme toggle (stamps data-theme; media query is the default) ---------- */
 const themeBtn = document.createElement("button");
@@ -295,9 +322,28 @@ async function api(path, opts = {}) {
   return r;
 }
 const apiJSON = async (path, opts) => (await api(path, opts)).json();
+async function pagedJSON(path) {
+  const out = [];
+  for (let page = 1; page <= 8; page++) {
+    const batch = await apiJSON(`${path}${path.includes("?") ? "&" : "?"}per_page=250&page=${page}`);
+    if (!Array.isArray(batch)) return batch;
+    out.push(...batch);
+    if (batch.length < 250) break;
+  }
+  return out;
+}
 
 function showAuth() { $("auth-callout").classList.remove("js-hidden"); }
 function showError(msg) { const e = $("error-callout"); e.textContent = msg; e.classList.remove("js-hidden"); }
+let toastT;
+function toast(msg, err) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.toggle("err", !!err);
+  t.style.display = "inline-flex";
+  clearTimeout(toastT);
+  toastT = setTimeout(() => { t.style.display = "none"; }, err ? 6000 : 2500);
+}
 
 /* ---------- auth: Vikunja UI JWT (same-origin localStorage) → saved API token ---------- */
 async function findToken() {
@@ -323,41 +369,50 @@ async function loadProjects() {
   const all = await apiJSON("/projects");
   state.projects = all.filter((p) => !p.is_archived && p.id > 0);
 }
-async function loadTasks(projectId) {
-  const tasks = [];
-  for (let page = 1; page <= 8; page++) {
-    const r = await api(`/projects/${projectId}/tasks?per_page=250&page=${page}`);
-    const batch = await r.json();
-    tasks.push(...batch);
-    if (batch.length < 250) break;
-  }
-  state.tasks = tasks;
+async function loadLabels() {
+  state.labels = (await pagedJSON("/labels")) || [];
+}
+async function loadTasks() {
+  // Prefer the project's List view: its task objects carry per-view positions,
+  // which is what drag-to-reorder persists against.
+  state.viewId = null;
+  try {
+    const views = await apiJSON(`/projects/${state.project}/views`);
+    const list = (views || []).find((v) => v.view_kind === "list" || v.view_kind === 0);
+    if (list) {
+      state.viewId = list.id;
+      const raw = await pagedJSON(`/projects/${state.project}/views/${list.id}/tasks`);
+      state.tasks = (raw || []).flatMap((item) => item && item.tasks ? item.tasks : item).filter((t) => t && t.id);
+      return;
+    }
+  } catch { /* fall back below */ }
+  state.tasks = await pagedJSON(`/projects/${state.project}/tasks`);
 }
 
 /* ---------- rendering ---------- */
 const PRIO = (t) => t.done ? ["done", "done"] :
   t.priority >= 5 ? ["P0", "now"] : t.priority === 4 ? ["P1", "now"] :
   t.priority === 3 ? ["P2", "soon"] : t.priority === 2 ? ["P3", "skip"] : ["—", "none"];
-const LABEL_CLASS = { "do-next": "l-next", ready: "l-ready", "agent-ready": "l-agent", "needs-refinement": "l-nr" };
+const LABEL_CLASS = { "do-next": "l-next", ready: "l-ready", "needs-refinement": "l-nr" };
+const labelClass = (title) => LABEL_CLASS[title] || (title.startsWith("agent") ? "l-agent" : "");
 const nlDate = new Intl.DateTimeFormat("nl-NL", { day: "2-digit", month: "short", year: "numeric" });
 const hasDue = (t) => t.due_date && !t.due_date.startsWith("0001-");
-
-function labelChips(t) {
-  const labels = (t.labels || []).slice().sort((a, b) => a.title.localeCompare(b.title));
-  return labels.map((l) => `<span class="${LABEL_CLASS[l.title] || ""}">${esc(l.title)}</span>`).join("");
-}
+const sortedLabels = (t) => (t.labels || []).slice().sort((a, b) => a.title.localeCompare(b.title));
+const canDrag = () => $("sortmode").value === "board" && state.viewId !== null;
 
 function taskCard(t) {
   const [ptxt, pcls] = PRIO(t);
   const open = state.expanded.has(t.id);
-  return `<article class="rec ${t.done ? "is-done" : ""}" data-id="${t.id}">
+  const chips = sortedLabels(t).map((l) => `<span class="${labelClass(l.title)}">${esc(l.title)}</span>`).join("");
+  return `<article class="rec ${t.done ? "is-done" : ""} ${canDrag() ? "can-drag" : ""}"
+      data-id="${t.id}" ${canDrag() ? 'draggable="true"' : ""}>
     <span class="priority ${pcls}">${ptxt}</span>
     <div class="rec-body">
       <h4 data-act="toggle">${esc(t.title)}</h4>
       <p class="meta">
         <span class="idtag">VIK-${t.id}</span>
         ${hasDue(t) ? `<span class="duetag">due ${nlDate.format(new Date(t.due_date))}</span>` : ""}
-        <span class="integration-list">${labelChips(t)}</span>
+        <span class="integration-list">${chips}</span>
       </p>
       ${open ? `<div class="taskdetail" data-detail="${t.id}"><p class="meta">Loading…</p></div>` : ""}
     </div>
@@ -382,9 +437,11 @@ function applyFilters() {
   });
 }
 
+const boardSort = (a, b) => (a.done - b.done) || ((a.position || 0) - (b.position || 0)) || (a.id - b.id);
+const prioSort = (a, b) => (a.done - b.done) || ((b.priority || 0) - (a.priority || 0)) || (a.id - b.id);
+
 function render() {
-  const list = applyFilters().sort((a, b) =>
-    (a.done - b.done) || ((b.priority || 0) - (a.priority || 0)) || (a.id - b.id));
+  const list = applyFilters().sort($("sortmode").value === "board" ? boardSort : prioSort);
   $("tasks").innerHTML = list.map(taskCard).join("") ||
     `<div class="callout">Nothing matches the current filters.</div>`;
   $("result-count").textContent = `${list.length} of ${state.tasks.length} tasks`;
@@ -407,27 +464,127 @@ function renderNav() {
   nav.appendChild(themeBtn);
 }
 
-/* ---------- detail: description, relations, comments, actions ---------- */
+/* ---------- detail: description, relations, comments, labels, actions ---------- */
 const REL_LABEL = { precedes: "precedes", follows: "follows", blocked: "blocked by", blocking: "blocks",
   related: "related", duplicateof: "duplicate of", duplicates: "duplicated by",
   copiedfrom: "copied from", copiedto: "copied to", subtask: "subtask", parenttask: "parent" };
+const isAgentLabel = (l) => l.title.startsWith("agent/");
+
+function editForm(t) {
+  const dueVal = hasDue(t) ? t.due_date.slice(0, 10) : "";
+  const opt = (v, txt) => `<option value="${v}" ${(t.priority || 0) === v ? "selected" : ""}>${txt}</option>`;
+  return `<div class="editgrid">
+    <div><label>Title</label><input data-edit="title" value="${esc(t.title)}"></div>
+    <div class="row2">
+      <div><label>Priority</label><select data-edit="priority">
+        ${opt(0, "—")}${opt(2, "P3")}${opt(3, "P2")}${opt(4, "P1")}${opt(5, "P0")}</select></div>
+      <div><label>Due date</label><input type="date" data-edit="due" value="${dueVal}"></div>
+    </div>
+    <div><label>Description (TipTap HTML)</label><textarea class="htmlsrc" data-edit="desc">${esc(t.description || "")}</textarea></div>
+  </div>`;
+}
 
 async function fillDetail(t) {
   const el = document.querySelector(`[data-detail="${t.id}"]`);
   if (!el) return;
+  const editing = state.editing.has(t.id);
   const rels = Object.entries(t.related_tasks || {}).flatMap(([kind, tasks]) =>
     (tasks || []).map((r) => `<span>${REL_LABEL[kind] || kind} <b>VIK-${r.id}</b> ${esc(r.title).slice(0, 60)}</span>`));
   let comments = [];
-  try { comments = await apiJSON(`/tasks/${t.id}/comments`); } catch { /* keep going */ }
+  if (!editing) { try { comments = await apiJSON(`/tasks/${t.id}/comments`); } catch { /* keep going */ } }
+
+  const onTask = new Set((t.labels || []).map((l) => l.id));
+  const addable = state.labels.filter((l) => !onTask.has(l.id)).sort((a, b) => a.title.localeCompare(b.title));
+  const agents = state.labels.filter(isAgentLabel).sort((a, b) => a.title.localeCompare(b.title));
+  const curAgent = (t.labels || []).find(isAgentLabel);
+  const labelBar = `<div class="labelbar"><span class="integration-list">
+      ${sortedLabels(t).map((l) => `<span class="${labelClass(l.title)}">${esc(l.title)}
+        <button class="chip-x" data-act="unlabel" data-label="${l.id}" title="Remove label">×</button></span>`).join("")}
+    </span>
+    <select data-act="addlabel">
+      <option value="">+ label…</option>
+      ${addable.map((l) => `<option value="${l.id}">${esc(l.title)}</option>`).join("")}
+      <option value="__new">＋ new label…</option>
+    </select></div>`;
+
   el.innerHTML = `
     <div class="actions">
       <button data-act="done" class="primary">${t.done ? "Reopen" : "Mark done"}</button>
+      <button data-act="edit">${editing ? "Cancel edit" : "Edit"}</button>
+      ${editing ? `<button data-act="save" class="primary">Save</button>` : ""}
+      <select data-act="assign" title="Assign to an agent (agent/* claim label)">
+        <option value="">${curAgent ? "agent: " + esc(curAgent.title.slice(6)) : "assign agent…"}</option>
+        ${agents.map((a) => `<option value="${a.id}">${esc(a.title)}</option>`).join("")}
+        <option value="__new">＋ new agent…</option>
+        ${curAgent ? `<option value="__none">unassign</option>` : ""}
+      </select>
       <a href="/tasks/${t.id}" rel="noopener">Open in Vikunja ↗</a>
     </div>
-    ${rels.length ? `<div class="relchips">${rels.join("")}</div>` : ""}
-    <div class="prose">${sanitize(t.description) || "<p><em>No description.</em></p>"}</div>
-    ${comments.map((c) => `<div class="comment"><div class="who">${esc(c.author?.name || c.author?.username || "?")}
-      · ${nlDate.format(new Date(c.created))}</div><div class="prose">${sanitize(c.comment)}</div></div>`).join("")}`;
+    ${labelBar}
+    ${editing ? editForm(t) : `
+      ${rels.length ? `<div class="relchips">${rels.join("")}</div>` : ""}
+      <div class="prose">${sanitize(t.description) || "<p><em>No description.</em></p>"}</div>
+      ${comments.map((c) => `<div class="comment"><div class="who">${esc(c.author?.name || c.author?.username || "?")}
+        · ${nlDate.format(new Date(c.created))}</div><div class="prose">${sanitize(c.comment)}</div></div>`).join("")}`}`;
+}
+
+/* ---------- mutations (always read-modify-write; Vikunja updates replace) ---------- */
+function absorb(fresh) {
+  const i = state.tasks.findIndex((x) => x.id === fresh.id);
+  if (i >= 0) state.tasks[i] = { ...state.tasks[i], ...fresh };
+}
+async function updateTask(id, mutate) {
+  const fresh = await apiJSON(`/tasks/${id}`);
+  mutate(fresh);
+  const saved = await apiJSON(`/tasks/${id}`, { method: "POST", body: JSON.stringify(fresh) });
+  absorb(saved);
+}
+async function addLabel(taskId, labelId) {
+  await apiJSON(`/tasks/${taskId}/labels`, { method: "PUT", body: JSON.stringify({ label_id: labelId }) });
+  const t = state.tasks.find((x) => x.id === taskId);
+  const l = state.labels.find((x) => x.id === labelId);
+  if (t && l) t.labels = [...(t.labels || []), l];
+}
+async function removeLabel(taskId, labelId) {
+  await api(`/tasks/${taskId}/labels/${labelId}`, { method: "DELETE" });
+  const t = state.tasks.find((x) => x.id === taskId);
+  if (t) t.labels = (t.labels || []).filter((l) => l.id !== labelId);
+}
+async function createLabel(title) {
+  const l = await apiJSON("/labels", { method: "PUT", body: JSON.stringify({ title, hex_color: "a8641f" }) });
+  state.labels.push(l);
+  return l;
+}
+
+/* ---------- drag to re-order (persists per-view position) ---------- */
+const STEP = 65536;
+async function setPosition(taskId, position) {
+  await apiJSON(`/tasks/${taskId}/position`, {
+    method: "POST", body: JSON.stringify({ position, project_view_id: state.viewId, task_id: taskId }),
+  });
+  const t = state.tasks.find((x) => x.id === taskId);
+  if (t) t.position = position;
+}
+async function reindexAll(order) {
+  toast(`Re-indexing ${order.length} positions…`);
+  for (let i = 0; i < order.length; i++) await setPosition(order[i].id, (i + 1) * STEP);
+}
+async function dropTask(draggedId, targetId, before) {
+  const order = state.tasks.slice().sort(boardSort).filter((t) => t.id !== draggedId);
+  const dragged = state.tasks.find((t) => t.id === draggedId);
+  let idx = order.findIndex((t) => t.id === targetId);
+  if (idx < 0 || !dragged) return;
+  if (!before) idx += 1;
+  order.splice(idx, 0, dragged);
+  const prev = order[idx - 1]?.position, next = order[idx + 1]?.position;
+  let pos;
+  if (prev == null && next == null) pos = STEP;
+  else if (prev == null) pos = next > 0 ? next / 2 : null;
+  else if (next == null) pos = prev + STEP;
+  else if (next > prev) pos = (prev + next) / 2;
+  if (pos == null) { await reindexAll(order); } else { await setPosition(draggedId, pos); }
+  toast(`VIK-${draggedId} moved`);
+  render();
 }
 
 /* ---------- events ---------- */
@@ -435,45 +592,132 @@ $("tasks").addEventListener("click", async (ev) => {
   const card = ev.target.closest(".rec"); if (!card) return;
   const id = +card.dataset.id;
   const t = state.tasks.find((x) => x.id === id); if (!t) return;
-  if (ev.target.dataset.act === "toggle") {
-    state.expanded.has(id) ? state.expanded.delete(id) : state.expanded.add(id);
-    render();
-  } else if (ev.target.dataset.act === "done") {
-    // read-modify-write: Vikunja's update replaces the object, never send a partial
-    const fresh = await apiJSON(`/tasks/${id}`);
-    fresh.done = !fresh.done;
-    await apiJSON(`/tasks/${id}`, { method: "POST", body: JSON.stringify(fresh) });
-    await loadTasks(state.project);
-    render();
-  }
+  const act = ev.target.dataset.act;
+  try {
+    if (act === "toggle") {
+      state.expanded.has(id) ? state.expanded.delete(id) : state.expanded.add(id);
+      state.editing.delete(id);
+      render();
+    } else if (act === "done") {
+      await updateTask(id, (f) => { f.done = !f.done; });
+      toast(t.done ? `VIK-${id} reopened` : `VIK-${id} done`);
+      render();
+    } else if (act === "edit") {
+      state.editing.has(id) ? state.editing.delete(id) : state.editing.add(id);
+      render();
+    } else if (act === "save") {
+      const g = (k) => card.querySelector(`[data-edit="${k}"]`).value;
+      await updateTask(id, (f) => {
+        f.title = g("title").trim() || f.title;
+        f.priority = +g("priority");
+        f.due_date = g("due") ? g("due") + "T12:00:00Z" : "0001-01-01T00:00:00Z";
+        f.description = g("desc");
+      });
+      state.editing.delete(id);
+      toast(`VIK-${id} saved`);
+      render();
+    } else if (act === "unlabel") {
+      await removeLabel(id, +ev.target.dataset.label);
+      render();
+    }
+  } catch (e) { toast(`Write failed: ${e.message}`, true); }
 });
+
+$("tasks").addEventListener("change", async (ev) => {
+  const card = ev.target.closest(".rec"); if (!card) return;
+  const id = +card.dataset.id;
+  const t = state.tasks.find((x) => x.id === id); if (!t) return;
+  const act = ev.target.dataset.act;
+  try {
+    if (act === "addlabel" && ev.target.value) {
+      let lid = ev.target.value;
+      if (lid === "__new") {
+        const name = prompt("New label name:");
+        if (!name) { render(); return; }
+        lid = (await createLabel(name.trim())).id;
+      }
+      await addLabel(id, +lid);
+      render();
+    } else if (act === "assign" && ev.target.value) {
+      const v = ev.target.value;
+      for (const l of (t.labels || []).filter(isAgentLabel)) await removeLabel(id, l.id);
+      if (v === "__new") {
+        const name = prompt("Agent name (label becomes agent/<name>):");
+        if (name) await addLabel(id, (await createLabel("agent/" + name.trim().replace(/^agent\//, ""))).id);
+      } else if (v !== "__none") {
+        await addLabel(id, +v);
+        toast(`VIK-${id} → ${state.labels.find((l) => l.id === +v)?.title}`);
+      }
+      render();
+    }
+  } catch (e) { toast(`Write failed: ${e.message}`, true); render(); }
+});
+
+/* drag events */
+$("tasks").addEventListener("dragstart", (ev) => {
+  const card = ev.target.closest(".rec"); if (!card || !canDrag()) return;
+  state.draggedId = +card.dataset.id;
+  card.classList.add("dragging");
+  ev.dataTransfer.effectAllowed = "move";
+});
+$("tasks").addEventListener("dragend", () => {
+  state.draggedId = null;
+  document.querySelectorAll(".rec").forEach((c) => c.classList.remove("dragging", "drag-above", "drag-below"));
+});
+$("tasks").addEventListener("dragover", (ev) => {
+  const card = ev.target.closest(".rec");
+  if (!card || state.draggedId == null || +card.dataset.id === state.draggedId) return;
+  ev.preventDefault();
+  const r = card.getBoundingClientRect();
+  const before = ev.clientY < r.top + r.height / 2;
+  card.classList.toggle("drag-above", before);
+  card.classList.toggle("drag-below", !before);
+});
+$("tasks").addEventListener("dragleave", (ev) => {
+  const card = ev.target.closest(".rec");
+  if (card) card.classList.remove("drag-above", "drag-below");
+});
+$("tasks").addEventListener("drop", async (ev) => {
+  const card = ev.target.closest(".rec");
+  if (!card || state.draggedId == null) return;
+  ev.preventDefault();
+  const before = card.classList.contains("drag-above");
+  const dragged = state.draggedId;
+  card.classList.remove("drag-above", "drag-below");
+  try { await dropTask(dragged, +card.dataset.id, before); }
+  catch (e) { toast(`Re-order failed: ${e.message}`, true); }
+});
+
 $("projectnav").addEventListener("click", async (ev) => {
   const a = ev.target.closest("a[data-project]"); if (!a) return;
   ev.preventDefault();
   selectProject(+a.dataset.project);
 });
-["search", "statefilter", "priofilter"].forEach((id) => $(id).addEventListener("input", render));
+["search", "statefilter", "priofilter", "sortmode"].forEach((id) => $(id).addEventListener("input", render));
 addEventListener("keydown", (e) => {
-  if (e.key === "/" && document.activeElement !== $("search")) { e.preventDefault(); $("search").focus(); }
+  if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
+    e.preventDefault(); $("search").focus();
+  }
 });
 
 async function selectProject(id) {
   state.project = id;
   state.expanded.clear();
+  state.editing.clear();
   localStorage.setItem("board_project", id);
   const p = state.projects.find((x) => x.id === id);
   $("project-title").textContent = p ? p.title : `Project ${id}`;
   $("project-desc").innerHTML = p?.description ? sanitize(p.description) : "";
   renderNav();
   $("tasks").innerHTML = `<div class="callout">Loading tasks…</div>`;
-  await loadTasks(id);
+  await loadTasks();
   render();
 }
 
 async function boot() {
   try {
     if (!state.token && !(await findToken())) { showAuth(); $("project-title").textContent = "Sign in"; return; }
-    await loadProjects();
+    await Promise.all([loadProjects(), loadLabels()]);
     if (!state.projects.length) { showError("No projects visible for this account."); return; }
     const saved = +localStorage.getItem("board_project");
     await selectProject(state.projects.some((p) => p.id === saved) ? saved : state.projects[0].id);
