@@ -87,11 +87,7 @@ spec:
             except:
               - 10.42.0.0/16
               - 10.43.0.0/16
-    # kube-apiserver ClusterIP (CNPG instance manager); carved back in since the
-    # internet rule excepts the service CIDR.
-    - to:
-        - ipBlock:
-            cidr: 10.43.0.1/32
-      ports:
-        - protocol: TCP
-          port: 443
+            # NOTE: no ipBlock rule for the kube-apiserver — Cilium matches API-server
+            # traffic by the reserved `kube-apiserver` identity, so a 10.43.0.1/32 CIDR
+            # rule silently never matches (the 2026-07-17 forgejo-db outage trap). CNPG
+            # pods get identity-based API egress from components/cnpg-netpol.

@@ -75,9 +75,25 @@ spec:
             except:
               - 10.42.0.0/16
               - 10.43.0.0/16
-    - to:
-        - ipBlock:
-            cidr: 10.43.0.1/32
-      ports:
-        - protocol: TCP
-          port: 443
+              # NOTE: no ipBlock rule for the kube-apiserver here — Cilium matches API-server
+              # traffic by the reserved `kube-apiserver` identity, so a 10.43.0.1/32 CIDR rule
+              # silently never matches (the trap that took down forgejo-db on 2026-07-17; see
+              # components/cnpg-netpol). CNPG pods get API egress from that component; the
+              # backstage app (kubernetes plugin) gets it from the CiliumNetworkPolicy below.
+---
+# Backstage's kubernetes plugin reads cluster state via the API server. Must be
+# identity-based (`toEntities: kube-apiserver`) — a CIDR/port NetworkPolicy rule
+# cannot express this under Cilium. Scoped to the app pods, not namespace-wide.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-backstage-apiserver
+  labels:
+    app.kubernetes.io/part-of: backstage
+spec:
+  endpointSelector:
+    matchLabels:
+      app: backstage
+  egress:
+    - toEntities:
+        - kube-apiserver
