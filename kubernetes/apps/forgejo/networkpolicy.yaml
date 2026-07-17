@@ -94,16 +94,14 @@ spec:
     # discovery to authentik is granted by the shared components/gateway-egress
     # component (see ADR-0005), NOT a rule here -- a CIDR/port rule cannot express it
     # under Cilium.
-    # kube-apiserver ClusterIP: CNPG instance manager (db pod) needs the k8s API, and
-    # so do forgejo-runner-provisioner + forgejo-ci-provisioner (RBAC-scoped Secret
-    # read/write, SA token automounted -- unlike the other provisioner Jobs in this
-    # namespace, which don't touch the k8s API at all).
-    - to:
-        - ipBlock:
-            cidr: 10.43.0.1/32
-      ports:
-        - protocol: TCP
-          port: 443
+    # NOTE: kube-apiserver egress (CNPG instance manager, forgejo-runner-provisioner,
+    # forgejo-ci-provisioner) is NOT granted here. Cilium matches API-server traffic by
+    # the reserved `kube-apiserver` identity, so an ipBlock 10.43.0.1/32:443 rule here
+    # silently never matches (this file shipped with exactly that rule on 2026-07-15 and
+    # forgejo-db crash-looped on `dial tcp 10.43.0.1:443: i/o timeout` for two days).
+    # The working allows are identity-based CiliumNetworkPolicies: components/cnpg-netpol
+    # (wired in the forgejo-db layer) for the DB pods, and allow-provisioner-apiserver
+    # (below) for the provisioner Jobs. Same trap as ADR-0005's gateway hairpin.
     # internet + LAN: Garage S3 (10.0.0.110:3900, forgejo's bulk-object storage +
     # backups), gitea-mirror pulling from GitHub, the CI runner pulling arbitrary
     # images/cloning arbitrary repos/installing packages during workflow steps.
@@ -114,3 +112,27 @@ spec:
             except:
               - 10.42.0.0/16
               - 10.43.0.0/16
+---
+# Allow the provisioner Jobs to reach the kube-apiserver (RBAC-scoped Secret
+# read/write; they run kubectl against the API). Must be identity-based
+# (`toEntities: kube-apiserver`) — see the NOTE in forgejo-allow-egress above; a
+# CIDR/port rule cannot express this under Cilium. Scoped to the two Jobs' stable
+# job-name labels rather than namespace-wide: this namespace also runs a CI runner
+# executing arbitrary workflow code, which must NOT gain network reach to the API.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-provisioner-apiserver
+  labels:
+    app.kubernetes.io/part-of: forgejo
+spec:
+  endpointSelector:
+    matchExpressions:
+      - key: job-name
+        operator: In
+        values:
+          - forgejo-ci-provisioner
+          - forgejo-runner-provisioner
+  egress:
+    - toEntities:
+        - kube-apiserver
