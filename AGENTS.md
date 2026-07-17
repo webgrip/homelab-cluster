@@ -23,6 +23,9 @@ roadmap file in git — see
 
 - MCP server: `vikunja` · project: `Homelab Roadmap` (id 3) · instance list cap
   (maxitemsperpage): 250
+- Dark-factory work lives in its own project: `Dark Factory` (id 5, since 2026-07-17) — all
+  `theme/dark-factory` tickets (agent-execution program, LiteLLM inference plane, MCP gateway,
+  agent identity/budgets); same conventions/labels as the main board
 - Ticket prefix: `VIK` (commit trailers `VIK-<taskID>`; see
   [rfc-dark-factory](docs/techdocs/docs/rfc/rfc-dark-factory.md) for the full agent-execution program)
 - Labels: `theme/<kebab>` (security-kyverno-audit-enforce, security-network-containment,
