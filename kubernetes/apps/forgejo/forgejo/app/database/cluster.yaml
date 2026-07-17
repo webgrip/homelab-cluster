@@ -33,7 +33,12 @@ spec:
     size: 10Gi
     storageClass: longhorn
   walStorage:
-    size: 5Gi
+    # 5Gi filled in ~1.5 days when the 2026-07-15 netpol gap broke WAL archiving
+    # (barman-cloud plugin lost API access) — expanded live 2026-07-17 per the
+    # WAL-full runbook nugget in incidents/2026-06-09-longhorn-oom-cascade.md.
+    # NOTE: CNPG does NOT propagate size increases here to an existing PVC; a
+    # live `kubectl patch pvc` is required (this value documents/rebuilds only).
+    size: 10Gi
     storageClass: longhorn
   postgresql:
     parameters:
