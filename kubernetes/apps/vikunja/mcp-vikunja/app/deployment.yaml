@@ -57,10 +57,13 @@ spec:
             # The trailing /api/v1 is required by vikunja-mcp.
             - name: VIKUNJA_URL
               value: "http://vikunja.vikunja.svc.cluster.local:3456/api/v1"
-            # Hard deletes stay off (vikunja-mcp safe mode): project_delete
-            # archives, task_delete completes, label_delete is blocked.
-            # Opt-ins exist (ENABLE_{PROJECT,TASK,LABEL}_DELETE) — leave unset;
-            # Vikunja has no trash/undo.
+            # Hard deletes for projects/tasks stay off (vikunja-mcp safe mode):
+            # project_delete archives, task_delete completes — Vikunja has no
+            # trash/undo. Label deletes ARE enabled: a label delete only unlinks
+            # metadata (tasks keep their other labels), and board hygiene needs
+            # it (duplicate-label dedup).
+            - name: ENABLE_LABEL_DELETE
+              value: "true"
             - name: HOME
               value: /tmp
             - name: npm_config_cache
