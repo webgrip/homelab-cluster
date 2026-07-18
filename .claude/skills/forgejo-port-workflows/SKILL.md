@@ -62,3 +62,45 @@ the **Releases** unit (`has_releases`) the Releases tab/API **404s** and semanti
 - **Semantic Release `verifyConditions` fails in ~1 min?** The gitea plugin needs `GITEA_URL`; set it to
   `github.server_url`, the runner's intrinsic Forgejo instance URL. (Plugin *selection* is the
   `GITEA_ACTIONS` gate — separate concern from its *URL*.)
+
+## Hard-won facts — 2026-07-18 port campaign (telemetry/common-charts/a-t-t/traefik/ledgerflow)
+
+- **Secrets: Forgejo RESERVES the `FORGEJO_`/`GITHUB_`/`GITEA_` prefixes** — a stored secret named
+  `FORGEJO_TOKEN` cannot exist (PUT 400), so `${{ secrets.FORGEJO_TOKEN }}` resolves **empty**. The CI
+  bot token is the org secret **`WEBGRIP_CI_TOKEN`**; callers pass
+  `FORGEJO_TOKEN: ${{ secrets.WEBGRIP_CI_TOKEN }}` into reusables (declaring `FORGEJO_TOKEN` as a
+  workflow_call *parameter* is fine). The semantic-release composite survives an empty token
+  (`inputs.token || github.token`); **`update_techdocs`/`techdocs-deploy-gh-pages` do NOT** (raw
+  `git push https://bot:$TOKEN@…`). Provisioned org secrets: `WEBGRIP_CI_TOKEN`,
+  `HARBOR_ROBOT_USER/TOKEN` (→ `helm-chart-push` REGISTRY_* + `registry: harbor.webgrip.dev`),
+  `DT_API_KEY`; var `WEBGRIP_CI_BOT_NAME` (provisioner: `forgejo-actions-secrets.cronjob.yaml`).
+- **JS actions cannot run inside a `container:` whose image lacks Node** (`actions/checkout`,
+  `actions/cache`, `setup-*` all die before step logic). Fix: plain `git clone` step + per-job
+  dependency install; for PHP use `container: composer:2.8.5` (ships php 8.4 + composer + **git** —
+  `php:*-cli` has NEITHER git nor composer). The **native `docker` runner** has node v20 (externals,
+  on PATH), php 8.3, composer, git, buildx — JS actions work there; `webgrip/techdocs-runner` also
+  ships node (COPY'd from its node build stage), so the techdocs reusables keep `actions/checkout`.
+- **The composite installs a FIXED plugin set** (`npm install --no-save`: changelog,
+  commit-analyzer, exec, git, gitea, helm3, release-notes-generator, conventionalcommits). A
+  `.releaserc.js` Forgejo branch referencing anything else (`@semantic-release/npm`,
+  `semantic-release-github-actions-tags`) **fails at plugin-load on every run**, releasable commit or
+  not — keep those GitHub-branch-only.
+- **Services are addressed by NAME, not 127.0.0.1**: on this runner every job is a container job, so
+  `services:` join the job network (`DB_HOST=postgres`, `REDIS_HOST=redis`). GitHub's
+  host-port-mapping idiom (`127.0.0.1:5432`) silently can't connect.
+- **Observing runs**: the Actions API (`GET /repos/<o>/<r>/actions/tasks`) lags **5–10+ min** and its
+  `total_count` reads 0 while runs are pending — read the `workflow_runs` array, wait, never
+  conclude "didn't trigger" early (cost two misdiagnoses). No job-log API, no artifacts API —
+  step output is web-UI-only. Agent-debuggable substitute: a probe job that captures output to a
+  file and force-pushes it to a `ci-diag` branch (readable via the contents API), plus pass/fail
+  isolation jobs (one suspect step each).
+- **Cascade tell**: a matrix job "failing" with **no per-entry tasks** (no Unit/Integration/…) means
+  the matrix never ran — the failure is upstream in `needs:`, not in the tests.
+- **Caller job id must ≠ the reusable's inner job id** (v15 flattens; e.g. caller `semantic-release`
+  calling semantic-release.yml → rename the caller `release`). Inner ids: composer-install→
+  `composer-install-on-container`, static-analysis→`static-analysis-run`(+`composer-normalize`),
+  tests→`tests-run`, semantic-release→`semantic-release`, gha-javascript-lint→`eslint`,
+  techdocs-generate→`generate-techdocs`, techdocs-deploy-gh-pages→`deploy-gh-pages`.
+- **Reality check that reframed risk**: the org's GitHub CI had been dead for months (`arc-runner-set`
+  runners no longer exist; runs sit `queued` forever), so ports are CI *restoration* — removing
+  `.github/workflows` protects nothing and cannot double-release in practice. Keep move-not-copy anyway.
