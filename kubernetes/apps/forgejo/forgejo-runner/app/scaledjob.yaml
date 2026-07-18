@@ -191,6 +191,13 @@ spec:
                   --uuid "$(cat /run/forgejo-runner/uuid)" \
                   --token-url "file:///run/forgejo-runner/token"
             env:
+              # Job-container pulls (`container:` in workflows) are made by THIS process's docker
+              # client against the dind daemon — the kubelet imagePullSecret does not apply to
+              # them. Point the client at the harbor-pull dockerconfigjson so private
+              # harbor.webgrip.dev/webgrip/* images work as job containers; docker.io stays
+              # anonymous (no creds for it in the config).
+              - name: DOCKER_CONFIG
+                value: /harbor-docker
               - name: DOCKER_HOST
                 value: tcp://localhost:2376
               - name: DOCKER_CERT_PATH
@@ -213,6 +220,9 @@ spec:
               # workspaces. Writable by the runner user via fsGroup 1000.
               - name: ci-shared
                 mountPath: /mnt/ci-shared
+              - name: harbor-docker-config
+                mountPath: /harbor-docker
+                readOnly: true
             resources:
               # No CPU limit: steps run host-mode here and burst to ~1 core on an idle node.
               # Mem peak ~796Mi/1Gi (78%, tight) over 7d, so raise the ceiling to 1.25Gi.
@@ -234,6 +244,14 @@ spec:
             emptyDir: {}
           - name: runner-bin
             emptyDir: {}
+          # Same harbor-pull dockerconfigjson the kubelet uses, re-shaped as a docker CLI config
+          # dir for the runner's job-container pulls (see DOCKER_CONFIG above).
+          - name: harbor-docker-config
+            secret:
+              secretName: harbor-pull
+              items:
+                - key: .dockerconfigjson
+                  path: config.json
           # tmpfs (RAM), not disk. This is where the e2e validators land their mktemp
           # workspaces (TMPDIR=/mnt/ci-shared). flux-local's render renames every
           # kustomization.yaml in its tree to .original and back per build -- metadata/IOPS-heavy
