@@ -26,6 +26,9 @@ roadmap file in git — see
 - Dark-factory work lives in its own project: `Dark Factory` (id 5, since 2026-07-17) — all
   `theme/dark-factory` tickets (agent-execution program, LiteLLM inference plane, MCP gateway,
   agent identity/budgets); same conventions/labels as the main board
+- The custom board front end has its own project: `Vellum` (id 6, since 2026-07-18) —
+  `theme/vellum` tickets for the board page itself (`kubernetes/apps/vikunja/board`, served at
+  `vikunja.<domain>/board`); same conventions/labels as the main board
 - Ticket prefix: `VIK` (commit trailers `VIK-<taskID>`; see
   [rfc-dark-factory](docs/techdocs/docs/rfc/rfc-dark-factory.md) for the full agent-execution program)
 - Labels: `theme/<kebab>` (security-kyverno-audit-enforce, security-network-containment,
