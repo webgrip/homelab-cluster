@@ -88,9 +88,12 @@ the **Releases** unit (`has_releases`) the Releases tab/API **404s** and semanti
 - **Services are addressed by NAME, not 127.0.0.1**: on this runner every job is a container job, so
   `services:` join the job network (`DB_HOST=postgres`, `REDIS_HOST=redis`). GitHub's
   host-port-mapping idiom (`127.0.0.1:5432`) silently can't connect.
-- **Observing runs**: the Actions API (`GET /repos/<o>/<r>/actions/tasks`) lags **5–10+ min** and its
-  `total_count` reads 0 while runs are pending — read the `workflow_runs` array, wait, never
-  conclude "didn't trigger" early (cost two misdiagnoses). No job-log API, no artifacts API —
+- **Observing runs**: `GET /repos/<o>/<r>/actions/tasks` lists only **runner-ASSIGNED** tasks
+  (statuses running/success/failure/skipped — never "waiting"), so queued work is INVISIBLE and the
+  apparent "lag" is really queue depth: minutes when idle, **hours** when the 2–6-runner pool is
+  saturated. `total_count: 0` can mean "still queued" just as well as "never created" — the two are
+  indistinguishable from this API; only the web UI (`/<o>/<r>/actions`) shows waiting/blocked runs.
+  Never conclude "didn't trigger" from it (cost two misdiagnoses). No job-log API, no artifacts API —
   step output is web-UI-only. Agent-debuggable substitute: a probe job that captures output to a
   file and force-pushes it to a `ci-diag` branch (readable via the contents API), plus pass/fail
   isolation jobs (one suspect step each).
