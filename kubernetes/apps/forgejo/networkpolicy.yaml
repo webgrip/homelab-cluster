@@ -38,6 +38,18 @@ spec:
       ports:
         - protocol: TCP
           port: 3000
+    # renovate hits the Forgejo API + git-over-HTTP in-cluster: the
+    # renovate-forgejo-provisioner Job and every webgrip-forgejo RenovateJob
+    # worker pod (repo discovery, clones, PRs). Missed in the 2026-07-15
+    # zero-trust rollout — Renovate-on-Forgejo was dead for 3 days (provisioner
+    # curl timeouts to forgejo-http:3000) until this rule (2026-07-18).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: renovate
+      ports:
+        - protocol: TCP
+          port: 3000
     # gateway (network ns) + LAN -- all ports (HTTP 3000, SSH 22, gitea-mirror UI 4321;
     # avoid port-guessing breaking git-over-ssh or the web UI, same rationale as harbor).
     - from:
