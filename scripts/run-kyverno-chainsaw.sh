@@ -41,7 +41,41 @@ curl -fsSL "${KYVERNO_INSTALL_URL}" -o "${workspace}/kyverno-install.yaml"
 if [[ -n "${KYVERNO_IMAGE_PROXY}" ]]; then
     sed -i "s#ghcr.io/kyverno/#${KYVERNO_IMAGE_PROXY}kyverno/#g" "${workspace}/kyverno-install.yaml"
 fi
-kubectl_cmd --kubeconfig "${kubeconfig}" create -f "${workspace}/kyverno-install.yaml"
+# Server-side apply (not `create`): the freshly-created KinD node's etcd can time out partway
+# through applying install.yaml's ~40 CRDs+resources under CI disk load ("etcdserver: request
+# timed out" — bit CI 2026-07-18). `create` is not idempotent, so a retry after a partial
+# timeout dies with "already exists"; server-side apply reconciles instead, and it also dodges
+# the client-side last-applied-annotation size limit that Kyverno's large CRDs blow. Retry only
+# on known-transient control-plane errors so real failures still fail fast.
+install_kyverno_with_retry() {
+    local file="${1:?install file is required}"
+    local attempts="${2:-5}"
+    local delay_seconds="${3:-10}"
+    local attempt=1
+
+    while true; do
+        local output
+        if output="$(kubectl_cmd --kubeconfig "${kubeconfig}" apply --server-side --force-conflicts -f "${file}" 2>&1)"; then
+            printf '%s\n' "${output}"
+            return 0
+        fi
+
+        printf '%s\n' "${output}" >&2
+        if ! grep -qE 'etcdserver: request timed out|etcdserver: leader changed|the server was unable to return a response|Timeout: request did not complete|connection refused|unexpected EOF|EOF$' <<<"${output}"; then
+            return 1
+        fi
+
+        if ((attempt >= attempts)); then
+            return 1
+        fi
+
+        log warn "Retrying Kyverno install after transient control-plane error" "attempt=${attempt}/${attempts}"
+        sleep "${delay_seconds}"
+        ((attempt++))
+    done
+}
+
+install_kyverno_with_retry "${workspace}/kyverno-install.yaml"
 kubectl_cmd --kubeconfig "${kubeconfig}" wait --for=condition=Established crd/clusterpolicies.kyverno.io --timeout=120s
 # Only the admission + background controllers are exercised by the suites (validate/enforce +
 # generate). The reports and cleanup controllers aren't asserted on by any chainsaw test
