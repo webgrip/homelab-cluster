@@ -39,11 +39,51 @@ data:
       # Admin credential used to mint virtual keys (per-dev / per-agent / per-task)
       # with hard max_budget + tpm/rpm. Resolved from env at runtime.
       master_key: os.environ/LITELLM_MASTER_KEY
+      # --- VIK-262: models come ONLY from git. DB-backed object loading is
+      # limited to MCP registrations, so an Admin-UI-added model can't bypass
+      # review; keys without an explicit MCP grant get an empty tool surface
+      # (deny-by-default, set BEFORE real MCP servers are registered). ---
+      supported_db_objects: ["mcp"]
+      require_key_mcp_access_defined: true
+      # --- VIK-277: proxy self-protection against agent stampedes. ---
+      global_max_parallel_requests: 100
+      max_request_size_mb: 10
+      cancel_on_disconnect: true
+      # Graceful restarts: token-authed drain stops new work before the
+      # Recreate cut. Token is generator-minted (litellm-drain ExternalSecret).
+      enable_drain_endpoint: true
+      drain_endpoint_token: os.environ/DRAIN_ENDPOINT_TOKEN
+      # --- VIK-279: ledger growth bounded on the 10Gi CNPG volume; spend
+      # writes buffered through Valkey instead of hitting CNPG per-request.
+      # Prompt posture (recorded decision 2026-07-18): store_prompts_in_spend_logs
+      # stays OFF (default, privacy-lean) — flip deliberately if agent-traffic
+      # audit needs it. disable_error_logs stays false (errors are ledger
+      # value). proxy_batch_write_at reviewed: default is fine. ---
+      maximum_spend_logs_retention_period: "90d"
+      maximum_spend_logs_retention_interval: "1d"
+      use_redis_transaction_buffer: true
 
     litellm_settings:
       # Drop provider-unsupported params instead of erroring — keeps heterogeneous
       # clients (opencode, Claude Code, scripts) working through one endpoint.
       drop_params: true
+      # --- VIK-260: the GitOps budget backstop — any user/team created OUTSIDE
+      # an explicit spec (stray SSO login, future JWT team upsert) still lands
+      # under a ceiling. Units are USD (provider billing currency); amounts are
+      # an owner dial, deliberately modest. ---
+      max_internal_user_budget: 10
+      internal_user_budget_duration: "30d"
+      default_team_params:
+        max_budget: 25
+        budget_duration: "30d"
+        tpm_limit: 100000
+        rpm_limit: 500
+      # --- VIK-277: hang protection + log hygiene. request_timeout caps the
+      # absurd 6000s default; json_logs makes VictoriaLogs field extraction
+      # clean; the HF-tokenizer flag kills a runtime egress dependency. ---
+      request_timeout: 600
+      json_logs: true
+      disable_hf_tokenizer_download: true
       # Persist request/spend rows to the CNPG ledger (DATABASE_URL) — the
       # dollars-per-key record ADR-0044 exists for. NOTE: OSS LiteLLM exposes no
       # Prometheus /metrics endpoint (Enterprise-gated); a ledger→VictoriaMetrics
@@ -74,3 +114,14 @@ data:
       redis_host: os.environ/REDIS_HOST
       redis_port: os.environ/REDIS_PORT
       redis_password: os.environ/REDIS_PASSWORD
+      # --- VIK-277: retry provider flakes, never auth/client errors; pre-call
+      # checks reject over-context-window requests before tokens are spent. ---
+      num_retries: 2
+      retry_policy:
+        TimeoutErrorRetries: 2
+        RateLimitErrorRetries: 3
+        InternalServerErrorRetries: 2
+        AuthenticationErrorRetries: 0
+        BadRequestErrorRetries: 0
+        ContentPolicyViolationErrorRetries: 0
+      enable_pre_call_checks: true
