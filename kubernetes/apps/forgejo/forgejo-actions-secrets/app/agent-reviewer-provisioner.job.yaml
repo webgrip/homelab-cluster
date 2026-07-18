@@ -108,7 +108,14 @@ spec:
                 curl -fsS -o /dev/null -u "$admin" "$api/teams/$tid/members/${BOT_USERNAME}" \
                   && echo "bot in ${ORG}/${TEAM_NAME} (id $tid)"
               else
-                echo "WARN: could not ensure ${ORG}/${TEAM_NAME} membership" >&2
+                # FATAL, not a warning. A bot with no team has no repo access at all, and a Job
+                # that exits 0 anyway is exactly how that stays invisible (it did, on first run).
+                # Failing hands it to the Job's backoffLimit, which also clears the transient
+                # cause: two provisioners creating includes_all_repositories teams concurrently
+                # race inside Forgejo's recalculateAccesses and one gets a 500 (duplicate key on
+                # UQE_access_s). The retry finds the team already there and takes the PATCH path.
+                echo "ERROR: could not ensure ${ORG}/${TEAM_NAME} membership" >&2
+                exit 1
               fi
               echo "agent-reviewer provisioner converged"
           securityContext:
