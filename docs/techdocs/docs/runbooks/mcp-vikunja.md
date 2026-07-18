@@ -58,3 +58,9 @@ Rotation = same steps; step 2's `bao kv put` overwrites version-safely.
 | `/mcp` connect timeout | not on LAN, or pod not Ready (`kubectl -n vikunja get pods`) |
 | first tool call slow / npx errors in logs | npm download on session spawn — check egress netpol + npmjs reachability; pinned version yanked? |
 | pod OOMKilled (137) | child-process pile-up — confirm the deployment is still stateless (no `--stateful` arg) |
+| 503s + CrashLoopBackOff, exit **1**, log `No connection established for request ID` | **any client that disconnects before its response is ready crashes the whole gateway** — supergateway 3.4.3 stateless mode throws uncaught in `stdioToStatelessStreamableHttp.js:120` (reproduced 2026-07-18, evidence on VIK-314). Every in-flight request from every session dies with it. Recovery is automatic (restart backoff) once the aggressive client stops |
+
+**Client etiquette until VIK-314 lands**: one request at a time (no threaded sweeps), client
+timeouts ≥ 120 s (longer than the slowest expected response — the client must never hang up
+first), and re-`init()` on 404/410/503. A single 60 s-timeout bulk sweep took the bridge down
+for every concurrent agent session on 2026-07-18.
