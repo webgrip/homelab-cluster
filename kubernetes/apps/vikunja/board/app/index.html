@@ -213,6 +213,26 @@
   .avatar.empty:hover { border-color: var(--muted); color: var(--muted); }
   .frac { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
+  .rank {
+    min-width: 18px; text-align: right; font-size: 10.5px; color: var(--faint); flex: none;
+    font-variant-numeric: tabular-nums; font-family: ui-monospace, Consolas, monospace;
+  }
+  .row.sel .rank, .row:hover .rank { color: var(--accent); font-weight: 700; }
+  .est {
+    display: inline-flex; align-items: center; flex: none; gap: 4px; font-size: 10.5px;
+    font-family: ui-monospace, Consolas, monospace; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 5px; padding: 1px 7px; background: var(--surface);
+    white-space: nowrap;
+  }
+  .est.warn { color: var(--orange); border-color: color-mix(in srgb, var(--orange) 45%, var(--line)); }
+  .dorwarn {
+    margin-top: 10px; font-size: 11.5px; color: var(--orange); background: var(--orange-bg);
+    border-radius: 7px; padding: 6px 10px;
+  }
+  .group-h .hint { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--faint); margin-left: 4px; }
+  .group-h.todo-h { color: var(--accent); }
+  .stage-empty { padding: 14px 16px 18px; font-size: 12.5px; color: var(--faint); border-bottom: 1px solid var(--line-weak); }
+
   .row.dragging { opacity: 0.4; }
   .row.drag-above { box-shadow: inset 0 2px 0 var(--accent); }
   .row.drag-below { box-shadow: inset 0 -2px 0 var(--accent); }
@@ -505,7 +525,7 @@
         <kbd>/</kbd>
       </div>
       <div class="seg" id="groupseg" role="tablist" aria-label="Group by">
-        <button data-g="none">Queue</button>
+        <button data-g="stages">Stages</button>
         <button data-g="prio">Priority</button>
         <button data-g="epic">Epics</button>
       </div>
@@ -534,7 +554,7 @@ const state = {
   token: null, projects: [], project: null, viewId: null, tasks: [], labels: [],
   openId: null, draggedId: null, selId: null, visible: [],
   view: localStorage.getItem("board_view") || "open",
-  group: localStorage.getItem("board_group") || "none",
+  group: (() => { const g = localStorage.getItem("board_group"); return !g || g === "none" ? "stages" : g; })(),
   collapsed: new Set(JSON.parse(localStorage.getItem("board_collapsed") || "[]")),
 };
 
@@ -721,8 +741,40 @@ const isOverdue = (t) => hasDue(t) && !t.done && new Date(t.due_date) < new Date
 const hasLabel = (t, name) => (t.labels || []).some((l) => l.title === name);
 const sortedLabels = (t) => (t.labels || []).slice().sort((a, b) => a.title.localeCompare(b.title));
 const isAgentLabel = (l) => l.title.startsWith("agent/");
-const canDrag = () => state.group === "none" && state.viewId !== null;
 const getTask = (id) => state.tasks.find((x) => x.id === id);
+
+/* stages are DERIVED from board-contract signals (labels + done), never stored:
+   the MCP agents and the stock Vikunja UI keep working off the same truth */
+const STAGE_LABELS = ["ready", "needs-refinement", "review", "do-next"];
+function stageOf(t) {
+  if (t.done) return "done";
+  if (isEpic(t)) return "epic";
+  if (hasLabel(t, "review")) return "review";
+  if ((t.labels || []).some(isAgentLabel)) return "doing";
+  if (hasLabel(t, "ready")) return "todo";
+  return "backlog";
+}
+/* 3D estimation label families (DoR: all three present before `ready`) */
+const EST_FAMILIES = [
+  { key: "effort", prefix: "effort/", opts: ["S", "M", "L"], short: (v) => v },
+  { key: "time", prefix: "time/", opts: ["hours", "days", "weeks"], short: (v) => v[0] },
+  { key: "uncertainty", prefix: "uncertainty/", opts: ["low", "med", "high"], short: (v) => v },
+];
+const famValue = (t, fam) => {
+  const l = (t.labels || []).find((x) => x.title.startsWith(fam.prefix));
+  return l ? l.title.slice(fam.prefix.length) : null;
+};
+function estChip(t) {
+  if (isEpic(t) || t.done) return "";
+  const vals = EST_FAMILIES.map((f) => ({ f, v: famValue(t, f) }));
+  if (vals.every((x) => !x.v) && stageOf(t) === "backlog") return "";
+  const missing = vals.some((x) => !x.v);
+  const txt = vals.map((x) => x.v ? x.f.short(x.v) : "?").join(" · ");
+  const title = vals.map((x) => `${x.f.key} ${x.v || "—"}`).join(" · ");
+  return `<span class="est ${missing ? "warn" : ""}" title="${esc(title)}${missing ? " — DoR: estimation incomplete" : ""}">${esc(txt)}</span>`;
+}
+const draggableRow = (t) =>
+  state.viewId !== null && state.group === "stages" && stageOf(t) === "todo";
 /* epics: a parent task with subtask relations (or the Epic: title convention).
    related_tasks entries are load-time snapshots — resolve through live state so
    roll-ups/titles track mutations; cross-project refs keep the snapshot. */
@@ -744,6 +796,7 @@ const VIEWS = [
   { id: "next", name: "do-next", icon: "target", test: (t) => !t.done && hasLabel(t, "do-next") },
   { id: "agent", name: "agent-ready", icon: "bot", test: (t) => !t.done && hasLabel(t, "agent-ready") },
   { id: "ready", name: "ready", icon: "check", test: (t) => !t.done && hasLabel(t, "ready") },
+  { id: "review", name: "review", icon: "user", test: (t) => !t.done && hasLabel(t, "review") },
   { id: "nr", name: "needs-refinement", icon: "pencil", test: (t) => !t.done && hasLabel(t, "needs-refinement") },
   { id: "done", name: "Done", icon: "check", test: (t) => t.done },
   { id: "all", name: "All", icon: "rows", test: () => true },
@@ -773,22 +826,28 @@ function rowHtml(t, opts = {}) {
   const pct = subs.length ? Math.round(100 * doneSubs / subs.length) : 0;
   const parent = epic ? null : parentOf(t);
   const agent = (t.labels || []).find(isAgentLabel);
-  const chips = sortedLabels(t).filter((l) => !isAgentLabel(l)).slice(0, 4).map((l) =>
-    `<span class="lbl ${labelClass(l.title)}"><span class="d" ${l.hex_color ? `style="background:#${esc(l.hex_color)}"` : ""}></span>${esc(l.title)}</span>`).join("");
+  const inStages = state.group === "stages";
+  const chips = sortedLabels(t)
+    .filter((l) => !isAgentLabel(l))
+    .filter((l) => !EST_FAMILIES.some((f) => l.title.startsWith(f.prefix)))
+    .filter((l) => !(inStages && STAGE_LABELS.includes(l.title)))
+    .slice(0, 4).map((l) =>
+      `<span class="lbl ${labelClass(l.title)}"><span class="d" ${l.hex_color ? `style="background:#${esc(l.hex_color)}"` : ""}></span>${esc(l.title)}</span>`).join("");
   const statusCell = epic && subs.length
     ? `<button class="iconbtn st" title="${doneSubs}/${subs.length} subtasks done">${ring(pct)}</button>`
     : `<button class="iconbtn st" title="${t.done ? "Reopen" : "Mark done"}">${statusIcon(t)}</button>`;
-  return `<div class="row ${t.done ? "is-done" : ""} ${opts.kid ? "kid" : ""}" data-id="${t.id}" ${canDrag() ? 'draggable="true"' : ""}>
+  return `<div class="row ${t.done ? "is-done" : ""} ${opts.kid ? "kid" : ""}" data-id="${t.id}" ${draggableRow(t) ? 'draggable="true"' : ""}>
     ${statusCell}
     <button class="iconbtn pr" title="Priority: ${prioName(t.priority)}">${prioIcon(t.priority)}</button>
     <span class="tid">VIK-${t.id}</span>
     <span class="ttl">
+      ${opts.rank ? `<span class="rank" title="Pick-up queue position — drag to reorder">${opts.rank}</span>` : ""}
       ${epic ? `<span class="epicpill">epic</span>` : ""}
       <span class="txt">${esc(t.title.replace(/^Epic: /, ""))}</span>
       ${epic && subs.length ? `<span class="frac">${doneSubs}/${subs.length}</span>` : ""}
       ${parent && !opts.kid ? `<button class="parentchip" data-parent="${parent.id}" title="${esc(parent.title)}">&#8627; ${esc(parent.title.replace(/^Epic: /, "").slice(0, 34))}</button>` : ""}
     </span>
-    <span class="lbls">${chips}</span>
+    <span class="lbls">${estChip(t)}${chips}</span>
     ${hasDue(t) ? `<span class="due ${isOverdue(t) ? "over" : ""}" title="${nlDate.format(new Date(t.due_date))}">${isOverdue(t) ? "⚠ " : ""}${dueFmt.format(new Date(t.due_date))}</span>` : `<span></span>`}
     ${agent ? avatarHtml(agent.title.slice(6), agent.title, "ab") : `<span class="avatar empty ab" title="Assign agent">+</span>`}
   </div>`;
@@ -858,13 +917,38 @@ function renderEpicGroups(list) {
   return html;
 }
 
+/* Stage sections — active work first, then the pick-up queue (the PO's total
+   order: top = picked up first), then the coarse backlog. Epics are lifecycle-
+   exempt (board contract) and get their own section. */
+const STAGES = [
+  ["doing", "Doing", null],
+  ["review", "Reviewing", null],
+  ["todo", "To Do", "pick-up queue · top = picked up first · drag to reorder"],
+  ["backlog", "Backlog", null],
+  ["epic", "Epics", null],
+  ["done", "Done", "DoD: deployed + monitored, evidence in comments"],
+];
+function renderStages(list) {
+  const byStage = {};
+  list.forEach((t) => (byStage[stageOf(t)] = byStage[stageOf(t)] || []).push(t));
+  let html = "";
+  for (const [key, name, hint] of STAGES) {
+    const rows = (byStage[key] || []).sort(key === "backlog" ? prioSort : boardSort);
+    if (!rows.length && key !== "todo") continue;
+    html += `<div class="group-h ${key === "todo" ? "todo-h" : ""}"><span>${name}</span><span class="n">${rows.length}</span>${hint ? `<span class="hint">${hint}</span>` : ""}</div>`;
+    if (!rows.length) html += `<div class="stage-empty">Nothing ready — refine the backlog to fill the queue.</div>`;
+    else html += rows.map((t, i) => rowHtml(t, key === "todo" ? { rank: i + 1 } : {})).join("");
+  }
+  return html;
+}
+
 function render() {
   const list = applyFilters();
   let html;
   if (!list.length) html = emptyHtml();
   else if (state.group === "prio") html = renderPrioGroups(list);
   else if (state.group === "epic") html = renderEpicGroups(list);
-  else html = list.sort(boardSort).map((t) => rowHtml(t)).join("");
+  else html = renderStages(list);
   $("tasks").innerHTML = html;
   $("crumb-view").textContent = curView().name;
   $("topcount").textContent = `${list.length}`;
@@ -922,17 +1006,22 @@ async function toggleDone(id) {
     await updateTask(id, (f) => { f.done = !f.done; });
     toast(getTask(id).done ? `VIK-${id} done` : `VIK-${id} reopened`);
     refreshOpen(); render();
+    scheduleQueueSync();
   } catch (e) { toast("Save failed: " + e.message, true); }
 }
+const queueAffecting = (title) => STAGE_LABELS.includes(title) || title.startsWith("agent/");
 async function addLabel(taskId, labelId) {
   await enqueue(taskId, () => apiJSON(`/tasks/${taskId}/labels`, { method: "PUT", body: JSON.stringify({ label_id: labelId }) }));
   const t = getTask(taskId), l = state.labels.find((x) => x.id === labelId);
   if (t && l && !(t.labels || []).some((x) => x.id === labelId)) t.labels = [...(t.labels || []), l];
+  if (l && queueAffecting(l.title)) scheduleQueueSync();
 }
 async function removeLabel(taskId, labelId) {
   await enqueue(taskId, () => api(`/tasks/${taskId}/labels/${labelId}`, { method: "DELETE" }));
   const t = getTask(taskId);
-  if (t) t.labels = (t.labels || []).filter((l) => l.id !== labelId);
+  const l = state.labels.find((x) => x.id === labelId);
+  if (t) t.labels = (t.labels || []).filter((x) => x.id !== labelId);
+  if (l && queueAffecting(l.title)) scheduleQueueSync();
 }
 async function createLabel(title) {
   const l = await apiJSON("/labels", { method: "PUT", body: JSON.stringify({ title, hex_color: "5e6ad2" }) });
@@ -980,6 +1069,68 @@ function priorityMenu(anchor, t) {
         catch (e) { toast("Save failed: " + e.message, true); }
       }));
     });
+  });
+}
+
+function familyMenu(anchor, t, fam) {
+  openPopover(anchor, (pop) => {
+    const cur = famValue(getTask(t.id), fam);
+    const pick = async (val) => {
+      closePopover();
+      try {
+        for (const l of (getTask(t.id).labels || []).filter((x) => x.title.startsWith(fam.prefix)))
+          await removeLabel(t.id, l.id);
+        if (val && val !== cur) {
+          let l = state.labels.find((x) => x.title === fam.prefix + val);
+          if (!l) l = await createLabel(fam.prefix + val);
+          await addLabel(t.id, l.id);
+        }
+        refreshOpen(); render();
+      } catch (e) { toast("Estimate failed: " + e.message, true); }
+    };
+    fam.opts.forEach((val) => {
+      const l = state.labels.find((x) => x.title === fam.prefix + val);
+      pop.appendChild(menuItem({ label: val, checked: cur === val, dotColor: l?.hex_color ? "#" + l.hex_color : null },
+        () => pick(cur === val ? null : val)));
+    });
+    if (cur) pop.appendChild(menuItem({ label: "Clear" }, () => pick(null)));
+  });
+}
+
+/* stage transitions the PO/reviewer makes from the sheet — all label-derived */
+function statusMenu(anchor, t) {
+  openPopover(anchor, (pop) => {
+    const cur = getTask(t.id);
+    const stage = stageOf(cur);
+    const swap = async (fn, msg) => {
+      closePopover();
+      try { await fn(); refreshOpen(); render(); if (msg) toast(msg); }
+      catch (e) { toast("Save failed: " + e.message, true); }
+    };
+    const labelId = (title) => state.labels.find((x) => x.title === title)?.id;
+    if (cur.done) {
+      pop.appendChild(menuItem({ label: "Reopen" }, () => swap(() => toggleDone(t.id))));
+      return;
+    }
+    if (stage === "review")
+      pop.appendChild(menuItem({ label: "Accept — mark done", icon: statusIcon({ done: true }) }, () => swap(async () => {
+        const rid = labelId("review");
+        if (rid) await removeLabel(t.id, rid);
+        await toggleDone(t.id);
+      })));
+    else
+      pop.appendChild(menuItem({ label: "Mark done", icon: statusIcon({ done: true }) }, () => swap(() => toggleDone(t.id))));
+    if (stage !== "review")
+      pop.appendChild(menuItem({ label: "Send to review", icon: ICONS.user }, () => swap(async () => {
+        let l = state.labels.find((x) => x.title === "review");
+        if (!l) l = await createLabel("review");
+        await addLabel(t.id, l.id);
+      }, `VIK-${t.id} → review`)));
+    if (stage === "review" || stage === "doing")
+      pop.appendChild(menuItem({ label: "Back to To Do", icon: ICONS.arrow }, () => swap(async () => {
+        for (const l of (getTask(t.id).labels || []).filter((x) => x.title === "review" || isAgentLabel(x)))
+          await removeLabel(t.id, l.id);
+      }, `VIK-${t.id} → queue`)));
   });
 }
 
@@ -1084,7 +1235,7 @@ function flushTitle() {
   if (!t || !txt || txt === t.title) return Promise.resolve();
   savingNote("Saving…");
   return updateTask(t.id, (f) => { f.title = txt; })
-    .then(() => { savingNote("Saved"); render(); })
+    .then(() => { savingNote("Saved"); render(); if (stageOf(getTask(t.id)) === "todo") scheduleQueueSync(); })
     .catch((e) => { savingNote(""); toast("Save failed: " + e.message, true); });
 }
 
@@ -1101,13 +1252,23 @@ function renderProps(t) {
       const live = getTask(r.id) || r;
       return `<button class="relchip" data-rel="${live.id}"><span class="k">${esc(kind)}</span><b>VIK-${live.id}</b><span class="rt">${esc(live.title)}</span></button>`;
     }));
+  const stage = stageOf(t);
+  const stageName = { backlog: "Backlog", todo: "To Do", doing: "Doing", review: "Reviewing", done: "Done", epic: "Epic" }[stage];
+  const famIcon = { effort: ICONS.rows, time: ICONS.calendar, uncertainty: ICONS.target };
+  const estRows = isEpic(t) ? "" : EST_FAMILIES.map((f) => {
+    const v = famValue(t, f);
+    return `<div class="prop"><span class="plabel">${famIcon[f.key]} ${f.key[0].toUpperCase() + f.key.slice(1)}</span>
+      <button class="propbtn" data-fam="${f.key}">${v ? esc(v) : '<span class="hint">estimate…</span>'}</button></div>`;
+  }).join("");
+  const dorGap = !isEpic(t) && !t.done && hasLabel(t, "ready") && EST_FAMILIES.some((f) => !famValue(t, f));
   side.innerHTML = `
-    <div class="prop"><span class="plabel">${ICONS.circle} Status</span>
+    <div class="prop"><span class="plabel">${ICONS.circle} Stage</span>
       <button class="propbtn" data-p="done">${t.done
-        ? `<span class="statepill" style="color:var(--green)">${statusIcon(t)} Done</span><span class="hint">· reopen</span>`
-        : `<span class="statepill">${statusIcon(t)} Open</span><span class="hint">· mark done</span>`}</button></div>
+        ? `<span class="statepill" style="color:var(--green)">${statusIcon(t)} Done</span>`
+        : `<span class="statepill">${statusIcon(t)} ${esc(stageName)}</span><span class="hint">· move…</span>`}</button></div>
     <div class="prop"><span class="plabel">${ICONS.rows} Priority</span>
       <button class="propbtn" data-p="prio">${prioIcon(t.priority)} ${prioName(t.priority) === "—" ? '<span class="hint">none</span>' : esc(PRIO_OPTS.find(([v]) => v === (t.priority || 0))?.[1] || prioName(t.priority))}</button></div>
+    ${estRows}
     <div class="prop"><span class="plabel">${ICONS.calendar} Due</span>
       <input type="date" data-p="due" value="${hasDue(t) ? t.due_date.slice(0, 10) : ""}"></div>
     <div class="prop"><span class="plabel">${ICONS.tag} Labels</span>
@@ -1119,10 +1280,15 @@ function renderProps(t) {
         ? avatarHtml(curAgent.title.slice(6), curAgent.title) + " " + esc(curAgent.title.slice(6))
         : '<span class="hint">assign agent…</span>'}</button></div>
     ${rels.length ? `<div class="prop"><span class="plabel">${ICONS.link} Linked</span><div class="relchips">${rels.join("")}</div></div>` : ""}
+    ${dorGap ? `<div class="dorwarn">DoR gap: <b>ready</b> but not fully estimated — set effort, time and uncertainty.</div>` : ""}
     <a class="sidelink" href="/tasks/${t.id}" rel="noopener" target="_blank">${ICONS.ext} Open in Vikunja</a>
     <div class="sidemeta">created ${nlDate.format(new Date(t.created))}${t.updated ? `<br>updated ${relTime(t.updated)}` : ""}</div>`;
 
-  side.querySelector('[data-p="done"]').addEventListener("click", () => toggleDone(t.id));
+  side.querySelector('[data-p="done"]').addEventListener("click", (ev) => statusMenu(ev.currentTarget, getTask(t.id)));
+  side.querySelectorAll("[data-fam]").forEach((b) => b.addEventListener("click", (ev) => {
+    const fam = EST_FAMILIES.find((f) => f.key === b.dataset.fam);
+    familyMenu(ev.currentTarget, getTask(t.id), fam);
+  }));
   side.querySelector('[data-p="prio"]').addEventListener("click", (ev) => priorityMenu(ev.currentTarget, getTask(t.id)));
   side.querySelector('[data-p="labels"]').addEventListener("click", (ev) => labelsMenu(ev.currentTarget, getTask(t.id)));
   side.querySelector('[data-p="agent"]').addEventListener("click", (ev) => agentMenu(ev.currentTarget, getTask(t.id)));
@@ -1315,9 +1481,10 @@ function openPalette() {
     /* commands */
     const cmds = [
       ["Toggle theme", ICONS.moon, () => toggleTheme()],
-      ["Group: Queue", ICONS.rows, () => setGroup("none")],
+      ["Group: Stages", ICONS.rows, () => setGroup("stages")],
       ["Group: Priority", ICONS.rows, () => setGroup("prio")],
       ["Group: Epics", ICONS.rows, () => setGroup("epic")],
+      ["Sync pick-up queue now", ICONS.arrow, () => scheduleQueueSync()],
       ...VIEWS.map((v) => [`View: ${v.name}`, ICONS[v.icon], () => setView(v.id)]),
       ["Open Vikunja ↗", ICONS.ext, () => window.open("/", "_blank", "noopener")],
     ];
@@ -1383,9 +1550,37 @@ function openHelp() {
     ${row(["l"], "Edit labels on selection")}
     ${row(["a"], "Assign agent on selection")}
     ${row(["Esc"], "Close / clear")}
-    ${row(["?"], "This help")}</div>`;
+    ${row(["?"], "This help")}
+    <div class="krow" style="margin-top:8px">Drag inside <b>&nbsp;To Do&nbsp;</b> (Stages view) to reorder the pick-up queue — top = picked up first. The order is written to the project description, which is what agents obey.</div></div>`;
   helpEl.addEventListener("pointerdown", (ev) => { if (ev.target === helpEl) closeHelp(); });
   document.body.appendChild(helpEl);
+}
+
+/* ---------- pick-up queue sync ----------
+   The AUTHORITATIVE queue is the <h3>Pick-up queue</h3><ol> in the project
+   description (board contract): MCP agents can't read view positions, so they
+   obey the description list. Dragging in To Do therefore writes BOTH the view
+   position (this UI) and the description queue (what agents pick up). */
+let queueT = null;
+async function syncQueue() {
+  const todo = state.tasks.filter((t) => stageOf(t) === "todo").sort(boardSort).slice(0, 20);
+  const proj = await apiJSON(`/projects/${state.project}`);
+  const desc = proj.description || "";
+  const section = `<h3>Pick-up queue</h3><p><em>top = picked up first · refreshed ${new Date().toISOString().slice(0, 10)} (board)</em></p><ol>` +
+    todo.map((t) => `<li>VIK-${t.id} — ${esc(t.title)}</li>`).join("") + `</ol>`;
+  const marker = /<h3>Pick-up queue<\/h3>[\s\S]*?(?=<h3>|$)/i;
+  const next = marker.test(desc) ? desc.replace(marker, section) : desc + section;
+  if (next === desc) return false;
+  await apiJSON(`/projects/${state.project}`, { method: "POST", body: JSON.stringify({ ...proj, description: next }) });
+  return true;
+}
+function scheduleQueueSync() {
+  if (state.viewId == null) return;
+  clearTimeout(queueT);
+  queueT = setTimeout(() =>
+    syncQueue()
+      .then((changed) => { if (changed) toast("Pick-up queue updated"); })
+      .catch((e) => toast("Queue sync failed: " + e.message, true)), 1200);
 }
 
 /* ---------- drag to re-order ---------- */
@@ -1417,10 +1612,14 @@ async function dropTask(draggedId, targetId, before) {
   if (pos == null) { await reindexAll(order); } else { await setPosition(draggedId, pos); }
   toast(`VIK-${draggedId} moved`);
   render();
+  scheduleQueueSync();
 }
 const tasksEl = $("tasks");
 tasksEl.addEventListener("dragstart", (ev) => {
-  const card = ev.target.closest(".row"); if (!card || !canDrag()) return;
+  const card = ev.target.closest(".row");
+  if (!card) return;
+  const t = getTask(+card.dataset.id);
+  if (!t || !draggableRow(t)) return;
   state.draggedId = +card.dataset.id;
   card.classList.add("dragging");
   ev.dataTransfer.effectAllowed = "move";
@@ -1432,6 +1631,8 @@ tasksEl.addEventListener("dragend", () => {
 tasksEl.addEventListener("dragover", (ev) => {
   const card = ev.target.closest(".row");
   if (!card || state.draggedId == null || +card.dataset.id === state.draggedId) return;
+  const t = getTask(+card.dataset.id);
+  if (!t || !draggableRow(t)) return; /* drop targets stay inside the queue */
   ev.preventDefault();
   const r = card.getBoundingClientRect();
   const before = ev.clientY < r.top + r.height / 2;
@@ -1445,6 +1646,8 @@ tasksEl.addEventListener("dragleave", (ev) => {
 tasksEl.addEventListener("drop", async (ev) => {
   const card = ev.target.closest(".row");
   if (!card || state.draggedId == null) return;
+  const t = getTask(+card.dataset.id);
+  if (!t || !draggableRow(t)) return;
   ev.preventDefault();
   const before = card.classList.contains("drag-above");
   const dragged = state.draggedId;

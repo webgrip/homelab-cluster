@@ -41,20 +41,35 @@ roadmap file in git — see
   secrets-endgame, reliability-ha-pdbs-priorities, reliability-backup-dr, reliability-garage,
   observability-alert-delivery, observability-pipeline, observability-programs, storage-tails,
   talos-nodes, flux-gitops-capacity, ci-shift-left, dx-docs-horizon, dark-factory) ·
-  `impact/H|M|L` · `effort/S|M|L` · `do-next` (≤10) · `ready` / `needs-refinement` / `agent-ready` ·
+  `impact/H|M|L` · **3D estimation** (since 2026-07-18): `effort/S|M|L` (work size) ·
+  `time/hours|days|weeks` (wall-clock lead incl. soaks/waits) · `uncertainty/low|med|high`
+  (how well-understood; `high` ⇒ never `agent-ready` — spike/de-risk first) ·
+  `do-next` (≤10) · `ready` / `needs-refinement` / `review` / `agent-ready` ·
   `agent/<name>` (claims)
+- **Stages** (since 2026-07-18) are DERIVED from labels + done, never stored separately —
+  every surface (MCP agents, Vellum board, stock UI) reads the same truth:
+  **Backlog** (`needs-refinement` or unlabelled) → **To Do** (`ready`; DoR incl. all three
+  estimation labels) → **Doing** (`agent/<name>` claim) → **Reviewing** (`review` label;
+  agent finished, human accepts) → **Done** (completed). **DoD**: a completion is accepted only
+  with an evidence comment proving (1) **deployed** — verified against real state, not a proxy,
+  and (2) **monitored** — names the signal that would catch regression (alert/dashboard/
+  scheduled check), or states why none applies (docs-only)
 - **Epics = parent tasks** (since 2026-07-18): a ticket titled `Epic: …` carries `subtask`
   relations to its children and the `meta` label; epics keep theme+impact labels but are EXEMPT
-  from effort/lifecycle labels, are never agent-workable themselves, and close only when every
+  from estimation/lifecycle labels, are never agent-workable themselves, and close only when every
   subtask closes. Wire membership with `relation_create(kind: subtask)` (parent→child); a child
   has at most ONE parent. `theme/*` labels stay the cross-project dimension; the Vellum front
   end renders the hierarchy ("By epic" view with roll-up progress)
-- Open target: ≈100 tickets · buckets: Backlog / Ready / In progress (agent) / Review / Done
+- Open target: ≈100 tickets · stock-UI kanban buckets, if used, mirror the derived stages
+  (Backlog / To Do / Doing / Reviewing / Done) — labels are authoritative, buckets are display
 - **Pick-up order** (since 2026-07-18): each project's **description** carries a
   `Pick-up queue` — an ordered list (`VIK-<id> — title`), **top = picked up first**, covering
   every `do-next` holder plus a next-up tail. Agents take the topmost eligible entry; the PO
-  inserts new tickets where they fit and drops entries on close. Vikunja UI drag-order is NOT
-  authoritative (the MCP has no position API — see the skill's reference.md)
+  inserts new tickets where they fit and drops entries on close. The MCP has no position API
+  (skill's reference.md), so raw Vikunja drag-order alone is NOT the queue — but the **Vellum
+  board's Stages view keeps them in sync**: dragging in its To Do column rewrites the
+  description queue (marker: `refreshed <date> (board)`), so PO ordering happens there or via
+  the MCP round-trip, never in the stock Vikunja UI
 - Top-up ground truth: `git log --oneline <last-sweep>..HEAD` · `./scripts/posture-counts.sh` ·
   live read-only MCP checks · audit dimensions: security/hardening · reliability/HA/backup-DR ·
   CI/shift-left/DX
