@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-07-14
+status: superseded by [ADR-0047](adr-0047-openhands-agent-runtime.md)
+date: 2026-07-17
 ---
 
 # opencode is the agent runtime; safety guards move server-side
@@ -111,3 +111,7 @@ Load-bearing specifics:
   runtime consumes.
 * Relates to the `.claude/` guard hooks and `./scripts/run-flux-local-test.sh` — the controls whose
   intent this decision relocates to the forge and CI.
+* 2026-07-17 — **superseded by [ADR-0047](adr-0047-openhands-agent-runtime.md)** (OpenHands is the
+  agent runtime) after evaluating OpenHands against opencode's beta-churn risk; body preserved
+  unchanged per the append-only ADR convention. The server-side guard finding (HAZ-01) stands and
+  carries forward — it is runtime-independent — but is reworked for OpenHands, not opencode.
