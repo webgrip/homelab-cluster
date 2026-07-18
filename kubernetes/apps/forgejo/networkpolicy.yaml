@@ -50,6 +50,22 @@ spec:
       ports:
         - protocol: TCP
           port: 3000
+    # keda-operator polls Forgejo's runner-queue API
+    # (/api/v1/admin/runners/jobs?labels=...) every pollingInterval to size the
+    # forgejo-runner + forgejo-agent-runner ScaledJobs. Same missed-rule class as the
+    # renovate one above, but with a nastier failure mode than "no scaling": each blocked
+    # poll hangs for the full 30s client timeout, so the operator's scaler cache exceeds
+    # its ReaderDrainBudget, the scale loop stalls, the 5s leader-election lease renewal
+    # misses, and the operator exits 1 ("leader election lost") and restarts. Symptom is
+    # CI runs queueing forever behind minReplicaCount with zero completed requests to
+    # that path in forgejo's own logs (2026-07-18).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: keda
+      ports:
+        - protocol: TCP
+          port: 3000
     # gateway (network ns) + LAN -- all ports (HTTP 3000, SSH 22, gitea-mirror UI 4321;
     # avoid port-guessing breaking git-over-ssh or the web UI, same rationale as harbor).
     - from:
