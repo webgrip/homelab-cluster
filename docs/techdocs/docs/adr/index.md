@@ -169,6 +169,7 @@ Tenant apps the platform hosts — decisions about *what* runs, not how the plat
 | [0045](adr-0045-opencode-runtime-server-side-guards.md) | opencode is the agent runtime; safety guards move server-side | superseded by 0047 | 2026-07-17 |
 | [0046](adr-0046-harbor-proxy-credential-convergence.md) | Harbor proxy reconcile converges credentials and fails loud on upstream auth | accepted | 2026-07-15 |
 | [0047](adr-0047-openhands-agent-runtime.md) | OpenHands is the agent runtime, superseding opencode | proposed | 2026-07-17 |
+| [0048](adr-0048-dark-factory-execution-layer.md) | Dark-factory agents run on a dedicated Forgejo Actions pool, poll-dispatched, as two role bots | proposed | 2026-07-18 |
 
 ## Renumbering (2026-07-03)
 
