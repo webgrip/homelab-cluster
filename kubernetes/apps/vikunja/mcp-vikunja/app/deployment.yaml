@@ -45,13 +45,13 @@ spec:
             - streamableHttp
             - --port
             - "8000"
-            # stateful: one vikunja-mcp child per MCP session (stateless would
-            # respawn npx per request). Idle sessions MUST be reaped: without a
-            # timeout every client session leaves a node child alive forever —
-            # OOMKilled the pod on 2026-07-12. Clients re-initialize on 404.
-            - --stateful
-            - --sessionTimeout
-            - "900000"
+            # STATELESS (2026-07-18, VIK-314/VIK-263): a fresh vikunja-mcp child
+            # per request, npx warm from the /tmp cache (~1-2s/call). Stateful
+            # session mode broke TWO consumer classes: strict MCP SDK clients
+            # (LiteLLM gateway: "Session termination failed: 400" →
+            # BrokenResourceError on list_tools) and the 2026-07-12 session-leak
+            # OOM. Stateless trades per-call latency for correctness — bulk
+            # board scripts get slower but reliable.
             # Real health endpoint (supergateway returns "ok") so the probes can
             # catch a functionally-dead gateway, not just an open TCP port.
             - --healthEndpoint
