@@ -128,9 +128,12 @@ spec:
 # Allow the provisioner Jobs to reach the kube-apiserver (RBAC-scoped Secret
 # read/write; they run kubectl against the API). Must be identity-based
 # (`toEntities: kube-apiserver`) — see the NOTE in forgejo-allow-egress above; a
-# CIDR/port rule cannot express this under Cilium. Scoped to the two Jobs' stable
-# job-name labels rather than namespace-wide: this namespace also runs a CI runner
-# executing arbitrary workflow code, which must NOT gain network reach to the API.
+# CIDR/port rule cannot express this under Cilium. Scoped to the provisioner Jobs'
+# stable job-name labels rather than namespace-wide: this namespace also runs CI and
+# AGENT runners executing arbitrary (and, for the agent pool, LLM-authored) workflow
+# code, which must NOT gain network reach to the API. The agent runner pods are
+# excluded here on purpose, and additionally run with automountServiceAccountToken:
+# false and a no-authority ServiceAccount (ADR-0048).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -145,6 +148,7 @@ spec:
         values:
           - forgejo-ci-provisioner
           - forgejo-runner-provisioner
+          - forgejo-agent-runner-provisioner
   egress:
     - toEntities:
         - kube-apiserver
