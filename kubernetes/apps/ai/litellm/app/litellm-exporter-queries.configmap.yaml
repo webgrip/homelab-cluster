@@ -9,7 +9,7 @@ data:
   # Column/table names verified against the live v1.83.7 schema (PascalCase tables
   # need double-quoting). Metric names are prefixed by the query key, e.g.
   # `litellm_key_spend`, `litellm_key_max_budget`, `litellm_model_spend`.
-  queries.yaml: |
+  queries.yaml: |-
     litellm_key:
       query: |
         SELECT COALESCE(NULLIF(key_alias,''), NULLIF(key_name,''), LEFT(token,12)) AS key_alias,
@@ -57,3 +57,118 @@ data:
         - requests: {usage: "GAUGE", description: "Cumulative API requests by model"}
         - successful: {usage: "GAUGE", description: "Cumulative successful requests by model"}
         - failed: {usage: "GAUGE", description: "Cumulative failed requests by model"}
+    # --- VIK-325: provider daily spend vs the router caps (5/2 USD/day).
+    # Calendar-day UTC approximation of LiteLLM's rolling window. ---
+    litellm_provider_today:
+      query: |
+        SELECT COALESCE(NULLIF(custom_llm_provider,''),'unknown') AS provider,
+               SUM(spend) AS spend,
+               SUM(api_requests) AS requests,
+               SUM(successful_requests) AS successful,
+               SUM(failed_requests) AS failed
+        FROM "LiteLLM_DailyUserSpend"
+        WHERE date = to_char(now(), 'YYYY-MM-DD')
+        GROUP BY custom_llm_provider
+      metrics:
+        - provider: {usage: "LABEL", description: "Upstream provider"}
+        - spend: {usage: "GAUGE", description: "Spend today, calendar-day UTC (USD)"}
+        - requests: {usage: "GAUGE", description: "API requests today"}
+        - successful: {usage: "GAUGE", description: "Successful requests today"}
+        - failed: {usage: "GAUGE", description: "Failed requests today"}
+    # --- VIK-325: backstop coverage — missing_budget must be 0 (every user under
+    # a ceiling, however it was provisioned). ---
+    litellm_user:
+      query: |
+        SELECT COUNT(*) AS total,
+               COUNT(*) FILTER (WHERE max_budget IS NULL) AS missing_budget,
+               COUNT(*) FILTER (WHERE max_budget IS NOT NULL AND spend >= max_budget) AS over_budget
+        FROM "LiteLLM_UserTable"
+      metrics:
+        - total: {usage: "GAUGE", description: "Internal users tracked"}
+        - missing_budget: {usage: "GAUGE", description: "Users with NULL max_budget (no backstop) — should be 0"}
+        - over_budget: {usage: "GAUGE", description: "Users at/over their max_budget"}
+    litellm_user_budget:
+      query: |
+        SELECT COALESCE(NULLIF(user_alias,''), NULLIF(user_email,''), user_id) AS user_ref,
+               COALESCE(NULLIF(user_role,''),'unknown') AS user_role,
+               spend,
+               COALESCE(max_budget, 0) AS max_budget,
+               CASE WHEN max_budget IS NULL THEN 0 ELSE 1 END AS has_budget
+        FROM "LiteLLM_UserTable"
+      metrics:
+        - user_ref: {usage: "LABEL", description: "User alias, email, or id"}
+        - user_role: {usage: "LABEL", description: "LiteLLM user role"}
+        - spend: {usage: "GAUGE", description: "Cumulative user spend (USD)"}
+        - max_budget: {usage: "GAUGE", description: "User budget ceiling (USD; 0 = none set)"}
+        - has_budget: {usage: "GAUGE", description: "0 = NULL max_budget (no backstop applied)"}
+    # --- VIK-326: latency percentiles computed in SQL (exporter emits plain
+    # gauges, no histogram buckets). Trailing-24h window; "startTime" is indexed
+    # by the Prisma schema (LiteLLM_SpendLogs_startTime_idx, verified live). ---
+    litellm_latency:
+      query: |
+        SELECT COALESCE(NULLIF(model_group,''), model) AS model,
+               COALESCE(NULLIF(custom_llm_provider,''),'unknown') AS provider,
+               COUNT(*) AS requests,
+               AVG(EXTRACT(EPOCH FROM ("endTime" - "startTime"))) AS avg_seconds,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM ("endTime" - "startTime"))) AS p50_seconds,
+               percentile_cont(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM ("endTime" - "startTime"))) AS p95_seconds
+        FROM "LiteLLM_SpendLogs"
+        WHERE "startTime" >= now() - interval '24 hours'
+          AND "endTime" IS NOT NULL AND "endTime" >= "startTime"
+        GROUP BY 1, 2
+      metrics:
+        - model: {usage: "LABEL", description: "Model group (public alias)"}
+        - provider: {usage: "LABEL", description: "Upstream provider"}
+        - requests: {usage: "GAUGE", description: "Requests in the trailing 24h"}
+        - avg_seconds: {usage: "GAUGE", description: "Mean end-to-end latency, 24h (s)"}
+        - p50_seconds: {usage: "GAUGE", description: "p50 latency, 24h (s)"}
+        - p95_seconds: {usage: "GAUGE", description: "p95 latency, 24h (s)"}
+    # Separate query so models with zero streaming rows emit no series instead
+    # of NULL gauges.
+    litellm_ttft:
+      query: |
+        SELECT COALESCE(NULLIF(model_group,''), model) AS model,
+               COUNT(*) AS requests,
+               percentile_cont(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM ("completionStartTime" - "startTime"))) AS p95_seconds
+        FROM "LiteLLM_SpendLogs"
+        WHERE "startTime" >= now() - interval '24 hours'
+          AND "completionStartTime" IS NOT NULL
+          AND "completionStartTime" >= "startTime"
+        GROUP BY 1
+      metrics:
+        - model: {usage: "LABEL", description: "Model group (public alias)"}
+        - requests: {usage: "GAUGE", description: "Streaming requests with TTFT recorded, 24h"}
+        - p95_seconds: {usage: "GAUGE", description: "p95 time-to-first-token, streaming only, 24h (s)"}
+    # --- VIK-326: failures + retries from spend-log metadata (verified live:
+    # metadata->>'status' = 'failure' on failed rows; attempted_retries int).
+    # No explicit fallback marker exists in v1.83 metadata — recorded on the
+    # ticket; retries + failures are the observable reliability signals. ---
+    litellm_recent:
+      query: |
+        SELECT COALESCE(NULLIF(model_group,''), model) AS model,
+               COUNT(*) AS requests,
+               COUNT(*) FILTER (WHERE metadata->>'status' = 'failure') AS failures,
+               COUNT(*) FILTER (WHERE COALESCE((metadata->>'attempted_retries')::int, 0) > 0) AS retried
+        FROM "LiteLLM_SpendLogs"
+        WHERE "startTime" >= now() - interval '24 hours'
+        GROUP BY 1
+      metrics:
+        - model: {usage: "LABEL", description: "Model group (public alias)"}
+        - requests: {usage: "GAUGE", description: "Spend-log rows in the trailing 24h"}
+        - failures: {usage: "GAUGE", description: "Rows with metadata status=failure, 24h"}
+        - retried: {usage: "GAUGE", description: "Rows that needed provider retries, 24h"}
+    # --- VIK-325: prompt-cache economics (supports the prompt_caching pre-call
+    # check shipped in VIK-266). ---
+    litellm_cache:
+      query: |
+        SELECT model,
+               SUM(cache_creation_input_tokens) AS creation_tokens,
+               SUM(cache_read_input_tokens) AS read_tokens,
+               SUM(prompt_tokens) AS prompt_tokens
+        FROM "LiteLLM_DailyUserSpend"
+        GROUP BY model
+      metrics:
+        - model: {usage: "LABEL", description: "Model name"}
+        - creation_tokens: {usage: "GAUGE", description: "Cumulative cache-creation input tokens"}
+        - read_tokens: {usage: "GAUGE", description: "Cumulative cache-read input tokens"}
+        - prompt_tokens: {usage: "GAUGE", description: "Cumulative prompt tokens"}
