@@ -39,6 +39,12 @@ roadmap file in git — see
   talos-nodes, flux-gitops-capacity, ci-shift-left, dx-docs-horizon, dark-factory) ·
   `impact/H|M|L` · `effort/S|M|L` · `do-next` (≤10) · `ready` / `needs-refinement` / `agent-ready` ·
   `agent/<name>` (claims)
+- **Epics = parent tasks** (since 2026-07-18): a ticket titled `Epic: …` carries `subtask`
+  relations to its children and the `meta` label; epics keep theme+impact labels but are EXEMPT
+  from effort/lifecycle labels, are never agent-workable themselves, and close only when every
+  subtask closes. Wire membership with `relation_create(kind: subtask)` (parent→child); a child
+  has at most ONE parent. `theme/*` labels stay the cross-project dimension; the Vellum front
+  end renders the hierarchy ("By epic" view with roll-up progress)
 - Open target: ≈100 tickets · buckets: Backlog / Ready / In progress (agent) / Review / Done
 - Top-up ground truth: `git log --oneline <last-sweep>..HEAD` · `./scripts/posture-counts.sh` ·
   live read-only MCP checks · audit dimensions: security/hardening · reliability/HA/backup-DR ·
