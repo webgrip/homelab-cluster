@@ -15,6 +15,11 @@ metadata:
     reloader.stakater.com/auto: "true"
 spec:
   replicas: 1
+  # Single replica pinned to worker-1: RollingUpdate would need BOTH pods on
+  # that node at once, which wedged Pending (Insufficient cpu) once VMSingle +
+  # litellm moved there. Recreate releases the request first; brief gap is fine.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: mcp-vikunja
