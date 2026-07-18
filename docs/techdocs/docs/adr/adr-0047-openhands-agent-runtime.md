@@ -61,9 +61,15 @@ Load-bearing specifics:
 * **Run** `openhands --headless --override-with-envs` with `LLM_MODEL=litellm_proxy/<model>`,
   `LLM_BASE_URL` at the metered proxy, `LLM_API_KEY` = a per-run budgeted key (ADR-0044). Docker
   sandbox runs in-pod.
-* **Discipline** ports as an always-active OpenHands skill (`.openhands/skills/team-bronze/SKILL.md`,
-  verified to load on v1.21.0); `AGENTS.md` carries the architecture rules unchanged — the same file
-  opencode read, so the repo contract is harness-neutral.
+* **Discipline** ports as an always-active OpenHands **repo skill**
+  (`.openhands/skills/team-bronze/team-bronze.md`). The mechanism is load-bearing and was verified
+  against the installed SDK (v1.21.0, `openhands.sdk.skills`): a legacy-format `.md` with no trigger
+  partitions into `repo_skills` → injected into REPO_CONTEXT on **every** run. An AgentSkills
+  `SKILL.md` would instead land in `<available_skills>` (progressive disclosure) and reach the model
+  only if the agent chose to invoke it — i.e. the discipline would be optional, so the filename is
+  deliberately **not** `SKILL.md`. `AGENTS.md` (also loaded as an always-active repo skill) carries
+  the architecture rules and now the delivery-discipline mandate — the same file opencode read, so
+  the repo contract is harness-neutral.
 * **Vikunja / observability tools** reach the agent through the LiteLLM MCP gateway (`#263`),
   unchanged by the runtime choice.
 
