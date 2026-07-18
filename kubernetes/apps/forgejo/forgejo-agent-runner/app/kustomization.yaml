@@ -1,0 +1,16 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./configmap.yaml
+  - ./rbac.yaml
+  - ./scaledjob.yaml
+  - ./forgejo-agent-runner-provisioner.job.yaml
+  - ./agent-litellm-master.externalsecret.yaml
+  - ./agent-vikunja-token.externalsecret.yaml
+  # Deliberately NOT here — reused from the forgejo-runner app in this same namespace:
+  #   * TriggerAuthentication forgejo-runner-scaler (a read-pending-jobs token; the trigger's
+  #     `labels: agent` is what scopes this pool)
+  #   * Secret harbor-pull (same OpenBao Harbor robot, same namespace)
+  #   * Secret forgejo-admin-secret (consumed by the registration provisioner)

@@ -1,0 +1,223 @@
+# KEDA ScaledJob: the dark-factory agent pool (ADR-0048). Same shape as forgejo-runner, four
+# deliberate differences:
+#
+#   1. label `agent` (not `docker`) — only agent-run.yml targets it, so agent runs never queue
+#      behind CI image builds (a 1GB build on the contended pool took 20+ minutes).
+#   2. soyo pool (not worker) — measured ~49% CPU / 38% memory headroom vs the CI node's 92%
+#      memory requests / 227% CPU limits. Capability-labelled selector, never a hostname (ADR-0001).
+#   3. scale-from-zero (minReplicaCount 0) — agent runs are infrequent and the image is large;
+#      a warm pool would pin ~1Gi 24/7 for nothing. Cold start is irrelevant next to a multi-minute
+#      agent run. maxReplicaCount 2 doubles as a concurrency/cost ceiling.
+#   4. main container = agent-runner (OpenHands + docker CLI + node + baked skills), not ci-runner.
+#      OpenHands runs headless in its LocalWorkspace runtime — it executes git and edits IN this
+#      container rather than spawning its own sandbox — and shells out to the dind sidecar to run
+#      language gates in CI's own images (rust-ci-runner, php:8.5-cli, node:24-alpine), so the
+#      gates match CI exactly instead of approximating it.
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: forgejo-agent-runner
+  namespace: forgejo
+spec:
+  pollingInterval: 15
+  # Scale from zero: no warm pool. See note 3 above.
+  minReplicaCount: 0
+  # Ceiling on CONCURRENT agent runs. This is a spend control as much as a capacity one: each
+  # run mints its own budgeted LiteLLM key, so N concurrent runs is N budgets in flight.
+  maxReplicaCount: 2
+  successfulJobsHistoryLimit: 3
+  # Keep failed agent Jobs briefly: unlike CI (whose failures are visible in the Actions UI), a
+  # failed agent run is the primary artefact we debug, and the pod logs carry the agent's own
+  # reasoning trail.
+  failedJobsHistoryLimit: 1
+  jobTargetRef:
+    parallelism: 1
+    completions: 1
+    backoffLimit: 0
+    # NO activeDeadlineSeconds: the runner blocks on `one-job --wait`. Run length is capped by
+    # the Forgejo per-job timeout (6h, set in forgejo-agent-runner-config), which signals the
+    # runner cleanly — a k8s deadline would just kill waiters.
+    template:
+      metadata:
+        labels:
+          app.kubernetes.io/name: forgejo-agent-runner
+      spec:
+        restartPolicy: Never
+        terminationGracePeriodSeconds: 30
+        serviceAccountName: forgejo-agent-runner
+        # No ambient SA token. Load-bearing here: an LLM-driven process runs in this pod, so it
+        # gets zero Kubernetes API authority.
+        automountServiceAccountToken: false
+        # Reuses the harbor-pull Secret already provisioned in this namespace by forgejo-runner
+        # (same OpenBao robot credential) — first-party images come from the in-cluster Harbor.
+        imagePullSecrets:
+          - name: harbor-pull
+        nodeSelector:
+          node.webgrip.io/pool: soyo
+        securityContext:
+          fsGroup: 1000
+        initContainers:
+          # Inject the forgejo-runner agent binary into the agent-runner image, which is not a
+          # runner image. Same trick the CI pool uses to avoid a bespoke rebuild.
+          - name: runner-bin
+            image: harbor.webgrip.dev/forgejo/forgejo/runner:12.10.2@sha256:379b324d6942824b7487706c0a06be4d63e546c17b62bece4ae18c74364a8fae
+            command:
+              - sh
+              - -ec
+            args:
+              - |
+                cp "$(command -v forgejo-runner)" /dist/forgejo-runner
+                chmod 0755 /dist/forgejo-runner
+            volumeMounts:
+              - name: runner-bin
+                mountPath: /dist
+            securityContext:
+              allowPrivilegeEscalation: false
+              runAsNonRoot: true
+              runAsUser: 1000
+              seccompProfile:
+                type: RuntimeDefault
+              capabilities: {drop: ["ALL"]}
+            resources:
+              requests: {cpu: 10m, memory: 32Mi}
+              limits: {memory: 64Mi}
+          - name: dind
+            image: harbor.webgrip.dev/dockerhub/library/docker:29.5.3-dind@sha256:ad68e89b675740867a3bb96488a93fea9209ad36c6305bfba2664912d6dcf11a
+            restartPolicy: Always
+            securityContext:
+              privileged: true
+            env:
+              - name: DOCKER_TLS_CERTDIR
+                value: /certs
+            volumeMounts:
+              - name: docker-certs
+                mountPath: /certs
+              - name: docker-storage
+                mountPath: /var/lib/docker
+              # Same absolute path as in the agent container: `docker run -v` bind-mounts resolve
+              # on THIS daemon's filesystem, so a gate container can only see the checked-out repo
+              # if both sides mount it at the same path.
+              - name: ci-shared
+                mountPath: /mnt/ci-shared
+            startupProbe:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - docker --tlsverify --tlscacert=/certs/client/ca.pem --tlscert=/certs/client/cert.pem --tlskey=/certs/client/key.pem -H tcp://localhost:2376 info
+              initialDelaySeconds: 3
+              periodSeconds: 2
+              failureThreshold: 30
+              timeoutSeconds: 5
+            resources:
+              # No CPU limit; the gate containers (cargo/pest/vitest) run on THIS daemon, so the
+              # 3Gi ceiling covers a rust build, not just the daemon.
+              requests:
+                cpu: 250m
+                memory: 512Mi
+              limits:
+                memory: 3Gi
+        containers:
+          - name: runner
+            # webgrip/agent-runner (webgrip/infrastructure ops/docker/agent-runner): headless
+            # OpenHands + per-run LiteLLM key mint/revoke + baked skills loadout + docker CLI.
+            # Steps execute IN this container (config maps `agent` -> host).
+            #
+            # TODO(pin): swap to @sha256 once CI publishes agent-runner-v1.0.0 to Harbor. Left as
+            # a tag deliberately — the image is not published yet, and this pool is scale-from-zero
+            # so nothing pulls it until the first dispatch.
+            image: harbor.webgrip.dev/webgrip/agent-runner:latest
+            command:
+              - bash
+              - -ec
+            args:
+              - |
+                # No externals PATH juggling here (unlike the CI pool): the agent-runner image
+                # ships node 24 on PATH already, and agent-run.yml deliberately uses plain `run:`
+                # steps rather than JS actions.
+                #
+                # --wait blocks until Forgejo assigns a task.
+                exec /dist/forgejo-runner --config /config/config.yaml one-job \
+                  --wait \
+                  --url "http://forgejo-http.forgejo.svc.cluster.local:3000" \
+                  --uuid "$(cat /run/forgejo-runner/uuid)" \
+                  --token-url "file:///run/forgejo-runner/token"
+            env:
+              # How the agent reaches the dind sidecar to run gates in CI's images.
+              - name: DOCKER_HOST
+                value: tcp://localhost:2376
+              - name: DOCKER_CERT_PATH
+                value: /certs/client
+              - name: DOCKER_TLS_VERIFY
+                value: "1"
+              # Spend identity: the entrypoint mints a per-run, budget-capped key from this and
+              # revokes it on exit (ADR-0044). Scoped to THIS pool's pods rather than published as
+              # an org-level Actions secret, which would hand every workflow unlimited spend
+              # (RFC HAZ-02).
+              - name: LITELLM_MASTER_KEY
+                valueFrom:
+                  secretKeyRef: {name: agent-litellm-master, key: LITELLM_MASTER_KEY}
+              - name: LITELLM_ADMIN_URL
+                value: http://litellm.ai.svc.cluster.local:4000
+              - name: LLM_BASE_URL
+                value: http://litellm.ai.svc.cluster.local:4000/v1
+              # Board identity: claim/comment on the ticket it is working.
+              - name: VIKUNJA_API_TOKEN
+                valueFrom:
+                  secretKeyRef: {name: agent-vikunja-token, key: VIKUNJA_API_TOKEN}
+              - name: VIKUNJA_URL
+                value: http://vikunja.vikunja.svc.cluster.local:3456/api/v1
+            volumeMounts:
+              - name: runner-bin
+                mountPath: /dist
+                readOnly: true
+              - name: config
+                mountPath: /config
+              - name: registration
+                mountPath: /run/forgejo-runner
+                readOnly: true
+              - name: docker-certs
+                mountPath: /certs
+                readOnly: true
+              - name: ci-shared
+                mountPath: /mnt/ci-shared
+            resources:
+              # No CPU limit: OpenHands is bursty (LLM waits, then a flurry of edits/gates).
+              # 2Gi ceiling — the agent holds a large context plus a node/python toolchain; the
+              # heavy gate containers are charged to dind's cgroup, not this one.
+              requests:
+                cpu: 250m
+                memory: 512Mi
+              limits:
+                memory: 2Gi
+        volumes:
+          - name: config
+            configMap:
+              name: forgejo-agent-runner-config
+          - name: registration
+            secret:
+              secretName: forgejo-agent-runner-secret
+          - name: docker-certs
+            emptyDir: {}
+          - name: docker-storage
+            emptyDir: {}
+          - name: runner-bin
+            emptyDir: {}
+          # Disk, not tmpfs (unlike the CI pool): an agent run checks out a repo and builds into
+          # it, which is far larger than the CI validators' ~100MiB scratch and would otherwise be
+          # charged to node RAM.
+          - name: ci-shared
+            emptyDir:
+              sizeLimit: 8Gi
+  triggers:
+    - type: forgejo-runner
+      metadata:
+        name: forgejo-agent-runner-k8s
+        address: "http://forgejo-http.forgejo.svc.cluster.local:3000"
+        global: "true"
+        labels: "agent"
+      # Reuses the CI pool's scaler credential — it is only a read-pending-jobs token, and the
+      # scaler is label-scoped by the trigger metadata above.
+      authenticationRef:
+        name: forgejo-runner-scaler

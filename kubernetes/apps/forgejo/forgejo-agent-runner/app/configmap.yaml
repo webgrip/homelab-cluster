@@ -1,0 +1,33 @@
+# forgejo-agent-runner config — the dark-factory agent pool (ADR-0048).
+# Separate pool from forgejo-runner: it advertises ONE label, `agent`, so only the
+# dark-factory workflow (`.forgejo/workflows/agent-run.yml`, runs-on: agent) lands here and
+# agent runs never queue behind CI image builds. `host` mode = steps run in the MAIN pod
+# container, which IS the agent-runner image (OpenHands + docker CLI + node + skills). That
+# container shares the pod netns with the dind sidecar, so the agent reaches the daemon at
+# DOCKER_HOST=tcp://localhost:2376 to run language gates in CI's own images.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: forgejo-agent-runner-config
+  namespace: forgejo
+data:
+  config.yaml: |-
+    log:
+      level: info
+    runner:
+      # One agent run per ephemeral pod; KEDA spawns more for more pending agent jobs.
+      capacity: 1
+      # 6h, not the CI pool's 1h: an unattended agent run (scope → build → gates → self-review
+      # → PR) legitimately runs long, and a 1h cap would kill it mid-ticket.
+      timeout: 6h
+      labels:
+        - agent:host
+    cache:
+      enabled: false
+    container:
+      docker_host: tcp://localhost:2376
+      options: ""
+      network: ""
+      valid_volumes:
+        - "**"

@@ -1,0 +1,66 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/policyexception_v2.json
+# Exception for the KEDA-scaled dark-factory AGENT runner pool (forgejo namespace, ADR-0048).
+# Same privileged docker:dind native sidecar as the CI runner, for the same reason, but a
+# separate ScaledJob (label `agent`, soyo pool) needs its own exception: exception-governance
+# forbids wildcard names, and KEDA stamps a per-ScaledJob label.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: exception-forgejo-agent-runner-privileged
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      The forgejo-agent-runner ScaledJob (ADR-0048) runs a privileged docker:dind native
+      sidecar. Here the daemon is not for building images but for running the repository's
+      LANGUAGE GATES in CI's own container images (rust-ci-runner, php:8.5-cli,
+      node:24-alpine) — the agent shells out to it via DOCKER_HOST=tcp://localhost:2376 so
+      its gates match CI exactly rather than requiring every toolchain to be baked into the
+      agent image. KEDA submits the runner as a Job, so pod-security-baseline-enforce blocks
+      it via autogen-privileged-containers before any pod exists, and dind's privileged:true
+      inherently trips workload-hardening-audit's
+      privilege-escalation/run-as-non-root/check-seccomp-strict plus
+      workload-advanced-hardening-audit's require-drop-all-capabilities at the POD level
+      (Kyverno's foreach fails the whole rule if any one container fails it). The runner-bin
+      init container runs fully hardened and the agent main container needs none of this, but
+      the exception model waives per-resource, not per-container. Note the pod deliberately
+      sets automountServiceAccountToken:false and binds a no-authority ServiceAccount, so the
+      LLM-driven process in it has zero Kubernetes API access despite the privileged sidecar.
+      Tracking: ADR-0048 — revisit alongside ADR-0026 if the runners move to rootless/sysbox
+      DinD.
+spec:
+  exceptions:
+    - policyName: pod-security-baseline-enforce
+      ruleNames:
+        - privileged-containers
+        - autogen-privileged-containers
+    - policyName: workload-hardening-audit
+      ruleNames:
+        - privilege-escalation
+        - run-as-non-root
+        - check-seccomp-strict
+    - policyName: workload-advanced-hardening-audit
+      ruleNames:
+        - require-drop-all-capabilities
+  match:
+    any:
+      # The resource the webhook actually rejects: the KEDA-generated agent runner Job.
+      - resources:
+          kinds:
+            - Job
+          namespaces:
+            - forgejo
+          selector:
+            matchLabels:
+              scaledjob.keda.sh/name: forgejo-agent-runner
+      # The ephemeral agent runner Pod the Job spawns, carrying the template label.
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - forgejo
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: forgejo-agent-runner

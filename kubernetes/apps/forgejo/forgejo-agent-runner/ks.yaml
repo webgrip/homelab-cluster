@@ -1,0 +1,31 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: forgejo-agent-runner
+spec:
+  dependsOn:
+    - name: forgejo
+    - name: keda
+      namespace: keda
+    # The pool's pods mount agent-litellm-master / agent-vikunja-token, so the stores must exist.
+    - name: external-secrets-stores
+      namespace: security
+    # Reuses forgejo-runner's TriggerAuthentication (forgejo-runner-scaler) and harbor-pull Secret.
+    - name: forgejo-runner
+  # force: recreate the immutable forgejo-agent-runner-provisioner Job when its spec changes so it
+  # re-runs (Jobs are immutable; without this a changed registration would never take effect).
+  force: true
+  interval: 1h
+  retryInterval: 5m
+  path: ./kubernetes/apps/forgejo/forgejo-agent-runner/app
+  prune: true
+  wait: false
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: forgejo
+  # NO postBuild.substituteFrom — deliberate, mirroring forgejo-runner: envsubst would eat the
+  # ScaledJob's inline shell (it references $(cat ...) and braced vars), so image refs are literal.
