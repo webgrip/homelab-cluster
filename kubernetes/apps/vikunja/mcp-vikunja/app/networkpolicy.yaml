@@ -16,7 +16,15 @@ spec:
     - Ingress
   ingress:
     # gateway (network ns) + LAN (gateway traffic can masquerade to a node IP)
+    # + the LiteLLM MCP gateway (VIK-263: agents reach vikunja tools through
+    # per-key access groups instead of hitting this bridge directly)
     - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ai
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: litellm
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: network

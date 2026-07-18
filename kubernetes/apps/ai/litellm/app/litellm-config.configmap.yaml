@@ -204,3 +204,41 @@ data:
         claude-haiku: claude-haiku-4-5
         claude-3-5-sonnet-latest: claude-sonnet-5
         claude-3-5-haiku-latest: claude-haiku-4-5
+
+    # --- VIK-263: the in-cluster MCP servers behind ONE gateway URL
+    # (https://litellm.<domain>/mcp, key-authed). Deny-by-default holds
+    # (VIK-262): a key sees only its access group's tools. Groups:
+    #   observability — read-only (grafana, victorialogs, kubernetes, opencost)
+    #   board         — write-capable (vikunja; task CRUD as the bridge token)
+    # Interactive human use via .mcp.json stays DIRECT to the LAN hostnames
+    # (decision note on VIK-263): humans already hold LAN access, and the
+    # gateway's value — per-key scoping + attribution — is for agents.
+    # Server keys double as the short tool-name prefixes (no mcp_aliases
+    # needed; names are already minimal). vikunja needs the ai→vikunja
+    # NetworkPolicy allow (mcp-vikunja networkpolicy.yaml). ---
+    mcp_servers:
+      grafana:
+        transport: "http"
+        url: "http://mcp-grafana.observability.svc.cluster.local:8000/mcp"
+        description: "PromQL/dashboards/alerts (read-only)"
+        access_groups: ["observability"]
+      victorialogs:
+        transport: "http"
+        url: "http://mcp-victorialogs.observability.svc.cluster.local:8081/mcp"
+        description: "LogsQL log queries (read-only)"
+        access_groups: ["observability"]
+      kubernetes:
+        transport: "http"
+        url: "http://k8s-mcp-kubernetes-mcp-server.observability.svc.cluster.local:8080/mcp"
+        description: "Cluster state, view role (read-only)"
+        access_groups: ["observability"]
+      opencost:
+        transport: "http"
+        url: "http://opencost.observability.svc.cluster.local:8081/"
+        description: "Cost/efficiency queries (read-only, root path)"
+        access_groups: ["observability"]
+      vikunja:
+        transport: "http"
+        url: "http://mcp-vikunja.vikunja.svc.cluster.local:8000/mcp"
+        description: "Board task CRUD (WRITE-capable)"
+        access_groups: ["board"]
