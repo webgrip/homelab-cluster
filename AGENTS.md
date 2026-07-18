@@ -46,6 +46,11 @@ roadmap file in git — see
   has at most ONE parent. `theme/*` labels stay the cross-project dimension; the Vellum front
   end renders the hierarchy ("By epic" view with roll-up progress)
 - Open target: ≈100 tickets · buckets: Backlog / Ready / In progress (agent) / Review / Done
+- **Pick-up order** (since 2026-07-18): each project's **description** carries a
+  `Pick-up queue` — an ordered list (`VIK-<id> — title`), **top = picked up first**, covering
+  every `do-next` holder plus a next-up tail. Agents take the topmost eligible entry; the PO
+  inserts new tickets where they fit and drops entries on close. Vikunja UI drag-order is NOT
+  authoritative (the MCP has no position API — see the skill's reference.md)
 - Top-up ground truth: `git log --oneline <last-sweep>..HEAD` · `./scripts/posture-counts.sh` ·
   live read-only MCP checks · audit dimensions: security/hardening · reliability/HA/backup-DR ·
   CI/shift-left/DX
