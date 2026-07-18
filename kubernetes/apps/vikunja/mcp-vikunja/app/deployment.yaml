@@ -23,13 +23,13 @@ spec:
       labels:
         app.kubernetes.io/name: mcp-vikunja
     spec:
+      # Pinned to worker-1 — co-located with the vikunja API + DB primary
+      # (vikunja-db-1). The oversubscribed fringe-workstation node was
+      # CPU-throttling this bridge into ~17s responses and exit-1 crashes
+      # (9 restarts / 9h, 2026-07-18); worker-1 keeps the whole request path
+      # (mcp → API → primary) on one node.
       nodeSelector:
-        node.webgrip.io/pool: worker
-      tolerations:
-        - key: dedicated
-          operator: Equal
-          value: fringe
-          effect: NoSchedule
+        kubernetes.io/hostname: worker-1
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -52,6 +52,10 @@ spec:
             - --stateful
             - --sessionTimeout
             - "900000"
+            # Real health endpoint (supergateway returns "ok") so the probes can
+            # catch a functionally-dead gateway, not just an open TCP port.
+            - --healthEndpoint
+            - /healthz
           env:
             # In-cluster direct to the app Service — no gateway hairpin.
             # The trailing /api/v1 is required by vikunja-mcp.
@@ -75,22 +79,27 @@ spec:
             - name: http
               containerPort: 8000
               protocol: TCP
-          # tcpSocket: supergateway serves /mcp only (no health endpoint in
-          # streamableHttp mode); the gateway listens before any child spawns.
+          # httpGet /healthz (supergateway --healthEndpoint): a tcpSocket probe
+          # only checks the port is open, so it reported Ready while the gateway
+          # was serving 17s responses and never restarted a wedged child.
           livenessProbe:
-            tcpSocket:
+            httpGet:
+              path: /healthz
               port: http
             initialDelaySeconds: 5
             periodSeconds: 30
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /healthz
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:
             requests:
-              cpu: 25m
-              memory: 128Mi
+              # 25m starved the bridge under node contention; give it a real
+              # CPU floor so it is not throttled to 17s latencies.
+              cpu: 100m
+              memory: 256Mi
             limits:
               cpu: 500m
               memory: 768Mi
