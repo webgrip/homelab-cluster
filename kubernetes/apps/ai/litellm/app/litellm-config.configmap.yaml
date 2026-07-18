@@ -45,9 +45,12 @@ data:
       # (deny-by-default, set BEFORE real MCP servers are registered). ---
       supported_db_objects: ["mcp"]
       require_key_mcp_access_defined: true
-      # --- VIK-277: proxy self-protection against agent stampedes. ---
+      # --- VIK-277: proxy self-protection against agent stampedes.
+      # NOTE: max_request_size_mb turned out Enterprise-gated in OSS (logged
+      # "not checking … enterprise only" per request) — removed; a body-size
+      # cap must come from the gateway layer instead (roadmap #16). An 11MB
+      # body reproducibly crashed the app container (probe, 2026-07-18). ---
       global_max_parallel_requests: 100
-      max_request_size_mb: 10
       cancel_on_disconnect: true
       # Graceful restarts: token-authed drain stops new work before the
       # Recreate cut. Token is generator-minted (litellm-drain ExternalSecret).
