@@ -20,7 +20,8 @@ external-dns-excluded, LAN-only, no client auth — same trust model as the othe
   gets a 404 and must re-initialize. **Without the timeout, accumulated sessions OOMKilled the pod
   (2026-07-12, exit 137 at 512Mi; limit now 768Mi).**
 - Hard-delete opt-ins: `ENABLE_LABEL_DELETE=true` is set (label deletes only unlink metadata;
-  needed for duplicate-label dedup). `ENABLE_{PROJECT,TASK}_DELETE` stay unset (soft mode:
+  needed for duplicate-label dedup — a delete **cascades**: the server removes the label from
+  every task that carried it, so consolidate tasks onto the keeper id first). `ENABLE_{PROJECT,TASK}_DELETE` stay unset (soft mode:
   `project_delete`→archive, `task_delete`→complete — Vikunja has no trash/undo).
 - Version bump = edit the pinned `@aimbitgmbh/vikunja-mcp@<ver>` in `deployment.yaml` args
   (Renovate doesn't see inside args).

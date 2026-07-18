@@ -59,3 +59,23 @@ git stash drop
 ```
 
 Their work stays uncommitted in the working tree, exactly as found.
+
+## Recovery: your commit landed on someone else's branch
+
+Another stream can switch the shared tree's checked-out branch mid-task; your next commit
+then lands on **their** branch, and `git push origin main` reports "Everything up-to-date"
+(the tell — local `main` never advanced). Proven recovery (2026-07-17, commit `01745acc`),
+non-destructive to both streams:
+
+```bash
+git worktree add --detach /tmp/wt origin/main   # hand-run: .worktreeinclude does NOT apply
+git -C /tmp/wt cherry-pick <your-sha>           # or re-stage + commit -C <your-sha>
+git -C /tmp/wt push origin HEAD:main
+git worktree remove /tmp/wt
+```
+
+Leave the stray commit on their branch — a later rebase drops it by patch-id. Never reset
+or switch their branch: their uncommitted files are in the shared tree. The same detached
+temp worktree is the right way to commit **any** file to main while the shared tree sits on
+someone else's branch. Corollary: check `git branch --show-current` before every commit
+round in a shared tree.
