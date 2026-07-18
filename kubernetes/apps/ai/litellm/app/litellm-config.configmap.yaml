@@ -122,6 +122,16 @@ data:
       # exporter is the tracked follow-up. Data lands in the DB regardless.
       success_callback: ["postgres"]
       failure_callback: ["postgres"]
+      # --- VIK-261: every proxied request emits an OTEL span → alloy-gateway
+      # (OTLP gRPC :4317) → VictoriaTraces, queryable via the Grafana Jaeger
+      # datasource (ADR-0041/0042). message_logging: false — spans carry
+      # model/latency/status attributes, never prompt/completion content
+      # (consistent with the VIK-279 privacy posture). Env: OTEL_* on the
+      # Deployment. ---
+      callbacks: ["otel"]
+      callback_settings:
+        otel:
+          message_logging: false
       # --- Valkey (redis-protocol, litellm-valkey.yaml). mode: default_off =
       # response caching is OPT-IN per request (body: {"cache": {"use-cache":
       # true}}) so agents never get surprise-stale completions; the always-on
