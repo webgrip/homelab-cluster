@@ -233,6 +233,8 @@
   .group-h.todo-h { color: var(--accent); }
   .stage-empty { padding: 14px 16px 18px; font-size: 12.5px; color: var(--faint); border-bottom: 1px solid var(--line-weak); }
 
+  .row[draggable="true"] { user-select: none; -webkit-user-select: none; cursor: grab; }
+  .row[draggable="true"]:active { cursor: grabbing; }
   .row.dragging { opacity: 0.4; }
   .row.drag-above { box-shadow: inset 0 2px 0 var(--accent); }
   .row.drag-below { box-shadow: inset 0 -2px 0 var(--accent); }
@@ -554,7 +556,8 @@ const state = {
   token: null, projects: [], project: null, viewId: null, tasks: [], labels: [],
   openId: null, draggedId: null, selId: null, visible: [],
   view: localStorage.getItem("board_view") || "open",
-  group: (() => { const g = localStorage.getItem("board_group"); return !g || g === "none" ? "stages" : g; })(),
+  /* v6 key bump: everyone lands on Stages once (old key carried v5 groupings) */
+  group: localStorage.getItem("board_group2") || "stages",
   collapsed: new Set(JSON.parse(localStorage.getItem("board_collapsed") || "[]")),
 };
 
@@ -773,8 +776,12 @@ function estChip(t) {
   const title = vals.map((x) => `${x.f.key} ${x.v || "—"}`).join(" · ");
   return `<span class="est ${missing ? "warn" : ""}" title="${esc(title)}${missing ? " — DoR: estimation incomplete" : ""}">${esc(txt)}</span>`;
 }
+/* every stage section reorders by drag; drops stay within the dragged row's
+   section (stage is label-derived — crossing sections would silently no-op) */
 const draggableRow = (t) =>
-  state.viewId !== null && state.group === "stages" && stageOf(t) === "todo";
+  state.viewId !== null && state.group === "stages" && !t.done;
+const dropTarget = (t) =>
+  state.draggedId != null && draggableRow(t) && stageOf(t) === stageOf(getTask(state.draggedId) || t);
 /* epics: a parent task with subtask relations (or the Epic: title convention).
    related_tasks entries are load-time snapshots — resolve through live state so
    roll-ups/titles track mutations; cross-project refs keep the snapshot. */
@@ -836,7 +843,7 @@ function rowHtml(t, opts = {}) {
   const statusCell = epic && subs.length
     ? `<button class="iconbtn st" title="${doneSubs}/${subs.length} subtasks done">${ring(pct)}</button>`
     : `<button class="iconbtn st" title="${t.done ? "Reopen" : "Mark done"}">${statusIcon(t)}</button>`;
-  return `<div class="row ${t.done ? "is-done" : ""} ${opts.kid ? "kid" : ""}" data-id="${t.id}" ${draggableRow(t) ? 'draggable="true"' : ""}>
+  return `<div class="row ${t.done ? "is-done" : ""} ${opts.kid ? "kid" : ""}" data-id="${t.id}" ${!t.done && state.viewId !== null ? 'draggable="true"' : ""}>
     ${statusCell}
     <button class="iconbtn pr" title="Priority: ${prioName(t.priority)}">${prioIcon(t.priority)}</button>
     <span class="tid">VIK-${t.id}</span>
@@ -933,7 +940,7 @@ function renderStages(list) {
   list.forEach((t) => (byStage[stageOf(t)] = byStage[stageOf(t)] || []).push(t));
   let html = "";
   for (const [key, name, hint] of STAGES) {
-    const rows = (byStage[key] || []).sort(key === "backlog" ? prioSort : boardSort);
+    const rows = (byStage[key] || []).sort(boardSort); /* position order everywhere so drag sticks */
     if (!rows.length && key !== "todo") continue;
     html += `<div class="group-h ${key === "todo" ? "todo-h" : ""}"><span>${name}</span><span class="n">${rows.length}</span>${hint ? `<span class="hint">${hint}</span>` : ""}</div>`;
     if (!rows.length) html += `<div class="stage-empty">Nothing ready — refine the backlog to fill the queue.</div>`;
@@ -1619,9 +1626,16 @@ tasksEl.addEventListener("dragstart", (ev) => {
   const card = ev.target.closest(".row");
   if (!card) return;
   const t = getTask(+card.dataset.id);
-  if (!t || !draggableRow(t)) return;
+  if (!t) return;
+  if (!draggableRow(t)) {
+    ev.preventDefault();
+    if (state.group !== "stages") { toast("Reordering lives in the Stages view — switching…"); setGroup("stages"); }
+    return;
+  }
   state.draggedId = +card.dataset.id;
   card.classList.add("dragging");
+  /* Firefox refuses to start a drag without data on the transfer */
+  ev.dataTransfer.setData("text/plain", "VIK-" + t.id);
   ev.dataTransfer.effectAllowed = "move";
 });
 tasksEl.addEventListener("dragend", () => {
@@ -1632,7 +1646,7 @@ tasksEl.addEventListener("dragover", (ev) => {
   const card = ev.target.closest(".row");
   if (!card || state.draggedId == null || +card.dataset.id === state.draggedId) return;
   const t = getTask(+card.dataset.id);
-  if (!t || !draggableRow(t)) return; /* drop targets stay inside the queue */
+  if (!t || !dropTarget(t)) return; /* drops stay inside the dragged row's section */
   ev.preventDefault();
   const r = card.getBoundingClientRect();
   const before = ev.clientY < r.top + r.height / 2;
@@ -1647,7 +1661,7 @@ tasksEl.addEventListener("drop", async (ev) => {
   const card = ev.target.closest(".row");
   if (!card || state.draggedId == null) return;
   const t = getTask(+card.dataset.id);
-  if (!t || !draggableRow(t)) return;
+  if (!t || !dropTarget(t)) return;
   ev.preventDefault();
   const before = card.classList.contains("drag-above");
   const dragged = state.draggedId;
@@ -1705,7 +1719,7 @@ $("groupseg").addEventListener("click", (ev) => {
   if (b) setGroup(b.dataset.g);
 });
 function setView(id) { state.view = id; localStorage.setItem("board_view", id); render(); }
-function setGroup(g) { state.group = g; localStorage.setItem("board_group", g); render(); }
+function setGroup(g) { state.group = g; localStorage.setItem("board_group2", g); render(); }
 $("search").addEventListener("input", render);
 $("themebtn").addEventListener("click", toggleTheme);
 $("helpbtn").addEventListener("click", openHelp);
