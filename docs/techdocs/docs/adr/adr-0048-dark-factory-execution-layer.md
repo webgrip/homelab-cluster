@@ -38,7 +38,8 @@ Three questions had real alternatives:
 * **`builder ≠ judge` survives to the forge** (ADR-0047, RFC HAZ-05).
 * **Bounded blast radius** — an LLM-driven process in a privileged DinD container is the threat; the
   spend key, the push scope and the merge gate must all be bounded.
-* **Capacity isolation** — agent runs must not queue behind CI image builds (or vice versa).
+* **Capacity isolation** — agent runs must not queue behind CI image builds (or vice versa), without
+  violating [ADR-0002](adr-0002-application-workload-placement.md)'s control-plane placement rule.
 
 ## Considered Options
 
@@ -56,8 +57,9 @@ whole thing self-healing.
 Load-bearing specifics:
 
 * **Substrate.** A second KEDA `ScaledJob`, `forgejo-agent-runner`, mirroring `forgejo-runner` but
-  advertising runner label **`agent`** and scheduled on the **`soyo`** pool (measured headroom
-  ~49% CPU / 38% memory, versus the CI pool's oversubscribed node). Its own registration
+  advertising runner label **`agent`** and scheduled on the **`worker`** pool (`node.webgrip.io/pool:
+  worker`), never the soyos — those are control-plane/etcd nodes that [ADR-0002](adr-0002-application-workload-placement.md)
+  keeps free, and their apparent headroom exists because of that. Its own registration
   (`keda-global-agent`), its own Kyverno PolicyException matching the new ScaledJob + pod labels, and
   a raised runner `timeout` (agent runs exceed the CI pool's `1h`). The reused
   `TriggerAuthentication` is only a read-pending-jobs token.
@@ -92,7 +94,12 @@ Load-bearing specifics:
   claim-as-lock prevents double-dispatch/double-spend.
 * Good, because two role bots make `builder ≠ judge` enforceable at the forge, and the reviewer's
   read-only scope bounds what a compromised review run can do.
-* Good, because agent runs get isolated `soyo` capacity and never queue behind CI image builds.
+* Good, because agent runs get their own runner label and scale-from-zero pool, so they never queue
+  behind CI image builds and never hold capacity while idle.
+* Bad, because both pools now compete for the same two `worker` nodes, which are already saturated
+  (2026-07-18: CI runner pods Pending on `Insufficient cpu/memory`). Agent runs are infrequent and
+  scale-from-zero, so this is tolerable, but the worker tier needs capacity before the factory runs
+  regularly — it is a hardware problem, not one placement can solve.
 * Bad, because any workflow that targets `runs-on: agent` can read the pool's master key; mitigated
   by pool-scoping and git-reviewed workflows, and to be tightened later with a budget-capped *minter*
   key rather than the true master key.
@@ -106,7 +113,8 @@ Load-bearing specifics:
 
 * `kubectl -n forgejo get scaledjob forgejo-agent-runner` exists; the Forgejo admin runners list
   shows `keda-global-agent` advertising label `agent`; **no** Kyverno `PolicyViolation` on its Jobs.
-* A dispatched run's pod lands on a `soyo-*` node (`kubectl get pods -n forgejo -o wide`), and inside
+* A dispatched run's pod lands on a **`worker`-pool** node and never a `soyo-*` control-plane node
+  (`kubectl get pods -n forgejo -o wide`), and inside
   it `docker info` succeeds and `docker run --rm rust:latest cargo --version` works.
 * End-to-end pilot on one `effort/S`, `agent-ready` Erfbeeld ticket: it is claimed and moved, a PR is
   opened with a `VIK-<taskID>` trailer, gates run with output pasted, a per-run LiteLLM key appears in
@@ -151,3 +159,9 @@ Load-bearing specifics:
   contains an agent that pushes.
 * 2026-07-18 — proposed, alongside the `forgejo-agent-runner` pool, the `agent-builder`/
   `agent-reviewer` bots, and the poll dispatcher; pending the end-to-end pilot.
+* 2026-07-18 — **placement corrected before ratification**: the pool was first specified on the
+  `soyo` pool, chosen from measured CPU/memory headroom. That was wrong — the soyos are
+  control-plane/etcd nodes and ADR-0002 forbids app workloads there; the headroom exists because
+  they are deliberately kept free, and a privileged DinD beside etcd is the exact shape of the
+  documented fsync-starvation failure. Corrected to `pool: worker`. No agent pod ever ran on a soyo
+  (the pool is scale-from-zero and had not been dispatched to).

@@ -53,8 +53,13 @@ spec:
         # (same OpenBao robot credential) — first-party images come from the in-cluster Harbor.
         imagePullSecrets:
           - name: harbor-pull
+        # pool: worker — NOT soyo. The soyos are 12GiB control-plane nodes running etcd and
+        # ADR-0002 forbids spilling apps onto them (overcommitting them caused the OOM-cascade
+        # incidents). Their apparent CPU/memory headroom exists precisely BECAUSE they are kept
+        # free; a privileged DinD running cargo/pest builds beside etcd is the worst possible
+        # neighbour — this repo has already measured CI IO starving etcd of fsync IOPS.
         nodeSelector:
-          node.webgrip.io/pool: soyo
+          node.webgrip.io/pool: worker
         securityContext:
           fsGroup: 1000
         initContainers:
