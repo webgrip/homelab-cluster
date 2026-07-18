@@ -15,8 +15,10 @@ return nothing.
 1. **Hand-validate the 2–3 hardest patterns first** against the live target system (API/CLI), before
    writing any spec. What you learn (real field names, escaping rules, semantic mismatches) rewrites
    the spec; skipping this poisons every agent downstream.
-2. **Prove the verifier can fail.** Feed it a known-bad input and confirm it rejects (e.g. LogsQL
-   parse errors return HTTP 400) — otherwise "verification passed" is meaningless.
+2. **Prove the verifier can fail — and can pass.** Feed it a known-bad input and confirm it rejects
+   (e.g. LogsQL parse errors return HTTP 400), then a known-**good** input and confirm it accepts.
+   A verifier that crashes rejects *everything*, which is indistinguishable from a strict one when
+   you only test the bad case (and a crash exits non-zero, so the failure test still "passes").
 3. **Write one spec file** (scratchpad) containing: exact transformation rules as a table, the
    mandatory per-item live-verification command(s), what counts as acceptable-empty vs must-have-data,
    and a file-integrity check. Agents follow the spec, not their priors.
@@ -34,6 +36,14 @@ return nothing.
 
 - Two agents independently reporting the same surprising discovery = strong correctness signal;
   one agent's unique "discovery" that contradicts the spec = verify yourself before accepting.
+- **A one-pass `sed` is safe or catastrophic depending on a check that costs one command.** Before a
+  blanket rename, enumerate every context the old string appears in (`grep -rn '<old>' --exclude-dir=.git . | head -60`)
+  and confirm the naive replacement is right in *each* — often the prefixed forms (`org/<old>`,
+  `@scope/<old>`, `~/.cfg/<old>`, `<pkg>@<old>`) all resolve correctly, which is exactly what makes
+  one pass safe. **Exclude append-only history**: CHANGELOGs, ADR history entries, dated comments and
+  incident notes record what was true *then*; rewriting them to the new name falsifies the record.
+  Update live pointers, leave the record (2026-07-18 repo rename: 57 live refs rewritten, 3 dated
+  entries deliberately left naming the old repo).
 - Acceptable-empty results need a documented upstream reason (feature not deployed, no traffic since
   cutover) — otherwise treat empty as a failed translation.
 - Agents inherit spec errors silently: when one finds a spec rule wrong, fix the spec file before

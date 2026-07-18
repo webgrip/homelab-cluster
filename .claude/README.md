@@ -31,6 +31,13 @@ npx skills update -g                                                       # pul
 
 They land in `~/.agents/skills/` and are symlinked into each agent's skills dir (`~/.claude/skills/`, opencode, Cursor, Codex, …). They invoke unprefixed (`/skillsmith`), not namespaced like plugin skills. Note the CLI ships only the SKILL.md trees — a skill's bundled `hooks/hooks.json` (`guard-secrets`, `skill-usage`) or `.mcp.json` (`vikunja-product-owner`) is **not** auto-wired; wire those by hand in `settings.json` / `.mcp.json` if you want them.
 
+Operational notes:
+
+- **Check what actually landed, not the installer's summary** — compare the installed skill against the remote source of truth:
+  `for d in ~/.agents/skills/*/; do s=$(basename "$d"); a=$(md5sum "$d/SKILL.md" | cut -d' ' -f1); b=$(git show origin/main:skills/$s/SKILL.md | md5sum | cut -d' ' -f1); [ "$a" = "$b" ] && echo "MATCH $s" || echo "DIFFER $s"; done` (run from an `ai-skills` checkout).
+- **Version skew ≠ behaviour skew.** A release can touch only READMEs and `plugin.json` metadata, leaving every `SKILL.md` byte-identical — an "outdated" install is then functionally current. Check `git diff --name-only <old>..<new> | grep SKILL.md` before treating a stale pin as urgent. And because `npx skills add <git-url>` clones `main` directly, the npx route gets a fix the moment it merges; the release train only governs `.skill` packages, Forgejo releases, and version numbers.
+- **Dropping a plugin marketplace takes two steps.** Removing it from `settings.json` does not deregister it: `~/.claude/plugins/known_marketplaces.json` keeps its own entry (potentially with `autoUpdate: true`, still fetching). That registry is CLI-owned — use `/plugin marketplace remove <name>` rather than hand-editing it mid-session. Even then, `~/.claude/plugins/cache/<name>/` is left behind and must be deleted manually.
+
 ## Hooks (enforced safety)
 
 - **`guard-secrets.sh`** (PreToolUse Edit/Write) — blocks decrypted artifacts and plaintext written into `*.sops.yaml`; runs `gitleaks` on new content if installed. The gitleaks pass can false-positive on secrets-free *prose* (seen 2026-07-12 on documentation text mentioning secrets next to quoted paths); diagnose with the hook's own invocation — `mise exec -- gitleaks detect --no-banner --no-git -s <file>` against the content written to `/tmp` — and reword the flagged phrase rather than bypassing the hook. Editing `*.sops.yaml` is also blocked by `permissions.deny`.

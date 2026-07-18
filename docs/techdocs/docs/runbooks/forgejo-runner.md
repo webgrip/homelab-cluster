@@ -90,6 +90,14 @@ Every one of these passed `kubeconform`/`flux-local` and only failed at runtime.
 | Job log: `Cannot find: node in PATH`; JS actions (`actions/checkout`, `tj-actions/changed-files`) fail | host-mode steps run in the toolchain container where `node` is bundled under `externals/` but not on `PATH` | The runner `args` prepend `/home/runner/externals/node20/bin` to `PATH` (node20 = `checkout@v4` runtime; node24 also bundled) |
 | Warm pod stuck `Pending`; event: `FailedScheduling ... Insufficient memory` | the single `fringe` node can't fit another runner | lower `minReplicaCount`, free/add `fringe` memory, or trim the dind/runner memory requests (the last over-commits — watch for OOM) |
 | KEDA `keda-operator` restart count climbing | RAM-pressure OOM on tight nodes (a recurring cluster theme) | check `kubectl -n keda get pods`; correlate with node memory |
+| A push's job never starts; runner pods **are** spawning and completing | the queue is **instance-wide** and those runners are serving *other* repos — each pod is a single-task poller that fetches one task and exits, so pods churning is no evidence *your* job is progressing | confirm which repo each live runner took: `kubectl logs -n forgejo <runner-pod> -c runner --tail=25` → `task <N> repo is webgrip/<repo>`. Then wait it out — see the latency note below |
+
+> **Queue latency: don't call a stall early.** Observed gaps between a workflow's first job
+> finishing and its dependent job *starting*, same repo, same day (2026-07-18): **5 min, ~17 min,
+> and 26 min**. The run sits at `status: waiting` throughout — visible via
+> `GET /api/v1/repos/<o>/<r>/actions/runs`, **not** via `…/actions/tasks`, which lists only
+> runner-assigned tasks (a queued job is simply absent there). Three samples is not a baseline
+> either; treat ~30 min as the point to start investigating rather than a hard ceiling.
 
 Two **workflow-side** failures that look like runner bugs but live in the repo's `.forgejo/`:
 

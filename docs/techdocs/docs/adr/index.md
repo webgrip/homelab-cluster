@@ -26,7 +26,10 @@ Coverage of the whole estate — which domains have records, which don't — is 
 - **ADRs are records, not living docs.** When reality changes (revert, partial rollout,
   supersession), append a dated entry to the ADR's **More Information** section (`## Links` in
   2.1.2-era records) and update `status`/`date` — never silently rewrite the body. A reversed
-  decision gets a *new* ADR that supersedes the old.
+  decision gets a *new* ADR that supersedes the old. **This binds mechanical sweeps too**: a repo,
+  tool, or service rename must update live pointers (prose that tells a reader where something *is*)
+  while leaving dated history entries naming whatever they named on that date — they are a record of
+  what was true then, and a global find-and-replace across them corrupts it.
 - **Ordering (re-baselined 2026-07-03):** 0001–0039 read bottom-up through the stack — nodes
   first, then network, storage, delivery, and so on up to docs — so reading the set in order
   tells the story of the platform. This was a **one-time renumbering** (mapping

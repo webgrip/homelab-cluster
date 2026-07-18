@@ -138,6 +138,12 @@ but two read-only sources reconstruct most failures:
 
 - **Run status (public):** `GET /api/v1/repos/{owner}/{repo}/commits/{sha}/status` — per-job
   state + which job failed.
+- **Queued vs never-triggered:** `…/actions/tasks` lists only runner-**assigned** tasks and its
+  rows are **jobs** (the `name` field is the job name, so a two-job workflow is two rows). A
+  queued job is simply absent there, which reads identically to "never created". Use
+  `…/actions/runs`, which is run-scoped and reports `status: waiting`, to tell the two apart
+  before escalating. Verified 2026-07-18: `waiting` appears in `runs` for `homelab-cluster` and
+  `telemetry-service` and in `tasks` for none of them.
 - **The Forgejo server router log via VictoriaLogs** logs every API/git request with status
   code and handler: `router: completed POST /api/v1/… 403 Forbidden … @ v1.reqRepoWriter`.
   Time-bound a LogsQL query to the failure window:
