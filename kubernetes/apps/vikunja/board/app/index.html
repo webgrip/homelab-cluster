@@ -289,6 +289,28 @@
   .menu-item.create { color: var(--accent); font-weight: 600; border-top: 1px solid var(--line); border-radius: 0 0 7px 7px; margin-top: 4px; }
   .menu-item .grow { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+  /* ---------- epics ---------- */
+  .rec.epic-head { border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--surface-2) 45%, var(--surface)); }
+  .epicpill { font-size: 10px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--accent); color: var(--accent); white-space: nowrap; }
+  .epicbar { display: flex; align-items: center; gap: 10px; margin-top: 7px; }
+  .epicbar .track { flex: 1; max-width: 280px; height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+  .epicbar .fill { height: 100%; background: var(--live); border-radius: 999px; }
+  .epicbar .frac { font-size: 11.5px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .parentchip { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--ee); background: var(--ee-bg); border: 1px solid var(--ee); padding: 1px 8px; border-radius: 999px; cursor: pointer; }
+  .parentchip:hover { filter: brightness(1.08); }
+  .epic-section { margin-bottom: 20px; }
+  .epic-children { margin-top: 10px; }
+  .epic-children .rec { margin-left: 26px; }
+  .subhead-epic { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 700; margin: 8px 0; }
+  .subtask-block { margin: 14px 0 4px; }
+  .subtask-block h5 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+  .subtask-list { display: grid; gap: 3px; }
+  .subtask-row { display: flex; align-items: center; gap: 8px; font-size: 13.5px; padding: 3px 8px; border-radius: 6px; cursor: pointer; }
+  .subtask-row:hover { background: var(--surface-2); }
+  .subtask-row .tick { color: var(--live); font-weight: 800; width: 14px; flex: none; }
+  .subtask-row.done-sub { opacity: 0.6; }
+  .subtask-row.done-sub .subtitle { text-decoration: line-through; }
+
   #toast {
     position: fixed; right: 18px; bottom: 18px; z-index: 70; display: none; box-shadow: var(--shadow);
   }
@@ -304,7 +326,7 @@
 <header class="masthead">
   <p class="eyebrow">vikunja — homelab boards</p>
   <h1 class="title">The board, without the Vikunja front end</h1>
-  <p class="dek">Same Vikunja backend, API and MCP — different face. Click a ticket for the full sheet: everything edits in place and saves as you type. Drag cards to re-order. Reuses your existing Vikunja login session.</p>
+  <p class="dek">Same Vikunja backend, API and MCP — different face. Click a ticket for the full sheet: everything edits in place and saves as you type. Drag cards to re-order, or switch to <b>By epic</b> for the parent/subtask hierarchy with roll-up progress. Reuses your existing Vikunja login session.</p>
   <div class="config-strip" id="stats"></div>
 </header>
 
@@ -317,6 +339,7 @@
     <select id="sortmode" class="filter" aria-label="Sort order">
       <option value="board">Board order</option>
       <option value="prio">By priority</option>
+      <option value="epic">By epic</option>
     </select>
     <select id="statefilter" class="filter" aria-label="Filter by state">
       <option value="open">Open</option>
@@ -505,23 +528,64 @@ const sortedLabels = (t) => (t.labels || []).slice().sort((a, b) => a.title.loca
 const isAgentLabel = (l) => l.title.startsWith("agent/");
 const canDrag = () => $("sortmode").value === "board" && state.viewId !== null;
 const getTask = (id) => state.tasks.find((x) => x.id === id);
+/* epics: a parent task with subtask relations (or the Epic: title convention).
+   related_tasks entries are load-time snapshots — resolve through live state so
+   roll-ups/titles track mutations; cross-project refs keep the snapshot. */
+const subsOf = (t) => ((t.related_tasks && t.related_tasks.subtask) || []).map((s) => getTask(s.id) || s);
+const isEpic = (t) => subsOf(t).length > 0 || t.title.startsWith("Epic:");
+const parentOf = (t) => {
+  const p = ((t.related_tasks && t.related_tasks.parenttask) || [])[0];
+  return p ? (getTask(p.id) || p) : null;
+};
+function openRef(id) {
+  if (getTask(id)) openTask(id);
+  else window.open("/tasks/" + id, "_blank", "noopener");
+}
 
 /* ---------- list rendering ---------- */
 function taskCard(t) {
   const [ptxt, pcls] = PRIO(t);
   const chips = sortedLabels(t).map((l) => `<span class="${labelClass(l.title)}">${esc(l.title)}</span>`).join("");
-  return `<article class="rec ${t.done ? "is-done" : ""} ${canDrag() ? "can-drag" : ""}"
+  const epic = isEpic(t);
+  const subs = subsOf(t);
+  const doneSubs = subs.filter((s) => s.done).length;
+  const pct = subs.length ? Math.round(100 * doneSubs / subs.length) : 0;
+  const parent = epic ? null : parentOf(t);
+  return `<article class="rec ${t.done ? "is-done" : ""} ${canDrag() ? "can-drag" : ""} ${epic ? "epic-head" : ""}"
       data-id="${t.id}" ${canDrag() ? 'draggable="true"' : ""}>
     <span class="priority ${pcls}">${ptxt}</span>
     <div>
       <h4>${esc(t.title)}</h4>
       <p class="meta">
-        <span class="idtag">VIK-${t.id}</span>
+        ${epic ? `<span class="epicpill">epic</span> ` : ""}<span class="idtag">VIK-${t.id}</span>
         ${hasDue(t) ? `<span class="duetag">due ${nlDate.format(new Date(t.due_date))}</span>` : ""}
+        ${parent ? `<span class="parentchip" data-parent="${parent.id}" title="${esc(parent.title)}">&#8627; ${esc(parent.title.replace(/^Epic: /, "").slice(0, 36))}</span>` : ""}
         <span class="integration-list">${chips}</span>
       </p>
+      ${epic && subs.length ? `<div class="epicbar"><div class="track"><div class="fill" style="width:${pct}%"></div></div><span class="frac">${doneSubs}/${subs.length} done</span></div>` : ""}
     </div>
   </article>`;
+}
+
+function renderEpicView(list) {
+  const listIds = new Set(list.map((t) => t.id));
+  const childParent = {};
+  state.tasks.forEach((t) => { const p = parentOf(t); if (p) childParent[t.id] = p.id; });
+  const epics = state.tasks.filter(isEpic).sort(prioSort);
+  const used = new Set();
+  let html = "";
+  for (const e of epics) {
+    used.add(e.id);
+    const kids = list.filter((t) => t.id !== e.id && childParent[t.id] === e.id);
+    kids.forEach((k) => used.add(k.id));
+    if (!kids.length && !listIds.has(e.id)) continue;
+    html += `<div class="epic-section">${taskCard(e)}<div class="epic-children rec-grid">${kids.map(taskCard).join("")}</div></div>`;
+  }
+  const loose = list.filter((t) => !used.has(t.id));
+  if (loose.length) {
+    html += `<div class="epic-section"><h3 class="subhead-epic">No epic (${loose.length})</h3><div class="rec-grid">${loose.map(taskCard).join("")}</div></div>`;
+  }
+  return html || `<div class="callout">Nothing matches the current filters.</div>`;
 }
 
 function applyFilters() {
@@ -545,9 +609,10 @@ const boardSort = (a, b) => (a.done - b.done) || ((a.position || 0) - (b.positio
 const prioSort = (a, b) => (a.done - b.done) || ((b.priority || 0) - (a.priority || 0)) || (a.id - b.id);
 
 function render() {
-  const list = applyFilters().sort($("sortmode").value === "board" ? boardSort : prioSort);
-  $("tasks").innerHTML = list.map(taskCard).join("") ||
-    `<div class="callout">Nothing matches the current filters.</div>`;
+  const mode = $("sortmode").value;
+  const list = applyFilters().sort(mode === "board" ? boardSort : prioSort);
+  $("tasks").innerHTML = mode === "epic" ? renderEpicView(list) :
+    (list.map(taskCard).join("") || `<div class="callout">Nothing matches the current filters.</div>`);
   $("result-count").textContent = `${list.length} of ${state.tasks.length} tasks`;
   const open = state.tasks.filter((t) => !t.done);
   const count = (name) => open.filter((t) => (t.labels || []).some((l) => l.title === name)).length;
@@ -806,12 +871,18 @@ async function openTask(id) {
       <div class="sheet-top">
         <span class="idtag">VIK-${t.id}</span>
         <span class="crumb">${esc(state.projects.find((p) => p.id === state.project)?.title || "")}</span>
+        ${parentOf(t) ? `<span class="parentchip" data-parent="${parentOf(t).id}">&#8627; ${esc(parentOf(t).title.replace(/^Epic: /, "").slice(0, 40))}</span>` : ""}
+        ${isEpic(t) ? `<span class="epicpill">epic</span>` : ""}
         <span class="saving"></span>
         <button class="close" title="Close (Esc)">✕</button>
       </div>
       <div class="sheet-cols">
         <div class="sheet-main">
           <h1 class="t-title" contenteditable="true" spellcheck="false">${esc(t.title)}</h1>
+          ${subsOf(t).length ? `<div class="subtask-block"><h5>Subtasks — ${subsOf(t).filter((s) => s.done).length}/${subsOf(t).length} done</h5><div class="subtask-list">${
+            subsOf(t).slice().sort((a, b) => (a.done - b.done) || (a.id - b.id)).map((s) =>
+              `<div class="subtask-row ${s.done ? "done-sub" : ""}" data-sub="${s.id}"><span class="tick">${s.done ? "✓" : "○"}</span><span class="idtag">VIK-${s.id}</span><span class="subtitle">${esc(s.title)}</span></div>`).join("")
+          }</div></div>` : ""}
           <div class="fmtbar">
             <button data-cmd="bold" title="Bold"><b>B</b></button>
             <button data-cmd="italic" title="Italic"><i>I</i></button>
@@ -839,6 +910,12 @@ async function openTask(id) {
   const titleEl = sheetEl.querySelector(".t-title");
   sheetEl.addEventListener("pointerdown", (ev) => { if (ev.target === sheetEl) closeTask(); });
   sheetEl.querySelector(".close").addEventListener("click", () => closeTask());
+  sheetEl.addEventListener("click", (ev) => {
+    const chip = ev.target.closest(".parentchip");
+    if (chip) { openRef(+chip.dataset.parent); return; }
+    const row = ev.target.closest(".subtask-row");
+    if (row) openRef(+row.dataset.sub);
+  });
   titleEl.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); titleEl.blur(); } });
   titleEl.addEventListener("blur", flushTitle);
   descEl.addEventListener("input", () => {
@@ -881,17 +958,32 @@ async function loadComments(id) {
       `<p class="meta">No comments yet.</p>`;
   } catch { box.innerHTML = `<p class="meta">Comments unavailable.</p>`; }
 }
-async function closeTask() {
-  if (!sheetEl) return;
-  await flushTitle();
-  await flushDesc();
-  closePopover();
-  sheetEl.remove();
-  sheetEl = null;
-  state.openId = null;
-  document.body.classList.remove("modal-open");
-  history.replaceState(null, "", location.pathname);
-  render();
+let closingSheet = null;
+function closeTask() {
+  // Re-entrancy guard: open-from-sheet (subtask rows / parent chips) can start
+  // a second close while the first still awaits its flushes — share one
+  // in-flight close so a stale continuation never removes a newer sheet.
+  if (!sheetEl) return closingSheet || Promise.resolve();
+  if (closingSheet) return closingSheet;
+  closingSheet = (async () => {
+    const el = sheetEl;
+    try {
+      await flushTitle();
+      await flushDesc();
+    } finally {
+      closePopover();
+      el.remove();
+      if (sheetEl === el) {
+        sheetEl = null;
+        state.openId = null;
+        document.body.classList.remove("modal-open");
+        history.replaceState(null, "", location.pathname);
+        render();
+      }
+      closingSheet = null;
+    }
+  })();
+  return closingSheet;
 }
 addEventListener("keydown", (ev) => { if (ev.key === "Escape") { closePopover(); closeTask(); } });
 
@@ -960,6 +1052,8 @@ tasksEl.addEventListener("drop", async (ev) => {
   catch (e) { toast(`Re-order failed: ${e.message}`, true); }
 });
 tasksEl.addEventListener("click", (ev) => {
+  const chip = ev.target.closest(".parentchip");
+  if (chip) { openRef(+chip.dataset.parent); return; }
   const card = ev.target.closest(".rec");
   if (card) openTask(+card.dataset.id);
 });
