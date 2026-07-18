@@ -65,6 +65,28 @@ data:
       maximum_spend_logs_retention_period: "90d"
       maximum_spend_logs_retention_interval: "1d"
       use_redis_transaction_buffer: true
+      # --- VIK-282: admin-surface hardening — the master key never round-trips
+      # UI flows; login goes straight to Authentik. Deferred (recorded):
+      # allowed_routes until usage settles; service_account_settings arrives
+      # with the identity provisioner (VIK-264); custom_key_generate +
+      # alias-format validation are provisioner-side policy instead. ---
+      disable_master_key_return: true
+      auto_redirect_ui_login_to_sso: true
+      # --- VIK-278: Claude-native clients through the proxy — forward
+      # anthropic-beta etc. so beta features survive the hop; streaming
+      # clients get live token counts.
+      # use_chat_completions_url_for_anthropic_messages stays unset
+      # (only-if-bitten, recorded). ---
+      forward_client_headers_to_llm_api: true
+      always_include_stream_usage: true
+      # --- VIK-280 (owner-approved 2026-07-18): inference survives short CNPG
+      # blips; accepted trade-off — keys are unverifiable during the window
+      # (LAN-only cluster; the Valkey auth cache covers recently-seen keys).
+      # Socket/pool bounds respect the 384Mi CNPG instance; connect-timeout
+      # defaults reviewed as fine. ---
+      allow_requests_on_db_unavailable: true
+      database_socket_timeout: 30
+      database_connection_pool_limit: 20
 
     litellm_settings:
       # Drop provider-unsupported params instead of erroring — keeps heterogeneous
@@ -87,6 +109,13 @@ data:
       request_timeout: 600
       json_logs: true
       disable_hf_tokenizer_download: true
+      # --- VIK-282: no anonymous keys — every mint carries an alias so the
+      # spend ledger stays attributable. ---
+      key_generation_settings:
+        team_key_generation:
+          required_params: ["key_alias"]
+        personal_key_generation:
+          required_params: ["key_alias"]
       # Persist request/spend rows to the CNPG ledger (DATABASE_URL) — the
       # dollars-per-key record ADR-0044 exists for. NOTE: OSS LiteLLM exposes no
       # Prometheus /metrics endpoint (Enterprise-gated); a ledger→VictoriaMetrics
@@ -128,3 +157,40 @@ data:
         BadRequestErrorRetries: 0
         ContentPolicyViolationErrorRetries: 0
       enable_pre_call_checks: true
+      # --- VIK-266: resilience. Cross-provider fallbacks per group; TTFT/
+      # mid-stream freeze detectors (generous — hang detection, not slowness
+      # police); hard USD/day provider caps (owner-approved 2026-07-18:
+      # 5 anthropic / 2 deepseek) enforced by the router_budget_limiting
+      # pre-call check on Valkey state. Cooldowns DISABLED (recorded): every
+      # group is single-deployment — cooling the only deployment is a
+      # self-inflicted outage; revisit at deployment #2.
+      # content_policy_fallbacks deliberately NOT configured (owner-decided
+      # 2026-07-18): refusals surface to the caller, never routed around via
+      # the other provider. prompt_caching affinity is a no-op while groups
+      # are single-deployment — set now for the day one gains #2. ---
+      fallbacks:
+        - claude-opus-4-8: ["claude-sonnet-5", "deepseek-chat"]
+        - claude-sonnet-5: ["deepseek-chat"]
+        - claude-haiku-4-5: ["deepseek-chat"]
+        - deepseek-chat: ["claude-haiku-4-5"]
+        - deepseek-reasoner: ["claude-sonnet-5"]
+      default_fallbacks: ["deepseek-chat"]
+      ttft_timeout: 60
+      stream_idle_timeout: 120
+      disable_cooldowns: true
+      optional_pre_call_checks: ["router_budget_limiting", "prompt_caching"]
+      provider_budget_config:
+        anthropic:
+          budget_limit: 5
+          time_period: "1d"
+        deepseek:
+          budget_limit: 2
+          time_period: "1d"
+      # --- VIK-278: legacy/hardcoded model names resolve to current
+      # deployments instead of 404ing. ---
+      model_group_alias:
+        claude-opus: claude-opus-4-8
+        claude-sonnet: claude-sonnet-5
+        claude-haiku: claude-haiku-4-5
+        claude-3-5-sonnet-latest: claude-sonnet-5
+        claude-3-5-haiku-latest: claude-haiku-4-5
