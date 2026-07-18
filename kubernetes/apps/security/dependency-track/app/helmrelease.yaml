@@ -50,7 +50,12 @@ spec:
         node.webgrip.io/pool: worker
       resources:
         requests:
-          cpu: 500m
+          # Measured 1m CPU at idle (2026-07-18) while booking 500m — that padding
+          # took worker-1 to 99% CPU-requests and blocked the VIK-331 fringe
+          # evacuation (vmsingle/litellm/valkey Pending on "Insufficient cpu").
+          # The 2-CPU limit below still covers scan bursts; requests are the
+          # reservation, not the ceiling.
+          cpu: 100m
           # Idles ~420Mi; request trimmed from 1Gi. JVM heap capped below (-Xmx1g)
           # so actual stays ~1.2Gi under the 2Gi limit instead of creeping up.
           memory: 768Mi
