@@ -1,5 +1,9 @@
 ---
-# STOPGAP (2026-07-15): litellm's Admin UI SSO token exchange uses fastapi-sso,
+# Runtime monkeypatches for the litellm interpreter (sitecustomize.py is
+# auto-imported by Python at startup). TWO stopgaps live here; each names its
+# removal condition. Mounted into the venv's site-packages via subPath.
+#
+# PATCH 1 — SSO timeout (2026-07-15): litellm's Admin UI SSO uses fastapi-sso,
 # which constructs `httpx.AsyncClient()` with NO timeout override in
 # process_login (upstream source: tomasvotava/fastapi-sso sso/base.py) —
 # that binds httpx's hardcoded 5.0s library default, with no constructor
@@ -21,7 +25,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: litellm-sso-timeout-patch
+  name: litellm-runtime-patches
 data:
   sitecustomize.py: |-
     import httpx
@@ -34,3 +38,21 @@ data:
         _orig_init(self, *args, **kwargs)
 
     httpx.AsyncClient.__init__ = _patched_init
+
+    # PATCH 2 — MCP protocol-version cap (2026-07-18, VIK-263/VIK-314):
+    # supergateway 3.4.3 (the mcp-vikunja bridge) ECHOES whatever
+    # protocolVersion the client proposes in initialize — even ones it does
+    # not support, like the mcp SDK's 2025-11-25 — instead of negotiating
+    # down to its own maximum. The SDK then stamps that echoed version on
+    # follow-up requests (MCP-Protocol-Version header), and supergateway's
+    # header validation 400s it: "Unsupported protocol version (supported:
+    # 2025-06-18, 2025-03-26, 2024-11-05, 2024-10-07)". Capping the client's
+    # proposal at 2025-06-18 (supergateway's max, verified live) is
+    # spec-compliant for every registered MCP server. Remove when
+    # supergateway negotiates properly (upstream bug) or the SDK tolerates
+    # the rejection.
+    try:
+        import mcp.types as _mcp_types
+        _mcp_types.LATEST_PROTOCOL_VERSION = "2025-06-18"
+    except Exception:
+        pass
