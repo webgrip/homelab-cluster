@@ -8,8 +8,9 @@ resources:
   - ./httproute.yaml
   - ./sample-data-job.yaml
   - ./s3-collector.yaml
-components:
-  # Stateless web/collector tiers → worker pool (ADR-0002). Replaces the legacy
-  # per-component nodeSelector nodegroup=fringe (removed). guac-db (CNPG) +
-  # guac-nats (STS) already on workers.
-  - ../../../../components/placement/worker-pool
+# NO components here. The worker-pool placement component was REMOVED 2026-07-18:
+# this app's HelmRelease defines its own spec.postRenderers, and the component's
+# strategic-merge patch replaces that list wholesale (see the component's header
+# warning) — it silently dropped the rest-api/visualizer resource patches for
+# 3 days. The worker affinity (ADR-0002) now lives inline in helmrelease.yaml's
+# postRenderers.

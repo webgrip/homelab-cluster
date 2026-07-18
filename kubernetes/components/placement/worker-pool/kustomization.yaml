@@ -14,8 +14,12 @@
 #   - CNPG Cluster → spec.affinity.nodeSelector (hard).
 #
 # ⚠️ Do NOT use this on a HelmRelease that already defines spec.postRenderers
-# (e.g. dependency-track) — the strategic merge would replace that list; set the
-# same affinity inline there instead. forgejo + openbao use the gitops-critical
+# (e.g. dependency-track, guac) — the strategic merge would replace that list; set
+# the same affinity inline there instead. This is not hypothetical: guac gained
+# postRenderers 2026-07-15 while still including this component, which silently
+# dropped its resource patches for 3 days (rest-api/visualizer ran BestEffort and
+# were OOM-killed on fringe until 2026-07-18). flux-local cannot catch it — the
+# clobbered output is valid YAML. forgejo + openbao use the gitops-critical
 # placement (ADR-0008), not this component.
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component

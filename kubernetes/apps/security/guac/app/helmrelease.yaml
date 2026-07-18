@@ -229,9 +229,42 @@ spec:
   # dropped). Patch resources onto the rendered Deployments directly, Guaranteed
   # QoS (req==limit), same fix class as the longhorn-manager OOM cascade:
   # docs/techdocs/docs/incidents/2026-06-09-longhorn-oom-cascade.md.
+  # ⚠️ This HR defines postRenderers, so it MUST NOT also include the
+  # components/placement/worker-pool component — that component's strategic-merge
+  # patch REPLACES spec.postRenderers wholesale (its own header warns about this).
+  # That exact collision silently dropped the resource patches below between
+  # 2026-07-15 and 2026-07-18 (rest-api/visualizer stayed BestEffort and kept
+  # being OOM-killed). The worker-pool affinity is therefore carried INLINE here
+  # (the last two patches), replacing the component include.
   postRenderers:
     - kustomize:
         patches:
+          - target:
+              kind: Deployment
+            patch: |
+              - op: add
+                path: /spec/template/spec/affinity
+                value:
+                  nodeAffinity:
+                    requiredDuringSchedulingIgnoredDuringExecution:
+                      nodeSelectorTerms:
+                        - matchExpressions:
+                            - key: node.webgrip.io/pool
+                              operator: In
+                              values: ["worker"]
+          - target:
+              kind: StatefulSet
+            patch: |
+              - op: add
+                path: /spec/template/spec/affinity
+                value:
+                  nodeAffinity:
+                    requiredDuringSchedulingIgnoredDuringExecution:
+                      nodeSelectorTerms:
+                        - matchExpressions:
+                            - key: node.webgrip.io/pool
+                              operator: In
+                              values: ["worker"]
           - target:
               group: apps
               version: v1
