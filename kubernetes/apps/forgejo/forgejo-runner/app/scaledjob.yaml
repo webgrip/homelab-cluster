@@ -6,9 +6,9 @@
 # native-sidecar for image builds.
 #
 # Topology A, host-mode (ADR-0026 step 1, "prove the runner first"). The MAIN container is the
-# webgrip github-runner toolchain image (docker CLI + buildx plugin, git, php, dotnet); workflow
+# webgrip ci-runner toolchain image (docker CLI + buildx plugin, git, php, dotnet); workflow
 # steps run inside it (config.yaml maps `docker` -> host). It shares the pod netns with the dind
-# sidecar, so DOCKER_HOST=tcp://localhost:2376 reaches the daemon directly. The github-runner image
+# sidecar, so DOCKER_HOST=tcp://localhost:2376 reaches the daemon directly. The ci-runner image
 # doesn't ship forgejo-runner, so the `runner-bin` init container injects the static binary.
 ---
 apiVersion: keda.sh/v1alpha1
@@ -53,6 +53,13 @@ spec:
         # token exchanged at OpenBao's JWT auth) — it never needs the k8s SA token, so we
         # don't expose one to untrusted workflow code.
         automountServiceAccountToken: false
+        # First-party images come from the in-cluster Harbor (private `webgrip` project), so the
+        # kubelet needs the robot credential. Harbor is LAN-local, keeps working during a WAN
+        # outage, and avoids ghcr package visibility (new ghcr packages default to private, which
+        # an anonymous kubelet pull cannot fetch). image-verify-harbor-audit already covers
+        # harbor.${SECRET_DOMAIN}/webgrip/*, so signature coverage is unchanged.
+        imagePullSecrets:
+          - name: harbor-pull
         nodeSelector:
           node.webgrip.io/pool: worker
         tolerations:
@@ -135,18 +142,24 @@ spec:
                 memory: 3Gi
         containers:
           - name: runner
-            # Host-mode toolchain image: docker CLI + buildx plugin, git, php, dotnet; runs as the
-            # image's non-root `runner` user. The forgejo-runner agent is injected at /dist by the
-            # runner-bin init container. Steps execute IN this container.
-            # Proven on the first real job (run #4): the static forgejo-runner binary runs on this
-            # glibc image and the dind sidecar is reachable. JS actions (actions/checkout,
-            # tj-actions/changed-files) run on Node, which the actions-runner base bundles under
-            # externals/ but does NOT put on PATH — so the args below prepend it (see there).
-            # Deliberately NOT Harbor-proxied like the sidecars above: image-verify-audit and
-            # image-verify-harbor-audit cosign-verify this first-party image by matching the
-            # literal "ghcr.io/webgrip/*" prefix (VIK-241 comment) -- proxying it through
-            # harbor.webgrip.dev/ghcr/webgrip/* would silently drop signature verification.
-            image: ghcr.io/webgrip/github-runner@sha256:87be5b6502926b9fc128ab8804fe38672dbaf28f0f72fe63c791f9df88c2b5e9
+            # Host-mode toolchain image (webgrip/infrastructure ops/docker/ci-runner): docker CLI +
+            # buildx, git, php, dotnet, AND node 24 / python3+PyYAML / the Claude Code CLI. Runs as
+            # the image's non-root `runner` user; the forgejo-runner agent is injected at /dist by
+            # the runner-bin init container. Steps execute IN this container.
+            #
+            # Named ci-runner, not github-runner: the same image is BOTH a real GitHub Actions
+            # runner under ARC and this Forgejo host-mode toolchain, so the old name only described
+            # half its job.
+            #
+            # Because host-mode steps run here, workflows do not need their own `container:` — which
+            # matters a lot: a job-level container is re-pulled and re-EXTRACTED into the ephemeral
+            # DinD on every job, costing ~4min of "Set up job" on a node whose disk saturates at
+            # ~12MB/s. This image is pulled once per node by the kubelet and containerd-caches it.
+            #
+            # Pulled from the in-cluster Harbor (not ghcr): LAN-local, survives a WAN outage, and
+            # sidesteps ghcr package visibility. Verification is unchanged -- image-verify-harbor-audit
+            # targets harbor.${SECRET_DOMAIN}/webgrip/*. Needs the harbor-pull imagePullSecret above.
+            image: harbor.webgrip.dev/webgrip/ci-runner@sha256:a8e4ebf0660e143be5066a2806a8506f582de213b0bf3e88b5b3ddf474dc7c4b
             command:
               - bash
               - -ec

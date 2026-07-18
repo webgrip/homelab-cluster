@@ -121,12 +121,15 @@ spec:
           prometheus.io/path: "/metrics"
           prometheus.io/port: "8080"
       spec:
+        # first-party image now comes from the private Harbor project (see forgejo-runner)
+        imagePullSecrets:
+          - name: harbor-pull
         serviceAccountName: arc-runner-set
         nodeSelector:
           node.webgrip.io/pool: worker
         containers:
           - name: runner
-            image: ghcr.io/webgrip/github-runner:1.4.0@sha256:d00e0595652b353ea506293c1ea941d2064236d5503284e69f45674f401420ea
+            image: harbor.webgrip.dev/webgrip/ci-runner@sha256:a8e4ebf0660e143be5066a2806a8506f582de213b0bf3e88b5b3ddf474dc7c4b
             resources:
               requests:
                 cpu: 250m
