@@ -12,6 +12,9 @@ metadata:
     policies.kyverno.io/description: >-
       Remove completed Jobs that explicitly opt in to Kyverno cleanup.
 spec:
+  # Background: cascade-delete the Job's pods too — the controller's default
+  # orphaned them (4 stale Error pods observed 2026-07-18 after failed-job cleanup).
+  deletionPropagationPolicy: Background
   match:
     any:
       - resources:
@@ -49,6 +52,9 @@ metadata:
       Remove terminally-Failed Jobs that opt in via cleanup.webgrip.io/retry-failed,
       so their owning Flux Kustomization recreates them (automatic retry).
 spec:
+  # Background: cascade-delete the Job's pods too — the controller's default
+  # orphaned them (4 stale Error pods observed 2026-07-18 after failed-job cleanup).
+  deletionPropagationPolicy: Background
   match:
     any:
       - resources:
