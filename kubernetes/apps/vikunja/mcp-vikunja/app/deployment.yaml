@@ -19,8 +19,10 @@ spec:
   # that node at once, which wedged Pending (Insufficient cpu) once VMSingle +
   # litellm moved there. Recreate releases the request first; brief gap is fine.
   strategy:
-    type: Recreate
-    rollingUpdate: null # clear the defaulted block - forbidden alongside Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0 # Recreate semantics without the strategy-flip apply
+      maxUnavailable: 1 # conflict: old pod frees worker-1 before the new one
   selector:
     matchLabels:
       app.kubernetes.io/name: mcp-vikunja
