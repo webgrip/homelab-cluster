@@ -250,11 +250,16 @@ spec:
             resources:
               # No CPU limit: steps run host-mode here and burst to ~1 core on an idle node.
               # Mem peak ~796Mi/1Gi (78%, tight) over 7d, so raise the ceiling to 1.25Gi.
+              # 3Gi (was 1280Mi): the ci-runner v1.0.3 Sign & Attest job was silently SIGKILLed
+              # mid-syft at 22:50Z 2026-07-18 — syft catalogs the ~5GB toolchain image (CodeQL
+              # bundle, PHP, .NET, Node) in-process and blows past 1.25Gi. The pod vanished
+              # without reporting (task zombied at "running"), which is the OOM signature.
+              # Requests unchanged — the burst is short-lived and Burstable-class.
               requests:
                 cpu: 250m
                 memory: 512Mi
               limits:
-                memory: 1280Mi
+                memory: 3Gi
         volumes:
           - name: config
             configMap:
