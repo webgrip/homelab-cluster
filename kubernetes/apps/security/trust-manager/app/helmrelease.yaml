@@ -38,10 +38,13 @@ spec:
       limits:
         cpu: 200m
         memory: 256Mi
+    # ram: high = worker-1, not fringe. trust-manager's Bundle webhook is svc-fail;
+    # on the memory-contended fringe workstation it timed out under pressure and
+    # blocked the trust-manager-bundles Kustomization (2026-07-18, same failure
+    # class as the kyverno-admission webhook the day before). Webhook-bearing
+    # components don't belong on the contended node.
+    # (The old `dedicated=fringe` toleration was dead config — that taint was
+    # retired 2026-06-19, ADR-0002; see talos/patches/worker/fringe-dedicated.yaml.)
     nodeSelector:
       node.webgrip.io/pool: worker
-    tolerations:
-      - key: dedicated
-        operator: Equal
-        value: fringe
-        effect: NoSchedule
+      node.webgrip.io/ram: high
