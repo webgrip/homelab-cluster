@@ -1,0 +1,130 @@
+---
+# Tier-1 "do-once, gated, idempotent" bootstrap Job (ADR-0003), mirroring
+# forgejo-ci-provisioner. Ensures the `agent-builder` dark-factory bot exists, puts it in the
+# `agents` team (write), and mints a scoped token into Secret agent-builder-token (ADR-0048).
+#
+# This is the identity the agent PUSHES and OPENS PRs as. It is deliberately a role identity,
+# not one per run — `renovate-forgejo-bot` is the precedent (an autonomous PR-opening bot with a
+# single account); per-run attribution comes from the LiteLLM x-litellm-trace-id carried in the
+# commit trailer beside VIK-<taskID>.
+#
+# Scopes are narrower than the CI bot's: no write:package (the agent publishes nothing) and the
+# team omits repo.releases (it cuts no releases). It can push branches and open/comment on PRs —
+# and nothing else. Merging is a human's job (RFC Decision 1, ADR-0048).
+#
+# This app's Kustomization has NO postBuild.substituteFrom, so braced ${VARS} are left for the shell.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agent-builder-provisioner
+  namespace: forgejo
+  labels:
+    cleanup.webgrip.io/retry-failed: "true"
+spec:
+  backoffLimit: 4
+  template:
+    spec:
+      serviceAccountName: agent-builder-provisioner
+      restartPolicy: Never
+      # Keep this stateless bootstrap Job off the soyo control-planes (ADR-0002).
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: provision
+          image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.36.1@sha256:692239d739589247c4a791205ed9619c28ae85a21286e19a6211c04a62c56668
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: HOME, value: /tmp}
+            - {name: FORGEJO_URL, value: 'http://forgejo-http.forgejo.svc.cluster.local:3000'}
+            - {name: NAMESPACE, value: forgejo}
+            - {name: ORG, value: webgrip}
+            - {name: TOKEN_SECRET, value: agent-builder-token}
+            - {name: TOKEN_NAME, value: agent-builder-actions}
+            - {name: BOT_USERNAME, value: agent-builder}
+            - {name: BOT_EMAIL, value: agent-builder@webgrip.dev}
+            - {name: TEAM_NAME, value: agents}
+            - {name: TEAM_PERMISSION, value: write}
+            - name: ADMIN_USERNAME
+              valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: username}}
+            - name: ADMIN_PASSWORD
+              valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: password}}
+            - name: BOT_PASSWORD
+              valueFrom: {secretKeyRef: {name: agent-builder-password, key: password}}
+          command:
+            - /bin/sh
+            - -ceu
+            - |
+              api="${FORGEJO_URL}/api/v1"
+              admin="${ADMIN_USERNAME}:${ADMIN_PASSWORD}"
+              bot="${BOT_USERNAME}:${BOT_PASSWORD}"
+              # No write:package (publishes nothing) and no repo.releases below (cuts none).
+              scopes='["write:repository","write:issue","read:user","read:organization"]'
+              units='["repo.code","repo.issues","repo.pulls"]'
+
+              # 1) Ensure the bot user exists.
+              code="$(curl -sS -o /dev/null -w '%{http_code}' -u "$admin" "$api/users/${BOT_USERNAME}")"
+              if [ "$code" = "404" ]; then
+                echo "creating bot user ${BOT_USERNAME}"
+                curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST "$api/admin/users" \
+                  -d "{\"username\":\"${BOT_USERNAME}\",\"email\":\"${BOT_EMAIL}\",\"password\":\"${BOT_PASSWORD}\",\"must_change_password\":false}" >/dev/null
+              elif [ "$code" != "200" ]; then
+                echo "unexpected status probing bot user: $code" >&2; exit 1
+              fi
+
+              # 2) Reuse the stored token if it still authenticates; else (re)mint. The capability
+              #    probe is /user (read:user) — unlike the CI bot we deliberately have no package
+              #    scope, so probing the package API would fail forever and re-mint every run.
+              tok="$(kubectl -n "$NAMESPACE" get secret "$TOKEN_SECRET" -o jsonpath='{.data.FORGEJO_TOKEN}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+              if [ -n "$tok" ] && curl -fsS -o /dev/null -H "Authorization: token $tok" "$api/user"; then
+                echo "existing token still valid — no change"
+              else
+                echo "minting a fresh token"
+                curl -fsS -u "$admin" -H 'Content-Type: application/json' -X PATCH "$api/admin/users/${BOT_USERNAME}" \
+                  -d "{\"login_name\":\"${BOT_USERNAME}\",\"source_id\":0,\"password\":\"${BOT_PASSWORD}\",\"must_change_password\":false}" >/dev/null
+                curl -sS -o /dev/null -u "$bot" -X DELETE "$api/users/${BOT_USERNAME}/tokens/${TOKEN_NAME}" || true
+                tok="$(curl -fsS -u "$bot" -H 'Content-Type: application/json' -X POST "$api/users/${BOT_USERNAME}/tokens" \
+                  -d "{\"name\":\"${TOKEN_NAME}\",\"scopes\":${scopes}}" | jq -r '.sha1')"
+                [ -n "$tok" ] && [ "$tok" != "null" ] || { echo "token mint failed" >&2; exit 1; }
+                kubectl -n "$NAMESPACE" create secret generic "$TOKEN_SECRET" \
+                  --from-literal="FORGEJO_TOKEN=$tok" \
+                  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+                echo "wrote Secret $TOKEN_SECRET"
+              fi
+
+              # 3) Team membership. Forgejo authorizes per-UNIT, so units are PATCHed every run —
+              #    a create-time list cannot fix a live team.
+              tid="$(curl -fsS -u "$admin" "$api/orgs/${ORG}/teams" 2>/dev/null | jq -r --arg n "$TEAM_NAME" '.[] | select(.name==$n) | .id' | head -1)"
+              if [ -z "$tid" ]; then
+                tid="$(curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST "$api/orgs/${ORG}/teams" \
+                  -d "{\"name\":\"${TEAM_NAME}\",\"description\":\"dark-factory agent authors — push + PR, no releases\",\"permission\":\"${TEAM_PERMISSION}\",\"includes_all_repositories\":true,\"can_create_org_repo\":false,\"units\":${units}}" | jq -r '.id // empty')"
+              else
+                curl -fsS -o /dev/null -u "$admin" -H 'Content-Type: application/json' -X PATCH "$api/teams/$tid" \
+                  -d "{\"name\":\"${TEAM_NAME}\",\"permission\":\"${TEAM_PERMISSION}\",\"includes_all_repositories\":true,\"can_create_org_repo\":false,\"units\":${units}}"
+              fi
+              if [ -n "$tid" ]; then
+                # Member add lives at /teams/{id}/members — /orgs/{org}/teams/{id}/members 404s
+                # silently. -f plus a read-back so a regression cannot report success again.
+                curl -fsS -o /dev/null -u "$admin" -X PUT "$api/teams/$tid/members/${BOT_USERNAME}"
+                curl -fsS -o /dev/null -u "$admin" "$api/teams/$tid/members/${BOT_USERNAME}" \
+                  && echo "bot in ${ORG}/${TEAM_NAME} (id $tid)"
+              else
+                echo "WARN: could not ensure ${ORG}/${TEAM_NAME} membership" >&2
+              fi
+              echo "agent-builder provisioner converged"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}

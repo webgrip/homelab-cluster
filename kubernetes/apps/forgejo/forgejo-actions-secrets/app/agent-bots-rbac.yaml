@@ -1,0 +1,80 @@
+---
+# Identities for the two dark-factory bot provisioner Jobs (ADR-0048). Each owns exactly one
+# token Secret; the admin/bot passwords reach them as env vars via secretKeyRef (a path that
+# does NOT use these Roles), so this is the entire k8s authority they need.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agent-builder-provisioner
+  namespace: forgejo
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agent-reviewer-provisioner
+  namespace: forgejo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-builder-provisioner
+  namespace: forgejo
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    resourceNames:
+      - "agent-builder-token"
+    verbs:
+      - "get"
+      - "update"
+      - "patch"
+  # First-run creation only. RBAC cannot scope `create` by resourceName.
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    verbs:
+      - "create"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-reviewer-provisioner
+  namespace: forgejo
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    resourceNames:
+      - "agent-reviewer-token"
+    verbs:
+      - "get"
+      - "update"
+      - "patch"
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    verbs:
+      - "create"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-builder-provisioner
+  namespace: forgejo
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: agent-builder-provisioner}
+subjects:
+  - {kind: ServiceAccount, name: agent-builder-provisioner, namespace: forgejo}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-reviewer-provisioner
+  namespace: forgejo
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: agent-reviewer-provisioner}
+subjects:
+  - {kind: ServiceAccount, name: agent-reviewer-provisioner, namespace: forgejo}

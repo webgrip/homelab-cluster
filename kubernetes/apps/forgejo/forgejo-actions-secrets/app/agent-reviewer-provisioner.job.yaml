@@ -1,0 +1,125 @@
+---
+# Tier-1 "do-once, gated, idempotent" bootstrap Job (ADR-0003), mirroring
+# agent-builder-provisioner. Ensures the `agent-reviewer` dark-factory bot exists, puts it in the
+# `agent-reviewers` team (READ), and mints a scoped token into Secret agent-reviewer-token.
+#
+# WHY A SECOND BOT AT ALL: a forge will not let a user approve its own pull request, so
+# `builder != judge` (ADR-0047's load-bearing safety property) is a fiction unless the author and
+# the reviewer are different forge accounts. This is that second account.
+#
+# SCOPE IS THE POINT (RFC HAZ-05: the reviewer's forge account is "scoped read + comment only,
+# no write/merge"): read:repository — NOT write — plus write:issue so it can post review
+# comments, and a team permission of `read`. It therefore cannot push, cannot merge, and cannot
+# rewrite the work it is judging. HAZ-05 also asks for a different model family than the author;
+# that is enforced by the review workflow's LLM_MODEL, not here.
+#
+# This app's Kustomization has NO postBuild.substituteFrom, so braced ${VARS} are left for the shell.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agent-reviewer-provisioner
+  namespace: forgejo
+  labels:
+    cleanup.webgrip.io/retry-failed: "true"
+spec:
+  backoffLimit: 4
+  template:
+    spec:
+      serviceAccountName: agent-reviewer-provisioner
+      restartPolicy: Never
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: provision
+          image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.36.1@sha256:692239d739589247c4a791205ed9619c28ae85a21286e19a6211c04a62c56668
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: HOME, value: /tmp}
+            - {name: FORGEJO_URL, value: 'http://forgejo-http.forgejo.svc.cluster.local:3000'}
+            - {name: NAMESPACE, value: forgejo}
+            - {name: ORG, value: webgrip}
+            - {name: TOKEN_SECRET, value: agent-reviewer-token}
+            - {name: TOKEN_NAME, value: agent-reviewer-actions}
+            - {name: BOT_USERNAME, value: agent-reviewer}
+            - {name: BOT_EMAIL, value: agent-reviewer@webgrip.dev}
+            - {name: TEAM_NAME, value: agent-reviewers}
+            - {name: TEAM_PERMISSION, value: read}
+            - name: ADMIN_USERNAME
+              valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: username}}
+            - name: ADMIN_PASSWORD
+              valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: password}}
+            - name: BOT_PASSWORD
+              valueFrom: {secretKeyRef: {name: agent-reviewer-password, key: password}}
+          command:
+            - /bin/sh
+            - -ceu
+            - |
+              api="${FORGEJO_URL}/api/v1"
+              admin="${ADMIN_USERNAME}:${ADMIN_PASSWORD}"
+              bot="${BOT_USERNAME}:${BOT_PASSWORD}"
+              # read + comment ONLY (HAZ-05): read:repository, never write:repository.
+              scopes='["read:repository","write:issue","read:user","read:organization"]'
+              units='["repo.code","repo.issues","repo.pulls"]'
+
+              # 1) Ensure the bot user exists.
+              code="$(curl -sS -o /dev/null -w '%{http_code}' -u "$admin" "$api/users/${BOT_USERNAME}")"
+              if [ "$code" = "404" ]; then
+                echo "creating bot user ${BOT_USERNAME}"
+                curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST "$api/admin/users" \
+                  -d "{\"username\":\"${BOT_USERNAME}\",\"email\":\"${BOT_EMAIL}\",\"password\":\"${BOT_PASSWORD}\",\"must_change_password\":false}" >/dev/null
+              elif [ "$code" != "200" ]; then
+                echo "unexpected status probing bot user: $code" >&2; exit 1
+              fi
+
+              # 2) Reuse the stored token if it still authenticates; else (re)mint.
+              tok="$(kubectl -n "$NAMESPACE" get secret "$TOKEN_SECRET" -o jsonpath='{.data.FORGEJO_TOKEN}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+              if [ -n "$tok" ] && curl -fsS -o /dev/null -H "Authorization: token $tok" "$api/user"; then
+                echo "existing token still valid — no change"
+              else
+                echo "minting a fresh token"
+                curl -fsS -u "$admin" -H 'Content-Type: application/json' -X PATCH "$api/admin/users/${BOT_USERNAME}" \
+                  -d "{\"login_name\":\"${BOT_USERNAME}\",\"source_id\":0,\"password\":\"${BOT_PASSWORD}\",\"must_change_password\":false}" >/dev/null
+                curl -sS -o /dev/null -u "$bot" -X DELETE "$api/users/${BOT_USERNAME}/tokens/${TOKEN_NAME}" || true
+                tok="$(curl -fsS -u "$bot" -H 'Content-Type: application/json' -X POST "$api/users/${BOT_USERNAME}/tokens" \
+                  -d "{\"name\":\"${TOKEN_NAME}\",\"scopes\":${scopes}}" | jq -r '.sha1')"
+                [ -n "$tok" ] && [ "$tok" != "null" ] || { echo "token mint failed" >&2; exit 1; }
+                kubectl -n "$NAMESPACE" create secret generic "$TOKEN_SECRET" \
+                  --from-literal="FORGEJO_TOKEN=$tok" \
+                  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+                echo "wrote Secret $TOKEN_SECRET"
+              fi
+
+              # 3) Team membership at permission=read — the enforcement point for "cannot merge".
+              tid="$(curl -fsS -u "$admin" "$api/orgs/${ORG}/teams" 2>/dev/null | jq -r --arg n "$TEAM_NAME" '.[] | select(.name==$n) | .id' | head -1)"
+              if [ -z "$tid" ]; then
+                tid="$(curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST "$api/orgs/${ORG}/teams" \
+                  -d "{\"name\":\"${TEAM_NAME}\",\"description\":\"dark-factory independent reviewer — read + comment, no write/merge (HAZ-05)\",\"permission\":\"${TEAM_PERMISSION}\",\"includes_all_repositories\":true,\"can_create_org_repo\":false,\"units\":${units}}" | jq -r '.id // empty')"
+              else
+                curl -fsS -o /dev/null -u "$admin" -H 'Content-Type: application/json' -X PATCH "$api/teams/$tid" \
+                  -d "{\"name\":\"${TEAM_NAME}\",\"permission\":\"${TEAM_PERMISSION}\",\"includes_all_repositories\":true,\"can_create_org_repo\":false,\"units\":${units}}"
+              fi
+              if [ -n "$tid" ]; then
+                curl -fsS -o /dev/null -u "$admin" -X PUT "$api/teams/$tid/members/${BOT_USERNAME}"
+                curl -fsS -o /dev/null -u "$admin" "$api/teams/$tid/members/${BOT_USERNAME}" \
+                  && echo "bot in ${ORG}/${TEAM_NAME} (id $tid)"
+              else
+                echo "WARN: could not ensure ${ORG}/${TEAM_NAME} membership" >&2
+              fi
+              echo "agent-reviewer provisioner converged"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}
