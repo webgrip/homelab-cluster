@@ -34,6 +34,14 @@ the app ks. Default-deny blocks cnpg-system from polling the instance :8000 → 
 never goes Ready → the app ks gate (`dependsOn` db-Ready) never fires → **deadlock**. The allow must sit on
 the non-gated layer so the DB can come up first.
 
+## ⚠️ Ingress is a checklist too (not just egress)
+Any new consumer of in-cluster Forgejo (`forgejo-http:3000` — a provisioner, Renovate, a CI tool)
+needs an explicit **ingress** allow in `kubernetes/apps/forgejo/networkpolicy.yaml`
+(`namespaceSelector` on `kubernetes.io/metadata.name: <ns>`). The renovate provisioner failed
+silently for 3 days when the zero-trust sweep only covered egress (2026-07-15→18 incident).
+Related: never write `ipBlock 10.43.0.1/32` apiserver rules — inert under Cilium (identity, not
+CIDR; the rule above). Existing ones are NOTE'd out in several namespaces — don't copy them.
+
 ## Add per-app policies
 Copy `kubernetes/apps/authentik/app/networkpolicy.yaml` (or `kubernetes/apps/harbor/harbor/app/networkpolicy.yaml`):
 an `allow-ingress` + `allow-egress` pair — intra-namespace, gateway, LAN, observability scraping,

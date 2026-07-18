@@ -55,7 +55,10 @@ skill); prefer `MODE=no-reboot` and reboot deliberately when unavoidable.
   (PSI-triggered, default-on) kills the **largest BestEffort cgroups first**; kernel
   `node_vmstat_oom_kill` stays flat. Ledger: `talosctl -n <ip> get oomactions`. Group identical
   `Error/137` pod timestamps by node before per-app diagnosis
-  ([incident](docs/techdocs/docs/incidents/2026-07-11-talos-oom-db-tier.md)).
+  ([incident](docs/techdocs/docs/incidents/2026-07-11-talos-oom-db-tier.md)). Exit-code triage:
+  **137** = OOM kill · **1** = app crash (memory won't fix it) · **4** = CNPG's own low-disk gate
+  (WAL/disk full). A rising `oomactions` ledger with **zero** pod restarts usually means ephemeral
+  CI victims — DinD build containers killed inside runner pods never surface as restarts.
 - **dmesg is not durable forensics; auditd can be silently dead.** SELinux runs permissive and
   Longhorn volumes are `unlabeled_t` → a constant benign AVC stream (~10–18/s/node; noise, don't
   chase it). Normally auditd absorbs it, but a Talos bug (transient netlink error treated as fatal

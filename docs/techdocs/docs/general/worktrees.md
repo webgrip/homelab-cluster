@@ -69,10 +69,14 @@ non-destructive to both streams:
 
 ```bash
 git worktree add --detach /tmp/wt origin/main   # hand-run: .worktreeinclude does NOT apply
-git -C /tmp/wt cherry-pick <your-sha>           # or re-stage + commit -C <your-sha>
+(cd /tmp/wt && mise trust)                      # lefthook-run hooks fail in an untrusted dir
+git -C /tmp/wt -c commit.gpgsign=false cherry-pick <your-sha>   # or re-stage + commit -C <your-sha>
 git -C /tmp/wt push origin HEAD:main
 git worktree remove /tmp/wt
 ```
+
+(Both flags matter: without `mise trust` the commit hooks error out, and signing inside a temp
+worktree dies with `failed to write commit object` — cherry-pick unsigned, proven 2026-07-17/18.)
 
 Leave the stray commit on their branch — a later rebase drops it by patch-id. Never reset
 or switch their branch: their uncommitted files are in the shared tree. The same detached

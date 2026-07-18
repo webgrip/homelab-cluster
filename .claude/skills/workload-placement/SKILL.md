@@ -94,6 +94,12 @@ ADR-0002 D2 + the `longhorn` skill.
   + `longhornDriver.nodeSelector` (NEVER `longhornManager` — DaemonSet), `reloader.deployment.nodeSelector`,
   `opencost.nodeSelector` (nested under `opencost:`), top-level `nodeSelector` for external-dns /
   metrics-server / policy-reporter / plugin-barman-cloud.
+- **Webhook-bearing components must NOT run on fringe** (or any contended node): a validating-webhook
+  timeout fails **closed** and blocks Flux applies cluster-wide — kyverno-admission and trust-manager
+  both did exactly this under fringe memory pressure (2026-07-17/18; fixes ad79c5f1 + 0f41b672).
+  kyverno chart 3.8.1 exposes per-controller `admissionController.nodeAffinity` (hard `pool=soyo`);
+  trust-manager pinned `ram: high`. Symptom: ks message `failed calling webhook … context deadline
+  exceeded` → check which node the webhook's backing pods are on BEFORE debugging the webhook.
 - **Don't taint the soyos:** a taint shoves *all* infra onto the workers and forces tolerations everywhere;
   apps opt *out* via the hard worker affinity. etcd protection is enforced at the **Longhorn layer**
   (replicas off soyos — `longhorn` skill), not via k8s taints.

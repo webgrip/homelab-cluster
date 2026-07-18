@@ -35,6 +35,23 @@ kubectl get pods -n forgejo -l app=forgejo
 kubectl logs -n flux-system deploy/notification-controller --since=10m | grep receiver-server
 ```
 
+## Bridge-apply: prefer this over break-glass when the fix is a manifest
+
+If Forgejo is down *because of* something a manifest change would fix (netpol, resources, a bad
+value), you don't need to repoint anything:
+
+1. Commit the fix locally — **unpushed** (nothing can pull it yet).
+2. Hand-apply the **byte-identical** committed manifests out-of-band (`kubectl apply`).
+3. Service recovers → Forgejo comes back → push → Flux **adopts** the hand-applied resources on
+   its first reconcile (verified: adopted resources pick up `kustomize.toolkit.fluxcd.io/name`
+   ownership labels).
+
+No FluxInstance repoint, no mirror-direction risk, git history stays truthful. Fall back to the
+break-glass below only if the surgical fix doesn't take within ~10 minutes.
+
+Proven: **2026-07-17** netpol/WAL outage —
+[incident](../incidents/2026-07-17-forgejo-netpol-wal-gitops-deadlock.md).
+
 ## Break-glass: repoint Flux at GitHub (Forgejo outage)
 
 Patch the **FluxInstance, not the generated GitRepository** — flux-operator reverts direct edits
