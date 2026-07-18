@@ -25,7 +25,12 @@ spec:
   # Insufficient memory" was driven by dind's oversized 4Gi mem LIMIT inflating node pressure;
   # that limit is now 1.5Gi (peak usage ~649Mi) and fringe-workstation (8c/~15Gi) has ample
   # headroom (~1.5c used). Set to 0 for pure scale-from-zero.
-  minReplicaCount: 2
+  # 4 (was 2): the warm floor is the ONLY scaling that works when the KEDA scaler's metric
+  # read fails (its Forgejo admin-jobs query times out under a deep queue — see the
+  # KEDA_HTTP_DEFAULT_TIMEOUT note in apps/keda). 2026-07-18: a Renovate wave (~30 jobs)
+  # drained at 2 runners for 2+ hours, starving a ci-runner release for 60+ min. Node math:
+  # ~1Gi requests/pod, fringe-workstation seats 4 comfortably alongside its other tenants.
+  minReplicaCount: 4
   maxReplicaCount: 6
   successfulJobsHistoryLimit: 3
   # 0: don't retain Failed runner Jobs. The warm-pool runner blocks on `one-job --wait`;

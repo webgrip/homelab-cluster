@@ -27,6 +27,15 @@ spec:
     # KEDA bundles its CRDs in the chart.
     crds:
       install: true
+    # Scaler HTTP timeout 3s -> 30s. Forgejo's /api/v1/admin/runners/jobs (the forgejo-runner
+    # scaler's metric) answers slower than KEDA's 3s default once the Actions queue is deep, so
+    # every poll timed out, the scaler read "0 pending", and the runner pool NEVER burst past the
+    # warm floor — a vicious cycle observed 2026-07-18 (30+ queued jobs, 2 runners, releases
+    # waiting 60+ min; keda-operator log: "Client.Timeout exceeded" every 15s). Applies to all
+    # KEDA components/scalers; this cluster's only latency-sensitive scaler is that one.
+    env:
+      - name: KEDA_HTTP_DEFAULT_TIMEOUT
+        value: "30000"
     # Route the chart's default ghcr.io/kedacore/* images through the Harbor
     # pull-through proxy-cache (ADR-0025) instead of ghcr.io direct. The chart
     # has no dedicated digest field, so digests are appended inline onto tag
