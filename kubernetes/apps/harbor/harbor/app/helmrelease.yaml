@@ -24,6 +24,33 @@ spec:
     remediation:
       retries: 3
       remediateLastFailure: true
+  # The goharbor chart hardcodes core's probes at timeoutSeconds:1 / failureThreshold:2 —
+  # 2 slow pings 10s apart and the kubelet kills core. On this shared node a CI burst
+  # (post-KEDA-fix: 4-6 concurrent runner pods hammering the proxy cache) pushed /api/v2.0/ping
+  # past 1s and core was probe-killed MID-PUSH, failing the ci-runner v1.0.1 Harbor distribute
+  # (2026-07-18 16:06:50Z, exit 0 "Completed" = graceful probe kill; nginx logged upstream
+  # connection-refused for the push's HEAD /v2/webgrip/ci-runner/manifests/1.0.1). Same failure
+  # class as the dind startup-probe 5s fix (2c99ac05). The chart exposes no probe knobs, so
+  # patch the rendered Deployment: tolerate ~60s of slow pings before a liveness kill.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: Deployment
+              name: harbor-core
+            patch: |
+              - op: replace
+                path: /spec/template/spec/containers/0/livenessProbe/timeoutSeconds
+                value: 5
+              - op: replace
+                path: /spec/template/spec/containers/0/livenessProbe/failureThreshold
+                value: 6
+              - op: replace
+                path: /spec/template/spec/containers/0/readinessProbe/timeoutSeconds
+                value: 5
+              - op: replace
+                path: /spec/template/spec/containers/0/readinessProbe/failureThreshold
+                value: 4
   valuesFrom:
     # Phase 2 (Authentik OIDC): a `core.configureUserSettings` fragment lives at
     # OpenBao `secret/harbor/oidc` (key values.yaml) and is surfaced by the
