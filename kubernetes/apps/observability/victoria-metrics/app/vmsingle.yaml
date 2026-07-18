@@ -19,13 +19,15 @@ spec:
   podMetadata:
     annotations:
       reloader.stakater.com/auto: "true"
+  # ram: high = worker-1. The metrics DB was running on the memory-saturated fringe
+  # workstation (1.2GB RSS, PSI-stall epicenter) — meaning observability degraded
+  # exactly when the node misbehaved. Move is a Longhorn RWO reattach; vmagent's
+  # persistent queue buffers scrapes across the gap (VIK-331 slice 1).
+  # (Old dedicated=fringe toleration removed — that taint was retired 2026-06-19,
+  # ADR-0002; it was dead config.)
   nodeSelector:
     node.webgrip.io/pool: worker
-  tolerations:
-    - key: dedicated
-      operator: Equal
-      value: fringe
-      effect: NoSchedule
+    node.webgrip.io/ram: high
   # Right-sized down from Prometheus's mirrored 400m/3Gi after measuring steady
   # state: VMSingle uses ~1Gi RAM / ~120m CPU for this workload (~390k active
   # series, ~8.7k samples/s). Request 1.5Gi (~50% headroom); 4Gi limit absorbs
