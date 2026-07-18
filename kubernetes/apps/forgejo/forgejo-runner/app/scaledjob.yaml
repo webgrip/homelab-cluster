@@ -38,6 +38,14 @@ spec:
   # object that trips the stock KubeJobFailed alert. Also reaps the old DeadlineExceeded
   # backlog on the next KEDA reconcile.
   failedJobsHistoryLimit: 0
+  # gradual (KEDA default is "default" == immediate): on ANY change to this ScaledJob's spec,
+  # the immediate strategy deletes every Job owned by the previous generation — including pods
+  # mid-CI-job, which surfaces in Forgejo only as `⚙️ [runner]: context canceled`. Because a
+  # ci-runner release bumps the digest below, the release job could kill its own runner. With
+  # gradual, in-flight runners finish on the old spec and only new pods pick up the change
+  # (each pod is `one-job`, so the fleet rolls over within one job's lifetime anyway).
+  rollout:
+    strategy: gradual
   jobTargetRef:
     parallelism: 1
     completions: 1
@@ -90,9 +98,24 @@ spec:
               - |
                 cp "$(command -v forgejo-runner)" /dist/forgejo-runner
                 chmod 0755 /dist/forgejo-runner
+                # Seed DOCKER_CONFIG from the read-only harbor-pull secret. The dir itself MUST be
+                # writable: `docker buildx create` mkdirs $DOCKER_CONFIG/buildx/certs and
+                # docker/login-action rewrites config.json. Pointing DOCKER_CONFIG straight at the
+                # secret mount fails with `ENOENT: no such file or directory, mkdir
+                # '/harbor-docker/buildx/certs'`.
+                cp /harbor-pull/config.json /docker-config/config.json
+                # 0640, not 0600: this init runs as uid 1000 but the MAIN runner container is uid
+                # 1001. They share only the fsGroup (1000) that owns every volume here, so group
+                # read is what actually lets the runner read its own docker creds.
+                chmod 0640 /docker-config/config.json
             volumeMounts:
               - name: runner-bin
                 mountPath: /dist
+              - name: harbor-docker-config
+                mountPath: /harbor-pull
+                readOnly: true
+              - name: docker-config
+                mountPath: /docker-config
             # Just a copy+chmod into a shared, fsGroup-writable emptyDir -- no root/privilege
             # of any kind needed, unlike the dind sidecar below.
             securityContext:
@@ -196,8 +219,10 @@ spec:
               # them. Point the client at the harbor-pull dockerconfigjson so private
               # harbor.webgrip.dev/webgrip/* images work as job containers; docker.io stays
               # anonymous (no creds for it in the config).
+              # This is the WRITABLE emptyDir seeded by the runner-bin init container, NOT the
+              # secret mount — buildx and docker/login-action both write inside DOCKER_CONFIG.
               - name: DOCKER_CONFIG
-                value: /harbor-docker
+                value: /docker-config
               - name: DOCKER_HOST
                 value: tcp://localhost:2376
               - name: DOCKER_CERT_PATH
@@ -220,9 +245,8 @@ spec:
               # workspaces. Writable by the runner user via fsGroup 1000.
               - name: ci-shared
                 mountPath: /mnt/ci-shared
-              - name: harbor-docker-config
-                mountPath: /harbor-docker
-                readOnly: true
+              - name: docker-config
+                mountPath: /docker-config
             resources:
               # No CPU limit: steps run host-mode here and burst to ~1 core on an idle node.
               # Mem peak ~796Mi/1Gi (78%, tight) over 7d, so raise the ceiling to 1.25Gi.
@@ -245,13 +269,22 @@ spec:
           - name: runner-bin
             emptyDir: {}
           # Same harbor-pull dockerconfigjson the kubelet uses, re-shaped as a docker CLI config
-          # dir for the runner's job-container pulls (see DOCKER_CONFIG above).
+          # file. Read-only (a secret volume always is), so it is only the SEED: the runner-bin
+          # init container copies it into the writable `docker-config` emptyDir below, which is
+          # what DOCKER_CONFIG actually points at.
           - name: harbor-docker-config
             secret:
               secretName: harbor-pull
+              # 0440: the secret volume is owned root:1000 (fsGroup), and the init container that
+              # reads it runs as uid 1000 — group read, not owner read, is the operative bit.
+              defaultMode: 0440
               items:
                 - key: .dockerconfigjson
                   path: config.json
+          # The real DOCKER_CONFIG dir: writable so `docker buildx create` can mkdir buildx/certs
+          # and docker/login-action can append registry creds for the verifyRelease build cache.
+          - name: docker-config
+            emptyDir: {}
           # tmpfs (RAM), not disk. This is where the e2e validators land their mktemp
           # workspaces (TMPDIR=/mnt/ci-shared). flux-local's render renames every
           # kustomization.yaml in its tree to .original and back per build -- metadata/IOPS-heavy
