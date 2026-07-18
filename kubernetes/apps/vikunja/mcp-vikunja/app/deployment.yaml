@@ -107,10 +107,19 @@ spec:
               # 25m starved the bridge under node contention; give it a real
               # CPU floor so it is not throttled to 17s latencies.
               cpu: 100m
-              memory: 256Mi
+              # Steady state is ~27Mi; the request only needs to cover the idle
+              # bridge, so it stays small and does not hold worker-1 hostage.
+              memory: 128Mi
             limits:
               cpu: 500m
-              memory: 768Mi
+              # OOMKilled (exit 137) 6x on 2026-07-18 at the old 768Mi ceiling while
+              # idling at 27Mi -- so this is a transient SPIKE, not a leak. supergateway
+              # relays each message several times over (Child → StreamableHttp, then
+              # → Child twice), so one large tool payload -- e.g. a long HTML task
+              # comment -- is buffered repeatedly and briefly dwarfs steady state. The
+              # kills landed mid-handshake, which is what stops MCP clients from ever
+              # completing initialize. Headroom for the spike, not for growth.
+              memory: 2Gi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
