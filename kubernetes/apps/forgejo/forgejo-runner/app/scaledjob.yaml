@@ -129,6 +129,12 @@ spec:
               initialDelaySeconds: 3
               periodSeconds: 2
               failureThreshold: 30
+              # 5s, not the 1s default: under disk-IO saturation (fringe pegs at 40-90% IO-stall
+              # during container-heavy CI) `docker info` answers slowly but the daemon is healthy.
+              # With the default the probe timed out 12+ times in a row (2026-07-18), leaving fresh
+              # warm pods stuck in Init for minutes -- shrinking runner capacity exactly when the
+              # job queue was deepest, and eventually killing a healthy dind into a restart.
+              timeoutSeconds: 5
             resources:
               # No CPU limit: let a lone build burst into the idle node (observed ~0.8 core peak).
               # 3Gi limit: the e2e chainsaw step runs a KinD cluster + 4 Kyverno controllers
