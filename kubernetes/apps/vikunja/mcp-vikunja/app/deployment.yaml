@@ -113,13 +113,19 @@ spec:
             limits:
               cpu: 500m
               # OOMKilled (exit 137) 6x on 2026-07-18 at the old 768Mi ceiling while
-              # idling at 27Mi -- so this is a transient SPIKE, not a leak. supergateway
-              # relays each message several times over (Child → StreamableHttp, then
-              # → Child twice), so one large tool payload -- e.g. a long HTML task
-              # comment -- is buffered repeatedly and briefly dwarfs steady state. The
-              # kills landed mid-handshake, which is what stops MCP clients from ever
-              # completing initialize. Headroom for the spike, not for growth.
-              memory: 2Gi
+              # idling at 27Mi -- a transient SPIKE, not a leak: supergateway relays each
+              # message several times over (Child → StreamableHttp, then → Child twice),
+              # so one large tool payload -- e.g. a long HTML task comment -- is buffered
+              # repeatedly and briefly dwarfs steady state. The kills land mid-handshake,
+              # which is what stops MCP clients from ever completing initialize.
+              #
+              # Then OOMKilled 4x more the same day AT 2Gi under CONCURRENT agent
+              # sessions (multiple Claude streams doing board CRUD with multi-KB HTML
+              # payloads simultaneously) -- the spike multiplies per active session.
+              # 3Gi covers the observed worst case; if it hits THIS ceiling, stop
+              # raising and profile supergateway's buffering instead (candidate: SSE
+              # replay/session history growing unbounded).
+              memory: 3Gi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
