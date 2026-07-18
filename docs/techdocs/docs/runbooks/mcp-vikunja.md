@@ -1,8 +1,8 @@
 # mcp-vikunja — the write-capable Vikunja MCP bridge
 
 Instance operations for the `vikunja` MCP server. The product-owner *role* (conventions, DoR,
-refinement, prioritization) is the `vikunja-product-owner` skill from the `webgrip-ai-skills`
-plugin; the board contract lives in [AGENTS.md](https://github.com/webgrip/homelab-cluster/blob/main/AGENTS.md).
+refinement, prioritization) is the `vikunja-product-owner` skill from
+[`webgrip/ai-skills`](https://forgejo.webgrip.dev/webgrip/ai-skills); the board contract lives in [AGENTS.md](https://github.com/webgrip/homelab-cluster/blob/main/AGENTS.md).
 
 ## Bridge internals
 

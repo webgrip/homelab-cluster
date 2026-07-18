@@ -20,6 +20,17 @@ This directory configures Claude Code (claude.ai/code) for the homelab cluster. 
 
 This repo enables the shared **`webgrip`** plugin from [`webgrip/claude-config`](https://github.com/webgrip/claude-config) via `extraKnownMarketplaces` + `enabledPlugins` in `settings.json`. It contributes org-wide guidelines (injected at session start), a SOPS secret guard, and the `renovate-trigger` agent. Repo-specific skills/agents stay here; org-generic ones live in the plugin.
 
+## Shared skills (`webgrip/ai-skills`)
+
+Org-generic skills (`skillsmith`, `adr-writer`, `harvest-knowledge`, `vikunja-product-owner`, …) come from [`webgrip/ai-skills`](https://forgejo.webgrip.dev/webgrip/ai-skills) and are installed **user-level, not via this repo** — so they're available to every agent, not just Claude Code:
+
+```bash
+npx skills add https://forgejo.webgrip.dev/webgrip/ai-skills.git --all -g   # install/refresh
+npx skills update -g                                                       # pull latest
+```
+
+They land in `~/.agents/skills/` and are symlinked into each agent's skills dir (`~/.claude/skills/`, opencode, Cursor, Codex, …). They invoke unprefixed (`/skillsmith`), not namespaced like plugin skills. Note the CLI ships only the SKILL.md trees — a skill's bundled `hooks/hooks.json` (`guard-secrets`, `skill-usage`) or `.mcp.json` (`vikunja-product-owner`) is **not** auto-wired; wire those by hand in `settings.json` / `.mcp.json` if you want them.
+
 ## Hooks (enforced safety)
 
 - **`guard-secrets.sh`** (PreToolUse Edit/Write) — blocks decrypted artifacts and plaintext written into `*.sops.yaml`; runs `gitleaks` on new content if installed. The gitleaks pass can false-positive on secrets-free *prose* (seen 2026-07-12 on documentation text mentioning secrets next to quoted paths); diagnose with the hook's own invocation — `mise exec -- gitleaks detect --no-banner --no-git -s <file>` against the content written to `/tmp` — and reword the flagged phrase rather than bypassing the hook. Editing `*.sops.yaml` is also blocked by `permissions.deny`.
@@ -45,7 +56,7 @@ The MCP servers are **Flux-managed workloads in the cluster**; Claude Code conne
 | `kubernetes` | `kubernetes/apps/observability/k8s-mcp/` | `https://k8s-mcp.${SECRET_DOMAIN}/mcp` — **read-only**, bound to the built-in `view` ClusterRole (no Secrets) |
 | `opencost` | `kubernetes/apps/observability/opencost/` | `https://opencost-mcp.${SECRET_DOMAIN}/` — cost allocation/efficiency queries |
 | `victorialogs` | `kubernetes/apps/observability/mcp-victorialogs/` | `https://mcp-victorialogs.${SECRET_DOMAIN}/mcp` — LogsQL log queries |
-| `vikunja` | `kubernetes/apps/vikunja/mcp-vikunja/` | `https://mcp-vikunja.${SECRET_DOMAIN}/mcp` — task/project CRUD, the one **write-capable** MCP (acts as the token owner's user; hard deletes disabled server-side). Conventions: `vikunja-product-owner` skill (webgrip-ai-skills plugin); instance ops/token: `docs/techdocs/docs/runbooks/mcp-vikunja.md` |
+| `vikunja` | `kubernetes/apps/vikunja/mcp-vikunja/` | `https://mcp-vikunja.${SECRET_DOMAIN}/mcp` — task/project CRUD, the one **write-capable** MCP (acts as the token owner's user; hard deletes disabled server-side). Conventions: `vikunja-product-owner` skill (from `webgrip/ai-skills`); instance ops/token: `docs/techdocs/docs/runbooks/mcp-vikunja.md` |
 
 How it works: the servers run in-cluster (image digests pinned, RBAC/config in Git); their HTTPRoutes are `external-dns`-excluded so the hostnames resolve only on the LAN via split-DNS. The endpoints require no client auth on the LAN, so `.mcp.json` holds just the URLs.
 

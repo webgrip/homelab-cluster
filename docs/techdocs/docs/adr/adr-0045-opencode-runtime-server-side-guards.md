@@ -16,8 +16,8 @@ repo's `.claude/` **PreToolUse guard hooks** as the safety net — the hooks tha
 this open as its "permission mode" question: *is the hook set sufficient for unattended runs?*
 
 The SOTA extension wants developers and agents to run the **same** toolchain so the pipeline has one
-shape (human/agent parity). Developers use **opencode** + **openspec** + the `webgrip-ai-skills`
-marketplace. Adopting that toolchain for agents forces the permission question to a head, because:
+shape (human/agent parity). Developers use **opencode** + **openspec** + the `webgrip/ai-skills`
+skills repo. Adopting that toolchain for agents forces the permission question to a head, because:
 
 > **opencode does not execute the `.claude/` PreToolUse hooks.** They are a Claude Code mechanism.
 
@@ -44,7 +44,7 @@ Load-bearing specifics:
 
 * **Runtime.** `opencode` (headless for unattended runs) is the agent and developer runtime, driving
   `openspec` for spec-first changes and `npx skills add <profile>` for per-ticket skill loadout from
-  the `webgrip-ai-skills` marketplace.
+  the `webgrip/ai-skills` skills repo.
 * **Guards move to the forge and CI — the block-list is re-implemented in two independent places:**
   * a **Forgejo `pre-receive` hook** that rejects a push introducing a `*.sops.yaml` edit, a
     plaintext secret pattern, or other block-listed content — server-side, un-bypassable by the client;
@@ -76,7 +76,7 @@ Load-bearing specifics:
   legs are proven by a deliberate mutation test, not assumed.
 * An opencode run with no `.claude/` hooks present still cannot land a block-listed change, because
   the guard no longer depends on the client.
-* One `webgrip-ai-skills` profile is shown to drive the same task under both opencode and Claude Code
+* One `webgrip/ai-skills` profile is shown to drive the same task under both opencode and Claude Code
   (closes HAZ-06) before the two runtimes are declared interchangeable.
 
 ## Pros and Cons of the Options

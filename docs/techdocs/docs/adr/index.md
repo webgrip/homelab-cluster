@@ -35,8 +35,8 @@ Coverage of the whole estate — which domains have records, which don't — is 
 - **Register every new ADR** in the table below AND in `docs/techdocs/mkdocs.yml` nav (numeric
   slot). Verify with `./scripts/check-docs-links.sh` and
   `python3 scripts/validate_adr_consistency.py .` — both run in e2e CI, which enforces file ↔
-  table consistency (status, date, sections). The `adr-writer` plugin skill
-  (webgrip-ai-skills) automates all of this and defers to these conventions.
+  table consistency (status, date, sections). The `adr-writer` skill
+  (`webgrip/ai-skills`) automates all of this and defers to these conventions.
 - **Dates come from git** — `git log --follow --oneline -- <file>` or the triggering commit,
   never from memory. If no ratification commit exists, log
   `status corrected in audit YYYY-MM-DD` in the history; don't backdate acceptance. (Repo

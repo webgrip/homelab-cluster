@@ -84,7 +84,7 @@ Numbered 3–5 to continue Decisions 1–2 above; other sections cross-reference
   → **ADR-0044**.
 * **Decision 4 — agent runtime — `opencode`, all-in; safety guards move server-side.** Agents and
   devs run `opencode` (headless for unattended runs), driving `openspec` for spec-first changes and
-  the `webgrip-ai-skills` marketplace for per-ticket skill profiles (`npx skills add <profile>`).
+  the `webgrip/ai-skills` skills repo for per-ticket skill profiles (`npx skills add <profile>`).
   Consequence: opencode does **not** execute the `.claude/` PreToolUse guard hooks that are today
   the only thing stopping an unattended agent from committing a plaintext secret or editing a
   `*.sops.yaml`. Those guards must be re-implemented **server-side** (Forgejo `pre-receive` +
@@ -125,7 +125,7 @@ human merges ─▶ Flux reconciles ─▶ org webhook ─▶ n8n ─▶ Vikunja
   scoped read + comment only (no write/merge). CI gates independently of any agent verdict; an author
   never self-reviews.
 * **Skill portability (HAZ-06).** Prove one profile runs identically under opencode and Claude Code
-  before converging, or fork skills; track via the `webgrip-ai-skills` AGENTS.md contract.
+  before converging, or fork skills; track via the `webgrip/ai-skills` AGENTS.md contract.
 * **State fan-out (HAZ-04).** Vikunja (why) / openspec change (how) / Forgejo PR (diff) drift, and
   Vikunja webhooks fire once — cross-link everything on `VIK-<id>`; the nightly reconciler stays.
 
@@ -183,5 +183,5 @@ with `precedes`/`blocked` relations encoding this table.
 * `scripts/cluster-health/` — the scheduled-agent pattern the dispatcher extends
 * `scripts/forgejo-sync.sh` — idempotent repo-settings/webhook tool that gains the
   external-tracker and n8n-webhook legs
-* `webgrip-ai-skills` marketplace + `openspec` + `opencode` — the operator toolchain both devs and
+* `webgrip/ai-skills` skills repo + `openspec` + `opencode` — the operator toolchain both devs and
   agents share (Decision 4)

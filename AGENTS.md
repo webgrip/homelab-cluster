@@ -14,8 +14,9 @@ roadmap file in git — see
   `ready` label = meets the Definition of Ready (actionable as-is); `needs-refinement` = do not
   start, refine first.
 - **Everything board-related** — conventions, Definition-of-Ready refinement, prioritization/top-up,
-  and the agent claim/completion protocols — is the `vikunja-product-owner` skill (from the
-  `webgrip-ai-skills` plugin; enabled in `.claude/settings.json`). It reads the contract below.
+  and the agent claim/completion protocols — is the `vikunja-product-owner` skill (from
+  [`webgrip/ai-skills`](https://forgejo.webgrip.dev/webgrip/ai-skills), installed user-level via
+  `npx skills add`). It reads the contract below.
 - **Completing**: `task_complete` + a closing comment citing the commit/evidence — never claim
   done without the verification the ticket's own Verification section names.
 
