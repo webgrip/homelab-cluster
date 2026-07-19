@@ -173,6 +173,15 @@ spec:
                   secretKeyRef: {name: agent-vikunja-token, key: VIKUNJA_API_TOKEN}
               - name: VIKUNJA_URL
                 value: http://vikunja.vikunja.svc.cluster.local:3456/api/v1
+              # Forge identity: clone/push branches and open PRs as agent-builder (ADR-0048).
+              # The Secret is minted by agent-builder-provisioner (forgejo-actions-secrets app).
+              # Pool-scoped for the same reason as the master key — org Actions secrets are
+              # org-wide, and only agent runs should hold this identity.
+              - name: AGENT_BUILDER_TOKEN
+                valueFrom:
+                  secretKeyRef: {name: agent-builder-token, key: FORGEJO_TOKEN}
+              - name: FORGEJO_URL
+                value: http://forgejo-http.forgejo.svc.cluster.local:3000
             volumeMounts:
               - name: runner-bin
                 mountPath: /dist
