@@ -80,7 +80,7 @@ function run_flux_local_batch() {
         cat > "${wdir}/.build-chunk.sh" <<EOF
 #!/bin/sh
 set -u
-while IFS='	' read -r ns name; do
+while IFS='	' read -r ns name kspath; do
     [ -n "\$ns" ] && [ -n "\$name" ] || continue
     flux-local build ks "\$name" -n "\$ns" --path ${FLUX_CLUSTER_PATH} >/dev/null \\
         || { echo "FAILED to build ks \$ns/\$name" >&2; exit 255; }
@@ -148,6 +148,70 @@ function list_flux_kustomizations() {
         return 1
     fi
 
-    awk 'NR > 1 && NF >= 2 { print $1 "\t" $2 }' "${raw_output}" | sort -u >"${output_file}"
+    # Column 3 of `-o wide` is the kustomization's PATH (e.g. kubernetes/apps/ai/litellm/app).
+    # It is carried through so select_affected_kustomizations can map changed files back to the
+    # kustomizations that actually read them; run_flux_local_batch ignores it.
+    awk 'NR > 1 && NF >= 3 { print $1 "\t" $2 "\t" $3 }' "${raw_output}" | sort -u >"${output_file}"
     rm -f "${raw_output}"
+}
+
+# Narrow a ks list down to the kustomizations a change set can actually affect.
+#
+# WHY: rendering all ~90 kustomizations takes ~20min on the shared runner (the builds are
+# disk-iowait-bound -- see run_flux_local_batch -- so it cannot be parallelised away). A
+# one-file change to a single app cannot alter any other app's render, so rendering all of
+# them is pure wall-clock waste on every push.
+#
+# Blast-radius rules, deliberately conservative (when in doubt, render MORE):
+#   kubernetes/flux/**, kubernetes/components/**  -> FULL render. The flux root wires every
+#       Kustomization and components/ are mixed into many of them, so a single edit there can
+#       change any render in the tree.
+#   scripts/lib/flux-local.sh, scripts/run-flux-local-test.sh -> FULL render. Never let a
+#       change to the validator itself be validated by only a slice of the tree.
+#   kubernetes/apps/<ns>/<app>/**  -> select every ks whose PATH is under that app dir. Also
+#       matches the sibling wiring file (ks.yaml lives at <app>/ks.yaml, one level ABOVE the
+#       ks PATH <app>/app), which is why the prefix is the app dir and not the ks PATH.
+#   kubernetes/apps/<ns>/<file>    -> namespace-level resource (namespace.yaml,
+#       networkpolicy.yaml): select every ks in that namespace.
+#   anything else (docs/, talos/, .forgejo/, other scripts/) -> selects NOTHING. These have no
+#       Flux render surface; an empty selection means the render step is skipped entirely.
+#
+# Args: KS_LIST_FILE CHANGED_FILES_FILE OUTPUT_FILE
+# Returns: 0 with OUTPUT_FILE written (possibly empty), or 1 meaning "full render required".
+function select_affected_kustomizations() {
+    local ks_list="$1"
+    local changed_files="$2"
+    local output_file="$3"
+
+    local prefixes
+    prefixes="$(mktemp)"
+
+    local path
+    while IFS= read -r path; do
+        [[ -n "${path}" ]] || continue
+        case "${path}" in
+            kubernetes/flux/* | kubernetes/components/*)
+                rm -f "${prefixes}"
+                return 1
+                ;;
+            scripts/lib/flux-local.sh | scripts/run-flux-local-test.sh)
+                rm -f "${prefixes}"
+                return 1
+                ;;
+            kubernetes/apps/*)
+                # kubernetes/apps/<ns>/<app>/... -> 4 segments; kubernetes/apps/<ns>/<file> -> 3.
+                awk -F/ 'NF >= 5 { print $1"/"$2"/"$3"/"$4"/"; next }
+                         NF == 4 { print $1"/"$2"/"$3"/" }' <<<"${path}" >>"${prefixes}"
+                ;;
+        esac
+    done <"${changed_files}"
+
+    sort -u -o "${prefixes}" "${prefixes}"
+
+    # A ks is affected when its PATH (field 3) starts with one of the changed prefixes.
+    awk -F'\t' 'NR == FNR { pfx[FNR] = $0; n = FNR; next }
+                { for (i = 1; i <= n; i++) if (index($3 "/", pfx[i]) == 1) { print; break } }' \
+        "${prefixes}" "${ks_list}" >"${output_file}"
+
+    rm -f "${prefixes}"
 }

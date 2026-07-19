@@ -110,8 +110,42 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          # fetch-depth 0: the render is scoped to the diff below, which needs real history.
+          # A shallow clone makes the base ref unresolvable, which the script treats as
+          # "render everything" -- correct, but slow. Fetch the history and keep it fast.
+          fetch-depth: 0
           persist-credentials: false
+
+      # Scope the render to what changed. The full 90-kustomization render is ~20min and is
+      # disk-iowait-bound (it cannot be parallelised -- see scripts/lib/flux-local.sh), so
+      # running it for a one-file push was the single biggest cost of this gate. The blast-
+      # radius rules live in select_affected_kustomizations; edits to the flux root, to
+      # components/, or to the validator itself still force a FULL render.
+      #
+      # An unresolvable base (first push to a branch -> all-zero `before`, workflow_dispatch,
+      # a shallow clone) leaves this empty, and an empty FLUX_LOCAL_BASE_REF means "render
+      # everything". The gate degrades toward MORE checking, never less.
+      - name: Determine diff base
+        id: base
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags --quiet origin "${{ github.base_ref }}" || true
+            base="$(git merge-base HEAD FETCH_HEAD 2>/dev/null || true)"
+          else
+            base="${{ github.event.before }}"
+          fi
+          if [ -z "${base}" ] || ! git rev-parse --verify --quiet "${base}^{commit}" >/dev/null; then
+            echo "base ref unusable ('${base}') -- falling back to a full render"
+            base=""
+          fi
+          echo "ref=${base}" >> "$GITHUB_OUTPUT"
+
       - name: Run flux-local test
+        env:
+          FLUX_LOCAL_BASE_REF: ${{ steps.base.outputs.ref }}
         run: ./scripts/run-flux-local-test.sh "$GITHUB_WORKSPACE"
 
   # The long pole: stands up a KinD cluster + Kyverno and runs the Chainsaw suites. Kept in its
@@ -126,8 +160,47 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           persist-credentials: false
+
+      # Standing up a KinD cluster + Kyverno takes ~10min and is the workflow's long pole. It
+      # exercises exactly one thing: the policies and suites under kubernetes/apps/kyverno/.
+      # A change that touches none of them cannot alter the result, so skip rather than burn a
+      # runner slot for 10min -- the pool is capacity-bound (the worker nodes sit at >90% CPU
+      # requests), so a wasted slot directly delays every other repo's CI.
+      # The nightly full-validation workflow runs the suite unconditionally, so a skip here
+      # never means the suite goes unrun for longer than a day.
+      - name: Does this change touch Kyverno?
+        id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+          run=true
+          base=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags --quiet origin "${{ github.base_ref }}" || true
+            base="$(git merge-base HEAD FETCH_HEAD 2>/dev/null || true)"
+          else
+            base="${{ github.event.before }}"
+          fi
+          # Same fail-safe as flux-local: no usable base => run the suite.
+          if [ -n "${base}" ] && git rev-parse --verify --quiet "${base}^{commit}" >/dev/null; then
+            if git diff --name-only "${base}" -- \
+                 kubernetes/apps/kyverno \
+                 scripts/run-kyverno-chainsaw.sh \
+                 scripts/lib/kyverno-tests.sh \
+                 .forgejo/workflows/e2e.yml | grep -q .; then
+              run=true
+            else
+              run=false
+            fi
+          fi
+          echo "run=${run}" >> "$GITHUB_OUTPUT"
+          [ "${run}" = "true" ] && echo "Kyverno inputs changed -- running the suite" \
+                               || echo "No Kyverno inputs changed -- skipping the KinD suite"
+
       - name: Run Chainsaw tests
+        if: steps.filter.outputs.run == 'true'
         run: |-
           bin="$TMPDIR/bin"
           mkdir -p "$bin"

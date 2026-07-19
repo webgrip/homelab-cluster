@@ -43,6 +43,39 @@ print_relevant_flux_local_stderr "${stderr_file}"
 
 total="$(wc -l < "${ks_list}")"
 
+# Change-detection scope. FLUX_LOCAL_BASE_REF (a git ref, e.g. the push's `before` SHA or a
+# PR's merge base) narrows the render to the kustomizations the diff can actually affect --
+# see select_affected_kustomizations for the blast-radius rules. Unset => render everything,
+# which is what a local run and the nightly full-validation workflow both want.
+#
+# This exists because the full render is ~20min and cannot be parallelised (the builds are
+# disk-iowait-bound, see run_flux_local_batch), so validating all ~90 kustomizations on a
+# one-file push was the dominant cost of the CI gate.
+BASE_REF="${FLUX_LOCAL_BASE_REF:-}"
+if [[ -n "${BASE_REF}" ]]; then
+    changed_files="${workspace}/changed.txt"
+    if git -C "${ROOT_DIR}" diff --name-only "${BASE_REF}" -- >"${changed_files}" 2>/dev/null; then
+        scoped_list="${workspace}/kustomizations.scoped.tsv"
+        if select_affected_kustomizations "${ks_list}" "${changed_files}" "${scoped_list}"; then
+            ks_list="${scoped_list}"
+            scoped_total="$(wc -l < "${ks_list}")"
+            log info "Scoped to changed paths" \
+                "base=${BASE_REF}" "changed_files=$(wc -l < "${changed_files}")" \
+                "kustomizations=${scoped_total}/${total}"
+            total="${scoped_total}"
+            if (( total == 0 )); then
+                log info "No kustomization is affected by this change set -- nothing to render"
+                exit 0
+            fi
+        else
+            log info "Change set has cluster-wide blast radius -- rendering everything" "base=${BASE_REF}"
+        fi
+    else
+        # A shallow clone or an unknown base ref must never silently downgrade the gate.
+        log warn "Cannot diff against base ref -- rendering everything" "base=${BASE_REF}"
+    fi
+fi
+
 # Render all kustomizations serially in ONE container (see run_flux_local_batch).
 #
 # PARALLELISM defaults to 1 on purpose. flux-local builds are NOT CPU-bound on the CI

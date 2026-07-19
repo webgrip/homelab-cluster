@@ -26,10 +26,21 @@ spec:
   # that limit is now 1.5Gi (peak usage ~649Mi) and fringe-workstation (8c/~15Gi) has ample
   # headroom (~1.5c used). Set to 0 for pure scale-from-zero.
   # 4 (was 2): the warm floor is the ONLY scaling that works when the KEDA scaler's metric
-  # read fails (its Forgejo admin-jobs query times out under a deep queue — see the
-  # KEDA_HTTP_DEFAULT_TIMEOUT note in apps/keda). 2026-07-18: a Renovate wave (~30 jobs)
-  # drained at 2 runners for 2+ hours, starving a ci-runner release for 60+ min. Node math:
-  # ~1Gi requests/pod, fringe-workstation seats 4 comfortably alongside its other tenants.
+  # read fails. 2026-07-18: a Renovate wave (~30 jobs) drained at 2 runners for 2+ hours,
+  # starving a ci-runner release for 60+ min. Node math: ~1Gi requests/pod.
+  #
+  # CORRECTION (2026-07-18, later): that metric-read failure was NOT "the admin-jobs query
+  # times out under a deep queue" as originally recorded here — the `keda` namespace was
+  # simply missing from forgejo-allow-ingress, so EVERY poll was dropped by the netpol
+  # regardless of queue depth (0 completed requests to that path in 45min of forgejo logs).
+  # Fixed in apps/forgejo/networkpolicy.yaml; don't re-derive the timeout theory from this
+  # comment.
+  #
+  # maxReplicaCount stays 6 and is NOT the effective ceiling: the worker pool is out of room
+  # (fringe-workstation 93% CPU / 96% memory requests, worker-1 98% CPU), and runner pods
+  # already hit FailedScheduling "Insufficient cpu, Insufficient memory" at this value.
+  # Raising it only manufactures Pending pods and makes KEDA's queue numbers lie. The lever
+  # that actually works is making CI do less work per push (see .forgejo/workflows/e2e.yml).
   minReplicaCount: 4
   maxReplicaCount: 6
   successfulJobsHistoryLimit: 3

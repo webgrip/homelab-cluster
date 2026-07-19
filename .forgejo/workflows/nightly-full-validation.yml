@@ -1,0 +1,58 @@
+---
+# The unconditional safety net behind e2e.yml's change-detection.
+#
+# e2e.yml scopes its flux-local render to the kustomizations a push can affect, and skips the
+# KinD/Kyverno suite when no Kyverno input changed. Both are sound for a single diff, but both
+# are blind to drift that no commit touches: a floating chart tag re-resolving, an upstream
+# image digest moving, or a cross-kustomization interaction that only shows up in a full
+# render. This job re-validates EVERYTHING once a day so that blind spot is bounded at ~24h
+# rather than "until someone happens to edit that app".
+#
+# Runs at 03:00 UTC, off the CI peak -- the runner pool is capacity-bound (worker nodes sit at
+# >90% CPU requests), so a full render during the day would starve interactive pushes.
+name: '[Scheduled] Full validation'
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # nightly 03:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-full-validation
+  cancel-in-progress: false
+
+jobs:
+  # No FLUX_LOCAL_BASE_REF => the script renders all ~90 kustomizations (~20min).
+  flux-local-full:
+    name: Flux-local render (full tree)
+    runs-on: docker
+    env:
+      TMPDIR: /mnt/ci-shared
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run flux-local test (unscoped)
+        run: ./scripts/run-flux-local-test.sh "$GITHUB_WORKSPACE"
+
+  # Same suite e2e.yml gates behind a path filter, here run unconditionally.
+  chainsaw-full:
+    name: Kyverno Chainsaw (KinD, unconditional)
+    runs-on: docker
+    env:
+      TMPDIR: /mnt/ci-shared
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run Chainsaw tests
+        run: |-
+          bin="$TMPDIR/bin"
+          mkdir -p "$bin"
+          curl -fsSL -o "$bin/kind" "https://kind.sigs.k8s.io/dl/v0.27.0/kind-linux-amd64"
+          curl -fsSL -o "$bin/kubectl" "https://dl.k8s.io/release/v1.33.2/bin/linux/amd64/kubectl"
+          chmod +x "$bin/kind" "$bin/kubectl"
+          export PATH="$bin:$PATH"
+          ./scripts/run-kyverno-chainsaw.sh "$GITHUB_WORKSPACE"
