@@ -212,3 +212,41 @@ spec:
       ports:
         - protocol: TCP
           port: 8200
+---
+# Second narrow hole in forgejo-allow-egress's `except: 10.43.0.0/16`, same shape and same
+# reasoning as forgejo-runner-allow-openbao above: the sign-and-attest step uploads the
+# CycloneDX SBOM to Dependency-Track, whose ClusterIP also falls in the blanket
+# cross-namespace exclusion.
+#
+# Kept as its OWN policy rather than a second rule on the OpenBao one so each policy's name
+# still describes what it grants (NetworkPolicies are additive, so this composes cleanly).
+#
+# The upload is deliberately non-fatal in the action, so this failed as a `::warning::` with
+# HTTP 000000 while the release itself went green — i.e. signing succeeded and Dependency-Track
+# silently received nothing. Worth remembering: a best-effort step hides a policy block until
+# someone notices the SBOM inventory is empty.
+#
+# Scoped to the CI runner only; forgejo-agent-runner stays excluded (ADR-0048).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: forgejo-runner-allow-dependency-track
+  labels:
+    app.kubernetes.io/part-of: forgejo
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: forgejo-runner
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: security
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: dependency-track-api-server
+      ports:
+        - protocol: TCP
+          port: 8080
