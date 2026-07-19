@@ -39,6 +39,23 @@ spec:
       parameters:
         barmanObjectName: litellm-db-store
         serverName: litellm-db
+  managed:
+    roles:
+      # Read-only role for Grafana's litellm-db datasource. inRoles: [pg_read_all_data]
+      # (PG14+ predefined role) grants SELECT on every table incl. LiteLLM_SpendLogs
+      # without per-table GRANT plumbing (managed.roles can't run table GRANTs).
+      # Password generated in-cluster (grafana-ro.externalsecret.yaml).
+      - name: grafana_ro
+        ensure: present
+        login: true
+        superuser: false
+        createdb: false
+        createrole: false
+        bypassrls: false
+        inRoles:
+          - pg_read_all_data
+        passwordSecret:
+          name: litellm-grafana-ro
   bootstrap:
     initdb:
       database: litellm

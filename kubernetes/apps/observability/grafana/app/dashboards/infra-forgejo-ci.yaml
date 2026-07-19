@@ -1,4 +1,9 @@
 ---
+# KSM caveat (live-verified 2026-07-19): kube-state-metrics series in this cluster carry
+# namespace="observability" (the scrape namespace) and the workload's REAL namespace in
+# `exported_namespace` — kube_* matchers below therefore use exported_namespace="forgejo".
+# cAdvisor container_* metrics keep the real namespace="forgejo" label. If KSM relabeling is
+# ever fixed (honor_labels), invert the kube_* matchers back to namespace="forgejo".
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
@@ -128,7 +133,7 @@ spec:
           },
           "targets": [
             { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "sum(kube_pod_status_phase{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"}) or vector(0)" }
+              "expr": "sum(kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"}) or vector(0)" }
           ]
         },
         {
@@ -180,7 +185,7 @@ spec:
           },
           "targets": [
             { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "(sum(kube_pod_status_phase{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"}) or vector(0)) - (count(sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"}[$$__rate_interval])) > 0.05) or vector(0))" }
+              "expr": "(sum(kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"}) or vector(0)) - (count(sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"}[$$__rate_interval])) > 0.05) or vector(0))" }
           ]
         },
         {
@@ -209,7 +214,7 @@ spec:
           },
           "targets": [
             { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "sum(kube_pod_status_phase{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=~\"Pending|Failed|Unknown\"}) or vector(0)" }
+              "expr": "sum(kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=~\"Pending|Failed|Unknown\"}) or vector(0)" }
           ]
         },
         {
@@ -262,7 +267,7 @@ spec:
               "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-runner\"}) or vector(0)" },
             { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" },
               "legendFormat": "runners running",
-              "expr": "sum(kube_pod_status_phase{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"}) or vector(0)" },
+              "expr": "sum(kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"}) or vector(0)" },
             { "refId": "C", "datasource": { "type": "prometheus", "uid": "prometheus" },
               "legendFormat": "actively building",
               "expr": "count(sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"}[$$__rate_interval])) > 0.05) or vector(0)" },
@@ -293,7 +298,7 @@ spec:
           "targets": [
             { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
               "legendFormat": "{{node}}",
-              "expr": "count by (node) (kube_pod_info{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"} and on (namespace, pod) (kube_pod_status_phase{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"} == 1))" }
+              "expr": "count by (node) (kube_pod_info{exported_namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"} and on (namespace, pod) (kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"} == 1))" }
           ]
         },
         {
@@ -317,7 +322,7 @@ spec:
           "targets": [
             { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
               "legendFormat": "{{phase}}",
-              "expr": "sum by (phase) (kube_pod_status_phase{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"})" }
+              "expr": "sum by (phase) (kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"})" }
           ]
         },
         {
@@ -348,7 +353,7 @@ spec:
           "targets": [
             { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
               "legendFormat": "runner spawns",
-              "expr": "count(kube_pod_created{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"} > (time() - 300)) or vector(0)" }
+              "expr": "count(kube_pod_created{exported_namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"} > (time() - 300)) or vector(0)" }
           ]
         },
         {
@@ -372,10 +377,10 @@ spec:
           "targets": [
             { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
               "legendFormat": "active jobs",
-              "expr": "sum(kube_job_status_active{namespace=\"forgejo\",job_name=~\"forgejo-runner-[a-z0-9]{5}\"}) or vector(0)" },
+              "expr": "sum(kube_job_status_active{exported_namespace=\"forgejo\",job_name=~\"forgejo-runner-[a-z0-9]{5}\"}) or vector(0)" },
             { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" },
               "legendFormat": "succeeded (retained)",
-              "expr": "sum(kube_job_status_succeeded{namespace=\"forgejo\",job_name=~\"forgejo-runner-[a-z0-9]{5}\"}) or vector(0)" }
+              "expr": "sum(kube_job_status_succeeded{exported_namespace=\"forgejo\",job_name=~\"forgejo-runner-[a-z0-9]{5}\"}) or vector(0)" }
           ]
         },
         {
@@ -393,7 +398,7 @@ spec:
           "targets": [
             { "refId": "A", "format": "table", "instant": true,
               "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "(kube_job_status_completion_time{namespace=\"forgejo\",job_name=~\"forgejo-runner-[a-z0-9]{5}\"} - kube_job_status_start_time{namespace=\"forgejo\",job_name=~\"forgejo-runner-[a-z0-9]{5}\"})" }
+              "expr": "(kube_job_status_completion_time{exported_namespace=\"forgejo\",job_name=~\"forgejo-runner-[a-z0-9]{5}\"} - kube_job_status_start_time{exported_namespace=\"forgejo\",job_name=~\"forgejo-runner-[a-z0-9]{5}\"})" }
           ],
           "transformations": [
             { "id": "organize", "options": {
@@ -474,7 +479,7 @@ spec:
           "targets": [
             { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
               "legendFormat": "{{pod}}",
-              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"}) / sum by (pod) (kube_pod_container_resource_limits{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",resource=\"memory\"}) * 100" }
+              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"}) / sum by (pod) (kube_pod_container_resource_limits{exported_namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",resource=\"memory\"}) * 100" }
           ]
         },
         {

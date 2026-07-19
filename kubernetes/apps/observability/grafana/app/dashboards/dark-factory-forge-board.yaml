@@ -1,0 +1,498 @@
+---
+# Dark Factory — Forge & Board Activity.
+# KSM caveat (live-verified): kube-state-metrics series carry namespace="observability" and the
+# workload's REAL namespace in `exported_namespace`; this dashboard has no kube_* queries, but
+# keep that in mind when extending it. cAdvisor/cnpg/gitea/up metrics carry the real namespace.
+# CI-vs-agent log split: the CI runner target uses an explicit negative filter
+# (-pod:~"forgejo-agent-runner-.*") so agent pods can never double-count into the CI column,
+# regardless of LogsQL regex anchoring semantics.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: dark-factory-forge-board
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  allowCrossNamespaceImport: false
+  folderRef: ai
+  json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Dark Factory — Forge & Board Activity",
+      "uid": "dark-factory-forge-board",
+      "timezone": "browser",
+      "tags": ["dark-factory", "forgejo", "vikunja"],
+      "editable": false,
+      "graphTooltip": 1,
+      "refresh": "1m",
+      "time": { "from": "now-24h", "to": "now" },
+      "links": [
+        { "type": "dashboards", "title": "Dark Factory", "tags": ["dark-factory"], "asDropdown": true, "includeVars": false, "keepTime": true },
+        { "type": "link", "title": "LiteLLM Spend & Budgets", "url": "/d/litellm-spend", "icon": "dollar" },
+        { "type": "link", "title": "LiteLLM Reliability", "url": "/d/litellm-reliability", "icon": "bolt" },
+        { "type": "link", "title": "Forgejo CI Command Center", "url": "/d/infra-forgejo-ci", "icon": "external link" },
+        { "type": "link", "title": "Claude Code Command Center", "url": "/d/claude-code-command-center", "icon": "external link" }
+      ],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "templating": { "list": [] },
+      "panels": [
+        {
+          "id": 1,
+          "type": "row",
+          "title": "Forge deltas (range)",
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Issues opened (range)",
+          "description": "net change — negative = closures outpaced opens",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "auto"
+          },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(delta(gitea_issues_open[$$__range])) or vector(0)" }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Issues closed (range)",
+          "description": "Net change in closed issues over the dashboard range.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "auto"
+          },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(delta(gitea_issues_closed[$$__range])) or vector(0)" }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Releases cut (range)",
+          "description": "Net new releases across all repos over the dashboard range.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "auto"
+          },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(delta(gitea_releases[$$__range])) or vector(0)" }
+          ]
+        },
+        {
+          "id": 5,
+          "type": "stat",
+          "title": "Webhook deliveries (range)",
+          "description": "Net new webhook delivery tasks over the range — the forge fan-out to CI, Renovate, and friends.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "auto"
+          },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(delta(gitea_hooktasks[$$__range])) or vector(0)" }
+          ]
+        },
+        {
+          "id": 6,
+          "type": "stat",
+          "title": "Repos delta",
+          "description": "Net change in repository count over the range.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "auto"
+          },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(delta(gitea_repositories[$$__range])) or vector(0)" }
+          ]
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "Issues open vs closed (trend)",
+          "description": "Absolute open and closed issue counts across the forge over time.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+          "fieldConfig": {
+            "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "never" } },
+            "overrides": []
+          },
+          "options": {
+            "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "legendFormat": "open",
+              "expr": "sum(gitea_issues_open)" },
+            { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "legendFormat": "closed",
+              "expr": "sum(gitea_issues_closed)" }
+          ]
+        },
+        {
+          "id": 8,
+          "type": "timeseries",
+          "title": "Webhook fan-out rate",
+          "description": "the forge-to-factory trigger signal",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+          "fieldConfig": {
+            "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60, "showPoints": "never" } },
+            "overrides": []
+          },
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "single" }
+          },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "legendFormat": "webhook deliveries",
+              "expr": "sum(delta(gitea_hooktasks[$$__rate_interval]))" }
+          ]
+        },
+        {
+          "id": 9,
+          "type": "row",
+          "title": "Actions activity by repo (logs)",
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 }
+        },
+        {
+          "id": 10,
+          "type": "table",
+          "title": "Runs by repo & pool (range)",
+          "description": "Run pickups per repo, split CI vs agent pool, parsed from the runner 'repo is <owner/repo>' lines. The CI target excludes agent pods explicitly so nothing double-counts.",
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "gridPos": { "h": 9, "w": 12, "x": 0, "y": 14 },
+          "fieldConfig": {
+            "defaults": { "unit": "short", "custom": { "align": "auto", "filterable": true } },
+            "overrides": []
+          },
+          "options": { "showHeader": true, "sortBy": [ { "displayName": "Agent runs", "desc": true } ] },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" }, "queryType": "stats",
+              "expr": "{namespace=\"forgejo\", container=\"runner\"} pod:~\"forgejo-runner-.*\" -pod:~\"forgejo-agent-runner-.*\" ~\"repo is\" | extract_regexp \"repo is (?P<repo>\\\\S+)\" | filter -repo:\"\" | stats by (repo) count() ci_runs" },
+            { "refId": "B", "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" }, "queryType": "stats",
+              "expr": "{namespace=\"forgejo\", container=\"runner\"} pod:~\"forgejo-agent-runner-.*\" ~\"repo is\" | extract_regexp \"repo is (?P<repo>\\\\S+)\" | filter -repo:\"\" | stats by (repo) count() agent_runs" }
+          ],
+          "transformations": [
+            { "id": "merge", "options": {} },
+            { "id": "organize", "options": {
+              "excludeByName": { "Time": true },
+              "renameByName": { "repo": "Repo", "ci_runs": "CI runs", "agent_runs": "Agent runs" }
+            } }
+          ]
+        },
+        {
+          "id": 11,
+          "type": "logs",
+          "title": "All run pickups (feed)",
+          "description": "Every 'repo is' pickup line from both runner pools. Expand a line for its pod label to see which pool served it.",
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "gridPos": { "h": 9, "w": 12, "x": 12, "y": 14 },
+          "options": {
+            "showTime": true,
+            "showLabels": true,
+            "showCommonLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": false,
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "sortOrder": "Descending"
+          },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" }, "queryType": "instant", "maxLines": 100,
+              "expr": "{namespace=\"forgejo\", container=\"runner\"} ~\"repo is\"" }
+          ]
+        },
+        {
+          "id": 12,
+          "type": "row",
+          "title": "Board (Vikunja)",
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 }
+        },
+        {
+          "id": 13,
+          "type": "stat",
+          "title": "Tickets worked by agents (range)",
+          "description": "Distinct Vikunja tickets with at least one agent run spending tokens over the range (from LiteLLM per-key spend, key alias agent-vikN-runM).",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 4, "w": 4, "x": 0, "y": 24 },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "auto"
+          },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "count(count by (ticket) (label_replace(max_over_time(litellm_key_spend{key_alias=~\"agent-vik[0-9]+-run[0-9]+\"}[$$__range]), \"ticket\", \"vik$$1\", \"key_alias\", \"agent-vik([0-9]+)-run.*\"))) or vector(0)" }
+          ]
+        },
+        {
+          "id": 14,
+          "type": "table",
+          "title": "Ticket activity (SQL)",
+          "description": "Per-ticket agent runs, last activity, and exact spend from the LiteLLM spend ledger; requires litellm-db datasource.",
+          "datasource": { "type": "postgres", "uid": "litellm-db" },
+          "gridPos": { "h": 8, "w": 10, "x": 4, "y": 24 },
+          "fieldConfig": {
+            "defaults": { "unit": "short", "custom": { "align": "auto", "filterable": true } },
+            "overrides": [
+              { "matcher": { "id": "byName", "options": "spend" },
+                "properties": [ { "id": "unit", "value": "currencyUSD" }, { "id": "decimals", "value": 2 } ] }
+            ]
+          },
+          "options": { "showHeader": true, "sortBy": [ { "displayName": "last_agent_activity", "desc": true } ] },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "postgres", "uid": "litellm-db" }, "rawQuery": true, "format": "table",
+              "rawSql": "SELECT regexp_replace(metadata->>'user_api_key_alias', '^agent-(vik[0-9]+)-run.*', '\\1') AS ticket, count(DISTINCT metadata->>'user_api_key_alias') AS runs, max(\"startTime\") AS last_agent_activity, sum(spend) AS spend FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' ~ '^agent-vik[0-9]+-run[0-9]+' AND $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY last_agent_activity DESC" }
+          ]
+        },
+        {
+          "id": 15,
+          "type": "timeseries",
+          "title": "Board traffic (nginx)",
+          "description": "Request log volume of the board SPA's nginx container — a proxy for humans (and agents) looking at the board.",
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "gridPos": { "h": 8, "w": 7, "x": 14, "y": 24 },
+          "fieldConfig": {
+            "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60, "showPoints": "never" } },
+            "overrides": []
+          },
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "single" }
+          },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" }, "queryType": "statsRange",
+              "legendFormat": "board requests",
+              "expr": "{namespace=\"vikunja\", container=\"nginx\"} | stats count()" }
+          ]
+        },
+        {
+          "id": 16,
+          "type": "timeseries",
+          "title": "Vikunja DB commit rate",
+          "description": "board write activity proxy",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 8, "w": 7, "x": 0, "y": 32 },
+          "fieldConfig": {
+            "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "never" } },
+            "overrides": []
+          },
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "single" }
+          },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "legendFormat": "xact commit/s",
+              "expr": "sum(rate(cnpg_pg_stat_database_xact_commit{namespace=\"vikunja\"}[$$__rate_interval]))" }
+          ]
+        },
+        {
+          "id": 17,
+          "type": "logs",
+          "title": "PO-agent board actions (mcp-vikunja)",
+          "description": "The write-capable vikunja MCP server's log — every board mutation the product-owner agent makes flows through here.",
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "gridPos": { "h": 9, "w": 24, "x": 0, "y": 40 },
+          "options": {
+            "showTime": true,
+            "showLabels": true,
+            "showCommonLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": false,
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "sortOrder": "Descending"
+          },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" }, "queryType": "instant", "maxLines": 200,
+              "expr": "{namespace=\"vikunja\", container=\"mcp-vikunja\"}" }
+          ]
+        },
+        {
+          "id": 18,
+          "type": "row",
+          "title": "Plumbing",
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 49 }
+        },
+        {
+          "id": 19,
+          "type": "stat",
+          "title": "Forgejo up",
+          "description": "Forgejo HTTP scrape target health.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 6, "w": 4, "x": 0, "y": 50 },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "mappings": [
+                { "type": "value", "options": { "1": { "text": "UP", "color": "green" } } },
+                { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" } } }
+              ],
+              "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "auto"
+          },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "max(up{job=\"forgejo-http\",namespace=\"forgejo\"}) or vector(0)" }
+          ]
+        },
+        {
+          "id": 20,
+          "type": "table",
+          "title": "Factory DB health",
+          "description": "CNPG collector health for the factory databases (ai, forgejo, vikunja).",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 6, "w": 12, "x": 4, "y": 50 },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": { "align": "auto", "filterable": true, "cellOptions": { "type": "color-background" } },
+              "mappings": [
+                { "type": "value", "options": { "1": { "text": "UP", "color": "green" } } },
+                { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" } } }
+              ],
+              "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }
+            },
+            "overrides": []
+          },
+          "options": { "showHeader": true, "sortBy": [ { "displayName": "Namespace", "desc": false } ] },
+          "targets": [
+            { "refId": "A", "format": "table", "instant": true,
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "max by (namespace, pod) (cnpg_collector_up{namespace=~\"ai|forgejo|vikunja\"})" }
+          ],
+          "transformations": [
+            { "id": "organize", "options": {
+              "excludeByName": { "Time": true, "__name__": true, "instance": true, "job": true, "container": true, "endpoint": true, "service": true, "prometheus": true, "cluster": true, "server": true, "exported_namespace": true },
+              "renameByName": { "namespace": "Namespace", "pod": "Pod", "Value": "Up" }
+            } }
+          ]
+        },
+        {
+          "id": 21,
+          "type": "logs",
+          "title": "Warning events (vikunja + forgejo)",
+          "description": "Kubernetes Warning events across the forge and board namespaces.",
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "gridPos": { "h": 6, "w": 8, "x": 16, "y": 50 },
+          "options": {
+            "showTime": true,
+            "showLabels": true,
+            "showCommonLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": false,
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "sortOrder": "Descending"
+          },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" }, "queryType": "instant", "maxLines": 100,
+              "expr": "{job=\"kubernetes/events\", namespace=~\"forgejo|vikunja\"} \"type=Warning\"" }
+          ]
+        }
+      ]
+    }

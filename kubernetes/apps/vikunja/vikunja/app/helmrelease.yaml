@@ -62,6 +62,20 @@ spec:
                     key: password
               - name: VIKUNJA_DATABASE_SSLMODE
                 value: require
+              # --- metrics (VMServiceScrape ./vmservicescrape.yaml; basic auth
+              # because /metrics rides the public HTTPRoute path space) ---
+              - name: VIKUNJA_METRICS_ENABLED
+                value: "true"
+              - name: VIKUNJA_METRICS_USERNAME
+                valueFrom:
+                  secretKeyRef:
+                    name: vikunja-metrics
+                    key: username
+              - name: VIKUNJA_METRICS_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: vikunja-metrics
+                    key: password
               # --- service ---
               - name: VIKUNJA_SERVICE_PUBLICURL
                 value: https://vikunja.${SECRET_DOMAIN}/

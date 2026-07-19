@@ -1,0 +1,40 @@
+---
+# Native PostgreSQL datasource for the Vikunja board DB (vikunja-db in ns vikunja) — board
+# activity panels for the agent-observability suite (Vikunja exposes no app metrics for
+# board state). Read-only role grafana_ro (CNPG managed role, member of pg_read_all_data).
+# pg_read_all_data can read users/task bodies too — accepted: Grafana is Authentik-gated;
+# revisit with per-table GRANTs if the Grafana viewer base widens.
+#
+# Flux escaping: $${password} -> ${password} after Flux postBuild substitution; the operator
+# then replaces ${password} with the secret value. vikunja's zero-trust ingress policy
+# already admits all of observability (cnpg-monitoring rule), so no netpol change needed.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: postgres-vikunja
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  valuesFrom:
+    - targetPath: secureJsonData.password
+      valueFrom:
+        secretKeyRef:
+          name: vikunja-grafana-ro
+          key: password
+  datasource:
+    name: Vikunja Board
+    type: postgres
+    uid: vikunja-db
+    access: proxy
+    url: vikunja-db-rw.vikunja.svc.cluster.local:5432
+    user: grafana_ro
+    database: app
+    editable: true
+    jsonData:
+      sslmode: require
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+    secureJsonData:
+      password: $${password}

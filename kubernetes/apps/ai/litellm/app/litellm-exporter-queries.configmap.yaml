@@ -172,3 +172,63 @@ data:
         - creation_tokens: {usage: "GAUGE", description: "Cumulative cache-creation input tokens"}
         - read_tokens: {usage: "GAUGE", description: "Cumulative cache-read input tokens"}
         - prompt_tokens: {usage: "GAUGE", description: "Cumulative prompt tokens"}
+    # --- Agent-run grain (dark-factory dashboards): per-run FINAL spend from the
+    # immutable spend log, keyed by the per-run key alias the agent-runner mints
+    # (agent-vik<task>-run<n>). Persists after the key is revoked, unlike
+    # litellm_key_spend from LiteLLM_VerificationToken. 30-day cap bounds
+    # cardinality (aliases accumulate forever otherwise); "startTime" is indexed.
+    # No date label — alias x date multiplies series for no dashboard win. Shrink
+    # the window to '14 days' if exporter scrape duration creeps toward timeout. ---
+    litellm_run:
+      query: |
+        SELECT COALESCE(NULLIF(metadata->>'user_api_key_alias',''),'none') AS key_alias,
+               SUM(spend) AS spend,
+               COUNT(*) AS requests,
+               COUNT(*) FILTER (WHERE metadata->>'status' = 'failure') AS failures,
+               SUM(prompt_tokens) AS prompt_tokens,
+               SUM(completion_tokens) AS completion_tokens,
+               SUM(total_tokens) AS total_tokens
+        FROM "LiteLLM_SpendLogs"
+        WHERE "startTime" >= now() - interval '30 days'
+        GROUP BY 1
+      metrics:
+        - key_alias: {usage: "LABEL", description: "Per-run virtual-key alias from spend-log metadata"}
+        - spend: {usage: "GAUGE", description: "Final spend attributed to this run key (USD, 30d window)"}
+        - requests: {usage: "GAUGE", description: "Spend-log rows for this run key, 30d"}
+        - failures: {usage: "GAUGE", description: "Failed rows for this run key, 30d"}
+        - prompt_tokens: {usage: "GAUGE", description: "Prompt tokens for this run key, 30d"}
+        - completion_tokens: {usage: "GAUGE", description: "Completion tokens for this run key, 30d"}
+        - total_tokens: {usage: "GAUGE", description: "Total tokens for this run key, 30d"}
+    # --- Run wall-clock: first request start -> last request end per run key.
+    # Epochs let dashboards place runs on a timeline. ---
+    litellm_run_duration:
+      query: |
+        SELECT COALESCE(NULLIF(metadata->>'user_api_key_alias',''),'none') AS key_alias,
+               EXTRACT(EPOCH FROM (MAX("endTime") - MIN("startTime"))) AS duration_seconds,
+               EXTRACT(EPOCH FROM MIN("startTime")) AS started_epoch,
+               EXTRACT(EPOCH FROM MAX("endTime")) AS ended_epoch
+        FROM "LiteLLM_SpendLogs"
+        WHERE "startTime" >= now() - interval '30 days'
+          AND "endTime" IS NOT NULL AND "endTime" >= "startTime"
+        GROUP BY 1
+      metrics:
+        - key_alias: {usage: "LABEL", description: "Per-run virtual-key alias"}
+        - duration_seconds: {usage: "GAUGE", description: "Run wall-clock: first start to last end (s, 30d)"}
+        - started_epoch: {usage: "GAUGE", description: "Unix epoch of the run's first request"}
+        - ended_epoch: {usage: "GAUGE", description: "Unix epoch of the run's last request end"}
+    # --- Fleet pulse: distinct run keys active in trailing windows (scalar
+    # gauges, no label) — the cheap "how many agent runs" stat panels. ---
+    litellm_runs_active:
+      query: |
+        SELECT COUNT(DISTINCT metadata->>'user_api_key_alias')
+                 FILTER (WHERE "startTime" >= now() - interval '1 hour') AS last_1h,
+               COUNT(DISTINCT metadata->>'user_api_key_alias')
+                 FILTER (WHERE "startTime" >= now() - interval '24 hours') AS last_24h,
+               COUNT(DISTINCT metadata->>'user_api_key_alias') AS last_30d
+        FROM "LiteLLM_SpendLogs"
+        WHERE "startTime" >= now() - interval '30 days'
+          AND COALESCE(metadata->>'user_api_key_alias','') <> ''
+      metrics:
+        - last_1h: {usage: "GAUGE", description: "Distinct run key aliases active in the last hour"}
+        - last_24h: {usage: "GAUGE", description: "Distinct run key aliases active in the last 24h"}
+        - last_30d: {usage: "GAUGE", description: "Distinct run key aliases active in the last 30 days"}

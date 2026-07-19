@@ -1,0 +1,42 @@
+---
+# Native PostgreSQL datasource for the LiteLLM spend ledger (litellm-db in ns ai) — the
+# agent-observability suite's per-request drill-down. Per-run spend-log rows survive the
+# entrypoint's key revocation (ADR-0044/0048), unlike the live key table the LiteLLM UI reads.
+# Read-only role grafana_ro (CNPG managed role, member of pg_read_all_data).
+#
+# Flux escaping: $${password} -> ${password} after Flux postBuild substitution; the operator
+# then replaces ${password} (matching the secretKeyRef key) with the secret value.
+#
+# NOTE: the ai namespace is not zero-trust today. If ai ever opts into
+# kyverno.io/default-network-policies, add an ingress allow observability -> tcp/5432
+# on litellm-db or this datasource silently breaks.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: postgres-litellm
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  valuesFrom:
+    - targetPath: secureJsonData.password
+      valueFrom:
+        secretKeyRef:
+          name: litellm-grafana-ro
+          key: password
+  datasource:
+    name: LiteLLM Ledger
+    type: postgres
+    uid: litellm-db
+    access: proxy
+    url: litellm-db-rw.ai.svc.cluster.local:5432
+    user: grafana_ro
+    database: litellm
+    editable: true
+    jsonData:
+      sslmode: require
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+    secureJsonData:
+      password: $${password}

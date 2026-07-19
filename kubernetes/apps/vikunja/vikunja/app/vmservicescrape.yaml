@@ -1,0 +1,23 @@
+---
+# Scrape Vikunja's built-in Prometheus metrics (VIKUNJA_METRICS_ENABLED in the
+# HelmRelease). Aggregate board counters (users/projects/tasks/teams + active users) —
+# board *state* still comes from the vikunja-db Grafana datasource; this feeds rate
+# panels and VMAlert. Basic auth from the vikunja-metrics Secret (same one the app env
+# consumes). NOTE: metrics path is /api/v1/metrics on current Vikunja; if the target
+# shows down with 404, the older path is /metrics.
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: vikunja
+  namespace: vikunja
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vikunja
+  endpoints:
+    - port: http
+      path: /api/v1/metrics
+      interval: 60s
+      basicAuth:
+        username: {name: vikunja-metrics, key: username}
+        password: {name: vikunja-metrics, key: password}
