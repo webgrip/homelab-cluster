@@ -129,10 +129,7 @@ spec:
             # OpenHands + per-run LiteLLM key mint/revoke + baked skills loadout + docker CLI.
             # Steps execute IN this container (config maps `agent` -> host).
             #
-            # TODO(pin): swap to @sha256 once CI publishes agent-runner-v1.0.0 to Harbor. Left as
-            # a tag deliberately — the image is not published yet, and this pool is scale-from-zero
-            # so nothing pulls it until the first dispatch.
-            image: harbor.webgrip.dev/webgrip/agent-runner:latest
+            image: harbor.webgrip.dev/webgrip/agent-runner:1.0.0@sha256:40cd1cbbb083e270513a4294dd86597f586a1119ea4fc057215d43fc8770c93c
             command:
               - bash
               - -ec
@@ -163,16 +160,21 @@ spec:
               - name: LITELLM_MASTER_KEY
                 valueFrom:
                   secretKeyRef: {name: agent-litellm-master, key: LITELLM_MASTER_KEY}
+              # PUBLIC gateway URLs, not in-cluster Services: forgejo-allow-egress excludes the
+              # cluster CIDRs, so cross-namespace svc URLs TIME OUT from runner pods (verified
+              # empirically 2026-07-19: litellm.ai.svc/vikunja.vikunja.svc curl 000, public 200).
+              # The gateway route is how CI already reaches harbor. Tighten later with an
+              # identity-based CNP if the hairpin bothers us.
               - name: LITELLM_ADMIN_URL
-                value: http://litellm.ai.svc.cluster.local:4000
+                value: https://litellm.webgrip.dev
               - name: LLM_BASE_URL
-                value: http://litellm.ai.svc.cluster.local:4000/v1
+                value: https://litellm.webgrip.dev/v1
               # Board identity: claim/comment on the ticket it is working.
               - name: VIKUNJA_API_TOKEN
                 valueFrom:
                   secretKeyRef: {name: agent-vikunja-token, key: VIKUNJA_API_TOKEN}
               - name: VIKUNJA_URL
-                value: http://vikunja.vikunja.svc.cluster.local:3456/api/v1
+                value: https://vikunja.webgrip.dev/api/v1
               # Forge identity: clone/push branches and open PRs as agent-builder (ADR-0048).
               # The Secret is minted by agent-builder-provisioner (forgejo-actions-secrets app).
               # Pool-scoped for the same reason as the master key — org Actions secrets are
