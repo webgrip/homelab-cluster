@@ -34,6 +34,11 @@ roadmap file in git — see
   `theme/ci-cd` tickets (runner pool, image supply chain, pipeline efficiency; mechanics
   reference: docs/techdocs/docs/general/ci-image-flow.md); same conventions/labels as the
   main board. The techdocs *serving* decision stays on Homelab Roadmap (#340)
+- Product boards exist alongside the infra boards: `Erfbeeld` (id 4, repo
+  `webgrip/nuala-nalatenschap`) is the factory's pilot product (ADR-0048 pilots on its tickets)
+  and the target of the product-research intake lane (VIK-462); product boards keep their own
+  label taxonomy (`area/*`, `wave/*`, `status/*`) and their docs live in the product repo, not
+  in this repo's techdocs
 - Ticket prefix: `VIK` (commit trailers `VIK-<taskID>`; see
   [rfc-dark-factory](docs/techdocs/docs/rfc/rfc-dark-factory.md) for the full agent-execution program)
 - Labels: `theme/<kebab>` (security-kyverno-audit-enforce, security-network-containment,
