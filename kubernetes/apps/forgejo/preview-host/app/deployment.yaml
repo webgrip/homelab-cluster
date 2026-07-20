@@ -62,6 +62,10 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
+            # git-sync writes its gitconfig under HOME=/tmp; with readOnlyRootFilesystem
+            # that MUST be a mount (crash-looped 11x without it: "can't create gitconfig").
+            - name: tmp
+              mountPath: /tmp
           resources:
             requests: {cpu: 10m, memory: 32Mi}
             limits: {memory: 128Mi}
