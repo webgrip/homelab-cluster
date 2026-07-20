@@ -19,211 +19,1505 @@ spec:
       "title": "Dark Factory — Agent Run Explorer",
       "uid": "dark-factory-run-explorer",
       "timezone": "browser",
-      "tags": ["dark-factory", "ai", "agents", "drilldown"],
+      "tags": [
+        "dark-factory",
+        "ai",
+        "agents",
+        "drilldown"
+      ],
       "editable": false,
       "graphTooltip": 1,
       "refresh": "30s",
-      "time": {"from": "now-24h", "to": "now"},
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
       "links": [
-        {"type": "dashboards", "title": "Dark Factory", "tags": ["dark-factory"], "asDropdown": true, "includeVars": false, "keepTime": true},
-        {"type": "link", "title": "LiteLLM Spend & Budgets", "url": "/d/litellm-spend", "icon": "dollar"},
-        {"type": "link", "title": "LiteLLM Reliability", "url": "/d/litellm-reliability", "icon": "bolt"},
-        {"type": "link", "title": "Forgejo CI Command Center", "url": "/d/infra-forgejo-ci", "icon": "external link"},
-        {"type": "link", "title": "Claude Code Command Center", "url": "/d/claude-code-command-center", "icon": "external link"}
+        {
+          "type": "dashboards",
+          "title": "Dark Factory",
+          "tags": [
+            "dark-factory"
+          ],
+          "asDropdown": true,
+          "includeVars": false,
+          "keepTime": true
+        },
+        {
+          "type": "link",
+          "title": "LiteLLM Spend & Budgets",
+          "url": "/d/litellm-spend",
+          "icon": "dollar"
+        },
+        {
+          "type": "link",
+          "title": "LiteLLM Reliability",
+          "url": "/d/litellm-reliability",
+          "icon": "bolt"
+        },
+        {
+          "type": "link",
+          "title": "Forgejo CI Command Center",
+          "url": "/d/infra-forgejo-ci",
+          "icon": "external link"
+        },
+        {
+          "type": "link",
+          "title": "Claude Code Command Center",
+          "url": "/d/claude-code-command-center",
+          "icon": "external link"
+        }
       ],
       "annotations": {
         "list": [
-          {"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard"}
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
         ]
       },
       "templating": {
         "list": [
-          {"name": "run", "label": "Run (key alias)", "type": "query", "datasource": {"type": "prometheus", "uid": "prometheus"}, "query": {"query": "label_values(litellm_key_spend{key_alias=~\"agent-.*\"}, key_alias)"}, "refresh": 2, "sort": 2, "multi": false, "includeAll": false, "current": {"selected": false, "text": "", "value": ""}, "options": []},
-          {"name": "agent_pod", "label": "Agent pod (logs)", "type": "query", "datasource": {"type": "prometheus", "uid": "prometheus"}, "query": {"query": "label_values(container_cpu_usage_seconds_total{namespace=\"forgejo\",pod=~\"forgejo-agent-runner-[a-z0-9]{5}-[a-z0-9]{5}\"}, pod)"}, "refresh": 2, "sort": 2, "multi": false, "includeAll": true, "allValue": "forgejo-agent-runner-.*", "current": {"selected": false, "text": "All", "value": "$$__all"}, "options": []}
+          {
+            "name": "run",
+            "label": "Run (key alias)",
+            "type": "query",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "query": {
+              "query": "label_values(litellm_key_spend{key_alias=~\"agent-.*\"}, key_alias)"
+            },
+            "refresh": 2,
+            "sort": 2,
+            "multi": false,
+            "includeAll": false,
+            "current": {
+              "selected": false,
+              "text": "",
+              "value": ""
+            },
+            "options": []
+          },
+          {
+            "name": "agent_pod",
+            "label": "Agent pod (logs)",
+            "type": "query",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "query": {
+              "query": "label_values(container_cpu_usage_seconds_total{namespace=\"forgejo\",pod=~\"forgejo-agent-runner-[a-z0-9]{5}-[a-z0-9]{5}\"}, pod)"
+            },
+            "refresh": 2,
+            "sort": 2,
+            "multi": false,
+            "includeAll": true,
+            "allValue": "forgejo-agent-runner-.*",
+            "current": {
+              "selected": false,
+              "text": "All",
+              "value": "$$__all"
+            },
+            "options": []
+          }
         ]
       },
       "panels": [
         {
-          "id": 1, "type": "text", "title": "", "gridPos": {"h": 3, "w": 24, "x": 0, "y": 0},
-          "options": {"mode": "markdown", "content": "Pick a **Run**. If a panel is empty, widen the time range to cover the run. The **Agent jobs in range** table below tells you which agent_pod to select for the log panels (match Started time to the first request)."}
-        },
-        {"id": 2, "type": "row", "title": "Run totals", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 3}, "panels": []},
-        {
-          "id": 3, "type": "stat", "title": "Run spend", "description": "Full spend of the selected run key over the range.", "gridPos": {"h": 4, "w": 4, "x": 0, "y": 4},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max(max_over_time(litellm_key_spend{key_alias=\"$$run\"}[$$__range])) or vector(0)", "instant": true}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []}
-        },
-        {
-          "id": 4, "type": "stat", "title": "Budget", "description": "Max budget assigned to the run key.", "gridPos": {"h": 4, "w": 3, "x": 4, "y": 4},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max(max_over_time(litellm_key_max_budget{key_alias=\"$$run\"}[$$__range])) or vector(0)", "instant": true}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}}, "overrides": []}
+          "id": 1,
+          "type": "text",
+          "title": "",
+          "gridPos": {
+            "h": 3,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "Pick a **Run**. If a panel is empty, widen the time range to cover the run. The **Agent jobs in range** table below tells you which agent_pod to select for the log panels (match Started time to the first request)."
+          }
         },
         {
-          "id": 5, "type": "gauge", "title": "Budget burn", "description": "Spend as a percentage of the run's max budget.", "gridPos": {"h": 4, "w": 4, "x": 7, "y": 4},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "100 * max(max_over_time(litellm_key_spend{key_alias=\"$$run\"}[$$__range])) / max(max_over_time(litellm_key_max_budget{key_alias=\"$$run\"}[$$__range]))", "instant": true}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "showThresholdLabels": false, "showThresholdMarkers": true},
-          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 0, "min": 0, "max": 100, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 70}, {"color": "red", "value": 90}]}}, "overrides": []}
+          "id": 2,
+          "type": "row",
+          "title": "Run totals",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 3
+          },
+          "panels": []
         },
         {
-          "id": 6, "type": "stat", "title": "Blocked", "description": "Whether LiteLLM blocked the run key at any point in range.", "gridPos": {"h": 4, "w": 3, "x": 11, "y": 4},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max(max_over_time(litellm_key_blocked{key_alias=\"$$run\"}[$$__range])) or vector(0)", "instant": true}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "value", "colorMode": "background", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "mappings": [{"type": "value", "options": {"0": {"text": "OK", "color": "green"}, "1": {"text": "BLOCKED", "color": "red"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []}
-        },
-        {
-          "id": 7, "type": "stat", "title": "Requests", "description": "requires litellm-db datasource", "gridPos": {"h": 4, "w": 3, "x": 14, "y": 4},
-          "datasource": {"type": "postgres", "uid": "litellm-db"},
-          "targets": [{"refId": "A", "datasource": {"type": "postgres", "uid": "litellm-db"}, "format": "table", "rawQuery": true, "rawSql": "SELECT count(*) FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND $$__timeFilter(\"startTime\")"}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "noValue": "0", "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}}, "overrides": []}
-        },
-        {
-          "id": 8, "type": "stat", "title": "Tokens", "description": "Total tokens across all requests of this run (litellm-db).", "gridPos": {"h": 4, "w": 3, "x": 17, "y": 4},
-          "datasource": {"type": "postgres", "uid": "litellm-db"},
-          "targets": [{"refId": "A", "datasource": {"type": "postgres", "uid": "litellm-db"}, "format": "table", "rawQuery": true, "rawSql": "SELECT coalesce(sum(total_tokens),0) FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND $$__timeFilter(\"startTime\")"}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "noValue": "0", "thresholds": {"mode": "absolute", "steps": [{"color": "purple", "value": null}]}}, "overrides": []}
-        },
-        {
-          "id": 9, "type": "stat", "title": "Ticket", "description": "VIK ticket derived from the run key alias.", "gridPos": {"h": 4, "w": 4, "x": 20, "y": 4},
-          "datasource": {"type": "postgres", "uid": "litellm-db"},
-          "targets": [{"refId": "A", "datasource": {"type": "postgres", "uid": "litellm-db"}, "format": "table", "rawQuery": true, "rawSql": "SELECT regexp_replace('$$run', '^agent-(vik[0-9]+)-run.*', '\\1')"}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "value", "colorMode": "value", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "text", "value": null}]}}, "overrides": []}
-        },
-        {"id": 10, "type": "row", "title": "Spend & token timeline", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 8}, "panels": []},
-        {
-          "id": 11, "type": "timeseries", "title": "Cumulative spend vs budget", "description": "series exists only while the key is live; history survives revocation via VM retention", "gridPos": {"h": 8, "w": 8, "x": 0, "y": 9},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "id": 3,
+          "type": "stat",
+          "title": "Run spend",
+          "description": "Full spend of the selected run key over the range.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "targets": [
-            {"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max(litellm_key_spend{key_alias=\"$$run\"})", "legendFormat": "spend"},
-            {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max(litellm_key_max_budget{key_alias=\"$$run\"})", "legendFormat": "budget"}
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max(max_over_time(litellm_key_spend{key_alias=\"$$run\"}[$$__range])) or vector(0)",
+              "instant": true
+            }
           ],
-          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "value",
+            "graphMode": "none"
+          },
           "fieldConfig": {
-            "defaults": {"unit": "currencyUSD", "decimals": 2, "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never"}},
-            "overrides": [
-              {"matcher": {"id": "byName", "options": "budget"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}, {"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [10, 10]}}, {"id": "custom.fillOpacity", "value": 0}]}
-            ]
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
           }
         },
         {
-          "id": 12, "type": "timeseries", "title": "Spend per minute (SQL)", "description": "Per-minute spend from LiteLLM_SpendLogs (litellm-db).", "gridPos": {"h": 8, "w": 8, "x": 8, "y": 9},
-          "datasource": {"type": "postgres", "uid": "litellm-db"},
-          "targets": [{"refId": "A", "datasource": {"type": "postgres", "uid": "litellm-db"}, "format": "time_series", "rawQuery": true, "rawSql": "SELECT $$__timeGroup(\"startTime\",'1m') AS time, sum(spend) AS spend FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY 1"}],
-          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
-          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 4, "custom": {"drawStyle": "bars", "lineWidth": 1, "fillOpacity": 60, "showPoints": "never"}}, "overrides": []}
-        },
-        {
-          "id": 13, "type": "timeseries", "title": "Tokens per minute by type (SQL)", "description": "Prompt / completion / cache token throughput of this run (litellm-db).", "gridPos": {"h": 8, "w": 8, "x": 16, "y": 9},
-          "datasource": {"type": "postgres", "uid": "litellm-db"},
-          "targets": [{"refId": "A", "datasource": {"type": "postgres", "uid": "litellm-db"}, "format": "time_series", "rawQuery": true, "rawSql": "SELECT $$__timeGroup(\"startTime\",'1m') AS time, sum(prompt_tokens) AS prompt, sum(completion_tokens) AS completion, sum(cache_read_input_tokens) AS cache_read, sum(cache_creation_input_tokens) AS cache_write FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY 1"}],
-          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "custom": {"drawStyle": "bars", "lineWidth": 1, "fillOpacity": 60, "showPoints": "never", "stacking": {"mode": "normal", "group": "A"}}}, "overrides": []}
-        },
-        {"id": 14, "type": "row", "title": "Per-request forensics (SQL)", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 17}, "panels": []},
-        {
-          "id": 15, "type": "table", "title": "Every LLM request in this run", "description": "Row per LLM call from LiteLLM_SpendLogs (litellm-db), newest first, capped at 500.", "gridPos": {"h": 11, "w": 24, "x": 0, "y": 18},
-          "datasource": {"type": "postgres", "uid": "litellm-db"},
-          "targets": [{"refId": "A", "datasource": {"type": "postgres", "uid": "litellm-db"}, "format": "table", "rawQuery": true, "rawSql": "SELECT \"startTime\" AS time, request_id, call_type, model, custom_llm_provider AS provider, spend, total_tokens, prompt_tokens, completion_tokens, cache_read_input_tokens AS cache_read, EXTRACT(EPOCH FROM (\"endTime\" - \"startTime\")) AS duration_s, CASE WHEN \"completionStartTime\" IS NOT NULL THEN EXTRACT(EPOCH FROM (\"completionStartTime\" - \"startTime\")) END AS ttft_s, metadata->>'status' AS status, metadata->>'attempted_retries' AS retries, session_id FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND $$__timeFilter(\"startTime\") ORDER BY \"startTime\" DESC LIMIT 500"}],
-          "options": {"showHeader": true, "sortBy": [{"displayName": "time", "desc": true}]},
-          "fieldConfig": {
-            "defaults": {"custom": {"align": "auto", "filterable": true}},
-            "overrides": [
-              {"matcher": {"id": "byName", "options": "spend"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]},
-              {"matcher": {"id": "byName", "options": "duration_s"}, "properties": [{"id": "unit", "value": "s"}, {"id": "decimals", "value": 1}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 30}, {"color": "red", "value": 60}]}}, {"id": "custom.cellOptions", "value": {"type": "color-background"}}]},
-              {"matcher": {"id": "byName", "options": "ttft_s"}, "properties": [{"id": "unit", "value": "s"}, {"id": "decimals", "value": 1}]},
-              {"matcher": {"id": "byName", "options": "status"}, "properties": [{"id": "mappings", "value": [{"type": "value", "options": {"success": {"text": "success", "color": "green"}, "failure": {"text": "failure", "color": "red"}}}]}, {"id": "custom.cellOptions", "value": {"type": "color-background"}}]}
-            ]
-          }
-        },
-        {
-          "id": 16, "type": "bargauge", "title": "Spend by model (this run)", "description": "Where this run's money went, by model (litellm-db).", "gridPos": {"h": 7, "w": 8, "x": 0, "y": 29},
-          "datasource": {"type": "postgres", "uid": "litellm-db"},
-          "targets": [{"refId": "A", "datasource": {"type": "postgres", "uid": "litellm-db"}, "format": "table", "rawQuery": true, "rawSql": "SELECT model, sum(spend) AS spend FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY 2 DESC"}],
-          "options": {"orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true, "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
-          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "continuous-GrYlRd"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []}
-        },
-        {
-          "id": 17, "type": "stat", "title": "Failed requests", "description": "Requests whose spend-log metadata status is not success (litellm-db).", "gridPos": {"h": 7, "w": 4, "x": 8, "y": 29},
-          "datasource": {"type": "postgres", "uid": "litellm-db"},
-          "targets": [{"refId": "A", "datasource": {"type": "postgres", "uid": "litellm-db"}, "format": "table", "rawQuery": true, "rawSql": "SELECT count(*) FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND coalesce(metadata->>'status','success') <> 'success' AND $$__timeFilter(\"startTime\")"}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "noValue": "0", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []}
-        },
-        {
-          "id": 18, "type": "stat", "title": "Retry attempts (sum)", "description": "Provider retries recorded in spend-log metadata (litellm-db).", "gridPos": {"h": 7, "w": 4, "x": 12, "y": 29},
-          "datasource": {"type": "postgres", "uid": "litellm-db"},
-          "targets": [{"refId": "A", "datasource": {"type": "postgres", "uid": "litellm-db"}, "format": "table", "rawQuery": true, "rawSql": "SELECT coalesce(sum(nullif(metadata->>'attempted_retries','')::int),0) FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND $$__timeFilter(\"startTime\")"}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "noValue": "0", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}]}}, "overrides": []}
-        },
-        {
-          "id": 19, "type": "stat", "title": "Sessions in run", "description": "Distinct LiteLLM session_id values seen for this run (litellm-db).", "gridPos": {"h": 7, "w": 8, "x": 16, "y": 29},
-          "datasource": {"type": "postgres", "uid": "litellm-db"},
-          "targets": [{"refId": "A", "datasource": {"type": "postgres", "uid": "litellm-db"}, "format": "table", "rawQuery": true, "rawSql": "SELECT count(DISTINCT session_id) FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND $$__timeFilter(\"startTime\")"}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "noValue": "0", "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}}, "overrides": []}
-        },
-        {"id": 20, "type": "row", "title": "Run ↔ pod, logs & traces", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 36}, "panels": []},
-        {
-          "id": 21, "type": "table", "title": "Agent jobs in range (pod timing)", "description": "match Started against the first SQL request above to identify this run's pod; set agent_pod accordingly", "gridPos": {"h": 7, "w": 24, "x": 0, "y": 37},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "id": 4,
+          "type": "stat",
+          "title": "Budget",
+          "description": "Max budget assigned to the run key.",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 4,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "targets": [
-            {"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "last_over_time(kube_job_status_start_time{exported_namespace=\"forgejo\",job_name=~\"forgejo-agent-runner-[a-z0-9]{5}\"}[$$__range])", "instant": true, "format": "table"},
-            {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "last_over_time(kube_job_status_completion_time{exported_namespace=\"forgejo\",job_name=~\"forgejo-agent-runner-[a-z0-9]{5}\"}[$$__range])", "instant": true, "format": "table"},
-            {"refId": "C", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "last_over_time(kube_job_status_completion_time{exported_namespace=\"forgejo\",job_name=~\"forgejo-agent-runner-[a-z0-9]{5}\"}[$$__range]) - last_over_time(kube_job_status_start_time{exported_namespace=\"forgejo\",job_name=~\"forgejo-agent-runner-[a-z0-9]{5}\"}[$$__range])", "instant": true, "format": "table"}
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max(max_over_time(litellm_key_max_budget{key_alias=\"$$run\"}[$$__range])) or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "value",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 5,
+          "type": "gauge",
+          "title": "Budget burn",
+          "description": "Spend as a percentage of the run's max budget.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 7,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "100 * max(max_over_time(litellm_key_spend{key_alias=\"$$run\"}[$$__range])) / max(max_over_time(litellm_key_max_budget{key_alias=\"$$run\"}[$$__range]))",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 0,
+              "min": 0,
+              "max": 100,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 70
+                  },
+                  {
+                    "color": "red",
+                    "value": 90
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 6,
+          "type": "stat",
+          "title": "Blocked",
+          "description": "Whether LiteLLM blocked the run key at any point in range.",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 11,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max(max_over_time(litellm_key_blocked{key_alias=\"$$run\"}[$$__range])) or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value",
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "OK",
+                      "color": "green"
+                    },
+                    "1": {
+                      "text": "BLOCKED",
+                      "color": "red"
+                    }
+                  }
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 7,
+          "type": "stat",
+          "title": "Requests",
+          "description": "requires litellm-db datasource",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 14,
+            "y": 4
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "litellm-db"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "litellm-db"
+              },
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT count(*) FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND $$__timeFilter(\"startTime\")"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "value",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "noValue": "0",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 8,
+          "type": "stat",
+          "title": "Tokens",
+          "description": "Total tokens across all requests of this run (litellm-db).",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 17,
+            "y": 4
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "litellm-db"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "litellm-db"
+              },
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT coalesce(sum(total_tokens),0) FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND $$__timeFilter(\"startTime\")"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "value",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "noValue": "0",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "purple",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 9,
+          "type": "stat",
+          "title": "Ticket",
+          "description": "VIK ticket derived from the run key alias.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 20,
+            "y": 4
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "litellm-db"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "litellm-db"
+              },
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT regexp_replace('$$run', '^agent-(vik[0-9]+)-run.*', '\\1')"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value",
+            "colorMode": "value",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 10,
+          "type": "row",
+          "title": "Spend & token timeline",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 8
+          },
+          "panels": []
+        },
+        {
+          "id": 11,
+          "type": "timeseries",
+          "title": "Cumulative spend vs budget",
+          "description": "series exists only while the key is live; history survives revocation via VM retention",
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 9
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max(litellm_key_spend{key_alias=\"$$run\"})",
+              "legendFormat": "spend"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max(litellm_key_max_budget{key_alias=\"$$run\"})",
+              "legendFormat": "budget"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "showPoints": "never"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "budget"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "red"
+                    }
+                  },
+                  {
+                    "id": "custom.lineStyle",
+                    "value": {
+                      "fill": "dash",
+                      "dash": [
+                        10,
+                        10
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.fillOpacity",
+                    "value": 0
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 12,
+          "type": "timeseries",
+          "title": "Spend per minute (SQL)",
+          "description": "Per-minute spend from LiteLLM_SpendLogs (litellm-db).",
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 9
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "litellm-db"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "litellm-db"
+              },
+              "format": "time_series",
+              "rawQuery": true,
+              "rawSql": "SELECT $$__timeGroup(\"startTime\",'1m') AS time, sum(spend) AS spend FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY 1"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "single"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 4,
+              "custom": {
+                "drawStyle": "bars",
+                "lineWidth": 1,
+                "fillOpacity": 60,
+                "showPoints": "never"
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 13,
+          "type": "timeseries",
+          "title": "Tokens per minute by type (SQL)",
+          "description": "Prompt / completion / cache token throughput of this run (litellm-db).",
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 9
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "litellm-db"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "litellm-db"
+              },
+              "format": "time_series",
+              "rawQuery": true,
+              "rawSql": "SELECT $$__timeGroup(\"startTime\",'1m') AS time, sum(prompt_tokens) AS prompt, sum(completion_tokens) AS completion, sum(cache_read_input_tokens) AS cache_read, sum(cache_creation_input_tokens) AS cache_write FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY 1"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "custom": {
+                "drawStyle": "bars",
+                "lineWidth": 1,
+                "fillOpacity": 60,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 14,
+          "type": "row",
+          "title": "Per-request forensics (SQL)",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 17
+          },
+          "panels": []
+        },
+        {
+          "id": 15,
+          "type": "table",
+          "title": "Every LLM request in this run",
+          "description": "Row per LLM call from LiteLLM_SpendLogs (litellm-db), newest first, capped at 500.",
+          "gridPos": {
+            "h": 11,
+            "w": 24,
+            "x": 0,
+            "y": 18
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "litellm-db"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "litellm-db"
+              },
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT \"startTime\" AS time, request_id, call_type, model, custom_llm_provider AS provider, spend, total_tokens, prompt_tokens, completion_tokens, cache_read_input_tokens AS cache_read, EXTRACT(EPOCH FROM (\"endTime\" - \"startTime\")) AS duration_s, CASE WHEN \"completionStartTime\" IS NOT NULL THEN EXTRACT(EPOCH FROM (\"completionStartTime\" - \"startTime\")) END AS ttft_s, metadata->>'status' AS status, metadata->>'attempted_retries' AS retries, session_id FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND $$__timeFilter(\"startTime\") ORDER BY \"startTime\" DESC LIMIT 500"
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "sortBy": [
+              {
+                "displayName": "time",
+                "desc": true
+              }
+            ]
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "filterable": true
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "spend"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 4
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "duration_s"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 30
+                        },
+                        {
+                          "color": "red",
+                          "value": 60
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ttft_s"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "status"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "success": {
+                            "text": "success",
+                            "color": "green"
+                          },
+                          "failure": {
+                            "text": "failure",
+                            "color": "red"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 16,
+          "type": "bargauge",
+          "title": "Spend by model (this run)",
+          "description": "Where this run's money went, by model (litellm-db).",
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 0,
+            "y": 29
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "litellm-db"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "litellm-db"
+              },
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT model, sum(spend) AS spend FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY 2 DESC"
+            }
+          ],
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "gradient",
+            "showUnfilled": true,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "color": {
+                "mode": "continuous-GrYlRd"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 17,
+          "type": "stat",
+          "title": "Failed requests",
+          "description": "Requests whose spend-log metadata status is not success (litellm-db).",
+          "gridPos": {
+            "h": 7,
+            "w": 4,
+            "x": 8,
+            "y": 29
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "litellm-db"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "litellm-db"
+              },
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT count(*) FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND coalesce(metadata->>'status','success') <> 'success' AND $$__timeFilter(\"startTime\")"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "noValue": "0",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 18,
+          "type": "stat",
+          "title": "Retry attempts (sum)",
+          "description": "Provider retries recorded in spend-log metadata (litellm-db).",
+          "gridPos": {
+            "h": 7,
+            "w": 4,
+            "x": 12,
+            "y": 29
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "litellm-db"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "litellm-db"
+              },
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT coalesce(sum(nullif(metadata->>'attempted_retries','')::int),0) FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND $$__timeFilter(\"startTime\")"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "value",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "noValue": "0",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 19,
+          "type": "stat",
+          "title": "Sessions in run",
+          "description": "Distinct LiteLLM session_id values seen for this run (litellm-db).",
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 16,
+            "y": 29
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "litellm-db"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "litellm-db"
+              },
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT count(DISTINCT session_id) FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND $$__timeFilter(\"startTime\")"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "value",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "noValue": "0",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 20,
+          "type": "row",
+          "title": "Run ↔ pod, logs & traces",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 36
+          },
+          "panels": []
+        },
+        {
+          "id": 21,
+          "type": "table",
+          "title": "Agent jobs in range (pod timing)",
+          "description": "match Started against the first SQL request above to identify this run's pod; set agent_pod accordingly",
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 37
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (job_name) (last_over_time(kube_job_status_start_time{exported_namespace=\"forgejo\",job_name=~\"forgejo-agent-runner-[a-z0-9]{5}\"}[$$__range]))",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (job_name) (last_over_time(kube_job_status_completion_time{exported_namespace=\"forgejo\",job_name=~\"forgejo-agent-runner-[a-z0-9]{5}\"}[$$__range]))",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (job_name) (last_over_time(kube_job_status_completion_time{exported_namespace=\"forgejo\",job_name=~\"forgejo-agent-runner-[a-z0-9]{5}\"}[$$__range]) - last_over_time(kube_job_status_start_time{exported_namespace=\"forgejo\",job_name=~\"forgejo-agent-runner-[a-z0-9]{5}\"}[$$__range]))",
+              "instant": true,
+              "format": "table"
+            }
           ],
           "transformations": [
-            {"id": "merge", "options": {}},
-            {"id": "organize", "options": {
-              "excludeByName": {"Time": true, "__name__": true, "instance": true, "job": true, "namespace": true, "pod": true, "container": true, "endpoint": true, "service": true, "prometheus": true, "cluster": true, "server": true, "exported_namespace": true},
-              "renameByName": {"job_name": "Job", "Value #A": "Started", "Value #B": "Completed", "Value #C": "Duration"}
-            }}
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "__name__": true,
+                  "instance": true,
+                  "job": true,
+                  "namespace": true,
+                  "pod": true,
+                  "container": true,
+                  "endpoint": true,
+                  "service": true,
+                  "prometheus": true,
+                  "cluster": true,
+                  "server": true,
+                  "exported_namespace": true
+                },
+                "renameByName": {
+                  "job_name": "Job",
+                  "Value #A": "Started",
+                  "Value #B": "Completed",
+                  "Value #C": "Duration"
+                }
+              }
+            }
           ],
-          "options": {"showHeader": true, "sortBy": [{"displayName": "Started", "desc": true}]},
+          "options": {
+            "showHeader": true,
+            "sortBy": [
+              {
+                "displayName": "Started",
+                "desc": true
+              }
+            ]
+          },
           "fieldConfig": {
-            "defaults": {"custom": {"align": "auto", "filterable": true}},
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "filterable": true
+              }
+            },
             "overrides": [
-              {"matcher": {"id": "byName", "options": "Started"}, "properties": [{"id": "unit", "value": "dateTimeFromEpoch"}, {"id": "decimals", "value": 0}]},
-              {"matcher": {"id": "byName", "options": "Completed"}, "properties": [{"id": "unit", "value": "dateTimeFromEpoch"}, {"id": "decimals", "value": 0}]},
-              {"matcher": {"id": "byName", "options": "Duration"}, "properties": [{"id": "unit", "value": "s"}, {"id": "decimals", "value": 0}]}
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Started"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeFromEpoch"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Completed"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeFromEpoch"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Duration"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              }
             ]
           }
         },
         {
-          "id": 22, "type": "logs", "title": "Agent reasoning trail (runner)", "description": "Runner container logs for the selected agent pod.", "gridPos": {"h": 10, "w": 12, "x": 0, "y": 44},
-          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
-          "targets": [{"refId": "A", "expr": "{namespace=\"forgejo\", container=\"runner\", pod=~\"$$agent_pod\"}", "queryType": "instant", "maxLines": 500}],
-          "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
-          "fieldConfig": {"defaults": {}, "overrides": []}
+          "id": 22,
+          "type": "logs",
+          "title": "Agent reasoning trail (runner)",
+          "description": "Runner container logs for the selected agent pod.",
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 0,
+            "y": 44
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "{namespace=\"forgejo\", container=\"runner\", pod=~\"$$agent_pod\"}",
+              "queryType": "instant",
+              "maxLines": 500
+            }
+          ],
+          "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "prettifyLogMessage": false,
+            "showCommonLabels": false,
+            "showLabels": false,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          }
         },
         {
-          "id": 23, "type": "logs", "title": "Docker builds (dind)", "description": "DinD sidecar logs for the selected agent pod.", "gridPos": {"h": 10, "w": 12, "x": 12, "y": 44},
-          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
-          "targets": [{"refId": "A", "expr": "{namespace=\"forgejo\", container=\"dind\", pod=~\"$$agent_pod\"}", "queryType": "instant", "maxLines": 300}],
-          "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
-          "fieldConfig": {"defaults": {}, "overrides": []}
+          "id": 23,
+          "type": "logs",
+          "title": "Docker builds (dind)",
+          "description": "DinD sidecar logs for the selected agent pod.",
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 12,
+            "y": 44
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "{namespace=\"forgejo\", container=\"dind\", pod=~\"$$agent_pod\"}",
+              "queryType": "instant",
+              "maxLines": 300
+            }
+          ],
+          "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "prettifyLogMessage": false,
+            "showCommonLabels": false,
+            "showLabels": false,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          }
         },
         {
-          "id": 24, "type": "timeseries", "title": "Log volume by container", "description": "Log line rate of the selected agent pod, split by container.", "gridPos": {"h": 6, "w": 12, "x": 0, "y": 54},
-          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
-          "targets": [{"refId": "A", "expr": "{namespace=\"forgejo\", pod=~\"$$agent_pod\"} | stats by (container) count()", "queryType": "statsRange", "legendFormat": "{{container}}"}],
-          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "custom": {"drawStyle": "bars", "lineWidth": 1, "fillOpacity": 60, "showPoints": "never", "stacking": {"mode": "normal", "group": "A"}}}, "overrides": []}
+          "id": 24,
+          "type": "timeseries",
+          "title": "Log volume by container",
+          "description": "Log line rate of the selected agent pod, split by container.",
+          "gridPos": {
+            "h": 6,
+            "w": 12,
+            "x": 0,
+            "y": 54
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "{namespace=\"forgejo\", pod=~\"$$agent_pod\"} | stats by (container) count()",
+              "queryType": "statsRange",
+              "legendFormat": "{{container}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "custom": {
+                "drawStyle": "bars",
+                "lineWidth": 1,
+                "fillOpacity": 60,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          }
         },
         {
-          "id": 25, "type": "traces", "title": "LiteLLM traces (window)", "description": "spans carry no key_alias tag — narrow the time range to the run window; per-run trace filtering is a known gap", "gridPos": {"h": 10, "w": 12, "x": 12, "y": 54},
-          "datasource": {"type": "jaeger", "uid": "victoriatraces"},
-          "targets": [{"refId": "A", "datasource": {"type": "jaeger", "uid": "victoriatraces"}, "queryType": "search", "service": "litellm", "limit": 20}],
+          "id": 25,
+          "type": "traces",
+          "title": "LiteLLM traces (window)",
+          "description": "spans carry no key_alias tag — narrow the time range to the run window; per-run trace filtering is a known gap",
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 12,
+            "y": 54
+          },
+          "datasource": {
+            "type": "jaeger",
+            "uid": "victoriatraces"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "jaeger",
+                "uid": "victoriatraces"
+              },
+              "queryType": "search",
+              "service": "litellm",
+              "limit": 20
+            }
+          ],
           "options": {},
-          "fieldConfig": {"defaults": {}, "overrides": []}
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          }
         }
       ]
     }

@@ -21,123 +21,819 @@ spec:
       "title": "LiteLLM — Latency & Reliability",
       "uid": "litellm-reliability",
       "timezone": "browser",
-      "tags": ["litellm", "ai", "latency", "reliability", "dark-factory"],
+      "tags": [
+        "litellm",
+        "ai",
+        "latency",
+        "reliability",
+        "dark-factory"
+      ],
       "editable": false,
       "graphTooltip": 0,
       "refresh": "1m",
-      "time": {"from": "now-24h", "to": "now"},
-      "templating": {"list": []},
-      "annotations": {"list": []},
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "templating": {
+        "list": []
+      },
+      "annotations": {
+        "list": []
+      },
       "links": [
-        {"title": "Spend & Budgets", "url": "/d/litellm-spend", "type": "link", "icon": "dollar"},
-        {"title": "Traces: litellm (Explore)", "type": "link", "icon": "external link", "targetBlank": true, "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22lt%22%3A%7B%22datasource%22%3A%22victoriatraces%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22queryType%22%3A%22search%22%2C%22service%22%3A%22litellm%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-1h%22%2C%22to%22%3A%22now%22%7D%7D%7D"}
+        {
+          "title": "Spend & Budgets",
+          "url": "/d/litellm-spend",
+          "type": "link",
+          "icon": "dollar"
+        },
+        {
+          "title": "Traces: litellm (Explore)",
+          "type": "link",
+          "icon": "external link",
+          "targetBlank": true,
+          "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22lt%22%3A%7B%22datasource%22%3A%22victoriatraces%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22queryType%22%3A%22search%22%2C%22service%22%3A%22litellm%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-1h%22%2C%22to%22%3A%22now%22%7D%7D%7D"
+        }
       ],
       "panels": [
         {
-          "id": 1, "type": "stat", "title": "Requests (trailing 24h)",
-          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "text"}}, "overrides": []},
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none", "textMode": "value"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(litellm_latency_requests) or vector(0)", "instant": true}]
-        },
-        {
-          "id": 2, "type": "stat", "title": "Failure rate today (%)",
-          "description": "Calendar-day UTC, from the daily ledger.",
-          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 1, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "#EAB839", "value": 1}, {"color": "red", "value": 5}]}}, "overrides": []},
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none", "textMode": "value"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "100 * sum(litellm_provider_today_failed) / (sum(litellm_provider_today_requests) > 0) or vector(0)", "instant": true}]
-        },
-        {
-          "id": 3, "type": "stat", "title": "Worst p95 latency (24h)",
-          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "s", "decimals": 1, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "#EAB839", "value": 30}, {"color": "red", "value": 60}]}}, "overrides": []},
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none", "textMode": "value"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max(litellm_latency_p95_seconds) or vector(0)", "instant": true}]
-        },
-        {
-          "id": 4, "type": "stat", "title": "Exporter health",
-          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "short", "mappings": [{"type": "value", "options": {"1": {"text": "UP", "color": "green"}, "0": {"text": "DOWN", "color": "red"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none", "textMode": "value"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max(pg_up{namespace=\"ai\"})", "instant": true}]
-        },
-        {
-          "id": 5, "type": "table", "title": "Per-model latency (trailing 24h)",
-          "description": "TTFT only for streaming calls (completionStartTime); blank = no streaming traffic for that model in 24h.",
-          "gridPos": {"h": 9, "w": 12, "x": 0, "y": 4},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": [{"matcher": {"id": "byName", "options": "avg s"}, "properties": [{"id": "unit", "value": "s"}, {"id": "decimals", "value": 2}]}, {"matcher": {"id": "byName", "options": "p50 s"}, "properties": [{"id": "unit", "value": "s"}, {"id": "decimals", "value": 2}]}, {"matcher": {"id": "byName", "options": "p95 s"}, "properties": [{"id": "unit", "value": "s"}, {"id": "decimals", "value": 2}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 30}, {"color": "red", "value": 60}]}}, {"id": "custom.cellOptions", "value": {"type": "color-background"}}]}, {"matcher": {"id": "byName", "options": "ttft p95 s"}, "properties": [{"id": "unit", "value": "s"}, {"id": "decimals", "value": 2}]}, {"matcher": {"id": "byName", "options": "requests"}, "properties": [{"id": "unit", "value": "short"}, {"id": "decimals", "value": 0}]}]},
-          "options": {"showHeader": true},
+          "id": 1,
+          "type": "stat",
+          "title": "Requests (trailing 24h)",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "value"
+          },
           "targets": [
-            {"refId": "avg", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_latency_avg_seconds", "instant": true, "format": "table"},
-            {"refId": "p50", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_latency_p50_seconds", "instant": true, "format": "table"},
-            {"refId": "p95", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_latency_p95_seconds", "instant": true, "format": "table"},
-            {"refId": "ttft", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_ttft_p95_seconds", "instant": true, "format": "table"},
-            {"refId": "reqs", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_latency_requests", "instant": true, "format": "table"}
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(litellm_latency_requests) or vector(0)",
+              "instant": true
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Failure rate today (%)",
+          "description": "Calendar-day UTC, from the daily ledger.",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "#EAB839",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 5
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "100 * sum(litellm_provider_today_failed) / (sum(litellm_provider_today_requests) > 0) or vector(0)",
+              "instant": true
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Worst p95 latency (24h)",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 12,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "decimals": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "#EAB839",
+                    "value": 30
+                  },
+                  {
+                    "color": "red",
+                    "value": 60
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max(litellm_latency_p95_seconds) or vector(0)",
+              "instant": true
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Exporter health",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 18,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "1": {
+                      "text": "UP",
+                      "color": "green"
+                    },
+                    "0": {
+                      "text": "DOWN",
+                      "color": "red"
+                    }
+                  }
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max(pg_up{namespace=\"ai\"})",
+              "instant": true
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "type": "table",
+          "title": "Per-model latency (trailing 24h)",
+          "description": "TTFT only for streaming calls (completionStartTime); blank = no streaming traffic for that model in 24h.",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "avg s"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "p50 s"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "p95 s"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 30
+                        },
+                        {
+                          "color": "red",
+                          "value": 60
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ttft p95 s"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "requests"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "short"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "refId": "avg",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (model) (litellm_latency_avg_seconds)",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "p50",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (model) (litellm_latency_p50_seconds)",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "p95",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (model) (litellm_latency_p95_seconds)",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "ttft",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (model) (litellm_ttft_p95_seconds)",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "reqs",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (model) (litellm_latency_requests)",
+              "instant": true,
+              "format": "table"
+            }
           ],
           "transformations": [
-            {"id": "merge", "options": {}},
-            {"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "cluster": true, "instance": true, "job": true, "namespace": true, "pod": true, "prometheus": true, "service": true, "endpoint": true, "container": true}, "renameByName": {"Value #avg": "avg s", "Value #p50": "p50 s", "Value #p95": "p95 s", "Value #ttft": "ttft p95 s", "Value #reqs": "requests"}}}
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "__name__": true,
+                  "cluster": true,
+                  "instance": true,
+                  "job": true,
+                  "namespace": true,
+                  "pod": true,
+                  "prometheus": true,
+                  "service": true,
+                  "endpoint": true,
+                  "container": true
+                },
+                "renameByName": {
+                  "Value #avg": "avg s",
+                  "Value #p50": "p50 s",
+                  "Value #p95": "p95 s",
+                  "Value #ttft": "ttft p95 s",
+                  "Value #reqs": "requests"
+                }
+              }
+            }
           ]
         },
         {
-          "id": 6, "type": "bargauge", "title": "p95 latency by model (s)",
-          "gridPos": {"h": 9, "w": 12, "x": 12, "y": 4},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "s", "decimals": 1, "min": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 30}, {"color": "red", "value": 60}]}}, "overrides": []},
-          "options": {"orientation": "horizontal", "displayMode": "gradient", "reduceOptions": {"calcs": ["lastNotNull"]}},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_latency_p95_seconds", "instant": true, "legendFormat": "{{model}}"}]
+          "id": 6,
+          "type": "bargauge",
+          "title": "p95 latency by model (s)",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "decimals": 1,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 30
+                  },
+                  {
+                    "color": "red",
+                    "value": 60
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "gradient",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "litellm_latency_p95_seconds",
+              "instant": true,
+              "legendFormat": "{{model}}"
+            }
+          ]
         },
         {
-          "id": 7, "type": "timeseries", "title": "Latency p95 / p50 by model (rolling 24h window)",
+          "id": 7,
+          "type": "timeseries",
+          "title": "Latency p95 / p50 by model (rolling 24h window)",
           "description": "Each point is a trailing-24h aggregate recomputed every scrape — a trend line, not per-minute latency.",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 13},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "s", "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": []},
-          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 13
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
           "targets": [
-            {"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_latency_p95_seconds", "legendFormat": "{{model}} p95"},
-            {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_latency_p50_seconds", "legendFormat": "{{model}} p50"}
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "litellm_latency_p95_seconds",
+              "legendFormat": "{{model}} p95"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "litellm_latency_p50_seconds",
+              "legendFormat": "{{model}} p50"
+            }
           ]
         },
         {
-          "id": 8, "type": "timeseries", "title": "TTFT p95 by model (streaming, rolling 24h)",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 13},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "s", "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": []},
-          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_ttft_p95_seconds", "legendFormat": "{{model}}"}]
+          "id": 8,
+          "type": "timeseries",
+          "title": "TTFT p95 by model (streaming, rolling 24h)",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 13
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "litellm_ttft_p95_seconds",
+              "legendFormat": "{{model}}"
+            }
+          ]
         },
         {
-          "id": 9, "type": "timeseries", "title": "Failures & retries (trailing 24h, from spend-log metadata)",
+          "id": 9,
+          "type": "timeseries",
+          "title": "Failures & retries (trailing 24h, from spend-log metadata)",
           "description": "No explicit fallback marker exists in v1.83 spend-log metadata; failures (metadata status) and provider retries are the observable reliability signals.",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 21},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": [{"matcher": {"id": "byRegexp", "options": ".*failures.*"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]}]},
-          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 21
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byRegexp",
+                  "options": ".*failures.*"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "red"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
           "targets": [
-            {"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_recent_failures", "legendFormat": "{{model}} failures"},
-            {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_recent_retried", "legendFormat": "{{model}} retried"}
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "litellm_recent_failures",
+              "legendFormat": "{{model}} failures"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "litellm_recent_retried",
+              "legendFormat": "{{model}} retried"
+            }
           ]
         },
         {
-          "id": 10, "type": "timeseries", "title": "Failure rate % by model (1h)",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 21},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": []},
-          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "100 * increase(litellm_model_failed[1h]) / (increase(litellm_model_requests[1h]) > 0)", "legendFormat": "{{model}}"}]
+          "id": 10,
+          "type": "timeseries",
+          "title": "Failure rate % by model (1h)",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 21
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "100 * increase(litellm_model_failed[1h]) / (increase(litellm_model_requests[1h]) > 0)",
+              "legendFormat": "{{model}}"
+            }
+          ]
         },
         {
-          "id": 11, "type": "traces", "title": "Recent litellm traces (VictoriaTraces)",
-          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 29},
-          "datasource": {"type": "jaeger", "uid": "victoriatraces"},
-          "targets": [{"refId": "A", "datasource": {"type": "jaeger", "uid": "victoriatraces"}, "queryType": "search", "service": "litellm", "limit": 20}]
+          "id": 11,
+          "type": "traces",
+          "title": "Recent litellm traces (VictoriaTraces)",
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 29
+          },
+          "datasource": {
+            "type": "jaeger",
+            "uid": "victoriatraces"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "jaeger",
+                "uid": "victoriatraces"
+              },
+              "queryType": "search",
+              "service": "litellm",
+              "limit": 20
+            }
+          ]
         }
       ]
     }

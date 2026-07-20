@@ -33,7 +33,7 @@ spec:
         {"id": 10, "type": "row", "title": "Survey ↔ system — latest month, per team", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 3}},
         {
           "id": 11, "type": "table", "title": "Feedback loops vs CI & PR (latest month)", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 4},
-          "datasource": {"type": "postgres", "uid": "postgres-devex"},
+          "datasource": {"type": "grafana-postgresql-datasource", "uid": "postgres-devex"},
           "targets": [{"refId": "A", "format": "table", "rawSql": "SELECT team, feedback_loops, ci_p50_min, ci_p95_min, ci_success_pct, first_review_p50_h, cycle_time_p50_h FROM grafana_survey_telemetry WHERE month=(SELECT max(month) FROM grafana_survey_telemetry) ORDER BY feedback_loops DESC NULLS LAST"}],
           "fieldConfig": {
             "defaults": {"custom": {"cellOptions": {"type": "color-background", "mode": "gradient"}, "align": "center"}, "color": {"mode": "thresholds"}},
@@ -53,14 +53,14 @@ spec:
         {"id": 20, "type": "row", "title": "Correlations over time", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 12}},
         {
           "id": 21, "type": "timeseries", "title": "Feedback loops vs CI success %", "description": "Org averages. Expect them to move together.", "gridPos": {"h": 8, "w": 8, "x": 0, "y": 13},
-          "datasource": {"type": "postgres", "uid": "postgres-devex"},
+          "datasource": {"type": "grafana-postgresql-datasource", "uid": "postgres-devex"},
           "targets": [{"refId": "A", "format": "time_series", "rawSql": "SELECT month AS time, ROUND(AVG(feedback_loops),1) AS \"Feedback loops\", ROUND(AVG(ci_success_pct),1) AS \"CI success %\" FROM grafana_survey_telemetry GROUP BY month ORDER BY 1"}],
           "fieldConfig": {"defaults": {"unit": "none", "min": 0, "max": 100, "custom": {"drawStyle": "line", "lineWidth": 2, "showPoints": "always", "spanNulls": true}}},
           "options": {"legend": {"showLegend": true, "placement": "bottom"}, "tooltip": {"mode": "multi"}}
         },
         {
           "id": 22, "type": "timeseries", "title": "Flow vs incidents", "description": "Flow (left) against incident count per month (right). Expect inverse.", "gridPos": {"h": 8, "w": 8, "x": 8, "y": 13},
-          "datasource": {"type": "postgres", "uid": "postgres-devex"},
+          "datasource": {"type": "grafana-postgresql-datasource", "uid": "postgres-devex"},
           "targets": [{"refId": "A", "format": "time_series", "rawSql": "SELECT m.month AS time, m.flow AS \"Flow\", COALESCE(i.cnt,0) AS \"Incidents\" FROM (SELECT month, ROUND(AVG(flow),1) AS flow FROM grafana_survey_telemetry GROUP BY month) m LEFT JOIN (SELECT date_trunc('month', triggered_at)::date AS month, COUNT(*) AS cnt FROM incidents GROUP BY 1) i ON i.month=m.month ORDER BY 1"}],
           "fieldConfig": {
             "defaults": {"custom": {"drawStyle": "line", "lineWidth": 2, "showPoints": "always", "spanNulls": true}},
@@ -73,7 +73,7 @@ spec:
         },
         {
           "id": 23, "type": "timeseries", "title": "Feedback loops vs PR first-review wait", "description": "Feedback loops (left) vs median first-review wait in hours (right). Expect inverse.", "gridPos": {"h": 8, "w": 8, "x": 16, "y": 13},
-          "datasource": {"type": "postgres", "uid": "postgres-devex"},
+          "datasource": {"type": "grafana-postgresql-datasource", "uid": "postgres-devex"},
           "targets": [{"refId": "A", "format": "time_series", "rawSql": "SELECT month AS time, ROUND(AVG(feedback_loops),1) AS \"Feedback loops\", ROUND(AVG(first_review_p50_h),1) AS \"PR first-review (h)\" FROM grafana_survey_telemetry GROUP BY month ORDER BY 1"}],
           "fieldConfig": {
             "defaults": {"custom": {"drawStyle": "line", "lineWidth": 2, "showPoints": "always", "spanNulls": true}},
@@ -88,7 +88,7 @@ spec:
         {"id": 30, "type": "row", "title": "Delivery, reliability & cost — per service (latest month)", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 21}},
         {
           "id": 31, "type": "table", "title": "DORA / SRE / cost by service", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 22},
-          "datasource": {"type": "postgres", "uid": "postgres-devex"},
+          "datasource": {"type": "grafana-postgresql-datasource", "uid": "postgres-devex"},
           "targets": [{"refId": "A", "format": "table", "rawSql": "SELECT d.service, d.deploy_freq, d.lead_time_p50_h, d.cfr_pct, r.slo_attainment_pct, r.mttr_min, c.unit_cost_eur FROM monthly_delivery_metrics d LEFT JOIN monthly_reliability_metrics r ON r.month=d.month AND r.service=d.service LEFT JOIN monthly_cost_metrics c ON c.month=d.month AND c.service=d.service WHERE d.month=(SELECT max(month) FROM monthly_delivery_metrics) ORDER BY d.service"}],
           "fieldConfig": {
             "defaults": {"custom": {"align": "center"}},

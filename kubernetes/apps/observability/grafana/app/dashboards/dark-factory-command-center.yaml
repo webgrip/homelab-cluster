@@ -21,185 +21,1275 @@ spec:
       "title": "Dark Factory — Command Center",
       "uid": "dark-factory-command-center",
       "timezone": "browser",
-      "tags": ["dark-factory", "ai", "agents", "overview"],
+      "tags": [
+        "dark-factory",
+        "ai",
+        "agents",
+        "overview"
+      ],
       "editable": false,
       "graphTooltip": 1,
       "refresh": "30s",
-      "time": {"from": "now-24h", "to": "now"},
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
       "links": [
-        {"type": "dashboards", "title": "Dark Factory", "tags": ["dark-factory"], "asDropdown": true, "includeVars": false, "keepTime": true},
-        {"type": "link", "title": "LiteLLM Spend & Budgets", "url": "/d/litellm-spend", "icon": "dollar"},
-        {"type": "link", "title": "LiteLLM Reliability", "url": "/d/litellm-reliability", "icon": "bolt"},
-        {"type": "link", "title": "Forgejo CI Command Center", "url": "/d/infra-forgejo-ci", "icon": "external link"},
-        {"type": "link", "title": "Claude Code Command Center", "url": "/d/claude-code-command-center", "icon": "external link"}
+        {
+          "type": "dashboards",
+          "title": "Dark Factory",
+          "tags": [
+            "dark-factory"
+          ],
+          "asDropdown": true,
+          "includeVars": false,
+          "keepTime": true
+        },
+        {
+          "type": "link",
+          "title": "LiteLLM Spend & Budgets",
+          "url": "/d/litellm-spend",
+          "icon": "dollar"
+        },
+        {
+          "type": "link",
+          "title": "LiteLLM Reliability",
+          "url": "/d/litellm-reliability",
+          "icon": "bolt"
+        },
+        {
+          "type": "link",
+          "title": "Forgejo CI Command Center",
+          "url": "/d/infra-forgejo-ci",
+          "icon": "external link"
+        },
+        {
+          "type": "link",
+          "title": "Claude Code Command Center",
+          "url": "/d/claude-code-command-center",
+          "icon": "external link"
+        }
       ],
       "annotations": {
         "list": [
-          {"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard"}
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
         ]
       },
-      "templating": {"list": []},
+      "templating": {
+        "list": []
+      },
       "panels": [
-        {"id": 1, "type": "row", "title": "Factory at a glance", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}, "panels": []},
         {
-          "id": 2, "type": "stat", "title": "Agent runs seen (range)", "description": "Distinct agent run keys (agent-vikNNN-runNNN) alive at any point in the range.", "gridPos": {"h": 4, "w": 4, "x": 0, "y": 1},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "count(max_over_time(litellm_key_spend{key_alias=~\"agent-vik[0-9]+-run[0-9]+\"}[$$__range])) or vector(0)", "instant": true}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}}, "overrides": []}
+          "id": 1,
+          "type": "row",
+          "title": "Factory at a glance",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "panels": []
         },
         {
-          "id": 3, "type": "stat", "title": "Agent LLM spend (range)", "description": "sums full spend of every run key alive in range", "gridPos": {"h": 4, "w": 4, "x": 4, "y": 1},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(max_over_time(litellm_key_spend{key_alias=~\"agent-vik[0-9]+-run[0-9]+\"}[$$__range])) or vector(0)", "instant": true}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 5}, {"color": "red", "value": 15}]}}, "overrides": []}
-        },
-        {
-          "id": 4, "type": "stat", "title": "Tickets touched (range)", "description": "Distinct VIK tickets with at least one agent run key in range.", "gridPos": {"h": 4, "w": 4, "x": 8, "y": 1},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "count(count by (ticket) (label_replace(max_over_time(litellm_key_spend{key_alias=~\"agent-vik[0-9]+-run[0-9]+\"}[$$__range]), \"ticket\", \"vik$$1\", \"key_alias\", \"agent-vik([0-9]+)-run.*\"))) or vector(0)", "instant": true}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "purple", "value": null}]}}, "overrides": []}
-        },
-        {
-          "id": 5, "type": "stat", "title": "Runs at/over budget", "description": "Agent keys whose spend reached their max budget in range.", "gridPos": {"h": 4, "w": 4, "x": 12, "y": 1},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "count(max_over_time(litellm_key_spend{key_alias=~\"agent-.*\"}[$$__range]) >= max_over_time(litellm_key_max_budget{key_alias=~\"agent-.*\"}[$$__range])) or vector(0)", "instant": true}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []}
-        },
-        {
-          "id": 6, "type": "stat", "title": "Blocked agent keys (now)", "description": "Agent keys currently blocked by LiteLLM.", "gridPos": {"h": 4, "w": 4, "x": 16, "y": 1},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(litellm_key_blocked{key_alias=~\"agent-.*\"}) or vector(0)", "instant": true}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []}
-        },
-        {
-          "id": 7, "type": "stat", "title": "LLM failed requests (range)", "description": "Failed LLM requests across all models in range.", "gridPos": {"h": 4, "w": 4, "x": 20, "y": 1},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(increase(litellm_model_failed[$$__range])) or vector(0)", "instant": true}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 10}]}}, "overrides": []}
-        },
-        {"id": 8, "type": "row", "title": "Pipeline heartbeat", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5}, "panels": []},
-        {
-          "id": 9, "type": "stat", "title": "Agent queue depth", "description": "KEDA scaler metric for the forgejo-agent-runner ScaledObject.", "gridPos": {"h": 4, "w": 4, "x": 0, "y": 6},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-agent-runner\"}) or vector(0)", "instant": true}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "area"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 2}, {"color": "red", "value": 5}]}}, "overrides": []}
-        },
-        {
-          "id": 10, "type": "stat", "title": "Agent runners running", "description": "Running forgejo-agent-runner pods (kube-state-metrics, exported_namespace).", "gridPos": {"h": 4, "w": 4, "x": 4, "y": 6},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo-agent-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"}) or vector(0)", "instant": true}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 3}]}}, "overrides": []}
-        },
-        {
-          "id": 11, "type": "stat", "title": "CI queue depth", "description": "KEDA scaler metric for the regular forgejo-runner CI pool.", "gridPos": {"h": 4, "w": 4, "x": 0, "y": 10},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "links": [{"title": "Forgejo CI Command Center", "url": "/d/infra-forgejo-ci"}],
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-runner\"}) or vector(0)", "instant": true}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 2}, {"color": "red", "value": 5}]}}, "overrides": []}
-        },
-        {
-          "id": 12, "type": "stat", "title": "LiteLLM exporter", "description": "postgres-exporter feeding the litellm_* ledger metrics.", "gridPos": {"h": 4, "w": 4, "x": 4, "y": 10},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max(pg_up{namespace=\"ai\"})", "instant": true}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "value", "colorMode": "background", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "short", "mappings": [{"type": "value", "options": {"1": {"text": "UP", "color": "green"}, "0": {"text": "DOWN", "color": "red"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []}
-        },
-        {
-          "id": 13, "type": "timeseries", "title": "Factory heartbeat", "description": "Agent queue depth, running agent runners, and LLM request rate on one timeline.", "gridPos": {"h": 8, "w": 16, "x": 8, "y": 6},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "id": 2,
+          "type": "stat",
+          "title": "Agent runs seen (range)",
+          "description": "Distinct agent run keys (agent-vikNNN-runNNN) alive at any point in the range.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "targets": [
-            {"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-agent-runner\"})", "legendFormat": "agent queue"},
-            {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo-agent-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"})", "legendFormat": "agent runners"},
-            {"refId": "C", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(rate(litellm_model_requests[$$__rate_interval])) * 60", "legendFormat": "LLM req/min"}
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "count(max_over_time(litellm_key_spend{key_alias=~\"agent-vik[0-9]+-run[0-9]+\"}[$$__range])) or vector(0)",
+              "instant": true
+            }
           ],
-          "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"]}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "value",
+            "graphMode": "none"
+          },
           "fieldConfig": {
-            "defaults": {"unit": "short", "custom": {"drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never"}},
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Agent LLM spend (range)",
+          "description": "sums full spend of every run key alive in range",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(max_over_time(litellm_key_spend{key_alias=~\"agent-vik[0-9]+-run[0-9]+\"}[$$__range])) or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "value",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 5
+                  },
+                  {
+                    "color": "red",
+                    "value": 15
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Tickets touched (range)",
+          "description": "Distinct VIK tickets with at least one agent run key in range.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 8,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "count(count by (ticket) (label_replace(max_over_time(litellm_key_spend{key_alias=~\"agent-vik[0-9]+-run[0-9]+\"}[$$__range]), \"ticket\", \"vik$$1\", \"key_alias\", \"agent-vik([0-9]+)-run.*\"))) or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "value",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "purple",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 5,
+          "type": "stat",
+          "title": "Runs at/over budget",
+          "description": "Agent keys whose spend reached their max budget in range.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 12,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "count(max_over_time(litellm_key_spend{key_alias=~\"agent-.*\"}[$$__range]) >= max_over_time(litellm_key_max_budget{key_alias=~\"agent-.*\"}[$$__range])) or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 6,
+          "type": "stat",
+          "title": "Blocked agent keys (now)",
+          "description": "Agent keys currently blocked by LiteLLM.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 16,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(litellm_key_blocked{key_alias=~\"agent-.*\"}) or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 7,
+          "type": "stat",
+          "title": "LLM failed requests (range)",
+          "description": "Failed LLM requests across all models in range.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 20,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(increase(litellm_model_failed[$$__range])) or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "value",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 10
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 8,
+          "type": "row",
+          "title": "Pipeline heartbeat",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 5
+          },
+          "panels": []
+        },
+        {
+          "id": 9,
+          "type": "stat",
+          "title": "Agent queue depth",
+          "description": "KEDA scaler metric for the forgejo-agent-runner ScaledObject.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-agent-runner\"}) or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "value",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 2
+                  },
+                  {
+                    "color": "red",
+                    "value": 5
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 10,
+          "type": "stat",
+          "title": "Agent runners running",
+          "description": "Running forgejo-agent-runner pods (kube-state-metrics, exported_namespace).",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo-agent-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"}) or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "value",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 3
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 11,
+          "type": "stat",
+          "title": "CI queue depth",
+          "description": "KEDA scaler metric for the regular forgejo-runner CI pool.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 10
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "links": [
+            {
+              "title": "Forgejo CI Command Center",
+              "url": "/d/infra-forgejo-ci"
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-runner\"}) or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "value",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 2
+                  },
+                  {
+                    "color": "red",
+                    "value": 5
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 12,
+          "type": "stat",
+          "title": "LiteLLM exporter",
+          "description": "postgres-exporter feeding the litellm_* ledger metrics.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 10
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max(pg_up{namespace=\"ai\"})",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value",
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "1": {
+                      "text": "UP",
+                      "color": "green"
+                    },
+                    "0": {
+                      "text": "DOWN",
+                      "color": "red"
+                    }
+                  }
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 13,
+          "type": "timeseries",
+          "title": "Factory heartbeat",
+          "description": "Agent queue depth, running agent runners, and LLM request rate on one timeline.",
+          "gridPos": {
+            "h": 8,
+            "w": 16,
+            "x": 8,
+            "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-agent-runner\"})",
+              "legendFormat": "agent queue"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo-agent-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"})",
+              "legendFormat": "agent runners"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(rate(litellm_model_requests[$$__rate_interval])) * 60",
+              "legendFormat": "LLM req/min"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "stepAfter",
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "showPoints": "never"
+              }
+            },
             "overrides": [
-              {"matcher": {"id": "byName", "options": "LLM req/min"}, "properties": [{"id": "custom.axisPlacement", "value": "right"}]}
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "LLM req/min"
+                },
+                "properties": [
+                  {
+                    "id": "custom.axisPlacement",
+                    "value": "right"
+                  }
+                ]
+              }
             ]
           }
         },
-        {"id": 14, "type": "row", "title": "Who spent what", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 14}, "panels": []},
         {
-          "id": 15, "type": "table", "title": "Top runs by spend (range)", "description": "Every agent key alive in range: full spend, budget, blocked flag. Click a Run to open the run explorer.", "gridPos": {"h": 10, "w": 14, "x": 0, "y": 15},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "id": 14,
+          "type": "row",
+          "title": "Who spent what",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 14
+          },
+          "panels": []
+        },
+        {
+          "id": 15,
+          "type": "table",
+          "title": "Top runs by spend (range)",
+          "description": "Every agent key alive in range: full spend, budget, blocked flag. Click a Run to open the run explorer.",
+          "gridPos": {
+            "h": 10,
+            "w": 14,
+            "x": 0,
+            "y": 15
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "targets": [
-            {"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max_over_time(litellm_key_spend{key_alias=~\"agent-.*\"}[$$__range])", "instant": true, "format": "table"},
-            {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max_over_time(litellm_key_max_budget{key_alias=~\"agent-.*\"}[$$__range])", "instant": true, "format": "table"},
-            {"refId": "C", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max_over_time(litellm_key_blocked{key_alias=~\"agent-.*\"}[$$__range])", "instant": true, "format": "table"}
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_spend{key_alias=~\"agent-.*\"}[$$__range]))",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_max_budget{key_alias=~\"agent-.*\"}[$$__range]))",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_blocked{key_alias=~\"agent-.*\"}[$$__range]))",
+              "instant": true,
+              "format": "table"
+            }
           ],
           "transformations": [
-            {"id": "merge", "options": {}},
-            {"id": "organize", "options": {
-              "excludeByName": {"Time": true, "__name__": true, "instance": true, "job": true, "namespace": true, "pod": true, "container": true, "endpoint": true, "service": true, "prometheus": true, "cluster": true, "server": true, "exported_namespace": true},
-              "renameByName": {"key_alias": "Run", "team_id": "Team", "Value #A": "Spend", "Value #B": "Budget", "Value #C": "Blocked"}
-            }}
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "__name__": true,
+                  "instance": true,
+                  "job": true,
+                  "namespace": true,
+                  "pod": true,
+                  "container": true,
+                  "endpoint": true,
+                  "service": true,
+                  "prometheus": true,
+                  "cluster": true,
+                  "server": true,
+                  "exported_namespace": true
+                },
+                "renameByName": {
+                  "key_alias": "Run",
+                  "team_id": "Team",
+                  "Value #A": "Spend",
+                  "Value #B": "Budget",
+                  "Value #C": "Blocked"
+                }
+              }
+            }
           ],
-          "options": {"showHeader": true, "sortBy": [{"displayName": "Spend", "desc": true}]},
+          "options": {
+            "showHeader": true,
+            "sortBy": [
+              {
+                "displayName": "Spend",
+                "desc": true
+              }
+            ]
+          },
           "fieldConfig": {
-            "defaults": {"custom": {"align": "auto", "filterable": true}},
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "filterable": true
+              }
+            },
             "overrides": [
-              {"matcher": {"id": "byName", "options": "Spend"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 2}]},
-              {"matcher": {"id": "byName", "options": "Budget"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 2}]},
-              {"matcher": {"id": "byName", "options": "Blocked"}, "properties": [
-                {"id": "mappings", "value": [{"type": "value", "options": {"0": {"text": "—", "color": "text"}, "1": {"text": "BLOCKED", "color": "red"}}}]},
-                {"id": "custom.cellOptions", "value": {"type": "color-background"}}
-              ]},
-              {"matcher": {"id": "byName", "options": "Run"}, "properties": [
-                {"id": "links", "value": [{"title": "Open run explorer", "url": "/d/dark-factory-run-explorer?var-run=$${__data.fields[\"Run\"]}&from=$${__from}&to=$${__to}"}]}
-              ]}
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Spend"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Budget"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Blocked"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "0": {
+                            "text": "—",
+                            "color": "text"
+                          },
+                          "1": {
+                            "text": "BLOCKED",
+                            "color": "red"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Run"
+                },
+                "properties": [
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open run explorer",
+                        "url": "/d/dark-factory-run-explorer?var-run=$${__data.fields[\"Run\"]}&from=$${__from}&to=$${__to}"
+                      }
+                    ]
+                  }
+                ]
+              }
             ]
           }
         },
         {
-          "id": 16, "type": "bargauge", "title": "Spend by ticket (range)", "description": "Agent LLM spend grouped by VIK ticket (derived from the run key alias).", "gridPos": {"h": 10, "w": 5, "x": 14, "y": 15},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (ticket) (label_replace(max_over_time(litellm_key_spend{key_alias=~\"agent-vik[0-9]+-run[0-9]+\"}[$$__range]), \"ticket\", \"vik$$1\", \"key_alias\", \"agent-vik([0-9]+)-run.*\"))", "instant": true, "legendFormat": "{{ticket}}"}],
-          "options": {"orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true, "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
-          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "continuous-GrYlRd"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []}
+          "id": 16,
+          "type": "bargauge",
+          "title": "Spend by ticket (range)",
+          "description": "Agent LLM spend grouped by VIK ticket (derived from the run key alias).",
+          "gridPos": {
+            "h": 10,
+            "w": 5,
+            "x": 14,
+            "y": 15
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum by (ticket) (label_replace(max_over_time(litellm_key_spend{key_alias=~\"agent-vik[0-9]+-run[0-9]+\"}[$$__range]), \"ticket\", \"vik$$1\", \"key_alias\", \"agent-vik([0-9]+)-run.*\"))",
+              "instant": true,
+              "legendFormat": "{{ticket}}"
+            }
+          ],
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "gradient",
+            "showUnfilled": true,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "color": {
+                "mode": "continuous-GrYlRd"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
         },
         {
-          "id": 17, "type": "bargauge", "title": "Team spend delta (range)", "description": "LiteLLM team spend accrued within the range (max minus min of the cumulative counter).", "gridPos": {"h": 10, "w": 5, "x": 19, "y": 15},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (team_alias) (max_over_time(litellm_team_spend[$$__range]) - min_over_time(litellm_team_spend[$$__range]))", "instant": true, "legendFormat": "{{team_alias}}"}],
-          "options": {"orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true, "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
-          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "continuous-BlPu"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []}
+          "id": 17,
+          "type": "bargauge",
+          "title": "Team spend delta (range)",
+          "description": "LiteLLM team spend accrued within the range (max minus min of the cumulative counter).",
+          "gridPos": {
+            "h": 10,
+            "w": 5,
+            "x": 19,
+            "y": 15
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum by (team_alias) (max_over_time(litellm_team_spend[$$__range]) - min_over_time(litellm_team_spend[$$__range]))",
+              "instant": true,
+              "legendFormat": "{{team_alias}}"
+            }
+          ],
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "gradient",
+            "showUnfilled": true,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "color": {
+                "mode": "continuous-BlPu"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
         },
-        {"id": 18, "type": "row", "title": "What is happening (live)", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 25}, "panels": []},
         {
-          "id": 19, "type": "timeseries", "title": "Agent runs started", "description": "Runner log lines announcing a picked-up job (\"repo is\"), bucketed over time.", "gridPos": {"h": 8, "w": 8, "x": 0, "y": 26},
-          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
-          "targets": [{"refId": "A", "expr": "{namespace=\"forgejo\", container=\"runner\"} pod:~\"forgejo-agent-runner-.*\" ~\"repo is\" | stats count()", "queryType": "statsRange", "legendFormat": "runs started"}],
-          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "custom": {"drawStyle": "bars", "lineWidth": 1, "fillOpacity": 60, "showPoints": "never"}}, "overrides": []}
+          "id": 18,
+          "type": "row",
+          "title": "What is happening (live)",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 25
+          },
+          "panels": []
         },
         {
-          "id": 20, "type": "logs", "title": "Agent activity feed", "description": "Live log tail of all agent-runner pods.", "gridPos": {"h": 8, "w": 16, "x": 8, "y": 26},
-          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
-          "targets": [{"refId": "A", "expr": "{namespace=\"forgejo\", container=\"runner\"} pod:~\"forgejo-agent-runner-.*\"", "queryType": "instant", "maxLines": 200}],
-          "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
-          "fieldConfig": {"defaults": {}, "overrides": []}
+          "id": 19,
+          "type": "timeseries",
+          "title": "Agent runs started",
+          "description": "Runner log lines announcing a picked-up job (\"repo is\"), bucketed over time.",
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 26
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "{namespace=\"forgejo\", container=\"runner\"} pod:~\"forgejo-agent-runner-.*\" ~\"repo is\" | stats count()",
+              "queryType": "statsRange",
+              "legendFormat": "runs started"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "single"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "custom": {
+                "drawStyle": "bars",
+                "lineWidth": 1,
+                "fillOpacity": 60,
+                "showPoints": "never"
+              }
+            },
+            "overrides": []
+          }
         },
         {
-          "id": 21, "type": "logs", "title": "Warning events (factory namespaces)", "description": "Kubernetes Warning events in the forgejo/ai/vikunja namespaces.", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 34},
-          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
-          "targets": [{"refId": "A", "expr": "{job=\"kubernetes/events\", namespace=~\"forgejo|ai|vikunja\"} \"type=Warning\"", "queryType": "instant", "maxLines": 100}],
-          "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
-          "fieldConfig": {"defaults": {}, "overrides": []}
+          "id": 20,
+          "type": "logs",
+          "title": "Agent activity feed",
+          "description": "Live log tail of all agent-runner pods.",
+          "gridPos": {
+            "h": 8,
+            "w": 16,
+            "x": 8,
+            "y": 26
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "{namespace=\"forgejo\", container=\"runner\"} pod:~\"forgejo-agent-runner-.*\" | unpack_logfmt",
+              "queryType": "instant",
+              "maxLines": 200
+            }
+          ],
+          "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "prettifyLogMessage": false,
+            "showCommonLabels": false,
+            "showLabels": true,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          }
         },
         {
-          "id": 22, "type": "text", "title": "Known gaps", "gridPos": {"h": 6, "w": 24, "x": 0, "y": 42},
-          "options": {"mode": "markdown", "content": "## Known gaps\n\n- **No repo label on LiteLLM data** — upstream metadata enrichment ticket pending; spend can only be grouped by run key / ticket / team.\n- **Run → pod mapping is temporal only** — match a run's first LLM request time against Job start times; there is no shared label.\n- **Traces carry no run tag** — LiteLLM spans cannot be filtered per run key; narrow the time range instead.\n- **gitea_* metrics are instance totals** — no per-run or per-job breakdown exists on the Forgejo side.\n- **SQL panels require the litellm-db datasource** — if it is absent or down, the per-request forensics in the run explorer go blank while the Prometheus ledger panels keep working."}
+          "id": 21,
+          "type": "logs",
+          "title": "Warning events (factory namespaces)",
+          "description": "Kubernetes Warning events in the forgejo/ai/vikunja namespaces.",
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 34
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "{job=\"kubernetes/events\", namespace=~\"forgejo|ai|vikunja\"} \"type=Warning\"",
+              "queryType": "instant",
+              "maxLines": 100
+            }
+          ],
+          "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "prettifyLogMessage": false,
+            "showCommonLabels": false,
+            "showLabels": false,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          }
+        },
+        {
+          "id": 22,
+          "type": "text",
+          "title": "Known gaps",
+          "gridPos": {
+            "h": 6,
+            "w": 24,
+            "x": 0,
+            "y": 42
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "## Known gaps\n\n- **No repo label on LiteLLM data** — upstream metadata enrichment ticket pending; spend can only be grouped by run key / ticket / team.\n- **Run → pod mapping is temporal only** — match a run's first LLM request time against Job start times; there is no shared label.\n- **Traces carry no run tag** — LiteLLM spans cannot be filtered per run key; narrow the time range instead.\n- **gitea_* metrics are instance totals** — no per-run or per-job breakdown exists on the Forgejo side.\n- **SQL panels require the litellm-db datasource** — if it is absent or down, the per-request forensics in the run explorer go blank while the Prometheus ledger panels keep working."
+          }
         }
       ]
     }

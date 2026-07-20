@@ -95,46 +95,46 @@ spec:
           "id": 9, "type": "timeseries", "title": "Requests per 5m by model",
           "description": "Per-interval request volume from the spend ledger; requires litellm-db datasource.",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 21},
-          "datasource": {"type": "postgres", "uid": "litellm-db"},
+          "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"},
           "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "custom": {"drawStyle": "bars", "fillOpacity": 80, "showPoints": "never", "stacking": {"mode": "normal", "group": "A"}}}, "overrides": []},
           "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["sum"]}, "tooltip": {"mode": "multi"}},
-          "targets": [{"refId": "A", "datasource": {"type": "postgres", "uid": "litellm-db"}, "rawQuery": true, "format": "time_series", "rawSql": "SELECT $$__timeGroup(\"startTime\",'5m') AS time, model AS metric, count(*) FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") GROUP BY 1,2 ORDER BY 1"}]
+          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}, "rawQuery": true, "format": "time_series", "rawSql": "SELECT $$__timeGroup(\"startTime\",'5m') AS time, model AS metric, count(*) FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") GROUP BY 1,2 ORDER BY 1"}]
         },
         {
           "id": 10, "type": "bargauge", "title": "Requests by call_type (range)",
           "description": "requires litellm-db datasource.",
           "gridPos": {"h": 8, "w": 6, "x": 12, "y": 21},
-          "datasource": {"type": "postgres", "uid": "litellm-db"},
+          "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"},
           "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "min": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []},
           "options": {"orientation": "horizontal", "displayMode": "gradient", "reduceOptions": {"values": true, "calcs": ["lastNotNull"], "fields": ""}},
-          "targets": [{"refId": "A", "datasource": {"type": "postgres", "uid": "litellm-db"}, "rawQuery": true, "format": "table", "rawSql": "SELECT call_type, count(*) FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY 2 DESC"}]
+          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}, "rawQuery": true, "format": "table", "rawSql": "SELECT call_type, count(*) FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY 2 DESC"}]
         },
         {
           "id": 11, "type": "timeseries", "title": "Retries per hour",
           "description": "Provider retries recorded in spend-log metadata; requires litellm-db datasource.",
           "gridPos": {"h": 8, "w": 6, "x": 18, "y": 21},
-          "datasource": {"type": "postgres", "uid": "litellm-db"},
+          "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"},
           "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "orange"}, "custom": {"drawStyle": "bars", "fillOpacity": 80, "showPoints": "never"}}, "overrides": []},
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
-          "targets": [{"refId": "A", "datasource": {"type": "postgres", "uid": "litellm-db"}, "rawQuery": true, "format": "time_series", "rawSql": "SELECT $$__timeGroup(\"startTime\",'1h') AS time, sum(coalesce(nullif(metadata->>'attempted_retries','')::int,0)) AS retries FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY 1"}]
+          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}, "rawQuery": true, "format": "time_series", "rawSql": "SELECT $$__timeGroup(\"startTime\",'1h') AS time, sum(coalesce(nullif(metadata->>'attempted_retries','')::int,0)) AS retries FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY 1"}]
         },
         {
           "id": 12, "type": "timeseries", "title": "e2e p95 by model (15m buckets)",
           "description": "End-to-end request duration p95 per 15m bucket; requires litellm-db datasource.",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 29},
-          "datasource": {"type": "postgres", "uid": "litellm-db"},
+          "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"},
           "fieldConfig": {"defaults": {"unit": "s", "decimals": 1, "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": []},
           "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
-          "targets": [{"refId": "A", "datasource": {"type": "postgres", "uid": "litellm-db"}, "rawQuery": true, "format": "time_series", "rawSql": "SELECT $$__timeGroup(\"startTime\",'15m') AS time, model AS metric, percentile_cont(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (\"endTime\" - \"startTime\"))) AS p95 FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") GROUP BY 1,2 ORDER BY 1"}]
+          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}, "rawQuery": true, "format": "time_series", "rawSql": "SELECT $$__timeGroup(\"startTime\",'15m') AS time, model AS metric, percentile_cont(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (\"endTime\" - \"startTime\"))) AS p95 FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") GROUP BY 1,2 ORDER BY 1"}]
         },
         {
           "id": 13, "type": "timeseries", "title": "TTFT p95 streaming (15m buckets)",
           "description": "Time to first token (streaming calls only) p95 per 15m bucket; requires litellm-db datasource.",
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 29},
-          "datasource": {"type": "postgres", "uid": "litellm-db"},
+          "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"},
           "fieldConfig": {"defaults": {"unit": "s", "decimals": 1, "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": []},
           "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
-          "targets": [{"refId": "A", "datasource": {"type": "postgres", "uid": "litellm-db"}, "rawQuery": true, "format": "time_series", "rawSql": "SELECT $$__timeGroup(\"startTime\",'15m') AS time, model AS metric, percentile_cont(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (\"completionStartTime\" - \"startTime\"))) AS p95 FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") AND \"completionStartTime\" IS NOT NULL GROUP BY 1,2 ORDER BY 1"}]
+          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}, "rawQuery": true, "format": "time_series", "rawSql": "SELECT $$__timeGroup(\"startTime\",'15m') AS time, model AS metric, percentile_cont(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (\"completionStartTime\" - \"startTime\"))) AS p95 FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") AND \"completionStartTime\" IS NOT NULL GROUP BY 1,2 ORDER BY 1"}]
         },
 
         {"id": 14, "type": "row", "title": "Forensics", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 37}},
@@ -142,25 +142,25 @@ spec:
           "id": 15, "type": "table", "title": "Slowest requests (top 25)",
           "description": "Slowest individual requests in the range; requires litellm-db datasource.",
           "gridPos": {"h": 9, "w": 24, "x": 0, "y": 38},
-          "datasource": {"type": "postgres", "uid": "litellm-db"},
+          "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"},
           "fieldConfig": {"defaults": {"custom": {"align": "auto", "filterable": true}}, "overrides": [
             {"matcher": {"id": "byName", "options": "duration_s"}, "properties": [{"id": "unit", "value": "s"}, {"id": "decimals", "value": 1}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 30}, {"color": "red", "value": 60}]}}, {"id": "custom.cellOptions", "value": {"type": "color-background"}}]},
             {"matcher": {"id": "byName", "options": "spend"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]},
             {"matcher": {"id": "byName", "options": "run_key"}, "properties": [{"id": "links", "value": [{"title": "Open in Run Explorer", "url": "/d/dark-factory-run-explorer?var-run=$${__data.fields[\"run_key\"]}&from=$${__from}&to=$${__to}"}]}]}
           ]},
           "options": {"showHeader": true},
-          "targets": [{"refId": "A", "datasource": {"type": "postgres", "uid": "litellm-db"}, "rawQuery": true, "format": "table", "rawSql": "SELECT \"startTime\" AS time, metadata->>'user_api_key_alias' AS run_key, model, custom_llm_provider AS provider, EXTRACT(EPOCH FROM (\"endTime\" - \"startTime\")) AS duration_s, spend, total_tokens, metadata->>'status' AS status FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") ORDER BY duration_s DESC NULLS LAST LIMIT 25"}]
+          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}, "rawQuery": true, "format": "table", "rawSql": "SELECT \"startTime\" AS time, metadata->>'user_api_key_alias' AS run_key, model, custom_llm_provider AS provider, EXTRACT(EPOCH FROM (\"endTime\" - \"startTime\")) AS duration_s, spend, total_tokens, metadata->>'status' AS status FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") ORDER BY duration_s DESC NULLS LAST LIMIT 25"}]
         },
         {
           "id": 16, "type": "table", "title": "Failed requests (latest 50)",
           "description": "Non-success requests from spend-log metadata — upgrade to LiteLLM_ErrorLogs columns once table confirmed; requires litellm-db datasource.",
           "gridPos": {"h": 9, "w": 12, "x": 0, "y": 47},
-          "datasource": {"type": "postgres", "uid": "litellm-db"},
+          "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"},
           "fieldConfig": {"defaults": {"custom": {"align": "auto", "filterable": true}}, "overrides": [
             {"matcher": {"id": "byName", "options": "run_key"}, "properties": [{"id": "links", "value": [{"title": "Open in Run Explorer", "url": "/d/dark-factory-run-explorer?var-run=$${__data.fields[\"run_key\"]}&from=$${__from}&to=$${__to}"}]}]}
           ]},
           "options": {"showHeader": true},
-          "targets": [{"refId": "A", "datasource": {"type": "postgres", "uid": "litellm-db"}, "rawQuery": true, "format": "table", "rawSql": "SELECT \"startTime\" AS time, metadata->>'user_api_key_alias' AS run_key, model, call_type, metadata->>'status' AS status, metadata->>'attempted_retries' AS retries FROM \"LiteLLM_SpendLogs\" WHERE coalesce(metadata->>'status','success') <> 'success' AND $$__timeFilter(\"startTime\") ORDER BY \"startTime\" DESC LIMIT 50"}]
+          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}, "rawQuery": true, "format": "table", "rawSql": "SELECT \"startTime\" AS time, metadata->>'user_api_key_alias' AS run_key, model, call_type, metadata->>'status' AS status, metadata->>'attempted_retries' AS retries FROM \"LiteLLM_SpendLogs\" WHERE coalesce(metadata->>'status','success') <> 'success' AND $$__timeFilter(\"startTime\") ORDER BY \"startTime\" DESC LIMIT 50"}]
         },
         {
           "id": 17, "type": "logs", "title": "LiteLLM error logs",

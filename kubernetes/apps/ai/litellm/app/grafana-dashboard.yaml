@@ -22,167 +22,1216 @@ spec:
       "title": "LiteLLM — Inference Spend & Budgets",
       "uid": "litellm-spend",
       "timezone": "browser",
-      "tags": ["litellm", "ai", "cost", "dark-factory"],
+      "tags": [
+        "litellm",
+        "ai",
+        "cost",
+        "dark-factory"
+      ],
       "editable": false,
       "graphTooltip": 0,
       "refresh": "1m",
-      "time": {"from": "now-24h", "to": "now"},
-      "templating": {"list": []},
-      "annotations": {"list": []},
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "templating": {
+        "list": []
+      },
+      "annotations": {
+        "list": []
+      },
       "panels": [
         {
-          "id": 1, "type": "stat", "title": "Total spend (USD)",
-          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "fixed", "fixedColor": "text"}}, "overrides": []},
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none", "textMode": "value"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(litellm_key_spend)", "instant": true}]
-        },
-        {
-          "id": 2, "type": "stat", "title": "Keys tracked",
-          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "fixed", "fixedColor": "text"}}, "overrides": []},
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "none", "graphMode": "none", "textMode": "value"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "count(litellm_key_spend)", "instant": true}]
-        },
-        {
-          "id": 3, "type": "stat", "title": "Blocked / exhausted keys",
-          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none", "textMode": "value"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(litellm_key_blocked)", "instant": true}]
-        },
-        {
-          "id": 4, "type": "stat", "title": "Exporter health",
-          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "short", "mappings": [{"type": "value", "options": {"1": {"text": "UP", "color": "green"}, "0": {"text": "DOWN", "color": "red"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none", "textMode": "value"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max(pg_up{namespace=\"ai\"})", "instant": true}]
-        },
-        {
-          "id": 5, "type": "table", "title": "Per-key spend vs budget",
-          "gridPos": {"h": 9, "w": 12, "x": 0, "y": 4},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": [{"matcher": {"id": "byName", "options": "spend"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]}, {"matcher": {"id": "byName", "options": "max_budget"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 2}]}, {"matcher": {"id": "byName", "options": "blocked"}, "properties": [{"id": "mappings", "value": [{"type": "value", "options": {"0": {"text": "OK", "color": "green"}, "1": {"text": "BLOCKED", "color": "red"}}}]}, {"id": "custom.cellOptions", "value": {"type": "color-background"}}]}, {"matcher": {"id": "byName", "options": "used %"}, "properties": [{"id": "unit", "value": "percent"}, {"id": "decimals", "value": 0}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 70}, {"color": "red", "value": 90}]}}, {"id": "custom.cellOptions", "value": {"type": "color-background"}}]}]},
-          "options": {"showHeader": true},
+          "id": 1,
+          "type": "stat",
+          "title": "Total spend (USD)",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "value"
+          },
           "targets": [
-            {"refId": "spend", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_key_spend", "instant": true, "format": "table"},
-            {"refId": "max_budget", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_key_max_budget", "instant": true, "format": "table"},
-            {"refId": "blocked", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_key_blocked", "instant": true, "format": "table"},
-            {"refId": "used", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "100 * litellm_key_spend / (litellm_key_max_budget > 0)", "instant": true, "format": "table"}
-          ],
-          "transformations": [
-            {"id": "merge", "options": {}},
-            {"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "cluster": true, "instance": true, "job": true, "namespace": true, "pod": true, "prometheus": true, "service": true, "endpoint": true, "container": true}, "renameByName": {"Value #spend": "spend", "Value #max_budget": "max_budget", "Value #blocked": "blocked", "Value #used": "used %"}}}
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(litellm_key_spend)",
+              "instant": true
+            }
           ]
         },
         {
-          "id": 6, "type": "bargauge", "title": "Budget used % (per key)",
-          "gridPos": {"h": 9, "w": 12, "x": 12, "y": 4},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 70}, {"color": "red", "value": 90}]}}, "overrides": []},
-          "options": {"orientation": "horizontal", "displayMode": "gradient", "reduceOptions": {"calcs": ["lastNotNull"]}},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "100 * litellm_key_spend / (litellm_key_max_budget > 0)", "instant": true, "legendFormat": "{{key_alias}}"}]
+          "id": 2,
+          "type": "stat",
+          "title": "Keys tracked",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "none",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "count(litellm_key_spend)",
+              "instant": true
+            }
+          ]
         },
         {
-          "id": 9, "type": "gauge", "title": "Anthropic spend today (cap 5 USD/day)",
+          "id": 3,
+          "type": "stat",
+          "title": "Blocked / exhausted keys",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 12,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(litellm_key_blocked)",
+              "instant": true
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Exporter health",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 18,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "1": {
+                      "text": "UP",
+                      "color": "green"
+                    },
+                    "0": {
+                      "text": "DOWN",
+                      "color": "red"
+                    }
+                  }
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max(pg_up{namespace=\"ai\"})",
+              "instant": true
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "type": "table",
+          "title": "Per-key spend vs budget",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "spend"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 4
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "max_budget"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "blocked"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "0": {
+                            "text": "OK",
+                            "color": "green"
+                          },
+                          "1": {
+                            "text": "BLOCKED",
+                            "color": "red"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "used %"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percent"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 70
+                        },
+                        {
+                          "color": "red",
+                          "value": 90
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "refId": "spend",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (key_alias, team_id) (litellm_key_spend)",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "max_budget",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (key_alias, team_id) (litellm_key_max_budget)",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "blocked",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (key_alias, team_id) (litellm_key_blocked)",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "used",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "100 * max by (key_alias, team_id) (litellm_key_spend) / (max by (key_alias, team_id) (litellm_key_max_budget) > 0)",
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "__name__": true,
+                  "cluster": true,
+                  "instance": true,
+                  "job": true,
+                  "namespace": true,
+                  "pod": true,
+                  "prometheus": true,
+                  "service": true,
+                  "endpoint": true,
+                  "container": true
+                },
+                "renameByName": {
+                  "Value #spend": "spend",
+                  "Value #max_budget": "max_budget",
+                  "Value #blocked": "blocked",
+                  "Value #used": "used %"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "type": "bargauge",
+          "title": "Budget used % (per key)",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 70
+                  },
+                  {
+                    "color": "red",
+                    "value": 90
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "gradient",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "100 * litellm_key_spend / (litellm_key_max_budget > 0)",
+              "instant": true,
+              "legendFormat": "{{key_alias}}"
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "type": "gauge",
+          "title": "Anthropic spend today (cap 5 USD/day)",
           "description": "Calendar-day (UTC) approximation from the daily ledger; LiteLLM enforces the cap on its own rolling window, so this may briefly disagree near midnight.",
-          "gridPos": {"h": 6, "w": 6, "x": 0, "y": 13},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "min": 0, "max": 5, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "#EAB839", "value": 3.5}, {"color": "red", "value": 4.5}]}}, "overrides": []},
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "showThresholdLabels": false, "showThresholdMarkers": true},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(litellm_provider_today_spend{provider=\"anthropic\"}) or vector(0)", "instant": true}]
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 0,
+            "y": 13
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "min": 0,
+              "max": 5,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "#EAB839",
+                    "value": 3.5
+                  },
+                  {
+                    "color": "red",
+                    "value": 4.5
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(litellm_provider_today_spend{provider=\"anthropic\"}) or vector(0)",
+              "instant": true
+            }
+          ]
         },
         {
-          "id": 10, "type": "gauge", "title": "DeepSeek spend today (cap 2 USD/day)",
+          "id": 10,
+          "type": "gauge",
+          "title": "DeepSeek spend today (cap 2 USD/day)",
           "description": "Calendar-day (UTC) approximation from the daily ledger; LiteLLM enforces the cap on its own rolling window, so this may briefly disagree near midnight.",
-          "gridPos": {"h": 6, "w": 6, "x": 6, "y": 13},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "min": 0, "max": 2, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "#EAB839", "value": 1.4}, {"color": "red", "value": 1.8}]}}, "overrides": []},
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "showThresholdLabels": false, "showThresholdMarkers": true},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(litellm_provider_today_spend{provider=\"deepseek\"}) or vector(0)", "instant": true}]
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 6,
+            "y": 13
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "min": 0,
+              "max": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "#EAB839",
+                    "value": 1.4
+                  },
+                  {
+                    "color": "red",
+                    "value": 1.8
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(litellm_provider_today_spend{provider=\"deepseek\"}) or vector(0)",
+              "instant": true
+            }
+          ]
         },
         {
-          "id": 11, "type": "stat", "title": "Users missing budget backstop",
+          "id": 11,
+          "type": "stat",
+          "title": "Users missing budget backstop",
           "description": "Users with NULL max_budget bypass user-level budget enforcement — must be 0. The SSO backstop (max_internal_user_budget) covers auto-created users.",
-          "gridPos": {"h": 6, "w": 6, "x": 12, "y": 13},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none", "textMode": "value"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max(litellm_user_missing_budget) or vector(0)", "instant": true}]
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 12,
+            "y": 13
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max(litellm_user_missing_budget) or vector(0)",
+              "instant": true
+            }
+          ]
         },
         {
-          "id": 12, "type": "stat", "title": "Users at/over budget",
-          "gridPos": {"h": 6, "w": 6, "x": 18, "y": 13},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none", "textMode": "value"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max(litellm_user_over_budget) or vector(0)", "instant": true}]
+          "id": 12,
+          "type": "stat",
+          "title": "Users at/over budget",
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 18,
+            "y": 13
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max(litellm_user_over_budget) or vector(0)",
+              "instant": true
+            }
+          ]
         },
         {
-          "id": 13, "type": "table", "title": "Per-user budget utilization",
+          "id": 13,
+          "type": "table",
+          "title": "Per-user budget utilization",
           "description": "UserTable has no blocked flag — key-level blocking is in the per-key table above.",
-          "gridPos": {"h": 9, "w": 12, "x": 0, "y": 19},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": [{"matcher": {"id": "byName", "options": "spend"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 2}]}, {"matcher": {"id": "byName", "options": "max_budget"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 2}]}, {"matcher": {"id": "byName", "options": "backstop"}, "properties": [{"id": "mappings", "value": [{"type": "value", "options": {"0": {"text": "NONE", "color": "red"}, "1": {"text": "SET", "color": "green"}}}]}, {"id": "custom.cellOptions", "value": {"type": "color-background"}}]}, {"matcher": {"id": "byName", "options": "used %"}, "properties": [{"id": "unit", "value": "percent"}, {"id": "decimals", "value": 0}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 70}, {"color": "red", "value": 90}]}}, {"id": "custom.cellOptions", "value": {"type": "color-background"}}]}]},
-          "options": {"showHeader": true},
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 19
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "spend"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "max_budget"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "backstop"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "0": {
+                            "text": "NONE",
+                            "color": "red"
+                          },
+                          "1": {
+                            "text": "SET",
+                            "color": "green"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "used %"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percent"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 70
+                        },
+                        {
+                          "color": "red",
+                          "value": 90
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true
+          },
           "targets": [
-            {"refId": "spend", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_user_budget_spend", "instant": true, "format": "table"},
-            {"refId": "max_budget", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_user_budget_max_budget", "instant": true, "format": "table"},
-            {"refId": "backstop", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_user_budget_has_budget", "instant": true, "format": "table"},
-            {"refId": "used", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "100 * litellm_user_budget_spend / (litellm_user_budget_max_budget > 0)", "instant": true, "format": "table"}
+            {
+              "refId": "spend",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (user_ref, user_role) (litellm_user_budget_spend)",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "max_budget",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (user_ref, user_role) (litellm_user_budget_max_budget)",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "backstop",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (user_ref, user_role) (litellm_user_budget_has_budget)",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "used",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "100 * max by (user_ref, user_role) (litellm_user_budget_spend) / (max by (user_ref, user_role) (litellm_user_budget_max_budget) > 0)",
+              "instant": true,
+              "format": "table"
+            }
           ],
           "transformations": [
-            {"id": "merge", "options": {}},
-            {"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "cluster": true, "instance": true, "job": true, "namespace": true, "pod": true, "prometheus": true, "service": true, "endpoint": true, "container": true}, "renameByName": {"Value #spend": "spend", "Value #max_budget": "max_budget", "Value #backstop": "backstop", "Value #used": "used %"}}}
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "__name__": true,
+                  "cluster": true,
+                  "instance": true,
+                  "job": true,
+                  "namespace": true,
+                  "pod": true,
+                  "prometheus": true,
+                  "service": true,
+                  "endpoint": true,
+                  "container": true
+                },
+                "renameByName": {
+                  "Value #spend": "spend",
+                  "Value #max_budget": "max_budget",
+                  "Value #backstop": "backstop",
+                  "Value #used": "used %"
+                }
+              }
+            }
           ]
         },
         {
-          "id": 14, "type": "bargauge", "title": "Provider spend today (USD)",
+          "id": 14,
+          "type": "bargauge",
+          "title": "Provider spend today (USD)",
           "description": "All providers, including any without a configured cap.",
-          "gridPos": {"h": 9, "w": 12, "x": 12, "y": 19},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "min": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []},
-          "options": {"orientation": "horizontal", "displayMode": "gradient", "reduceOptions": {"calcs": ["lastNotNull"]}},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (provider) (litellm_provider_today_spend)", "instant": true, "legendFormat": "{{provider}}"}]
-        },
-        {
-          "id": 7, "type": "timeseries", "title": "Spend by model (cumulative USD)",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "currencyUSD", "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": []},
-          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_model_spend", "legendFormat": "{{model}}"}]
-        },
-        {
-          "id": 8, "type": "timeseries", "title": "Requests by model (success / failed)",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": [{"matcher": {"id": "byRegexp", "options": ".*failed.*"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]}]},
-          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 19
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "gradient",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
           "targets": [
-            {"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_model_successful", "legendFormat": "{{model}} ok"},
-            {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_model_failed", "legendFormat": "{{model}} failed"}
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum by (provider) (litellm_provider_today_spend)",
+              "instant": true,
+              "legendFormat": "{{provider}}"
+            }
           ]
         },
         {
-          "id": 15, "type": "table", "title": "Prompt-cache token economics",
-          "description": "Cache-read tokens are billed at a fraction of prompt tokens — a rising read share means the prompt_caching pre-call check is earning its keep.",
-          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 36},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "custom": {"align": "auto"}}, "overrides": []},
-          "options": {"showHeader": true},
+          "id": 7,
+          "type": "timeseries",
+          "title": "Spend by model (cumulative USD)",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 28
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
           "targets": [
-            {"refId": "creation", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_cache_creation_tokens", "instant": true, "format": "table"},
-            {"refId": "read", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_cache_read_tokens", "instant": true, "format": "table"},
-            {"refId": "prompt", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_cache_prompt_tokens", "instant": true, "format": "table"}
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "litellm_model_spend",
+              "legendFormat": "{{model}}"
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "type": "timeseries",
+          "title": "Requests by model (success / failed)",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 28
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byRegexp",
+                  "options": ".*failed.*"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "red"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "litellm_model_successful",
+              "legendFormat": "{{model}} ok"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "litellm_model_failed",
+              "legendFormat": "{{model}} failed"
+            }
+          ]
+        },
+        {
+          "id": 15,
+          "type": "table",
+          "title": "Prompt-cache token economics",
+          "description": "Cache-read tokens are billed at a fraction of prompt tokens — a rising read share means the prompt_caching pre-call check is earning its keep.",
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 36
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "refId": "creation",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (model) (litellm_cache_creation_tokens)",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "read",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (model) (litellm_cache_read_tokens)",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "prompt",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (model) (litellm_cache_prompt_tokens)",
+              "instant": true,
+              "format": "table"
+            }
           ],
           "transformations": [
-            {"id": "merge", "options": {}},
-            {"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "cluster": true, "instance": true, "job": true, "namespace": true, "pod": true, "prometheus": true, "service": true, "endpoint": true, "container": true}, "renameByName": {"Value #creation": "cache creation tokens", "Value #read": "cache read tokens", "Value #prompt": "prompt tokens"}}}
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "__name__": true,
+                  "cluster": true,
+                  "instance": true,
+                  "job": true,
+                  "namespace": true,
+                  "pod": true,
+                  "prometheus": true,
+                  "service": true,
+                  "endpoint": true,
+                  "container": true
+                },
+                "renameByName": {
+                  "Value #creation": "cache creation tokens",
+                  "Value #read": "cache read tokens",
+                  "Value #prompt": "prompt tokens"
+                }
+              }
+            }
           ]
         }
       ]
