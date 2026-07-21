@@ -30,6 +30,9 @@ roadmap file in git — see
 - The custom board front end has its own project: `Vellum` (id 6, since 2026-07-18) —
   `theme/vellum` tickets for the board page itself (`kubernetes/apps/vikunja/board`, served at
   `vikunja.<domain>/board`); same conventions/labels as the main board
+- The agent dispatch plane has its own project: `Ploeg` (id 10, since 2026-07-21) —
+  `theme/ploeg` tickets for the standalone repo `webgrip/ploeg` (Forgejo-leading, GitHub
+  mirror; design doc lives in-repo at docs/design.md); same conventions/labels as the main board
 - CI/CD improvement work lives in its own project: `CI/CD` (id 9, since 2026-07-18) — all
   `theme/ci-cd` tickets (runner pool, image supply chain, pipeline efficiency; mechanics
   reference: docs/techdocs/docs/general/ci-image-flow.md); same conventions/labels as the
