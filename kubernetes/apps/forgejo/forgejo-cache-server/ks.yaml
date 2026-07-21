@@ -1,0 +1,25 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: forgejo-cache-server
+spec:
+  dependsOn:
+    # forgejo-runner owns forgejo-runner-provisioner, which mints the shared cache-secret
+    # this Deployment mounts. Without it the pod cannot start.
+    - name: forgejo-runner
+  interval: 1h
+  retryInterval: 5m
+  path: ./kubernetes/apps/forgejo/forgejo-cache-server/app
+  prune: true
+  wait: false
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: forgejo
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-secrets

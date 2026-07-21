@@ -62,11 +62,28 @@ spec:
               admin="${ADMIN_USERNAME}:${ADMIN_PASSWORD}"
               uuid_re='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 
+              # 0) Shared cache HMAC secret. Every runner signs its forwarded cache requests
+              #    with it and forgejo-cache-server validates the MAC; when the key is empty
+              #    each runner process generates its OWN, so a shared value is what makes a
+              #    shared cache work at all — otherwise every request is a silent 403.
+              #    Done before the uuid logic on purpose: the early-exit below skips the rest
+              #    once a runner is registered, and this must still converge on that path.
+              cache_secret="$(kubectl -n "$NAMESPACE" get secret "$SECRET_NAME" \
+                -o jsonpath='{.data.cache-secret}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+              if [ -z "$cache_secret" ]; then
+                cache_secret="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+                echo "minted a new shared cache secret"
+              fi
+
               # 1) Idempotent: skip if the stored uuid is already a well-formed runner UUID.
               cur="$(kubectl -n "$NAMESPACE" get secret "$SECRET_NAME" \
                 -o jsonpath='{.data.uuid}' 2>/dev/null | base64 -d 2>/dev/null || true)"
               if printf '%s' "$cur" | grep -qiE "$uuid_re"; then
-                echo "stored runner uuid is well-formed ($cur) — no change"
+                # Registration is fine; only ensure the cache secret is present (it is a
+                # later addition, so existing clusters reach this path with it missing).
+                kubectl -n "$NAMESPACE" patch secret "$SECRET_NAME" --type merge \
+                  -p "{\"stringData\":{\"cache-secret\":\"${cache_secret}\"}}" >/dev/null
+                echo "stored runner uuid is well-formed ($cur) — cache secret ensured, no other change"
                 exit 0
               fi
               echo "stored uuid missing/malformed ('${cur}') — (re)registering global runner"
@@ -93,6 +110,7 @@ spec:
               kubectl -n "$NAMESPACE" create secret generic "$SECRET_NAME" \
                 --from-literal="uuid=$uuid" \
                 --from-literal="token=$token" \
+                --from-literal="cache-secret=$cache_secret" \
                 --dry-run=client -o yaml | kubectl apply -f - >/dev/null
               echo "registered global runner ${RUNNER_NAME} (uuid ${uuid}) and wrote $SECRET_NAME"
           securityContext:

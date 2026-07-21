@@ -26,7 +26,19 @@ data:
         # different toolchain set their own job-level `container:` (e.g. techdocs).
         - docker:host
     cache:
-      enabled: false
+      # actions/cache is dead without this: it gates ACTIONS_CACHE_URL entirely.
+      enabled: true
+      # Point every runner at ONE shared server. The runner's own built-in cache server
+      # writes to local disk, which on a scale-to-zero ScaledJob means each cache is
+      # discarded with the pod that wrote it — enabling the cache without this line
+      # would look configured and store nothing.
+      # Origin only: the in-pod proxy overwrites the request path when forwarding, so a
+      # path prefix here is silently dropped.
+      external_server: "http://forgejo-cache-server.forgejo.svc.cluster.local:8088/"
+      # Shared HMAC secret, minted once by forgejo-runner-provisioner. If it is empty the
+      # runner generates a per-process secret and the server rejects every request with
+      # 403 — the failure mode is a cache that never hits, not an error anyone notices.
+      secret_url: "file:/run/forgejo-runner/cache-secret"
     container:
       # Talk to the in-pod rootless/privileged DinD sidecar.
       docker_host: tcp://localhost:2376

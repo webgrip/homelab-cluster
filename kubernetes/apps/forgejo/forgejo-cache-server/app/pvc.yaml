@@ -1,0 +1,19 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/v1/persistentvolumeclaim_v1.json
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: forgejo-cache-server-data
+  labels:
+    app.kubernetes.io/name: forgejo-cache-server
+    app.kubernetes.io/part-of: forgejo
+spec:
+  # RWO + a single replica: the bbolt index cannot be shared between writers.
+  accessModes:
+    - ReadWriteOnce
+  # longhorn-cache: regenerable data, so it does not deserve replication or backups —
+  # losing this PVC costs one slow CI run, nothing more.
+  storageClassName: longhorn-cache
+  resources:
+    requests:
+      storage: 20Gi
