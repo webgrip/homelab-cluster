@@ -11,9 +11,11 @@ spec:
   # RWO + a single replica: the bbolt index cannot be shared between writers.
   accessModes:
     - ReadWriteOnce
-  # longhorn-cache: regenerable data, so it does not deserve replication or backups —
-  # losing this PVC costs one slow CI run, nothing more.
-  storageClassName: longhorn-cache
+  # longhorn-general: an approved class (the storage-cnpg-governance Kyverno policy
+  # allowlists only `longhorn | longhorn-general`). longhorn-cache would fit the workload
+  # better — this data is regenerable and does not need replication — but adding it to the
+  # policy allowlist is a governance change for its own PR, not a side effect of this one.
+  storageClassName: longhorn-general
   resources:
     requests:
       storage: 20Gi
