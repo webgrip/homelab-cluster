@@ -57,30 +57,13 @@ spec:
       secretRef:
         name: renovate-webhook-auth
         key: token
-    # DISABLED: the operator's Forgejo webhook auto-registration ("sync webhooks to repos by topic")
-    # 404s on every run against Forgejo 15.0.2 / operator 4.10.1 —
-    #   searching repos by topic "renovate": unexpected status 404: 404 page not found
-    # It's a non-fatal controller error (the scheduled renovate run still completes), but it spams the
-    # log every 6h and never registers a hook. Off until the operator supports this Forgejo API.
-    # Immediate Dependency-Dashboard/PR-checkbox triggering is instead wired per-repo (the documented
-    # Forgejo way — no GitHub-App equivalent) by the receiver below + a Forgejo repo webhook registered
-    # with:  scripts/forgejo-sync.sh --repo <name> --only webhook --apply
-    # (see jobs/README.md → "Make Dependency Dashboard actions immediate (Forgejo webhook)").
-    # The webhook.enabled receiver + authentication above stay ON; only this auto-sync is disabled.
-    forgejo:
-      sync:
-        enabled: false
-        webhookURL: https://renovate-webhook.${SECRET_DOMAIN}/webhook/v1/forgejo
-        topic: renovate
-        events:
-          - "issues"
-          - "pull_request"
-        tokenSecretRef:
-          name: renovate-forgejo-token
-          key: FORGEJO_TOKEN
-        authTokenSecretRef:
-          name: renovate-webhook-auth
-          key: token
+        # NOTE: no `forgejo.sync` block here. The operator's Forgejo webhook auto-registration was
+        # always disabled (404s against Forgejo 15), and the 5.2.0 operator upgrade (bc367f54) removed
+        # `.spec.webhook.forgejo` from the RenovateJob CRD entirely — keeping even a disabled block
+        # fails server-side dry-run ("field not declared in schema") and blocks the whole Kustomization.
+        # Immediate Dependency-Dashboard/PR-checkbox triggering stays wired per-repo:
+        #   scripts/forgejo-sync.sh --repo <name> --only webhook --apply
+        # (see jobs/README.md → "Make Dependency Dashboard actions immediate (Forgejo webhook)").
   extraEnv:
     - name: RENOVATE_CONFIG_FILE
       value: /config/renovate.json
