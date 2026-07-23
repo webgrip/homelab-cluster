@@ -104,16 +104,26 @@ spec:
           lbipam.cilium.io/ips: "10.0.0.31"
           coredns.io/hostname: forgejo-ssh.${SECRET_DOMAIN}
 
-    # Custom <head> template with CSS polish for the Actions UI (selectors
-    # pinned to the deployed Forgejo minor — re-verify on major upgrades).
+    # Custom Actions-UI injection (selectors pinned to the deployed Forgejo
+    # minor — re-verify on major upgrades). Two layers: a stable <head> stub
+    # template (subPath, restart-on-change) that loads CSS/JS from
+    # /assets/wg/*, and the assets themselves (directory mount, hot-updating —
+    # its ConfigMap carries reloader.stakater.com/ignore so pushes do NOT
+    # restart Forgejo).
     extraVolumes:
       - name: custom-header
         configMap:
           name: forgejo-custom-header
+      - name: custom-assets
+        configMap:
+          name: forgejo-custom-assets
     extraContainerVolumeMounts:
       - name: custom-header
         mountPath: /data/gitea/templates/custom/header.tmpl
         subPath: header.tmpl
+        readOnly: true
+      - name: custom-assets
+        mountPath: /data/gitea/public/assets/wg
         readOnly: true
 
     # Repos / LFS / packages / attachments / avatars live on this Longhorn RWO claim.
@@ -192,6 +202,9 @@ spec:
           LANDING_PAGE: login
           LFS_START_SERVER: true
           OFFLINE_MODE: true
+          # Short asset cache so /assets/wg/* UI updates reach browsers within
+          # minutes of a ConfigMap sync (default 6h would pin stale JS/CSS).
+          STATIC_CACHE_TIME: 5m
         database:
           DB_TYPE: postgres
           HOST: forgejo-db-rw.forgejo.svc.cluster.local:5432

@@ -19,8 +19,8 @@ resources:
   - ./forgejo-s3-secret.externalsecret.yaml
   - ./forgejo-s3-secret.pushsecret.yaml
 configMapGenerator:
-  # UI polish injected as GITEA_CUSTOM/templates/custom/header.tmpl (see the
-  # HelmRelease extraVolumes); Reloader rolls the pod when the content changes.
+  # Stable <head> stub injected as GITEA_CUSTOM/templates/custom/header.tmpl
+  # (subPath mount); Reloader rolls the pod when THIS changes — keep it rare.
   - name: forgejo-custom-header
     files:
       - header.tmpl=./custom/header.tmpl
@@ -28,3 +28,16 @@ configMapGenerator:
       disableNameSuffixHash: true
       annotations:
         kustomize.toolkit.fluxcd.io/substitute: disabled
+  # The actual UI (CSS/JS) served as static assets from a directory mount —
+  # kubelet syncs ConfigMap updates live (~1min), NO pod restart: the Reloader
+  # ignore annotation exempts this CM from the deployment's reloader auto.
+  - name: forgejo-custom-assets
+    files:
+      - wg-custom.css=./custom/wg-custom.css
+      - wg-pipeline.js=./custom/wg-pipeline.js
+      - wg-pipeline-canary.js=./custom/wg-pipeline-canary.js
+    options:
+      disableNameSuffixHash: true
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled
+        reloader.stakater.com/ignore: "true"
