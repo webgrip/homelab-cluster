@@ -1,0 +1,149 @@
+<!-- Injected into every page <head> via GITEA_CUSTOM/templates/custom/header.tmpl
+     (ConfigMap forgejo-custom-header, mounted by the forgejo HelmRelease).
+     Selectors verified against Forgejo v15.0.2 web_src (RepoActionView.vue,
+     ActionJobStep*.vue, runs_list.tmpl) — re-check on major Forgejo upgrades.
+     `!important` is used where Vue-scoped styles ([data-v-*]) would otherwise win. -->
+<style>
+/* ====================== Actions: run detail view ====================== */
+
+/* Left job rail: wider, so job names stop truncating at ~25 chars */
+.action-view-body .action-view-left {
+  max-width: 480px !important;
+}
+
+/* Job names: use the full row width and wrap to 2 lines instead of ellipsis */
+.action-view-body .job-brief-item .job-brief-item-left .job-brief-name {
+  width: auto !important;
+  flex: 1;
+  white-space: normal !important;
+  overflow: hidden !important;
+  overflow-wrap: anywhere;
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.35;
+}
+
+/* Job rows as bordered cards with a status-colored accent edge */
+.action-view-body .job-brief-item {
+  border: 1px solid var(--color-secondary);
+  border-left-width: 3px;
+  background: var(--color-box-body);
+  padding: 8px 10px !important;
+}
+.action-view-body .job-brief-item.selected {
+  border-color: var(--color-primary);
+}
+.action-view-body .job-brief-item:has(.octicon-check-circle-fill) {
+  border-left-color: var(--color-green);
+}
+.action-view-body .job-brief-item:has(.octicon-x-circle-fill) {
+  border-left-color: var(--color-red);
+  background: color-mix(in srgb, var(--color-red) 8%, var(--color-box-body));
+}
+.action-view-body .job-brief-item:has(.octicon-meter) {
+  border-left-color: var(--color-yellow);
+}
+.action-view-body .job-brief-item:has(.octicon-clock),
+.action-view-body .job-brief-item:has(.octicon-blocked) {
+  border-left-color: var(--color-yellow);
+}
+.action-view-body .job-brief-item:has(.octicon-stop) {
+  border-left-color: var(--color-grey);
+}
+/* Skipped jobs recede instead of competing with real results */
+.action-view-body .job-brief-item:has(.octicon-skip) {
+  opacity: 0.55;
+}
+.action-view-body .job-brief-item:has(.octicon-skip):hover {
+  opacity: 1;
+}
+
+/* Rail section label, GitLab-style */
+.action-view-body .action-view-left .job-group-section::before {
+  content: "Jobs";
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-light-2);
+  padding: 2px 2px 8px;
+}
+.action-view-body .action-view-left .job-artifacts-title {
+  font-size: 12px !important;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-light-2);
+}
+
+/* Durations as quiet monospace pills (rail + step rows share this class) */
+.action-view-body .step-summary-duration {
+  font-family: var(--fonts-monospace);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-light-2);
+  background: var(--color-label-bg);
+  border-radius: 10px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+/* ====================== Actions: log console ====================== */
+
+/* Clearer separation between the console header and the step list */
+.action-view-right .job-info-header {
+  border-bottom: 1px solid var(--color-console-border);
+}
+
+/* Step rows: slightly larger targets, subtle separators */
+.action-view-right .job-step-section {
+  margin: 6px 10px !important;
+}
+.action-view-right .job-step-summary {
+  padding: 7px 10px !important;
+  font-size: 13px;
+}
+
+/* Log text: bigger + more line air than the stock 12px */
+.action-view-right .job-step-logs {
+  font-size: 12.5px !important;
+  line-height: 1.65;
+  padding: 2px 0 8px;
+}
+
+/* ====================== Actions: runs list page ====================== */
+
+/* Status accent bar + tint per run, so failures jump out while scanning */
+.run-list > .flex-item {
+  border-left: 3px solid var(--color-secondary);
+  border-radius: var(--border-radius);
+  padding-left: 8px;
+  padding-right: 4px;
+}
+.run-list > .flex-item:hover {
+  background: var(--color-hover);
+}
+.run-list > .flex-item:has(> .flex-item-leading .octicon-check-circle-fill) {
+  border-left-color: var(--color-green);
+}
+.run-list > .flex-item:has(> .flex-item-leading .octicon-x-circle-fill) {
+  border-left-color: var(--color-red);
+  background: color-mix(in srgb, var(--color-red) 7%, transparent);
+}
+.run-list > .flex-item:has(> .flex-item-leading .octicon-meter) {
+  border-left-color: var(--color-yellow);
+}
+.run-list > .flex-item:has(> .flex-item-leading .octicon-skip),
+.run-list > .flex-item:has(> .flex-item-leading .octicon-stop) {
+  opacity: 0.6;
+}
+.run-list > .flex-item:has(> .flex-item-leading .octicon-skip):hover,
+.run-list > .flex-item:has(> .flex-item-leading .octicon-stop):hover {
+  opacity: 1;
+}
+.run-list .run-list-meta {
+  font-variant-numeric: tabular-nums;
+}
+</style>

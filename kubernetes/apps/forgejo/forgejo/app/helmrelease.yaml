@@ -104,6 +104,18 @@ spec:
           lbipam.cilium.io/ips: "10.0.0.31"
           coredns.io/hostname: forgejo-ssh.${SECRET_DOMAIN}
 
+    # Custom <head> template with CSS polish for the Actions UI (selectors
+    # pinned to the deployed Forgejo minor — re-verify on major upgrades).
+    extraVolumes:
+      - name: custom-header
+        configMap:
+          name: forgejo-custom-header
+    extraContainerVolumeMounts:
+      - name: custom-header
+        mountPath: /data/gitea/templates/custom/header.tmpl
+        subPath: header.tmpl
+        readOnly: true
+
     # Repos / LFS / packages / attachments / avatars live on this Longhorn RWO claim.
     persistence:
       enabled: true

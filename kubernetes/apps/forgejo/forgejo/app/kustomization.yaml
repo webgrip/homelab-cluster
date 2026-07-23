@@ -18,3 +18,13 @@ resources:
   - ./forgejo-oidc-secret.pushsecret.yaml
   - ./forgejo-s3-secret.externalsecret.yaml
   - ./forgejo-s3-secret.pushsecret.yaml
+configMapGenerator:
+  # UI polish injected as GITEA_CUSTOM/templates/custom/header.tmpl (see the
+  # HelmRelease extraVolumes); Reloader rolls the pod when the content changes.
+  - name: forgejo-custom-header
+    files:
+      - header.tmpl=./custom/header.tmpl
+    options:
+      disableNameSuffixHash: true
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled
