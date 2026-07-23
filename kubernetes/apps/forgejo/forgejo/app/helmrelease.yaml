@@ -61,6 +61,11 @@ spec:
       runAsUser: 1000
       runAsGroup: 1000
       fsGroup: 1000
+      # Skip the recursive fsGroup chown of the whole git volume on mount —
+      # the default (Always) walks every file when the pod changes nodes,
+      # which stalled startup for tens of minutes (2026-07-23). Ownership has
+      # been uniformly 1000:1000 since install, so root-check is sufficient.
+      fsGroupChangePolicy: OnRootMismatch
       seccompProfile:
         type: RuntimeDefault
     containerSecurityContext:
