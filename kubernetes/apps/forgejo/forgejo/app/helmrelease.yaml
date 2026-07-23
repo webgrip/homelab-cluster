@@ -45,6 +45,18 @@ spec:
                   operator: In
                   values:
                     - worker
+        # Prefer the high-RAM worker (worker-1): fringe-workstation is legal
+        # under the pool pin but chronically memory-pressured, and a node move
+        # also costs a Longhorn detach/attach (2026-07-23: fringe placement +
+        # Multi-Attach wait stretched a routine restart into minutes).
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+                - key: node.webgrip.io/ram
+                  operator: In
+                  values:
+                    - high
 
     # Route the chart's default code.forgejo.org/forgejo/forgejo image through
     # the Harbor pull-through proxy-cache (ADR-0025) instead of direct.
