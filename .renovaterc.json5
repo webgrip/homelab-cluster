@@ -353,6 +353,45 @@
       commitBodyTable: true,
     },
     {
+      // Environment promotion policy (erfbeeld first; any app adopting the
+      // dev/staging/production tree inherits it). dev + staging TRACK releases: every
+      // chart/image tag bump automerges once checks pass, so staging always runs the latest
+      // main-branch release within one Renovate cycle. production is a deliberate promotion:
+      // the same bump arrives as a PR a human merges. Digest-only refreshes are excluded here
+      // on purpose — they re-resolve the same tag, not a new version, and keep automerging
+      // everywhere via the digest rule above.
+      description: "Pre-production envs (dev/staging) automerge all chart+image tag bumps — staging tracks the latest release",
+      matchFileNames: [
+        "kubernetes/apps/*/dev/**",
+        "kubernetes/apps/*/staging/**",
+      ],
+      matchUpdateTypes: [
+        "patch",
+        "minor",
+        "major"
+      ],
+      dependencyDashboardApproval: false,
+      automerge: true,
+      automergeType: "pr",
+      minimumReleaseAge: "0 days",
+      schedule: [
+        "at any time"
+      ],
+    },
+    {
+      description: "Production env bumps are a manual promotion — never automerge tag updates (digest refreshes still automerge)",
+      matchFileNames: [
+        "kubernetes/apps/*/production/**"
+      ],
+      matchUpdateTypes: [
+        "patch",
+        "minor",
+        "major"
+      ],
+      automerge: false,
+      dependencyDashboardApproval: false,
+    },
+    {
       description: "Group Grafana.com dashboard revision updates into one reviewable PR",
       matchDatasources: [
         "custom.grafana-dashboards"
