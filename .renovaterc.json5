@@ -314,6 +314,20 @@
       groupName: null,
     },
     {
+      description: "Group the goharbor suite (Helm chart + the lockstep component images pinned in the HelmRelease) into one PR. Upstream releases them together (chart 1.19.x ↔ app v2.15.x); per-image PRs merge partially and leave Harbor running mixed component versions. Must stay AFTER the ungroup rule above so it wins.",
+      matchDatasources: [
+        "docker",
+        "helm"
+      ],
+      matchPackageNames: [
+        "/^docker\\.io\\/goharbor\\//",
+        "harbor", // the goharbor Helm chart (helm.goharbor.io)
+      ],
+      groupName: "harbor suite",
+      additionalBranchPrefix: "harbor-suite-",
+      commitBodyTable: true,
+    },
+    {
       description: "Group shared app-template updates into a dedicated PR (matches both the upstream ref and the Harbor pull-through proxy path).",
       matchDatasources: [
         "docker"
