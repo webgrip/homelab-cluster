@@ -1,0 +1,80 @@
+---
+# Zero-trust for ploeg. The namespace label generates default-deny
+# (ingress+egress) + allow-dns. Flow: vikunja webhook -> ploegd:8080 -> db:5432
+# (CNPG); the KEDA operator polls ploeg-db directly for the ScaledJob triggers.
+# The db archives WAL to Garage S3; API-server egress for CNPG comes from
+# components/cnpg-netpol (identity-based — never an ipBlock, the Cilium
+# reserved-identity trap).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ploeg-allow-ingress
+  labels:
+    app.kubernetes.io/part-of: ploeg
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    # intra-namespace: ploegd -> db, workers -> ploegd, db replication
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ploeg
+    # Vikunja (webhook sender) -> ploegd
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vikunja
+      ports:
+        - protocol: TCP
+          port: 8080
+    # KEDA operator -> ploeg-db (postgresql scaler poll). A silently blocked
+    # scaler poll crashloops the keda operator (forgejo netpol incident).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: keda
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Prometheus (observability ns) scraping db metrics (cnpg-monitoring)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+    # CNPG operator (cnpg-system) -> instance status (8000) + Postgres (5432).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ploeg-allow-egress
+  labels:
+    app.kubernetes.io/part-of: ploeg
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # intra-namespace: ploegd -> db, workers -> ploegd, db replication
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ploeg
+    # LAN: Garage S3 (10.0.0.110:3900) for CNPG WAL/backups.
+    # CRITICAL: blocking this breaks WAL archiving (the Garage-WAL SPOF outage).
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/24
+            # NOTE: no ipBlock rule for the kube-apiserver — Cilium matches API-server
+            # traffic by the reserved `kube-apiserver` identity; CNPG pods get
+            # identity-based API egress from components/cnpg-netpol.

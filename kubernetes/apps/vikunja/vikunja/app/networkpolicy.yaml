@@ -78,7 +78,15 @@ spec:
     - to:
         - ipBlock:
             cidr: 10.0.0.0/24
-            # NOTE: no ipBlock rule for the kube-apiserver — Cilium matches API-server
-            # traffic by the reserved `kube-apiserver` identity, so a 10.43.0.1/32 CIDR
-            # rule silently never matches (the 2026-07-17 forgejo-db outage trap). CNPG
-            # pods get identity-based API egress from components/cnpg-netpol.
+    # NOTE: no ipBlock rule for the kube-apiserver — Cilium matches API-server
+    # traffic by the reserved `kube-apiserver` identity, so a 10.43.0.1/32 CIDR
+    # rule silently never matches (the 2026-07-17 forgejo-db outage trap). CNPG
+    # pods get identity-based API egress from components/cnpg-netpol.
+    # Vikunja project webhooks -> ploeg dispatch plane (assignment events).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ploeg
+      ports:
+        - protocol: TCP
+          port: 8080

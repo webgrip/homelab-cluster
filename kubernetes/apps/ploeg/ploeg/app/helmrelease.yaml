@@ -1,0 +1,30 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: ploeg
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: ploeg
+  interval: 30m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  # Image tag defaults to the chart's appVersion (semantic-release-helm3 keeps
+  # both in lockstep), so the OCIRepository ref is the single version knob.
+  values:
+    imagePullSecrets:
+      - name: harbor-pull
+    env:
+      PLOEG_DEFAULT_TEAM: bronze
+      PLOEG_LEASE_TTL: 15m
+    executor:
+      # Phase 3 flips this on (needs the LiteLLM + agent-builder secrets and
+      # the privileged-DinD PolicyException in this namespace).
+      enabled: false

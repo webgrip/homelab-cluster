@@ -1,0 +1,65 @@
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: ploeg-db
+  namespace: ploeg
+  labels:
+    monitoring.webgrip.io/enabled: "true"
+spec:
+  instances: 2
+  # Burstable, not BestEffort (Talos PSI OOM controller kills BestEffort
+  # first). Smaller than vikunja-db: ploeg's tables are work items, leases,
+  # and audit rows — no user content.
+  resources:
+    requests:
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  # Pin the DB off the soyo control-planes onto the worker pool (ADR-0002).
+  affinity:
+    nodeSelector:
+      node.webgrip.io/pool: worker
+  inheritedMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
+  storage:
+    resizeInUseVolumes: true
+    size: 2Gi
+    storageClass: longhorn
+  walStorage:
+    resizeInUseVolumes: true
+    size: 2Gi
+    storageClass: longhorn
+  postgresql:
+    shared_preload_libraries:
+      - pg_stat_statements
+    parameters:
+      # Backup-tier policy (Tier 2): compress WAL full-page images.
+      wal_compression: "zstd"
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: ploeg-db-store
+        serverName: ploeg-db
+  managed:
+    roles:
+      # Read-only identity for the KEDA postgresql scaler (backlog item 47:
+      # the scaler gets its own role, never the app credential). Password
+      # generated in-cluster (scaler-password.externalsecret.yaml).
+      - name: ploeg_scaler
+        ensure: present
+        login: true
+        superuser: false
+        createdb: false
+        createrole: false
+        bypassrls: false
+        inRoles:
+          - pg_read_all_data
+        passwordSecret:
+          name: ploeg-scaler
+  bootstrap:
+    initdb:
+      database: app
+      owner: app
