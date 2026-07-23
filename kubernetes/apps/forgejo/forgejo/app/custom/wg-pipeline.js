@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var WG_VERSION = '3.1.0';
+  var WG_VERSION = '3.1.1';
   try { window.__wgPipeline = { version: WG_VERSION }; } catch (e) { }
 
   var RANK = { failure: 7, unknown: 7, cancelled: 6, running: 5, blocked: 4, waiting: 4, success: 3, skipped: 2 };
