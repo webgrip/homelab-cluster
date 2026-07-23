@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var WG_VERSION = '3.1.1';
+  var WG_VERSION = '3.2.0';
   try { window.__wgPipeline = { version: WG_VERSION }; } catch (e) { }
 
   var RANK = { failure: 7, unknown: 7, cancelled: 6, running: 5, blocked: 4, waiting: 4, success: 3, skipped: 2 };
@@ -307,7 +307,9 @@
 
     var header = document.createElement('div');
     header.className = 'wg-pipeline-header';
-    header.innerHTML = '<span class="wg-caret">&#9662;</span><span>Pipeline</span>' +
+    header.innerHTML = '<span class="wg-caret">&#9662;</span>' +
+      '<span class="wg-run-status wg-status-waiting"><span class="wg-node-dot"></span></span>' +
+      '<span>Pipeline</span>' +
       '<span class="wg-pipeline-meta">' + run.jobs.length + ' jobs &middot; ' + stages.length + ' stages</span>';
     header.addEventListener('click', function () {
       section.classList.toggle('wg-collapsed');
@@ -341,14 +343,17 @@
         var a = document.createElement('a');
         var dot = document.createElement('span');
         dot.className = 'wg-node-dot';
+        var body = document.createElement('span');
+        body.className = 'wg-node-body';
         var name = document.createElement('span');
         name.className = 'wg-node-name';
         name.textContent = j.label;
+        var meta = document.createElement('span');
+        meta.className = 'wg-node-meta';
+        body.appendChild(name);
+        body.appendChild(meta);
         a.appendChild(dot);
-        a.appendChild(name);
-        var dur = document.createElement('span');
-        dur.className = 'wg-node-duration';
-        a.appendChild(dur);
+        a.appendChild(body);
         a.addEventListener('mouseenter', function () { emphasize(j.id, true); });
         a.addEventListener('mouseleave', function () { emphasize(j.id, false); });
         col.appendChild(a);
@@ -391,10 +396,9 @@
         });
         if (bestIdx !== -1) el.href = run.link + '/jobs/' + bestIdx;
 
-        var durEl = el.querySelector('.wg-node-duration');
+        var metaEl = el.querySelector('.wg-node-meta');
         var dTxt = (bestDur > 0) ? durations[bestIdx] : '';
-        durEl.textContent = dTxt;
-        durEl.style.display = dTxt ? '' : 'none';
+        metaEl.textContent = st + (dTxt ? ' · ' + dTxt : '');
 
         var tip = j.label + ' · ' + st + (dTxt ? ' · ' + dTxt : '');
         if (j.indices.length > 1) {
@@ -405,6 +409,12 @@
         if (j.orphan) tip += '\nnot in the workflow at this commit (older attempt)';
         el.title = tip;
       });
+      var overall = '';
+      yjobs.forEach(function (j) {
+        if ((RANK[j._st] || 0) > (RANK[overall] || 0)) overall = j._st;
+      });
+      var runDot = section.querySelector('.wg-run-status');
+      if (runDot) runDot.className = 'wg-run-status wg-status-' + (overall || 'waiting');
     }
 
     var lastRail = null;
