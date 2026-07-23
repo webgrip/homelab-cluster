@@ -185,7 +185,7 @@
 }
 .wg-pipeline-scroll {
   overflow-x: auto;
-  padding: 10px 16px 18px;
+  padding: 8px 16px 18px;
 }
 .wg-pipeline-canvas {
   position: relative;
@@ -230,6 +230,15 @@
   flex-direction: column;
   gap: 12px;
 }
+.wg-stage::before {
+  content: attr(data-label);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-light-3);
+  padding-left: 12px;
+}
 .wg-node {
   display: flex;
   align-items: center;
@@ -243,11 +252,19 @@
   font-size: 13px;
   line-height: 1.25;
   text-decoration: none;
+  transition: opacity 0.12s;
+  animation: wg-in 0.25s ease both;
+}
+@keyframes wg-in {
+  from { opacity: 0; transform: translateY(4px); }
 }
 .wg-node:hover {
   background: var(--color-hover);
   color: var(--color-text);
   text-decoration: none;
+}
+.wg-node.wg-dim {
+  opacity: 0.3;
 }
 .wg-node.wg-selected {
   box-shadow: 0 0 0 2px var(--color-primary);
@@ -278,15 +295,9 @@
   padding: 0 6px;
   white-space: nowrap;
 }
-.wg-node-count {
-  font-size: 11px;
-  color: var(--color-text-light-2);
-  background: var(--color-label-bg);
-  border-radius: 8px;
-  padding: 0 6px;
-}
 .wg-node-dot {
   position: relative;
+  box-sizing: border-box;
   flex-shrink: 0;
   width: 14px;
   height: 14px;
@@ -310,10 +321,11 @@
 .wg-status-failure { border-color: color-mix(in srgb, var(--color-red) 65%, transparent); background: color-mix(in srgb, var(--color-red) 7%, var(--color-box-body)); }
 .wg-status-failure .wg-node-dot { background: var(--color-red); }
 .wg-status-failure .wg-node-dot::after { content: "\2715"; }
-.wg-status-running { border-color: color-mix(in srgb, var(--color-yellow) 65%, transparent); }
+.wg-status-running { border-color: color-mix(in srgb, var(--color-yellow) 65%, transparent); box-shadow: 0 0 6px color-mix(in srgb, var(--color-yellow) 30%, transparent); }
 .wg-status-running .wg-node-dot { background: var(--color-yellow); animation: wg-pulse 1.2s ease-in-out infinite; }
-.wg-status-waiting .wg-node-dot,
-.wg-status-blocked .wg-node-dot { background: var(--color-yellow); }
+.wg-status-waiting .wg-node-dot { background: var(--color-yellow); }
+/* blocked (deps unmet) reads as "not going yet": hollow, not filled */
+.wg-status-blocked .wg-node-dot { background: transparent; border: 2px solid var(--color-yellow); }
 .wg-status-cancelled .wg-node-dot { background: var(--color-grey); }
 .wg-status-cancelled .wg-node-dot::after { content: "\2205"; }
 .wg-status-skipped { opacity: 0.55; }
@@ -324,13 +336,15 @@
 }
 </style>
 <script>
-/* Pipeline DAG for the Actions run view. Data: the embedded run/job JSON
-   (data-initial-post-response) + the workflow YAML at the run's commit (raw
-   fetch, same-origin) for the needs-edges the JSON lacks. Layout: longest-path
-   layering + two-pass barycenter crossing reduction. Live: statuses/durations
-   resync from the job rail every 5s; edges into running jobs animate. Run jobs
-   absent from the workflow at this commit (older attempts) render dashed.
-   Fails silent if anything doesn't parse.
+/* Pipeline DAG for the Actions run view — v3.
+   Data: the embedded run/job JSON (data-initial-post-response) + the workflow
+   YAML at the run's commit + the reusable workflows each job `uses:` (all raw
+   same-origin fetches). Forgejo expands reusable-workflow jobs into separate
+   run jobs; v3 merges each caller with its expanded children into one node
+   (worst status, real duration, click-through to the child that has logs).
+   Layout: longest-path layering + two-pass barycenter. Live: 5s rail resync
+   (re-matches by name if the job list grows mid-run). Hover highlights the
+   full upstream/downstream chain. Fails silent if anything doesn't parse.
    NOTE: this file is a Go template — never write two adjacent open braces. */
 (function () {
   'use strict';
@@ -351,9 +365,17 @@
     return m ? m[1] : s;
   }
 
-  /* Line-based extraction of jobs.<id>.name and jobs.<id>.needs — not a YAML
-     parser, but workflow files are shallow enough for this to hold
-     (verified against the erfbeeld on_source_change.yml). */
+  function parseDur(s) {
+    if (!s) return 0;
+    var total = 0, m, re = /(\d+)([hms])/g;
+    while ((m = re.exec(s))) total += parseInt(m[1], 10) * (m[2] === 'h' ? 3600 : m[2] === 'm' ? 60 : 1);
+    return total;
+  }
+
+  /* Line-based extraction of jobs.<id>.{name,needs,uses} — not a YAML parser,
+     but workflow files are shallow enough (verified against the erfbeeld +
+     webgrip/workflows files). Job-level `uses:` only; step-level sits deeper
+     than bodyIndent and is ignored. */
   function parseWorkflowJobs(text) {
     var lines = text.split(/\r?\n/);
     var jobs = [];
@@ -370,7 +392,7 @@
       if (jobIndent === -1) jobIndent = indent;
       var m;
       if (indent === jobIndent && (m = line.match(/^ *([A-Za-z0-9_.-]+):\s*(#.*)?$/))) {
-        cur = { id: m[1], name: null, needs: [] };
+        cur = { id: m[1], name: null, needs: [], uses: null };
         jobs.push(cur);
         bodyIndent = -1;
         inNeeds = false;
@@ -388,6 +410,8 @@
       if (indent !== bodyIndent) continue;
       if ((m = line.match(/^ *name: *(.+?)\s*$/))) {
         cur.name = stripQ(m[1]);
+      } else if ((m = line.match(/^ *uses: *(\S+)\s*(#.*)?$/))) {
+        cur.uses = stripQ(m[1]);
       } else if ((m = line.match(/^ *needs: *\[([^\]]*)\]/))) {
         cur.needs = m[1].split(',').map(function (s) { return stripQ(s.trim()); }).filter(Boolean);
       } else if (/^ *needs:\s*(#.*)?$/.test(line)) {
@@ -400,25 +424,67 @@
     return jobs;
   }
 
-  /* Map workflow jobs to run-job indices by display name; matrix/reusable
-     children match by prefix ("name (…)" / "name / …"). Unmatched run jobs
-     become dashed orphan nodes (jobs from an older workflow revision). */
-  function matchJobs(yjobs, runJobs) {
+  function labelOf(j) {
+    return (j.name && !/[$][{]/.test(j.name)) ? j.name : j.id;
+  }
+
+  function nameMatches(runName, label) {
+    return runName === label || runName.indexOf(label + ' (') === 0 || runName.indexOf(label + ' / ') === 0;
+  }
+
+  /* Fetch text from the first URL that answers 200; null if none do. */
+  function fetchFirstOk(urls) {
+    if (!urls.length) return Promise.resolve(null);
+    return fetch(urls[0], { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.text() : fetchFirstOk(urls.slice(1)); })
+      .catch(function () { return fetchFirstOk(urls.slice(1)); });
+  }
+
+  /* uses: "owner/repo/path@ref" (cross-repo) or "./path" (same repo at the
+     run's commit) → candidate raw URLs. */
+  function reusableURLs(uses, selfRawBase) {
+    if (uses.indexOf('./') === 0) {
+      return selfRawBase ? [selfRawBase + uses.slice(2)] : [];
+    }
+    var at = uses.lastIndexOf('@');
+    if (at === -1) return [];
+    var ref = uses.slice(at + 1);
+    var parts = uses.slice(0, at).split('/');
+    if (parts.length < 3) return [];
+    var base = '/' + parts[0] + '/' + parts[1] + '/raw/';
+    var path = parts.slice(2).join('/');
+    var urls = [];
+    if (/^[0-9a-f]{40}$/.test(ref)) urls.push(base + 'commit/' + ref + '/' + path);
+    urls.push(base + 'branch/' + ref + '/' + path);
+    urls.push(base + 'tag/' + ref + '/' + path);
+    return urls;
+  }
+
+  /* Two matching passes over run-job names: primary labels first (so a
+     caller's own name always wins), then reusable child labels merge the
+     expanded jobs into their caller. Returns leftover orphan descriptors. */
+  function assignIndices(yjobs, names) {
     var used = [];
+    yjobs.forEach(function (yj) { yj.indices = []; });
     yjobs.forEach(function (yj) {
-      yj.label = (yj.name && !/[$][{]/.test(yj.name)) ? yj.name : yj.id;
-      yj.indices = [];
-      runJobs.forEach(function (rj, idx) {
+      names.forEach(function (nm, idx) {
         if (used[idx]) return;
-        if (rj.name === yj.label || rj.name.indexOf(yj.label + ' (') === 0 || rj.name.indexOf(yj.label + ' / ') === 0) {
-          yj.indices.push(idx);
-          used[idx] = true;
-        }
+        if (nameMatches(nm, yj.label)) { yj.indices.push(idx); used[idx] = true; }
       });
     });
-    runJobs.forEach(function (rj, idx) {
-      if (!used[idx]) yjobs.push({ id: ' run' + idx, label: rj.name, needs: [], indices: [idx], orphan: true });
+    yjobs.forEach(function (yj) {
+      (yj.childLabels || []).forEach(function (cl) {
+        names.forEach(function (nm, idx) {
+          if (used[idx]) return;
+          if (nameMatches(nm, cl)) { yj.indices.push(idx); used[idx] = true; }
+        });
+      });
     });
+    var orphans = [];
+    names.forEach(function (nm, idx) {
+      if (!used[idx]) orphans.push({ name: nm, idx: idx });
+    });
+    return orphans;
   }
 
   function aggStatus(yj, statuses) {
@@ -449,9 +515,6 @@
     return byId;
   }
 
-  /* Two-pass barycenter: order each stage by mean position of its neighbours
-     in the adjacent stage (forward = parents, backward = children). Orphans
-     sink to the bottom of stage 0. */
   function orderStages(stages, byId) {
     var childrenOf = Object.create(null);
     stages.flat().forEach(function (j) {
@@ -494,13 +557,23 @@
       for (var k = 0; k < ICON_STATUS.length; k++) {
         if (item.querySelector('svg.' + ICON_STATUS[k][0])) { status = ICON_STATUS[k][1]; break; }
       }
+      var nm = item.querySelector('.job-brief-name');
       var dur = item.querySelector('.step-summary-duration');
-      return { status: status, duration: dur ? dur.textContent.trim() : '' };
+      return {
+        name: nm ? nm.textContent.trim() : '',
+        status: status,
+        duration: dur ? dur.textContent.trim() : '',
+      };
     });
   }
 
   function build(host, run, yjobs) {
-    matchJobs(yjobs, run.jobs);
+    yjobs.forEach(function (j) { j.label = labelOf(j); });
+    var runNames = run.jobs.map(function (j) { return j.name; });
+    assignIndices(yjobs, runNames).forEach(function (o) {
+      yjobs.push({ id: ' run' + o.idx, label: o.name, needs: [], uses: null, indices: [o.idx], orphan: true });
+    });
+
     var byId = computeDepth(yjobs);
     var edges = [];
     yjobs.forEach(function (j) {
@@ -515,6 +588,29 @@
       (stages[j._d] = stages[j._d] || []).push(j);
     });
     orderStages(stages, byId);
+
+    /* transitive chains for hover emphasis */
+    var upAdj = Object.create(null), downAdj = Object.create(null);
+    edges.forEach(function (e) {
+      (downAdj[e.from] = downAdj[e.from] || []).push(e.to);
+      (upAdj[e.to] = upAdj[e.to] || []).push(e.from);
+    });
+    function collect(id, adj, set) {
+      (adj[id] || []).forEach(function (n) {
+        if (!set[n]) { set[n] = true; collect(n, adj, set); }
+      });
+    }
+    var chainCache = Object.create(null);
+    function chainOf(id) {
+      if (!chainCache[id]) {
+        var set = Object.create(null);
+        set[id] = true;
+        collect(id, upAdj, set);
+        collect(id, downAdj, set);
+        chainCache[id] = set;
+      }
+      return chainCache[id];
+    }
 
     var selectedIdx = parseInt(host.getAttribute('data-job-index'), 10);
 
@@ -550,12 +646,12 @@
     var statuses = run.jobs.map(function (j) { return j.status; });
     var durations = run.jobs.map(function (j) { return j.duration; });
 
-    stages.forEach(function (stage) {
+    stages.forEach(function (stage, si) {
       var col = document.createElement('div');
       col.className = 'wg-stage';
+      col.setAttribute('data-label', 'Stage ' + (si + 1));
       stage.forEach(function (j) {
         var a = document.createElement('a');
-        if (j.indices.length) a.href = run.link + '/jobs/' + j.indices[0];
         var dot = document.createElement('span');
         dot.className = 'wg-node-dot';
         var name = document.createElement('span');
@@ -563,17 +659,11 @@
         name.textContent = j.label;
         a.appendChild(dot);
         a.appendChild(name);
-        if (j.indices.length > 1) {
-          var count = document.createElement('span');
-          count.className = 'wg-node-count';
-          count.textContent = '×' + j.indices.length;
-          a.appendChild(count);
-        }
         var dur = document.createElement('span');
         dur.className = 'wg-node-duration';
         a.appendChild(dur);
-        a.addEventListener('mouseenter', function () { highlight(j.id, true); });
-        a.addEventListener('mouseleave', function () { highlight(j.id, false); });
+        a.addEventListener('mouseenter', function () { emphasize(j.id, true); });
+        a.addEventListener('mouseleave', function () { emphasize(j.id, false); });
         col.appendChild(a);
         nodeEls[j.id] = a;
       });
@@ -581,9 +671,14 @@
     });
 
     var edgePaths = [];
-    function highlight(id, on) {
+    function emphasize(id, on) {
+      var chain = chainOf(id);
       edgePaths.forEach(function (ep) {
-        if (ep.from === id || ep.to === id) ep.el.classList.toggle('wg-edge-hl', on);
+        ep.el.classList.toggle('wg-edge-hl', on && !!(chain[ep.from] && chain[ep.to]));
+      });
+      yjobs.forEach(function (j) {
+        var el = nodeEls[j.id];
+        if (el) el.classList.toggle('wg-dim', on && !chain[j.id]);
       });
     }
 
@@ -596,19 +691,42 @@
         var cls = 'wg-node wg-status-' + st;
         if (j.orphan) cls += ' wg-orphan';
         if (j.indices.indexOf(selectedIdx) !== -1) cls += ' wg-selected';
+        if (el.classList.contains('wg-dim')) cls += ' wg-dim';
         el.className = cls;
+
+        /* real work usually lives in the expanded child job — link and show
+           the constituent with the longest duration */
+        var bestIdx = j.indices.length ? j.indices[0] : -1;
+        var bestDur = -1;
+        j.indices.forEach(function (idx) {
+          var d = parseDur(durations[idx]);
+          if (d > bestDur) { bestDur = d; bestIdx = idx; }
+        });
+        if (bestIdx !== -1) el.href = run.link + '/jobs/' + bestIdx;
+
         var durEl = el.querySelector('.wg-node-duration');
-        var d = (j.indices.length === 1) ? (durations[j.indices[0]] || '') : '';
-        durEl.textContent = (d && d !== '0s') ? d : '';
-        durEl.style.display = (d && d !== '0s') ? '' : 'none';
-        el.title = j.label + ' · ' + st + (d && d !== '0s' ? ' · ' + d : '') +
-          (j.orphan ? ' · not in the workflow at this commit (older attempt)' : '');
+        var dTxt = (bestDur > 0) ? durations[bestIdx] : '';
+        durEl.textContent = dTxt;
+        durEl.style.display = dTxt ? '' : 'none';
+
+        var tip = j.label + ' · ' + st + (dTxt ? ' · ' + dTxt : '');
+        if (j.indices.length > 1) {
+          tip += '\ncontains: ' + j.indices.map(function (idx) {
+            return (run.jobs[idx] ? run.jobs[idx].name : railNameAt(idx)) + ' [' + (statuses[idx] || '?') + ']';
+          }).join(', ');
+        }
+        if (j.orphan) tip += '\nnot in the workflow at this commit (older attempt)';
+        el.title = tip;
       });
+    }
+
+    var lastRail = null;
+    function railNameAt(idx) {
+      return (lastRail && lastRail[idx]) ? lastRail[idx].name : 'job #' + idx;
     }
 
     function draw() {
       if (section.classList.contains('wg-collapsed')) return;
-      while (svg.firstChild) svg.removeChild(svg.firstChild);
       edgePaths = [];
       svg.setAttribute('width', canvas.scrollWidth);
       svg.setAttribute('height', canvas.scrollHeight);
@@ -635,6 +753,20 @@
 
     function apply(read) {
       if (read) {
+        /* the job list can grow mid-run as Forgejo expands reusable children —
+           re-match by name whenever the rail size changes */
+        if (!lastRail || read.length !== lastRail.length) {
+          assignIndices(yjobs.filter(function (j) { return !j.orphan; }), read.map(function (r) { return r.name; }));
+          yjobs.forEach(function (j) {
+            if (j.orphan) {
+              j.indices = [];
+              read.forEach(function (r, idx) {
+                if (nameMatches(r.name, j.label)) j.indices.push(idx);
+              });
+            }
+          });
+        }
+        lastRail = read;
         statuses = read.map(function (r) { return r.status; });
         durations = read.map(function (r) { return r.duration; });
       }
@@ -668,9 +800,27 @@
       if (!run || !run.jobs || run.jobs.length < 2) return;
       var src = host.getAttribute('data-workflow-source-url') || '';
       if (src.indexOf('/src/commit/') === -1) return;
+      var selfRawBase = src.replace('/src/commit/', '/raw/commit/').replace(/[^/]+$/, '');
       fetch(src.replace('/src/commit/', '/raw/commit/'), { credentials: 'same-origin' })
         .then(function (r) { return r.ok ? r.text() : Promise.reject(new Error('HTTP ' + r.status)); })
-        .then(function (yaml) { build(host, run, parseWorkflowJobs(yaml)); })
+        .then(function (yaml) {
+          var yjobs = parseWorkflowJobs(yaml);
+          var targets = Object.create(null);
+          yjobs.forEach(function (j) {
+            if (j.uses) targets[j.uses] = null;
+          });
+          var keys = Object.keys(targets);
+          return Promise.all(keys.map(function (u) {
+            return fetchFirstOk(reusableURLs(u, selfRawBase)).then(function (text) {
+              targets[u] = text ? parseWorkflowJobs(text).map(labelOf) : [];
+            });
+          })).then(function () {
+            yjobs.forEach(function (j) {
+              if (j.uses) j.childLabels = targets[j.uses] || [];
+            });
+            build(host, run, yjobs);
+          });
+        })
         .catch(function (e) { console.debug('[wg-pipeline]', e); });
     } catch (e) {
       console.debug('[wg-pipeline]', e);
