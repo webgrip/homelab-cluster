@@ -50,6 +50,16 @@ spec:
       ports:
         - protocol: TCP
           port: 3000
+    # ploeg OpenHands workers clone/push branches and open PRs as agent-builder
+    # (git-over-HTTP + REST API) — same in-cluster pod-to-service class as the
+    # renovate rule above.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ploeg
+      ports:
+        - protocol: TCP
+          port: 3000
     # keda-operator polls Forgejo's runner-queue API
     # (/api/v1/admin/runners/jobs?labels=...) every pollingInterval to size the
     # forgejo-runner + forgejo-agent-runner ScaledJobs. Same missed-rule class as the

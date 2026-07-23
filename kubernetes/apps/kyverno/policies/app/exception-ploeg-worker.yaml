@@ -1,0 +1,60 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/policyexception_v2.json
+# Exception for the KEDA-scaled ploeg OpenHands worker (ploeg namespace).
+# Worker pods carry the same privileged docker:dind native sidecar as the
+# forgejo runners (OpenHands' sandbox + repo quality gates need a daemon,
+# DOCKER_HOST=tcp://localhost:2376). Matched by label, not name: KEDA generates
+# ephemeral Jobs/Pods with random suffixes, and exception-governance forbids
+# wildcard names.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: exception-ploeg-worker-privileged
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      The ploeg-worker-bronze ScaledJob runs a privileged docker:dind native
+      sidecar so OpenHands agent runs can use a real Docker daemon for the
+      sandbox and the repo quality gates. Same waiver shape and rationale as
+      exception-forgejo-runner-privileged: dind's privileged:true inherently
+      trips the baseline privileged-containers rule plus the hardening audits
+      at the pod level; the worker-bin init container and the worker main
+      container are hardened, but Kyverno waives per-resource, not
+      per-container. Revisit alongside the runners if DinD moves to a
+      rootless/sysbox setup.
+spec:
+  exceptions:
+    - policyName: pod-security-baseline-enforce
+      ruleNames:
+        - privileged-containers
+        - autogen-privileged-containers
+    - policyName: workload-hardening-audit
+      ruleNames:
+        - privilege-escalation
+        - run-as-non-root
+        - check-seccomp-strict
+    - policyName: workload-advanced-hardening-audit
+      ruleNames:
+        - require-drop-all-capabilities
+  match:
+    any:
+      # The resource the webhook actually rejects: the KEDA-generated worker Job.
+      - resources:
+          kinds:
+            - Job
+          namespaces:
+            - ploeg
+          selector:
+            matchLabels:
+              scaledjob.keda.sh/name: ploeg-worker-bronze
+      # The ephemeral worker Pod the Job spawns, carrying the template label.
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - ploeg
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: ploeg-worker

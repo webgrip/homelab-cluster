@@ -78,3 +78,20 @@ spec:
             # NOTE: no ipBlock rule for the kube-apiserver — Cilium matches API-server
             # traffic by the reserved `kube-apiserver` identity; CNPG pods get
             # identity-based API egress from components/cnpg-netpol.
+    # OpenHands workers -> LiteLLM (ai ns, in-cluster: proxy /v1 + admin key
+    # mint/revoke on the same port).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ai
+      ports:
+        - protocol: TCP
+          port: 4000
+    # OpenHands workers -> Forgejo (clone/push as agent-builder, PR API).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: forgejo
+      ports:
+        - protocol: TCP
+          port: 3000
