@@ -354,13 +354,15 @@
     },
     {
       // Environment promotion policy (erfbeeld first; any app adopting the
-      // dev/staging/production tree inherits it). dev + staging TRACK releases: every
-      // chart/image tag bump automerges once checks pass, so staging always runs the latest
-      // main-branch release within one Renovate cycle. production is a deliberate promotion:
-      // the same bump arrives as a PR a human merges. Digest-only refreshes are excluded here
-      // on purpose — they re-resolve the same tag, not a new version, and keep automerging
-      // everywhere via the digest rule above.
-      description: "Pre-production envs (dev/staging) automerge all chart+image tag bumps — staging tracks the latest release",
+      // dev/staging/production tree inherits it). Branch model: the app repo's `development`
+      // branch cuts prerelease versions (<v>-development.N — the staging channel) and `main`
+      // cuts stables (the production channel). dev + staging follow prereleases AND stables
+      // automatically (ignoreUnstable: false + automerge); production follows stables only,
+      // also automatically — the human gate is merging development -> main in the app repo,
+      // not merging a Renovate PR here. Digest-only refreshes are excluded here on purpose —
+      // they re-resolve the same tag, not a new version, and keep automerging everywhere via
+      // the digest rule above.
+      description: "Pre-production envs (dev/staging) track the prerelease channel — all chart+image tag bumps automerge, prereleases included",
       matchFileNames: [
         "kubernetes/apps/*/dev/**",
         "kubernetes/apps/*/staging/**",
@@ -370,6 +372,7 @@
         "minor",
         "major"
       ],
+      ignoreUnstable: false,
       dependencyDashboardApproval: false,
       automerge: true,
       automergeType: "pr",
@@ -379,7 +382,7 @@
       ],
     },
     {
-      description: "Production env bumps are a manual promotion — never automerge tag updates (digest refreshes still automerge)",
+      description: "Production env tracks stable releases automatically — prereleases never reach it; promotion happens by merging development -> main in the app repo",
       matchFileNames: [
         "kubernetes/apps/*/production/**"
       ],
@@ -388,8 +391,14 @@
         "minor",
         "major"
       ],
-      automerge: false,
+      ignoreUnstable: true,
       dependencyDashboardApproval: false,
+      automerge: true,
+      automergeType: "pr",
+      minimumReleaseAge: "0 days",
+      schedule: [
+        "at any time"
+      ],
     },
     {
       description: "Group Grafana.com dashboard revision updates into one reviewable PR",
