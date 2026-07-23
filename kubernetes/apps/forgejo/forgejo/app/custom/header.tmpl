@@ -168,6 +168,12 @@
   letter-spacing: 0.05em;
   color: var(--color-text-light-2);
 }
+.wg-pipeline-meta {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--color-text-light-3);
+}
 .wg-pipeline-header .wg-caret {
   transition: transform 0.15s;
 }
@@ -191,20 +197,32 @@
   inset: 0;
   pointer-events: none;
 }
-.wg-pipeline-edges path {
+.wg-pipeline-edges path.wg-edge {
   fill: none;
-  stroke: color-mix(in srgb, var(--color-text) 30%, transparent);
+  stroke: color-mix(in srgb, var(--color-text) 28%, transparent);
   stroke-width: 1.5;
+  transition: stroke 0.1s;
+}
+.wg-pipeline-edges path.wg-edge-fail {
+  stroke: color-mix(in srgb, var(--color-red) 45%, transparent);
+}
+.wg-pipeline-edges path.wg-edge-flow {
+  stroke: color-mix(in srgb, var(--color-yellow) 60%, transparent);
+  stroke-dasharray: 7 5;
+  animation: wg-flow 0.9s linear infinite;
 }
 .wg-pipeline-edges path.wg-edge-hl {
   stroke: var(--color-primary);
-  stroke-width: 2;
+  stroke-width: 2.25;
+}
+@keyframes wg-flow {
+  to { stroke-dashoffset: -12; }
 }
 .wg-pipeline-stages {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 56px;
+  gap: 64px;
   width: max-content;
 }
 .wg-stage {
@@ -215,25 +233,50 @@
 .wg-node {
   display: flex;
   align-items: center;
-  gap: 8px;
-  max-width: 260px;
+  gap: 9px;
+  max-width: 300px;
   padding: 6px 12px;
   border: 1px solid var(--color-secondary);
-  border-radius: 16px;
+  border-radius: 18px;
   background: var(--color-box-body);
   color: var(--color-text);
   font-size: 13px;
+  line-height: 1.25;
   text-decoration: none;
-  white-space: nowrap;
 }
 .wg-node:hover {
   background: var(--color-hover);
   color: var(--color-text);
   text-decoration: none;
 }
+.wg-node.wg-selected {
+  box-shadow: 0 0 0 2px var(--color-primary);
+}
+.wg-node.wg-orphan {
+  border-style: dashed;
+  opacity: 0.55;
+}
+.wg-node.wg-orphan:hover {
+  opacity: 1;
+}
 .wg-node-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-word;
+}
+.wg-node-duration {
+  margin-left: auto;
+  font-family: var(--fonts-monospace);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-light-2);
+  background: var(--color-label-bg);
+  border-radius: 8px;
+  padding: 0 6px;
+  white-space: nowrap;
 }
 .wg-node-count {
   font-size: 11px;
@@ -243,33 +286,51 @@
   padding: 0 6px;
 }
 .wg-node-dot {
+  position: relative;
   flex-shrink: 0;
-  width: 10px;
-  height: 10px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: var(--color-grey);
+  color: #fff;
+}
+.wg-node-dot::after {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
 }
 .wg-status-success { border-color: color-mix(in srgb, var(--color-green) 55%, transparent); }
 .wg-status-success .wg-node-dot { background: var(--color-green); }
+.wg-status-success .wg-node-dot::after { content: "\2713"; }
 .wg-status-failure { border-color: color-mix(in srgb, var(--color-red) 65%, transparent); background: color-mix(in srgb, var(--color-red) 7%, var(--color-box-body)); }
 .wg-status-failure .wg-node-dot { background: var(--color-red); }
+.wg-status-failure .wg-node-dot::after { content: "\2715"; }
 .wg-status-running { border-color: color-mix(in srgb, var(--color-yellow) 65%, transparent); }
 .wg-status-running .wg-node-dot { background: var(--color-yellow); animation: wg-pulse 1.2s ease-in-out infinite; }
 .wg-status-waiting .wg-node-dot,
 .wg-status-blocked .wg-node-dot { background: var(--color-yellow); }
 .wg-status-cancelled .wg-node-dot { background: var(--color-grey); }
+.wg-status-cancelled .wg-node-dot::after { content: "\2205"; }
 .wg-status-skipped { opacity: 0.55; }
 .wg-status-skipped:hover { opacity: 1; }
+.wg-status-skipped .wg-node-dot::after { content: "\2013"; }
 @keyframes wg-pulse {
   50% { opacity: 0.35; }
 }
 </style>
 <script>
-/* Pipeline graph for the Actions run view. Data sources: the run/job JSON the
-   page already embeds (data-initial-post-response) and the workflow YAML at
-   the run's commit (raw fetch, same-origin session auth), which supplies the
-   needs-edges the view JSON lacks. Renders stage columns + SVG connectors
-   above the stock view; fails silent (no graph) if anything doesn't parse.
+/* Pipeline DAG for the Actions run view. Data: the embedded run/job JSON
+   (data-initial-post-response) + the workflow YAML at the run's commit (raw
+   fetch, same-origin) for the needs-edges the JSON lacks. Layout: longest-path
+   layering + two-pass barycenter crossing reduction. Live: statuses/durations
+   resync from the job rail every 5s; edges into running jobs animate. Run jobs
+   absent from the workflow at this commit (older attempts) render dashed.
+   Fails silent if anything doesn't parse.
    NOTE: this file is a Go template — never write two adjacent open braces. */
 (function () {
   'use strict';
@@ -291,7 +352,8 @@
   }
 
   /* Line-based extraction of jobs.<id>.name and jobs.<id>.needs — not a YAML
-     parser, but workflow files are shallow enough for this to hold. */
+     parser, but workflow files are shallow enough for this to hold
+     (verified against the erfbeeld on_source_change.yml). */
   function parseWorkflowJobs(text) {
     var lines = text.split(/\r?\n/);
     var jobs = [];
@@ -339,7 +401,8 @@
   }
 
   /* Map workflow jobs to run-job indices by display name; matrix/reusable
-     children match by prefix ("name (…)" / "name / …"). */
+     children match by prefix ("name (…)" / "name / …"). Unmatched run jobs
+     become dashed orphan nodes (jobs from an older workflow revision). */
   function matchJobs(yjobs, runJobs) {
     var used = [];
     yjobs.forEach(function (yj) {
@@ -354,7 +417,7 @@
       });
     });
     runJobs.forEach(function (rj, idx) {
-      if (!used[idx]) yjobs.push({ id: ' run' + idx, label: rj.name, needs: [], indices: [idx] });
+      if (!used[idx]) yjobs.push({ id: ' run' + idx, label: rj.name, needs: [], indices: [idx], orphan: true });
     });
   }
 
@@ -386,14 +449,53 @@
     return byId;
   }
 
-  function railStatuses() {
+  /* Two-pass barycenter: order each stage by mean position of its neighbours
+     in the adjacent stage (forward = parents, backward = children). Orphans
+     sink to the bottom of stage 0. */
+  function orderStages(stages, byId) {
+    var childrenOf = Object.create(null);
+    stages.flat().forEach(function (j) {
+      j.needs.forEach(function (nid) {
+        if (byId[nid]) (childrenOf[nid] = childrenOf[nid] || []).push(j.id);
+      });
+    });
+    function posMap(stage) {
+      var pos = Object.create(null);
+      stage.forEach(function (j, i) { pos[j.id] = i; });
+      return pos;
+    }
+    function mean(ids, pos, fallback) {
+      var vals = ids.filter(function (id) { return pos[id] != null; }).map(function (id) { return pos[id]; });
+      if (!vals.length) return fallback;
+      return vals.reduce(function (a, b) { return a + b; }, 0) / vals.length;
+    }
+    for (var round = 0; round < 2; round++) {
+      for (var s = 1; s < stages.length; s++) {
+        var pos = posMap(stages[s - 1]);
+        stages[s].sort(function (a, b) {
+          return mean(a.needs, pos, 1e3) - mean(b.needs, pos, 1e3);
+        });
+      }
+      for (var t = stages.length - 2; t >= 0; t--) {
+        var cpos = posMap(stages[t + 1]);
+        stages[t].sort(function (a, b) {
+          var fa = a.orphan ? 1e6 : 1e3, fb = b.orphan ? 1e6 : 1e3;
+          return mean(childrenOf[a.id] || [], cpos, fa) - mean(childrenOf[b.id] || [], cpos, fb);
+        });
+      }
+    }
+  }
+
+  function railRead() {
     var items = document.querySelectorAll('.action-view-left .job-brief-item');
     if (!items.length) return null;
     return Array.prototype.map.call(items, function (item) {
+      var status = 'unknown';
       for (var k = 0; k < ICON_STATUS.length; k++) {
-        if (item.querySelector('svg.' + ICON_STATUS[k][0])) return ICON_STATUS[k][1];
+        if (item.querySelector('svg.' + ICON_STATUS[k][0])) { status = ICON_STATUS[k][1]; break; }
       }
-      return 'unknown';
+      var dur = item.querySelector('.step-summary-duration');
+      return { status: status, duration: dur ? dur.textContent.trim() : '' };
     });
   }
 
@@ -412,6 +514,9 @@
     yjobs.forEach(function (j) {
       (stages[j._d] = stages[j._d] || []).push(j);
     });
+    orderStages(stages, byId);
+
+    var selectedIdx = parseInt(host.getAttribute('data-job-index'), 10);
 
     var section = document.createElement('section');
     section.className = 'wg-pipeline';
@@ -419,7 +524,8 @@
 
     var header = document.createElement('div');
     header.className = 'wg-pipeline-header';
-    header.innerHTML = '<span class="wg-caret">&#9662;</span><span>Pipeline</span>';
+    header.innerHTML = '<span class="wg-caret">&#9662;</span><span>Pipeline</span>' +
+      '<span class="wg-pipeline-meta">' + run.jobs.length + ' jobs &middot; ' + stages.length + ' stages</span>';
     header.addEventListener('click', function () {
       section.classList.toggle('wg-collapsed');
       localStorage.setItem('wg-pipeline-collapsed', section.classList.contains('wg-collapsed') ? '1' : '0');
@@ -441,12 +547,14 @@
     section.appendChild(scroll);
 
     var nodeEls = Object.create(null);
+    var statuses = run.jobs.map(function (j) { return j.status; });
+    var durations = run.jobs.map(function (j) { return j.duration; });
+
     stages.forEach(function (stage) {
       var col = document.createElement('div');
       col.className = 'wg-stage';
       stage.forEach(function (j) {
         var a = document.createElement('a');
-        a.className = 'wg-node';
         if (j.indices.length) a.href = run.link + '/jobs/' + j.indices[0];
         var dot = document.createElement('span');
         dot.className = 'wg-node-dot';
@@ -461,6 +569,9 @@
           count.textContent = '×' + j.indices.length;
           a.appendChild(count);
         }
+        var dur = document.createElement('span');
+        dur.className = 'wg-node-duration';
+        a.appendChild(dur);
         a.addEventListener('mouseenter', function () { highlight(j.id, true); });
         a.addEventListener('mouseleave', function () { highlight(j.id, false); });
         col.appendChild(a);
@@ -476,14 +587,24 @@
       });
     }
 
-    function applyStatuses(statuses) {
+    function updateNodes() {
       yjobs.forEach(function (j) {
         var el = nodeEls[j.id];
         if (!el) return;
-        el.className = 'wg-node wg-status-' + aggStatus(j, statuses);
+        var st = aggStatus(j, statuses);
+        j._st = st;
+        var cls = 'wg-node wg-status-' + st;
+        if (j.orphan) cls += ' wg-orphan';
+        if (j.indices.indexOf(selectedIdx) !== -1) cls += ' wg-selected';
+        el.className = cls;
+        var durEl = el.querySelector('.wg-node-duration');
+        var d = (j.indices.length === 1) ? (durations[j.indices[0]] || '') : '';
+        durEl.textContent = (d && d !== '0s') ? d : '';
+        durEl.style.display = (d && d !== '0s') ? '' : 'none';
+        el.title = j.label + ' · ' + st + (d && d !== '0s' ? ' · ' + d : '') +
+          (j.orphan ? ' · not in the workflow at this commit (older attempt)' : '');
       });
     }
-    applyStatuses(run.jobs.map(function (j) { return j.status; }));
 
     function draw() {
       if (section.classList.contains('wg-collapsed')) return;
@@ -491,30 +612,47 @@
       edgePaths = [];
       svg.setAttribute('width', canvas.scrollWidth);
       svg.setAttribute('height', canvas.scrollHeight);
+      svg.innerHTML = '<defs><marker id="wg-arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">' +
+        '<path d="M 0 1.5 L 8.5 5 L 0 8.5 z" style="fill: var(--color-text-light-3)"/></marker></defs>';
       edges.forEach(function (e) {
         var p = nodeEls[e.from], c = nodeEls[e.to];
         if (!p || !c) return;
         var x1 = p.offsetLeft + p.offsetWidth, y1 = p.offsetTop + p.offsetHeight / 2;
         var x2 = c.offsetLeft, y2 = c.offsetTop + c.offsetHeight / 2;
-        var dx = Math.max(24, (x2 - x1) / 2);
+        var dx = Math.max(26, (x2 - x1) / 2);
         var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', 'M' + x1 + ' ' + y1 + ' C' + (x1 + dx) + ' ' + y1 + ', ' + (x2 - dx) + ' ' + y2 + ', ' + x2 + ' ' + y2);
+        path.setAttribute('d', 'M' + x1 + ' ' + y1 + ' C' + (x1 + dx) + ' ' + y1 + ', ' + (x2 - dx) + ' ' + y2 + ', ' + (x2 - 2) + ' ' + y2);
+        var cls = 'wg-edge';
+        var target = byId[e.to];
+        if (target && target._st === 'running') cls += ' wg-edge-flow';
+        else if (target && (target._st === 'failure' || target._st === 'unknown')) cls += ' wg-edge-fail';
+        path.setAttribute('class', cls);
+        path.setAttribute('marker-end', 'url(#wg-arrow)');
         svg.appendChild(path);
         edgePaths.push({ from: e.from, to: e.to, el: path });
       });
     }
 
+    function apply(read) {
+      if (read) {
+        statuses = read.map(function (r) { return r.status; });
+        durations = read.map(function (r) { return r.duration; });
+      }
+      updateNodes();
+      draw();
+    }
+
     host.parentNode.insertBefore(section, host);
-    draw();
+    apply(null);
     window.addEventListener('resize', function () { window.requestAnimationFrame(draw); });
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { draw(); });
 
     if (!run.done) {
       var timer = window.setInterval(function () {
-        var statuses = railStatuses();
-        if (statuses) applyStatuses(statuses);
-        var allDone = statuses && statuses.every(function (s) {
-          return s === 'success' || s === 'failure' || s === 'skipped' || s === 'cancelled' || s === 'unknown';
+        var read = railRead();
+        if (read) apply(read);
+        var allDone = read && read.every(function (r) {
+          return r.status === 'success' || r.status === 'failure' || r.status === 'skipped' || r.status === 'cancelled' || r.status === 'unknown';
         });
         if (allDone) window.clearInterval(timer);
       }, 5000);
