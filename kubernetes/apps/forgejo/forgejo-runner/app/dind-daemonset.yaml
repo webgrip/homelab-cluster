@@ -1,0 +1,161 @@
+---
+# One shared Docker daemon PER NODE for the CI runner pool, replacing the per-pod DinD sidecar.
+#
+# Why (measured 2026-07-23): every runner pod's sidecar daemon started with an EMPTY
+# /var/lib/docker (emptyDir), so each `container:` job re-pulled AND re-extracted its multi-GB
+# CI image onto a disk that saturates at ~12MB/s — ~4-10 min of "Set up job" per job, recurring
+# forever. With a per-node daemon on persistent hostPath storage, extraction happens ONCE per
+# node per image version; measured warm-path pull of the 4GB tauri image is ~10s.
+#
+# Isolation trade (accepted for a single-tenant homelab): jobs on the same node share one
+# daemon. act_runner names containers/networks uniquely per job; the CiliumNetworkPolicy below
+# restricts the TCP endpoint to runner pods in this namespace. TLS is off — the port never
+# leaves the node in practice (runners connect to their own node's hostIP) and the policy is
+# the boundary, matching how the sidecar's localhost:2376 trusted the pod boundary before.
+#
+# ci-shared: the e2e validators `docker run -v` workspaces the RUNNER writes — bind mounts
+# resolve on THIS daemon's fs, so runner pods and this daemon must see the same absolute path.
+# /dev/shm/forgejo-ci-shared is node RAM (same IOPS rationale as the old tmpfs emptyDir: flux-local's
+# rename churn pinned the disk at 57-91% busy), shared node-wide via hostPath on both sides.
+# The init container 1777s it (hostPath ignores fsGroup); the prune sidecar empties stale
+# workspaces alongside its image GC.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: forgejo-dind
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo-dind
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: forgejo-dind
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: forgejo-dind
+    spec:
+      # Same placement as the runner pods: this daemon only serves the worker pool.
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: fringe
+          effect: NoSchedule
+      initContainers:
+        - name: init-ci-shared
+          image: harbor.webgrip.dev/dockerhub/library/docker:29.6.2-dind@sha256:bfec1f5159c63a81ca6fdedbd81404d2c0e16378ed0feec3bb3fbf3998847659
+          command:
+            - "sh"
+            - "-ec"
+            - "mkdir -p /mnt/ci-shared && chmod 1777 /mnt/ci-shared"
+          volumeMounts:
+            - name: ci-shared
+              mountPath: /mnt/ci-shared
+          securityContext:
+            runAsUser: 0
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 32Mi}
+      containers:
+        - name: dind
+          image: harbor.webgrip.dev/dockerhub/library/docker:29.6.2-dind@sha256:bfec1f5159c63a81ca6fdedbd81404d2c0e16378ed0feec3bb3fbf3998847659
+          args:
+            - dockerd
+            - --host=tcp://0.0.0.0:2375
+            - --tls=false
+          env:
+            # Empty disables the entrypoint's TLS cert generation (we bind plaintext on the
+            # node port; the CiliumNetworkPolicy is the access boundary).
+            - name: DOCKER_TLS_CERTDIR
+              value: ""
+          ports:
+            - name: docker
+              containerPort: 2375
+              hostPort: 2375
+              protocol: TCP
+          securityContext:
+            privileged: true
+          startupProbe:
+            exec:
+              command:
+                - "sh"
+                - "-c"
+                - "docker -H tcp://localhost:2375 info"
+            initialDelaySeconds: 3
+            periodSeconds: 2
+            failureThreshold: 30
+            # 5s, not 1s: under IO stall `docker info` answers slowly but the daemon is healthy
+            # (same lesson as the old sidecar probe, 2026-07-18).
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: docker-storage
+              mountPath: /var/lib/docker
+            - name: ci-shared
+              mountPath: /mnt/ci-shared
+          resources:
+            # No CPU limit: image extraction and builds should burst. Memory headroom covers
+            # the e2e KinD-inside-dind case (~1.5Gi) plus concurrent job containers now that
+            # the daemon is shared.
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 6Gi
+        - name: prune
+          # Persistent storage needs GC the old throwaway emptyDir never did: drop dangling
+          # build cruft + images unused for 14 days, and clear stale ci-shared workspaces,
+          # daily. Images in active use are re-referenced every job and never age out.
+          image: harbor.webgrip.dev/dockerhub/library/docker:29.6.2-dind@sha256:bfec1f5159c63a81ca6fdedbd81404d2c0e16378ed0feec3bb3fbf3998847659
+          command:
+            - sh
+            - -ec
+            - |
+              while true; do
+                sleep 86400
+                docker -H tcp://localhost:2375 system prune -af --filter "until=336h" || true
+                docker -H tcp://localhost:2375 volume prune -f || true
+                find /mnt/ci-shared -mindepth 1 -maxdepth 1 -mmin +720 -exec rm -rf {} + || true
+              done
+          volumeMounts:
+            - name: ci-shared
+              mountPath: /mnt/ci-shared
+          securityContext:
+            runAsUser: 0
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 128Mi}
+      volumes:
+        # Persistent per-node image/layer store — THE point of this DaemonSet.
+        - name: docker-storage
+          hostPath:
+            path: /var/lib/forgejo-dind
+            type: DirectoryOrCreate
+        # Node-RAM shared workspace (see header).
+        - name: ci-shared
+          hostPath:
+            path: /dev/shm/forgejo-ci-shared
+            type: DirectoryOrCreate
+---
+# Only runner pods (and the agent-runner pool, which may migrate later) may reach the shared
+# daemon. hostPort traffic from same-node pods still traverses Cilium's policy path.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: forgejo-dind
+  namespace: forgejo
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: forgejo-dind
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: forgejo-runner
+        - matchLabels:
+            app.kubernetes.io/name: forgejo-agent-runner
+      toPorts:
+        - ports:
+            - port: "2375"
+              protocol: TCP

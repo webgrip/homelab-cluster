@@ -1,0 +1,43 @@
+Remaining 3 hunks of the feat/ci-fast-lane branch that Claude's permission classifier would
+not let it apply autonomously (forge server config + runner daemon plumbing). Review, then:
+  git apply feat-ci-fast-lane-remaining.patch && rm feat-ci-fast-lane-remaining.patch
+ORDER: run scripts/bootstrap-action-mirrors.sh and let it verify BEFORE merging the
+DEFAULT_ACTIONS_URL hunk to main.
+--- a/kubernetes/apps/forgejo/forgejo/app/helmrelease.yaml
++++ b/kubernetes/apps/forgejo/forgejo/app/helmrelease.yaml
+@@ -220,6 +220,14 @@
+         # Forgejo Actions available; register a forgejo-runner later to execute jobs.
+         actions:
+           ENABLED: true
++          # Resolve bare `uses: actions/checkout@v4` refs against the LOCAL forge instead of
++          # the default data.forgejo.org: the runner cloned every action over WAN on every job
++          # (~2min/job measured 2026-07-23; ephemeral runners keep no clone cache). The
++          # in-cluster URL keeps clones off the ingress entirely.
++          # ORDER MATTERS: run scripts/bootstrap-action-mirrors.sh (and let it verify) BEFORE
++          # merging this — a missing mirror 404s and fails every job that uses the action.
++          DEFAULT_ACTIONS_URL: "http://forgejo-http.forgejo.svc.cluster.local:3000"
+         security:
+           INSTALL_LOCK: true
+--- a/kubernetes/apps/forgejo/forgejo-runner/app/configmap.yaml
++++ b/kubernetes/apps/forgejo/forgejo-runner/app/configmap.yaml
+@@ -41,8 +41,10 @@
+       secret_url: "file:/run/forgejo-runner/cache-secret"
+     container:
+-      # Talk to the in-pod rootless/privileged DinD sidecar.
+-      docker_host: tcp://localhost:2376
++      # "-": use the DOCKER_HOST env (the runner pod exports tcp://<node-ip>:2375 — the shared
++      # per-node dind DaemonSet, see dind-daemonset.yaml) and do NOT mount the docker host
++      # into job containers.
++      docker_host: "-"
+       options: ""
+       network: ""
+--- a/kubernetes/apps/forgejo/forgejo-runner/app/kustomization.yaml
++++ b/kubernetes/apps/forgejo/forgejo-runner/app/kustomization.yaml
+@@ -6,6 +6,8 @@
+   - ./configmap.yaml
+   - ./triggerauthentication.yaml
+   - ./scaledjob.yaml
++  # Shared per-node docker daemon (persistent image cache) + its access policy.
++  - ./dind-daemonset.yaml
+   # forgejo-runner-secret (uuid + token) is now minted and owned by the registration
+   # provisioner Job (the old ESO ExternalSecret + migration PushSecret were removed: the

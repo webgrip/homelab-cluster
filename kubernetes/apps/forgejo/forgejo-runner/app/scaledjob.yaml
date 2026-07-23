@@ -2,14 +2,20 @@
 # `docker` label. minReplicaCount keeps a WARM POOL of runners blocked on `one-job --wait`
 # (ready to grab a job with no cold-start); the scaler adds more — up to maxReplicaCount —
 # when pending jobs exceed the pool. Each pod runs forgejo-runner `one-job` (registers, runs
-# exactly one job, exits; KEDA backfills to maintain the floor) with a privileged DinD
-# native-sidecar for image builds.
+# exactly one job, exits; KEDA backfills to maintain the floor).
 #
 # Topology A, host-mode (ADR-0026 step 1, "prove the runner first"). The MAIN container is the
 # webgrip ci-runner toolchain image (docker CLI + buildx plugin, git, php, dotnet); workflow
-# steps run inside it (config.yaml maps `docker` -> host). It shares the pod netns with the dind
-# sidecar, so DOCKER_HOST=tcp://localhost:2376 reaches the daemon directly. The ci-runner image
-# doesn't ship forgejo-runner, so the `runner-bin` init container injects the static binary.
+# steps run inside it (config.yaml maps `docker` -> host). The ci-runner image doesn't ship
+# forgejo-runner, so the `runner-bin` init container injects the static binary.
+#
+# Docker daemon: the SHARED per-node dind DaemonSet (dind-daemonset.yaml), reached at
+# tcp://<node-ip>:2375 — NOT a per-pod sidecar. The sidecar's throwaway /var/lib/docker meant
+# every `container:` job re-pulled AND re-extracted its multi-GB CI image onto a ~12MB/s disk
+# (~4-10 min "Set up job", measured 2026-07-23). The node daemon keeps a persistent hostPath
+# image store: extraction happens once per node per image version, then pulls are no-ops.
+# Removing the sidecar also frees its 250m/512Mi request per pod (~1-2 extra warm runners of
+# node headroom at the same floor).
 ---
 apiVersion: keda.sh/v1alpha1
 kind: ScaledJob
@@ -93,9 +99,6 @@ spec:
             effect: NoSchedule
         securityContext:
           fsGroup: 1000
-        # Docker-in-Docker as a native sidecar: starts before the runner and is
-        # auto-terminated when the runner (main container) finishes its one job,
-        # so the Job completes cleanly.
         initContainers:
           # Inject the forgejo-runner agent into the toolchain image: copy the static binary out
           # of the pinned forgejo/runner image into a shared volume the main container execs from.
@@ -139,52 +142,6 @@ spec:
             resources:
               requests: {cpu: 10m, memory: 32Mi}
               limits: {memory: 64Mi}
-          - name: dind
-            image: harbor.webgrip.dev/dockerhub/library/docker:29.6.2-dind@sha256:bfec1f5159c63a81ca6fdedbd81404d2c0e16378ed0feec3bb3fbf3998847659
-            restartPolicy: Always
-            securityContext:
-              privileged: true
-            env:
-              - name: DOCKER_TLS_CERTDIR
-                value: /certs
-            volumeMounts:
-              - name: docker-certs
-                mountPath: /certs
-              - name: docker-storage
-                mountPath: /var/lib/docker
-              # Same path as in the runner container: `docker run -v` bind-mounts resolve on THIS
-              # daemon's fs, so a workspace the runner writes under /mnt/ci-shared is only visible
-              # to containers if dind mounts the same volume at the same absolute path. The e2e
-              # validators (flux-local, kyverno CLI, chainsaw) all `docker run -v $(mktemp -d)…`;
-              # the workflow sets TMPDIR=/mnt/ci-shared to land those workspaces here.
-              - name: ci-shared
-                mountPath: /mnt/ci-shared
-            startupProbe:
-              exec:
-                command:
-                  - sh
-                  - -c
-                  - docker --tlsverify --tlscacert=/certs/client/ca.pem --tlscert=/certs/client/cert.pem --tlskey=/certs/client/key.pem -H tcp://localhost:2376 info
-              initialDelaySeconds: 3
-              periodSeconds: 2
-              failureThreshold: 30
-              # 5s, not the 1s default: under disk-IO saturation (fringe pegs at 40-90% IO-stall
-              # during container-heavy CI) `docker info` answers slowly but the daemon is healthy.
-              # With the default the probe timed out 12+ times in a row (2026-07-18), leaving fresh
-              # warm pods stuck in Init for minutes -- shrinking runner capacity exactly when the
-              # job queue was deepest, and eventually killing a healthy dind into a restart.
-              timeoutSeconds: 5
-            resources:
-              # No CPU limit: let a lone build burst into the idle node (observed ~0.8 core peak).
-              # 3Gi limit: the e2e chainsaw step runs a KinD cluster + 4 Kyverno controllers
-              # INSIDE dind (~1.2-1.5Gi) — at the old 1536Mi ceiling `kind create --wait 2m`
-              # timed out on fringe-workstation (e2e runs 17/23, 2026-07-13) while fitting on
-              # worker-1. Requests stay low; the burst is short-lived and Burstable-class.
-              requests:
-                cpu: 250m
-                memory: 512Mi
-              limits:
-                memory: 3Gi
         containers:
           - name: runner
             # Host-mode toolchain image (webgrip/infrastructure ops/docker/ci-runner): docker CLI +
@@ -215,6 +172,10 @@ spec:
                 # "Cannot find: node in PATH". node20 (glibc, v20.x) matches actions/checkout@v4's
                 # declared runtime; node24 is also bundled at externals/node24/bin if needed.
                 export PATH="/home/runner/externals/node20/bin:$PATH"
+                # The shared per-node dind DaemonSet (dind-daemonset.yaml) is the docker daemon:
+                # NODE_IP comes from the downward API below; config.yaml's docker_host is "-"
+                # so this env is authoritative for job-container pulls and docker builds.
+                export DOCKER_HOST="tcp://${NODE_IP}:2375"
                 # --wait blocks until Forgejo assigns a task. Required for the warm pool
                 # (minReplicaCount): these pods start with no pending job, so without --wait they'd
                 # exit immediately and KEDA would hot-loop respawning them. Harmless for burst pods
@@ -234,12 +195,13 @@ spec:
               # secret mount — buildx and docker/login-action both write inside DOCKER_CONFIG.
               - name: DOCKER_CONFIG
                 value: /docker-config
-              - name: DOCKER_HOST
-                value: tcp://localhost:2376
-              - name: DOCKER_CERT_PATH
-                value: /certs/client
-              - name: DOCKER_TLS_VERIFY
-                value: "1"
+              # Node IP of the shared dind DaemonSet; the command script derives
+              # DOCKER_HOST=tcp://$(NODE_IP):2375 from it. No TLS: plaintext on the node
+              # boundary, gated by the forgejo-dind CiliumNetworkPolicy.
+              - name: NODE_IP
+                valueFrom:
+                  fieldRef:
+                    fieldPath: status.hostIP
             volumeMounts:
               - name: runner-bin
                 mountPath: /dist
@@ -249,11 +211,10 @@ spec:
               - name: registration
                 mountPath: /run/forgejo-runner
                 readOnly: true
-              - name: docker-certs
-                mountPath: /certs
-                readOnly: true
-              # Shared with the dind sidecar (see there) so dockerized validators can bind-mount
-              # workspaces. Writable by the runner user via fsGroup 1000.
+              # Shared with the per-node dind DaemonSet at the same absolute path, so
+              # dockerized validators can bind-mount workspaces (`docker run -v` resolves on
+              # the DAEMON's fs). World-writable (1777) node tmpfs, initialized by the
+              # DaemonSet's init container — hostPath ignores fsGroup.
               - name: ci-shared
                 mountPath: /mnt/ci-shared
               - name: docker-config
@@ -278,10 +239,6 @@ spec:
           - name: registration
             secret:
               secretName: forgejo-runner-secret
-          - name: docker-certs
-            emptyDir: {}
-          - name: docker-storage
-            emptyDir: {}
           - name: runner-bin
             emptyDir: {}
           # Same harbor-pull dockerconfigjson the kubelet uses, re-shaped as a docker CLI config
@@ -301,19 +258,16 @@ spec:
           # and docker/login-action can append registry creds for the verifyRelease build cache.
           - name: docker-config
             emptyDir: {}
-          # tmpfs (RAM), not disk. This is where the e2e validators land their mktemp
-          # workspaces (TMPDIR=/mnt/ci-shared). flux-local's render renames every
-          # kustomization.yaml in its tree to .original and back per build -- metadata/IOPS-heavy
-          # churn that pinned fringe-workstation's single disk at 57-91% busy for the whole
-          # render (measured 2026-07-15). On disk that made flux-local slow AND starved the
-          # concurrently-scheduled chainsaw job's KinD etcd of fsync IOPS ("etcdserver: request
-          # timed out"). In RAM the churn is free and the physical disk stays idle for etcd.
-          # sizeLimit caps RAM use (charged to the writing container's cgroup); the e2e
-          # workspaces are ~100 MiB, well under it.
+          # Node RAM (tmpfs) shared with the per-node dind DaemonSet — bind-mount parity
+          # requires runner pods and the daemon to see the SAME path, so this moved from a
+          # per-pod Memory emptyDir to a node-wide /dev/shm hostPath. Same IOPS rationale as
+          # before: flux-local's rename churn pinned the disk at 57-91% busy (2026-07-15);
+          # in RAM it's free and the disk stays idle for etcd. The DaemonSet's prune sidecar
+          # clears stale workspaces (the old per-pod lifetime GC is gone with the emptyDir).
           - name: ci-shared
-            emptyDir:
-              medium: Memory
-              sizeLimit: 2Gi
+            hostPath:
+              path: /dev/shm/forgejo-ci-shared
+              type: DirectoryOrCreate
   triggers:
     - type: forgejo-runner
       metadata:
