@@ -42,8 +42,18 @@ fetch_digest() {
       # (anonymous) bearer token; without it every manifest HEAD returns 401,
       # which failed the whole script — and with it every Renovate
       # postUpgradeTask — for all harbor-proxied charts.
+      #
+      # First-party charts live in the PRIVATE webgrip project
+      # (webgrip/charts/*), where an anonymous token gets 401. When robot
+      # credentials are in the environment (CI passes HARBOR_ROBOT_USER/
+      # HARBOR_ROBOT_TOKEN), request the scoped token WITH basic auth so
+      # private repositories resolve too; anonymous stays the fallback.
       local token
-      token="$(curl -fsSL "https://harbor.webgrip.dev/service/token?service=harbor-registry&scope=repository:${path}:pull" | jq -r .token)"
+      local -a token_auth=()
+      if [[ -n "${HARBOR_ROBOT_USER:-}" && -n "${HARBOR_ROBOT_TOKEN:-}" ]]; then
+        token_auth=(-u "${HARBOR_ROBOT_USER}:${HARBOR_ROBOT_TOKEN}")
+      fi
+      token="$(curl -fsSL "${token_auth[@]}" "https://harbor.webgrip.dev/service/token?service=harbor-registry&scope=repository:${path}:pull" | jq -r .token)"
       auth_header=(-H "Authorization: Bearer ${token}")
       ;;
   esac
