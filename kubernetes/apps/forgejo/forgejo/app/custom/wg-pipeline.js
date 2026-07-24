@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var WG_VERSION = '3.4.0';
+  var WG_VERSION = '3.5.0';
   try { window.__wgPipeline = { version: WG_VERSION }; } catch (e) { }
 
   var RANK = { failure: 7, unknown: 7, cancelled: 6, running: 5, blocked: 4, waiting: 4, success: 3, skipped: 2 };
@@ -142,13 +142,15 @@
 
   var MAX_REUSABLE_DEPTH = 5;
 
-  /* Resolve a job-level `uses:` to the flat list of EVERY descendant job label
-     Forgejo will flatten into the run graph. Forgejo expands a called reusable
-     workflow's inner jobs into the caller (docs/.../forgejo-actions-engine.md),
-     and those inner jobs can themselves `uses:` further reusables — so we follow
-     the chain transitively, collecting each level's job labels. `seen` guards
-     cycles; MAX_REUSABLE_DEPTH bounds runaway. Fetches are cached (cachedText),
-     so commit-pinned refs cost one request ever. */
+  /* Resolve a job-level `uses:` to EVERY descendant job Forgejo will flatten
+     into the run graph, as {label, depth} items. Forgejo expands a called
+     reusable workflow's inner jobs into the caller (docs/.../
+     forgejo-actions-engine.md), and those inner jobs can themselves `uses:`
+     further reusables — so we follow the chain transitively, tagging each job
+     with its nesting depth (caller's direct reusable = 1, its reusable = 2, …)
+     so the rail can render the true call chain rather than flat siblings.
+     `seen` guards cycles; MAX_REUSABLE_DEPTH bounds runaway. Fetches are cached
+     (cachedText), so commit-pinned refs cost one request ever. */
   function resolveDescendants(uses, baseForRel, depth, seen) {
     if (!uses || depth > MAX_REUSABLE_DEPTH || seen[uses]) return Promise.resolve([]);
     seen[uses] = true;
@@ -157,7 +159,7 @@
       var jobs = parseWorkflowJobs(hit.text);
       var childBase = rawDirOf(hit.url);
       return Promise.all(jobs.map(function (jj) {
-        var self = [labelOf(jj)];
+        var self = [{ label: labelOf(jj), depth: depth }];
         if (!jj.uses) return self;
         return resolveDescendants(jj.uses, childBase, depth + 1, seen)
           .then(function (more) { return self.concat(more); });
@@ -188,22 +190,25 @@
   }
 
   /* Two matching passes over run-job names: primary labels first (so a
-     caller's own name always wins), then reusable child labels merge the
-     expanded jobs into their caller. Returns leftover orphan descriptors. */
+     caller's own name always wins at depth 0), then reusable descendants
+     (childItems, each carrying its nesting depth) merge the flattened jobs into
+     their caller. depthByIndex records how deep in the reusable-call chain each
+     matched run job sits, so the rail can indent it correctly. Returns leftover
+     orphan descriptors. */
   function assignIndices(yjobs, names) {
     var used = [];
-    yjobs.forEach(function (yj) { yj.indices = []; });
+    yjobs.forEach(function (yj) { yj.indices = []; yj.depthByIndex = Object.create(null); });
     yjobs.forEach(function (yj) {
       names.forEach(function (nm, idx) {
         if (used[idx]) return;
-        if (nameMatches(nm, yj.label)) { yj.indices.push(idx); used[idx] = true; }
+        if (nameMatches(nm, yj.label)) { yj.indices.push(idx); yj.depthByIndex[idx] = 0; used[idx] = true; }
       });
     });
     yjobs.forEach(function (yj) {
-      (yj.childLabels || []).forEach(function (cl) {
+      (yj.childItems || []).forEach(function (ci) {
         names.forEach(function (nm, idx) {
           if (used[idx]) return;
-          if (nameMatches(nm, cl)) { yj.indices.push(idx); used[idx] = true; }
+          if (nameMatches(nm, ci.label)) { yj.indices.push(idx); yj.depthByIndex[idx] = ci.depth; used[idx] = true; }
         });
       });
     });
@@ -442,21 +447,35 @@
              ordered job list (run.jobIndex, fetched from the run-view endpoint)
              for a per-job deep link; fall back to the bare run page. */
           var prName = (bestIdx !== -1 && run.jobs[bestIdx]) ? run.jobs[bestIdx].name : null;
+          var direct = (prName != null && run.jobUrlByName) ? run.jobUrlByName[prName] : null;
           var mapped = (prName != null && run.jobIndex) ? run.jobIndex[prName] : null;
-          el.href = (mapped != null) ? run.link + '/jobs/' + mapped : run.link;
+          el.href = direct || (mapped != null ? run.link + '/jobs/' + mapped : run.link);
         } else if (bestIdx !== -1) {
           el.href = run.link + '/jobs/' + bestIdx;
         }
 
         var metaEl = el.querySelector('.wg-node-meta');
         var dTxt = (bestDur > 0) ? durations[bestIdx] : '';
-        metaEl.textContent = st + (dTxt ? ' · ' + dTxt : '');
+        /* This node is a single logical step in the parent workflow; when it
+           expands to a reusable-workflow chain, flag the job count so the node
+           reads as composite (the full ordered chain is in the tooltip). */
+        var nestedTxt = (j.indices.length > 1) ? ' · ' + j.indices.length + ' jobs' : '';
+        metaEl.textContent = st + (dTxt ? ' · ' + dTxt : '') + nestedTxt;
 
         var tip = j.label + ' · ' + st + (dTxt ? ' · ' + dTxt : '');
         if (j.indices.length > 1) {
-          tip += '\ncontains: ' + j.indices.map(function (idx) {
-            return (run.jobs[idx] ? run.jobs[idx].name : railNameAt(idx)) + ' [' + (statuses[idx] || '?') + ']';
-          }).join(', ');
+          /* ordered by nesting depth so it reads as the real call chain:
+             caller → its reusable → that reusable's reusable → … */
+          var ordered = j.indices.slice().sort(function (a, b) {
+            return (j.depthByIndex[a] || 0) - (j.depthByIndex[b] || 0);
+          });
+          tip += '\nreusable-workflow chain:\n' + ordered.map(function (idx) {
+            var nm = run.jobs[idx] ? run.jobs[idx].name : railNameAt(idx);
+            var d = j.depthByIndex[idx] || 0;
+            var indent = new Array(d + 1).join('  ');
+            var dur = durations[idx] ? ' ' + durations[idx] : '';
+            return indent + (d ? '└ ' : '') + nm + ' [' + (statuses[idx] || '?') + dur + ']';
+          }).join('\n');
         }
         if (j.orphan) tip += '\nnot in the workflow at this commit (older attempt)';
         el.title = tip;
@@ -536,27 +555,28 @@
       stages.forEach(function (stage) {
         stage.forEach(function (j) {
           if (!j.indices.length) return;
-          var caller = j.indices[0];
-          for (var k = 0; k < j.indices.length; k++) {
-            var idx = j.indices[k];
-            var nm = lastRail ? (lastRail[idx] || {}).name : (run.jobs[idx] || {}).name;
-            if (nm && nameMatches(nm, j.label)) { caller = idx; break; }
-          }
-          seq += 10;
-          plan[caller] = { order: seq, child: false };
-          var off = 0;
-          j.indices.forEach(function (idx) {
-            if (idx === caller) return;
-            off++;
-            plan[idx] = { order: seq + off, child: true };
+          /* keep the caller (depth 0) first, then its descendants in nesting
+             order, each indented by its true reusable-call depth so the chain
+             reads Distribute > (Harbor,fast) > (Registry,fast), not siblings. */
+          var ordered = j.indices.slice().sort(function (a, b) {
+            return (j.depthByIndex[a] || 0) - (j.depthByIndex[b] || 0);
+          });
+          seq += 100;
+          ordered.forEach(function (idx, k) {
+            plan[idx] = { order: seq + k, depth: j.depthByIndex[idx] || 0 };
           });
         });
       });
       Array.prototype.forEach.call(items, function (item, idx) {
         var p = plan[idx];
         item.style.order = p ? p.order : 9000 + idx;
-        if (p && p.child) item.setAttribute('data-wg-child', '');
-        else item.removeAttribute('data-wg-child');
+        if (p && p.depth) {
+          item.setAttribute('data-wg-child', '');
+          item.style.marginLeft = (p.depth * 20) + 'px';
+        } else {
+          item.removeAttribute('data-wg-child');
+          item.style.marginLeft = '';
+        }
       });
     }
 
@@ -618,6 +638,11 @@
     var onConversation = new RegExp('^[/][^/]+[/][^/]+[/]pulls[/]\\d+$').test(location.pathname);
     var tab = null, tabDot = null;
 
+    /* Exposed for debugging (window.__wgPipeline.pr): why the panel did/didn't
+       render for this PR — head sha, what the task scan saw, commit-status. */
+    var diag = { sha: null, taskHit: false, scan: null, commitStatus: null, reason: null };
+    try { window.__wgPipeline = window.__wgPipeline || {}; window.__wgPipeline.pr = diag; } catch (e) { }
+
     function taskRows(tasks, sha) {
       var mine = tasks.filter(function (t) { return t.head_sha === sha; });
       if (!mine.length) return null;
@@ -641,28 +666,55 @@
       return { rows: rows, workflow: wf, runLink: runLink, runNumber: maxRun };
     }
 
+    /* The tasks API returns newest-first and is NOT sha-filterable, so a run
+       for an older head can sit past the first page on a busy repo. Page deeper
+       (up to 300 rows) before giving up, and record what we scanned for diag. */
+    var lastScan = { scanned: 0, total: 0 };
     function fetchTasks(sha) {
-      return apiJSON('/api/v1/repos/' + m[1] + '/' + m[2] + '/actions/tasks?limit=50&page=1').then(function (r1) {
-        var all = (r1 && r1.workflow_runs) || [];
-        var hit = taskRows(all, sha);
-        if (hit || !r1 || all.length >= (r1.total_count || 0)) return hit;
-        return apiJSON('/api/v1/repos/' + m[1] + '/' + m[2] + '/actions/tasks?limit=50&page=2').then(function (r2) {
-          return taskRows(all.concat((r2 && r2.workflow_runs) || []), sha);
+      var MAX_PAGES = 6;
+      function page(p, acc) {
+        return apiJSON('/api/v1/repos/' + m[1] + '/' + m[2] + '/actions/tasks?limit=50&page=' + p).then(function (r) {
+          var all = acc.concat((r && r.workflow_runs) || []);
+          lastScan = { scanned: all.length, total: (r && r.total_count) || 0 };
+          var hit = taskRows(all, sha);
+          if (hit) return hit;
+          if (!r || all.length >= lastScan.total || p >= MAX_PAGES) return null;
+          return page(p + 1, all);
         });
-      });
+      }
+      return page(1, []);
     }
 
-    /* A queued run has no task rows yet (one worker → jobs sit waiting). Retry
-       until the runner creates the first row, so the panel appears on its own
-       instead of only after a manual refresh. ~10 min ceiling, then give up. */
-    function waitForFirstHit(sha, tries) {
-      return fetchTasks(sha).then(function (hit) {
-        if (hit) return hit;
-        if (tries >= 40) return null;
-        if (tabDot) tab.title = 'Waiting for a runner to pick up the run…';
-        return new Promise(function (resolve) {
-          window.setTimeout(function () { resolve(waitForFirstHit(sha, tries + 1)); }, 15000);
+    /* commit-status API is sha-keyed (no pagination gap) and sees a run as soon
+       as it is created — the reliable "does this commit have a run" source.
+       context is "<workflow> / <job> (<event>)"; target_url is the job's page. */
+    function parseCtx(context) {
+      var name = String(context || '').replace(/\s*\([^)]*\)\s*$/, '');
+      var slash = name.lastIndexOf(' / ');
+      return slash !== -1 ? name.slice(slash + 3) : name;
+    }
+    function mapCommitState(s) {
+      if (s === 'success') return 'success';
+      if (s === 'pending') return 'running';
+      if (s === 'failure' || s === 'error' || s === 'warning') return 'failure';
+      return 'waiting';
+    }
+    function fetchCommitStatus(sha) {
+      return apiJSON('/api/v1/repos/' + m[1] + '/' + m[2] + '/commits/' + sha + '/status?limit=100').then(function (d) {
+        if (!d) return null;
+        var sts = d.statuses || [];
+        var runNumber = null, rows = [], jobUrl = Object.create(null), seen = Object.create(null);
+        sts.forEach(function (s) {
+          var mm = String(s.target_url || '').match(/[/]actions[/]runs[/](\d+)/);
+          if (mm && runNumber == null) runNumber = parseInt(mm[1], 10);
+          var nm = parseCtx(s.context);
+          if (nm && !seen[nm]) {
+            seen[nm] = 1;
+            rows.push({ name: nm, status: mapCommitState(s.status || s.state), duration: '' });
+            jobUrl[nm] = s.target_url || null;
+          }
         });
+        return { state: d.state, count: sts.length, runNumber: runNumber, rows: rows, jobUrl: jobUrl };
       });
     }
 
@@ -694,6 +746,13 @@
       }).catch(function () { return null; });
     }
 
+    /* Remove any panel we inserted earlier so a re-render (e.g. a flat fallback
+       upgrading to the full graph, or a pending-run repoll) never stacks. */
+    function clearPriorPanel() {
+      var ex = document.getElementById('wg-pipeline');
+      if (ex && ex.parentNode) ex.parentNode.removeChild(ex);
+    }
+
     /* Place the panel just ABOVE the merge box (GitHub-like); fall back to
        below the PR description, then to the top of the content. */
     function panelHost() {
@@ -706,6 +765,8 @@
         || (container && container.nextElementSibling);
     }
 
+    /* Full render: workflow YAML → DAG, tasks rows → status/duration, run-view
+       index → per-job deep links. Used when the tasks list yields the run. */
     function render(sha, hit) {
       tabStatus(hit.rows);
       if (tab) tab.title = hit.workflow + ' · run #' + hit.runNumber;
@@ -727,11 +788,12 @@
             targets[u] = labels;
           });
         })).then(function () {
-          yjobs.forEach(function (j) { if (j.uses) j.childLabels = targets[j.uses] || []; });
+          yjobs.forEach(function (j) { if (j.uses) j.childItems = targets[j.uses] || []; });
           var host = panelHost();
           if (!host) return;
           var allDone = hit.rows.every(function (r) { return TERMINAL[r.status]; });
           var run = { link: hit.runLink, done: true, prMode: true, status: 'unknown', jobs: hit.rows, jobIndex: jobIndex, commit: {} };
+          clearPriorPanel();
           var applyFn = build(host, run, yjobs);
           if (!applyFn || allDone) return;
           var poll = window.setInterval(function () {
@@ -749,14 +811,58 @@
       });
     }
 
+    /* Fallback render when the tasks list didn't surface the run but commit
+       status did: a flat status grid straight from the commit statuses (one
+       synthesized node per job so nothing renders as an orphan), with per-job
+       deep links from each status's target_url. No DAG/durations, but visible. */
+    function renderFlat(cs) {
+      tabStatus(cs.rows);
+      if (tab) { tab.title = 'run #' + cs.runNumber + ' · ' + cs.state; if (cs.runNumber) tab.href = base + '/actions/runs/' + cs.runNumber; }
+      if (!onConversation || !cs.rows.length) return;
+      var host = panelHost();
+      if (!host) return;
+      var yjobs = cs.rows.map(function (r) { return { id: r.name, label: r.name, needs: [], uses: null }; });
+      var run = { link: base + '/actions/runs/' + cs.runNumber, done: true, prMode: true, status: 'unknown', jobs: cs.rows, jobUrlByName: cs.jobUrl, commit: {} };
+      clearPriorPanel();
+      build(host, run, yjobs);
+    }
+
+    /* Discovery: commit status is the source of truth for whether a run exists;
+       tasks give the richer graph when reachable. Poll while a run is pending
+       or not-yet-created (queued), then settle on an honest tab state. */
+    function attempt(sha, tries) {
+      Promise.all([fetchCommitStatus(sha), fetchTasks(sha)]).then(function (res) {
+        var cs = res[0], hit = res[1];
+        diag.commitStatus = cs;
+        diag.scan = lastScan;
+        if (hit) { diag.taskHit = true; diag.runNumber = hit.runNumber; diag.reason = 'rendered from tasks'; render(sha, hit); return; }
+        if (cs && cs.count) {
+          diag.runNumber = cs.runNumber;
+          diag.reason = 'run #' + cs.runNumber + ' (' + cs.state + ') found via commit-status; not in ' + lastScan.scanned + '/' + lastScan.total + ' tasks scanned → flat render';
+          renderFlat(cs);
+          if (/pending|running/.test(cs.state || '') && tries < 40) {
+            window.setTimeout(function () { attempt(sha, tries + 1); }, 15000);
+          }
+          return;
+        }
+        /* no run/check yet — could be queued pre-status; poll briefly then settle */
+        if (tries < 6) {
+          if (tab) tab.title = 'Waiting for a runner to pick up the run…';
+          window.setTimeout(function () { attempt(sha, tries + 1); }, 15000);
+          return;
+        }
+        diag.reason = 'no Actions run/check for this commit (' + sha.slice(0, 10) + ')';
+        if (tab) tab.title = 'No Actions run for this commit';
+        if (tabDot) tabDot.className = 'wg-run-status wg-status-skipped';
+      });
+    }
+
     function startData() {
       apiJSON('/api/v1/repos/' + m[1] + '/' + m[2] + '/pulls/' + m[3]).then(function (pr) {
         var sha = pr && pr.head && pr.head.sha;
-        if (!sha) return;
-        waitForFirstHit(sha, 0).then(function (hit) {
-          if (!hit) { if (tab) tab.title = 'No Actions runs for the current head commit'; return; }
-          render(sha, hit);
-        });
+        diag.sha = sha;
+        if (!sha) { diag.reason = 'PR API returned no head sha'; return; }
+        attempt(sha, 0);
       });
     }
 
@@ -818,7 +924,7 @@
             });
           })).then(function () {
             yjobs.forEach(function (j) {
-              if (j.uses) j.childLabels = targets[j.uses] || [];
+              if (j.uses) j.childItems = targets[j.uses] || [];
             });
             shell.remove();
             build(host, run, yjobs);
