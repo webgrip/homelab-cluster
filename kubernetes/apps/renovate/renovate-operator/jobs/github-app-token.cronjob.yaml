@@ -34,6 +34,23 @@ spec:
                       name: renovate-secrets
                       key: RENOVATE_GITHUB_API
                       optional: true
+                # Harbor robot for the PRIVATE webgrip project (first-party charts:
+                # ploeg, erfbeeld). optional: the hostRule is simply omitted until the
+                # renovate-harbor-robot ExternalSecret has synced.
+                - name: HARBOR_HOST
+                  value: harbor.${SECRET_DOMAIN}
+                - name: HARBOR_ROBOT_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: renovate-harbor-robot
+                      key: HARBOR_ROBOT_USER
+                      optional: true
+                - name: HARBOR_ROBOT_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: renovate-harbor-robot
+                      key: HARBOR_ROBOT_TOKEN
+                      optional: true
               command:
                 - /bin/sh
                 - -ceu
@@ -88,13 +105,32 @@ spec:
                     });
                   }
 
+                  const harborHost = process.env.HARBOR_HOST;
+                  const harborUser = process.env.HARBOR_ROBOT_USER;
+                  const harborToken = process.env.HARBOR_ROBOT_TOKEN;
+
+                  if ((harborUser || harborToken) && !(harborUser && harborToken)) {
+                    console.error('set both HARBOR_ROBOT_USER and HARBOR_ROBOT_TOKEN');
+                    process.exit(1);
+                  }
+
+                  if (harborHost && harborUser && harborToken) {
+                    hostRules.push({
+                      matchHost: harborHost,
+                      hostType: 'docker',
+                      username: harborUser,
+                      password: harborToken,
+                    });
+                  }
+
                   fs.writeFileSync('/work/host-rules.json', JSON.stringify(hostRules));
                   EOF
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
                 capabilities:
-                  drop: ["ALL"]
+                  drop:
+                    - "ALL"
               resources:
                 requests:
                   cpu: 10m
@@ -136,7 +172,8 @@ spec:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
                 capabilities:
-                  drop: ["ALL"]
+                  drop:
+                    - "ALL"
               resources:
                 requests:
                   cpu: 10m

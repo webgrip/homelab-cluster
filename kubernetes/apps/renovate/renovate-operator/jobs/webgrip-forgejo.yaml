@@ -102,6 +102,23 @@ spec:
           name: renovate-runtime-token
           key: token
           optional: true
+    # Harbor robot for the PRIVATE webgrip project: registry auth arrives via
+    # RENOVATE_HOST_RULES (token-minter folds it in), but the update-oci-digests.sh
+    # postUpgradeTask reads these envs directly (scripts/lib/oci.sh fetch_digest —
+    # anonymous requests 401 on first-party charts). optional: until the
+    # renovate-harbor-robot ExternalSecret syncs, behavior stays as before.
+    - name: HARBOR_ROBOT_USER
+      valueFrom:
+        secretKeyRef:
+          name: renovate-harbor-robot
+          key: HARBOR_ROBOT_USER
+          optional: true
+    - name: HARBOR_ROBOT_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: renovate-harbor-robot
+          key: HARBOR_ROBOT_TOKEN
+          optional: true
   extraVolumes:
     - name: config
       configMap:
