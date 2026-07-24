@@ -26,10 +26,29 @@ function prepare_flux_local_workspace() {
     chmod -R a+rwX "${dest_dir}"
 }
 
+# Registry blips (e.g. Harbor mid-rollback, 2026-07-24 run 434) must not fail
+# validation: pre-pull with retries instead of letting `docker run` fail on
+# its single implicit pull attempt.
+function ensure_flux_local_image() {
+    if docker image inspect "${FLUX_LOCAL_IMAGE}" >/dev/null 2>&1; then
+        return 0
+    fi
+    local attempt
+    for attempt in 1 2 3; do
+        if docker pull "${FLUX_LOCAL_IMAGE}"; then
+            return 0
+        fi
+        echo "flux-local image pull failed (attempt ${attempt}/3), retrying in $((attempt * 15))s..." >&2
+        sleep $((attempt * 15))
+    done
+    docker pull "${FLUX_LOCAL_IMAGE}"
+}
+
 function run_flux_local() {
     local workspace="$1"
     shift
 
+    ensure_flux_local_image
     docker run --rm \
         -e HOME=/tmp \
         -v "${workspace}:/github/workspace" \
@@ -112,6 +131,7 @@ function run_flux_local_diff() {
     local default_workspace="$2"
     shift 2
 
+    ensure_flux_local_image
     docker run --rm \
         -e HOME=/tmp \
         -v "${pull_workspace}:/github/workspace/pull" \
