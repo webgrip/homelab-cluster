@@ -25,6 +25,15 @@ spec:
       PLOEG_DEFAULT_TEAM: bronze
       PLOEG_LEASE_TTL: 15m
     executor:
-      # Phase 3 flips this on (needs the LiteLLM + agent-builder secrets and
-      # the privileged-DinD PolicyException in this namespace).
-      enabled: false
+      enabled: true
+      teams:
+        # bronze: cheapest model, $2/run budget. Target repo pinned per team
+        # in v0 (repo-from-ticket mapping is a follow-up); erfbeeld is the
+        # proven agent-run target (AGENTS.md + team-bronze skill in-repo) and
+        # the worker only ever opens PRs, never merges.
+        - name: bronze
+          model: litellm_proxy/deepseek-chat
+          budget: "2"
+          repoOwner: ryangr0
+          repoName: erfbeeld
+          maxReplicaCount: 1
