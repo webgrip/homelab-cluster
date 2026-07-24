@@ -1,0 +1,187 @@
+---
+# Dark Factory (ploeg) SLOs — dispatch-plane health, spend guardrails, key hygiene.
+# Metrics from the ploeg work_items exporter (ploeg_*) + LiteLLM ledger exporter
+# (litellm_*) + kube-state-metrics (exported_namespace wrap). Grafana forwards all
+# firing alerts to VMAlertmanager; severity labels drive routing there (no contact
+# point here). Folder ai — where the dark-factory dashboards live.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaAlertRuleGroup
+metadata:
+  name: slo-dark-factory
+  namespace: observability
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: ai
+  interval: 1m
+  rules:
+    - uid: slo-ploeg-lease-stuck
+      title: "SLO: Ploeg lease stuck (expired, not reclaimed)"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange: {from: 600, to: 0}
+          datasourceUid: prometheus
+          model:
+            expr: "sum(ploeg_leases_expired_not_reclaimed) or vector(0)"
+            instant: true
+            refId: query
+            datasource: {uid: prometheus, type: prometheus}
+        - refId: threshold
+          relativeTimeRange: {from: 0, to: 0}
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            expression: query
+            datasource: {uid: "-100", type: __expr__}
+            conditions:
+              - type: query
+                evaluator: {type: gt, params: [0]}
+                operator: {type: and}
+                query: {params: [query]}
+                reducer: {type: last}
+      noDataState: OK
+      execErrState: Error
+      for: 10m
+      annotations:
+        summary: "{{ $value | humanize }} ploeg lease(s) past TTL not reclaimed"
+        description: "A ploeg work-item lease is past expires_at but still present — the dispatcher is not reclaiming it, so the item is stranded. Check the ploegd deployment and leases table."
+      labels: {severity: critical, slo: dark-factory, team: platform}
+
+    - uid: slo-ploeg-queue-not-draining
+      title: "SLO: Ploeg queue not draining"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange: {from: 600, to: 0}
+          datasourceUid: prometheus
+          model:
+            expr: "max(ploeg_work_items_oldest_age_seconds{state=\"queued\"}) or vector(0)"
+            instant: true
+            refId: query
+            datasource: {uid: prometheus, type: prometheus}
+        - refId: threshold
+          relativeTimeRange: {from: 0, to: 0}
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            expression: query
+            datasource: {uid: "-100", type: __expr__}
+            conditions:
+              - type: query
+                evaluator: {type: gt, params: [900]}
+                operator: {type: and}
+                query: {params: [query]}
+                reducer: {type: last}
+      noDataState: OK
+      execErrState: Error
+      for: 5m
+      annotations:
+        summary: "Oldest queued ploeg item waiting {{ $value | humanizeDuration }}"
+        description: "A queued work item has waited > 15m (the lease TTL) without being dispatched — KEDA scaling or ploegd dispatch may be stuck. Check keda_scaler_active{scaledObject=\"ploeg-worker-bronze\"} and the worker jobs."
+      labels: {severity: warning, slo: dark-factory, team: platform}
+
+    - uid: slo-ploeg-worker-failures
+      title: "SLO: Ploeg worker job failures elevated"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange: {from: 7200, to: 0}
+          datasourceUid: prometheus
+          model:
+            expr: "sum(increase(kube_job_status_failed{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}[2h])) or vector(0)"
+            instant: true
+            refId: query
+            datasource: {uid: prometheus, type: prometheus}
+        - refId: threshold
+          relativeTimeRange: {from: 0, to: 0}
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            expression: query
+            datasource: {uid: "-100", type: __expr__}
+            conditions:
+              - type: query
+                evaluator: {type: gt, params: [5]}
+                operator: {type: and}
+                query: {params: [query]}
+                reducer: {type: last}
+      noDataState: OK
+      execErrState: Error
+      for: 5m
+      annotations:
+        summary: "{{ $value | humanize }} ploeg worker-job failures in 2h"
+        description: "Agent runs retry on transient errors (e.g. git timeouts), but > 5 worker-job failures in 2h suggests a systematic problem — the agent-runner image, DinD, LiteLLM egress, or the target repo. Check the Dispatch Plane dashboard run logs."
+      labels: {severity: warning, slo: dark-factory, team: platform}
+
+    - uid: slo-ploeg-run-budget-blocked
+      title: "SLO: Ploeg per-run LLM key hit its budget"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange: {from: 600, to: 0}
+          datasourceUid: prometheus
+          model:
+            expr: "sum(litellm_key_blocked{key_alias=~\"ploeg-.*\"}) or vector(0)"
+            instant: true
+            refId: query
+            datasource: {uid: prometheus, type: prometheus}
+        - refId: threshold
+          relativeTimeRange: {from: 0, to: 0}
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            expression: query
+            datasource: {uid: "-100", type: __expr__}
+            conditions:
+              - type: query
+                evaluator: {type: gt, params: [0]}
+                operator: {type: and}
+                query: {params: [query]}
+                reducer: {type: last}
+      noDataState: OK
+      execErrState: Error
+      for: 0m
+      annotations:
+        summary: "{{ $value | humanize }} ploeg run key(s) blocked on budget"
+        description: "A per-run LiteLLM key was blocked because it exhausted its per-run budget ($2 for bronze). The run likely ended stuck. Review the run on the Run Explorer / Dispatch Plane dashboards; consider a larger budget or a cheaper model if this recurs."
+      labels: {severity: warning, slo: dark-factory, team: platform}
+
+    - uid: slo-ploeg-run-key-leak
+      title: "SLO: Ploeg per-run LLM key outlived its run"
+      condition: threshold
+      data:
+        - refId: query
+          relativeTimeRange: {from: 600, to: 0}
+          datasourceUid: prometheus
+          model:
+            expr: "(count(litellm_key_spend{key_alias=~\"ploeg-.*\"}) or vector(0)) - (sum(ploeg_agent_runs_count{outcome=\"running\"}) or vector(0))"
+            instant: true
+            refId: query
+            datasource: {uid: prometheus, type: prometheus}
+        - refId: threshold
+          relativeTimeRange: {from: 0, to: 0}
+          datasourceUid: "-100"
+          model:
+            refId: threshold
+            type: threshold
+            expression: query
+            datasource: {uid: "-100", type: __expr__}
+            conditions:
+              - type: query
+                evaluator: {type: gt, params: [0]}
+                operator: {type: and}
+                query: {params: [query]}
+                reducer: {type: last}
+      noDataState: OK
+      execErrState: Error
+      for: 30m
+      annotations:
+        summary: "{{ $value | humanize }} ploeg run key(s) alive without a running run"
+        description: "More live ploeg-* LiteLLM keys than active runs — a per-run key was not revoked on run exit (RFC HAZ-02: a leaked budget key). Known cause: FAILED runs skip the revoke (entrypoint only revokes on the success path — webgrip/ploeg fix). Check the worker 'revoked per-run key' logs and the LiteLLM key table; revoke stragglers."
+      labels: {severity: warning, slo: dark-factory, team: platform}
