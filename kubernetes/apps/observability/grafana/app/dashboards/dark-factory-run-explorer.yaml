@@ -763,7 +763,7 @@ spec:
               },
               "format": "time_series",
               "rawQuery": true,
-              "rawSql": "SELECT $$__timeGroup(\"startTime\",'1m') AS time, sum(prompt_tokens) AS prompt, sum(completion_tokens) AS completion, sum(cache_read_input_tokens) AS cache_read, sum(cache_creation_input_tokens) AS cache_write FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY 1"
+              "rawSql": "SELECT $$__timeGroup(\"startTime\",'1m') AS time, sum(prompt_tokens) AS prompt, sum(completion_tokens) AS completion FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY 1"
             }
           ],
           "options": {
@@ -831,7 +831,7 @@ spec:
               },
               "format": "table",
               "rawQuery": true,
-              "rawSql": "SELECT \"startTime\" AS time, request_id, call_type, model, custom_llm_provider AS provider, spend, total_tokens, prompt_tokens, completion_tokens, cache_read_input_tokens AS cache_read, EXTRACT(EPOCH FROM (\"endTime\" - \"startTime\")) AS duration_s, CASE WHEN \"completionStartTime\" IS NOT NULL THEN EXTRACT(EPOCH FROM (\"completionStartTime\" - \"startTime\")) END AS ttft_s, metadata->>'status' AS status, metadata->>'attempted_retries' AS retries, session_id FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND $$__timeFilter(\"startTime\") ORDER BY \"startTime\" DESC LIMIT 500"
+              "rawSql": "SELECT \"startTime\" AS time, request_id, call_type, model, custom_llm_provider AS provider, spend, total_tokens, prompt_tokens, completion_tokens, cache_hit, EXTRACT(EPOCH FROM (\"endTime\" - \"startTime\")) AS duration_s, CASE WHEN \"completionStartTime\" IS NOT NULL THEN EXTRACT(EPOCH FROM (\"completionStartTime\" - \"startTime\")) END AS ttft_s, metadata->>'status' AS status, metadata->>'attempted_retries' AS retries, session_id FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' = '$$run' AND $$__timeFilter(\"startTime\") ORDER BY \"startTime\" DESC LIMIT 500"
             }
           ],
           "options": {

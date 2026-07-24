@@ -9,10 +9,10 @@ spec:
       grafana.internal/instance: grafana
   allowCrossNamespaceImport: false
   folderRef: ai
-  # Dark Factory LLM traffic: per-interval truth vs litellm-reliability's
-  # trailing-24h aggregates; no panel duplication. Live rates come from the
-  # spanmetrics connector, request shape and forensics from the spend ledger
-  # (SQL), plus raw logs and traces.
+  # Dark Factory LLM traffic: the inference-plane view centered on litellm.
+  # Live rates and latency come from the spanmetrics/servicegraph connectors,
+  # trailing-24h aggregates from the litellm exporter, request shape and
+  # forensics from the spend ledger (litellm-db SQL), plus raw logs and traces.
   json: |-
     {
       "schemaVersion": 39,
@@ -34,46 +34,97 @@ spec:
         {"type": "link", "title": "Claude Code Command Center", "url": "/d/claude-code-command-center", "icon": "external link"}
       ],
       "panels": [
-        {"id": 1, "type": "row", "title": "Live rates (spanmetrics)", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}},
+        {"id": 1, "type": "row", "title": "At a glance", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}},
         {
           "id": 2, "type": "stat", "title": "Req/min (litellm spans)",
-          "gridPos": {"h": 4, "w": 8, "x": 0, "y": 1},
+          "description": "litellm server-span call rate per minute from the spanmetrics connector (traces_spanmetrics_calls_total).",
+          "gridPos": {"h": 4, "w": 3, "x": 0, "y": 1},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 1, "color": {"mode": "fixed", "fixedColor": "text"}}, "overrides": []},
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "area", "textMode": "value"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(rate(traces_spanmetrics_calls_total{service_name=\"litellm\",span_kind=\"SPAN_KIND_SERVER\"}[$$__rate_interval])) * 60 or vector(0)", "instant": true}]
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 1, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []},
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "colorMode": "value", "graphMode": "area", "textMode": "value"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(rate(traces_spanmetrics_calls_total{service_name=\"litellm\",span_kind=\"SPAN_KIND_SERVER\"}[$$__rate_interval])) * 60 or vector(0)", "instant": false}]
         },
         {
           "id": 3, "type": "stat", "title": "Span error ratio",
-          "gridPos": {"h": 4, "w": 8, "x": 8, "y": 1},
+          "description": "Share of litellm spans ending STATUS_CODE_ERROR (traces_spanmetrics_calls_total); reads 0 when there is no traffic.",
+          "gridPos": {"h": 4, "w": 3, "x": 3, "y": 1},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 1, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}, "overrides": []},
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none", "textMode": "value"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(100 * sum(rate(traces_spanmetrics_calls_total{service_name=\"litellm\",status_code=\"STATUS_CODE_ERROR\"}[$$__rate_interval])) / sum(rate(traces_spanmetrics_calls_total{service_name=\"litellm\"}[$$__rate_interval]))) or vector(0)", "instant": true}]
+          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 1, "min": 0, "max": 100, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}, "overrides": []},
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "colorMode": "value", "graphMode": "area", "textMode": "value"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(100 * sum(rate(traces_spanmetrics_calls_total{service_name=\"litellm\",status_code=\"STATUS_CODE_ERROR\"}[$$__rate_interval])) / sum(rate(traces_spanmetrics_calls_total{service_name=\"litellm\"}[$$__rate_interval]))) or vector(0)", "instant": false}]
         },
         {
           "id": 4, "type": "stat", "title": "p95 span duration",
-          "gridPos": {"h": 4, "w": 8, "x": 16, "y": 1},
+          "description": "p95 of litellm server-span duration from the traces_spanmetrics_duration_seconds histogram.",
+          "gridPos": {"h": 4, "w": 3, "x": 6, "y": 1},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "fieldConfig": {"defaults": {"unit": "s", "decimals": 1, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 30}, {"color": "red", "value": 60}]}}, "overrides": []},
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none", "textMode": "value"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_duration_seconds_bucket{service_name=\"litellm\",span_kind=\"SPAN_KIND_SERVER\"}[$$__rate_interval]))) or vector(0)", "instant": true}]
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "colorMode": "value", "graphMode": "area", "textMode": "value"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_duration_seconds_bucket{service_name=\"litellm\",span_kind=\"SPAN_KIND_SERVER\"}[$$__rate_interval]))) or vector(0)", "instant": false}]
         },
         {
-          "id": 5, "type": "timeseries", "title": "Calls by service & status",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 5},
+          "id": 5, "type": "stat", "title": "Requests 24h",
+          "description": "Trailing-24h requests summed over models from the litellm exporter (litellm_recent_requests) — a window aggregate, not a per-interval rate.",
+          "gridPos": {"h": 4, "w": 3, "x": 9, "y": 1},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": [{"matcher": {"id": "byRegexp", "options": ".*ERROR.*"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]}]},
-          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (service_name, status_code) (rate(traces_spanmetrics_calls_total{service_name=~\"litellm|claude-code\"}[$$__rate_interval])) * 60", "legendFormat": "{{service_name}} {{status_code}}"}]
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []},
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "colorMode": "value", "graphMode": "area", "textMode": "value"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(litellm_recent_requests) or vector(0)", "instant": false}]
         },
         {
-          "id": 6, "type": "timeseries", "title": "litellm span duration p50/p95/p99",
-          "description": "spanmetrics has no span_name dimension",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 5},
+          "id": 6, "type": "stat", "title": "Failures 24h",
+          "description": "Trailing-24h failed requests from litellm_recent_failures — anything above zero deserves a look at the Forensics row.",
+          "gridPos": {"h": 4, "w": 3, "x": 12, "y": 1},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "s", "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": []},
-          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "colorMode": "value", "graphMode": "area", "textMode": "value"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(litellm_recent_failures) or vector(0)", "instant": false}]
+        },
+        {
+          "id": 7, "type": "stat", "title": "Retries 24h",
+          "description": "Trailing-24h provider retries from litellm_recent_retried; sustained retries usually precede failures.",
+          "gridPos": {"h": 4, "w": 3, "x": 15, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}]}}, "overrides": []},
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "colorMode": "value", "graphMode": "area", "textMode": "value"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(litellm_recent_retried) or vector(0)", "instant": false}]
+        },
+        {
+          "id": 8, "type": "stat", "title": "Active run keys 1h",
+          "description": "Distinct run keys that made a request in the last hour (litellm_runs_active_last_1h).",
+          "gridPos": {"h": 4, "w": 3, "x": 18, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []},
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "colorMode": "value", "graphMode": "area", "textMode": "value"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(litellm_runs_active_last_1h) or vector(0)", "instant": false}]
+        },
+        {
+          "id": 9, "type": "stat", "title": "Active run keys 24h",
+          "description": "Distinct run keys that made a request in the last 24 hours (litellm_runs_active_last_24h).",
+          "gridPos": {"h": 4, "w": 3, "x": 21, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []},
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "colorMode": "value", "graphMode": "area", "textMode": "value"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(litellm_runs_active_last_24h) or vector(0)", "instant": false}]
+        },
+
+        {"id": 10, "type": "row", "title": "Latency & traffic (spanmetrics)", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5}},
+        {
+          "id": 11, "type": "heatmap", "title": "litellm latency heatmap",
+          "description": "Distribution of litellm span durations over time (traces_spanmetrics_duration_seconds_bucket) — bands drifting upward mean slower answers.",
+          "gridPos": {"h": 9, "w": 14, "x": 0, "y": 6},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+          "options": {"calculate": false, "cellGap": 1, "yAxis": {"unit": "s"}, "color": {"scheme": "Turbo"}, "legend": {"show": true}, "tooltip": {"mode": "single"}},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (le) (increase(traces_spanmetrics_duration_seconds_bucket{service_name=\"litellm\"}[$$__rate_interval]))", "format": "heatmap", "legendFormat": "{{le}}"}]
+        },
+        {
+          "id": 12, "type": "timeseries", "title": "litellm span duration p50/p95/p99",
+          "description": "Latency quantiles for litellm server spans from spanmetrics; the connector exports no span_name dimension, so this is service-wide.",
+          "gridPos": {"h": 9, "w": 10, "x": 14, "y": 6},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "s", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 12, "showPoints": "never", "spanNulls": false}}, "overrides": []},
+          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"]}, "tooltip": {"mode": "multi"}},
           "targets": [
             {"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.5, sum by (le) (rate(traces_spanmetrics_duration_seconds_bucket{service_name=\"litellm\",span_kind=\"SPAN_KIND_SERVER\"}[$$__rate_interval])))", "legendFormat": "p50"},
             {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_duration_seconds_bucket{service_name=\"litellm\",span_kind=\"SPAN_KIND_SERVER\"}[$$__rate_interval])))", "legendFormat": "p95"},
@@ -81,100 +132,230 @@ spec:
           ]
         },
         {
-          "id": 7, "type": "timeseries", "title": "Service graph edges",
-          "description": "Requests/min between services from the servicegraph connector; log y-axis because kyverno traffic dwarfs litellm.",
-          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 13},
+          "id": 13, "type": "timeseries", "title": "litellm calls by status",
+          "description": "litellm span call rate split by status code (traces_spanmetrics_calls_total, service_name=litellm) — other services live in the context panel to the right.",
+          "gridPos": {"h": 8, "w": 14, "x": 0, "y": 15},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never", "scaleDistribution": {"type": "log", "log": 10}}}, "overrides": []},
-          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (client, server) (rate(traces_service_graph_request_total[$$__rate_interval])) * 60", "legendFormat": "{{client}} -> {{server}}"}]
+          "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 12, "showPoints": "never", "spanNulls": false}}, "overrides": [
+            {"matcher": {"id": "byRegexp", "options": ".*ERROR.*"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]},
+            {"matcher": {"id": "byRegexp", "options": ".*(UNSET|OK).*"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]}
+          ]},
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (status_code) (rate(traces_spanmetrics_calls_total{service_name=\"litellm\"}[$$__rate_interval])) * 60", "legendFormat": "{{status_code}}"}]
+        },
+        {
+          "id": 14, "type": "timeseries", "title": "Other OTLP services",
+          "description": "Call rate for every OTLP-instrumented service except litellm (claude-code dominates) — split out so its volume cannot drown litellm traffic.",
+          "gridPos": {"h": 8, "w": 10, "x": 14, "y": 15},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 12, "showPoints": "never", "spanNulls": false}}, "overrides": [
+            {"matcher": {"id": "byRegexp", "options": ".*ERROR.*"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]}
+          ]},
+          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"]}, "tooltip": {"mode": "multi"}},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (service_name, status_code) (rate(traces_spanmetrics_calls_total{service_name!=\"litellm\"}[$$__rate_interval])) * 60", "legendFormat": "{{service_name}} {{status_code}}"}]
         },
 
-        {"id": 8, "type": "row", "title": "Request shape (SQL)", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 20}},
+        {"id": 15, "type": "row", "title": "Model latency (exporter, trailing 24h)", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 23}},
         {
-          "id": 9, "type": "timeseries", "title": "Requests per 5m by model",
-          "description": "Per-interval request volume from the spend ledger; requires litellm-db datasource.",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 21},
-          "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "custom": {"drawStyle": "bars", "fillOpacity": 80, "showPoints": "never", "stacking": {"mode": "normal", "group": "A"}}}, "overrides": []},
-          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["sum"]}, "tooltip": {"mode": "multi"}},
-          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}, "rawQuery": true, "format": "time_series", "rawSql": "SELECT $$__timeGroup(\"startTime\",'5m') AS time, model AS metric, count(*) FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") GROUP BY 1,2 ORDER BY 1"}]
+          "id": 16, "type": "timeseries", "title": "Latency percentiles by model (24h window)",
+          "description": "Trailing-24h latency p50/p95/avg per model from the litellm exporter (litellm_latency_p50/p95/avg_seconds) — window aggregates, not per-interval quantiles.",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "s", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 12, "showPoints": "never", "spanNulls": false}}, "overrides": []},
+          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"]}, "tooltip": {"mode": "multi"}},
+          "targets": [
+            {"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max by (model) (litellm_latency_p50_seconds)", "legendFormat": "{{model}} p50"},
+            {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max by (model) (litellm_latency_p95_seconds)", "legendFormat": "{{model}} p95"},
+            {"refId": "C", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max by (model) (litellm_latency_avg_seconds)", "legendFormat": "{{model}} avg"}
+          ]
         },
         {
-          "id": 10, "type": "bargauge", "title": "Requests by call_type (range)",
-          "description": "requires litellm-db datasource.",
-          "gridPos": {"h": 8, "w": 6, "x": 12, "y": 21},
+          "id": 17, "type": "timeseries", "title": "TTFT p95 by model (streaming, 24h window)",
+          "description": "Trailing-24h p95 time-to-first-token for streaming calls per model from the litellm exporter (litellm_ttft_p95_seconds).",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "s", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 12, "showPoints": "never", "spanNulls": false}}, "overrides": []},
+          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"]}, "tooltip": {"mode": "multi"}},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max by (model) (litellm_ttft_p95_seconds)", "legendFormat": "{{model}}"}]
+        },
+
+        {"id": 18, "type": "row", "title": "Request shape (spend ledger)", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 32}},
+        {
+          "id": 19, "type": "timeseries", "title": "Requests per 5m by model",
+          "description": "Per-interval request volume by model from the LiteLLM_SpendLogs ledger (litellm-db); empty model is shown as unknown.",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 33},
+          "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "custom": {"drawStyle": "bars", "lineWidth": 2, "fillOpacity": 80, "showPoints": "never", "spanNulls": false, "stacking": {"mode": "normal", "group": "A"}}}, "overrides": []},
+          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"]}, "tooltip": {"mode": "multi"}},
+          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}, "rawQuery": true, "format": "time_series", "rawSql": "SELECT $$__timeGroup(\"startTime\",'5m') AS time, COALESCE(NULLIF(model,''),'unknown') AS metric, count(*) FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") GROUP BY 1,2 ORDER BY 1"}]
+        },
+        {
+          "id": 20, "type": "bargauge", "title": "Requests by call_type (range)",
+          "description": "Request count by call_type over the dashboard range from LiteLLM_SpendLogs; empty call_type is shown as unknown.",
+          "gridPos": {"h": 8, "w": 6, "x": 12, "y": 33},
           "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"},
           "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "min": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []},
           "options": {"orientation": "horizontal", "displayMode": "gradient", "reduceOptions": {"values": true, "calcs": ["lastNotNull"], "fields": ""}},
-          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}, "rawQuery": true, "format": "table", "rawSql": "SELECT call_type, count(*) FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY 2 DESC"}]
+          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}, "rawQuery": true, "format": "table", "rawSql": "SELECT COALESCE(NULLIF(call_type,''),'unknown') AS call_type, count(*) AS requests FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY 2 DESC"}]
         },
         {
-          "id": 11, "type": "timeseries", "title": "Retries per hour",
-          "description": "Provider retries recorded in spend-log metadata; requires litellm-db datasource.",
-          "gridPos": {"h": 8, "w": 6, "x": 18, "y": 21},
+          "id": 21, "type": "timeseries", "title": "Retries per hour",
+          "description": "Provider retries recorded in spend-log metadata (attempted_retries), per hour, from litellm-db.",
+          "gridPos": {"h": 8, "w": 6, "x": 18, "y": 33},
           "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "orange"}, "custom": {"drawStyle": "bars", "fillOpacity": 80, "showPoints": "never"}}, "overrides": []},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "orange"}, "custom": {"drawStyle": "bars", "lineWidth": 2, "fillOpacity": 80, "showPoints": "never", "spanNulls": false}}, "overrides": []},
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
           "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}, "rawQuery": true, "format": "time_series", "rawSql": "SELECT $$__timeGroup(\"startTime\",'1h') AS time, sum(coalesce(nullif(metadata->>'attempted_retries','')::int,0)) AS retries FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY 1"}]
         },
         {
-          "id": 12, "type": "timeseries", "title": "e2e p95 by model (15m buckets)",
-          "description": "End-to-end request duration p95 per 15m bucket; requires litellm-db datasource.",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 29},
+          "id": 22, "type": "timeseries", "title": "e2e p95 by model (15m buckets)",
+          "description": "End-to-end request duration p95 per 15m bucket by model, from the LiteLLM_SpendLogs ledger (endTime minus startTime); empty model is shown as unknown.",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 41},
           "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"},
-          "fieldConfig": {"defaults": {"unit": "s", "decimals": 1, "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": []},
-          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
-          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}, "rawQuery": true, "format": "time_series", "rawSql": "SELECT $$__timeGroup(\"startTime\",'15m') AS time, model AS metric, percentile_cont(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (\"endTime\" - \"startTime\"))) AS p95 FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") GROUP BY 1,2 ORDER BY 1"}]
+          "fieldConfig": {"defaults": {"unit": "s", "decimals": 1, "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 12, "showPoints": "never", "spanNulls": false}}, "overrides": []},
+          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"]}, "tooltip": {"mode": "multi"}},
+          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}, "rawQuery": true, "format": "time_series", "rawSql": "SELECT $$__timeGroup(\"startTime\",'15m') AS time, COALESCE(NULLIF(model,''),'unknown') AS metric, percentile_cont(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (\"endTime\" - \"startTime\"))) AS p95 FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") GROUP BY 1,2 ORDER BY 1"}]
         },
         {
-          "id": 13, "type": "timeseries", "title": "TTFT p95 streaming (15m buckets)",
-          "description": "Time to first token (streaming calls only) p95 per 15m bucket; requires litellm-db datasource.",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 29},
+          "id": 23, "type": "timeseries", "title": "TTFT p95 streaming (15m buckets)",
+          "description": "Time to first token p95 (streaming calls only) per 15m bucket by model, from completionStartTime in LiteLLM_SpendLogs; empty model is shown as unknown.",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 41},
           "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"},
-          "fieldConfig": {"defaults": {"unit": "s", "decimals": 1, "custom": {"drawStyle": "line", "fillOpacity": 10, "showPoints": "never"}}, "overrides": []},
-          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
-          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}, "rawQuery": true, "format": "time_series", "rawSql": "SELECT $$__timeGroup(\"startTime\",'15m') AS time, model AS metric, percentile_cont(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (\"completionStartTime\" - \"startTime\"))) AS p95 FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") AND \"completionStartTime\" IS NOT NULL GROUP BY 1,2 ORDER BY 1"}]
+          "fieldConfig": {"defaults": {"unit": "s", "decimals": 1, "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 12, "showPoints": "never", "spanNulls": false}}, "overrides": []},
+          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"]}, "tooltip": {"mode": "multi"}},
+          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}, "rawQuery": true, "format": "time_series", "rawSql": "SELECT $$__timeGroup(\"startTime\",'15m') AS time, COALESCE(NULLIF(model,''),'unknown') AS metric, percentile_cont(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (\"completionStartTime\" - \"startTime\"))) AS p95 FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") AND \"completionStartTime\" IS NOT NULL GROUP BY 1,2 ORDER BY 1"}]
         },
 
-        {"id": 14, "type": "row", "title": "Forensics", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 37}},
+        {"id": 24, "type": "row", "title": "Cache economics", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 49}},
         {
-          "id": 15, "type": "table", "title": "Slowest requests (top 25)",
-          "description": "Slowest individual requests in the range; requires litellm-db datasource.",
-          "gridPos": {"h": 9, "w": 24, "x": 0, "y": 38},
+          "id": 25, "type": "bargauge", "title": "Cache token mix by model (24h window)",
+          "description": "Trailing-24h cache token mix per model from the litellm exporter (litellm_cache_read/creation/prompt_tokens) — cache reads are the discount: they bill at a fraction of base input price.",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 50},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "min": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []},
+          "options": {"orientation": "horizontal", "displayMode": "gradient", "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}},
+          "targets": [
+            {"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (model) (litellm_cache_read_tokens)", "legendFormat": "{{model}} cache read", "instant": true},
+            {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (model) (litellm_cache_creation_tokens)", "legendFormat": "{{model}} cache creation", "instant": true},
+            {"refId": "C", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (model) (litellm_cache_prompt_tokens)", "legendFormat": "{{model}} prompt", "instant": true}
+          ]
+        },
+        {
+          "id": 26, "type": "timeseries", "title": "Cache token trend (24h window totals)",
+          "description": "Trailing-24h totals of cache read, cache creation and prompt tokens summed over models (litellm_cache_*_tokens) — window aggregates, not per-interval rates.",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 50},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 12, "showPoints": "never", "spanNulls": false}}, "overrides": []},
+          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"]}, "tooltip": {"mode": "multi"}},
+          "targets": [
+            {"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(litellm_cache_read_tokens)", "legendFormat": "cache read"},
+            {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(litellm_cache_creation_tokens)", "legendFormat": "cache creation"},
+            {"refId": "C", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(litellm_cache_prompt_tokens)", "legendFormat": "prompt"}
+          ]
+        },
+
+        {"id": 27, "type": "row", "title": "Provider today", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 58}},
+        {
+          "id": 28, "type": "bargauge", "title": "Provider spend today",
+          "description": "Spend so far today per provider (litellm_provider_today_spend). Daily caps: anthropic 5 USD, deepseek 2 USD — the yellow/red thresholds mark the two caps.",
+          "gridPos": {"h": 7, "w": 8, "x": 0, "y": 59},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "min": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 2}, {"color": "red", "value": 5}]}}, "overrides": []},
+          "options": {"orientation": "horizontal", "displayMode": "gradient", "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (provider) (litellm_provider_today_spend)", "legendFormat": "{{provider}}", "instant": true}]
+        },
+        {
+          "id": 29, "type": "bargauge", "title": "Provider requests today",
+          "description": "Requests so far today per provider (litellm_provider_today_requests).",
+          "gridPos": {"h": 7, "w": 8, "x": 8, "y": 59},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "min": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []},
+          "options": {"orientation": "horizontal", "displayMode": "gradient", "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (provider) (litellm_provider_today_requests)", "legendFormat": "{{provider}}", "instant": true}]
+        },
+        {
+          "id": 30, "type": "bargauge", "title": "Provider outcomes today",
+          "description": "Successful vs failed requests today per provider (litellm_provider_today_successful / litellm_provider_today_failed).",
+          "gridPos": {"h": 7, "w": 8, "x": 16, "y": 59},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "min": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": [
+            {"matcher": {"id": "byRegexp", "options": ".*failed.*"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]},
+            {"matcher": {"id": "byRegexp", "options": ".*successful.*"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]}
+          ]},
+          "options": {"orientation": "horizontal", "displayMode": "gradient", "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}},
+          "targets": [
+            {"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (provider) (litellm_provider_today_successful)", "legendFormat": "{{provider}} successful", "instant": true},
+            {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (provider) (litellm_provider_today_failed)", "legendFormat": "{{provider}} failed", "instant": true}
+          ]
+        },
+
+        {"id": 31, "type": "row", "title": "Service graph", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 66}},
+        {
+          "id": 32, "type": "timeseries", "title": "litellm service-graph edges",
+          "description": "Requests/min on servicegraph-connector edges where litellm is the server (callers in) or the client (upstream out), from traces_service_graph_request_total.",
+          "gridPos": {"h": 8, "w": 14, "x": 0, "y": 67},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 12, "showPoints": "never", "spanNulls": false}}, "overrides": []},
+          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"]}, "tooltip": {"mode": "multi"}},
+          "targets": [
+            {"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (client, server) (rate(traces_service_graph_request_total{server=\"litellm\"}[$$__rate_interval])) * 60", "legendFormat": "{{client}} -> {{server}}"},
+            {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (client, server) (rate(traces_service_graph_request_total{client=\"litellm\"}[$$__rate_interval])) * 60", "legendFormat": "{{client}} -> {{server}}"}
+          ]
+        },
+        {
+          "id": 33, "type": "timeseries", "title": "All service-graph edges",
+          "description": "Full mesh for context from the servicegraph connector; log y-axis because kyverno traffic dwarfs litellm.",
+          "gridPos": {"h": 8, "w": 10, "x": 14, "y": 67},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 12, "showPoints": "never", "spanNulls": false, "scaleDistribution": {"type": "log", "log": 10}}}, "overrides": []},
+          "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"]}, "tooltip": {"mode": "multi"}},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (client, server) (rate(traces_service_graph_request_total[$$__rate_interval])) * 60", "legendFormat": "{{client}} -> {{server}}"}]
+        },
+
+        {"id": 34, "type": "row", "title": "Forensics", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 75}},
+        {
+          "id": 35, "type": "table", "title": "Slowest requests (top 25)",
+          "description": "Slowest individual requests in the range from LiteLLM_SpendLogs (litellm-db); the run column links to the Run Explorer.",
+          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 76},
           "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"},
-          "fieldConfig": {"defaults": {"custom": {"align": "auto", "filterable": true}}, "overrides": [
-            {"matcher": {"id": "byName", "options": "duration_s"}, "properties": [{"id": "unit", "value": "s"}, {"id": "decimals", "value": 1}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 30}, {"color": "red", "value": 60}]}}, {"id": "custom.cellOptions", "value": {"type": "color-background"}}]},
+          "fieldConfig": {"defaults": {"unit": "short", "custom": {"align": "auto", "filterable": true}}, "overrides": [
+            {"matcher": {"id": "byName", "options": "duration"}, "properties": [{"id": "unit", "value": "s"}, {"id": "decimals", "value": 1}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 30}, {"color": "red", "value": 60}]}}, {"id": "custom.cellOptions", "value": {"type": "color-background"}}]},
             {"matcher": {"id": "byName", "options": "spend"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]},
-            {"matcher": {"id": "byName", "options": "run_key"}, "properties": [{"id": "links", "value": [{"title": "Open in Run Explorer", "url": "/d/dark-factory-run-explorer?var-run=$${__data.fields[\"run_key\"]}&from=$${__from}&to=$${__to}"}]}]}
+            {"matcher": {"id": "byName", "options": "status"}, "properties": [{"id": "mappings", "value": [{"type": "value", "options": {"failure": {"color": "red", "index": 0}, "success": {"color": "green", "index": 1}}}]}, {"id": "custom.cellOptions", "value": {"type": "color-text"}}]},
+            {"matcher": {"id": "byName", "options": "run"}, "properties": [{"id": "links", "value": [{"title": "Open in Run Explorer", "url": "/d/dark-factory-run-explorer?var-run=$${__data.fields.run}&$${__url_time_range}", "targetBlank": true}]}]}
           ]},
-          "options": {"showHeader": true},
-          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}, "rawQuery": true, "format": "table", "rawSql": "SELECT \"startTime\" AS time, metadata->>'user_api_key_alias' AS run_key, model, custom_llm_provider AS provider, EXTRACT(EPOCH FROM (\"endTime\" - \"startTime\")) AS duration_s, spend, total_tokens, metadata->>'status' AS status FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") ORDER BY duration_s DESC NULLS LAST LIMIT 25"}]
+          "transformations": [{"id": "organize", "options": {"excludeByName": {}, "indexByName": {}, "renameByName": {"duration_s": "duration"}}}],
+          "options": {"showHeader": true, "sortBy": [{"displayName": "duration", "desc": true}]},
+          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}, "rawQuery": true, "format": "table", "rawSql": "SELECT \"startTime\" AS time, metadata->>'user_api_key_alias' AS run, COALESCE(NULLIF(model,''),'unknown') AS model, custom_llm_provider AS provider, EXTRACT(EPOCH FROM (\"endTime\" - \"startTime\")) AS duration_s, spend, total_tokens AS tokens, COALESCE(metadata->>'status','success') AS status, COALESCE(metadata->>'attempted_retries','0') AS retries FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") ORDER BY duration_s DESC NULLS LAST LIMIT 25"}]
         },
         {
-          "id": 16, "type": "table", "title": "Failed requests (latest 50)",
-          "description": "Non-success requests from spend-log metadata — upgrade to LiteLLM_ErrorLogs columns once table confirmed; requires litellm-db datasource.",
-          "gridPos": {"h": 9, "w": 12, "x": 0, "y": 47},
+          "id": 36, "type": "table", "title": "Failed requests (latest 50)",
+          "description": "Non-success requests from spend-log metadata (litellm-db) — upgrade to LiteLLM_ErrorLogs columns once that table is confirmed; the run column links to the Run Explorer.",
+          "gridPos": {"h": 9, "w": 12, "x": 0, "y": 86},
           "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"},
-          "fieldConfig": {"defaults": {"custom": {"align": "auto", "filterable": true}}, "overrides": [
-            {"matcher": {"id": "byName", "options": "run_key"}, "properties": [{"id": "links", "value": [{"title": "Open in Run Explorer", "url": "/d/dark-factory-run-explorer?var-run=$${__data.fields[\"run_key\"]}&from=$${__from}&to=$${__to}"}]}]}
+          "fieldConfig": {"defaults": {"unit": "short", "custom": {"align": "auto", "filterable": true}}, "overrides": [
+            {"matcher": {"id": "byName", "options": "status"}, "properties": [{"id": "mappings", "value": [{"type": "value", "options": {"failure": {"color": "red", "index": 0}, "success": {"color": "green", "index": 1}}}]}, {"id": "custom.cellOptions", "value": {"type": "color-text"}}]},
+            {"matcher": {"id": "byName", "options": "run"}, "properties": [{"id": "links", "value": [{"title": "Open in Run Explorer", "url": "/d/dark-factory-run-explorer?var-run=$${__data.fields.run}&$${__url_time_range}", "targetBlank": true}]}]}
           ]},
-          "options": {"showHeader": true},
-          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}, "rawQuery": true, "format": "table", "rawSql": "SELECT \"startTime\" AS time, metadata->>'user_api_key_alias' AS run_key, model, call_type, metadata->>'status' AS status, metadata->>'attempted_retries' AS retries FROM \"LiteLLM_SpendLogs\" WHERE coalesce(metadata->>'status','success') <> 'success' AND $$__timeFilter(\"startTime\") ORDER BY \"startTime\" DESC LIMIT 50"}]
+          "options": {"showHeader": true, "sortBy": [{"displayName": "time", "desc": true}]},
+          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}, "rawQuery": true, "format": "table", "rawSql": "SELECT \"startTime\" AS time, metadata->>'user_api_key_alias' AS run, COALESCE(NULLIF(model,''),'unknown') AS model, COALESCE(NULLIF(call_type,''),'unknown') AS call_type, COALESCE(metadata->>'status','success') AS status, COALESCE(metadata->>'attempted_retries','0') AS retries FROM \"LiteLLM_SpendLogs\" WHERE COALESCE(metadata->>'status','success') <> 'success' AND $$__timeFilter(\"startTime\") ORDER BY \"startTime\" DESC LIMIT 50"}]
         },
         {
-          "id": 17, "type": "logs", "title": "LiteLLM error logs",
-          "gridPos": {"h": 9, "w": 12, "x": 12, "y": 47},
+          "id": 37, "type": "logs", "title": "LLM error log tail",
+          "description": "Error-level lines from the litellm proxy (namespace ai, container app) in VictoriaLogs.",
+          "gridPos": {"h": 9, "w": 12, "x": 12, "y": 86},
           "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
           "options": {"showTime": true, "showLabels": false, "showCommonLabels": false, "wrapLogMessage": true, "prettifyLogMessage": false, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending"},
           "targets": [{"refId": "A", "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"}, "expr": "{namespace=\"ai\", container=\"app\"} level:~\"ERROR|error\"", "queryType": "instant", "direction": "backward", "maxLines": 200}]
         },
+
+        {"id": 38, "type": "row", "title": "Traces", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 95}},
         {
-          "id": 18, "type": "traces", "title": "Recent litellm traces",
-          "description": "zoom the time range first — traces are window-scoped",
-          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 56},
+          "id": 39, "type": "traces", "title": "Recent litellm traces",
+          "description": "Jaeger search over litellm spans in VictoriaTraces. Spans carry no run tag yet (known gap, ticket 082) — narrow the time range to a run window to isolate one run.",
+          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 96},
           "datasource": {"type": "jaeger", "uid": "victoriatraces"},
-          "targets": [{"refId": "A", "datasource": {"type": "jaeger", "uid": "victoriatraces"}, "queryType": "search", "service": "litellm", "limit": 50}]
+          "targets": [{"refId": "A", "datasource": {"type": "jaeger", "uid": "victoriatraces"}, "queryType": "search", "service": "litellm", "limit": 20}]
         }
       ]
     }

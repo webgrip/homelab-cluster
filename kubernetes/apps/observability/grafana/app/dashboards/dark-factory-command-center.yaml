@@ -1,12 +1,14 @@
 ---
-# Dark Factory — Command Center: fleet-level view of the autonomous agent pipeline
-# (LiteLLM run-key spend/budgets, KEDA queue depth, ploeg-worker-bronze pods, live logs).
-# Pivoted to the ploeg substrate; ticket attribution comes from the ploeg_run{ticket}
-# label joined on key_alias (ploeg aliases are opaque ploeg-<hex>, no ticket in them).
+# Dark Factory — Command Center: fleet hero view of the autonomous agent pipeline.
+# "Is the factory healthy right now, what did it produce, what did it cost."
+# Sources: ploeg-db (authoritative agent_runs/checkpoints SQL), the ploeg_* exporter
+# gauges, the LiteLLM ledger (litellm_*), KEDA scaler metrics, span metrics, and
+# ploegd logs. Spend→ticket/team/outcome attribution uses the verified graft:
+# litellm_run_spend joined to ploeg_run_started_epoch's labels on key_alias
+# (litellm team_id is "none" for ploeg — never show it).
 # NOTE: kube_* (kube-state-metrics) queries filter on exported_namespace="ploeg"
 # because our KSM scrape wraps the real namespace label; cAdvisor container_* and
-# log streams use the real namespace="ploeg". If the scrape is ever fixed to
-# honour the real label, invert these filters back to namespace="ploeg".
+# log streams use the real namespace="ploeg".
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
@@ -108,27 +110,28 @@ spec:
         {
           "id": 2,
           "type": "stat",
-          "title": "Agent runs seen (range)",
-          "description": "Distinct agent run keys (ploeg-<hex>) alive at any point in the range.",
+          "title": "Runs (range)",
+          "description": "Agent runs started in the dashboard range, counted from the authoritative ploeg-db agent_runs table.",
           "gridPos": {
             "h": 4,
-            "w": 4,
+            "w": 3,
             "x": 0,
             "y": 1
           },
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "grafana-postgresql-datasource",
+            "uid": "ploeg-db"
           },
           "targets": [
             {
               "refId": "A",
               "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
+                "type": "grafana-postgresql-datasource",
+                "uid": "ploeg-db"
               },
-              "expr": "count(max_over_time(litellm_key_spend{key_alias=~\"ploeg-.*\"}[$$__range])) or vector(0)",
-              "instant": true
+              "rawQuery": true,
+              "format": "table",
+              "rawSql": "SELECT count(*) AS runs FROM agent_runs WHERE $$__timeFilter(started_at)"
             }
           ],
           "options": {
@@ -152,7 +155,7 @@ spec:
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "blue",
+                    "color": "green",
                     "value": null
                   }
                 ]
@@ -164,12 +167,136 @@ spec:
         {
           "id": 3,
           "type": "stat",
-          "title": "Agent LLM spend (range)",
-          "description": "sums full spend of every run key alive in range",
+          "title": "PR success rate",
+          "description": "Share of finished agent runs that opened a PR — pr_opened / (pr_opened + failed) from ploeg_agent_runs_count; running runs excluded.",
           "gridPos": {
             "h": 4,
-            "w": 4,
-            "x": 4,
+            "w": 3,
+            "x": 3,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "(100 * sum(ploeg_agent_runs_count{outcome=\"pr_opened\"}) / sum(ploeg_agent_runs_count{outcome=~\"pr_opened|failed\"})) or vector(0)",
+              "instant": false,
+              "legendFormat": "PR success"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "value",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 0,
+              "min": 0,
+              "max": 100,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 40
+                  },
+                  {
+                    "color": "green",
+                    "value": 75
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "PRs opened (30d)",
+          "description": "Agent runs that ended in an opened PR, from the ploeg exporter's agent-runs gauge.",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 6,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(ploeg_agent_runs_count{outcome=\"pr_opened\"}) or vector(0)",
+              "instant": false,
+              "legendFormat": "PRs opened"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "value",
+            "graphMode": "area"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 5,
+          "type": "stat",
+          "title": "Agent LLM spend (range)",
+          "description": "Total LLM spend of every ploeg run key alive at any point in the range (litellm_key_spend ledger).",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 9,
             "y": 1
           },
           "datasource": {
@@ -226,14 +353,14 @@ spec:
           }
         },
         {
-          "id": 4,
+          "id": 6,
           "type": "stat",
           "title": "Tickets touched (range)",
-          "description": "Distinct tickets with at least one ploeg agent run in range (via ploeg_run ticket label).",
+          "description": "Distinct Vikunja tickets with at least one agent run in range (ticket label on ploeg_run_started_epoch).",
           "gridPos": {
             "h": 4,
-            "w": 4,
-            "x": 8,
+            "w": 3,
+            "x": 12,
             "y": 1
           },
           "datasource": {
@@ -247,7 +374,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "count(count by (ticket) (ploeg_run_started_epoch{ticket!=\"none\"})) or vector(0)",
+              "expr": "count(count by (ticket) (last_over_time(ploeg_run_started_epoch{ticket!=\"none\"}[$$__range]))) or vector(0)",
               "instant": true
             }
           ],
@@ -272,7 +399,7 @@ spec:
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "purple",
+                    "color": "green",
                     "value": null
                   }
                 ]
@@ -282,14 +409,14 @@ spec:
           }
         },
         {
-          "id": 5,
+          "id": 7,
           "type": "stat",
-          "title": "Runs at/over budget",
-          "description": "Agent keys whose spend reached their max budget in range.",
+          "title": "Oldest queued age",
+          "description": "Age of the oldest work item still queued (ploeg_work_items_oldest_age_seconds); sustained growth means the factory is not draining.",
           "gridPos": {
             "h": 4,
-            "w": 4,
-            "x": 12,
+            "w": 3,
+            "x": 15,
             "y": 1
           },
           "datasource": {
@@ -303,8 +430,9 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "count(max_over_time(litellm_key_spend{key_alias=~\"ploeg-.*\"}[$$__range]) >= max_over_time(litellm_key_max_budget{key_alias=~\"ploeg-.*\"}[$$__range])) or vector(0)",
-              "instant": true
+              "expr": "max(ploeg_work_items_oldest_age_seconds{state=\"queued\"}) or vector(0)",
+              "instant": false,
+              "legendFormat": "oldest queued"
             }
           ],
           "options": {
@@ -317,12 +445,12 @@ spec:
             },
             "orientation": "auto",
             "textMode": "auto",
-            "colorMode": "background",
-            "graphMode": "none"
+            "colorMode": "value",
+            "graphMode": "area"
           },
           "fieldConfig": {
             "defaults": {
-              "unit": "short",
+              "unit": "s",
               "decimals": 0,
               "thresholds": {
                 "mode": "absolute",
@@ -332,8 +460,12 @@ spec:
                     "value": null
                   },
                   {
+                    "color": "yellow",
+                    "value": 300
+                  },
+                  {
                     "color": "red",
-                    "value": 1
+                    "value": 900
                   }
                 ]
               }
@@ -342,14 +474,14 @@ spec:
           }
         },
         {
-          "id": 6,
+          "id": 8,
           "type": "stat",
           "title": "Blocked agent keys (now)",
-          "description": "Agent keys currently blocked by LiteLLM.",
+          "description": "Run keys LiteLLM is currently refusing (litellm_key_blocked) — usually budget exhaustion.",
           "gridPos": {
             "h": 4,
-            "w": 4,
-            "x": 16,
+            "w": 3,
+            "x": 18,
             "y": 1
           },
           "datasource": {
@@ -402,14 +534,14 @@ spec:
           }
         },
         {
-          "id": 7,
+          "id": 9,
           "type": "stat",
           "title": "LLM failed requests (range)",
-          "description": "Failed LLM requests across all models in range.",
+          "description": "Failed LLM requests across all models in range (litellm_model_failed).",
           "gridPos": {
             "h": 4,
-            "w": 4,
-            "x": 20,
+            "w": 3,
+            "x": 21,
             "y": 1
           },
           "datasource": {
@@ -466,7 +598,7 @@ spec:
           }
         },
         {
-          "id": 8,
+          "id": 10,
           "type": "row",
           "title": "Pipeline heartbeat",
           "collapsed": false,
@@ -479,13 +611,13 @@ spec:
           "panels": []
         },
         {
-          "id": 9,
-          "type": "stat",
+          "id": 11,
+          "type": "timeseries",
           "title": "Agent queue depth",
-          "description": "KEDA scaler metric for the ploeg-worker-bronze ScaledObject.",
+          "description": "KEDA scaler value for the ploeg-worker-bronze ScaledObject (queued work items) next to pods actually Running (KSM, exported_namespace wrap); the bronze pool caps at 1 runner.",
           "gridPos": {
-            "h": 4,
-            "w": 4,
+            "h": 8,
+            "w": 7,
             "x": 0,
             "y": 6
           },
@@ -500,8 +632,205 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max(keda_scaler_metrics_value{scaledObject=\"ploeg-worker-bronze\"}) or vector(0)",
-              "instant": true
+              "expr": "max(keda_scaler_metrics_value{scaledObject=\"ploeg-worker-bronze\"})",
+              "legendFormat": "queued work items"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(kube_pod_status_phase{exported_namespace=\"ploeg\",pod=~\"ploeg-worker-bronze-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"})",
+              "legendFormat": "runners running"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "stepAfter",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "showPoints": "never",
+                "spanNulls": false
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 12,
+          "type": "timeseries",
+          "title": "LLM request rate",
+          "description": "LiteLLM request throughput per minute, from span metrics (traces_spanmetrics_calls_total).",
+          "gridPos": {
+            "h": 8,
+            "w": 7,
+            "x": 7,
+            "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(rate(traces_spanmetrics_calls_total{service_name=\"litellm\"}[$$__rate_interval])) * 60",
+              "legendFormat": "LLM req/min"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "showPoints": "never",
+                "spanNulls": false
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 13,
+          "type": "bargauge",
+          "title": "Factory funnel (30d)",
+          "description": "Pipeline conversion — work-item intake (all states) vs runs that reached the branch_created and pr_opened checkpoints (ploeg_work_items_count / ploeg_checkpoints_count gauges).",
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 14,
+            "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(ploeg_work_items_count) or vector(0)",
+              "instant": true,
+              "legendFormat": "Work items (intake)"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(ploeg_checkpoints_count{phase=\"branch_created\"}) or vector(0)",
+              "instant": true,
+              "legendFormat": "Branch created"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(ploeg_checkpoints_count{phase=\"pr_opened\"}) or vector(0)",
+              "instant": true,
+              "legendFormat": "PR opened"
+            }
+          ],
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "gradient",
+            "showUnfilled": true,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "continuous-BlPu"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 14,
+          "type": "stat",
+          "title": "CI pool queue",
+          "description": "KEDA scaler value for the forgejo-runner ScaledObject — the regular CI pool, not the agent pool.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 20,
+            "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "links": [
+            {
+              "title": "Forgejo CI Command Center",
+              "url": "/d/infra-forgejo-ci"
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-runner\"}) or vector(0)",
+              "instant": false,
+              "legendFormat": "CI pool"
             }
           ],
           "options": {
@@ -543,144 +872,14 @@ spec:
           }
         },
         {
-          "id": 10,
-          "type": "stat",
-          "title": "Agent runners running",
-          "description": "Running ploeg-worker-bronze pods (kube-state-metrics, exported_namespace).",
-          "gridPos": {
-            "h": 4,
-            "w": 4,
-            "x": 4,
-            "y": 6
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              },
-              "expr": "sum(kube_pod_status_phase{exported_namespace=\"ploeg\",pod=~\"ploeg-worker-bronze-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"}) or vector(0)",
-              "instant": true
-            }
-          ],
-          "options": {
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
-              "values": false
-            },
-            "orientation": "auto",
-            "textMode": "auto",
-            "colorMode": "value",
-            "graphMode": "none"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "decimals": 0,
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  },
-                  {
-                    "color": "yellow",
-                    "value": 3
-                  }
-                ]
-              }
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 11,
-          "type": "stat",
-          "title": "CI queue depth",
-          "description": "KEDA scaler metric for the regular forgejo-runner CI pool.",
-          "gridPos": {
-            "h": 4,
-            "w": 4,
-            "x": 0,
-            "y": 10
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "links": [
-            {
-              "title": "Forgejo CI Command Center",
-              "url": "/d/infra-forgejo-ci"
-            }
-          ],
-          "targets": [
-            {
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              },
-              "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-runner\"}) or vector(0)",
-              "instant": true
-            }
-          ],
-          "options": {
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
-              "values": false
-            },
-            "orientation": "auto",
-            "textMode": "auto",
-            "colorMode": "value",
-            "graphMode": "none"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "decimals": 0,
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  },
-                  {
-                    "color": "yellow",
-                    "value": 2
-                  },
-                  {
-                    "color": "red",
-                    "value": 5
-                  }
-                ]
-              }
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 12,
+          "id": 15,
           "type": "stat",
           "title": "LiteLLM exporter",
-          "description": "postgres-exporter feeding the litellm_* ledger metrics.",
+          "description": "postgres-exporter feeding the litellm_* ledger metrics; DOWN means every spend panel here goes stale.",
           "gridPos": {
             "h": 4,
             "w": 4,
-            "x": 4,
+            "x": 20,
             "y": 10
           },
           "datasource": {
@@ -694,7 +893,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max(pg_up{namespace=\"ai\"})",
+              "expr": "max(pg_up{namespace=\"ai\"}) or vector(0)",
               "instant": true
             }
           ],
@@ -747,53 +946,36 @@ spec:
           }
         },
         {
-          "id": 13,
+          "id": 16,
           "type": "timeseries",
-          "title": "Factory heartbeat",
-          "description": "Agent queue depth, running agent runners, and LLM request rate on one timeline.",
+          "title": "Agent runs per hour",
+          "description": "Runs started per hour, stacked by outcome, from the authoritative ploeg-db agent_runs table (empty outcome = still running).",
           "gridPos": {
             "h": 8,
-            "w": 16,
-            "x": 8,
-            "y": 6
+            "w": 24,
+            "x": 0,
+            "y": 14
           },
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "grafana-postgresql-datasource",
+            "uid": "ploeg-db"
           },
           "targets": [
             {
               "refId": "A",
               "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
+                "type": "grafana-postgresql-datasource",
+                "uid": "ploeg-db"
               },
-              "expr": "max(keda_scaler_metrics_value{scaledObject=\"ploeg-worker-bronze\"})",
-              "legendFormat": "agent queue"
-            },
-            {
-              "refId": "B",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              },
-              "expr": "sum(kube_pod_status_phase{exported_namespace=\"ploeg\",pod=~\"ploeg-worker-bronze-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"})",
-              "legendFormat": "agent runners"
-            },
-            {
-              "refId": "C",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              },
-              "expr": "sum(rate(litellm_model_requests[$$__rate_interval])) * 60",
-              "legendFormat": "LLM req/min"
+              "rawQuery": true,
+              "format": "time_series",
+              "rawSql": "SELECT $$__timeGroup(started_at,'1h') AS time, coalesce(nullif(outcome,''),'running') AS metric, count(*) FROM agent_runs WHERE $$__timeFilter(started_at) GROUP BY 1,2 ORDER BY 1"
             }
           ],
           "options": {
             "legend": {
               "displayMode": "table",
-              "placement": "bottom",
+              "placement": "right",
               "calcs": [
                 "lastNotNull",
                 "max"
@@ -807,24 +989,74 @@ spec:
           "fieldConfig": {
             "defaults": {
               "unit": "short",
+              "decimals": 0,
               "custom": {
-                "drawStyle": "line",
-                "lineInterpolation": "stepAfter",
-                "lineWidth": 2,
-                "fillOpacity": 10,
-                "showPoints": "never"
+                "drawStyle": "bars",
+                "lineWidth": 1,
+                "fillOpacity": 80,
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                }
               }
             },
             "overrides": [
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "LLM req/min"
+                  "options": "pr_opened"
                 },
                 "properties": [
                   {
-                    "id": "custom.axisPlacement",
-                    "value": "right"
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "green"
+                    }
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "PR opened"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "failed"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "red"
+                    }
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Failed"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "running"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "blue"
+                    }
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Running"
                   }
                 ]
               }
@@ -832,7 +1064,7 @@ spec:
           }
         },
         {
-          "id": 14,
+          "id": 17,
           "type": "row",
           "title": "Who spent what",
           "collapsed": false,
@@ -840,20 +1072,20 @@ spec:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 14
+            "y": 22
           },
           "panels": []
         },
         {
-          "id": 15,
+          "id": 18,
           "type": "table",
-          "title": "Top runs by spend (range)",
-          "description": "Every agent key alive in range: full spend, budget, blocked flag. Click a Run to open the run explorer.",
+          "title": "Top runs by spend",
+          "description": "Every run key in the LiteLLM ledger grafted with ticket/team/outcome from ploeg_run (join on key_alias); Budget and Burn read the key ledger and can be blank for keys revoked before the range. Click a Run to open the Run Explorer.",
           "gridPos": {
             "h": 10,
-            "w": 14,
+            "w": 15,
             "x": 0,
-            "y": 15
+            "y": 23
           },
           "datasource": {
             "type": "prometheus",
@@ -866,7 +1098,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_spend{key_alias=~\"ploeg-.*\"}[$$__range]))",
+              "expr": "max by (key_alias, ticket, team, outcome) (litellm_run_spend{key_alias=~\"ploeg-.*\"} * on(key_alias) group_left(ticket,team,outcome) (ploeg_run_started_epoch >= bool 0))",
               "instant": true,
               "format": "table"
             },
@@ -876,7 +1108,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_max_budget{key_alias=~\"ploeg-.*\"}[$$__range]))",
+              "expr": "max by (key_alias) (max_over_time(litellm_key_max_budget{key_alias=~\"ploeg-.*\"}[$$__range]))",
               "instant": true,
               "format": "table"
             },
@@ -886,7 +1118,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_blocked{key_alias=~\"ploeg-.*\"}[$$__range]))",
+              "expr": "100 * max by (key_alias) (max_over_time(litellm_run_spend{key_alias=~\"ploeg-.*\"}[$$__range])) / max by (key_alias) (max_over_time(litellm_key_max_budget{key_alias=~\"ploeg-.*\"}[$$__range]))",
               "instant": true,
               "format": "table"
             }
@@ -900,26 +1132,25 @@ spec:
               "id": "organize",
               "options": {
                 "excludeByName": {
-                  "Time": true,
-                  "__name__": true,
-                  "instance": true,
-                  "job": true,
-                  "namespace": true,
-                  "pod": true,
-                  "container": true,
-                  "endpoint": true,
-                  "service": true,
-                  "prometheus": true,
-                  "cluster": true,
-                  "server": true,
-                  "exported_namespace": true
+                  "Time": true
+                },
+                "indexByName": {
+                  "key_alias": 0,
+                  "ticket": 1,
+                  "team": 2,
+                  "outcome": 3,
+                  "Value #A": 4,
+                  "Value #B": 5,
+                  "Value #C": 6
                 },
                 "renameByName": {
                   "key_alias": "Run",
-                  "team_id": "Team",
-                  "Value #A": "Spend",
-                  "Value #B": "Budget",
-                  "Value #C": "Blocked"
+                  "ticket": "Ticket",
+                  "team": "Team",
+                  "outcome": "Outcome",
+                  "Value #A": "Spend USD",
+                  "Value #B": "Budget USD",
+                  "Value #C": "Burn %"
                 }
               }
             }
@@ -928,7 +1159,7 @@ spec:
             "showHeader": true,
             "sortBy": [
               {
-                "displayName": "Spend",
+                "displayName": "Spend USD",
                 "desc": true
               }
             ]
@@ -944,39 +1175,25 @@ spec:
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "Spend"
+                  "options": "Run"
                 },
                 "properties": [
                   {
-                    "id": "unit",
-                    "value": "currencyUSD"
-                  },
-                  {
-                    "id": "decimals",
-                    "value": 2
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open in Run Explorer",
+                        "url": "/d/dark-factory-run-explorer?var-run=$${__data.fields.Run}&$${__url_time_range}",
+                        "targetBlank": true
+                      }
+                    ]
                   }
                 ]
               },
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "Budget"
-                },
-                "properties": [
-                  {
-                    "id": "unit",
-                    "value": "currencyUSD"
-                  },
-                  {
-                    "id": "decimals",
-                    "value": 2
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Blocked"
+                  "options": "Outcome"
                 },
                 "properties": [
                   {
@@ -985,13 +1202,25 @@ spec:
                       {
                         "type": "value",
                         "options": {
-                          "0": {
-                            "text": "—",
-                            "color": "text"
+                          "pr_opened": {
+                            "text": "PR opened",
+                            "color": "green",
+                            "index": 0
                           },
-                          "1": {
-                            "text": "BLOCKED",
-                            "color": "red"
+                          "failed": {
+                            "text": "Failed",
+                            "color": "red",
+                            "index": 1
+                          },
+                          "running": {
+                            "text": "Running",
+                            "color": "blue",
+                            "index": 2
+                          },
+                          "stuck": {
+                            "text": "Stuck",
+                            "color": "orange",
+                            "index": 3
                           }
                         }
                       }
@@ -1008,17 +1237,89 @@ spec:
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "Run"
+                  "options": "Spend USD"
                 },
                 "properties": [
                   {
-                    "id": "links",
-                    "value": [
-                      {
-                        "title": "Open run explorer",
-                        "url": "/d/dark-factory-run-explorer?var-run=$${__data.fields[\"Run\"]}&from=$${__from}&to=$${__to}"
-                      }
-                    ]
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Budget USD"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Burn %"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percent"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "min",
+                    "value": 0
+                  },
+                  {
+                    "id": "max",
+                    "value": 100
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 50
+                        },
+                        {
+                          "color": "red",
+                          "value": 80
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "gauge",
+                      "mode": "gradient"
+                    }
                   }
                 ]
               }
@@ -1026,15 +1327,15 @@ spec:
           }
         },
         {
-          "id": 16,
+          "id": 19,
           "type": "bargauge",
-          "title": "Spend by ticket (range)",
-          "description": "Agent LLM spend grouped by ticket (litellm_run_spend joined to ploeg_run's ticket label on key_alias).",
+          "title": "Spend by ticket",
+          "description": "Agent LLM spend summed per Vikunja ticket — litellm_run_spend grafted with ploeg_run's ticket label on key_alias.",
           "gridPos": {
             "h": 10,
-            "w": 5,
-            "x": 14,
-            "y": 15
+            "w": 9,
+            "x": 15,
+            "y": 23
           },
           "datasource": {
             "type": "prometheus",
@@ -1049,7 +1350,7 @@ spec:
               },
               "expr": "sum by (ticket) (litellm_run_spend{key_alias=~\"ploeg-.*\"} * on(key_alias) group_left(ticket) (ploeg_run_started_epoch >= bool 0))",
               "instant": true,
-              "legendFormat": "{{ticket}}"
+              "legendFormat": "Ticket {{ticket}}"
             }
           ],
           "options": {
@@ -1085,66 +1386,7 @@ spec:
           }
         },
         {
-          "id": 17,
-          "type": "bargauge",
-          "title": "Team spend delta (range)",
-          "description": "LiteLLM team spend accrued within the range (max minus min of the cumulative counter).",
-          "gridPos": {
-            "h": 10,
-            "w": 5,
-            "x": 19,
-            "y": 15
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              },
-              "expr": "sum by (team_alias) (max_over_time(litellm_team_spend[$$__range]) - min_over_time(litellm_team_spend[$$__range]))",
-              "instant": true,
-              "legendFormat": "{{team_alias}}"
-            }
-          ],
-          "options": {
-            "orientation": "horizontal",
-            "displayMode": "gradient",
-            "showUnfilled": true,
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
-              "values": false
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "currencyUSD",
-              "decimals": 2,
-              "color": {
-                "mode": "continuous-BlPu"
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
-              }
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 18,
+          "id": 20,
           "type": "row",
           "title": "What is happening (live)",
           "collapsed": false,
@@ -1152,102 +1394,18 @@ spec:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 25
+            "y": 33
           },
           "panels": []
         },
         {
-          "id": 19,
-          "type": "timeseries",
-          "title": "Agent runs started",
-          "description": "Runner log lines announcing a picked-up job (\"repo is\"), bucketed over time.",
-          "gridPos": {
-            "h": 8,
-            "w": 8,
-            "x": 0,
-            "y": 26
-          },
-          "datasource": {
-            "type": "victoriametrics-logs-datasource",
-            "uid": "victorialogs"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "{namespace=\"ploeg\", container=\"worker\"} pod:~\"ploeg-worker-bronze-.*\" ~\"repo is\" | stats count()",
-              "queryType": "statsRange",
-              "legendFormat": "runs started"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
-            },
-            "tooltip": {
-              "mode": "single"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "decimals": 0,
-              "custom": {
-                "drawStyle": "bars",
-                "lineWidth": 1,
-                "fillOpacity": 60,
-                "showPoints": "never"
-              }
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 20,
-          "type": "logs",
-          "title": "Agent activity feed",
-          "description": "Live log tail of all agent-runner pods.",
-          "gridPos": {
-            "h": 8,
-            "w": 16,
-            "x": 8,
-            "y": 26
-          },
-          "datasource": {
-            "type": "victoriametrics-logs-datasource",
-            "uid": "victorialogs"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "{namespace=\"ploeg\", container=\"worker\"} pod:~\"ploeg-worker-bronze-.*\" | unpack_logfmt",
-              "queryType": "instant",
-              "maxLines": 200
-            }
-          ],
-          "options": {
-            "dedupStrategy": "none",
-            "enableLogDetails": true,
-            "prettifyLogMessage": false,
-            "showCommonLabels": false,
-            "showLabels": true,
-            "showTime": true,
-            "sortOrder": "Descending",
-            "wrapLogMessage": true
-          },
-          "fieldConfig": {
-            "defaults": {},
-            "overrides": []
-          }
-        },
-        {
           "id": 21,
-          "type": "logs",
-          "title": "Warning events (factory namespaces)",
-          "description": "Kubernetes Warning events in the forgejo/ai/vikunja namespaces.",
+          "type": "table",
+          "title": "Outcomes (range)",
+          "description": "One row per reported run outcome, extracted from ploegd 'outcome reported' log lines (deduplicated) — the run's wrap-up summary.",
           "gridPos": {
-            "h": 8,
-            "w": 24,
+            "h": 9,
+            "w": 10,
             "x": 0,
             "y": 34
           },
@@ -1258,9 +1416,120 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "{job=\"kubernetes/events\", namespace=~\"forgejo|ai|vikunja\"} \"type=Warning\"",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "expr": "{namespace=\"ploeg\", container=\"ploegd\"} \"outcome reported\" | extract 'outcome=<outcome> ' | extract 'summary=\"<summary>\"' | fields _time, outcome, summary | uniq by (_time, outcome, summary)",
               "queryType": "instant",
               "maxLines": 100
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "_time": "Time",
+                  "outcome": "Outcome",
+                  "summary": "Summary"
+                }
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "sortBy": [
+              {
+                "displayName": "Time",
+                "desc": true
+              }
+            ]
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "filterable": true
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Outcome"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "pr_opened": {
+                            "text": "PR opened",
+                            "color": "green",
+                            "index": 0
+                          },
+                          "failed": {
+                            "text": "Failed",
+                            "color": "red",
+                            "index": 1
+                          },
+                          "running": {
+                            "text": "Running",
+                            "color": "blue",
+                            "index": 2
+                          },
+                          "stuck": {
+                            "text": "Stuck",
+                            "color": "orange",
+                            "index": 3
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 110
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 22,
+          "type": "logs",
+          "title": "Agent activity feed (ploegd)",
+          "description": "Raw ploegd daemon tail — queueing, lease and outcome events; scoped to ploegd so worker duplicates don't triple-print.",
+          "gridPos": {
+            "h": 9,
+            "w": 14,
+            "x": 10,
+            "y": 34
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "expr": "{namespace=\"ploeg\", container=\"ploegd\"}",
+              "queryType": "instant",
+              "maxLines": 200
             }
           ],
           "options": {
@@ -1279,18 +1548,45 @@ spec:
           }
         },
         {
-          "id": 22,
-          "type": "text",
-          "title": "Known gaps",
+          "id": 23,
+          "type": "logs",
+          "title": "Warning events (factory namespaces)",
+          "description": "Kubernetes Warning events in the factory namespaces (ploeg, forgejo, ai, vikunja) from the cluster events stream.",
           "gridPos": {
-            "h": 6,
+            "h": 8,
             "w": 24,
             "x": 0,
-            "y": 42
+            "y": 43
           },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "expr": "{job=\"kubernetes/events\", namespace=~\"ploeg|forgejo|ai|vikunja\"} \"type=Warning\"",
+              "queryType": "instant",
+              "maxLines": 100
+            }
+          ],
           "options": {
-            "mode": "markdown",
-            "content": "## Known gaps\n\n- **No repo label on LiteLLM data** — upstream metadata enrichment ticket pending; spend can only be grouped by run key / ticket / team.\n- **Run → pod mapping is temporal only** — match a run's first LLM request time against Job start times; there is no shared label.\n- **Traces carry no run tag** — LiteLLM spans cannot be filtered per run key; narrow the time range instead.\n- **gitea_* metrics are instance totals** — no per-run or per-job breakdown exists on the Forgejo side.\n- **SQL panels require the litellm-db datasource** — if it is absent or down, the per-request forensics in the run explorer go blank while the Prometheus ledger panels keep working."
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "prettifyLogMessage": false,
+            "showCommonLabels": false,
+            "showLabels": false,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
           }
         }
       ]

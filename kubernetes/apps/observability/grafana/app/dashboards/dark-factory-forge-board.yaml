@@ -1,11 +1,12 @@
 ---
 # Dark Factory — Forge & Board Activity.
-# KSM caveat (live-verified): kube-state-metrics series carry namespace="observability" and the
-# workload's REAL namespace in `exported_namespace`; this dashboard has no kube_* queries, but
-# keep that in mind when extending it. cAdvisor/cnpg/gitea/up metrics carry the real namespace.
-# CI-vs-agent log split: the CI runner target uses an explicit negative filter
-# (-pod:~"forgejo-agent-runner-.*") so agent pods can never double-count into the CI column,
-# regardless of LogsQL regex anchoring semantics.
+# The OUTPUT dashboard: what lands on the forge (Forgejo) and the board (Vikunja) —
+# issues, releases, webhook fan-out, agent-produced PRs, ticket states.
+# Forge-native panels (gitea_*, ns-forgejo runner logs) legitimately stay on forgejo
+# sources and are labeled "CI pool"; agent-side intake reads ns ploeg (ploegd logfmt)
+# and the authoritative ploeg-db record.
+# CNPG caveat (live-verified 2026-07-24): cnpg_* series are duplicated under 4 scrape
+# `job` values — always aggregate with max, never sum, or rates over-count ~8x.
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
@@ -93,7 +94,7 @@ spec:
         {
           "id": 1,
           "type": "row",
-          "title": "Forge deltas (range)",
+          "title": "At a glance",
           "collapsed": false,
           "gridPos": {
             "h": 1,
@@ -105,15 +106,15 @@ spec:
         {
           "id": 2,
           "type": "stat",
-          "title": "Issues opened (range)",
-          "description": "net change — negative = closures outpaced opens",
+          "title": "Open issues now",
+          "description": "Current open issues across all repos on the forge (gitea_issues_open gauge).",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
           "gridPos": {
             "h": 4,
-            "w": 4,
+            "w": 3,
             "x": 0,
             "y": 1
           },
@@ -152,7 +153,8 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum(delta(gitea_issues_open[$$__range])) or vector(0)"
+              "expr": "sum(gitea_issues_open)",
+              "instant": false
             }
           ]
         },
@@ -160,15 +162,15 @@ spec:
           "id": 3,
           "type": "stat",
           "title": "Issues closed (range)",
-          "description": "Net change in closed issues over the dashboard range.",
+          "description": "Net change in the gitea_issues_closed gauge over the range; a reopened issue subtracts.",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
           "gridPos": {
             "h": 4,
-            "w": 4,
-            "x": 4,
+            "w": 3,
+            "x": 3,
             "y": 1
           },
           "fieldConfig": {
@@ -206,7 +208,8 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum(delta(gitea_issues_closed[$$__range])) or vector(0)"
+              "expr": "sum(delta(gitea_issues_closed[$$__range])) or vector(0)",
+              "instant": false
             }
           ]
         },
@@ -214,15 +217,15 @@ spec:
           "id": 4,
           "type": "stat",
           "title": "Releases cut (range)",
-          "description": "Net new releases across all repos over the dashboard range.",
+          "description": "Net new releases across all repos over the range (gitea_releases gauge delta).",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
           "gridPos": {
             "h": 4,
-            "w": 4,
-            "x": 8,
+            "w": 3,
+            "x": 6,
             "y": 1
           },
           "fieldConfig": {
@@ -260,7 +263,8 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum(delta(gitea_releases[$$__range])) or vector(0)"
+              "expr": "sum(delta(gitea_releases[$$__range])) or vector(0)",
+              "instant": false
             }
           ]
         },
@@ -268,14 +272,69 @@ spec:
           "id": 5,
           "type": "stat",
           "title": "Webhook deliveries (range)",
-          "description": "Net new webhook delivery tasks over the range — the forge fan-out to CI, Renovate, and friends.",
+          "description": "Net new webhook delivery tasks over the range (gitea_hooktasks delta) — the forge fan-out to CI, Renovate, and friends; hook-task pruning can dip it negative.",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
           "gridPos": {
             "h": 4,
-            "w": 4,
+            "w": 3,
+            "x": 9,
+            "y": 1
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(delta(gitea_hooktasks[$$__range])) or vector(0)",
+              "instant": false
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "type": "stat",
+          "title": "Repos Δ (range)",
+          "description": "Net change in forge repository count over the range (gitea_repositories gauge delta); negative = deletions outpaced creations.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 3,
             "x": 12,
             "y": 1
           },
@@ -314,23 +373,24 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum(delta(gitea_hooktasks[$$__range])) or vector(0)"
+              "expr": "sum(delta(gitea_repositories[$$__range])) or vector(0)",
+              "instant": false
             }
           ]
         },
         {
-          "id": 6,
+          "id": 7,
           "type": "stat",
-          "title": "Repos delta",
-          "description": "Net change in repository count over the range.",
+          "title": "Tickets worked by agents",
+          "description": "Distinct Vikunja tickets with at least one ploeg agent run, via the ticket label on ploeg_run_started_epoch (exporter-retained runs only).",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
           "gridPos": {
             "h": 4,
-            "w": 4,
-            "x": 16,
+            "w": 3,
+            "x": 15,
             "y": 1
           },
           "fieldConfig": {
@@ -368,57 +428,167 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum(delta(gitea_repositories[$$__range])) or vector(0)"
+              "expr": "count(count by (ticket) (ploeg_run_started_epoch{ticket!=\"none\"})) or vector(0)",
+              "instant": false
             }
           ]
         },
         {
-          "id": 7,
+          "id": 8,
+          "type": "stat",
+          "title": "PRs opened (ploeg record)",
+          "description": "Distinct work items with a pr_opened checkpoint in range, from the authoritative ploeg-db checkpoints table.",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "ploeg-db"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 18,
+            "y": 1
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "ploeg-db"
+              },
+              "rawQuery": true,
+              "format": "table",
+              "rawSql": "SELECT count(DISTINCT work_item_id) AS prs_opened FROM checkpoints WHERE phase = 'pr_opened' AND $$__timeFilter(created_at)"
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "type": "stat",
+          "title": "Ploeg Test tasks still open",
+          "description": "Vikunja tasks not done on the Ploeg Test board (project 11, vikunja-db) — current state, range-independent.",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "vikunja-db"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 21,
+            "y": 1
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "vikunja-db"
+              },
+              "rawQuery": true,
+              "format": "table",
+              "rawSql": "SELECT count(*) AS open_tasks FROM tasks WHERE project_id = 11 AND NOT done"
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "type": "row",
+          "title": "Forge activity",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 5
+          }
+        },
+        {
+          "id": 11,
           "type": "timeseries",
-          "title": "Issues open vs closed (trend)",
-          "description": "Absolute open and closed issue counts across the forge over time.",
+          "title": "Open issues (trend)",
+          "description": "Absolute open-issue count across the forge (gitea_issues_open); split from closed issues because closed runs about 9x larger.",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
           "gridPos": {
             "h": 8,
-            "w": 12,
+            "w": 8,
             "x": 0,
-            "y": 5
+            "y": 6
           },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
               "custom": {
                 "drawStyle": "line",
-                "fillOpacity": 10,
-                "showPoints": "never"
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "showPoints": "never",
+                "spanNulls": false
               }
             },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "closed"
-                },
-                "properties": [
-                  {
-                    "id": "custom.axisPlacement",
-                    "value": "right"
-                  }
-                ]
-              }
-            ]
+            "overrides": []
           },
           "options": {
             "legend": {
-              "displayMode": "table",
-              "placement": "bottom",
-              "calcs": [
-                "lastNotNull",
-                "max"
-              ]
+              "displayMode": "list",
+              "placement": "bottom"
             },
             "tooltip": {
               "mode": "multi",
@@ -434,9 +604,50 @@ spec:
               },
               "legendFormat": "open",
               "expr": "sum(gitea_issues_open)"
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "type": "timeseries",
+          "title": "Closed issues (trend)",
+          "description": "Absolute closed-issue count across the forge (gitea_issues_closed); adjacent to the open trend on its own axis — same unit, very different magnitude.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 6
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "showPoints": "never",
+                "spanNulls": false
+              }
             },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
             {
-              "refId": "B",
+              "refId": "A",
               "datasource": {
                 "type": "prometheus",
                 "uid": "prometheus"
@@ -447,27 +658,29 @@ spec:
           ]
         },
         {
-          "id": 8,
+          "id": 13,
           "type": "timeseries",
           "title": "Webhook fan-out rate",
-          "description": "the forge-to-factory trigger signal",
+          "description": "Per-interval net new webhook delivery tasks (gitea_hooktasks delta) — the forge-to-factory trigger signal; pruning can dip it negative.",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
           "gridPos": {
             "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 5
+            "w": 8,
+            "x": 16,
+            "y": 6
           },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
               "custom": {
                 "drawStyle": "bars",
-                "fillOpacity": 60,
-                "showPoints": "never"
+                "fillOpacity": 80,
+                "lineWidth": 1,
+                "showPoints": "never",
+                "spanNulls": false
               }
             },
             "overrides": []
@@ -494,31 +707,31 @@ spec:
           ]
         },
         {
-          "id": 9,
+          "id": 14,
           "type": "row",
-          "title": "Actions activity by repo (logs)",
+          "title": "Run pickups & work intake",
           "collapsed": false,
           "gridPos": {
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 13
+            "y": 14
           }
         },
         {
-          "id": 10,
+          "id": 15,
           "type": "table",
-          "title": "Runs by repo & pool (range)",
-          "description": "Run pickups per repo, split CI vs agent pool, parsed from the runner 'repo is <owner/repo>' lines. The CI target excludes agent pods explicitly so nothing double-counts.",
+          "title": "CI runs by repo (range)",
+          "description": "CI pool only — run pickups per repo parsed from the ns-forgejo runner 'repo is owner/repo' lines. Agent work never flows through this pool.",
           "datasource": {
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
           "gridPos": {
             "h": 9,
-            "w": 12,
+            "w": 8,
             "x": 0,
-            "y": 14
+            "y": 15
           },
           "fieldConfig": {
             "defaults": {
@@ -534,7 +747,7 @@ spec:
             "showHeader": true,
             "sortBy": [
               {
-                "displayName": "Agent runs",
+                "displayName": "CI runs",
                 "desc": true
               }
             ]
@@ -546,28 +759,11 @@ spec:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "victorialogs"
               },
-              "queryType": "stats",
-              "expr": "{namespace=\"forgejo\", container=\"runner\"} pod:~\"forgejo-runner-.*\" -pod:~\"forgejo-agent-runner-.*\" ~\"repo is\" | extract_regexp \"repo is (?P<repo>\\\\S+)\" | filter -repo:\"\" | stats by (repo) count() ci_runs"
-            },
-            {
-              "refId": "B",
-              "datasource": {
-                "type": "victoriametrics-logs-datasource",
-                "uid": "victorialogs"
-              },
-              "queryType": "stats",
-              "expr": "{namespace=\"ploeg\", container=\"worker\"} \"minted per-run key\" | stats count() agent_runs"
+              "queryType": "instant",
+              "expr": "{namespace=\"forgejo\", container=\"runner\"} pod:~\"forgejo-runner-.*\" ~\"repo is\" | extract_regexp \"repo is (?P<repo>\\\\S+)\" | filter -repo:\"\" | stats by (repo) count() ci_runs"
             }
           ],
           "transformations": [
-            {
-              "id": "labelsToFields",
-              "options": {}
-            },
-            {
-              "id": "merge",
-              "options": {}
-            },
             {
               "id": "organize",
               "options": {
@@ -576,27 +772,37 @@ spec:
                 },
                 "renameByName": {
                   "repo": "Repo",
-                  "ci_runs": "CI runs",
-                  "agent_runs": "Agent runs"
+                  "ci_runs": "CI runs"
                 }
+              }
+            },
+            {
+              "id": "convertFieldType",
+              "options": {
+                "conversions": [
+                  {
+                    "targetField": "CI runs",
+                    "destinationType": "number"
+                  }
+                ]
               }
             }
           ]
         },
         {
-          "id": 11,
+          "id": 16,
           "type": "logs",
-          "title": "All run pickups (feed)",
-          "description": "Every 'repo is' pickup line from both runner pools. Expand a line for its pod label to see which pool served it.",
+          "title": "CI run pickups (forgejo)",
+          "description": "Raw 'repo is' pickup lines from the CI pool runners in ns forgejo. Agent-side intake is the Work intake panel to the right.",
           "datasource": {
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
           "gridPos": {
             "h": 9,
-            "w": 12,
-            "x": 12,
-            "y": 14
+            "w": 8,
+            "x": 8,
+            "y": 15
           },
           "options": {
             "showTime": true,
@@ -622,7 +828,202 @@ spec:
           ]
         },
         {
-          "id": 12,
+          "id": 17,
+          "type": "table",
+          "title": "Work intake (ploeg)",
+          "description": "Every 'work item queued' intake line from ploegd (logfmt-unpacked): work-item id, team, and ticket title — the agent-side twin of the CI pickups feed.",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 8,
+            "x": 16,
+            "y": 15
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "align": "auto",
+                "filterable": true
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true,
+            "sortBy": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "queryType": "instant",
+              "maxLines": 100,
+              "expr": "{namespace=\"ploeg\", container=\"ploegd\"} \"work item queued\" | unpack_logfmt | fields _time, id, team, title | sort by (_time desc)"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {},
+                "renameByName": {
+                  "_time": "Time",
+                  "id": "Work item",
+                  "team": "Team",
+                  "title": "Title"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 18,
+          "type": "row",
+          "title": "Factory record (ploeg)",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 24
+          }
+        },
+        {
+          "id": 19,
+          "type": "table",
+          "title": "Factory record",
+          "description": "Authoritative ploeg-db record: one row per work item with run and PR counts plus the latest PR link. State done means the run finished — NOT that the PR merged; merging stays with a human.",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "ploeg-db"
+          },
+          "gridPos": {
+            "h": 10,
+            "w": 24,
+            "x": 0,
+            "y": 25
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "align": "auto",
+                "filterable": true
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "State"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "queued": {
+                            "text": "Queued",
+                            "color": "yellow"
+                          },
+                          "done": {
+                            "text": "Done",
+                            "color": "green"
+                          },
+                          "running": {
+                            "text": "Running",
+                            "color": "blue"
+                          },
+                          "failed": {
+                            "text": "Failed",
+                            "color": "red"
+                          },
+                          "stuck": {
+                            "text": "Stuck",
+                            "color": "orange"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Latest PR"
+                },
+                "properties": [
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open PR",
+                        "url": "$${__value.text}",
+                        "targetBlank": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "sortBy": [
+              {
+                "displayName": "Ticket",
+                "desc": true
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "ploeg-db"
+              },
+              "rawQuery": true,
+              "format": "table",
+              "rawSql": "SELECT w.external_id AS ticket, left(w.title,60) AS title, w.state, w.attempts, count(DISTINCT r.id) AS runs, count(DISTINCT r.id) FILTER (WHERE r.outcome = 'pr_opened') AS prs, coalesce(max(c.pr_url) FILTER (WHERE c.pr_url <> ''), '') AS latest_pr FROM work_items w LEFT JOIN agent_runs r ON r.work_item_id = w.id LEFT JOIN checkpoints c ON c.work_item_id = w.id GROUP BY 1, 2, 3, 4 ORDER BY ticket DESC"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {},
+                "renameByName": {
+                  "ticket": "Ticket",
+                  "title": "Title",
+                  "state": "State",
+                  "attempts": "Attempts",
+                  "runs": "Runs",
+                  "prs": "PRs opened",
+                  "latest_pr": "Latest PR"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 20,
           "type": "row",
           "title": "Board (Vikunja)",
           "collapsed": false,
@@ -630,23 +1031,173 @@ spec:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 23
+            "y": 35
           }
         },
         {
-          "id": 13,
+          "id": 21,
+          "type": "table",
+          "title": "Ploeg Test board",
+          "description": "The 50 most recently updated tasks on the Ploeg Test board (vikunja-db, project 11) — the ticket states agents work against.",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "vikunja-db"
+          },
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 0,
+            "y": 36
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "align": "auto",
+                "filterable": true
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Done"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "true": {
+                            "text": "Done",
+                            "color": "green"
+                          },
+                          "false": {
+                            "text": "Open",
+                            "color": "yellow"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "sortBy": [
+              {
+                "displayName": "Updated",
+                "desc": true
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "vikunja-db"
+              },
+              "rawQuery": true,
+              "format": "table",
+              "rawSql": "SELECT id AS ticket, left(title,60) AS title, done, done_at, updated FROM tasks WHERE project_id = 11 ORDER BY updated DESC LIMIT 50"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {},
+                "renameByName": {
+                  "ticket": "Ticket",
+                  "title": "Title",
+                  "done": "Done",
+                  "done_at": "Done at",
+                  "updated": "Updated"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 22,
           "type": "stat",
-          "title": "Tickets worked by agents (range)",
-          "description": "Distinct Vikunja tickets with at least one ploeg agent run over the range (via the ploeg_run ticket label).",
+          "title": "Board tasks",
+          "description": "Total tasks on the board (built-in vikunja_task_count metric), all projects.",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
           "gridPos": {
-            "h": 4,
-            "w": 4,
-            "x": 0,
-            "y": 24
+            "h": 5,
+            "w": 6,
+            "x": 12,
+            "y": 36
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max(vikunja_task_count) or vector(0)",
+              "instant": false
+            }
+          ]
+        },
+        {
+          "id": 23,
+          "type": "stat",
+          "title": "Board projects",
+          "description": "Total projects on the board (built-in vikunja_project_count metric).",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 18,
+            "y": 36
           },
           "fieldConfig": {
             "defaults": {
@@ -683,96 +1234,35 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "count(count by (ticket) (ploeg_run_started_epoch{ticket!=\"none\"})) or vector(0)"
+              "expr": "max(vikunja_project_count) or vector(0)",
+              "instant": true
             }
           ]
         },
         {
-          "id": 14,
-          "type": "table",
-          "title": "Run activity (SQL)",
-          "description": "Per-run requests, last activity, and exact spend from the LiteLLM spend ledger (ploeg-<hex> keys); requires litellm-db datasource. Ticket↔run↔PR board lives on the Dispatch Plane dashboard.",
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "litellm-db"
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 10,
-            "x": 4,
-            "y": 24
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "align": "auto",
-                "filterable": true
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "spend"
-                },
-                "properties": [
-                  {
-                    "id": "unit",
-                    "value": "currencyUSD"
-                  },
-                  {
-                    "id": "decimals",
-                    "value": 2
-                  }
-                ]
-              }
-            ]
-          },
-          "options": {
-            "showHeader": true,
-            "sortBy": [
-              {
-                "displayName": "last_agent_activity",
-                "desc": true
-              }
-            ]
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "datasource": {
-                "type": "grafana-postgresql-datasource",
-                "uid": "litellm-db"
-              },
-              "rawQuery": true,
-              "format": "table",
-              "rawSql": "SELECT metadata->>'user_api_key_alias' AS run, count(*) AS requests, max(\"startTime\") AS last_agent_activity, sum(spend) AS spend FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' ~ '^ploeg-' AND $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY last_agent_activity DESC"
-            }
-          ]
-        },
-        {
-          "id": 15,
+          "id": 24,
           "type": "timeseries",
           "title": "Board traffic (nginx)",
-          "description": "Request log volume of the board SPA's nginx container — a proxy for humans (and agents) looking at the board.",
+          "description": "Request-log volume of the board SPA's nginx container (ns vikunja logs) — a proxy for humans and agents looking at the board.",
           "datasource": {
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
           "gridPos": {
-            "h": 8,
-            "w": 7,
-            "x": 14,
-            "y": 24
+            "h": 5,
+            "w": 12,
+            "x": 12,
+            "y": 41
           },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
               "custom": {
                 "drawStyle": "bars",
-                "fillOpacity": 60,
-                "showPoints": "never"
+                "fillOpacity": 80,
+                "lineWidth": 1,
+                "showPoints": "never",
+                "spanNulls": false
               }
             },
             "overrides": []
@@ -800,27 +1290,29 @@ spec:
           ]
         },
         {
-          "id": 16,
+          "id": 25,
           "type": "timeseries",
           "title": "Vikunja DB commit rate",
-          "description": "board write activity proxy",
+          "description": "Transaction commits per second on the board's app database (cnpg_pg_stat_database_xact_commit) — a board-write proxy; max-aggregated because CNPG series are duplicated across 4 scrape jobs.",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
           "gridPos": {
             "h": 8,
-            "w": 7,
+            "w": 12,
             "x": 0,
-            "y": 32
+            "y": 46
           },
           "fieldConfig": {
             "defaults": {
-              "unit": "short",
+              "unit": "ops",
               "custom": {
                 "drawStyle": "line",
-                "fillOpacity": 10,
-                "showPoints": "never"
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "showPoints": "never",
+                "spanNulls": false
               }
             },
             "overrides": []
@@ -841,16 +1333,65 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "legendFormat": "xact commit/s",
-              "expr": "sum(rate(cnpg_pg_stat_database_xact_commit{namespace=\"vikunja\"}[$$__rate_interval]))"
+              "legendFormat": "xact commit/s (app)",
+              "expr": "max(rate(cnpg_pg_stat_database_xact_commit{namespace=\"vikunja\",datname=\"app\"}[$$__rate_interval]))"
             }
           ]
         },
         {
-          "id": 17,
+          "id": 26,
+          "type": "timeseries",
+          "title": "Board tasks delta",
+          "description": "Net change in vikunja_task_count per interval (built-in Vikunja metrics); positive = tickets created faster than deleted.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 46
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 80,
+                "lineWidth": 1,
+                "showPoints": "never",
+                "spanNulls": false
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "tasks delta",
+              "expr": "sum(delta(vikunja_task_count[$$__rate_interval]))"
+            }
+          ]
+        },
+        {
+          "id": 27,
           "type": "logs",
           "title": "PO-agent board actions (mcp-vikunja)",
-          "description": "The write-capable vikunja MCP server's log — every board mutation the product-owner agent makes flows through here.",
+          "description": "The write-capable vikunja MCP server's log (ns vikunja) — every board mutation the product-owner agent makes flows through here.",
           "datasource": {
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
@@ -859,7 +1400,7 @@ spec:
             "h": 9,
             "w": 24,
             "x": 0,
-            "y": 40
+            "y": 54
           },
           "options": {
             "showTime": true,
@@ -885,7 +1426,7 @@ spec:
           ]
         },
         {
-          "id": 18,
+          "id": 28,
           "type": "row",
           "title": "Plumbing",
           "collapsed": false,
@@ -893,14 +1434,14 @@ spec:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 49
+            "y": 63
           }
         },
         {
-          "id": 19,
+          "id": 29,
           "type": "stat",
           "title": "Forgejo up",
-          "description": "Forgejo HTTP scrape target health.",
+          "description": "Forgejo HTTP scrape target health (up, job forgejo-http).",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -909,7 +1450,7 @@ spec:
             "h": 6,
             "w": 4,
             "x": 0,
-            "y": 50
+            "y": 64
           },
           "fieldConfig": {
             "defaults": {
@@ -921,12 +1462,7 @@ spec:
                     "1": {
                       "text": "UP",
                       "color": "green"
-                    }
-                  }
-                },
-                {
-                  "type": "value",
-                  "options": {
+                    },
                     "0": {
                       "text": "DOWN",
                       "color": "red"
@@ -966,15 +1502,16 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max(up{job=\"forgejo-http\",namespace=\"forgejo\"}) or vector(0)"
+              "expr": "max(up{job=\"forgejo-http\",namespace=\"forgejo\"}) or vector(0)",
+              "instant": true
             }
           ]
         },
         {
-          "id": 20,
+          "id": 30,
           "type": "table",
           "title": "Factory DB health",
-          "description": "CNPG collector health for the factory databases (ai, forgejo, vikunja).",
+          "description": "CNPG collector health for the factory databases (ai, forgejo, ploeg, vikunja); max-aggregated because CNPG series are duplicated across 4 scrape jobs.",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -983,7 +1520,7 @@ spec:
             "h": 6,
             "w": 12,
             "x": 4,
-            "y": 50
+            "y": 64
           },
           "fieldConfig": {
             "defaults": {
@@ -1002,12 +1539,7 @@ spec:
                     "1": {
                       "text": "UP",
                       "color": "green"
-                    }
-                  }
-                },
-                {
-                  "type": "value",
-                  "options": {
+                    },
                     "0": {
                       "text": "DOWN",
                       "color": "red"
@@ -1045,7 +1577,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (namespace, pod) (cnpg_collector_up{namespace=~\"ai|forgejo|vikunja\"})"
+              "expr": "max by (namespace, pod) (cnpg_collector_up{namespace=~\"ai|forgejo|ploeg|vikunja\"})"
             }
           ],
           "transformations": [
@@ -1075,10 +1607,10 @@ spec:
           ]
         },
         {
-          "id": 21,
+          "id": 31,
           "type": "logs",
           "title": "Warning events (vikunja + forgejo)",
-          "description": "Kubernetes Warning events across the forge and board namespaces.",
+          "description": "Kubernetes Warning events across the forge and board namespaces (kubernetes/events stream).",
           "datasource": {
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
@@ -1087,7 +1619,7 @@ spec:
             "h": 6,
             "w": 8,
             "x": 16,
-            "y": 50
+            "y": 64
           },
           "options": {
             "showTime": true,
@@ -1111,141 +1643,6 @@ spec:
               "expr": "{job=\"kubernetes/events\", namespace=~\"forgejo|vikunja\"} \"type=Warning\""
             }
           ]
-        },
-        {
-          "id": 22,
-          "type": "stat",
-          "title": "Board tasks",
-          "gridPos": {
-            "h": 4,
-            "w": 3,
-            "x": 21,
-            "y": 24
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "max(vikunja_task_count) or vector(0)",
-              "instant": true
-            }
-          ],
-          "options": {
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ]
-            },
-            "graphMode": "area",
-            "colorMode": "value"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "blue",
-                    "value": null
-                  }
-                ]
-              }
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 23,
-          "type": "stat",
-          "title": "Board projects",
-          "gridPos": {
-            "h": 4,
-            "w": 3,
-            "x": 21,
-            "y": 28
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "max(vikunja_project_count) or vector(0)",
-              "instant": true
-            }
-          ],
-          "options": {
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ]
-            },
-            "graphMode": "none",
-            "colorMode": "value"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "purple",
-                    "value": null
-                  }
-                ]
-              }
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 24,
-          "type": "timeseries",
-          "title": "Board tasks delta",
-          "description": "Net change in vikunja_task_count (built-in Vikunja metrics; positive = tickets created faster than deleted).",
-          "gridPos": {
-            "h": 8,
-            "w": 17,
-            "x": 7,
-            "y": 32
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum(delta(vikunja_task_count[$$__rate_interval]))",
-              "legendFormat": "tasks delta"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "drawStyle": "bars",
-                "fillOpacity": 60,
-                "lineWidth": 1
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "tooltip": {
-              "mode": "multi"
-            },
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
-            }
-          }
         }
       ]
     }

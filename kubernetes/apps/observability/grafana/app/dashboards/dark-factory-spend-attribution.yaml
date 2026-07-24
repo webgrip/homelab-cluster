@@ -9,10 +9,12 @@ spec:
       grafana.internal/instance: grafana
   allowCrossNamespaceImport: false
   folderRef: ai
-  # Dark Factory spend attribution: who/what is burning inference money — by
-  # ticket, run, team, model and provider. Exact numbers from SQL, trends from
-  # PromQL; does not repeat /d/litellm-spend panels (live budget gauges and
-  # per-key/per-user budget tables live there).
+  # Dark Factory spend attribution: every LLM cent attributed — per run, per
+  # ticket, per team, per model/provider — with budget and provider-cap
+  # guardrails. Exact numbers from the litellm-db spend ledger, trends from
+  # PromQL, ticket/team/outcome attribution via the ploeg_run graft. Does not
+  # repeat /d/litellm-spend panels (live budget gauges and per-key/per-user
+  # budget tables live there).
   json: |-
     {
       "schemaVersion": 39,
@@ -78,7 +80,7 @@ spec:
         {
           "id": 1,
           "type": "row",
-          "title": "Range totals",
+          "title": "At a glance",
           "gridPos": {
             "h": 1,
             "w": 24,
@@ -90,9 +92,10 @@ spec:
           "id": 2,
           "type": "stat",
           "title": "Agent spend (range)",
+          "description": "Sum of per-run key spend gauges (litellm_key_spend, live keys only) peaked over the range; exact ledger number is the SQL tile.",
           "gridPos": {
             "h": 4,
-            "w": 4,
+            "w": 3,
             "x": 0,
             "y": 1
           },
@@ -104,9 +107,14 @@ spec:
             "defaults": {
               "unit": "currencyUSD",
               "decimals": 2,
-              "color": {
-                "mode": "fixed",
-                "fixedColor": "text"
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
               }
             },
             "overrides": []
@@ -136,60 +144,12 @@ spec:
         {
           "id": 3,
           "type": "stat",
-          "title": "All-key spend delta (range)",
-          "description": "approximation — exact number in the SQL panel",
-          "gridPos": {
-            "h": 4,
-            "w": 4,
-            "x": 4,
-            "y": 1
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "currencyUSD",
-              "decimals": 2,
-              "color": {
-                "mode": "fixed",
-                "fixedColor": "text"
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ]
-            },
-            "colorMode": "value",
-            "graphMode": "none",
-            "textMode": "value"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              },
-              "expr": "sum(max_over_time(litellm_key_spend[$$__range]) - min_over_time(litellm_key_spend[$$__range])) or vector(0)",
-              "instant": true
-            }
-          ]
-        },
-        {
-          "id": 4,
-          "type": "stat",
           "title": "Spend (SQL, exact)",
-          "description": "Exact spend from the LiteLLM spend ledger; requires litellm-db datasource.",
+          "description": "Exact all-key spend over the range from the LiteLLM spend ledger (litellm-db LiteLLM_SpendLogs).",
           "gridPos": {
             "h": 4,
-            "w": 4,
-            "x": 8,
+            "w": 3,
+            "x": 3,
             "y": 1
           },
           "datasource": {
@@ -200,9 +160,14 @@ spec:
             "defaults": {
               "unit": "currencyUSD",
               "decimals": 2,
-              "color": {
-                "mode": "fixed",
-                "fixedColor": "text"
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
               }
             },
             "overrides": []
@@ -232,14 +197,14 @@ spec:
           ]
         },
         {
-          "id": 5,
+          "id": 4,
           "type": "stat",
           "title": "Requests (SQL)",
-          "description": "Request count from the spend ledger; requires litellm-db datasource.",
+          "description": "Request count over the range from the LiteLLM spend ledger (litellm-db LiteLLM_SpendLogs).",
           "gridPos": {
             "h": 4,
-            "w": 4,
-            "x": 12,
+            "w": 3,
+            "x": 6,
             "y": 1
           },
           "datasource": {
@@ -250,9 +215,14 @@ spec:
             "defaults": {
               "unit": "short",
               "decimals": 0,
-              "color": {
-                "mode": "fixed",
-                "fixedColor": "text"
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
               }
             },
             "overrides": []
@@ -282,13 +252,14 @@ spec:
           ]
         },
         {
-          "id": 6,
+          "id": 5,
           "type": "stat",
           "title": "Avg cost per run",
+          "description": "Range peak of litellm_key_spend summed over live ploeg keys divided by keys seen — approximation; revoked keys age out.",
           "gridPos": {
             "h": 4,
-            "w": 4,
-            "x": 16,
+            "w": 3,
+            "x": 9,
             "y": 1
           },
           "datasource": {
@@ -299,9 +270,14 @@ spec:
             "defaults": {
               "unit": "currencyUSD",
               "decimals": 2,
-              "color": {
-                "mode": "fixed",
-                "fixedColor": "text"
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
               }
             },
             "overrides": []
@@ -329,13 +305,128 @@ spec:
           ]
         },
         {
-          "id": 7,
+          "id": 6,
           "type": "stat",
-          "title": "Live keys over 80 pct budget",
+          "title": "Cost per PR",
+          "description": "Total agent LLM spend (litellm_run_spend, 30d retention) divided by PRs opened (ploeg_agent_runs_count outcome pr_opened), clamped to avoid divide-by-zero.",
           "gridPos": {
             "h": 4,
-            "w": 4,
-            "x": 20,
+            "w": 3,
+            "x": 12,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(litellm_run_spend{key_alias=~\"ploeg-.*\"}) / clamp_min(sum(ploeg_agent_runs_count{outcome=\"pr_opened\"}),1) or vector(0)",
+              "instant": false
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "type": "stat",
+          "title": "Failed-run spend (waste)",
+          "description": "Spend attributed to runs whose outcome is failed — litellm_run_spend grafted on key_alias to ploeg_run_started_epoch (30d retention).",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 15,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 0.01
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(litellm_run_spend{key_alias=~\"ploeg-.*\"} * on(key_alias) group_left(ticket,team,outcome) (ploeg_run_started_epoch{outcome=\"failed\"} >= bool 0)) or vector(0)",
+              "instant": false
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "type": "stat",
+          "title": "Live keys over 80 pct budget",
+          "description": "Count of live LiteLLM keys (all aliases) whose litellm_key_spend exceeds 80 percent of litellm_key_max_budget.",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 18,
             "y": 1
           },
           "datasource": {
@@ -385,9 +476,62 @@ spec:
           ]
         },
         {
-          "id": 8,
+          "id": 9,
+          "type": "stat",
+          "title": "All-key spend delta (range)",
+          "description": "Delta of litellm_key_spend across ALL live keys over the range — approximation; the exact number is the Spend (SQL, exact) tile.",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 21,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(max_over_time(litellm_key_spend[$$__range]) - min_over_time(litellm_key_spend[$$__range])) or vector(0)",
+              "instant": true
+            }
+          ]
+        },
+        {
+          "id": 10,
           "type": "row",
-          "title": "By run (ticket-grained view on the Dispatch Plane dashboard)",
+          "title": "Where the money goes — ticket & team",
           "gridPos": {
             "h": 1,
             "w": 24,
@@ -396,15 +540,142 @@ spec:
           }
         },
         {
-          "id": 9,
-          "type": "table",
-          "title": "Ticket leaderboard (SQL)",
-          "description": "Spend rolled up to the Vikunja ticket behind each agent run key; requires litellm-db datasource.",
+          "id": 11,
+          "type": "bargauge",
+          "title": "Spend by ticket",
+          "description": "Agent LLM spend rolled up to the Vikunja ticket — litellm_run_spend joined on key_alias to ploeg_run_started_epoch (30d run-metric retention).",
           "gridPos": {
-            "h": 10,
-            "w": 14,
+            "h": 8,
+            "w": 12,
             "x": 0,
             "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "values": false,
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": ""
+            },
+            "orientation": "horizontal",
+            "displayMode": "gradient",
+            "valueMode": "color",
+            "showUnfilled": true
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum by (ticket) (litellm_run_spend{key_alias=~\"ploeg-.*\"} * on(key_alias) group_left(ticket,team,outcome) (ploeg_run_started_epoch >= bool 0))",
+              "legendFormat": "ticket {{ticket}}",
+              "instant": true
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "type": "bargauge",
+          "title": "Spend by team",
+          "description": "Agent LLM spend rolled up to the ploeg team — litellm_run_spend joined on key_alias to ploeg_run_started_epoch (30d run-metric retention).",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "values": false,
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": ""
+            },
+            "orientation": "horizontal",
+            "displayMode": "gradient",
+            "valueMode": "color",
+            "showUnfilled": true
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum by (team) (litellm_run_spend{key_alias=~\"ploeg-.*\"} * on(key_alias) group_left(ticket,team,outcome) (ploeg_run_started_epoch >= bool 0))",
+              "legendFormat": "{{team}}",
+              "instant": true
+            }
+          ]
+        },
+        {
+          "id": 13,
+          "type": "row",
+          "title": "By run",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 14
+          }
+        },
+        {
+          "id": 14,
+          "type": "table",
+          "title": "Run ledger (SQL, exact)",
+          "description": "One row per agent run key from the LiteLLM spend ledger (litellm-db LiteLLM_SpendLogs) — exact spend, request and token counts including cache reads. Click a run to open the Run Explorer.",
+          "gridPos": {
+            "h": 10,
+            "w": 24,
+            "x": 0,
+            "y": 15
           },
           "datasource": {
             "type": "grafana-postgresql-datasource",
@@ -412,6 +683,7 @@ spec:
           },
           "fieldConfig": {
             "defaults": {
+              "unit": "short",
               "custom": {
                 "align": "auto",
                 "filterable": true
@@ -421,7 +693,7 @@ spec:
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "spend"
+                  "options": "Spend"
                 },
                 "properties": [
                   {
@@ -437,12 +709,30 @@ spec:
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "last_activity"
+                  "options": "Last activity"
                 },
                 "properties": [
                   {
                     "id": "unit",
                     "value": "dateTimeAsIso"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Run"
+                },
+                "properties": [
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open in Run Explorer",
+                        "url": "/d/dark-factory-run-explorer?var-run=$${__data.fields.Run}&$${__url_time_range}",
+                        "targetBlank": true
+                      }
+                    ]
                   }
                 ]
               }
@@ -452,7 +742,7 @@ spec:
             "showHeader": true,
             "sortBy": [
               {
-                "displayName": "spend",
+                "displayName": "Spend",
                 "desc": true
               }
             ]
@@ -466,87 +756,38 @@ spec:
               },
               "rawQuery": true,
               "format": "table",
-              "rawSql": "SELECT metadata->>'user_api_key_alias' AS run, count(*) AS requests, sum(total_tokens) AS tokens, sum(spend) AS spend, max(\"startTime\") AS last_activity FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' ~ '^ploeg-' AND $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY spend DESC"
+              "rawSql": "SELECT metadata->>'user_api_key_alias' AS run, count(*) AS requests, sum(total_tokens) AS tokens, sum(prompt_tokens) AS prompt_tokens, sum(completion_tokens) AS completion_tokens, count(*) FILTER (WHERE cache_hit = 'True') AS cache_hits, sum(spend) AS spend, max(\"startTime\") AS last_activity FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' ~ '^ploeg-' AND $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY spend DESC"
             }
-          ]
-        },
-        {
-          "id": 10,
-          "type": "timeseries",
-          "title": "Spend per day per run",
-          "description": "Daily spend stacked per ploeg run key; requires litellm-db datasource. Ticket-grained spend lives on the Dispatch Plane dashboard (ploeg_run ticket graft).",
-          "gridPos": {
-            "h": 10,
-            "w": 10,
-            "x": 14,
-            "y": 6
-          },
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "litellm-db"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "currencyUSD",
-              "decimals": 2,
-              "custom": {
-                "drawStyle": "bars",
-                "fillOpacity": 80,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "normal",
-                  "group": "A"
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {},
+                "renameByName": {
+                  "run": "Run",
+                  "requests": "Requests",
+                  "tokens": "Tokens",
+                  "prompt_tokens": "Prompt tokens",
+                  "completion_tokens": "Completion tokens",
+                  "cache_hits": "Cache hits",
+                  "spend": "Spend",
+                  "last_activity": "Last activity"
                 }
               }
-            },
-            "overrides": []
-          },
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "right",
-              "calcs": [
-                "sum"
-              ]
-            },
-            "tooltip": {
-              "mode": "multi"
-            }
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "datasource": {
-                "type": "grafana-postgresql-datasource",
-                "uid": "litellm-db"
-              },
-              "rawQuery": true,
-              "format": "time_series",
-              "rawSql": "SELECT $$__timeGroup(\"startTime\",'1d') AS time, metadata->>'user_api_key_alias' AS metric, sum(spend) AS spend FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' ~ '^ploeg-' AND $$__timeFilter(\"startTime\") GROUP BY 1,2 ORDER BY 1"
             }
           ]
         },
         {
-          "id": 11,
-          "type": "row",
-          "title": "By run",
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 16
-          }
-        },
-        {
-          "id": 12,
+          "id": 15,
           "type": "table",
           "title": "Run leaderboard (range)",
-          "description": "Peak spend vs budget per agent run key over the dashboard range. Click a run to open it in the Run Explorer.",
+          "description": "litellm_run_spend (30d retention) per run with Ticket, Team and Outcome grafted from ploeg_run_started_epoch; Budget, Blocked and Burn come from live litellm_key_* gauges and go blank once a run's key is revoked. Click a run to open the Run Explorer.",
           "gridPos": {
-            "h": 11,
+            "h": 10,
             "w": 24,
             "x": 0,
-            "y": 17
+            "y": 25
           },
           "datasource": {
             "type": "prometheus",
@@ -617,11 +858,11 @@ spec:
                         },
                         {
                           "color": "yellow",
-                          "value": 70
+                          "value": 50
                         },
                         {
                           "color": "red",
-                          "value": 90
+                          "value": 80
                         }
                       ]
                     }
@@ -669,6 +910,42 @@ spec:
               {
                 "matcher": {
                   "id": "byName",
+                  "options": "Outcome"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "pr_opened": {
+                            "text": "PR opened",
+                            "color": "green"
+                          },
+                          "failed": {
+                            "text": "Failed",
+                            "color": "red"
+                          },
+                          "running": {
+                            "text": "Running",
+                            "color": "blue"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
                   "options": "Run"
                 },
                 "properties": [
@@ -677,7 +954,8 @@ spec:
                     "value": [
                       {
                         "title": "Open in Run Explorer",
-                        "url": "/d/dark-factory-run-explorer?var-run=$${__data.fields[\"Run\"]}&from=$${__from}&to=$${__to}"
+                        "url": "/d/dark-factory-run-explorer?var-run=$${__data.fields.Run}&$${__url_time_range}",
+                        "targetBlank": true
                       }
                     ]
                   }
@@ -701,7 +979,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_spend{key_alias=~\"ploeg-.*\"}[$$__range]))",
+              "expr": "max by (key_alias, ticket, team, outcome) (litellm_run_spend{key_alias=~\"ploeg-.*\"} * on(key_alias) group_left(ticket,team,outcome) (ploeg_run_started_epoch >= bool 0))",
               "instant": true,
               "format": "table"
             },
@@ -711,7 +989,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_max_budget{key_alias=~\"ploeg-.*\"}[$$__range]))",
+              "expr": "max by (key_alias) (max_over_time(litellm_key_max_budget{key_alias=~\"ploeg-.*\"}[$$__range]))",
               "instant": true,
               "format": "table"
             },
@@ -721,7 +999,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_blocked{key_alias=~\"ploeg-.*\"}[$$__range]))",
+              "expr": "max by (key_alias) (max_over_time(litellm_key_blocked{key_alias=~\"ploeg-.*\"}[$$__range]))",
               "instant": true,
               "format": "table"
             },
@@ -731,7 +1009,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "100 * sum by (key_alias,team_id) (max_over_time(litellm_key_spend{key_alias=~\"ploeg-.*\"}[$$__range])) / sum by (key_alias,team_id) (max_over_time(litellm_key_max_budget{key_alias=~\"ploeg-.*\"}[$$__range]))",
+              "expr": "100 * max by (key_alias) (max_over_time(litellm_key_spend{key_alias=~\"ploeg-.*\"}[$$__range])) / max by (key_alias) (max_over_time(litellm_key_max_budget{key_alias=~\"ploeg-.*\"}[$$__range]))",
               "instant": true,
               "format": "table"
             }
@@ -760,7 +1038,9 @@ spec:
                 },
                 "renameByName": {
                   "key_alias": "Run",
-                  "team_id": "Team",
+                  "ticket": "Ticket",
+                  "team": "Team",
+                  "outcome": "Outcome",
                   "Value #A": "Spend",
                   "Value #B": "Budget",
                   "Value #C": "Blocked",
@@ -771,25 +1051,15 @@ spec:
           ]
         },
         {
-          "id": 13,
-          "type": "row",
-          "title": "By team & role bots",
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 28
-          }
-        },
-        {
-          "id": 14,
-          "type": "table",
-          "title": "Team budgets",
+          "id": 16,
+          "type": "barchart",
+          "title": "Token economics per run",
+          "description": "Prompt vs completion tokens per run (litellm_run_prompt_tokens / litellm_run_completion_tokens, 30d retention); cache-hit tokens are tracked per model in the litellm_cache_* family, not per run.",
           "gridPos": {
             "h": 8,
-            "w": 12,
+            "w": 8,
             "x": 0,
-            "y": 29
+            "y": 35
           },
           "datasource": {
             "type": "prometheus",
@@ -797,85 +1067,34 @@ spec:
           },
           "fieldConfig": {
             "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
               "custom": {
-                "align": "auto"
+                "lineWidth": 1,
+                "fillOpacity": 80,
+                "gradientMode": "none"
               }
             },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Spend"
-                },
-                "properties": [
-                  {
-                    "id": "unit",
-                    "value": "currencyUSD"
-                  },
-                  {
-                    "id": "decimals",
-                    "value": 2
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Budget"
-                },
-                "properties": [
-                  {
-                    "id": "unit",
-                    "value": "currencyUSD"
-                  },
-                  {
-                    "id": "decimals",
-                    "value": 2
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Blocked"
-                },
-                "properties": [
-                  {
-                    "id": "mappings",
-                    "value": [
-                      {
-                        "type": "value",
-                        "options": {
-                          "0": {
-                            "text": "—",
-                            "color": "green"
-                          },
-                          "1": {
-                            "text": "BLOCKED",
-                            "color": "red"
-                          }
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "id": "custom.cellOptions",
-                    "value": {
-                      "type": "color-background"
-                    }
-                  }
-                ]
-              }
-            ]
+            "overrides": []
           },
           "options": {
-            "showHeader": true,
-            "sortBy": [
-              {
-                "displayName": "Spend",
-                "desc": true
-              }
-            ]
+            "orientation": "horizontal",
+            "stacking": "normal",
+            "showValue": "auto",
+            "xTickLabelRotation": 0,
+            "groupWidth": 0.7,
+            "barWidth": 0.85,
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
           },
           "targets": [
             {
@@ -884,7 +1103,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (team_alias) (litellm_team_spend)",
+              "expr": "max by (key_alias) (litellm_run_prompt_tokens{key_alias=~\"ploeg-.*\"})",
               "instant": true,
               "format": "table"
             },
@@ -894,17 +1113,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (team_alias) (litellm_team_max_budget)",
-              "instant": true,
-              "format": "table"
-            },
-            {
-              "refId": "C",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              },
-              "expr": "max by (team_alias) (litellm_team_blocked)",
+              "expr": "max by (key_alias) (litellm_run_completion_tokens{key_alias=~\"ploeg-.*\"})",
               "instant": true,
               "format": "table"
             }
@@ -918,39 +1127,27 @@ spec:
               "id": "organize",
               "options": {
                 "excludeByName": {
-                  "Time": true,
-                  "__name__": true,
-                  "instance": true,
-                  "job": true,
-                  "namespace": true,
-                  "pod": true,
-                  "container": true,
-                  "endpoint": true,
-                  "service": true,
-                  "prometheus": true,
-                  "cluster": true,
-                  "server": true,
-                  "team_id": true
+                  "Time": true
                 },
                 "renameByName": {
-                  "team_alias": "Team",
-                  "Value #A": "Spend",
-                  "Value #B": "Budget",
-                  "Value #C": "Blocked"
+                  "key_alias": "Run",
+                  "Value #A": "Prompt tokens",
+                  "Value #B": "Completion tokens"
                 }
               }
             }
           ]
         },
         {
-          "id": 15,
+          "id": 17,
           "type": "timeseries",
           "title": "Agent run spend over time (live keys)",
+          "description": "Live litellm_key_spend gauges per agent run key; a line ends when the run's key is revoked.",
           "gridPos": {
             "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 29
+            "w": 8,
+            "x": 8,
+            "y": 35
           },
           "datasource": {
             "type": "prometheus",
@@ -962,8 +1159,10 @@ spec:
               "decimals": 2,
               "custom": {
                 "drawStyle": "line",
-                "fillOpacity": 10,
-                "showPoints": "never"
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "showPoints": "never",
+                "spanNulls": false
               }
             },
             "overrides": []
@@ -973,7 +1172,8 @@ spec:
               "displayMode": "table",
               "placement": "right",
               "calcs": [
-                "lastNotNull"
+                "lastNotNull",
+                "max"
               ]
             },
             "tooltip": {
@@ -990,30 +1190,18 @@ spec:
               "expr": "max by (key_alias) (litellm_key_spend{key_alias=~\"ploeg-.*\"})",
               "legendFormat": "{{key_alias}}"
             }
-          ],
-          "description": "Live litellm_key_spend gauges per agent run key; a line ends when the run's key is revoked."
+          ]
         },
         {
-          "id": 16,
-          "type": "row",
-          "title": "By model & provider (daily ledger)",
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 37
-          }
-        },
-        {
-          "id": 17,
+          "id": 18,
           "type": "timeseries",
-          "title": "Daily spend by model (SQL)",
-          "description": "Daily ledger (date is a text 'YYYY-MM-DD' column, cast defensively); requires litellm-db datasource.",
+          "title": "Spend per day per run",
+          "description": "Daily spend stacked per ploeg run key from the LiteLLM spend ledger (litellm-db, exact).",
           "gridPos": {
             "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 38
+            "w": 8,
+            "x": 16,
+            "y": 35
           },
           "datasource": {
             "type": "grafana-postgresql-datasource",
@@ -1027,6 +1215,7 @@ spec:
                 "drawStyle": "bars",
                 "fillOpacity": 80,
                 "showPoints": "never",
+                "spanNulls": false,
                 "stacking": {
                   "mode": "normal",
                   "group": "A"
@@ -1056,20 +1245,306 @@ spec:
               },
               "rawQuery": true,
               "format": "time_series",
-              "rawSql": "SELECT to_date(date,'YYYY-MM-DD') AS time, model AS metric, sum(spend) AS spend FROM \"LiteLLM_DailyUserSpend\" WHERE $$__timeFilter(to_date(date,'YYYY-MM-DD')) GROUP BY 1,2 ORDER BY 1"
+              "rawSql": "SELECT $$__timeGroup(\"startTime\",'1d') AS time, metadata->>'user_api_key_alias' AS metric, sum(spend) AS spend FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' ~ '^ploeg-' AND $$__timeFilter(\"startTime\") GROUP BY 1,2 ORDER BY 1"
             }
           ]
         },
         {
-          "id": 18,
+          "id": 19,
+          "type": "row",
+          "title": "Models & providers",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 43
+          }
+        },
+        {
+          "id": 20,
+          "type": "table",
+          "title": "Provider daily caps",
+          "description": "Today's per-provider spend (litellm_provider_today_spend, resets daily) against the router's hardcoded daily caps — anthropic 5 USD/day, deepseek 2 USD/day (caps are hardcoded in this panel's queries; update them if the router config changes). provider=unknown rows are requests that failed before provider resolution and have no cap.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 44
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "filterable": true
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Spend today"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Daily cap"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Burn %"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percent"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 50
+                        },
+                        {
+                          "color": "red",
+                          "value": 80
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Failed today"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "red",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "sortBy": [
+              {
+                "displayName": "Spend today",
+                "desc": true
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (provider) (litellm_provider_today_spend)",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "label_replace(vector(5), \"provider\", \"anthropic\", \"\", \"\") or label_replace(vector(2), \"provider\", \"deepseek\", \"\", \"\")",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "100 * max by (provider) (litellm_provider_today_spend) / on(provider) (label_replace(vector(5), \"provider\", \"anthropic\", \"\", \"\") or label_replace(vector(2), \"provider\", \"deepseek\", \"\", \"\"))",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "D",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (provider) (litellm_provider_today_requests)",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "E",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (provider) (litellm_provider_today_failed)",
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "__name__": true,
+                  "instance": true,
+                  "job": true,
+                  "namespace": true,
+                  "pod": true,
+                  "container": true,
+                  "endpoint": true,
+                  "service": true,
+                  "prometheus": true,
+                  "cluster": true,
+                  "server": true
+                },
+                "renameByName": {
+                  "provider": "Provider",
+                  "Value #A": "Spend today",
+                  "Value #B": "Daily cap",
+                  "Value #C": "Burn %",
+                  "Value #D": "Requests today",
+                  "Value #E": "Failed today"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 21,
           "type": "timeseries",
-          "title": "Daily success vs failed (SQL)",
-          "description": "Daily ledger request outcomes; requires litellm-db datasource.",
+          "title": "Provider spend today (trend)",
+          "description": "litellm_provider_today_spend gauges — daily-reset sawtooth; snapshot gauges live on /d/litellm-spend.",
           "gridPos": {
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 38
+            "y": 44
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "showPoints": "never",
+                "spanNulls": false
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (provider) (litellm_provider_today_spend)",
+              "legendFormat": "{{provider}}"
+            }
+          ]
+        },
+        {
+          "id": 22,
+          "type": "timeseries",
+          "title": "Daily spend by model (SQL)",
+          "description": "Daily spend by model from the LiteLLM spend ledger (LiteLLM_SpendLogs); unnamed models coalesced to 'unknown'.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 52
           },
           "datasource": {
             "type": "grafana-postgresql-datasource",
@@ -1077,31 +1552,20 @@ spec:
           },
           "fieldConfig": {
             "defaults": {
-              "unit": "short",
-              "decimals": 0,
+              "unit": "currencyUSD",
+              "decimals": 2,
               "custom": {
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "showPoints": "never"
+                "drawStyle": "bars",
+                "fillOpacity": 80,
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                }
               }
             },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "failed"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "red"
-                    }
-                  }
-                ]
-              }
-            ]
+            "overrides": []
           },
           "options": {
             "legend": {
@@ -1124,20 +1588,20 @@ spec:
               },
               "rawQuery": true,
               "format": "time_series",
-              "rawSql": "SELECT to_date(date,'YYYY-MM-DD') AS time, sum(successful_requests) AS successful, sum(failed_requests) AS failed FROM \"LiteLLM_DailyUserSpend\" WHERE $$__timeFilter(to_date(date,'YYYY-MM-DD')) GROUP BY 1 ORDER BY 1"
+              "rawSql": "SELECT $$__timeGroup(\"startTime\",'1d') AS time, COALESCE(NULLIF(model,''),'unknown') AS metric, sum(spend) AS spend FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") GROUP BY 1,2 ORDER BY 1"
             }
           ]
         },
         {
-          "id": 19,
-          "type": "table",
-          "title": "Model economics (range, SQL)",
-          "description": "Cost efficiency per model/provider over the range; requires litellm-db datasource.",
+          "id": 23,
+          "type": "timeseries",
+          "title": "Daily success vs failed (SQL)",
+          "description": "Daily request outcomes from the LiteLLM spend ledger (LiteLLM_SpendLogs); failed = metadata status 'failure'.",
           "gridPos": {
-            "h": 9,
-            "w": 16,
-            "x": 0,
-            "y": 46
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 52
           },
           "datasource": {
             "type": "grafana-postgresql-datasource",
@@ -1145,6 +1609,90 @@ spec:
           },
           "fieldConfig": {
             "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "showPoints": "never",
+                "spanNulls": false
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "successful"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "green"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "failed"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "red"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "litellm-db"
+              },
+              "rawQuery": true,
+              "format": "time_series",
+              "rawSql": "SELECT $$__timeGroup(\"startTime\",'1d') AS time, count(*) FILTER (WHERE COALESCE(metadata->>'status','') <> 'failure') AS successful, count(*) FILTER (WHERE metadata->>'status' = 'failure') AS failed FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY 1"
+            }
+          ]
+        },
+        {
+          "id": 24,
+          "type": "table",
+          "title": "Model economics (range, SQL)",
+          "description": "Cost efficiency per model/provider over the range from the LiteLLM spend ledger (LiteLLM_SpendLogs), including cache-read tokens; unnamed models coalesced to 'unknown'.",
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 60
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "litellm-db"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
               "custom": {
                 "align": "auto",
                 "filterable": true
@@ -1154,7 +1702,7 @@ spec:
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "spend"
+                  "options": "Spend"
                 },
                 "properties": [
                   {
@@ -1170,7 +1718,7 @@ spec:
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "usd_per_1k_tokens"
+                  "options": "USD per 1k tokens"
                 },
                 "properties": [
                   {
@@ -1189,7 +1737,7 @@ spec:
             "showHeader": true,
             "sortBy": [
               {
-                "displayName": "spend",
+                "displayName": "Spend",
                 "desc": true
               }
             ]
@@ -1203,58 +1751,24 @@ spec:
               },
               "rawQuery": true,
               "format": "table",
-              "rawSql": "SELECT model, custom_llm_provider AS provider, sum(api_requests) AS requests, sum(tokens) AS tokens, sum(spend) AS spend, CASE WHEN sum(tokens) > 0 THEN sum(spend) / sum(tokens) * 1000 END AS usd_per_1k_tokens FROM \"LiteLLM_DailyUserSpend\" WHERE $$__timeFilter(to_date(date,'YYYY-MM-DD')) GROUP BY 1,2 ORDER BY spend DESC"
+              "rawSql": "SELECT COALESCE(NULLIF(model,''),'unknown') AS model, COALESCE(NULLIF(custom_llm_provider,''),'unknown') AS provider, count(*) AS requests, sum(total_tokens) AS tokens, count(*) FILTER (WHERE cache_hit = 'True') AS cache_hits, sum(spend) AS spend, CASE WHEN sum(total_tokens) > 0 THEN sum(spend) / sum(total_tokens) * 1000 END AS usd_per_1k_tokens FROM \"LiteLLM_SpendLogs\" WHERE $$__timeFilter(\"startTime\") GROUP BY 1,2 ORDER BY spend DESC"
             }
-          ]
-        },
-        {
-          "id": 20,
-          "type": "timeseries",
-          "title": "Provider spend today (trend)",
-          "description": "daily-reset sawtooth; snapshot gauges live on /d/litellm-spend",
-          "gridPos": {
-            "h": 9,
-            "w": 8,
-            "x": 16,
-            "y": 46
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "currencyUSD",
-              "decimals": 2,
-              "custom": {
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "showPoints": "never"
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "bottom",
-              "calcs": [
-                "lastNotNull"
-              ]
-            },
-            "tooltip": {
-              "mode": "multi"
-            }
-          },
-          "targets": [
+          ],
+          "transformations": [
             {
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              },
-              "expr": "max by (provider) (litellm_provider_today_spend)",
-              "legendFormat": "{{provider}}"
+              "id": "organize",
+              "options": {
+                "excludeByName": {},
+                "renameByName": {
+                  "model": "Model",
+                  "provider": "Provider",
+                  "requests": "Requests",
+                  "tokens": "Tokens",
+                  "cache_hits": "Cache hits",
+                  "spend": "Spend",
+                  "usd_per_1k_tokens": "USD per 1k tokens"
+                }
+              }
             }
           ]
         }
