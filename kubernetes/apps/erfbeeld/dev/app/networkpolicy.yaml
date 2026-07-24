@@ -1,0 +1,34 @@
+---
+# The namespace ships default-deny (W7 zero-trust); without this allowance the envoy
+# gateways (namespace `network`) could not reach the pod — both env hostnames returned
+# "upstream connect error ... connection timeout" until it landed (2026-07-24). Same
+# shape as searxng-private-ingress: gateway namespace + LAN ranges, app port only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: erfbeeld-private-ingress
+  labels:
+    app.kubernetes.io/name: erfbeeld
+    app.kubernetes.io/part-of: erfbeeld
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: erfbeeld
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: network
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16
+        - ipBlock:
+            cidr: 127.0.0.0/8
+      ports:
+        - protocol: TCP
+          port: 8080
