@@ -1,0 +1,45 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: erfbeeld
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: erfbeeld
+  interval: 30m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  # Per-environment overrides on the erfbeeld chart defaults: the two image tags (pinned by
+  # digest) and APP_ENV. Everything else (pod shape, probes, storage) comes from the chart.
+  values:
+    app-template:
+      defaultPodOptions:
+        imagePullSecrets:
+          - name: harbor-pull
+      controllers:
+        erfbeeld:
+          initContainers:
+            init-storage:
+              image:
+                repository: harbor.webgrip.dev/webgrip/erfbeeld-backend
+                tag: 0.1.0
+          containers:
+            php:
+              image:
+                repository: harbor.webgrip.dev/webgrip/erfbeeld-backend
+                tag: 0.1.0
+              env:
+                APP_ENV: production
+                APP_URL: https://erfbeeld.webgrip.dev
+            nginx:
+              image:
+                repository: harbor.webgrip.dev/webgrip/erfbeeld-web
+                tag: 0.1.0
