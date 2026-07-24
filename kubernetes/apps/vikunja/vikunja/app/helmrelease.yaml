@@ -87,6 +87,14 @@ spec:
                 value: "250"
               - name: VIKUNJA_FILES_BASEPATH
                 value: /files
+              # Project webhooks target in-cluster services (ploeg dispatch
+              # plane at ploeg.ploeg.svc:8080). Vikunja's SSRF guard blocks
+              # non-routable destinations by default ("prohibited IP address
+              # ... denied by: 10.0.0.0/8"); acceptable to relax here — the
+              # instance is internal, Authentik-gated, and webhook creation
+              # is admin-only. NetworkPolicy still constrains actual egress.
+              - name: VIKUNJA_OUTGOINGREQUESTS_ALLOWNONROUTABLEIPS
+                value: "true"
               # --- OIDC (Authentik; blueprint 37-oidc-vikunja) ---
               # Provider id "authentik" → callback /auth/openid/authentik.
               - name: VIKUNJA_AUTH_OPENID_ENABLED
