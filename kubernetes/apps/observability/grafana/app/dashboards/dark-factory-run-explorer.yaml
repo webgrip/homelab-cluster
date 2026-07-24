@@ -1,8 +1,10 @@
 ---
 # Dark Factory — Agent Run Explorer: drill into one agent run key (agent-vikNNN-runNNN):
 # budget burn, per-request SQL forensics from LiteLLM_SpendLogs, and the pod's logs/traces.
-# NOTE: kube_* (kube-state-metrics) queries filter on exported_namespace="forgejo" (KSM
-# label wrap); cAdvisor container_* and log streams use the real namespace="forgejo".
+# NOTE: pivoted to the ploeg substrate — the $run var lists ploeg-<hex> keys and the
+# $agent_pod var lists ploeg-worker-bronze pods. kube_* (kube-state-metrics) queries filter
+# on exported_namespace="ploeg" (KSM label wrap); cAdvisor container_* and worker/dind log
+# streams use the real namespace="ploeg".
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
@@ -95,7 +97,7 @@ spec:
               "uid": "prometheus"
             },
             "query": {
-              "query": "label_values(litellm_key_spend{key_alias=~\"agent-.*\"}, key_alias)"
+              "query": "label_values(litellm_key_spend{key_alias=~\"ploeg-.*\"}, key_alias)"
             },
             "refresh": 2,
             "sort": 2,
@@ -117,13 +119,13 @@ spec:
               "uid": "prometheus"
             },
             "query": {
-              "query": "label_values(container_cpu_usage_seconds_total{namespace=\"forgejo\",pod=~\"forgejo-agent-runner-[a-z0-9]{5}-[a-z0-9]{5}\"}, pod)"
+              "query": "label_values(container_cpu_usage_seconds_total{namespace=\"ploeg\",pod=~\"ploeg-worker-bronze-[a-z0-9]{5}-[a-z0-9]{5}\"}, pod)"
             },
             "refresh": 2,
             "sort": 2,
             "multi": false,
             "includeAll": true,
-            "allValue": "forgejo-agent-runner-.*",
+            "allValue": "ploeg-worker-bronze-.*",
             "current": {
               "selected": false,
               "text": "All",
@@ -1234,7 +1236,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (job_name) (last_over_time(kube_job_status_start_time{exported_namespace=\"forgejo\",job_name=~\"forgejo-agent-runner-[a-z0-9]{5}\"}[$$__range]))",
+              "expr": "max by (job_name) (last_over_time(kube_job_status_start_time{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}[$$__range]))",
               "instant": true,
               "format": "table"
             },
@@ -1244,7 +1246,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (job_name) (last_over_time(kube_job_status_completion_time{exported_namespace=\"forgejo\",job_name=~\"forgejo-agent-runner-[a-z0-9]{5}\"}[$$__range]))",
+              "expr": "max by (job_name) (last_over_time(kube_job_status_completion_time{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}[$$__range]))",
               "instant": true,
               "format": "table"
             },
@@ -1254,7 +1256,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (job_name) (last_over_time(kube_job_status_completion_time{exported_namespace=\"forgejo\",job_name=~\"forgejo-agent-runner-[a-z0-9]{5}\"}[$$__range]) - last_over_time(kube_job_status_start_time{exported_namespace=\"forgejo\",job_name=~\"forgejo-agent-runner-[a-z0-9]{5}\"}[$$__range]))",
+              "expr": "max by (job_name) (last_over_time(kube_job_status_completion_time{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}[$$__range]) - last_over_time(kube_job_status_start_time{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}[$$__range]))",
               "instant": true,
               "format": "table"
             }
@@ -1377,7 +1379,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "{namespace=\"forgejo\", container=\"runner\", pod=~\"$$agent_pod\"}",
+              "expr": "{namespace=\"ploeg\", container=\"worker\", pod=~\"$$agent_pod\"}",
               "queryType": "instant",
               "maxLines": 500
             }
@@ -1415,7 +1417,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "{namespace=\"forgejo\", container=\"dind\", pod=~\"$$agent_pod\"}",
+              "expr": "{namespace=\"ploeg\", container=\"dind\", pod=~\"$$agent_pod\"}",
               "queryType": "instant",
               "maxLines": 300
             }
@@ -1453,7 +1455,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "{namespace=\"forgejo\", pod=~\"$$agent_pod\"} | stats by (container) count()",
+              "expr": "{namespace=\"ploeg\", pod=~\"$$agent_pod\"} | stats by (container) count()",
               "queryType": "statsRange",
               "legendFormat": "{{container}}"
             }

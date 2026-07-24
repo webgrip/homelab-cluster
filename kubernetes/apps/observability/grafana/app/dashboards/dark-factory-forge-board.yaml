@@ -556,7 +556,7 @@ spec:
                 "uid": "victorialogs"
               },
               "queryType": "stats",
-              "expr": "{namespace=\"forgejo\", container=\"runner\"} pod:~\"forgejo-agent-runner-.*\" ~\"repo is\" | extract_regexp \"repo is (?P<repo>\\\\S+)\" | filter -repo:\"\" | stats by (repo) count() agent_runs"
+              "expr": "{namespace=\"ploeg\", container=\"worker\"} \"minted per-run key\" | stats count() agent_runs"
             }
           ],
           "transformations": [
@@ -637,7 +637,7 @@ spec:
           "id": 13,
           "type": "stat",
           "title": "Tickets worked by agents (range)",
-          "description": "Distinct Vikunja tickets with at least one agent run spending tokens over the range (from LiteLLM per-key spend, key alias agent-vikN-runM).",
+          "description": "Distinct Vikunja tickets with at least one ploeg agent run over the range (via the ploeg_run ticket label).",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -683,15 +683,15 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "count(count by (ticket) (label_replace(max_over_time(litellm_key_spend{key_alias=~\"agent-vik[0-9]+-run[0-9]+\"}[$$__range]), \"ticket\", \"vik$$1\", \"key_alias\", \"agent-vik([0-9]+)-run.*\"))) or vector(0)"
+              "expr": "count(count by (ticket) (ploeg_run_started_epoch{ticket!=\"none\"})) or vector(0)"
             }
           ]
         },
         {
           "id": 14,
           "type": "table",
-          "title": "Ticket activity (SQL)",
-          "description": "Per-ticket agent runs, last activity, and exact spend from the LiteLLM spend ledger; requires litellm-db datasource.",
+          "title": "Run activity (SQL)",
+          "description": "Per-run requests, last activity, and exact spend from the LiteLLM spend ledger (ploeg-<hex> keys); requires litellm-db datasource. Ticket↔run↔PR board lives on the Dispatch Plane dashboard.",
           "datasource": {
             "type": "grafana-postgresql-datasource",
             "uid": "litellm-db"
@@ -747,7 +747,7 @@ spec:
               },
               "rawQuery": true,
               "format": "table",
-              "rawSql": "SELECT regexp_replace(metadata->>'user_api_key_alias', '^agent-(vik[0-9]+)-run.*', '\\1') AS ticket, count(DISTINCT metadata->>'user_api_key_alias') AS runs, max(\"startTime\") AS last_agent_activity, sum(spend) AS spend FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' ~ '^agent-vik[0-9]+-run[0-9]+' AND $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY last_agent_activity DESC"
+              "rawSql": "SELECT metadata->>'user_api_key_alias' AS run, count(*) AS requests, max(\"startTime\") AS last_agent_activity, sum(spend) AS spend FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' ~ '^ploeg-' AND $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY last_agent_activity DESC"
             }
           ]
         },

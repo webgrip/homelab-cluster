@@ -1,10 +1,12 @@
 ---
 # Dark Factory — Command Center: fleet-level view of the autonomous agent pipeline
-# (LiteLLM run-key spend/budgets, KEDA queue depth, agent-runner pods, live logs).
-# NOTE: kube_* (kube-state-metrics) queries filter on exported_namespace="forgejo"
+# (LiteLLM run-key spend/budgets, KEDA queue depth, ploeg-worker-bronze pods, live logs).
+# Pivoted to the ploeg substrate; ticket attribution comes from the ploeg_run{ticket}
+# label joined on key_alias (ploeg aliases are opaque ploeg-<hex>, no ticket in them).
+# NOTE: kube_* (kube-state-metrics) queries filter on exported_namespace="ploeg"
 # because our KSM scrape wraps the real namespace label; cAdvisor container_* and
-# log streams use the real namespace="forgejo". If the scrape is ever fixed to
-# honour the real label, invert these filters back to namespace="forgejo".
+# log streams use the real namespace="ploeg". If the scrape is ever fixed to
+# honour the real label, invert these filters back to namespace="ploeg".
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
@@ -107,7 +109,7 @@ spec:
           "id": 2,
           "type": "stat",
           "title": "Agent runs seen (range)",
-          "description": "Distinct agent run keys (agent-vikNNN-runNNN) alive at any point in the range.",
+          "description": "Distinct agent run keys (ploeg-<hex>) alive at any point in the range.",
           "gridPos": {
             "h": 4,
             "w": 4,
@@ -125,7 +127,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "count(max_over_time(litellm_key_spend{key_alias=~\"agent-vik[0-9]+-run[0-9]+\"}[$$__range])) or vector(0)",
+              "expr": "count(max_over_time(litellm_key_spend{key_alias=~\"ploeg-.*\"}[$$__range])) or vector(0)",
               "instant": true
             }
           ],
@@ -181,7 +183,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum(max_over_time(litellm_key_spend{key_alias=~\"agent-vik[0-9]+-run[0-9]+\"}[$$__range])) or vector(0)",
+              "expr": "sum(max_over_time(litellm_key_spend{key_alias=~\"ploeg-.*\"}[$$__range])) or vector(0)",
               "instant": true
             }
           ],
@@ -227,7 +229,7 @@ spec:
           "id": 4,
           "type": "stat",
           "title": "Tickets touched (range)",
-          "description": "Distinct VIK tickets with at least one agent run key in range.",
+          "description": "Distinct tickets with at least one ploeg agent run in range (via ploeg_run ticket label).",
           "gridPos": {
             "h": 4,
             "w": 4,
@@ -245,7 +247,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "count(count by (ticket) (label_replace(max_over_time(litellm_key_spend{key_alias=~\"agent-vik[0-9]+-run[0-9]+\"}[$$__range]), \"ticket\", \"vik$$1\", \"key_alias\", \"agent-vik([0-9]+)-run.*\"))) or vector(0)",
+              "expr": "count(count by (ticket) (ploeg_run_started_epoch{ticket!=\"none\"})) or vector(0)",
               "instant": true
             }
           ],
@@ -301,7 +303,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "count(max_over_time(litellm_key_spend{key_alias=~\"agent-.*\"}[$$__range]) >= max_over_time(litellm_key_max_budget{key_alias=~\"agent-.*\"}[$$__range])) or vector(0)",
+              "expr": "count(max_over_time(litellm_key_spend{key_alias=~\"ploeg-.*\"}[$$__range]) >= max_over_time(litellm_key_max_budget{key_alias=~\"ploeg-.*\"}[$$__range])) or vector(0)",
               "instant": true
             }
           ],
@@ -361,7 +363,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum(litellm_key_blocked{key_alias=~\"agent-.*\"}) or vector(0)",
+              "expr": "sum(litellm_key_blocked{key_alias=~\"ploeg-.*\"}) or vector(0)",
               "instant": true
             }
           ],
@@ -480,7 +482,7 @@ spec:
           "id": 9,
           "type": "stat",
           "title": "Agent queue depth",
-          "description": "KEDA scaler metric for the forgejo-agent-runner ScaledObject.",
+          "description": "KEDA scaler metric for the ploeg-worker-bronze ScaledObject.",
           "gridPos": {
             "h": 4,
             "w": 4,
@@ -498,7 +500,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-agent-runner\"}) or vector(0)",
+              "expr": "max(keda_scaler_metrics_value{scaledObject=\"ploeg-worker-bronze\"}) or vector(0)",
               "instant": true
             }
           ],
@@ -544,7 +546,7 @@ spec:
           "id": 10,
           "type": "stat",
           "title": "Agent runners running",
-          "description": "Running forgejo-agent-runner pods (kube-state-metrics, exported_namespace).",
+          "description": "Running ploeg-worker-bronze pods (kube-state-metrics, exported_namespace).",
           "gridPos": {
             "h": 4,
             "w": 4,
@@ -562,7 +564,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum(kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo-agent-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"}) or vector(0)",
+              "expr": "sum(kube_pod_status_phase{exported_namespace=\"ploeg\",pod=~\"ploeg-worker-bronze-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"}) or vector(0)",
               "instant": true
             }
           ],
@@ -766,7 +768,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-agent-runner\"})",
+              "expr": "max(keda_scaler_metrics_value{scaledObject=\"ploeg-worker-bronze\"})",
               "legendFormat": "agent queue"
             },
             {
@@ -775,7 +777,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum(kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo-agent-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"})",
+              "expr": "sum(kube_pod_status_phase{exported_namespace=\"ploeg\",pod=~\"ploeg-worker-bronze-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"})",
               "legendFormat": "agent runners"
             },
             {
@@ -864,7 +866,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_spend{key_alias=~\"agent-.*\"}[$$__range]))",
+              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_spend{key_alias=~\"ploeg-.*\"}[$$__range]))",
               "instant": true,
               "format": "table"
             },
@@ -874,7 +876,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_max_budget{key_alias=~\"agent-.*\"}[$$__range]))",
+              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_max_budget{key_alias=~\"ploeg-.*\"}[$$__range]))",
               "instant": true,
               "format": "table"
             },
@@ -884,7 +886,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_blocked{key_alias=~\"agent-.*\"}[$$__range]))",
+              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_blocked{key_alias=~\"ploeg-.*\"}[$$__range]))",
               "instant": true,
               "format": "table"
             }
@@ -1027,7 +1029,7 @@ spec:
           "id": 16,
           "type": "bargauge",
           "title": "Spend by ticket (range)",
-          "description": "Agent LLM spend grouped by VIK ticket (derived from the run key alias).",
+          "description": "Agent LLM spend grouped by ticket (litellm_run_spend joined to ploeg_run's ticket label on key_alias).",
           "gridPos": {
             "h": 10,
             "w": 5,
@@ -1045,7 +1047,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum by (ticket) (label_replace(max_over_time(litellm_key_spend{key_alias=~\"agent-vik[0-9]+-run[0-9]+\"}[$$__range]), \"ticket\", \"vik$$1\", \"key_alias\", \"agent-vik([0-9]+)-run.*\"))",
+              "expr": "sum by (ticket) (litellm_run_spend{key_alias=~\"ploeg-.*\"} * on(key_alias) group_left(ticket) (ploeg_run_started_epoch >= bool 0))",
               "instant": true,
               "legendFormat": "{{ticket}}"
             }
@@ -1172,7 +1174,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "{namespace=\"forgejo\", container=\"runner\"} pod:~\"forgejo-agent-runner-.*\" ~\"repo is\" | stats count()",
+              "expr": "{namespace=\"ploeg\", container=\"worker\"} pod:~\"ploeg-worker-bronze-.*\" ~\"repo is\" | stats count()",
               "queryType": "statsRange",
               "legendFormat": "runs started"
             }
@@ -1218,7 +1220,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "{namespace=\"forgejo\", container=\"runner\"} pod:~\"forgejo-agent-runner-.*\" | unpack_logfmt",
+              "expr": "{namespace=\"ploeg\", container=\"worker\"} pod:~\"ploeg-worker-bronze-.*\" | unpack_logfmt",
               "queryType": "instant",
               "maxLines": 200
             }

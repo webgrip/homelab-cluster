@@ -1,10 +1,12 @@
 ---
 # Dark Factory — Runner Fleet & KEDA.
+# Pivoted to the ploeg substrate: the agent pool is the KEDA ScaledJob ploeg-worker-bronze
+# (ns ploeg); the CI pool forgejo-runner (ns forgejo) is kept for the shared-node comparison.
 # KSM caveat (live-verified): kube-state-metrics series here carry namespace="observability"
 # (the scrape namespace) and the workload's REAL namespace in `exported_namespace` — every
-# kube_* matcher below therefore uses exported_namespace="forgejo". cAdvisor container_*
-# metrics carry the real namespace label. If KSM relabeling is ever fixed (honor_labels),
-# invert the kube_* matchers back to namespace="forgejo".
+# kube_* matcher below therefore uses exported_namespace="ploeg" (agent) or "forgejo" (CI).
+# cAdvisor container_* metrics carry the real namespace label. If KSM relabeling is ever
+# fixed (honor_labels), invert the kube_* matchers back to namespace=.
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
@@ -106,7 +108,7 @@ spec:
           "id": 2,
           "type": "stat",
           "title": "Agent queue",
-          "description": "KEDA forgejo-agent-runner scaler metric: pending agent jobs waiting for a pod.",
+          "description": "KEDA ploeg-worker-bronze scaler metric: pending agent jobs waiting for a pod.",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -160,7 +162,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-agent-runner\"}) or vector(0)"
+              "expr": "max(keda_scaler_metrics_value{scaledObject=\"ploeg-worker-bronze\"}) or vector(0)"
             }
           ]
         },
@@ -168,7 +170,7 @@ spec:
           "id": 3,
           "type": "stat",
           "title": "Agent pods running",
-          "description": "Live forgejo-agent-runner pods in Running phase (ScaledJob ceiling = 2). Uses exported_namespace — see the KSM caveat in the file header.",
+          "description": "Live ploeg-worker-bronze pods in Running phase (bronze maxReplicaCount = 1). Uses exported_namespace — see the KSM caveat in the file header.",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -218,7 +220,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum(kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo-agent-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"}) or vector(0)"
+              "expr": "sum(kube_pod_status_phase{exported_namespace=\"ploeg\",pod=~\"ploeg-worker-bronze-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"}) or vector(0)"
             }
           ]
         },
@@ -388,7 +390,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum(increase(keda_scaled_job_errors_total{scaledObject=~\"forgejo(-agent)?-runner\"}[1h])) or vector(0)"
+              "expr": "sum(increase(keda_scaled_job_errors_total{scaledObject=~\"ploeg-worker-bronze|forgejo-runner\"}[1h])) or vector(0)"
             }
           ]
         },
@@ -450,7 +452,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max(keda_scaler_metrics_latency_seconds{scaledObject=~\"forgejo(-agent)?-runner\"}) or vector(0)"
+              "expr": "max(keda_scaler_metrics_latency_seconds{scaledObject=~\"ploeg-worker-bronze|forgejo-runner\"}) or vector(0)"
             }
           ]
         },
@@ -546,7 +548,7 @@ spec:
                 "uid": "prometheus"
               },
               "legendFormat": "queue",
-              "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-agent-runner\"})"
+              "expr": "max(keda_scaler_metrics_value{scaledObject=\"ploeg-worker-bronze\"})"
             },
             {
               "refId": "B",
@@ -555,7 +557,7 @@ spec:
                 "uid": "prometheus"
               },
               "legendFormat": "running pods",
-              "expr": "sum(kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo-agent-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"})"
+              "expr": "sum(kube_pod_status_phase{exported_namespace=\"ploeg\",pod=~\"ploeg-worker-bronze-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"})"
             },
             {
               "refId": "C",
@@ -564,7 +566,7 @@ spec:
                 "uid": "prometheus"
               },
               "legendFormat": "actively building",
-              "expr": "count(sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"forgejo\",pod=~\"forgejo-agent-runner-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"}[$$__rate_interval])) > 0.05) or vector(0)"
+              "expr": "count(sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"ploeg\",pod=~\"ploeg-worker-bronze-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"}[$$__rate_interval])) > 0.05) or vector(0)"
             },
             {
               "refId": "D",
@@ -721,7 +723,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (job_name) (last_over_time(kube_job_status_start_time{exported_namespace=\"forgejo\",job_name=~\"forgejo-agent-runner-[a-z0-9]{5}\"}[$$__range]))"
+              "expr": "max by (job_name) (last_over_time(kube_job_status_start_time{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}[$$__range]))"
             },
             {
               "refId": "B",
@@ -731,7 +733,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (job_name) (last_over_time(kube_job_status_completion_time{exported_namespace=\"forgejo\",job_name=~\"forgejo-agent-runner-[a-z0-9]{5}\"}[$$__range]))"
+              "expr": "max by (job_name) (last_over_time(kube_job_status_completion_time{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}[$$__range]))"
             },
             {
               "refId": "C",
@@ -741,7 +743,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (job_name) (last_over_time(kube_job_status_completion_time{exported_namespace=\"forgejo\",job_name=~\"forgejo-agent-runner-[a-z0-9]{5}\"}[$$__range]) - last_over_time(kube_job_status_start_time{exported_namespace=\"forgejo\",job_name=~\"forgejo-agent-runner-[a-z0-9]{5}\"}[$$__range]))"
+              "expr": "max by (job_name) (last_over_time(kube_job_status_completion_time{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}[$$__range]) - last_over_time(kube_job_status_start_time{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}[$$__range]))"
             },
             {
               "refId": "D",
@@ -751,7 +753,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (job_name) (last_over_time(kube_job_status_failed{exported_namespace=\"forgejo\",job_name=~\"forgejo-agent-runner-[a-z0-9]{5}\"}[$$__range]))"
+              "expr": "max by (job_name) (last_over_time(kube_job_status_failed{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}[$$__range]))"
             }
           ],
           "transformations": [
@@ -832,7 +834,7 @@ spec:
               },
               "queryType": "statsRange",
               "legendFormat": "agent runs",
-              "expr": "{namespace=\"forgejo\", container=\"runner\"} pod:~\"forgejo-agent-runner-.*\" ~\"repo is\" | stats count()"
+              "expr": "{namespace=\"ploeg\", container=\"worker\"} \"minted per-run key\" | stats count()"
             }
           ]
         },
@@ -887,7 +889,7 @@ spec:
               },
               "queryType": "stats",
               "legendFormat": "{{repo}}",
-              "expr": "{namespace=\"forgejo\", container=\"runner\"} pod:~\"forgejo-agent-runner-.*\" ~\"repo is\" | extract_regexp \"repo is (?P<repo>\\\\S+)\" | filter -repo:\"\" | stats by (repo) count()"
+              "expr": "{namespace=\"ploeg\", container=\"worker\"} \"trace-id=\" | stats by (pod) count()"
             }
           ]
         },
@@ -951,7 +953,7 @@ spec:
                 "uid": "prometheus"
               },
               "legendFormat": "{{pod}}/{{container}}",
-              "expr": "sum by (pod, container) (rate(container_cpu_usage_seconds_total{namespace=\"forgejo\",pod=~\"forgejo-agent-runner-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\",container!=\"\"}[$$__rate_interval]))"
+              "expr": "sum by (pod, container) (rate(container_cpu_usage_seconds_total{namespace=\"ploeg\",pod=~\"ploeg-worker-bronze-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\",container!=\"\"}[$$__rate_interval]))"
             }
           ]
         },
@@ -1024,7 +1026,7 @@ spec:
                 "uid": "prometheus"
               },
               "legendFormat": "{{pod}}",
-              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"forgejo\",pod=~\"forgejo-agent-runner-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"}) / on(pod) sum by (pod) (kube_pod_container_resource_limits{exported_namespace=\"forgejo\",pod=~\"forgejo-agent-runner-[a-z0-9]{5}-[a-z0-9]{5}\",resource=\"memory\"}) * 100"
+              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"ploeg\",pod=~\"ploeg-worker-bronze-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"}) / on(pod) sum by (pod) (kube_pod_container_resource_limits{exported_namespace=\"ploeg\",pod=~\"ploeg-worker-bronze-[a-z0-9]{5}-[a-z0-9]{5}\",resource=\"memory\"}) * 100"
             }
           ]
         },
@@ -1076,7 +1078,7 @@ spec:
                 "uid": "prometheus"
               },
               "legendFormat": "{{pod}}",
-              "expr": "sum by (pod) (rate(container_network_receive_bytes_total{namespace=\"forgejo\",pod=~\"forgejo-agent-runner-[a-z0-9]{5}-[a-z0-9]{5}\"}[$$__rate_interval]))"
+              "expr": "sum by (pod) (rate(container_network_receive_bytes_total{namespace=\"ploeg\",pod=~\"ploeg-worker-bronze-[a-z0-9]{5}-[a-z0-9]{5}\"}[$$__rate_interval]))"
             }
           ]
         },
@@ -1134,7 +1136,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum(increase(container_oom_events_total{namespace=\"forgejo\",pod=~\"forgejo(-agent)?-runner-[a-z0-9]{5}-[a-z0-9]{5}\"}[24h])) or vector(0)"
+              "expr": "sum(increase(container_oom_events_total{namespace=\"ploeg\",pod=~\"ploeg-worker-bronze-[a-z0-9]{5}-[a-z0-9]{5}\"}[24h])) or vector(0)"
             }
           ]
         },
@@ -1192,7 +1194,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum(kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo(-agent)?-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=~\"Pending|Failed|Unknown\"}) or vector(0)"
+              "expr": "sum(kube_pod_status_phase{exported_namespace=\"ploeg\",pod=~\"ploeg-worker-bronze-[a-z0-9]{5}-[a-z0-9]{5}\",phase=~\"Pending|Failed|Unknown\"}) or vector(0)"
             }
           ]
         },
@@ -1600,7 +1602,7 @@ spec:
                 "uid": "prometheus"
               },
               "legendFormat": "{{scaledObject}} value",
-              "expr": "max by (scaledObject) (keda_scaler_metrics_value{scaledObject=~\"forgejo(-agent)?-runner\"})"
+              "expr": "max by (scaledObject) (keda_scaler_metrics_value{scaledObject=~\"ploeg-worker-bronze|forgejo-runner\"})"
             },
             {
               "refId": "B",
@@ -1609,7 +1611,7 @@ spec:
                 "uid": "prometheus"
               },
               "legendFormat": "{{scaledObject}} active",
-              "expr": "max by (scaledObject) (keda_scaler_active{scaledObject=~\"forgejo(-agent)?-runner\"})"
+              "expr": "max by (scaledObject) (keda_scaler_active{scaledObject=~\"ploeg-worker-bronze|forgejo-runner\"})"
             }
           ]
         },
@@ -1647,7 +1649,7 @@ spec:
               },
               "queryType": "instant",
               "maxLines": 200,
-              "expr": "{namespace=\"forgejo\", container=\"provision\"}"
+              "expr": "{namespace=\"ploeg\", container=\"ploegd\"}"
             }
           ]
         },
@@ -1685,7 +1687,7 @@ spec:
               },
               "queryType": "instant",
               "maxLines": 100,
-              "expr": "{job=\"kubernetes/events\", namespace=\"forgejo\"} \"type=Warning\""
+              "expr": "{job=\"kubernetes/events\", namespace=\"ploeg\"} \"type=Warning\""
             }
           ]
         }

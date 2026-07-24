@@ -128,7 +128,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum(max_over_time(litellm_key_spend{key_alias=~\"agent-vik[0-9]+-run[0-9]+\"}[$$__range])) or vector(0)",
+              "expr": "sum(max_over_time(litellm_key_spend{key_alias=~\"ploeg-.*\"}[$$__range])) or vector(0)",
               "instant": true
             }
           ]
@@ -323,7 +323,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "(sum(max_over_time(litellm_key_spend{key_alias=~\"agent-vik[0-9]+-run[0-9]+\"}[$$__range])) / count(max_over_time(litellm_key_spend{key_alias=~\"agent-vik[0-9]+-run[0-9]+\"}[$$__range]))) or vector(0)",
+              "expr": "(sum(max_over_time(litellm_key_spend{key_alias=~\"ploeg-.*\"}[$$__range])) / count(max_over_time(litellm_key_spend{key_alias=~\"ploeg-.*\"}[$$__range]))) or vector(0)",
               "instant": true
             }
           ]
@@ -387,7 +387,7 @@ spec:
         {
           "id": 8,
           "type": "row",
-          "title": "By ticket",
+          "title": "By run (ticket-grained view on the Dispatch Plane dashboard)",
           "gridPos": {
             "h": 1,
             "w": 24,
@@ -466,15 +466,15 @@ spec:
               },
               "rawQuery": true,
               "format": "table",
-              "rawSql": "SELECT regexp_replace(metadata->>'user_api_key_alias', '^agent-(vik[0-9]+)-run.*', '\\1') AS ticket, count(DISTINCT metadata->>'user_api_key_alias') AS runs, count(*) AS requests, sum(total_tokens) AS tokens, sum(spend) AS spend, max(\"startTime\") AS last_activity FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' ~ '^agent-vik[0-9]+-run[0-9]+' AND $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY spend DESC"
+              "rawSql": "SELECT metadata->>'user_api_key_alias' AS run, count(*) AS requests, sum(total_tokens) AS tokens, sum(spend) AS spend, max(\"startTime\") AS last_activity FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' ~ '^ploeg-' AND $$__timeFilter(\"startTime\") GROUP BY 1 ORDER BY spend DESC"
             }
           ]
         },
         {
           "id": 10,
           "type": "timeseries",
-          "title": "Spend per day per ticket",
-          "description": "Daily spend stacked per ticket; requires litellm-db datasource.",
+          "title": "Spend per day per run",
+          "description": "Daily spend stacked per ploeg run key; requires litellm-db datasource. Ticket-grained spend lives on the Dispatch Plane dashboard (ploeg_run ticket graft).",
           "gridPos": {
             "h": 10,
             "w": 10,
@@ -522,7 +522,7 @@ spec:
               },
               "rawQuery": true,
               "format": "time_series",
-              "rawSql": "SELECT $$__timeGroup(\"startTime\",'1d') AS time, regexp_replace(metadata->>'user_api_key_alias', '^agent-(vik[0-9]+)-run.*', '\\1') AS metric, sum(spend) AS spend FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' ~ '^agent-vik[0-9]+-run[0-9]+' AND $$__timeFilter(\"startTime\") GROUP BY 1,2 ORDER BY 1"
+              "rawSql": "SELECT $$__timeGroup(\"startTime\",'1d') AS time, metadata->>'user_api_key_alias' AS metric, sum(spend) AS spend FROM \"LiteLLM_SpendLogs\" WHERE metadata->>'user_api_key_alias' ~ '^ploeg-' AND $$__timeFilter(\"startTime\") GROUP BY 1,2 ORDER BY 1"
             }
           ]
         },
@@ -701,7 +701,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_spend{key_alias=~\"agent-.*\"}[$$__range]))",
+              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_spend{key_alias=~\"ploeg-.*\"}[$$__range]))",
               "instant": true,
               "format": "table"
             },
@@ -711,7 +711,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_max_budget{key_alias=~\"agent-.*\"}[$$__range]))",
+              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_max_budget{key_alias=~\"ploeg-.*\"}[$$__range]))",
               "instant": true,
               "format": "table"
             },
@@ -721,7 +721,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_blocked{key_alias=~\"agent-.*\"}[$$__range]))",
+              "expr": "max by (key_alias, team_id) (max_over_time(litellm_key_blocked{key_alias=~\"ploeg-.*\"}[$$__range]))",
               "instant": true,
               "format": "table"
             },
@@ -731,7 +731,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "100 * sum by (key_alias,team_id) (max_over_time(litellm_key_spend{key_alias=~\"agent-.*\"}[$$__range])) / sum by (key_alias,team_id) (max_over_time(litellm_key_max_budget{key_alias=~\"agent-.*\"}[$$__range]))",
+              "expr": "100 * sum by (key_alias,team_id) (max_over_time(litellm_key_spend{key_alias=~\"ploeg-.*\"}[$$__range])) / sum by (key_alias,team_id) (max_over_time(litellm_key_max_budget{key_alias=~\"ploeg-.*\"}[$$__range]))",
               "instant": true,
               "format": "table"
             }
@@ -987,7 +987,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (key_alias) (litellm_key_spend{key_alias=~\"agent-.*\"})",
+              "expr": "max by (key_alias) (litellm_key_spend{key_alias=~\"ploeg-.*\"})",
               "legendFormat": "{{key_alias}}"
             }
           ],
