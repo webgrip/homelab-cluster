@@ -1,0 +1,39 @@
+---
+# Native PostgreSQL datasource for ploegd's dispatch DB (ploeg-db in ns ploeg) — the
+# dark-factory dispatch-plane dashboard's SQL drill-down over work_items / agent_runs /
+# leases / checkpoints (state machine, run outcomes, PR links, per-phase funnel). The
+# ploeg-db tables are the authoritative record the ploeg_* exporter metrics summarise.
+# Read-only role grafana_ro (CNPG managed role, member of pg_read_all_data).
+#
+# Flux escaping: $${password} -> ${password} after Flux postBuild substitution; the operator
+# then replaces ${password} (matching the secretKeyRef key) with the secret value.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: postgres-ploeg
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  valuesFrom:
+    - targetPath: secureJsonData.password
+      valueFrom:
+        secretKeyRef:
+          name: ploeg-grafana-ro
+          key: password
+  datasource:
+    name: Ploeg Dispatch DB
+    type: grafana-postgresql-datasource
+    uid: ploeg-db
+    access: proxy
+    url: ploeg-db-rw.ploeg.svc.cluster.local:5432
+    user: grafana_ro
+    database: app
+    editable: true
+    jsonData:
+      sslmode: require
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+    secureJsonData:
+      password: $${password}

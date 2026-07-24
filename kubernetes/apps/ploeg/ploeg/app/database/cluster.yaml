@@ -59,6 +59,23 @@ spec:
           - pg_read_all_data
         passwordSecret:
           name: ploeg-scaler
+      # Read-only identity for Grafana's ploeg-db datasource (dark-factory
+      # dispatch-plane dashboard SQL: work_items / agent_runs / leases /
+      # checkpoints, incl. PR links). inRoles: [pg_read_all_data] grants SELECT
+      # on every table without per-table GRANT plumbing. Password generated
+      # in-cluster (grafana-ro.externalsecret.yaml) and pushed to OpenBao so the
+      # observability namespace reads the SAME value. Mirrors litellm's grafana_ro.
+      - name: grafana_ro
+        ensure: present
+        login: true
+        superuser: false
+        createdb: false
+        createrole: false
+        bypassrls: false
+        inRoles:
+          - pg_read_all_data
+        passwordSecret:
+          name: ploeg-grafana-ro
   bootstrap:
     initdb:
       database: app

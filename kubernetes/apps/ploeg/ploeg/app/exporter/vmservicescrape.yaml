@@ -1,0 +1,22 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: ploeg-work-items-exporter
+  namespace: ploeg
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ploeg-work-items-exporter
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 60s
+      scrapeTimeout: 30s
+      # Keep only the ploeg business metrics (+ exporter health). The built-in
+      # pg_* collectors duplicate cnpg-monitoring's scrape of the CNPG cluster.
+      metricRelabelConfigs:
+        - action: keep
+          sourceLabels:
+            - __name__
+          regex: "ploeg_.*|pg_up"

@@ -1,0 +1,121 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ploeg-exporter-queries
+data:
+  # Custom postgres-exporter queries over ploegd's own dispatch DB — the metrics
+  # path ploegd lacks (it ships no Prometheus /metrics; :8080 is not scraped).
+  # Same pattern as litellm-exporter-queries. Column names verified live against
+  # the ploeg schema (work_items / agent_runs / leases / checkpoints, 2026-07-24).
+  # Metric names are prefixed by the query key, e.g. `ploeg_work_items_count`.
+  #
+  # CORRELATION KEY (load-bearing): the LiteLLM per-run key_alias is
+  #   'ploeg-' || left(agent_runs.run_token, 12)
+  # (run_token 06778c63…  -> key_alias ploeg-06778c636fef). So `ploeg_run_*`
+  # series carry `key_alias` and join 1:1 to `litellm_run_spend{key_alias}` in
+  # PromQL — cost + duration + outcome for a single agent run in one query.
+  queries.yaml: |-
+    # State machine + queue depth + backlog age. state ∈ {queued, done, ...};
+    # queued-count = backlog, MIN(created_at) of queued = oldest-waiting item.
+    ploeg_work_items:
+      query: |
+        SELECT state,
+               COALESCE(NULLIF(team,''),'none') AS team,
+               COUNT(*) AS count,
+               COALESCE(EXTRACT(EPOCH FROM (now() - MIN(created_at))), 0) AS oldest_age_seconds
+        FROM work_items
+        GROUP BY state, team
+      metrics:
+        - state: {usage: "LABEL", description: "work_items.state (queued/done/…)"}
+        - team: {usage: "LABEL", description: "Team the item is routed to"}
+        - count: {usage: "GAUGE", description: "Work items in this state"}
+        - oldest_age_seconds: {usage: "GAUGE", description: "Age of the oldest item in this state (s)"}
+    # Retry pressure — attempts>1 means a run failed and the item was re-dispatched
+    # (e.g. the git-timeout retries). max/retried_items per team.
+    ploeg_attempts:
+      query: |
+        SELECT COALESCE(NULLIF(team,''),'none') AS team,
+               COALESCE(MAX(attempts),0) AS max,
+               COUNT(*) FILTER (WHERE attempts > 1) AS retried_items
+        FROM work_items
+        GROUP BY team
+      metrics:
+        - team: {usage: "LABEL", description: "Team"}
+        - max: {usage: "GAUGE", description: "Highest attempt count across this team's items"}
+        - retried_items: {usage: "GAUGE", description: "Items that took more than one attempt"}
+    # Lease health (TTL model). Empty at rest (no active dispatch). oldest lease
+    # age vs PLOEG_LEASE_TTL (15m); expired_not_reclaimed = stuck dispatcher.
+    ploeg_leases:
+      query: |
+        SELECT COALESCE(NULLIF(team,''),'none') AS team,
+               COUNT(*) AS active,
+               COALESCE(EXTRACT(EPOCH FROM (now() - MIN(renewed_at))), 0) AS oldest_age_seconds,
+               COUNT(*) FILTER (WHERE expires_at < now()) AS expired_not_reclaimed
+        FROM leases
+        GROUP BY team
+      metrics:
+        - team: {usage: "LABEL", description: "Team"}
+        - active: {usage: "GAUGE", description: "Active leases (work items being processed)"}
+        - oldest_age_seconds: {usage: "GAUGE", description: "Age of the oldest active lease (s)"}
+        - expired_not_reclaimed: {usage: "GAUGE", description: "Leases past expires_at still present — stuck; should be 0"}
+    # Run outcomes. outcome ∈ {pr_opened, failed}; finished_at IS NULL -> running.
+    # success rate = pr_opened / (pr_opened + failed). 30d window bounds nothing
+    # (aggregate), but keeps it consistent with the litellm run window.
+    ploeg_agent_runs:
+      query: |
+        SELECT COALESCE(NULLIF(team,''),'none') AS team,
+               CASE WHEN finished_at IS NULL THEN 'running'
+                    ELSE COALESCE(NULLIF(outcome,''),'unknown') END AS outcome,
+               COUNT(*) AS count
+        FROM agent_runs
+        WHERE started_at >= now() - interval '30 days'
+        GROUP BY 1, 2
+      metrics:
+        - team: {usage: "LABEL", description: "Team"}
+        - outcome: {usage: "LABEL", description: "Run outcome (pr_opened/failed/running/…)"}
+        - count: {usage: "GAUGE", description: "Runs with this outcome, 30d"}
+    # Stuck runs by reason (empty at rest). Distinct from failed: a stuck run
+    # tripped a guard (e.g. budget, timeout) and recorded why.
+    ploeg_stuck:
+      query: |
+        SELECT COALESCE(NULLIF(team,''),'none') AS team,
+               stuck_reason,
+               COUNT(*) AS count
+        FROM agent_runs
+        WHERE stuck_reason <> '' AND started_at >= now() - interval '30 days'
+        GROUP BY 1, 2
+      metrics:
+        - team: {usage: "LABEL", description: "Team"}
+        - stuck_reason: {usage: "LABEL", description: "Why the run got stuck"}
+        - count: {usage: "GAUGE", description: "Stuck runs with this reason, 30d"}
+    # Per-run wall-clock keyed by the litellm-joinable alias. duration uses now()
+    # for still-running rows. 30d cap bounds cardinality (a few runs/day).
+    ploeg_run:
+      query: |
+        SELECT 'ploeg-' || left(run_token, 12) AS key_alias,
+               COALESCE(NULLIF(team,''),'none') AS team,
+               CASE WHEN finished_at IS NULL THEN 'running'
+                    ELSE COALESCE(NULLIF(outcome,''),'unknown') END AS outcome,
+               EXTRACT(EPOCH FROM (COALESCE(finished_at, now()) - started_at)) AS duration_seconds,
+               EXTRACT(EPOCH FROM started_at) AS started_epoch
+        FROM agent_runs
+        WHERE started_at >= now() - interval '30 days'
+      metrics:
+        - key_alias: {usage: "LABEL", description: "ploeg-<run_token[:12]> — joins to litellm_run_spend{key_alias}"}
+        - team: {usage: "LABEL", description: "Team"}
+        - outcome: {usage: "LABEL", description: "Run outcome (pr_opened/failed/running)"}
+        - duration_seconds: {usage: "GAUGE", description: "Run wall-clock start->finish (s); ongoing uses now()"}
+        - started_epoch: {usage: "GAUGE", description: "Unix epoch of the run's start"}
+    # Flow funnel by phase. phase ∈ {branch_created, pr_opened, …}. Counting
+    # checkpoints per phase shows where runs progress to (and drop off).
+    ploeg_checkpoints:
+      query: |
+        SELECT phase,
+               COUNT(*) AS count
+        FROM checkpoints
+        WHERE created_at >= now() - interval '30 days'
+        GROUP BY phase
+      metrics:
+        - phase: {usage: "LABEL", description: "Checkpoint phase reached"}
+        - count: {usage: "GAUGE", description: "Checkpoints recorded at this phase, 30d"}
