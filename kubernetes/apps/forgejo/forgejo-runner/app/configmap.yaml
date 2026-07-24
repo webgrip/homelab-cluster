@@ -40,8 +40,10 @@ data:
       # 403 — the failure mode is a cache that never hits, not an error anyone notices.
       secret_url: "file:/run/forgejo-runner/cache-secret"
     container:
-      # Talk to the in-pod rootless/privileged DinD sidecar.
-      docker_host: tcp://localhost:2376
+      # "-": use the DOCKER_HOST env (the runner pod exports tcp://<node-ip>:2375 — the shared
+      # per-node dind DaemonSet, see dind-daemonset.yaml) and do NOT mount the docker host
+      # into job containers.
+      docker_host: "-"
       options: ""
       network: ""
       valid_volumes:
