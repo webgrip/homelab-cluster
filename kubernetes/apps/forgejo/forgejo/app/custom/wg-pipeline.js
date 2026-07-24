@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var WG_VERSION = '3.2.0';
+  var WG_VERSION = '3.3.0';
   try { window.__wgPipeline = { version: WG_VERSION }; } catch (e) { }
 
   var RANK = { failure: 7, unknown: 7, cancelled: 6, running: 5, blocked: 4, waiting: 4, success: 3, skipped: 2 };
@@ -302,6 +302,7 @@
     var selectedIdx = parseInt(host.getAttribute('data-job-index'), 10);
 
     var section = document.createElement('section');
+    section.id = 'wg-pipeline';
     section.className = 'wg-pipeline';
     if (localStorage.getItem('wg-pipeline-collapsed') === '1') section.classList.add('wg-collapsed');
 
@@ -394,7 +395,8 @@
           var d = parseDur(durations[idx]);
           if (d > bestDur) { bestDur = d; bestIdx = idx; }
         });
-        if (bestIdx !== -1) el.href = run.link + '/jobs/' + bestIdx;
+        if (run.prMode) el.href = run.link;
+        else if (bestIdx !== -1) el.href = run.link + '/jobs/' + bestIdx;
 
         var metaEl = el.querySelector('.wg-node-meta');
         var dTxt = (bestDur > 0) ? durations[bestIdx] : '';
@@ -513,20 +515,22 @@
 
     /* the rail is Vue-rendered a beat after DOMContentLoaded — retry the
        decoration briefly so finished runs (no 5s resync) still get grouped */
-    var railTries = 0;
-    var railWait = window.setInterval(function () {
-      railTries++;
-      var items = document.querySelectorAll('.action-view-left .job-brief-item');
-      if (items.length || railTries > 20) {
-        window.clearInterval(railWait);
-        if (items.length) decorateRail();
-      }
-    }, 250);
+    if (!run.prMode) {
+      var railTries = 0;
+      var railWait = window.setInterval(function () {
+        railTries++;
+        var items = document.querySelectorAll('.action-view-left .job-brief-item');
+        if (items.length || railTries > 20) {
+          window.clearInterval(railWait);
+          if (items.length) decorateRail();
+        }
+      }, 250);
+    }
 
     window.addEventListener('resize', function () { window.requestAnimationFrame(draw); });
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { draw(); });
 
-    if (!run.done) {
+    if (!run.done && !run.prMode) {
       var timer = window.setInterval(function () {
         var read = railRead();
         if (read) apply(read);
@@ -536,12 +540,138 @@
         if (allDone) window.clearInterval(timer);
       }, 5000);
     }
+    return apply;
+  }
+
+  function apiJSON(url) {
+    return fetch(url, { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .catch(function () { return null; });
+  }
+
+  function fmtSecs(s) {
+    if (s <= 0) return '';
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.floor(s % 60);
+    return (h ? h + 'h' : '') + (h || m ? m + 'm' : '') + sec + 's';
+  }
+
+  var TERMINAL = { success: 1, failure: 1, skipped: 1, cancelled: 1, unknown: 1 };
+
+  /* PR pages: an Actions tab + the same pipeline panel, driven by the tasks
+     API for the PR head commit (session-cookie auth; task rows only exist for
+     jobs that started — yaml-only jobs render as waiting). */
+  function initPR() {
+    var m = location.pathname.match(/^[/]([^/]+)[/]([^/]+)[/]pulls[/](\d+)/);
+    if (!m) return;
+    var menu = document.querySelector('.ui.pull.tabs.container .tabular.menu');
+    if (!menu || menu.querySelector('.wg-pr-tab')) return;
+    var base = '/' + m[1] + '/' + m[2];
+    var prLink = base + '/pulls/' + m[3];
+
+    var tab = document.createElement('a');
+    tab.className = 'item wg-pr-tab';
+    tab.href = prLink + '#wg-pipeline';
+    tab.innerHTML = '<span class="wg-run-status wg-status-waiting"><span class="wg-node-dot"></span></span>Actions';
+    var spacer = menu.querySelector('.tw-ml-auto');
+    menu.insertBefore(tab, spacer);
+    var tabDot = tab.querySelector('.wg-run-status');
+
+    var onConversation = new RegExp('^[/][^/]+[/][^/]+[/]pulls[/]\\d+$').test(location.pathname);
+
+    function taskRows(tasks, sha) {
+      var mine = tasks.filter(function (t) { return t.head_sha === sha; });
+      if (!mine.length) return null;
+      var maxRun = 0;
+      mine.forEach(function (t) { if (t.run_number > maxRun) maxRun = t.run_number; });
+      var group = mine.filter(function (t) { return t.run_number === maxRun; });
+      var wf = group[0].workflow_id;
+      var byName = Object.create(null);
+      group.forEach(function (t) {
+        if (!byName[t.name] || t.id > byName[t.name].id) byName[t.name] = t;
+      });
+      var rows = Object.keys(byName).map(function (k) {
+        var t = byName[k];
+        var dur = '';
+        if (TERMINAL[t.status] && t.run_started_at && t.updated_at) {
+          dur = fmtSecs((new Date(t.updated_at) - new Date(t.run_started_at)) / 1000);
+        }
+        return { name: t.name, status: t.status, duration: dur };
+      });
+      var runLink = base + '/actions/runs/' + maxRun;
+      return { rows: rows, workflow: wf, runLink: runLink, runNumber: maxRun };
+    }
+
+    function fetchTasks(sha) {
+      return apiJSON('/api/v1/repos/' + m[1] + '/' + m[2] + '/actions/tasks?limit=50&page=1').then(function (r1) {
+        var all = (r1 && r1.workflow_runs) || [];
+        var hit = taskRows(all, sha);
+        if (hit || !r1 || all.length >= (r1.total_count || 0)) return hit;
+        return apiJSON('/api/v1/repos/' + m[1] + '/' + m[2] + '/actions/tasks?limit=50&page=2').then(function (r2) {
+          return taskRows(all.concat((r2 && r2.workflow_runs) || []), sha);
+        });
+      });
+    }
+
+    function tabStatus(rows) {
+      var worst = '';
+      rows.forEach(function (r) {
+        if ((RANK[r.status] || 0) > (RANK[worst] || 0)) worst = r.status;
+      });
+      tabDot.className = 'wg-run-status wg-status-' + (worst || 'waiting');
+      return worst;
+    }
+
+    apiJSON('/api/v1/repos/' + m[1] + '/' + m[2] + '/pulls/' + m[3]).then(function (pr) {
+      var sha = pr && pr.head && pr.head.sha;
+      if (!sha) return;
+      fetchTasks(sha).then(function (hit) {
+        if (!hit) { tab.title = 'No Actions runs for the current head commit'; return; }
+        tabStatus(hit.rows);
+        tab.title = hit.workflow + ' · run #' + hit.runNumber;
+        if (!onConversation) return;
+
+        var dirs = ['.forgejo/workflows/', '.github/workflows/', '.gitea/workflows/'];
+        fetchFirstOk(dirs.map(function (d) { return base + '/raw/commit/' + sha + '/' + d + hit.workflow; }))
+          .then(function (yaml) {
+            if (!yaml) return;
+            var yjobs = parseWorkflowJobs(yaml);
+            var targets = Object.create(null);
+            yjobs.forEach(function (j) { if (j.uses) targets[j.uses] = null; });
+            var selfRawBase = base + '/raw/commit/' + sha + '/.forgejo/workflows/';
+            return Promise.all(Object.keys(targets).map(function (u) {
+              return fetchFirstOk(reusableURLs(u, selfRawBase)).then(function (text) {
+                targets[u] = text ? parseWorkflowJobs(text).map(labelOf) : [];
+              });
+            })).then(function () {
+              yjobs.forEach(function (j) { if (j.uses) j.childLabels = targets[j.uses] || []; });
+              var container = document.querySelector('.ui.pull.tabs.container');
+              var host = container && container.nextElementSibling;
+              if (!host) return;
+              var allDone = hit.rows.every(function (r) { return TERMINAL[r.status]; });
+              var run = { link: hit.runLink, done: true, prMode: true, status: 'unknown', jobs: hit.rows, commit: {} };
+              var applyFn = build(host, run, yjobs);
+              if (!applyFn || allDone) return;
+              var poll = window.setInterval(function () {
+                fetchTasks(sha).then(function (h2) {
+                  if (!h2) return;
+                  applyFn(h2.rows);
+                  if (h2.rows.every(function (r) { return TERMINAL[r.status]; }) && tabStatus(h2.rows)) {
+                    window.clearInterval(poll);
+                  } else {
+                    tabStatus(h2.rows);
+                  }
+                });
+              }, 15000);
+            });
+          });
+      });
+    });
   }
 
   function init() {
     try {
       var host = document.getElementById('repo-action-view');
-      if (!host) return;
+      if (!host) { initPR(); return; }
       var data = JSON.parse(host.getAttribute('data-initial-post-response') || 'null');
       var run = data && data.state && data.state.run;
       if (!run || !run.jobs || run.jobs.length < 2) return;
