@@ -40,6 +40,12 @@ spec:
       ruleNames:
         - privileged-containers
         - autogen-privileged-containers
+        # ci-shared moved from a per-pod tmpfs emptyDir to the node-RAM hostPath
+        # /dev/shm/forgejo-ci-shared shared with the forgejo-dind DaemonSet (bind-mount
+        # path parity for `docker run -v` workspaces). Without this waiver Kyverno denies
+        # every KEDA-spawned runner Job — the whole CI fleet scales to zero (2026-07-24).
+        - host-path
+        - autogen-host-path
     - policyName: workload-hardening-audit
       ruleNames:
         - privilege-escalation
@@ -48,6 +54,8 @@ spec:
     - policyName: workload-advanced-hardening-audit
       ruleNames:
         - require-drop-all-capabilities
+        # Audit-only: the ci-shared hostPath is by design (see above).
+        - disallow-risky-volume-types
   match:
     any:
       # The resource the webhook actually rejects: the KEDA-generated runner Job.
