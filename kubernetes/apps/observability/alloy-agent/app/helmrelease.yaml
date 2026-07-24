@@ -134,6 +134,39 @@ spec:
               }
             }
 
+            // Dark factory: promote ploegd/worker logfmt payload keys to first-class
+            // VictoriaLogs fields (structured metadata -> ordinary VL fields, NOT
+            // labels — per-line values like trace_id must stay out of _stream_fields).
+            // logfmt parse is lenient: lines without these keys (postgres JSON, dind)
+            // simply contribute nothing. Scoped to ns ploeg — other namespaces untouched.
+            stage.match {
+              selector = "{namespace=\"ploeg\"}"
+
+              stage.logfmt {
+                mapping = {
+                  outcome  = "",
+                  team     = "",
+                  title    = "",
+                  links    = "",
+                  budget   = "",
+                  trace_id = "trace-id",
+                  wi_id    = "id",
+                }
+              }
+
+              stage.structured_metadata {
+                values = {
+                  outcome  = "",
+                  team     = "",
+                  title    = "",
+                  links    = "",
+                  budget   = "",
+                  trace_id = "",
+                  wi_id    = "",
+                }
+              }
+            }
+
             forward_to = [loki.write.local.receiver]
           }
 
