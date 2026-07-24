@@ -362,7 +362,19 @@
       // not merging a Renovate PR here. Digest-only refreshes are excluded here on purpose —
       // they re-resolve the same tag, not a new version, and keep automerging everywhere via
       // the digest rule above.
-      description: "Pre-production envs (dev/staging) track the prerelease channel — all chart+image tag bumps automerge, prereleases included",
+      // Renovate forbids combining matchUpdateTypes with version-selection
+      // options like ignoreUnstable in one rule, so each env policy is a
+      // pair: channel rule (path -> ignoreUnstable) + automerge rule
+      // (path + update types -> automerge).
+      description: "Pre-production envs (dev/staging) track the prerelease channel",
+      matchFileNames: [
+        "kubernetes/apps/*/dev/**",
+        "kubernetes/apps/*/staging/**",
+      ],
+      ignoreUnstable: false,
+    },
+    {
+      description: "Pre-production envs (dev/staging): all chart+image tag bumps automerge, prereleases included",
       matchFileNames: [
         "kubernetes/apps/*/dev/**",
         "kubernetes/apps/*/staging/**",
@@ -372,7 +384,6 @@
         "minor",
         "major"
       ],
-      ignoreUnstable: false,
       dependencyDashboardApproval: false,
       automerge: true,
       automergeType: "pr",
@@ -382,7 +393,14 @@
       ],
     },
     {
-      description: "Production env tracks stable releases automatically — prereleases never reach it; promotion happens by merging development -> main in the app repo",
+      description: "Production env sees stable releases only — prereleases never reach it",
+      matchFileNames: [
+        "kubernetes/apps/*/production/**"
+      ],
+      ignoreUnstable: true,
+    },
+    {
+      description: "Production env tracks stable releases automatically; promotion happens by merging development -> main in the app repo",
       matchFileNames: [
         "kubernetes/apps/*/production/**"
       ],
@@ -391,7 +409,6 @@
         "minor",
         "major"
       ],
-      ignoreUnstable: true,
       dependencyDashboardApproval: false,
       automerge: true,
       automergeType: "pr",
