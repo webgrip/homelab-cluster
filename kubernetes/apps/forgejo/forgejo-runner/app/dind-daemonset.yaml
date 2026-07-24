@@ -104,23 +104,39 @@ spec:
             limits:
               memory: 6Gi
         - name: prune
-          # Persistent storage needs GC the old throwaway emptyDir never did: drop dangling
-          # build cruft + images unused for 14 days, and clear stale ci-shared workspaces,
-          # daily. Images in active use are re-referenced every job and never age out.
+          # Persistent storage needs GC the old throwaway emptyDir never did. Two tiers:
+          # - every 6h: DANGLING-only image prune. Rebuilt in-place tags (rust-ci-runner:1.3.0
+          #   gets a new digest per release) orphan their old layers as dangling — that is the
+          #   actual growth vector. NEVER a time-filtered prune -a: docker's `until` filter
+          #   matches image CREATION time, not last use, so it would evict stable upstream
+          #   images (python:3.12-alpine is months old) every pass despite daily use.
+          # - only above 85% disk usage: full unused-image prune (superseded version tags,
+          #   e.g. 1.3.0 after 1.4.0 ships). 85% tracks kubelet's nodefs eviction threshold —
+          #   the cache must never be what pushes the node into pod eviction. Costs one cold
+          #   pull per evicted image afterwards, which is the point of a pressure valve.
           image: harbor.webgrip.dev/dockerhub/library/docker:29.6.2-dind@sha256:bfec1f5159c63a81ca6fdedbd81404d2c0e16378ed0feec3bb3fbf3998847659
           command:
             - sh
             - -ec
             - |
               while true; do
-                sleep 86400
-                docker -H tcp://localhost:2375 system prune -af --filter "until=336h" || true
+                sleep 21600
+                docker -H tcp://localhost:2375 image prune -f || true
                 docker -H tcp://localhost:2375 volume prune -f || true
+                used=$(df -P /var/lib/docker | awk 'NR==2 {gsub("%","",$5); print $5}')
+                if [ "${used:-0}" -gt 85 ]; then
+                  echo "disk at ${used}% — full unused-image prune"
+                  docker -H tcp://localhost:2375 system prune -af || true
+                fi
                 find /mnt/ci-shared -mindepth 1 -maxdepth 1 -mmin +720 -exec rm -rf {} + || true
               done
           volumeMounts:
             - name: ci-shared
               mountPath: /mnt/ci-shared
+            # Read-only view of the daemon's store so `df` measures the right filesystem.
+            - name: docker-storage
+              mountPath: /var/lib/docker
+              readOnly: true
           securityContext:
             runAsUser: 0
           resources:
