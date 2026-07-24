@@ -251,6 +251,13 @@ spec:
         # Forgejo Actions available; register a forgejo-runner later to execute jobs.
         actions:
           ENABLED: true
+          # Resolve bare `uses: actions/checkout@v4` refs against the LOCAL forge instead of
+          # the default data.forgejo.org: the runner cloned every action over WAN on every job
+          # (~2min/job measured 2026-07-23; ephemeral runners keep no clone cache). The
+          # in-cluster URL keeps clones off the ingress entirely. Mirrors were bootstrapped and
+          # verified by scripts/bootstrap-action-mirrors.sh (all 19 anonymous-clone OK,
+          # 2026-07-24) before this flip.
+          DEFAULT_ACTIONS_URL: "http://forgejo-http.forgejo.svc.cluster.local:3000"
         security:
           INSTALL_LOCK: true
           # Trust X-Forwarded-* from the in-cluster Envoy proxy (pod CIDR) so client

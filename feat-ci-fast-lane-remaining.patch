@@ -1,0 +1,39 @@
+--- a/kubernetes/apps/forgejo/forgejo/app/helmrelease.yaml
++++ b/kubernetes/apps/forgejo/forgejo/app/helmrelease.yaml
+@@ -221,5 +221,12 @@
+         # Forgejo Actions available; register a forgejo-runner later to execute jobs.
+         actions:
+           ENABLED: true
++          # Resolve bare `uses: actions/checkout@v4` refs against the LOCAL forge instead of
++          # the default data.forgejo.org: the runner cloned every action over WAN on every job
++          # (~2min/job measured 2026-07-23; ephemeral runners keep no clone cache). The
++          # in-cluster URL keeps clones off the ingress entirely. Mirrors were bootstrapped and
++          # verified by scripts/bootstrap-action-mirrors.sh (all 19 anonymous-clone OK,
++          # 2026-07-24) before this flip.
++          DEFAULT_ACTIONS_URL: "http://forgejo-http.forgejo.svc.cluster.local:3000"
+         security:
+           INSTALL_LOCK: true
+--- a/kubernetes/apps/forgejo/forgejo-runner/app/configmap.yaml
++++ b/kubernetes/apps/forgejo/forgejo-runner/app/configmap.yaml
+@@ -42,5 +42,7 @@
+     container:
+-      # Talk to the in-pod rootless/privileged DinD sidecar.
+-      docker_host: tcp://localhost:2376
++      # "-": use the DOCKER_HOST env (the runner pod exports tcp://<node-ip>:2375 — the shared
++      # per-node dind DaemonSet, see dind-daemonset.yaml) and do NOT mount the docker host
++      # into job containers.
++      docker_host: "-"
+       options: ""
+       network: ""
+--- a/kubernetes/apps/forgejo/forgejo-runner/app/kustomization.yaml
++++ b/kubernetes/apps/forgejo/forgejo-runner/app/kustomization.yaml
+@@ -5,7 +5,9 @@
+ resources:
+   - ./configmap.yaml
+   - ./triggerauthentication.yaml
+   - ./scaledjob.yaml
++  # Shared per-node docker daemon (persistent image cache) + its access policy.
++  - ./dind-daemonset.yaml
+   # forgejo-runner-secret (uuid + token) is now minted and owned by the registration
+   # provisioner Job (the old ESO ExternalSecret + migration PushSecret were removed: the
+   # seed carried a malformed 16-hex uuid). The scaler token below stays OpenBao-backed.
