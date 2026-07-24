@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var WG_VERSION = '3.5.0';
+  var WG_VERSION = '3.5.1';
   try { window.__wgPipeline = { version: WG_VERSION }; } catch (e) { }
 
   var RANK = { failure: 7, unknown: 7, cancelled: 6, running: 5, blocked: 4, waiting: 4, success: 3, skipped: 2 };
@@ -206,10 +206,22 @@
     });
     yjobs.forEach(function (yj) {
       (yj.childItems || []).forEach(function (ci) {
+        /* Split matches: an EXACT-name match is one of possibly several
+           identical jobs Forgejo produced when the SAME reusable is called by
+           several caller jobs (e.g. Backend image + Web image both build via
+           docker-build-and-push-harbor-fast) — those must be shared out one per
+           caller, so a child item claims only ONE. A PREFIXED match
+           ("label (matrix)" / "label / sub") is a distinct instance of this one
+           logical job, so claim all of them. */
+        var exact = [], prefixed = [];
         names.forEach(function (nm, idx) {
           if (used[idx]) return;
-          if (nameMatches(nm, ci.label)) { yj.indices.push(idx); yj.depthByIndex[idx] = ci.depth; used[idx] = true; }
+          if (nm === ci.label) exact.push(idx);
+          else if (nameMatches(nm, ci.label)) prefixed.push(idx);
         });
+        var claim = prefixed;
+        if (exact.length) claim = [exact[0]].concat(prefixed);
+        claim.forEach(function (idx) { yj.indices.push(idx); yj.depthByIndex[idx] = ci.depth; used[idx] = true; });
       });
     });
     var orphans = [];
