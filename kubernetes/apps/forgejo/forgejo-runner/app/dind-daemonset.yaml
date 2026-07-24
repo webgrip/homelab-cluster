@@ -98,9 +98,13 @@ spec:
             # No CPU limit: image extraction and builds should burst. Memory headroom covers
             # the e2e KinD-inside-dind case (~1.5Gi) plus concurrent job containers now that
             # the daemon is shared.
+            # Requests deliberately TINY: worker-1 sits at ~98% CPU requests, and at 250m/512Mi
+            # this DaemonSet pod stayed Pending there — leaving runner pods on that node with
+            # no daemon at all (observed 2026-07-24). A mostly-idle daemon needs no reservation;
+            # a DaemonSet that cannot schedule protects nothing.
             requests:
-              cpu: 250m
-              memory: 512Mi
+              cpu: 50m
+              memory: 128Mi
             limits:
               memory: 6Gi
         - name: prune
