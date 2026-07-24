@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var WG_VERSION = '3.3.1';
+  var WG_VERSION = '3.4.0';
   try { window.__wgPipeline = { version: WG_VERSION }; } catch (e) { }
 
   var RANK = { failure: 7, unknown: 7, cancelled: 6, running: 5, blocked: 4, waiting: 4, success: 3, skipped: 2 };
@@ -119,12 +119,52 @@
     });
   }
 
+  /* Fetch text from the first URL that answers 200, returning {text, url} for
+     the winner (both null if none answer) — the url lets a nested `./`-relative
+     `uses:` resolve against the reusable that contained it. */
+  function fetchFirstOkWithUrl(urls) {
+    if (!urls.length) return Promise.resolve({ text: null, url: null });
+    return cachedText(urls[0])
+      .then(function (t) { return t !== null ? { text: t, url: urls[0] } : fetchFirstOkWithUrl(urls.slice(1)); })
+      .catch(function () { return fetchFirstOkWithUrl(urls.slice(1)); });
+  }
+
   /* Fetch text from the first URL that answers 200; null if none do. */
   function fetchFirstOk(urls) {
-    if (!urls.length) return Promise.resolve(null);
-    return cachedText(urls[0])
-      .then(function (t) { return t !== null ? t : fetchFirstOk(urls.slice(1)); })
-      .catch(function () { return fetchFirstOk(urls.slice(1)); });
+    return fetchFirstOkWithUrl(urls).then(function (r) { return r.text; });
+  }
+
+  /* raw dir of a resolved reusable URL (strip the filename) so a nested
+     `./sibling.yml` inside it resolves against its own repo+ref. */
+  function rawDirOf(url) {
+    return url ? url.replace(/[^/]+$/, '') : '';
+  }
+
+  var MAX_REUSABLE_DEPTH = 5;
+
+  /* Resolve a job-level `uses:` to the flat list of EVERY descendant job label
+     Forgejo will flatten into the run graph. Forgejo expands a called reusable
+     workflow's inner jobs into the caller (docs/.../forgejo-actions-engine.md),
+     and those inner jobs can themselves `uses:` further reusables — so we follow
+     the chain transitively, collecting each level's job labels. `seen` guards
+     cycles; MAX_REUSABLE_DEPTH bounds runaway. Fetches are cached (cachedText),
+     so commit-pinned refs cost one request ever. */
+  function resolveDescendants(uses, baseForRel, depth, seen) {
+    if (!uses || depth > MAX_REUSABLE_DEPTH || seen[uses]) return Promise.resolve([]);
+    seen[uses] = true;
+    return fetchFirstOkWithUrl(reusableURLs(uses, baseForRel)).then(function (hit) {
+      if (!hit.text) return [];
+      var jobs = parseWorkflowJobs(hit.text);
+      var childBase = rawDirOf(hit.url);
+      return Promise.all(jobs.map(function (jj) {
+        var self = [labelOf(jj)];
+        if (!jj.uses) return self;
+        return resolveDescendants(jj.uses, childBase, depth + 1, seen)
+          .then(function (more) { return self.concat(more); });
+      })).then(function (arrs) {
+        return arrs.reduce(function (a, b) { return a.concat(b); }, []);
+      });
+    });
   }
 
   /* uses: "owner/repo/path@ref" (cross-repo) or "./path" (same repo at the
@@ -396,8 +436,17 @@
           var d = parseDur(durations[idx]);
           if (d > bestDur) { bestDur = d; bestIdx = idx; }
         });
-        if (run.prMode) el.href = run.link;
-        else if (bestIdx !== -1) el.href = run.link + '/jobs/' + bestIdx;
+        if (run.prMode) {
+          /* PR-mode rows come from the deduped tasks API, so bestIdx is NOT the
+             run's real job index — map the constituent's name to the run's
+             ordered job list (run.jobIndex, fetched from the run-view endpoint)
+             for a per-job deep link; fall back to the bare run page. */
+          var prName = (bestIdx !== -1 && run.jobs[bestIdx]) ? run.jobs[bestIdx].name : null;
+          var mapped = (prName != null && run.jobIndex) ? run.jobIndex[prName] : null;
+          el.href = (mapped != null) ? run.link + '/jobs/' + mapped : run.link;
+        } else if (bestIdx !== -1) {
+          el.href = run.link + '/jobs/' + bestIdx;
+        }
 
         var metaEl = el.querySelector('.wg-node-meta');
         var dTxt = (bestDur > 0) ? durations[bestIdx] : '';
@@ -564,20 +613,10 @@
   function initPR() {
     var m = location.pathname.match(/^[/]([^/]+)[/]([^/]+)[/]pulls[/](\d+)/);
     if (!m) return;
-    var menu = document.querySelector('.ui.pull.tabs.container .tabular.menu');
-    if (!menu || menu.querySelector('.wg-pr-tab')) return;
     var base = '/' + m[1] + '/' + m[2];
     var prLink = base + '/pulls/' + m[3];
-
-    var tab = document.createElement('a');
-    tab.className = 'item wg-pr-tab';
-    tab.href = prLink + '#wg-pipeline';
-    tab.innerHTML = '<span class="wg-run-status wg-status-waiting"><span class="wg-node-dot"></span></span>Actions';
-    var spacer = menu.querySelector('.tw-ml-auto');
-    menu.insertBefore(tab, spacer);
-    var tabDot = tab.querySelector('.wg-run-status');
-
     var onConversation = new RegExp('^[/][^/]+[/][^/]+[/]pulls[/]\\d+$').test(location.pathname);
+    var tab = null, tabDot = null;
 
     function taskRows(tasks, sha) {
       var mine = tasks.filter(function (t) { return t.head_sha === sha; });
@@ -613,60 +652,136 @@
       });
     }
 
+    /* A queued run has no task rows yet (one worker → jobs sit waiting). Retry
+       until the runner creates the first row, so the panel appears on its own
+       instead of only after a manual refresh. ~10 min ceiling, then give up. */
+    function waitForFirstHit(sha, tries) {
+      return fetchTasks(sha).then(function (hit) {
+        if (hit) return hit;
+        if (tries >= 40) return null;
+        if (tabDot) tab.title = 'Waiting for a runner to pick up the run…';
+        return new Promise(function (resolve) {
+          window.setTimeout(function () { resolve(waitForFirstHit(sha, tries + 1)); }, 15000);
+        });
+      });
+    }
+
     function tabStatus(rows) {
       var worst = '';
       rows.forEach(function (r) {
         if ((RANK[r.status] || 0) > (RANK[worst] || 0)) worst = r.status;
       });
-      tabDot.className = 'wg-run-status wg-status-' + (worst || 'waiting');
+      if (tabDot) tabDot.className = 'wg-run-status wg-status-' + (worst || 'waiting');
       return worst;
     }
 
-    apiJSON('/api/v1/repos/' + m[1] + '/' + m[2] + '/pulls/' + m[3]).then(function (pr) {
-      var sha = pr && pr.head && pr.head.sha;
-      if (!sha) return;
-      fetchTasks(sha).then(function (hit) {
-        if (!hit) { tab.title = 'No Actions runs for the current head commit'; return; }
-        tabStatus(hit.rows);
-        tab.title = hit.workflow + ' · run #' + hit.runNumber;
-        if (!onConversation) return;
+    /* Ordered job list from the run-view data source (same one the run page
+       uses) → name→index map, so PR-mode nodes can deep-link to the exact job.
+       Best-effort: any failure leaves nodes on the bare run link. */
+    function fetchRunJobIndex(runNumber) {
+      var csrf = (window.config && window.config.csrfToken) || '';
+      return fetch('/' + m[1] + '/' + m[2] + '/actions/runs/' + runNumber + '/jobs/0', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-Csrf-Token': csrf }, body: '{}',
+      }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+        var jobs = d && d.state && d.state.run && d.state.run.jobs;
+        if (!jobs) return null;
+        var map = Object.create(null);
+        jobs.forEach(function (jb, idx) {
+          if (jb && jb.name != null && map[jb.name] == null) map[jb.name] = idx;
+        });
+        return map;
+      }).catch(function () { return null; });
+    }
 
-        var dirs = ['.forgejo/workflows/', '.github/workflows/', '.gitea/workflows/'];
-        fetchFirstOk(dirs.map(function (d) { return base + '/raw/commit/' + sha + '/' + d + hit.workflow; }))
-          .then(function (yaml) {
-            if (!yaml) return;
-            var yjobs = parseWorkflowJobs(yaml);
-            var targets = Object.create(null);
-            yjobs.forEach(function (j) { if (j.uses) targets[j.uses] = null; });
-            var selfRawBase = base + '/raw/commit/' + sha + '/.forgejo/workflows/';
-            return Promise.all(Object.keys(targets).map(function (u) {
-              return fetchFirstOk(reusableURLs(u, selfRawBase)).then(function (text) {
-                targets[u] = text ? parseWorkflowJobs(text).map(labelOf) : [];
-              });
-            })).then(function () {
-              yjobs.forEach(function (j) { if (j.uses) j.childLabels = targets[j.uses] || []; });
-              var container = document.querySelector('.ui.pull.tabs.container');
-              var host = container && container.nextElementSibling;
-              if (!host) return;
-              var allDone = hit.rows.every(function (r) { return TERMINAL[r.status]; });
-              var run = { link: hit.runLink, done: true, prMode: true, status: 'unknown', jobs: hit.rows, commit: {} };
-              var applyFn = build(host, run, yjobs);
-              if (!applyFn || allDone) return;
-              var poll = window.setInterval(function () {
-                fetchTasks(sha).then(function (h2) {
-                  if (!h2) return;
-                  applyFn(h2.rows);
-                  if (h2.rows.every(function (r) { return TERMINAL[r.status]; }) && tabStatus(h2.rows)) {
-                    window.clearInterval(poll);
-                  } else {
-                    tabStatus(h2.rows);
-                  }
-                });
-              }, 15000);
-            });
+    /* Place the panel just ABOVE the merge box (GitHub-like); fall back to
+       below the PR description, then to the top of the content. */
+    function panelHost() {
+      var container = document.querySelector('.ui.pull.tabs.container');
+      var mergeBox = document.querySelector('.timeline-item.comment.merge.box');
+      var first = document.querySelector('.issue-content-left .timeline-item.comment.first');
+      return mergeBox
+        || (first && first.nextElementSibling)
+        || first
+        || (container && container.nextElementSibling);
+    }
+
+    function render(sha, hit) {
+      tabStatus(hit.rows);
+      if (tab) tab.title = hit.workflow + ' · run #' + hit.runNumber;
+      if (!onConversation) return;
+
+      var dirs = ['.forgejo/workflows/', '.github/workflows/', '.gitea/workflows/'];
+      Promise.all([
+        fetchFirstOk(dirs.map(function (d) { return base + '/raw/commit/' + sha + '/' + d + hit.workflow; })),
+        fetchRunJobIndex(hit.runNumber),
+      ]).then(function (res) {
+        var yaml = res[0], jobIndex = res[1];
+        if (!yaml) return;
+        var yjobs = parseWorkflowJobs(yaml);
+        var targets = Object.create(null);
+        yjobs.forEach(function (j) { if (j.uses) targets[j.uses] = null; });
+        var selfRawBase = base + '/raw/commit/' + sha + '/.forgejo/workflows/';
+        return Promise.all(Object.keys(targets).map(function (u) {
+          return resolveDescendants(u, selfRawBase, 1, Object.create(null)).then(function (labels) {
+            targets[u] = labels;
           });
+        })).then(function () {
+          yjobs.forEach(function (j) { if (j.uses) j.childLabels = targets[j.uses] || []; });
+          var host = panelHost();
+          if (!host) return;
+          var allDone = hit.rows.every(function (r) { return TERMINAL[r.status]; });
+          var run = { link: hit.runLink, done: true, prMode: true, status: 'unknown', jobs: hit.rows, jobIndex: jobIndex, commit: {} };
+          var applyFn = build(host, run, yjobs);
+          if (!applyFn || allDone) return;
+          var poll = window.setInterval(function () {
+            fetchTasks(sha).then(function (h2) {
+              if (!h2) return;
+              applyFn(h2.rows);
+              if (h2.rows.every(function (r) { return TERMINAL[r.status]; }) && tabStatus(h2.rows)) {
+                window.clearInterval(poll);
+              } else {
+                tabStatus(h2.rows);
+              }
+            });
+          }, 15000);
+        });
       });
-    });
+    }
+
+    function startData() {
+      apiJSON('/api/v1/repos/' + m[1] + '/' + m[2] + '/pulls/' + m[3]).then(function (pr) {
+        var sha = pr && pr.head && pr.head.sha;
+        if (!sha) return;
+        waitForFirstHit(sha, 0).then(function (hit) {
+          if (!hit) { if (tab) tab.title = 'No Actions runs for the current head commit'; return; }
+          render(sha, hit);
+        });
+      });
+    }
+
+    /* Inject the "Actions" tab. Forgejo's tab bar is Vue-rendered a beat after
+       DOMContentLoaded, so retry briefly until the menu exists (mirrors the
+       rail-decoration retry) — otherwise the tab intermittently never appears. */
+    function ensureTab(tries) {
+      var menu = document.querySelector('.ui.pull.tabs.container .tabular.menu');
+      if (menu) {
+        if (!menu.querySelector('.wg-pr-tab')) {
+          tab = document.createElement('a');
+          tab.className = 'item wg-pr-tab';
+          tab.href = prLink + '#wg-pipeline';
+          tab.innerHTML = '<span class="wg-run-status wg-status-waiting"><span class="wg-node-dot"></span></span>Actions';
+          menu.insertBefore(tab, menu.querySelector('.tw-ml-auto'));
+          tabDot = tab.querySelector('.wg-run-status');
+        }
+        return;
+      }
+      if (tries >= 20) return;
+      window.setTimeout(function () { ensureTab(tries + 1); }, 250);
+    }
+
+    ensureTab(0);
+    startData();
   }
 
   function init() {
@@ -698,8 +813,8 @@
           });
           var keys = Object.keys(targets);
           return Promise.all(keys.map(function (u) {
-            return fetchFirstOk(reusableURLs(u, selfRawBase)).then(function (text) {
-              targets[u] = text ? parseWorkflowJobs(text).map(labelOf) : [];
+            return resolveDescendants(u, selfRawBase, 1, Object.create(null)).then(function (labels) {
+              targets[u] = labels;
             });
           })).then(function () {
             yjobs.forEach(function (j) {
