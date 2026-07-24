@@ -1,0 +1,147 @@
+---
+# Dark Factory — Dispatch Plane (ploeg). The hops the older dark-factory suite never
+# saw: Vikunja webhook -> ploegd -> work_items queue -> KEDA -> worker run -> PR. Built
+# on the ploeg_* exporter metrics (dispatch DB), the ploeg-db SQL datasource, VictoriaLogs,
+# and a Vikunja board seed. Correlation: litellm key_alias = 'ploeg-'||left(run_token,12),
+# grafted onto litellm_run_spend via the ploeg_run{ticket,outcome,team} series.
+#
+# Label gotchas baked into the queries:
+#  - kube-state-metrics wraps the real namespace: kube_* uses exported_namespace="ploeg".
+#  - cnpg_* is scraped by 4 overlapping selectors -> aggregate (max by ...) to de-dup the job label.
+#  - KEDA scaler ns label is "keda"; filter by scaledObject="ploeg-worker-bronze".
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: dark-factory-dispatch-plane
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  allowCrossNamespaceImport: false
+  folderRef: ai
+  json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Dark Factory — Dispatch Plane (ploeg)",
+      "uid": "dark-factory-dispatch-plane",
+      "tags": ["dark-factory"],
+      "timezone": "browser",
+      "refresh": "30s",
+      "time": {"from": "now-24h", "to": "now"},
+      "templating": {"list": []},
+      "links": [{"type": "dashboards", "title": "Dark Factory", "tags": ["dark-factory"], "asDropdown": true, "includeVars": false, "keepTime": true}],
+      "panels": [
+        {"type": "row", "title": "Pipeline at a glance", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}, "id": 1},
+        {"type": "stat", "title": "Queued now", "id": 2, "gridPos": {"h": 4, "w": 4, "x": 0, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(ploeg_work_items_count{state=\"queued\"}) or vector(0)", "instant": true}]},
+        {"type": "stat", "title": "Active runs", "id": 3, "gridPos": {"h": 4, "w": 4, "x": 4, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(ploeg_agent_runs_count{outcome=\"running\"}) or vector(0)", "instant": true}]},
+        {"type": "stat", "title": "Active leases", "id": 4, "gridPos": {"h": 4, "w": 4, "x": 8, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(ploeg_leases_active) or vector(0)", "instant": true}]},
+        {"type": "stat", "title": "PRs opened (30d)", "id": 5, "gridPos": {"h": 4, "w": 4, "x": 12, "y": 1},
+          "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "green"}}},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(ploeg_agent_runs_count{outcome=\"pr_opened\"}) or vector(0)", "instant": true}]},
+        {"type": "stat", "title": "Run success rate", "id": 6, "gridPos": {"h": 4, "w": 4, "x": 16, "y": 1},
+          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "thresholds": {"steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 40}, {"color": "green", "value": 75}]}}},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "100 * sum(ploeg_agent_runs_count{outcome=\"pr_opened\"}) / clamp_min(sum(ploeg_agent_runs_count{outcome=~\"pr_opened|failed\"}), 1)", "instant": true}]},
+        {"type": "stat", "title": "Oldest queued", "id": 7, "gridPos": {"h": 4, "w": 4, "x": 20, "y": 1},
+          "fieldConfig": {"defaults": {"unit": "s", "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 300}, {"color": "red", "value": 900}]}}},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max(ploeg_work_items_oldest_age_seconds{state=\"queued\"}) or vector(0)", "instant": true}]},
+
+        {"type": "row", "title": "Flow funnel", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5}, "id": 10},
+        {"type": "bargauge", "title": "Checkpoints reached by phase (30d)", "id": 11, "gridPos": {"h": 7, "w": 8, "x": 0, "y": 6},
+          "options": {"orientation": "horizontal", "displayMode": "gradient"},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (phase) (ploeg_checkpoints_count)", "legendFormat": "{{phase}}", "instant": true}]},
+        {"type": "piechart", "title": "Runs by outcome (30d)", "id": 12, "gridPos": {"h": 7, "w": 8, "x": 8, "y": 6},
+          "options": {"legend": {"displayMode": "table", "placement": "right", "values": ["value"]}},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (outcome) (ploeg_agent_runs_count)", "legendFormat": "{{outcome}}", "instant": true}]},
+        {"type": "timeseries", "title": "Work items by state", "id": 13, "gridPos": {"h": 7, "w": 8, "x": 16, "y": 6},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (state) (ploeg_work_items_count)", "legendFormat": "{{state}}"}]},
+
+        {"type": "row", "title": "Queue & backpressure", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 13}, "id": 20},
+        {"type": "timeseries", "title": "Queue depth: waiting items vs KEDA pending", "id": 21, "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(ploeg_work_items_count{state=\"queued\"}) or vector(0)", "legendFormat": "queued items"},
+            {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max(keda_scaler_metrics_value{scaledObject=\"ploeg-worker-bronze\"}) or vector(0)", "legendFormat": "KEDA pending"}]},
+        {"type": "timeseries", "title": "Worker jobs (active / succeeded / failed)", "id": 22, "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(kube_job_status_active{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}) or vector(0)", "legendFormat": "active"},
+            {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(kube_job_status_succeeded{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}) or vector(0)", "legendFormat": "succeeded"},
+            {"refId": "C", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(kube_job_status_failed{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}) or vector(0)", "legendFormat": "failed"}]},
+
+        {"type": "row", "title": "Lease health", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 22}, "id": 30},
+        {"type": "timeseries", "title": "Active leases by team", "id": 31, "gridPos": {"h": 7, "w": 8, "x": 0, "y": 23},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (team) (ploeg_leases_active)", "legendFormat": "{{team}}"}]},
+        {"type": "timeseries", "title": "Oldest lease age vs 15m TTL", "id": 32, "gridPos": {"h": 7, "w": 8, "x": 8, "y": 23},
+          "fieldConfig": {"defaults": {"unit": "s", "custom": {"thresholdsStyle": {"mode": "line"}}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "red", "value": 900}]}}},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max(ploeg_leases_oldest_age_seconds) or vector(0)", "legendFormat": "oldest lease age"}]},
+        {"type": "stat", "title": "Leases expired, not reclaimed", "id": 33, "gridPos": {"h": 7, "w": 8, "x": 16, "y": 23},
+          "description": "Should be 0 — a lease past expires_at that ploegd hasn't reclaimed means the dispatcher is stuck.",
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(ploeg_leases_expired_not_reclaimed) or vector(0)", "instant": true}]},
+
+        {"type": "row", "title": "Runs, cost & outcomes", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 30}, "id": 40},
+        {"type": "timeseries", "title": "Runs by outcome over time", "id": 41, "gridPos": {"h": 8, "w": 8, "x": 0, "y": 31},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (outcome) (ploeg_agent_runs_count)", "legendFormat": "{{outcome}}"}]},
+        {"type": "table", "title": "Cost per run (LLM spend grafted with ticket/outcome)", "id": 42, "gridPos": {"h": 8, "w": 16, "x": 8, "y": 31},
+          "description": "litellm_run_spend joined on key_alias to ploeg_run to carry ticket/team/outcome (USD).",
+          "fieldConfig": {"defaults": {"custom": {"filterable": true}}, "overrides": [{"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "displayName", "value": "spend USD"}]}]},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "litellm_run_spend{key_alias=~\"ploeg-.*\"} * on(key_alias) group_left(ticket,team,outcome) (ploeg_run_started_epoch >= bool 0)", "instant": true, "format": "table"}],
+          "transformations": [{"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true, "namespace": true, "pod": true, "container": true, "endpoint": true, "service": true, "server": true, "prometheus": true, "cluster": true, "team_id": true}}}]},
+
+        {"type": "row", "title": "Live pipeline events (logs)", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 39}, "id": 50},
+        {"type": "logs", "title": "ploegd dispatch log", "id": 51, "gridPos": {"h": 9, "w": 12, "x": 0, "y": 40},
+          "options": {"showTime": true, "wrapLogMessage": true, "dedupStrategy": "none"},
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"}, "expr": "{namespace=\"ploeg\", container=\"ploegd\"}", "queryType": "instant", "maxLines": 200}]},
+        {"type": "logs", "title": "Outcomes reported (with PR links)", "id": 52, "gridPos": {"h": 9, "w": 12, "x": 12, "y": 40},
+          "options": {"showTime": true, "wrapLogMessage": true, "dedupStrategy": "none"},
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"}, "expr": "{namespace=\"ploeg\"} \"outcome reported\"", "queryType": "instant", "maxLines": 200}]},
+        {"type": "logs", "title": "Worker: reasoning + per-run key mint/revoke", "id": 53, "gridPos": {"h": 9, "w": 24, "x": 0, "y": 49},
+          "options": {"showTime": true, "wrapLogMessage": true, "dedupStrategy": "none"},
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"}, "expr": "{namespace=\"ploeg\", container=\"worker\"}", "queryType": "instant", "maxLines": 300}]},
+
+        {"type": "row", "title": "Key hygiene & ploeg-db health", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 58}, "id": 60},
+        {"type": "logs", "title": "Per-run key lifecycle (minted must balance revoked)", "id": 61, "gridPos": {"h": 8, "w": 12, "x": 0, "y": 59},
+          "description": "Each minted per-run key must be followed by a revoke on run exit — a persistent imbalance is a leaked-budget key.",
+          "options": {"showTime": true, "wrapLogMessage": true, "dedupStrategy": "none"},
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"}, "expr": "{namespace=\"ploeg\", container=\"worker\"} \"per-run key\"", "queryType": "instant", "maxLines": 100}]},
+        {"type": "timeseries", "title": "ploeg-db size / replication / backup age", "id": 62, "gridPos": {"h": 8, "w": 12, "x": 12, "y": 59},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max by (datname) (cnpg_pg_database_size_bytes{namespace=\"ploeg\",datname=\"app\"})", "legendFormat": "db size {{datname}}"},
+            {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max(cnpg_pg_replication_lag{namespace=\"ploeg\"}) or vector(0)", "legendFormat": "replication lag (s)"},
+            {"refId": "C", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "time() - max(cnpg_collector_last_available_backup_timestamp{namespace=\"ploeg\"})", "legendFormat": "backup age (s)"}]},
+
+        {"type": "row", "title": "Board seed — ticket ↔ run ↔ PR", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 67}, "id": 70},
+        {"type": "table", "title": "Factory record (ploeg-db): work item → state → PR", "id": 71, "gridPos": {"h": 9, "w": 14, "x": 0, "y": 68},
+          "datasource": {"type": "grafana-postgresql-datasource", "uid": "ploeg-db"},
+          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "ploeg-db"}, "rawQuery": true, "format": "table",
+            "rawSql": "SELECT w.external_id AS ticket, left(w.title,60) AS title, w.state, w.attempts, count(r.id) AS runs, count(*) FILTER (WHERE r.outcome = 'pr_opened') AS prs, coalesce(max(c.pr_url) FILTER (WHERE c.pr_url <> ''), '') AS latest_pr FROM work_items w LEFT JOIN agent_runs r ON r.work_item_id = w.id LEFT JOIN checkpoints c ON c.work_item_id = w.id GROUP BY w.external_id, w.title, w.state, w.attempts ORDER BY w.external_id DESC"}]},
+        {"type": "table", "title": "Ploeg Test board (Vikunja) — done state", "id": 72, "gridPos": {"h": 9, "w": 10, "x": 14, "y": 68},
+          "description": "The Vikunja source-of-truth for the same tickets. A PR opened but task not done = pending human merge.",
+          "datasource": {"type": "grafana-postgresql-datasource", "uid": "vikunja-db"},
+          "targets": [{"refId": "A", "datasource": {"type": "grafana-postgresql-datasource", "uid": "vikunja-db"}, "rawQuery": true, "format": "table",
+            "rawSql": "SELECT id AS ticket, left(title,60) AS title, done, done_at FROM tasks WHERE project_id = 11 ORDER BY id DESC LIMIT 100"}]}
+      ]
+    }

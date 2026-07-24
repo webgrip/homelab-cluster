@@ -89,22 +89,29 @@ data:
         - team: {usage: "LABEL", description: "Team"}
         - stuck_reason: {usage: "LABEL", description: "Why the run got stuck"}
         - count: {usage: "GAUGE", description: "Stuck runs with this reason, 30d"}
-    # Per-run wall-clock keyed by the litellm-joinable alias. duration uses now()
-    # for still-running rows. 30d cap bounds cardinality (a few runs/day).
+    # Per-run wall-clock keyed by the litellm-joinable alias, carrying the source
+    # ticket so PromQL can attribute LLM spend to a ticket without a cross-datasource
+    # SQL join:  litellm_run_spend * on(key_alias) group_left(ticket) ploeg_run_*.
+    # duration uses now() for still-running rows. 30d cap bounds cardinality.
     ploeg_run:
       query: |
-        SELECT 'ploeg-' || left(run_token, 12) AS key_alias,
-               COALESCE(NULLIF(team,''),'none') AS team,
-               CASE WHEN finished_at IS NULL THEN 'running'
-                    ELSE COALESCE(NULLIF(outcome,''),'unknown') END AS outcome,
-               EXTRACT(EPOCH FROM (COALESCE(finished_at, now()) - started_at)) AS duration_seconds,
-               EXTRACT(EPOCH FROM started_at) AS started_epoch
-        FROM agent_runs
-        WHERE started_at >= now() - interval '30 days'
+        SELECT 'ploeg-' || left(r.run_token, 12) AS key_alias,
+               COALESCE(NULLIF(r.team,''),'none') AS team,
+               CASE WHEN r.finished_at IS NULL THEN 'running'
+                    ELSE COALESCE(NULLIF(r.outcome,''),'unknown') END AS outcome,
+               COALESCE(NULLIF(w.provider,''),'none') AS provider,
+               COALESCE(NULLIF(w.external_id,''),'none') AS ticket,
+               EXTRACT(EPOCH FROM (COALESCE(r.finished_at, now()) - r.started_at)) AS duration_seconds,
+               EXTRACT(EPOCH FROM r.started_at) AS started_epoch
+        FROM agent_runs r
+        JOIN work_items w ON w.id = r.work_item_id
+        WHERE r.started_at >= now() - interval '30 days'
       metrics:
         - key_alias: {usage: "LABEL", description: "ploeg-<run_token[:12]> — joins to litellm_run_spend{key_alias}"}
         - team: {usage: "LABEL", description: "Team"}
         - outcome: {usage: "LABEL", description: "Run outcome (pr_opened/failed/running)"}
+        - provider: {usage: "LABEL", description: "Tracker that sourced the work item (e.g. vikunja)"}
+        - ticket: {usage: "LABEL", description: "Source ticket id (work_items.external_id) — the Vikunja task"}
         - duration_seconds: {usage: "GAUGE", description: "Run wall-clock start->finish (s); ongoing uses now()"}
         - started_epoch: {usage: "GAUGE", description: "Unix epoch of the run's start"}
     # Flow funnel by phase. phase ∈ {branch_created, pr_opened, …}. Counting
