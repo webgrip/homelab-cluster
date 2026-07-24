@@ -41,6 +41,10 @@ check_file() {
       echo "WARN ${file}: skipped digest verification for ${image}:${tag} because the registry returned a transient error"
       return 0
     fi
+    if [[ "${OCI_FETCH_DIGEST_ERROR_KIND:-}" == "anonymous-private" ]]; then
+      echo "SKIP ${file}: ${image}:${tag} is in a private Harbor project and this run has no registry credentials (digest presence still enforced; the push/main run verifies the match)"
+      return 0
+    fi
     echo "FAIL ${file}: could not resolve registry digest for ${image}:${tag}"
     return 1
   fi
