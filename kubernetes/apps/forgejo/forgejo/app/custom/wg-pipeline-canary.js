@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var WG_VERSION = '3.3.0';
+  var WG_VERSION = '3.3.1';
   try { window.__wgPipeline = { version: WG_VERSION }; } catch (e) { }
 
   var RANK = { failure: 7, unknown: 7, cancelled: 6, running: 5, blocked: 4, waiting: 4, success: 3, skipped: 2 };
@@ -268,7 +268,8 @@
         if (byId[nid]) edges.push({ from: nid, to: j.id });
       });
     });
-    if (!edges.length) return;
+    /* workflows without needs still get a panel: a flat status grid */
+    var flat = !edges.length;
 
     var stages = [];
     yjobs.forEach(function (j) {
@@ -303,7 +304,7 @@
 
     var section = document.createElement('section');
     section.id = 'wg-pipeline';
-    section.className = 'wg-pipeline';
+    section.className = flat ? 'wg-pipeline wg-pipeline-flat' : 'wg-pipeline';
     if (localStorage.getItem('wg-pipeline-collapsed') === '1') section.classList.add('wg-collapsed');
 
     var header = document.createElement('div');
@@ -311,7 +312,7 @@
     header.innerHTML = '<span class="wg-caret">&#9662;</span>' +
       '<span class="wg-run-status wg-status-waiting"><span class="wg-node-dot"></span></span>' +
       '<span>Pipeline</span>' +
-      '<span class="wg-pipeline-meta">' + run.jobs.length + ' jobs &middot; ' + stages.length + ' stages</span>';
+      '<span class="wg-pipeline-meta">' + run.jobs.length + ' jobs' + (flat ? '' : ' &middot; ' + stages.length + ' stages') + '</span>';
     header.addEventListener('click', function () {
       section.classList.toggle('wg-collapsed');
       localStorage.setItem('wg-pipeline-collapsed', section.classList.contains('wg-collapsed') ? '1' : '0');
