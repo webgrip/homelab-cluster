@@ -1,0 +1,67 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/policyexception_v2.json
+# Exception for the shared per-node CI docker daemon (forgejo-dind DaemonSet, forgejo ns).
+# It replaces the per-pod privileged dind sidecar of forgejo-runner (see
+# exception-forgejo-runner.yaml) with ONE daemon per worker node holding a persistent
+# hostPath image store — the fix for every `container:` job re-pulling and re-extracting
+# multi-GB CI images into throwaway storage (~4-10 min/job, measured 2026-07-23).
+#
+# What it necessarily violates, and why:
+#   - privileged: a Docker daemon requires it, exactly like the sidecar it replaces.
+#   - hostPath: the POINT of the design — /var/lib/forgejo-dind persists the image cache
+#     across jobs; /dev/shm/forgejo-ci-shared gives runner pods and the daemon bind-mount
+#     path parity in node RAM (same IOPS rationale as the old tmpfs emptyDir).
+#   - hostPort 2375: runner pods reach their node's daemon at status.hostIP; access is
+#     fenced by the forgejo-dind CiliumNetworkPolicy (runner pods in this namespace only).
+# Tracking: revisit together with exception-forgejo-runner if the pool moves to a
+# rootless/sysbox daemon.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: exception-forgejo-dind
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      Shared per-node CI docker daemon: privileged (a dockerd requirement, same as the
+      runner sidecar it replaces), hostPath (persistent per-node image cache + node-RAM
+      shared workspace — the purpose of the design), and hostPort 2375 (node-local
+      endpoint for runner pods, fenced by the forgejo-dind CiliumNetworkPolicy). The
+      prune and init containers run unprivileged but Kyverno waives per-resource, not
+      per-container, so this covers the whole pod.
+spec:
+  exceptions:
+    - policyName: pod-security-baseline-enforce
+      ruleNames:
+        - privileged-containers
+        - autogen-privileged-containers
+        - host-path
+        - autogen-host-path
+        - host-ports-none
+        - autogen-host-ports-none
+    - policyName: workload-hardening-audit
+      ruleNames:
+        - privilege-escalation
+        - run-as-non-root
+        - check-seccomp-strict
+    - policyName: workload-advanced-hardening-audit
+      ruleNames:
+        - require-drop-all-capabilities
+  match:
+    any:
+      - resources:
+          kinds:
+            - DaemonSet
+          namespaces:
+            - forgejo
+          names:
+            - forgejo-dind
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - forgejo
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: forgejo-dind
