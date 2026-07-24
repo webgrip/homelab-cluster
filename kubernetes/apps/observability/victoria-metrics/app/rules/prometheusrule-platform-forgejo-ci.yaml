@@ -1,0 +1,133 @@
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/monitoring.coreos.com/prometheusrule_v1.json
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-forgejo-ci
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: platform.forgejo-ci
+      # CI-health alerting for the Forgejo Actions runner fleet. The infra-forgejo-ci Grafana
+      # dashboard already visualises these series; nothing paged on them until now. Selectors mirror
+      # that dashboard: keda_scaler_*{scaledObject="forgejo-runner"} and the KSM pod-phase series
+      # keyed by `exported_namespace` (NOT `namespace` — KSM series are relabelled that way here).
+      # CONFIRM each expr in vmui/Grafana Explore before merge; a wrong label yields a silent
+      # never-firing alert.
+      rules:
+        - alert: ForgejoCIScalerReadErrors
+          # The exact silent-backlog signature of the 2026-07-18 netpol incident: KEDA can't read
+          # the runner-queue API, so only the warm floor scales and the queue drains for hours.
+          expr: increase(keda_scaler_detail_errors_total{scaledObject="forgejo-runner"}[10m]) > 0
+          for: 10m
+          labels:
+            severity: critical
+            owner: platform
+            service: forgejo-ci
+          annotations:
+            summary: "Forgejo CI KEDA scaler is erroring (forgejo-runner)"
+            description: |
+              What's happening:
+              - KEDA's scaler for the forgejo-runner ScaledJob has logged read errors for 10m.
+
+              Impact/risk:
+              - Autoscaling is blind: only the warm floor (minReplicaCount) runs, so the CI queue
+                backs up for hours even though the UI shows runners "available". Silent — no run fails.
+
+              Likely causes:
+              - NetworkPolicy blocking keda-operator -> Forgejo runner-queue API (the 2026-07-18 bug)
+              - Forgejo server down/unreachable, or a bad scaler auth/trigger config
+
+              First actions:
+              - Check keda-operator logs and the forgejo networkpolicy (keda ns in allow-ingress)
+              - Confirm the Forgejo server is up; see the erfbeeld CI operations runbook
+                (blocked-5-vs-waiting) and the homelab forgejo-runner runbook
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo-ci"
+
+        - alert: ForgejoCIQueueBacklog
+          # 6 = maxReplicaCount; sustained demand beyond the ceiling is a node-bound backlog. The
+          # ScaledJob comment is explicit: the lever is doing less CI work, not raising max.
+          expr: max(keda_scaler_metrics_value{scaledObject="forgejo-runner"}) > 6
+          for: 20m
+          labels:
+            severity: warning
+            owner: platform
+            service: forgejo-ci
+          annotations:
+            summary: "Forgejo CI queue backlogged beyond runner ceiling (forgejo-runner)"
+            description: |
+              What's happening:
+              - Pending Actions jobs have exceeded maxReplicaCount (6) for 20m.
+
+              Impact/risk:
+              - CI wall-time climbs; releases and previews queue.
+
+              Likely causes:
+              - A large fan-out wave (e.g. Renovate) or a slow job holding runners
+              - Node saturation capping effective concurrency below the queue depth
+
+              First actions:
+              - `bin/ci runs` (fleet queued count) and the infra-forgejo-ci dashboard
+              - Consider trimming per-push CI work; do NOT just raise maxReplicaCount (manufactures
+                Pending pods — see the forgejo-runner ScaledJob comment)
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo-ci"
+
+        - alert: ForgejoCIRunnerPodsPending
+          expr: sum(kube_pod_status_phase{exported_namespace="forgejo", pod=~"forgejo-runner-.*", phase="Pending"}) > 0
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+            service: forgejo-ci
+          annotations:
+            summary: "Forgejo CI runner pods stuck Pending (forgejo-runner)"
+            description: |
+              What's happening:
+              - One or more forgejo-runner pods have been Pending for 10m (unschedulable).
+
+              Impact/risk:
+              - Effective runner concurrency is below the configured max; CI throughput drops.
+
+              Likely causes:
+              - Node memory/CPU saturation on the worker pool (FailedScheduling)
+              - PVC/attachment or taint/toleration mismatch
+
+              First actions:
+              - kubectl -n forgejo describe the Pending pod (Events)
+              - Check worker-pool node pressure (platform-nodes alerts)
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo-ci"
+
+        - alert: ForgejoCIWarmPoolStarved
+          # Optional / lower-priority: the warm floor (minReplicaCount 4) is not being met while
+          # there is demand. The `> 0` demand guard and the 15m window keep normal rollover quiet.
+          expr: |
+            sum(kube_pod_status_phase{exported_namespace="forgejo", pod=~"forgejo-runner-.*", phase="Running"}) < 4
+            and max(keda_scaler_metrics_value{scaledObject="forgejo-runner"}) > 0
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: forgejo-ci
+          annotations:
+            summary: "Forgejo CI warm runner pool below floor under demand (forgejo-runner)"
+            description: |
+              What's happening:
+              - Fewer than the warm floor (4) of runners are Running while jobs are queued, for 15m.
+
+              Impact/risk:
+              - First-job latency rises; the warm-pool guarantee is not holding.
+
+              Likely causes:
+              - Node pressure preventing the floor from scheduling (see ForgejoCIRunnerPodsPending)
+              - KEDA scaler issues (see ForgejoCIScalerReadErrors)
+
+              First actions:
+              - Correlate with the Pending and scaler-error alerts above
+              - infra-forgejo-ci dashboard (warm-idle / running panels)
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo-ci"

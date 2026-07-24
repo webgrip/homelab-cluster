@@ -93,3 +93,67 @@ spec:
               - Check container restart reason (OOMKilled?) and resource limits
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/forgejo/forgejo"
+
+        - alert: ForgejoServerOOMKilled
+          # A server restart mid-run is invisible to the CI tooling except as the "every step
+          # cancelled at 0s" signature; this makes it page. Verified 2026-07-24: one container-limit
+          # OOMKill at 09:32Z during a doubled-push CI burst, steady-state working set ~259Mi vs the
+          # 2Gi limit — a burst spike, not chronic pressure. Do NOT reflexively raise the limit; use
+          # the MemoryNearLimit trend to decide (see the erfbeeld CI operations runbook).
+          expr: kube_pod_container_status_last_terminated_reason{namespace="forgejo", container="forgejo", reason="OOMKilled"} == 1
+          for: 2m
+          labels:
+            severity: critical
+            owner: platform
+            service: forgejo
+          annotations:
+            summary: "Forgejo server container was OOMKilled (forgejo)"
+            description: |
+              What's happening:
+              - The forgejo container's last termination reason is OOMKilled.
+
+              Impact/risk:
+              - Any in-flight CI run dies WITHOUT error lines — every step shows "cancelled at 0s".
+                Operators must not debug the workflow; the run just needs re-pushing.
+
+              Likely causes:
+              - A CI burst (many concurrent git/LFS/action-log operations) spiking past the 2Gi limit
+              - A genuine memory leak (would show as a rising MemoryNearLimit trend)
+
+              First actions:
+              - bin/ci run <id> on the affected run -> confirms the infra_oom_or_restart signal
+              - Check the ForgejoServerMemoryNearLimit trend before changing limits
+              - Re-push the affected run(s); see the erfbeeld CI operations runbook (OOM signature)
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo"
+
+        - alert: ForgejoServerMemoryNearLimit
+          # Early-warning that precedes an OOM. This trend is what to consult before deciding whether
+          # the 2Gi limit needs raising (verify-then-maybe-bump), not a single kill.
+          expr: |
+            max(container_memory_working_set_bytes{namespace="forgejo", container="forgejo"})
+            / max(kube_pod_container_resource_limits{namespace="forgejo", container="forgejo", resource="memory"})
+            > 0.9
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+            service: forgejo
+          annotations:
+            summary: "Forgejo server memory > 90% of its limit (forgejo)"
+            description: |
+              What's happening:
+              - The forgejo container's working set has exceeded 90% of its memory limit for 10m.
+
+              Impact/risk:
+              - An OOMKill is imminent, which silently kills in-flight CI runs.
+
+              Likely causes:
+              - Sustained load beyond the current limit (not just a transient burst)
+
+              First actions:
+              - Review the 7d working-set trend on the infra-forgejo dashboard
+              - If genuinely sustained (not a one-off burst), raise limits.memory in
+                kubernetes/apps/forgejo/forgejo/app/helmrelease.yaml (worker-1 is the high-RAM node)
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo"
