@@ -14,17 +14,56 @@ data:
     # string must be a real upstream model. The proxy starts regardless; a
     # model is only contacted when a request names it. Add/rename freely.
     model_list:
+      # --- Anthropic: the FULL live catalog (verified against GET /v1/models
+      # with the production key, 2026-07-25 — 11 models). Public alias =
+      # model_name; upstream uses undated alias IDs where Anthropic serves one.
+      # Spend note: opus-5/fable-5 are premium-priced — a single hefty run can
+      # eat most of the 5 USD/day anthropic provider cap below. ---
+      - model_name: claude-opus-5
+        litellm_params:
+          model: anthropic/claude-opus-5
+          api_key: os.environ/ANTHROPIC_API_KEY
+      - model_name: claude-fable-5
+        litellm_params:
+          model: anthropic/claude-fable-5
+          api_key: os.environ/ANTHROPIC_API_KEY
       - model_name: claude-opus-4-8
         litellm_params:
           model: anthropic/claude-opus-4-8
+          api_key: os.environ/ANTHROPIC_API_KEY
+      - model_name: claude-opus-4-7
+        litellm_params:
+          model: anthropic/claude-opus-4-7
+          api_key: os.environ/ANTHROPIC_API_KEY
+      - model_name: claude-opus-4-6
+        litellm_params:
+          model: anthropic/claude-opus-4-6
           api_key: os.environ/ANTHROPIC_API_KEY
       - model_name: claude-sonnet-5
         litellm_params:
           model: anthropic/claude-sonnet-5
           api_key: os.environ/ANTHROPIC_API_KEY
+      - model_name: claude-sonnet-4-6
+        litellm_params:
+          model: anthropic/claude-sonnet-4-6
+          api_key: os.environ/ANTHROPIC_API_KEY
       - model_name: claude-haiku-4-5
         litellm_params:
           model: anthropic/claude-haiku-4-5
+          api_key: os.environ/ANTHROPIC_API_KEY
+      # Legacy tier (still served upstream; dated snapshots resolve via alias).
+      # opus-4-1 is deprecated upstream (retires 2026-08-05) — drop it then.
+      - model_name: claude-opus-4-5
+        litellm_params:
+          model: anthropic/claude-opus-4-5
+          api_key: os.environ/ANTHROPIC_API_KEY
+      - model_name: claude-sonnet-4-5
+        litellm_params:
+          model: anthropic/claude-sonnet-4-5
+          api_key: os.environ/ANTHROPIC_API_KEY
+      - model_name: claude-opus-4-1
+        litellm_params:
+          model: anthropic/claude-opus-4-1
           api_key: os.environ/ANTHROPIC_API_KEY
       # Upstream renamed their models (2026-07-24, verified by live 400s:
       # "The supported API model names are deepseek-v4-pro or deepseek-v4-flash,
@@ -183,8 +222,18 @@ data:
       # the other provider. prompt_caching affinity is a no-op while groups
       # are single-deployment — set now for the day one gains #2. ---
       fallbacks:
+        # Premium tier falls DOWN the family (never up — a refusal/outage on a
+        # cheap model must not silently route to a 10x-priced one).
+        - claude-opus-5: ["claude-opus-4-8", "claude-sonnet-5"]
+        - claude-fable-5: ["claude-opus-4-8", "claude-sonnet-5"]
         - claude-opus-4-8: ["claude-sonnet-5", "deepseek-chat"]
+        - claude-opus-4-7: ["claude-sonnet-5", "deepseek-chat"]
+        - claude-opus-4-6: ["claude-sonnet-5", "deepseek-chat"]
+        - claude-opus-4-5: ["claude-sonnet-5", "deepseek-chat"]
+        - claude-opus-4-1: ["claude-sonnet-5", "deepseek-chat"]
         - claude-sonnet-5: ["deepseek-chat"]
+        - claude-sonnet-4-6: ["deepseek-chat"]
+        - claude-sonnet-4-5: ["deepseek-chat"]
         - claude-haiku-4-5: ["deepseek-chat"]
         - deepseek-chat: ["claude-haiku-4-5"]
         - deepseek-reasoner: ["claude-sonnet-5"]
@@ -203,9 +252,13 @@ data:
       # --- VIK-278: legacy/hardcoded model names resolve to current
       # deployments instead of 404ing. ---
       model_group_alias:
+        # claude-opus deliberately stays on 4-8: repointing the generic alias
+        # at opus-5 would silently 2x the cost for every alias consumer —
+        # bump it as an owner decision, not a catalog side effect.
         claude-opus: claude-opus-4-8
         claude-sonnet: claude-sonnet-5
         claude-haiku: claude-haiku-4-5
+        claude-fable: claude-fable-5
         claude-3-5-sonnet-latest: claude-sonnet-5
         claude-3-5-haiku-latest: claude-haiku-4-5
 
