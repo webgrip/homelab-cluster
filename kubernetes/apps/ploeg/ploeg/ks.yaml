@@ -1,5 +1,35 @@
 ---
 # yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# Split into two Kustomizations so ploegd only rolls out once its database is
+# actually healthy: on the first deploy ploegd raced ploeg-db's bootstrap and
+# crash-restarted twice before the DB accepted connections. The healthCheck
+# on the CNPG Cluster (kstatus-compatible) gates the app layer.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: ploeg-db
+spec:
+  dependsOn:
+    - name: external-secrets-stores
+      namespace: security
+    - name: cloudnative-pg
+      namespace: cnpg-system
+  interval: 1h
+  path: ./kubernetes/apps/ploeg/ploeg/app/database
+  healthChecks:
+    - apiVersion: postgresql.cnpg.io/v1
+      kind: Cluster
+      name: ploeg-db
+      namespace: ploeg
+  timeout: 10m
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: ploeg
+  wait: false
+---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -8,8 +38,7 @@ spec:
   dependsOn:
     - name: external-secrets-stores
       namespace: security
-    - name: cloudnative-pg
-      namespace: cnpg-system
+    - name: ploeg-db
   interval: 1h
   path: ./kubernetes/apps/ploeg/ploeg/app
   postBuild:
