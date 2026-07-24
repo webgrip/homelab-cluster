@@ -62,10 +62,27 @@ for org in $(printf '%s\n' "${MIRRORS[@]}" | awk '{print $1}' | sort -u); do
   esac
 done
 
-echo "== migrating mirrors =="
+# Wait until the Forgejo API answers — migrations are memory-hungry server-side (a burst of
+# them OOMKilled the 2Gi server on 2026-07-24), so serialize and health-gate every step.
+wait_healthy() {
+  for _ in $(seq 1 60); do
+    curl -fsS -o /dev/null -m 5 "${API}/version" && return 0
+    sleep 5
+  done
+  echo "Forgejo API did not come back within 5 minutes" >&2
+  return 1
+}
+
+echo "== migrating mirrors (serialized — each waits for a healthy server) =="
 while read -r org repo url; do
   [ -n "$org" ] || continue
-  code=$(curl -sS -o /tmp/mirror-resp.json -w '%{http_code}' "${AUTH[@]}" \
+  wait_healthy
+  # Skip fast if the repo already exists (idempotent re-runs after a partial pass).
+  if curl -fsS -o /dev/null -m 10 "${AUTH[@]}" "${API}/repos/${org}/${repo}"; then
+    echo "  ${org}/${repo} exists"
+    continue
+  fi
+  code=$(curl -sS -o /tmp/mirror-resp.json -w '%{http_code}' --max-time 300 "${AUTH[@]}" \
     -X POST -H 'Content-Type: application/json' \
     -d "$(printf '{"clone_addr":"%s","repo_owner":"%s","repo_name":"%s","mirror":true,"mirror_interval":"%s","private":false}' "$url" "$org" "$repo" "$INTERVAL")" \
     "${API}/repos/migrate")
@@ -74,9 +91,12 @@ while read -r org repo url; do
     409) echo "  ${org}/${repo} exists" ;;
     *) echo "  WARN ${org}/${repo}: HTTP ${code} $(head -c200 /tmp/mirror-resp.json)" ;;
   esac
+  # Let the server settle (migration clones finish asynchronously server-side).
+  sleep 10
 done < <(printf '%s\n' "${MIRRORS[@]}")
 
 echo "== verifying anonymous clone access (what the runner does) =="
+wait_healthy
 fail=0
 while read -r org repo _; do
   [ -n "$org" ] || continue
