@@ -26,19 +26,14 @@ stderr_file="${workspace}/flux-local.stderr"
 
 prepare_flux_local_workspace "${ROOT_DIR}" "${repo_workspace}"
 
-# list_flux_kustomizations's underlying `flux build` mutates (renames-to-.original then
-# restores) every kustomization.yaml it resolves while walking the tree, and restores them
-# owned by the flux-local container's UID with mode 644 -- not the a+rwX prepare_flux_local_workspace
-# set. rsync (run as the host user, unprivileged) can't preserve that foreign UID on copy, so
-# any later worker fan-out copied FROM a workspace list_flux_kustomizations touched inherits
-# 644-owned-by-host-user files that the (different-UID) build containers can no longer write to
-# -- "open .../kustomization.yaml: permission denied" on the very first build. Give this step
-# its own disposable copy so its mutation never reaches repo_workspace, which run_flux_local_batch
-# fans out from for every parallel worker.
-list_workspace="${workspace}/list"
-rsync -a "${repo_workspace}/" "${list_workspace}/"
-list_flux_kustomizations "${list_workspace}" "${ks_list}" "${stderr_file}"
-rm -rf "${list_workspace}"
+# The retry wrapper fans a fresh disposable workspace copy out of repo_workspace per
+# attempt: the listing mutates the tree it walks (and a timeout aborts it mid-mutation),
+# so neither repo_workspace — which run_flux_local_batch later fans its workers out from —
+# nor a previous attempt's tree may ever be reused. Full rationale, including why one
+# attempt can time out at all, lives on list_flux_kustomizations_with_retry.
+if ! list_flux_kustomizations_with_retry "${repo_workspace}" "${workspace}" "${ks_list}" "${stderr_file}"; then
+    log error "Kustomization listing failed after all attempts" "attempts=${FLUX_LOCAL_LIST_ATTEMPTS:-3}"
+fi
 print_relevant_flux_local_stderr "${stderr_file}"
 
 total="$(wc -l < "${ks_list}")"

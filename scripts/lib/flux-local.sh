@@ -175,6 +175,58 @@ function list_flux_kustomizations() {
     rm -f "${raw_output}"
 }
 
+# Retry wrapper around list_flux_kustomizations.
+#
+# WHY RETRY: flux-local's per-command timeout is hardcoded upstream at 60s
+# (flux_local/command.py::_TIMEOUT — still hardcoded as of 8.4.0, no flag/env override),
+# and the listing walks + kustomize-builds the WHOLE tree on every run, before any change
+# scoping. On a disk-saturated runner one slow kustomize build aborts the entire listing
+# with a TimeoutError (2026-07-24, run 458 + PR #436: fringe-workstation disk >90% busy
+# for an hour under 7 concurrent runner pods + a Renovate wave — both runs died here).
+# Those contention bursts drain in minutes, so a spaced retry turns them from a hard gate
+# failure into latency.
+#
+# WHY A FRESH COPY PER ATTEMPT: the underlying `flux build` MUTATES the tree it walks —
+# it renames every kustomization.yaml it resolves to .original and restores it owned by
+# the flux-local container's UID with mode 644, not the a+rwX the workspace was prepared
+# with. rsync (run as the host user, unprivileged) can't preserve that foreign UID on
+# copy, so any tree the listing touched poisons every later worker fan-out copied from it
+# ("open .../kustomization.yaml: permission denied" on the first build). Worse, a
+# timed-out attempt aborts MID-mutation with .original files never restored — retrying in
+# the same tree would fail on missing kustomization.yamls. So each attempt fans its own
+# disposable copy out of SOURCE_WORKSPACE, which itself is never touched and stays safe
+# for run_flux_local_batch to fan out from.
+#
+# Args: SOURCE_WORKSPACE SCRATCH_DIR OUTPUT_FILE STDERR_FILE
+# Env: FLUX_LOCAL_LIST_ATTEMPTS (default 3), FLUX_LOCAL_LIST_BACKOFF seconds (default 75).
+function list_flux_kustomizations_with_retry() {
+    local source_workspace="$1"
+    local scratch_dir="$2"
+    local output_file="$3"
+    local stderr_file="$4"
+
+    local attempts="${FLUX_LOCAL_LIST_ATTEMPTS:-3}"
+    local backoff="${FLUX_LOCAL_LIST_BACKOFF:-75}"
+
+    local attempt list_workspace rc=1
+    for (( attempt = 1; attempt <= attempts; attempt++ )); do
+        list_workspace="${scratch_dir}/list-attempt-${attempt}"
+        rsync -a "${source_workspace}/" "${list_workspace}/"
+        rc=0
+        list_flux_kustomizations "${list_workspace}" "${output_file}" "${stderr_file}" || rc=$?
+        rm -rf "${list_workspace}"
+        if (( rc == 0 )); then
+            return 0
+        fi
+        if (( attempt < attempts )); then
+            log warn "Kustomization listing failed -- retrying" \
+                "attempt=${attempt}/${attempts}" "backoff=${backoff}s"
+            sleep "${backoff}"
+        fi
+    done
+    return "${rc}"
+}
+
 # Narrow a ks list down to the kustomizations a change set can actually affect.
 #
 # WHY: rendering all ~90 kustomizations takes ~20min on the shared runner (the builds are
