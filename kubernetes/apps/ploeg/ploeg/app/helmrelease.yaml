@@ -24,6 +24,10 @@ spec:
     env:
       PLOEG_DEFAULT_TEAM: bronze
       PLOEG_LEASE_TTL: 15m
+      # Assignee-username -> team routing (ploegd parseTeamMap). One Vikunja
+      # user per team: assign a ticket to user `silver` to dispatch the silver
+      # team; unmapped assignees fall back to PLOEG_DEFAULT_TEAM.
+      PLOEG_TEAM_MAP: "bronze=bronze,silver=silver"
     executor:
       enabled: true
       scaler:
@@ -40,4 +44,14 @@ spec:
           budget: "2"
           repoOwner: webgrip
           repoName: erfbeeld
+          maxReplicaCount: 1
+        # silver: the ploeg-repo team — the factory working on its own
+        # dispatch plane (first job: the per-run key leak, VIK ticket).
+        # sonnet-5 at $4/run: real Go surgery, inside the anthropic
+        # 5 USD/day router cap (falls back to deepseek-chat if it trips).
+        - name: silver
+          model: litellm_proxy/claude-sonnet-5
+          budget: "4"
+          repoOwner: webgrip
+          repoName: ploeg
           maxReplicaCount: 1

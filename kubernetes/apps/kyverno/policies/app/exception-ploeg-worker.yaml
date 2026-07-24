@@ -41,6 +41,8 @@ spec:
   match:
     any:
       # The resource the webhook actually rejects: the KEDA-generated worker Job.
+      # One entry per team ScaledJob (exception-governance forbids wildcard
+      # names; label matches must be exact).
       - resources:
           kinds:
             - Job
@@ -49,6 +51,14 @@ spec:
           selector:
             matchLabels:
               scaledjob.keda.sh/name: ploeg-worker-bronze
+      - resources:
+          kinds:
+            - Job
+          namespaces:
+            - ploeg
+          selector:
+            matchLabels:
+              scaledjob.keda.sh/name: ploeg-worker-silver
       # The ephemeral worker Pod the Job spawns, carrying the template label.
       - resources:
           kinds:
