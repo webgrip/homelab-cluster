@@ -66,8 +66,11 @@ spec:
             configBlock: |-
               pods verified
               fallthrough in-addr.arpa ip6.arpa
-          - name: autopath
-            parameters: "@kubernetes"
+          # NO autopath here. It answers pods' search-expanded queries (ndots:5 makes
+          # `forgejo.${SECRET_DOMAIN}` arrive as `....svc.cluster.local` first) by
+          # resolving the stripped name inside THIS block — via the public upstream
+          # below — so ${SECRET_DOMAIN} names bypass the k8s-gateway stub zone above
+          # and every pod hairpins through Cloudflare (intermittent CI TLS failures).
           - name: forward
             parameters: . /etc/resolv.conf
           - name: cache
