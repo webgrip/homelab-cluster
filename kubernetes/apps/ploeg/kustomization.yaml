@@ -1,0 +1,16 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ploeg
+
+components:
+  # sops: provides the SOPS-decrypted cluster-secrets Secret in-namespace —
+  # required for this ns's Flux Kustomization postBuild.substituteFrom.
+  - ../../components/sops
+  - ../../components/resource-quota
+  - ../../components/cnpg-backup
+
+resources:
+  - ./namespace.yaml
+  - ./ploeg/ks.yaml

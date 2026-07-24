@@ -42,8 +42,20 @@ fetch_digest() {
       # (anonymous) bearer token; without it every manifest HEAD returns 401,
       # which failed the whole script — and with it every Renovate
       # postUpgradeTask — for all harbor-proxied charts.
+      #
+      # First-party charts live in the PRIVATE webgrip project
+      # (webgrip/charts/*), where an anonymous token gets 401. When robot
+      # credentials are in the environment (CI passes HARBOR_ROBOT_USER/
+      # HARBOR_ROBOT_TOKEN), request the scoped token WITH basic auth so
+      # private repositories resolve too; anonymous stays the fallback.
       local token
-      token="$(curl -fsSL "https://harbor.webgrip.dev/service/token?service=harbor-registry&scope=repository:${path}:pull" | jq -r .token)"
+      local -a token_auth=()
+      OCI_FETCH_HARBOR_ANON=1
+      if [[ -n "${HARBOR_ROBOT_USER:-}" && -n "${HARBOR_ROBOT_TOKEN:-}" ]]; then
+        token_auth=(-u "${HARBOR_ROBOT_USER}:${HARBOR_ROBOT_TOKEN}")
+        OCI_FETCH_HARBOR_ANON=0
+      fi
+      token="$(curl -fsSL "${token_auth[@]}" "https://harbor.webgrip.dev/service/token?service=harbor-registry&scope=repository:${path}:pull" | jq -r .token)"
       auth_header=(-H "Authorization: Bearer ${token}")
       ;;
   esac
@@ -73,6 +85,17 @@ fetch_digest() {
   if [[ "$status" == "000" || "$status" =~ ^5[0-9][0-9]$ ]]; then
     OCI_FETCH_DIGEST_ERROR_KIND="transient"
     return 2
+  fi
+
+  # Private-project entries (first-party charts under harbor webgrip/*) cannot
+  # be resolved without robot credentials. PR-triggered runs may not receive
+  # the org secrets (AGit/fork semantics), so classify anonymous 401/403 as
+  # its own kind: the caller SKIPs it, and the push/main run — which does get
+  # secrets — performs the real verification.
+  if [[ "${OCI_FETCH_HARBOR_ANON:-0}" == "1" && "$host" == "harbor.webgrip.dev" \
+        && ( "$status" == "401" || "$status" == "403" ) ]]; then
+    OCI_FETCH_DIGEST_ERROR_KIND="anonymous-private"
+    return 3
   fi
 
   OCI_FETCH_DIGEST_ERROR_KIND="permanent"

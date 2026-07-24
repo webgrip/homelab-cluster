@@ -69,6 +69,11 @@ jobs:
           persist-credentials: false
 
       - name: Verify OCIRepository digests
+        env:
+          # Robot creds let the verifier resolve first-party charts in the
+          # PRIVATE harbor webgrip project (anonymous tokens 401 there).
+          HARBOR_ROBOT_USER: ${{ secrets.HARBOR_ROBOT_USER }}
+          HARBOR_ROBOT_TOKEN: ${{ secrets.HARBOR_ROBOT_TOKEN }}
         run: ./scripts/verify-oci-digests.sh "$GITHUB_WORKSPACE"
 
       - name: Lint YAML (yamllint, relaxed)
