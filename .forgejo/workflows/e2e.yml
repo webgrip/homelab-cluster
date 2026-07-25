@@ -45,6 +45,11 @@ jobs:
   renovate:
     name: Validate Renovate config
     runs-on: docker
+    env:
+      # docker run -v bind-mounts resolve on the DinD DAEMON's fs (see file header), so the
+      # mktemp workspace we mount into the node container must live on the emptyDir shared
+      # with dind at this path.
+      TMPDIR: /mnt/ci-shared
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -53,7 +58,20 @@ jobs:
       - name: Validate Renovate config
         env:
           GITHUB_COM_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
-        run: npx --yes --package renovate@43.208.0 renovate-config-validator --no-global .renovaterc.json5
+        run: |
+          # renovate 43.208.0's engines require Node ^24.11.0; the runner's toolchain ships
+          # Node v20, which prints an EBADENGINE warning for every renovate subpackage. Run the
+          # validator in a Node 24 container pulled through the Harbor proxy (ADR-0025 — LAN-
+          # speed, rate-limit-free, cache-warm) instead of on the host toolchain. The tag is
+          # pinned to major 24 because renovate's ^24.11.0 is >=24.11.0 <25.0.0 — Node 25+ would
+          # re-trigger EBADENGINE; bump this in lockstep if a future renovate raises its floor.
+          # Only .renovaterc.json5 is needed (the validator does not fetch the local> presets),
+          # so copy it onto the dind-shared workspace and mount just that.
+          ws="$(mktemp -d)"
+          cp "$GITHUB_WORKSPACE/.renovaterc.json5" "$ws/"
+          docker run --rm -v "$ws":/data -w /data -e GITHUB_COM_TOKEN \
+            harbor.webgrip.dev/dockerhub/library/node:24-slim \
+            npx --yes --package renovate@43.208.0 renovate-config-validator --no-global .renovaterc.json5
 
   # Fast static checks — no KinD, no cluster. All cheap python/shell plus two light container
   # steps (yamllint, kyverno CLI) that pull through Harbor.
