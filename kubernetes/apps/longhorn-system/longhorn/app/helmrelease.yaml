@@ -45,7 +45,11 @@ spec:
       # while starvation waves killed instance-managers (2026-06-12 cascade). 20% of
       # node CPU as an explicit request keeps IMs schedulable-guaranteed under load.
       # Danger-zone setting: applies per-node once its volumes detach, not immediately.
-      guaranteedInstanceManagerCPU: "20"
+      # 12 (Longhorn's own default) instead of 20: on the 8-core fringe node the
+      # 20% reservation was 1590m of phantom booking on an idle-ish IM (VIK-595
+      # rebalance 2026-07-25). Applies as instance-manager pods recreate — not
+      # instant on nodes with attached volumes.
+      guaranteedInstanceManagerCPU: "12"
       nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
       orphanAutoDeletion: true
       # Disabled 2026-06-09: best-effort auto-balance generated a rebuild storm

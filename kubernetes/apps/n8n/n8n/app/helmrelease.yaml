@@ -29,7 +29,11 @@ spec:
           # deadlocks helm-controller on this RWO move. Lands on fringe (WFFC-era
           # volume predates worker-1).
           nodeSelector:
-            node.webgrip.io/pool: worker
+            # ram=high resolves to worker-1 (24Gi): moved off the memory-starved
+            # fringe node in the 2026-07-25 rebalance (VIK-595/ADR-0049). Still
+            # inside pool=worker; the RWO volume re-attaches via Longhorn and
+            # strategy:Recreate handles the single-writer handoff.
+            node.webgrip.io/ram: high
           securityContext:
             fsGroup: 1000
             fsGroupChangePolicy: OnRootMismatch

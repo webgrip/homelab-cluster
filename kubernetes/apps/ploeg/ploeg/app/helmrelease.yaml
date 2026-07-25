@@ -34,6 +34,17 @@ spec:
       # ~5 min of startup dead time per run: no public-skills git sync against
       # blocked github egress, local LiteLLM cost map (VIK-590).
       runnerImage: harbor.webgrip.dev/webgrip/agent-runner:1.0.2@sha256:086b4bc0d3fda0e3c179f9501bb46a612f5f33e60d96405a5d94471a26279596
+      # Guaranteed QoS stays (requests==limits — ADR-0049 P1), sized down from
+      # the chart defaults so a run fits the rebalanced fringe node: worker
+      # peak measured 438Mi (run 8), dind must still hold a go build +
+      # embedded-postgres for the gates. A build exceeding dind's limit fails
+      # THAT build visibly, never the pod.
+      workerResources:
+        requests: {cpu: 500m, memory: 768Mi}
+        limits: {cpu: 500m, memory: 768Mi}
+      dindResources:
+        requests: {cpu: 500m, memory: 1Gi}
+        limits: {cpu: 500m, memory: 1Gi}
       scaler:
         # The KEDA operator resolves this hostname from the keda namespace,
         # so the chart's short in-namespace default never resolves there.
