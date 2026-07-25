@@ -95,8 +95,15 @@ spec:
       requests:
         cpu: 100m
         memory: 512Mi
+      # Raised 2Gi -> 4Gi: the container was OOMKilled TWICE on 2026-07-24 (09:32Z and 22:29Z,
+      # exit 137, reason OOMKilled — cgroup-limit kills, not node PSI) during CI bursts, each time
+      # killing in-flight Actions runs (the "every step cancelled at 0s" / "can't connect to
+      # forgejo-http:3000" signature; the 22:29 one lost the erfbeeld v1.0.0 image builds). Steady
+      # state is ~170-260Mi, so this is transient burst headroom (many concurrent runner git fetches
+      # + action-log writes), not chronic use. worker-1 is the high-RAM node. ForgejoServerMemory-
+      # NearLimit will show if 4Gi is still not enough.
       limits:
-        memory: 2Gi
+        memory: 4Gi
 
     # Chart default leaves initContainers.resources.limits empty (requests-only) --
     # add the memory limit validate-resources requires. VIK-244.

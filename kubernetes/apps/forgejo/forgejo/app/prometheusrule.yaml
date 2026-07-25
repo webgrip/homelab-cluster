@@ -96,10 +96,11 @@ spec:
 
         - alert: ForgejoServerOOMKilled
           # A server restart mid-run is invisible to the CI tooling except as the "every step
-          # cancelled at 0s" signature; this makes it page. Verified 2026-07-24: one container-limit
-          # OOMKill at 09:32Z during a doubled-push CI burst, steady-state working set ~259Mi vs the
-          # 2Gi limit — a burst spike, not chronic pressure. Do NOT reflexively raise the limit; use
-          # the MemoryNearLimit trend to decide (see the erfbeeld CI operations runbook).
+          # cancelled at 0s" / "can't connect to forgejo-http:3000" signature; this makes it page.
+          # Recurred 2026-07-24 (09:32Z AND 22:29Z, both cgroup-limit OOMKills during CI bursts; the
+          # 22:29 kill lost the erfbeeld v1.0.0 image builds), so the 2Gi limit was raised to 4Gi in
+          # helmrelease.yaml. Steady state is ~170-260Mi — these are transient burst spikes. If this
+          # still fires after 4Gi, watch MemoryNearLimit for a real trend (erfbeeld CI ops runbook).
           expr: kube_pod_container_status_last_terminated_reason{namespace="forgejo", container="forgejo", reason="OOMKilled"} == 1
           for: 2m
           labels:
