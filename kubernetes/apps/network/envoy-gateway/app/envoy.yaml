@@ -151,6 +151,14 @@ spec:
     initialConnectionWindowSize: 8Mi
     onInvalidMessage: TerminateStream
   http3: {}
+  # Envoy Gateway's DEFAULT escaped-slash action is UnescapeAndRedirect: a 307 that unescapes
+  # ONLY %2F/%5C. That breaks Forgejo's npm registry — Forgejo's own dist.tarball URLs are
+  # fully-encoded (/npm/%40scope%2Fname/-/<v>/<file>.tgz), and the redirect's half-decoded form
+  # (%40scope/name/...) 404s in Forgejo's router, so every `npm install` of a scoped package
+  # against forgejo.<domain> failed at the tarball fetch. KeepUnchanged forwards the path as the
+  # client sent it, letting Forgejo serve the canonical URLs it generates.
+  path:
+    escapedSlashesAction: KeepUnchanged
   targetSelectors:
     - group: gateway.networking.k8s.io
       kind: Gateway
