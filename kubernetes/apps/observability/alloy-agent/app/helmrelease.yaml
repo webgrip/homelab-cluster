@@ -24,6 +24,14 @@ spec:
   values:
     controller:
       type: daemonset
+      # Node-level log collector: mark it node-critical so the kernel OOM-killer /
+      # kubelet don't shed it under node memory pressure. Left at the default
+      # priority (0) it was SIGKILLed ~95x on the busy dark-factory node
+      # (fringe-workstation); each restart made loki.source.kubernetes re-read and
+      # re-push recent pod logs, and VictoriaLogs has no log-dedup -> the same line
+      # was stored up to 28x. system-node-critical drives oom_score_adj to ~-997 and
+      # makes the pod non-evictable (matches security/tetragon + security/falco).
+      priorityClassName: system-node-critical
       # hostNetwork gives alloy-agent pods a foothold in the host network namespace
       # so Talos OS (pre-pod) can reach the syslog listener at 127.0.0.1:6514.
       hostNetwork: true
