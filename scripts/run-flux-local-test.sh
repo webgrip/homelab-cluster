@@ -2,6 +2,18 @@
 
 set -Eeuo pipefail
 
+# `--full` anywhere in the args forces a full render (same as FLUX_LOCAL_FULL=1); everything
+# else stays positional so `run-flux-local-test.sh <root>` keeps working. The `+`-guard on the
+# array expansion is the bash 3.2 idiom for "empty array under set -u" (macOS ships 3.2).
+args=()
+for a in "$@"; do
+    case "${a}" in
+        --full) FLUX_LOCAL_FULL=1 ;;
+        *) args+=("${a}") ;;
+    esac
+done
+set -- ${args[@]+"${args[@]}"}
+
 ROOT_DIR="${1:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -38,18 +50,43 @@ print_relevant_flux_local_stderr "${stderr_file}"
 
 total="$(wc -l < "${ks_list}")"
 
-# Change-detection scope. FLUX_LOCAL_BASE_REF (a git ref, e.g. the push's `before` SHA or a
-# PR's merge base) narrows the render to the kustomizations the diff can actually affect --
-# see select_affected_kustomizations for the blast-radius rules. Unset => render everything,
-# which is what a local run and the nightly full-validation workflow both want.
+# Change-detection scope. Precedence:
+#   FLUX_LOCAL_FULL=1          -> render EVERYTHING (the nightly full-validation workflow, and
+#                                `--full` / `task flux-local-full`). Use after touching the flux
+#                                root, or for a belt-and-suspenders pass.
+#   FLUX_LOCAL_BASE_REF=<ref>  -> scope to the diff against <ref> (CI e2e passes the push's
+#                                `before` SHA / a PR merge base -- see .forgejo/workflows/e2e.yml).
+#   neither (a bare local run) -> auto-scope to what you're about to push: HEAD's merge-base with
+#                                the upstream branch, plus uncommitted and untracked files. This
+#                                is the DEFAULT a human hits by just running the script -- it turns
+#                                the ~20min all-90-kustomization render into rendering only the few
+#                                your working changes can actually affect.
 #
-# This exists because the full render is ~20min and cannot be parallelised (the builds are
-# disk-iowait-bound, see run_flux_local_batch), so validating all ~90 kustomizations on a
-# one-file push was the dominant cost of the CI gate.
-BASE_REF="${FLUX_LOCAL_BASE_REF:-}"
+# The full render is ~20min and cannot be parallelised (builds are disk-iowait-bound, see
+# run_flux_local_batch), so scoping is the single biggest lever on wall-clock. Blast-radius rules
+# (edits to kubernetes/flux/**, components/**, or the validator itself still force FULL) live in
+# select_affected_kustomizations.
+if [[ "${FLUX_LOCAL_FULL:-0}" == 1 ]]; then
+    log info "FLUX_LOCAL_FULL set -- rendering every kustomization"
+    BASE_REF=""
+elif [[ -z "${FLUX_LOCAL_BASE_REF+set}" ]]; then
+    # UNSET (not merely empty) => a bare local run. Auto-scope to what you're about to push.
+    # CI always SETS the var (to a ref, or to "" as its own explicit full-render signal), so this
+    # branch never fires there -- it must not silently narrow CI's deliberate full-render fallback.
+    BASE_REF="$(resolve_local_base_ref "${ROOT_DIR}")"
+    if [[ -n "${BASE_REF}" ]]; then
+        log info "Auto-scoping to local changes (FLUX_LOCAL_FULL=1 or --full forces a full render)" "base=${BASE_REF}"
+    else
+        log warn "No upstream to diff against -- rendering everything"
+    fi
+else
+    # Explicitly set (CI). A real ref scopes; an empty value means "render everything" -- see
+    # the "Determine diff base" step in .forgejo/workflows/e2e.yml.
+    BASE_REF="${FLUX_LOCAL_BASE_REF}"
+fi
 if [[ -n "${BASE_REF}" ]]; then
     changed_files="${workspace}/changed.txt"
-    if git -C "${ROOT_DIR}" diff --name-only "${BASE_REF}" -- >"${changed_files}" 2>/dev/null; then
+    if collect_changed_files "${ROOT_DIR}" "${BASE_REF}" "${changed_files}"; then
         scoped_list="${workspace}/kustomizations.scoped.tsv"
         if select_affected_kustomizations "${ks_list}" "${changed_files}" "${scoped_list}"; then
             ks_list="${scoped_list}"

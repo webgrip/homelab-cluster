@@ -22,12 +22,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # No FLUX_LOCAL_BASE_REF => the script renders all ~90 kustomizations (~20min).
+  # FLUX_LOCAL_FULL=1 => the script renders all ~90 kustomizations (~20min). This must be
+  # explicit: a bare run now auto-scopes to the local diff (fast path for developers), so the
+  # nightly's whole point -- re-render EVERYTHING -- has to opt in rather than rely on a default.
   flux-local-full:
     name: Flux-local render (full tree)
     runs-on: docker
     env:
       TMPDIR: /mnt/ci-shared
+      FLUX_LOCAL_FULL: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -227,6 +227,43 @@ function list_flux_kustomizations_with_retry() {
     return "${rc}"
 }
 
+# Resolve a base ref for a LOCAL (developer) run so a bare invocation scopes the render to
+# "what you're about to push" instead of re-rendering all ~90 kustomizations every time.
+#
+# Base = merge-base(HEAD, upstream), where upstream is the branch's tracking ref (@{upstream})
+# or, failing that, origin/main. A merge-base is always an ancestor of HEAD, so diffing the
+# WORKING TREE against it captures every local commit AND every uncommitted edit -- a superset
+# of the true blast radius, never less (the gate only ever degrades toward MORE rendering).
+# Prints nothing -- so the caller falls back to a full render -- when no upstream is resolvable
+# (detached HEAD, no origin remote): correctness over speed.
+#
+# Args: ROOT_DIR
+function resolve_local_base_ref() {
+    local root_dir="$1"
+    local upstream base
+    upstream="$(git -C "${root_dir}" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
+    [[ -n "${upstream}" ]] || upstream="origin/main"
+    base="$(git -C "${root_dir}" merge-base HEAD "${upstream}" 2>/dev/null || true)"
+    printf '%s' "${base}"
+}
+
+# Collect the paths a change set touches, for select_affected_kustomizations: the union of
+# (a) files that differ between BASE_REF and the working tree, and (b) untracked files. (b)
+# matters because a brand-new app's manifests aren't in `git diff` yet, but must still scope
+# the render -- otherwise `add-app` work would silently skip validation. Returns non-zero when
+# BASE_REF can't be diffed (shallow clone / bogus ref) so the caller degrades to a full render.
+#
+# Args: ROOT_DIR BASE_REF OUTPUT_FILE
+function collect_changed_files() {
+    local root_dir="$1" base="$2" out="$3"
+    local diffed
+    diffed="$(git -C "${root_dir}" diff --name-only "${base}" -- 2>/dev/null)" || return 1
+    {
+        printf '%s\n' "${diffed}"
+        git -C "${root_dir}" ls-files --others --exclude-standard 2>/dev/null || true
+    } | sed '/^$/d' | sort -u >"${out}"
+}
+
 # Narrow a ks list down to the kustomizations a change set can actually affect.
 #
 # WHY: rendering all ~90 kustomizations takes ~20min on the shared runner (the builds are

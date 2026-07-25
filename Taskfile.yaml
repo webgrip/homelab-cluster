@@ -1,8 +1,10 @@
 ---
 version: '3'
 
-set: [pipefail]
-shopt: [globstar]
+set:
+  - pipefail
+shopt:
+  - globstar
 
 vars:
   BOOTSTRAP_DIR: '{{.ROOT_DIR}}/bootstrap'
@@ -45,6 +47,20 @@ tasks:
     preconditions:
       - which curl
       - which jq
+
+  flux-local:
+    desc: "Validate Flux manifests affected by your local changes (fast; auto-scoped to your git diff)"
+    cmd: "{{.SCRIPTS_DIR}}/run-flux-local-test.sh {{.ROOT_DIR}}"
+    preconditions:
+      - which docker
+
+  flux-local-full:
+    desc: "Validate ALL ~90 Flux kustomizations (~20min; use before flux-root/component changes)"
+    env:
+      FLUX_LOCAL_FULL: '1'
+    cmd: "{{.SCRIPTS_DIR}}/run-flux-local-test.sh {{.ROOT_DIR}}"
+    preconditions:
+      - which docker
 
   kyverno-test:
     desc: Run Kyverno CLI policy regression tests
