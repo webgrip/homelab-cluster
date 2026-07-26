@@ -1,49 +1,109 @@
 ---
-# EXAMPLE: a scheduled (cron) Forgejo Actions workflow, to show the shape.
-# Forgejo Actions support `on: schedule` with POSIX cron, and `workflow_dispatch` for
-# manual runs from the UI/API. Schedules run on the default branch only.
+# Weekly repo janitor — the mechanical backstop for the two-delivery-path collision
+# (owner trunk-pushes per CLAUDE.md vs agent fleet PR-only per ADR-0048/ADR-0050):
+# when the same work lands on main first by trunk push, the fleet's PR goes
+# "nothing to merge" and its branch goes stale. This job sweeps both.
 #
-# This one is deliberately harmless (read-only echoes). Replace the "real task" steps with
-# whatever cluster hygiene you want on a timer — e.g. report stale images, prune caches,
-# nightly cosign re-verification, etc. Runs on the in-cluster runner (runs-on: docker).
-name: '[Scheduled] Maintenance (example)'
+#   1. Closes open PRs whose head is fully contained in their base (zombie PRs),
+#      with an explanatory comment.
+#   2. Deletes branches fully contained in main that have no open PR.
+#      Never touches main or renovate/* (Renovate manages its own branches).
+#
+# Runs as the forgejo-ci bot (WEBGRIP_CI_TOKEN org secret), NOT agent-builder —
+# janitor ≠ builder, mirroring ADR-0048's builder ≠ judge split.
+# Manual runs default to dry-run; the weekly schedule runs live.
+name: '[Scheduled] Maintenance'
 
 on:
-  # The schedule is intentionally COMMENTED OUT: while the job is a no-op it would only
-  # spawn an empty nightly/weekly runner pod. Uncomment once the "real task" below is filled
-  # in. Forgejo Actions supports POSIX cron, and schedules run on the default branch only.
-  # schedule:
-  #   - cron: '0 3 * * *' # nightly 03:00 UTC
-  #   - cron: '0 6 * * 1' # weekly Monday 06:00 UTC
+  schedule:
+    - cron: '0 6 * * 1' # weekly Monday 06:00 UTC (schedules run on the default branch only)
   workflow_dispatch:
     inputs:
       dry-run:
         description: 'Log only; do not change anything'
-        type: boolean
+        type: string
         required: false
-        default: true
+        default: 'true'
 
 concurrency:
   group: scheduled-maintenance
   cancel-in-progress: false
 
 jobs:
-  maintenance:
-    name: 'Nightly/weekly maintenance'
+  janitor:
+    name: 'Zombie-PR + merged-branch janitor'
     runs-on: docker
     steps:
-      - name: Show trigger context
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "event=${GITHUB_EVENT_NAME:-?}  ref=${GITHUB_REF:-?}  dry-run=${{ inputs.dry-run }}"
-          date -u +'now=%Y-%m-%dT%H:%M:%SZ'
+      - name: Checkout (full history — merge-base needs it)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # ── Real task goes here ──────────────────────────────────────────────
-      # Example placeholder: a read-only check. Swap for actual maintenance and
-      # gate destructive actions behind the dry-run input, e.g.:
-      #   if [ "${{ inputs.dry-run }}" = "true" ]; then echo "would prune X"; else prune X; fi
-      - name: Example task (no-op)
+      - name: Close contained PRs, prune contained branches
         shell: bash
+        env:
+          TOKEN: ${{ secrets.WEBGRIP_CI_TOKEN }}
+          # Ternary emulation: dispatch honors the input; schedule is always live.
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run || 'false' }}
         run: |-
-          echo "TODO replace with the scheduled maintenance task"
+          set -euo pipefail
+          command -v jq >/dev/null || { echo "FATAL: jq missing on runner image"; exit 1; }
+          [ -n "${TOKEN:-}" ] || { echo "FATAL: WEBGRIP_CI_TOKEN not available"; exit 1; }
+          API="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
+          DEFAULT_BRANCH=main
+          echo "mode: DRY_RUN=${DRY_RUN}"
+          git fetch origin --prune --quiet
+
+          # ── 1. Zombie PRs: open, same-repo head, head sha an ancestor of base ──
+          closed=0
+          while IFS=$'\t' read -r num head base hsha; do
+            bsha=$(git rev-parse "origin/${base}" 2>/dev/null) || continue
+            git cat-file -e "${hsha}" 2>/dev/null || continue
+            if git merge-base --is-ancestor "${hsha}" "${bsha}"; then
+              echo "zombie PR #${num} (${head} -> ${base}): head fully contained in base"
+              [ "${DRY_RUN}" = "true" ] && continue
+              # Comment is best-effort (token may lack write:issue); close is mandatory.
+              curl -fsS -X POST -H "Authorization: token ${TOKEN}" -H 'Content-Type: application/json' \
+                "${API}/issues/${num}/comments" \
+                -d '{"body":"Janitor: closing — every commit on this branch is already contained in the target branch (nothing to merge). The work most likely landed on main via another delivery path; see ADR-0050."}' \
+                >/dev/null || echo "WARN: comment on #${num} failed (token scope?)"
+              curl -fsS -X PATCH -H "Authorization: token ${TOKEN}" -H 'Content-Type: application/json' \
+                "${API}/pulls/${num}" -d '{"state":"closed"}' >/dev/null
+              closed=$((closed + 1))
+            fi
+          done < <(curl -fsS -H "Authorization: token ${TOKEN}" "${API}/pulls?state=open&limit=50" \
+                   | jq -r '.[] | select(.head.repo.full_name == .base.repo.full_name)
+                            | [.number, .head.ref, .base.ref, .head.sha] | @tsv')
+
+          # Refresh AFTER closures so branches of just-closed PRs are prunable this run.
+          open_heads=$(curl -fsS -H "Authorization: token ${TOKEN}" "${API}/pulls?state=open&limit=50" \
+                       | jq -r '.[].head.ref')
+
+          # ── 2. Contained branches with no open PR (never main, never renovate/*) ──
+          candidates=()
+          while read -r sha ref; do
+            b=${ref#refs/heads/}
+            case "${b}" in "${DEFAULT_BRANCH}" | renovate/*) continue ;; esac
+            grep -qxF "${b}" <<<"${open_heads}" && continue
+            if git merge-base --is-ancestor "${sha}" "origin/${DEFAULT_BRANCH}"; then
+              candidates+=("${b}")
+            fi
+          done < <(git ls-remote --heads origin)
+
+          # Mass-deletion fuse: a wrong origin/main ref would make EVERYTHING "contained".
+          if [ "${#candidates[@]}" -gt 15 ]; then
+            echo "FUSE: ${#candidates[@]} deletion candidates (>15) — refusing; investigate manually"
+            exit 1
+          fi
+
+          pruned=0
+          for b in "${candidates[@]:-}"; do
+            [ -n "${b}" ] || continue
+            echo "contained branch: ${b}"
+            [ "${DRY_RUN}" = "true" ] && continue
+            enc=$(printf %s "${b}" | sed 's|/|%2F|g')
+            curl -fsS -X DELETE -H "Authorization: token ${TOKEN}" "${API}/branches/${enc}" >/dev/null \
+              && { echo "deleted: ${b}"; pruned=$((pruned + 1)); }
+          done
+
+          echo "done: PRs closed=${closed}, branches pruned=${pruned} (dry-run=${DRY_RUN})"
