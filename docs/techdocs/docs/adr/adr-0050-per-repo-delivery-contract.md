@@ -119,4 +119,7 @@ deployed system where the owner iterates at trunk speed; product repos gate rele
 - Pending at acceptance: homelab-cluster protection rule (owner UI/API action);
   `sync_protect` payload upgrade + product-repo rollout (`forgejo-sync.sh --all --only
   protect`); empty-diff guard in `webgrip/infrastructure`.
+- 2026-07-26 — `sync_protect` implements the contract (whitelist payloads, `development`
+  coverage with owner push, PATCH convergence, paginated `--all` — ploeg/ai-skills/previews/
+  semantic-release-config were silently invisible before). Org rollout remains an owner run.
 - Supported by: ADR-0048 (role bots, PR-only fleet), ADR-0049 (dispatch failure states).

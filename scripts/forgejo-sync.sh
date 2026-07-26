@@ -13,13 +13,18 @@
 #              historical GitHub releases never backfill; this only enables the unit for new ones.
 #              Always-on parity.
 #   mirror   — add a Forgejo -> GitHub push-mirror (auto-backup) if none points at github.com
-#   protect  — protect `main`: mirror GitHub's rule if it has one, else a minimal safe rule
-#              (block force-push + deletion, keep direct-push — does NOT require PRs).
-#              OPT-IN (not in the default set): a Forgejo-leading repo's CI commits the
-#              semantic-release `chore(release)` bump + tag DIRECTLY to main, so mirroring GitHub's
-#              "require PR + approval" rule (enable_push:false) REJECTS the bot and breaks releases.
-#              Forgejo-leading repos run UNPROTECTED, matching webgrip/infrastructure. Use `protect`
-#              only on a repo where humans gate main and no bot pushes.
+#   protect  — ADR-0050 delivery contract: protect `main` (+ `development` if the branch exists).
+#              Direct push only for $PUSH_WHITELIST (default `webgrip-ci`: semantic-release commits
+#              the release bump + tag back to the branch, so the old "protection breaks releases"
+#              blocker is solved by the whitelist, not by leaving repos open). Merges only for
+#              $MERGE_WHITELIST (default `ryangr0,renovate`: owner + Renovate automerge).
+#              `agent-builder` is deliberately in NEITHER list — the fleet delivers via PRs
+#              (ADR-0048) and never merges its own work. Existing rules are CONVERGED (PATCH),
+#              not skipped. Still OPT-IN (not in the default set): roll out deliberately — one
+#              repo, verify a real release cuts, then --all. Overrides per run, e.g. the homelab
+#              GitOps repo (owner trunk-pushes, no release bot — ADR-0050):
+#                PUSH_WHITELIST=ryangr0 MERGE_WHITELIST=ryangr0 \
+#                  scripts/forgejo-sync.sh --repo homelab-cluster --only protect --apply
 #   webhook  — register a Forgejo repo webhook -> the renovate-operator receiver so ticking a
 #              Dependency-Dashboard / PR checkbox triggers an immediate Renovate run (not the 6h cron).
 #              Idempotent: matches an existing hook by receiver URL; creates if missing, refreshes if
@@ -47,7 +52,7 @@ FORGEJO_API="https://forgejo.webgrip.dev/api/v1"
 GITHUB_HOST="github.com"
 ORG="webgrip"
 APPLY=0
-ONLY="actions,prs,releases,mirror,webhook"   # protect is OPT-IN (breaks CI commit-back — see header)
+ONLY="actions,prs,releases,mirror,webhook"   # protect is OPT-IN (deliberate rollout — see header)
 REPOS=()
 # Reusable-workflow LIBRARY repos: their workflows are `on: workflow_call` and run in the *caller*
 # repo, never here. Keep the Forgejo Actions unit OFF for these even though GitHub has it on, so
@@ -75,7 +80,9 @@ while [ $# -gt 0 ]; do
 done
 
 [ -n "${FORGEJO_TOKEN:-}" ] || die "FORGEJO_TOKEN not set (Forgejo Settings -> Applications -> generate, scope write:repository)"
-command -v gh >/dev/null || die "gh not found"
+# gh is only needed for GitHub-reading actions (`actions` parity); protect/prs/releases/webhook
+# are pure-Forgejo. Die only when a selected action actually reads GitHub.
+if have actions; then command -v gh >/dev/null || die "gh not found (needed for --only actions; use --only protect,... to skip)"; fi
 
 fj()  { curl -fsS -H "Authorization: token $FORGEJO_TOKEN" -H "Content-Type: application/json" "$@"; }
 note() { echo "  $*"; }
@@ -86,12 +93,21 @@ mut()  { # mut <description> <curl-args...>
 }
 
 # Resolve --all to every non-fork, non-mirror repo in the org (mirrors aren't ours to manage yet).
+# PAGINATED: this org holds 100+ repos once GitHub mirrors are counted — a single limit=100 fetch
+# silently dropped everything past page one (ploeg was invisible to --all until 2026-07-26).
 if [ ${#REPOS[@]} -eq 0 ]; then
-  # while-read, not mapfile — bash 3.2 (stock macOS) has no mapfile (2026-07-12)
-  while IFS= read -r repo_name; do
-    [ -n "$repo_name" ] && REPOS+=("$repo_name")
-  done < <(fj "$FORGEJO_API/orgs/$ORG/repos?limit=100" 2>/dev/null \
-    | python3 -c 'import sys,json;[print(r["name"]) for r in json.load(sys.stdin) if not r.get("mirror") and not r.get("fork")]' 2>/dev/null || true)
+  page=1
+  while :; do
+    raw=$(fj "$FORGEJO_API/orgs/$ORG/repos?limit=50&page=$page" 2>/dev/null) || break
+    n=$(printf '%s' "$raw" | python3 -c 'import sys,json;print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)
+    [ "$n" -gt 0 ] || break
+    # while-read, not mapfile — bash 3.2 (stock macOS) has no mapfile (2026-07-12)
+    while IFS= read -r repo_name; do
+      [ -n "$repo_name" ] && REPOS+=("$repo_name")
+    done < <(printf '%s' "$raw" \
+      | python3 -c 'import sys,json;[print(r["name"]) for r in json.load(sys.stdin) if not r.get("mirror") and not r.get("fork")]' 2>/dev/null || true)
+    page=$((page + 1))
+  done
   [ ${#REPOS[@]} -gt 0 ] || die "--all: could not list org repos (token needs read:organization scope, or pass --repo <name>)"
 fi
 
@@ -164,37 +180,47 @@ sync_mirror() {
   fi
 }
 
+# ADR-0050 whitelists. Overridable per run; comma-separated usernames. NEVER add agent-builder.
+# development gets the owner too: trunk-based development happens THERE on product repos
+# (main is release-bot-only), and semantic-release RC channels commit version bumps back to it.
+PUSH_WHITELIST="${PUSH_WHITELIST:-webgrip-ci}"
+DEV_PUSH_WHITELIST="${DEV_PUSH_WHITELIST:-webgrip-ci,ryangr0}"
+MERGE_WHITELIST="${MERGE_WHITELIST:-ryangr0,renovate}"
+
 sync_protect() {
-  local r="$1"
-  local existing
-  existing=$(fj "$FORGEJO_API/repos/$ORG/$r/branch_protections" \
-    | python3 -c 'import sys,json;print(any(b.get("rule_name")=="main" or b.get("branch_name")=="main" for b in json.load(sys.stdin)))' 2>/dev/null || echo False)
-  if [ "$existing" = "True" ]; then note "protect: main already protected"; return; fi
-  # Read GitHub's rule (if any) to decide strict-vs-baseline.
-  # NB: gh prints the error body to stdout on 404, so keep the fallback OUTSIDE the
-  # command substitution — `|| echo {}` inside would concatenate two JSON docs.
-  local ghp; ghp=$(gh api "repos/$ORG/$r/branches/main/protection" 2>/dev/null) || ghp='{}'
-  # Strict iff GitHub requires PR reviews. We DON'T copy status_check_contexts: those are
-  # GitHub job names and would deadlock Forgejo merges (Forgejo checks are named differently).
-  local body
-  body=$(echo "$ghp" | python3 -c '
+  local r="$1" b body exists push_list
+  for b in main development; do
+    # main always exists; development only on repos that cut RCs from it.
+    push_list="$PUSH_WHITELIST"
+    if [ "$b" = development ]; then
+      fj "$FORGEJO_API/repos/$ORG/$r/branches/$b" >/dev/null 2>&1 || continue
+      push_list="$DEV_PUSH_WHITELIST"
+    fi
+    # Any rule blocks force-push + deletion; the contract lives in the whitelists.
+    # We deliberately do NOT set status checks here: Forgejo check names differ per repo —
+    # add them by hand once that repo's CI has run under Forgejo names.
+    body=$(python3 -c '
 import sys,json
-g=json.load(sys.stdin)
-rpr=g.get("required_pull_request_reviews")
-strict=bool(rpr)
-rule={"rule_name":"main","enable_push":not strict}   # any rule => force-push & deletion blocked
-if rpr:
-    rule["required_approvals"]=rpr.get("required_approving_review_count",1)
-print(json.dumps(rule))')
-  echo "$ghp" | grep -q required_status_checks && \
-    note "  note: GitHub required status checks here — NOT copied (Forgejo job names differ); re-add under Forgejo check names once CI has run"
-  local kind; kind=$([ "$(echo "$body" | grep -c required_approvals)" -gt 0 ] && echo "strict (mirrors GitHub)" || echo "baseline (no-force-push/no-delete, direct-push kept)")
-  if [ "$APPLY" = 1 ]; then
-    note "APPLY: protect main on $r — $kind"
-    fj -X POST "$FORGEJO_API/repos/$ORG/$r/branch_protections" -d "$body" >/dev/null && note "  ok" || note "  FAILED"
-  else
-    note "DRY-RUN would: protect main on $r — $kind : $body"
-  fi
+b,push,merge=sys.argv[1],sys.argv[2],sys.argv[3]
+print(json.dumps({
+    "rule_name": b,
+    "enable_push": True,
+    "enable_push_whitelist": True,
+    "push_whitelist_usernames": [u for u in push.split(",") if u],
+    "enable_merge_whitelist": True,
+    "merge_whitelist_usernames": [u for u in merge.split(",") if u],
+}))' "$b" "$push_list" "$MERGE_WHITELIST")
+    # Listing rules needs repo ADMIN scope; on 403 assume absent (POST; a duplicate 409s harmlessly).
+    exists=$(fj "$FORGEJO_API/repos/$ORG/$r/branch_protections" 2>/dev/null \
+      | python3 -c 'import sys,json;bn=sys.argv[1];print(any((x.get("rule_name") or x.get("branch_name"))==bn for x in json.load(sys.stdin)))' "$b" 2>/dev/null || echo False)
+    if [ "$exists" = "True" ]; then
+      mut "converge protection $r:$b (push={$push_list} merge={$MERGE_WHITELIST})" \
+        -X PATCH "$FORGEJO_API/repos/$ORG/$r/branch_protections/$b" -d "$body"
+    else
+      mut "protect $r:$b (push={$push_list} merge={$MERGE_WHITELIST})" \
+        -X POST "$FORGEJO_API/repos/$ORG/$r/branch_protections" -d "$body"
+    fi
+  done
 }
 
 # Resolve the receiver bearer token once (env wins; else the in-cluster Secret). Never printed.
