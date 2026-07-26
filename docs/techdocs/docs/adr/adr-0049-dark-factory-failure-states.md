@@ -1,9 +1,11 @@
-# ADR-0049: Dark-factory failure-state management under permanent scarcity
+---
+status: accepted
+date: 2026-07-25
+---
 
-- **Status:** accepted
-- **Date:** 2026-07-25
-- **Deciders:** Ryan Grippeling
-- **Related:** ADR-0047 (agent runtime), ADR-0048 (execution layer), Vikunja VIK-585/588/589/590/594/595/596–599
+# Dark-factory failure-state management under permanent scarcity
+
+Related: ADR-0047 (agent runtime), ADR-0048 (execution layer), Vikunja VIK-585/588/589/590/594/595/596–599.
 
 ## Glossary (read this first)
 
@@ -16,13 +18,25 @@
 | **Guaranteed QoS** | `requests == limits` for every container. The pod leaves the burstable tree and cannot be killed by the Talos OOM controller; the scheduler will not place it unless the memory truly exists. |
 | **Attempt budget** | `work_items.attempts`, capped at 3; at the cap the item goes `stale` and stops dispatching. |
 
-## Context: what actually happened (2026-07-25)
+## Context and Problem Statement
 
-The cluster ran out of memory headroom. Talos v1.13's userspace **`runtime.OOMController`** responded to PSI pressure by SIGKILLing whole pod cgroups under `/kubepods/burstable/` — invisibly to Kubernetes (exit 137, reason `Error`, **no** `OOMKilled` mark, no eviction event). It killed two factory runs mid-flight (runs 9 and 10 on VIK-585), the log shipper, and cilium — repeatedly. Each killed run leaked its per-run LiteLLM key (traps and defers cannot survive SIGKILL), burned one attempt from the ticket's budget, and one run's Job+pod were garbage-collected by KEDA before forensics could map the cgroup. Separately, the second worker node was CPU-full, so the retry sat Pending. **No component misbehaved — the system as designed simply converts node pressure into lost work, leaked money, and burned tickets.**
+*What actually happened, 2026-07-25.* The cluster ran out of memory headroom. Talos v1.13's userspace **`runtime.OOMController`** responded to PSI pressure by SIGKILLing whole pod cgroups under `/kubepods/burstable/` — invisibly to Kubernetes (exit 137, reason `Error`, **no** `OOMKilled` mark, no eviction event). It killed two factory runs mid-flight (runs 9 and 10 on VIK-585), the log shipper, and cilium — repeatedly. Each killed run leaked its per-run LiteLLM key (traps and defers cannot survive SIGKILL), burned one attempt from the ticket's budget, and one run's Job+pod were garbage-collected by KEDA before forensics could map the cgroup. Separately, the second worker node was CPU-full, so the retry sat Pending. **No component misbehaved — the system as designed simply converts node pressure into lost work, leaked money, and burned tickets.**
 
 Extra RAM is not available. Scarcity is the operating condition, not an incident.
 
-## Decision: five principles, each with a concrete mechanism
+## Considered Options
+
+- Five failure-state principles — admission control, infra-vs-agent attempt accounting, layered spend containment, durable evidence, pressure detection (chosen)
+- Priority-class arms race (`system-node-critical` on factory pods)
+- Automated shedding/preemption of neighbor workloads to feed the factory
+- Retry-forever with unbounded attempt budgets
+
+## Decision Outcome
+
+Chosen option: "Five failure-state principles, each with a concrete mechanism", because no
+component misbehaved — the design itself converted node pressure into lost work, leaked money,
+and burned tickets, and each principle closes exactly one of those conversion paths. The
+rejected options are dissected in "What we explicitly do NOT do" below.
 
 ### P1 — Never start work you can't finish (admission control)
 
@@ -82,3 +96,9 @@ KEDA cleanup deleted run 10's Job+pod before the kill could be attributed. Foren
 ## Consequences
 
 Runs queue honestly instead of half-dying; tickets survive infrastructure weather; every euro a run can spend is bounded by three independent layers; and when the factory is starved, exactly one signal says so and a human makes the only decision automation must not make. The trade-off is throughput under pressure — accepted, because a homelab's scarcity is structural and correctness beats speed here.
+
+## More Information
+
+- Technical story: Vikunja VIK-585 (runs 9/10 post-mortem), VIK-588/589/590/594–599.
+- 2026-07-25 — accepted (initial record).
+- 2026-07-26 — normalized to MADR 4.0.0 (frontmatter, required sections) during ADR-0050 registry work; decision content unchanged.
