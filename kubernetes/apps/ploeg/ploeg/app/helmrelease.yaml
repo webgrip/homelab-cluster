@@ -24,10 +24,13 @@ spec:
     env:
       PLOEG_DEFAULT_TEAM: bronze
       PLOEG_LEASE_TTL: 15m
-      # Assignee-username -> team routing (ploegd parseTeamMap). One Vikunja
-      # user per team: assign a ticket to user `silver` to dispatch the silver
-      # team; unmapped assignees fall back to PLOEG_DEFAULT_TEAM.
-      PLOEG_TEAM_MAP: "bronze=bronze,silver=silver"
+      # Assignee-username -> team routing (ploegd parseTeamMap). Named agents:
+      # assigning `jake` dispatches bronze, `jane` dispatches silver — humans
+      # assign a colleague, not an infra tier. The bare team usernames stay
+      # mapped for the existing tickets/automation. Unmapped assignees fall
+      # back to PLOEG_DEFAULT_TEAM, so never assign an unmapped human on a
+      # webhook-carrying project unless a bronze run is what they want.
+      PLOEG_TEAM_MAP: "bronze=bronze,silver=silver,jake=bronze,jane=silver"
     executor:
       enabled: true
       # Chart default lags a release behind; pin the runner here. 1.0.2 killed
