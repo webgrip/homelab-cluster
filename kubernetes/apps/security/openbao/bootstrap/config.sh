@@ -47,8 +47,9 @@ bao write auth/kubernetes/role/cosign-pub-publisher \
   policies=cosign-pub-reader ttl=10m >/dev/null
 
 # Forgejo Actions OIDC -> Transit signing (JWT auth). Per-workflow identity: only the
-# infrastructure release-publish flow can mint a sign-only token — tighter than a shared runner
-# ServiceAccount, and fork PRs can't get a token at all. NB: releases are cut with the
+# release-publish flows of the explicitly listed repos can mint a sign-only token — tighter
+# than a shared runner ServiceAccount, and fork PRs can't get a token at all. Adding a repo
+# to signing = adding it to the bound_claims repository list below (deliberate one-line PR). NB: releases are cut with the
 # webgrip-ci bot PAT, so Forgejo DOES emit a native `release` event (only same-token actions
 # are loop-suppressed) — on_release_published now runs event_name=release on ref=refs/tags/*.
 # workflow_dispatch + refs/heads/* stays allowed for manual re-publish/backfill runs.
@@ -69,7 +70,7 @@ if [ -n "${SECRET_DOMAIN:-}" ]; then
   "user_claim": "sub",
   "bound_audiences": ["openbao-cosign"],
   "bound_claims_type": "glob",
-  "bound_claims": {"repository": "webgrip/infrastructure", "event_name": ["release", "workflow_dispatch"], "ref": ["refs/tags/*", "refs/heads/*"]},
+  "bound_claims": {"repository": ["webgrip/infrastructure", "webgrip/ploeg"], "event_name": ["release", "workflow_dispatch"], "ref": ["refs/tags/*", "refs/heads/*"]},
   "token_policies": ["cosign-signer"],
   "token_ttl": "10m"
 }
