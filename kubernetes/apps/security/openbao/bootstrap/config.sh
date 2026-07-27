@@ -48,11 +48,12 @@ bao write auth/kubernetes/role/cosign-pub-publisher \
 
 # Forgejo Actions OIDC -> Transit signing (JWT auth). Per-workflow identity: only the
 # infrastructure release-publish flow can mint a sign-only token — tighter than a shared runner
-# ServiceAccount, and fork PRs can't get a token at all. NB: Forgejo cannot emit a `release`
-# Actions event for a CI-created release, so on_release_published is triggered via workflow_dispatch
-# on a branch (main / release/*) — hence event_name=workflow_dispatch + ref=refs/heads/* here, NOT
-# the GitHub-shaped event=release/ref=refs/tags/*. (Harden later by also binding the `workflow`
-# claim to on_release_published once its exact value is confirmed from the job's printed claims.)
+# ServiceAccount, and fork PRs can't get a token at all. NB: releases are cut with the
+# webgrip-ci bot PAT, so Forgejo DOES emit a native `release` event (only same-token actions
+# are loop-suppressed) — on_release_published now runs event_name=release on ref=refs/tags/*.
+# workflow_dispatch + refs/heads/* stays allowed for manual re-publish/backfill runs.
+# (Harden later by also binding the `workflow` claim to on_release_published once its exact
+# value is confirmed from the job's printed claims.)
 # Token iss is https://forgejo.<domain>/api/actions. Configuring the mount config needs it enabled
 # first (root/break-glass: bao auth enable -path=forgejo jwt).
 if [ -n "${SECRET_DOMAIN:-}" ]; then
@@ -68,7 +69,7 @@ if [ -n "${SECRET_DOMAIN:-}" ]; then
   "user_claim": "sub",
   "bound_audiences": ["openbao-cosign"],
   "bound_claims_type": "glob",
-  "bound_claims": {"repository": "webgrip/infrastructure", "event_name": "workflow_dispatch", "ref": "refs/heads/*"},
+  "bound_claims": {"repository": "webgrip/infrastructure", "event_name": ["release", "workflow_dispatch"], "ref": ["refs/tags/*", "refs/heads/*"]},
   "token_policies": ["cosign-signer"],
   "token_ttl": "10m"
 }
