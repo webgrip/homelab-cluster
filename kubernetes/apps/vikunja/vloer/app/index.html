@@ -326,7 +326,8 @@ async function loadFloor() {
   for (const t of TEAMS.filter((t) => t.live)) {
     try {
       const r = await fetch(`${PLOEG}/queue/${t.key}`);
-      state.floor[t.key] = r.ok ? await r.json() : null;
+      // ploegd marshals an empty snapshot as JSON null — that's "idle", not "unreachable"
+      state.floor[t.key] = r.ok ? (await r.json()) || [] : null;
     } catch { state.floor[t.key] = null; }
   }
   renderStations();
