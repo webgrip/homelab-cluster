@@ -39,9 +39,14 @@ spec:
       # peak measured 438Mi (run 8), dind must still hold a go build +
       # embedded-postgres for the gates. A build exceeding dind's limit fails
       # THAT build visibly, never the pod.
+      # Worker CPU is 1 full core, not 500m: the OpenHands CLI's
+      # single-threaded Python cold import took 2m20s at 500m before the
+      # agent did anything (silver run 2026-07-27); docker/dind was a red
+      # herring — its daemon was up in 13s. Both teams at this sizing fit
+      # fringe (2×1.5 CPU of 7.95 allocatable).
       workerResources:
-        requests: {cpu: 500m, memory: 768Mi}
-        limits: {cpu: 500m, memory: 768Mi}
+        requests: {cpu: "1", memory: 768Mi}
+        limits: {cpu: "1", memory: 768Mi}
       dindResources:
         requests: {cpu: 500m, memory: 1Gi}
         limits: {cpu: 500m, memory: 1Gi}
