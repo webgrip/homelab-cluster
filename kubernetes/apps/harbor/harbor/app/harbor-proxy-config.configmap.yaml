@@ -189,6 +189,39 @@ data:
       fi
     }
 
+    # Read-only renovate robot: pull-only on the webgrip project, which covers the registry
+    # tag-listing API Renovate needs (GET /v2/<repo>/tags/list). Same converge shape as the
+    # CI robot above; secret generated in-cluster (harbor-robot-renovate) and mirrored to
+    # OpenBao secret/harbor/robot-renovate for the bot's hostRules.
+    ensure_renovate_robot() {
+      [ -n "$${RENOVATE_ROBOT_TOKEN:-}" ] || {
+        log "no renovate robot token (secret/harbor/robot-renovate) — skipping robot"; return 0; }
+      _pid="$$(hc GET "/projects?name=webgrip" 2>/dev/null | jq -r '.[] | select(.name=="webgrip") | .project_id' 2>/dev/null | head -n1)"
+      [ -n "$$_pid" ] && [ "$$_pid" != "null" ] || { log "WARN: webgrip project id not found; skipping renovate robot"; return 0; }
+      _perms='[{"kind":"project","namespace":"webgrip","access":[{"resource":"repository","action":"pull"}]}]'
+      _q="Level%3Dproject%2CProjectID%3D$$_pid"
+      _rid="$$(hc GET "/robots?q=$$_q&page_size=100" 2>/dev/null | jq -r '.[] | select(.name=="robot$$webgrip+renovate") | .id' 2>/dev/null | head -n1)"
+      if [ -z "$$_rid" ] || [ "$$_rid" = "null" ]; then
+        _body="{\"name\":\"renovate\",\"description\":\"renovate read-only tag enumeration (managed)\",\"duration\":-1,\"level\":\"project\",\"disable\":false,\"permissions\":$$_perms}"
+        hc POST "/robots" "$$_body" >/dev/null 2>&1 || true
+        _rid="$$(hc GET "/robots?q=$$_q&page_size=100" 2>/dev/null | jq -r '.[] | select(.name=="robot$$webgrip+renovate") | .id' 2>/dev/null | head -n1)"
+      fi
+      if [ -z "$$_rid" ] || [ "$$_rid" = "null" ]; then
+        log "WARN: renovate robot not resolvable (pid=$$_pid)"; return 0
+      fi
+      _upd="{\"name\":\"robot$$webgrip+renovate\",\"description\":\"renovate read-only tag enumeration (managed)\",\"duration\":-1,\"level\":\"project\",\"disable\":false,\"permissions\":$$_perms}"
+      if _out="$$(hc PUT "/robots/$$_rid" "$$_upd" 2>&1)"; then
+        log "renovate robot (id=$$_rid) access converged (repository pull)"
+      else
+        log "WARN: failed to update renovate robot permissions (id=$$_rid): $$_out"
+      fi
+      if _out="$$(hc PATCH "/robots/$$_rid" "{\"secret\":\"$${RENOVATE_ROBOT_TOKEN}\"}" 2>&1)"; then
+        log "renovate robot (id=$$_rid) secret ensured"
+      else
+        log "WARN: failed to set renovate robot secret (id=$$_rid): $$_out"
+      fi
+    }
+
     # ensure_gc_schedule -> registry-wide garbage collection, weekly, deleting UNTAGGED manifests.
     # This is what reclaims the orphaned buildx `:cache` manifests (each cache-to push overwrites the
     # `cache` tag and leaves the previous manifest untagged) plus anything retention has untagged.
@@ -274,6 +307,7 @@ data:
     # Own-image hosting: private project + CI robot (webgrip/{infrastructure,workflows} handoffs)
     ensure_private_project webgrip
     ensure_webgrip_robot
+    ensure_renovate_robot
 
     # Storage hygiene: weekly registry GC (reaps untagged incl. orphaned build cache) + a webgrip
     # tag-retention policy (keep latest 10 versions; the rest get untagged for GC to reclaim).
