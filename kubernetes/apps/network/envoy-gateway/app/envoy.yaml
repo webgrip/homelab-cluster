@@ -35,6 +35,21 @@ spec:
               operator: Equal
               value: fringe
               effect: NoSchedule
+          # Prefer keeping the data plane OFF fringe: that node also runs the CI dind daemon
+          # and Harbor, and its saturation made the internal VIP refuse connections during
+          # image releases (infra runs 137/158). externalTrafficPolicy is Cluster, so any
+          # replica on a starved node degrades the VIP for ~half of connections. Preferred,
+          # not required — if worker-1 is down, falling back onto fringe (via the toleration
+          # above) beats no ingress at all.
+          affinity:
+            nodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                      - key: kubernetes.io/hostname
+                        operator: NotIn
+                        values: ["fringe-workstation"]
       envoyService:
         externalTrafficPolicy: Cluster
   shutdown:
