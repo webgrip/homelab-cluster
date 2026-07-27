@@ -38,8 +38,11 @@ visibility) and populate it in step 2 with `git push origin --all && git push or
    `mirror repository is read-only` is the only proof the convert did/didn't land → reference.md.
 4. **Settings parity to GitHub** — gitea-mirror creates repos with the Actions unit OFF. Run
    `scripts/forgejo-sync.sh --repo <name>` (dry-run first, then `--apply`): enables the Actions +
-   Releases units, adds the Forgejo→GitHub push-mirror, mirrors `main` branch protection. Token env
-   (`~/.config/webgrip/forgejo.env`) lives **on the operator machine**, not in the repo → reference.md.
+   PRs + Releases units, adds the Forgejo→GitHub push-mirror. Branch protection is **opt-in**
+   (`--only protect`) and applies the ADR-0050 delivery-contract whitelists (CI bot pushes,
+   owner+Renovate merge) — NOT a mirror of GitHub's rules; order + 403 triage →
+   [branch-protection rollout runbook](../../../docs/techdocs/docs/runbooks/forgejo-branch-protection-rollout.md).
+   Token env (`~/.config/webgrip/forgejo.env`) lives **on the operator machine**, not in the repo → reference.md.
 5. **Port the CI/release workflows** — `.github/workflows/` still targets GitHub (ARC label, GitHub-App
    auth, `@semantic-release/github`) and won't release on Forgejo. **Move** to `.forgejo/workflows/` +
    a `GITEA_ACTIONS`-gated `.releaserc.js` → the **forgejo-port-workflows** skill. Skipping this leaves
@@ -52,9 +55,14 @@ visibility) and populate it in step 2 with `git push origin --all && git push or
   read-only` means step 1's convert didn't take — redo it.
 - **No per-repo token needed for CI:** the `webgrip-ci` bot has org-wide write via the `webgrip/ci` team
   (forgejo-ci-provisioner), so semantic-release can push tags once the repo is writable.
-- **`forgejo-sync.sh` token scopes:** `FORGEJO_TOKEN` = `write:repository`. A `/user` call 403s with a
-  repo-scoped token — expected, the script doesn't use it. `--all` (org sweep) additionally needs
-  `read:organization`; without it, pass `--repo <name>` explicitly.
-- **Never copy GitHub `status_check_contexts` into Forgejo branch protection** — they're GitHub job names;
-  Forgejo's checks differ, so requiring them deadlocks every merge. `forgejo-sync.sh` drops them and warns;
-  re-add under Forgejo check names after CI has run once.
+- **`forgejo-sync.sh` token scopes:** `FORGEJO_TOKEN` = `write:repository` (+ repo admin for
+  `protect`/`webhook`). A `/user` call 403s with a repo-scoped token — expected, the script doesn't
+  use it. `--all` (org sweep) additionally needs `read:organization`; without it, pass `--repo
+  <name>` explicitly.
+- **`--all` paginates the org listing** (50/page). Before 2026-07-26 it fetched one page — past 100
+  repos, ploeg/ai-skills/previews/semantic-release-config were silently invisible to every sweep.
+  If a repo seems skipped, first confirm it appears in the resolved list.
+- **Never copy GitHub `status_check_contexts` into Forgejo branch protection** — they're GitHub job
+  names; Forgejo's checks differ, so requiring them deadlocks every merge. (`sync_protect` no longer
+  mirrors GitHub protection at all — it applies the ADR-0050 contract payload; add required checks
+  under Forgejo check names only after CI has run once.)

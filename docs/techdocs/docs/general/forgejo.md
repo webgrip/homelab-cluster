@@ -70,6 +70,13 @@ LoadBalancer Services in the kyverno `network-exposure-enforce` policy.
   shipped but `suspend: true` by default.
 - **Upgrades:** Renovate bumps the chart tag/digest in `app/ocirepository.yaml`; the
   Forgejo app version tracks the chart `appVersion`.
+- **Stale-branch / zombie-PR cleanup is automated:** the weekly `scheduled-maintenance`
+  workflow (`.forgejo/workflows/scheduled-maintenance.yml`, Mondays 06:00 UTC) closes PRs
+  whose head is already contained in the base and prunes fully-merged branches (never
+  `main`/`renovate/*`; mass-delete fuse at 15). Manual run: Actions → scheduled-maintenance →
+  Run workflow (`dry-run` defaults to `true`). Contract + branch protection:
+  [ADR-0050](../adr/adr-0050-per-repo-delivery-contract.md) and the
+  [branch-protection rollout runbook](../runbooks/forgejo-branch-protection-rollout.md).
 - **OIDC login failures:** see the [Authentik runbook](../runbooks/authentik-oidc-login.md)
   — almost always pod DNS, credentials, or redirect URI (in that order).
 - **Recovering a stalled HelmRelease:** imperative `flux reconcile --force` is blocked

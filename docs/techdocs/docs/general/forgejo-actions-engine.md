@@ -114,6 +114,17 @@ regardless; re-verify the underlying emptiness after a Forgejo upgrade.*
   to the dispatch/parse (it matches `^(.+)-v(.+)$`). **Never re-prefix it** — prepending
   `<package-name>-v` doubled it to `techdocs-builder-vtechdocs-builder-v...`.
 
+## `schedule` fires only from the default branch
+
+A cron trigger executes the workflow **as committed on the default branch** — a scheduled
+workflow added or edited on a feature branch never fires until it lands on `main`. To prove a
+scheduled workflow end-to-end before its first cron tick, give it a `workflow_dispatch` trigger
+and dispatch it manually (how the `scheduled-maintenance` janitor was drilled, 2026-07-26).
+
+API dispatch (`POST /api/v1/repos/{owner}/{repo}/actions/workflows/{file}/dispatches`) is
+scope-gated: a `write:repository` token gets `403` — the token also needs the Actions scope.
+`agent-builder`'s PAT deliberately lacks it (ADR-0048/0050 role split); admin basic-auth works.
+
 ## Authorization is per-UNIT — token scope is not permission
 
 Forgejo checks two independent layers on every call: the token's **scopes** cap what the token

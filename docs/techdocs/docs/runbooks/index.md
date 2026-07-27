@@ -55,6 +55,7 @@ Links-only index. Each runbook is its own page; authoring recipes live in skills
 ## CI
 
 - [Forgejo Actions runner (KEDA ScaledJob, warm pool)](forgejo-runner.md)
+- [Forgejo branch protection rollout (ADR-0050 delivery contract)](forgejo-branch-protection-rollout.md)
 
 ## Incidents / postmortems
 

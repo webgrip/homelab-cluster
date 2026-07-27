@@ -32,6 +32,9 @@ Runner label is **`docker`**. Direct-step jobs pin `runs-on: docker`; pure-`uses
   (`github.repository` is fine) → hardcode `webgrip` in derived image/cache refs.
 - **Release didn't trigger the build?** A CI-created release fires no release event — dispatch the
   build explicitly; every `workflow_dispatch` input needs `type: string`.
+- **Scheduled workflow never fires?** `on: schedule` runs only from the **default branch** — land it
+  on `main` first; prove the path with a manual `workflow_dispatch`. A 403 dispatching via API =
+  token missing the Actions scope (`write:repository` alone is not enough; admin basic-auth works).
 - **semantic-release version double-prefix** (`techdocs-builder-vtechdocs-builder-v...`)?
   `semantic-release-monorepo` `outputs.version` is already the full namespaced tag — pass verbatim,
   never re-prefix.

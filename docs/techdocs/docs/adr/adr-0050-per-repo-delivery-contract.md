@@ -49,14 +49,14 @@ via branch protection. Documentation describes the contract; it never *is* the e
    additionally server-enforces ADR-0048's *builder ≠ judge*: `agent-builder` cannot merge
    its own PRs.
 2. **Product repos** (`development` branch cuts RC releases): protect `main` **and**
-   `development`; push whitelist = the **`forgejo-ci` bot only** (semantic-release must
+   `development`; push whitelist = the **`webgrip-ci` bot only** (semantic-release must
    commit the `chore(release)` bump + tag back to the branch — see the warning header in
    `scripts/forgejo-sync.sh`). Humans and agents alike deliver via PRs. The CI bot and the
-   agent bot are **distinct identities by design**: whitelisting `forgejo-ci` grants
+   agent bot are **distinct identities by design**: whitelisting `webgrip-ci` grants
    nothing to `agent-builder`.
 3. **Janitor backstop** (`.forgejo/workflows/scheduled-maintenance.yml`, weekly): closes
    zombie PRs with an explanatory comment and prunes contained branches (never `main`,
-   never `renovate/*`, mass-deletion fuse at 15). Runs as `forgejo-ci` — *janitor ≠
+   never `renovate/*`, mass-deletion fuse at 15). Runs as `webgrip-ci` — *janitor ≠
    builder*, mirroring the ADR-0048 role split.
 4. **Empty-diff guard** in the agent harness (`webgrip/infrastructure`,
    `ops/docker/agent-runner`): after rebasing onto the target branch, if the diff is
@@ -122,4 +122,8 @@ deployed system where the owner iterates at trunk speed; product repos gate rele
 - 2026-07-26 — `sync_protect` implements the contract (whitelist payloads, `development`
   coverage with owner push, PATCH convergence, paginated `--all` — ploeg/ai-skills/previews/
   semantic-release-config were silently invisible before). Org rollout remains an owner run.
+- 2026-07-27 — naming fix: the CI bot's **username** is `webgrip-ci` (minted by the
+  `forgejo-ci-provisioner` job); earlier text said `forgejo-ci`, which matches no Forgejo user
+  and would have produced a dead whitelist. Rollout runbook:
+  [Forgejo branch protection rollout](../runbooks/forgejo-branch-protection-rollout.md).
 - Supported by: ADR-0048 (role bots, PR-only fleet), ADR-0049 (dispatch failure states).
