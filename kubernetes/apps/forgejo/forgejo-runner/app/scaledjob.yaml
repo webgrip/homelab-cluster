@@ -172,10 +172,14 @@ spec:
                 # "Cannot find: node in PATH". node20 (glibc, v20.x) matches actions/checkout@v4's
                 # declared runtime; node24 is also bundled at externals/node24/bin if needed.
                 export PATH="/home/runner/externals/node20/bin:$PATH"
-                # The shared per-node dind DaemonSet (dind-daemonset.yaml) is the docker daemon:
-                # NODE_IP comes from the downward API below; config.yaml's docker_host is "-"
-                # so this env is authoritative for job-container pulls and docker builds.
-                export DOCKER_HOST="tcp://${NODE_IP}:2375"
+                # The shared per-node dind DaemonSet (dind-daemonset.yaml) is the docker daemon,
+                # reached via the forgejo-dind Service (internalTrafficPolicy: Local — always the
+                # daemon on THIS pod's node, preserving the same-node bind-mount contract).
+                # config.yaml's docker_host is "-" so this env is authoritative for job-container
+                # pulls and docker builds. Fallback if the service path misbehaves:
+                # export DOCKER_HOST="tcp://${NODE_IP}:2375" (hostPort kept during the staged
+                # migration — see dind-daemonset.yaml).
+                export DOCKER_HOST="tcp://forgejo-dind.forgejo.svc.cluster.local:2375"
                 # --wait blocks until Forgejo assigns a task. Required for the warm pool
                 # (minReplicaCount): these pods start with no pending job, so without --wait they'd
                 # exit immediately and KEDA would hot-loop respawning them. Harmless for burst pods

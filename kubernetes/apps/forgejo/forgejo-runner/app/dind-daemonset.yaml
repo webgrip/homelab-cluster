@@ -95,9 +95,13 @@ spec:
             - name: ci-shared
               mountPath: /mnt/ci-shared
           resources:
-            # No CPU limit: image extraction and builds should burst. Memory headroom covers
-            # the e2e KinD-inside-dind case (~1.5Gi) plus concurrent job containers now that
-            # the daemon is shared.
+            # CPU capped at 6 of fringe's 8 hardware threads. "No limit, builds should burst" held until
+            # two production incidents proved a full-node burst starves everything colocated:
+            # infra runs 136/137 (2026-07-26, connection reset mid-push) and run 158
+            # (2026-07-27, envoy-internal VIP 10.0.0.27 refusing connections mid-verify) both
+            # died while this daemon ran concurrent multi-GB builds on the node that also
+            # hosts Harbor, its postgres and the gateway data plane. Two reserved threads keep
+            # the accept paths alive; builds still burst to 6.
             # Requests deliberately TINY: worker-1 sits at ~98% CPU requests, and at 250m/512Mi
             # this DaemonSet pod stayed Pending there — leaving runner pods on that node with
             # no daemon at all (observed 2026-07-24). A mostly-idle daemon needs no reservation;
@@ -106,6 +110,7 @@ spec:
               cpu: 50m
               memory: 128Mi
             limits:
+              cpu: "6"
               memory: 6Gi
         - name: prune
           # Persistent storage needs GC the old throwaway emptyDir never did. Two tiers:
@@ -157,6 +162,31 @@ spec:
           hostPath:
             path: /dev/shm/forgejo-ci-shared
             type: DirectoryOrCreate
+---
+# Node-local service front for the daemon: internalTrafficPolicy Local routes each runner pod
+# to ITS OWN node's dind (preserving the same-node bind-mount contract the header describes)
+# without the node IP in the client config. Motivation: the hostPort is reachable from the
+# whole LAN — verified 2026-07-27 with an unauthenticated `docker -H tcp://10.0.0.23:2375 info`
+# from a workstation; the CiliumNetworkPolicy below does not cover the external hostPort path.
+# Staged migration: DOCKER_HOST now targets this service; the hostPort stays as a fallback
+# until a few release waves prove the service path (then drop the hostPort mapping and the
+# LAN exposure with it).
+apiVersion: v1
+kind: Service
+metadata:
+  name: forgejo-dind
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo-dind
+spec:
+  selector:
+    app.kubernetes.io/name: forgejo-dind
+  internalTrafficPolicy: Local
+  ports:
+    - name: docker
+      port: 2375
+      targetPort: 2375
+      protocol: TCP
 ---
 # Only runner pods (and the agent-runner pool, which may migrate later) may reach the shared
 # daemon. hostPort traffic from same-node pods still traverses Cilium's policy path.
