@@ -30,10 +30,12 @@ spec:
       PLOEG_TEAM_MAP: "bronze=bronze,silver=silver"
     executor:
       enabled: true
-      # Chart default lags a release behind; pin the runner here. 1.0.2 kills
-      # ~5 min of startup dead time per run: no public-skills git sync against
-      # blocked github egress, local LiteLLM cost map (VIK-590).
-      runnerImage: harbor.webgrip.dev/webgrip/agent-runner:1.0.2@sha256:086b4bc0d3fda0e3c179f9501bb46a612f5f33e60d96405a5d94471a26279596
+      # Chart default lags a release behind; pin the runner here. 1.0.2 killed
+      # ~5 min of startup dead time per run (no public-skills git sync, local
+      # LiteLLM cost map — VIK-590); 1.0.3 bakes the version banner so the
+      # entrypoint no longer cold-imports the CLI tree (2m20s at 500m) just to
+      # log it, and silences dependency DeprecationWarnings in run logs.
+      runnerImage: harbor.webgrip.dev/webgrip/agent-runner:1.0.3@sha256:53a1f11bd80956241a57772d1deb8a4fbd6b91e2e3310087fdd7bb7e6415c6f6
       # Guaranteed QoS stays (requests==limits — ADR-0049 P1), sized down from
       # the chart defaults so a run fits the rebalanced fringe node: worker
       # peak measured 438Mi (run 8), dind must still hold a go build +
