@@ -124,6 +124,20 @@ spec:
                   }
 
                   fs.writeFileSync('/work/host-rules.json', JSON.stringify(hostRules));
+
+                  // hostRules only authenticate Renovate's OWN lookups. postUpgradeTasks run in a
+                  // child process whose environment Renovate filters down to an allowlist, so the
+                  // HARBOR_ROBOT_* envs on the RenovateJob pod never reach
+                  // scripts/update-oci-digests.sh — it falls back to anonymous, which works for the
+                  // public proxy projects but 401s on the private `webgrip` project and aborts the
+                  // whole branch with artifactErrors. customEnvVariables is the supported channel
+                  // for injecting env into those child processes.
+                  const customEnv = {};
+                  if (harborUser && harborToken) {
+                    customEnv.HARBOR_ROBOT_USER = harborUser;
+                    customEnv.HARBOR_ROBOT_TOKEN = harborToken;
+                  }
+                  fs.writeFileSync('/work/custom-env.json', JSON.stringify(customEnv));
                   EOF
               securityContext:
                 allowPrivilegeEscalation: false
@@ -164,6 +178,7 @@ spec:
                     --from-literal="$RUNTIME_SECRET_KEY=$token" \
                     --from-literal="RENOVATE_TOKEN=$token" \
                     --from-file="RENOVATE_HOST_RULES=/work/host-rules.json" \
+                    --from-file="RENOVATE_CUSTOM_ENV_VARIABLES=/work/custom-env.json" \
                     --dry-run=client \
                     -o yaml \
                     | kubectl apply -f -

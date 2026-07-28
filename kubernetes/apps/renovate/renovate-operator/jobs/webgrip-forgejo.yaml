@@ -89,6 +89,17 @@ spec:
           name: renovate-runtime-token
           key: RENOVATE_HOST_RULES
           optional: true
+    # Renovate filters the env it hands to postUpgradeTask child processes, so the
+    # HARBOR_ROBOT_* vars below reach the pod but NOT update-oci-digests.sh. The
+    # token-minter folds them into this key so Renovate re-injects them into the child
+    # env; without it the script goes anonymous and 401s on the private webgrip project,
+    # which reds the branch status and blocks automerge.
+    - name: RENOVATE_CUSTOM_ENV_VARIABLES
+      valueFrom:
+        secretKeyRef:
+          name: renovate-runtime-token
+          key: RENOVATE_CUSTOM_ENV_VARIABLES
+          optional: true
     # github.com DATASOURCE auth (distinct from the GHCR registry auth above). On the Forgejo platform
     # Renovate has no github.com credential, so github-actions/github-releases/github-tags lookups hit
     # api.github.com anonymously and rate-limit ("Please set a GITHUB_COM_TOKEN"). Reuse the same

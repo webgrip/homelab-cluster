@@ -74,6 +74,15 @@ spec:
           name: renovate-harbor-robot
           key: HARBOR_ROBOT_TOKEN
           optional: true
+    # Renovate filters the env handed to postUpgradeTask child processes, so the two vars
+    # above never reach update-oci-digests.sh. The token-minter folds them into this key
+    # so Renovate re-injects them into the child env.
+    - name: RENOVATE_CUSTOM_ENV_VARIABLES
+      valueFrom:
+        secretKeyRef:
+          name: renovate-runtime-token
+          key: RENOVATE_CUSTOM_ENV_VARIABLES
+          optional: true
   extraVolumes:
     - name: config
       configMap:
