@@ -39,6 +39,13 @@ spec:
             # annotations/navigation/runpanelquery/examples (niche).
             # OnCall/Incident/Sift/Asserts are Grafana Cloud features — omitted.
             - --enabled-tools=search,datasource,dashboard,prometheus,alerting,pyroscope
+            # 0.15+ validates the Host header on EVERY route incl. /healthz
+            # (DNS-rebinding protection; default allowlist = loopback only).
+            # Without this list the kubelet probe (Host: <podIP>:8000) and the
+            # gateway traffic (Host: mcp-grafana.<domain>) both get 403 — the
+            # 0.17.2 rollout crashlooped for 5 days on exactly that. Probes
+            # override their Host to localhost:8000 below.
+            - --allowed-hosts=localhost:8000,127.0.0.1:8000,mcp-grafana.observability.svc.cluster.local:8000,mcp-grafana.${SECRET_DOMAIN}
           env:
             - name: GRAFANA_URL
               value: "http://grafana-service.observability.svc.cluster.local:3000"
@@ -55,12 +62,18 @@ spec:
             httpGet:
               path: /healthz
               port: http
+              httpHeaders:
+                - name: Host
+                  value: localhost:8000
             initialDelaySeconds: 5
             periodSeconds: 30
           readinessProbe:
             httpGet:
               path: /healthz
               port: http
+              httpHeaders:
+                - name: Host
+                  value: localhost:8000
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:
