@@ -71,11 +71,46 @@
       ],
     },
     {
-      description: "Prioritize vulnerability fixes ahead of all routine dependency updates",
+      // AUTOMERGE POLICY (2026-07): patch+minor+digest ride unattended; majors stay behind the
+      // preset's dashboard-approval gate. The shared preset ZEROES minimumReleaseAge for
+      // approval-gated types ("approval IS the gate"), so dropping the approval gate here
+      // REQUIRES re-asserting the soak explicitly. The soak is the only time gate: Forgejo
+      // branch protection requires no status checks and the commit-status API is empty, so
+      // Renovate's PR-automerge does NOT wait for e2e. These two rules sit BEFORE the vuln
+      // rules (which keep their 0-day fast path), the cluster-critical minor gate, and the
+      // talos gate — all of which come later in this array and therefore win field-by-field.
+      description: "Blanket automerge: patch updates go unattended after a 1-day soak",
+      matchUpdateTypes: [
+        "patch"
+      ],
+      dependencyDashboardApproval: false,
+      automerge: true,
+      automergeType: "pr",
+      minimumReleaseAge: "1 day",
+      schedule: [
+        "at any time"
+      ],
+    },
+    {
+      description: "Blanket automerge: minor updates go unattended after a 3-day soak",
+      matchUpdateTypes: [
+        "minor"
+      ],
+      dependencyDashboardApproval: false,
+      automerge: true,
+      automergeType: "pr",
+      minimumReleaseAge: "3 days",
+      schedule: [
+        "at any time"
+      ],
+    },
+    {
+      description: "Prioritize vulnerability fixes ahead of all routine dependency updates; 0-day soak keeps the security fast path ahead of the blanket patch/minor soaks above",
       matchJsonata: [
         "$exists(vulnerabilityFixVersion)"
       ],
       dependencyDashboardApproval: false,
+      minimumReleaseAge: "0 days",
       schedule: [
         "at any time"
       ],
@@ -170,26 +205,10 @@
       ],
       matchPackageNames: [
         "postgres",
-        "docker.io/library/postgres"
+        "docker.io/library/postgres",
+        "harbor.webgrip.dev/dockerhub/library/postgres"
       ],
       allowedVersions: "/^\\d+\\.\\d+-alpine\\d+\\.\\d+$/",
-    },
-    {
-      description: "Helm charts that use a dedicated sha: field for digest pinning (e.g. kube-prometheus-stack). Renovate updates the sha: field directly via customManagers; do not also embed digest inline in tag: which causes a double-digest InvalidImageName error.",
-      matchManagers: [
-        "helm-values"
-      ],
-      matchPackageNames: [
-        "quay.io/prometheus-operator/prometheus-operator",
-        "quay.io/prometheus-operator/prometheus-config-reloader",
-        "quay.io/prometheus/prometheus",
-        "quay.io/prometheus/alertmanager"
-      ],
-      matchUpdateTypes: [
-        "pinDigest",
-        "digest"
-      ],
-      enabled: false,
     },
     {
       description: "Group GitHub Actions updates separately from GitOps/runtime dependency updates",
@@ -201,7 +220,7 @@
       commitBodyTable: true,
     },
     {
-      description: "Auto-merge GitHub Actions patch/digest updates only after checks pass",
+      description: "Auto-merge GitHub Actions patch/digest/minor updates; minor is included here because the group rule above sets automerge:false after the blanket rules and would otherwise re-block actions minors",
       matchManagers: [
         "github-actions"
       ],
@@ -211,7 +230,8 @@
       minimumReleaseAge: "1 day",
       matchUpdateTypes: [
         "patch",
-        "digest"
+        "digest",
+        "minor"
       ],
     },
     {
@@ -261,13 +281,14 @@
       commitBodyTable: true,
     },
     {
-      description: "Gate minor updates for cluster-critical platform files",
+      description: "Gate minor updates for cluster-critical platform files. automerge:false is load-bearing: a group branch (harbor suite, shared app-template) automerges only when EVERY member has automerge:true, so this keeps an approved critical minor from riding an otherwise-automerging group to main unattended.",
       matchFileNames: [
         "bootstrap/**",
         "kubernetes/apps/cert-manager/**",
         "kubernetes/apps/cnpg-dr/**",
         "kubernetes/apps/cnpg-system/**",
         "kubernetes/apps/flux-system/**",
+        "kubernetes/apps/harbor/**",
         "kubernetes/apps/kube-system/**",
         "kubernetes/apps/longhorn-system/**",
         "kubernetes/apps/network/**",
@@ -277,19 +298,21 @@
         "minor"
       ],
       dependencyDashboardApproval: true,
+      automerge: false,
       minimumReleaseAge: "7 days",
     },
     {
-      description: "Keep vchord-scratch CNPG extension images on their PostgreSQL 18 compatibility stream",
-      matchDatasources: [
-        "docker"
+      description: "Talos and kubelet stay fully manual (patch AND minor): merging talenv.yaml deploys nothing — task talos:* applies it later — so an unattended bump silently changes what the next manual upgrade rolls out. Approval alone is the gate; 0-day soak avoids the discarded-approval-tick trap (a tick during a soak window is consumed and dropped).",
+      matchFileNames: [
+        "talos/**"
       ],
-      matchPackageNames: [
-        "ghcr.io/tensorchord/vchord-scratch"
+      matchUpdateTypes: [
+        "patch",
+        "minor"
       ],
-      matchCurrentValue: "/^pg18-v/",
-      allowedVersions: "/^pg18-v\\d+\\.\\d+\\.\\d+$/",
-      separateMultipleMajor: true,
+      dependencyDashboardApproval: true,
+      automerge: false,
+      minimumReleaseAge: "0 days",
     },
     {
       description: "Treat missing release timestamps as stable for GHCR Docker datasource updates; Renovate only supports Docker release timestamps on Docker Hub, so GHCR OCI artifacts can otherwise stay pending forever. Also covers charts proxied through Harbor (harbor.${SECRET_DOMAIN}/<project>/…), whose timestamps are likewise unavailable.",
@@ -321,6 +344,7 @@
       ],
       matchPackageNames: [
         "/^docker\\.io\\/goharbor\\//",
+        "/^harbor\\.webgrip\\.dev\\/dockerhub\\/goharbor\\//",
         "harbor", // the goharbor Helm chart (helm.goharbor.io)
       ],
       groupName: "harbor suite",
@@ -346,7 +370,8 @@
         "docker"
       ],
       matchPackageNames: [
-        "docker.io/library/busybox"
+        "docker.io/library/busybox",
+        "harbor.webgrip.dev/dockerhub/library/busybox"
       ],
       groupName: "shared busybox",
       additionalBranchPrefix: "shared-busybox-",
