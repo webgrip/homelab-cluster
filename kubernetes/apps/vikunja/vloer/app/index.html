@@ -214,7 +214,9 @@ const TEAM_ALIASES = { bronze: ["bronze", "jake"], silver: ["silver", "jane"] };
 
 const state = {
   token: null, projects: [], labels: new Map(), users: {}, // teamKey -> {id, username}
-  project: +localStorage.getItem("vloer_project") || 10,
+  // Default = Ploeg Test (11): the project where the dispatch webhook + team
+  // user shares are wired today. Routing needs BOTH on the chosen project.
+  project: +localStorage.getItem("vloer_project") || 11,
   tasks: [], belt: [], routed: [], floor: {}, view: "triage", busy: false,
 };
 
@@ -283,13 +285,21 @@ async function loadProjects() {
 async function loadLabels() {
   for (const l of (await pagedJSON("/labels")) || []) state.labels.set(l.id, l);
 }
+/* Vikunja 403s an assignment when the assignee cannot read the project, so
+   resolve team users FROM the project's own share list (projectusers), not
+   global user search — an unshared user shows as an unavailable station
+   instead of a mystery 403. Aliases: the factory's PLOEG_TEAM_MAP also routes
+   jake→bronze and jane→silver. */
 async function resolveUsers() {
+  state.users = {};
   for (const t of TEAMS.filter((t) => t.live)) {
-    try {
-      const found = await apiJSON(`/users?s=${encodeURIComponent(t.user)}`);
-      const hit = (found || []).find((u) => u.username === t.user);
-      if (hit) state.users[t.key] = { id: hit.id, username: hit.username };
-    } catch { /* station shows as unresolved */ }
+    for (const cand of TEAM_ALIASES[t.key] || [t.user]) {
+      try {
+        const found = await apiJSON(`/projects/${state.project}/projectusers?s=${encodeURIComponent(cand)}`);
+        const hit = (found || []).find((u) => u.username === cand);
+        if (hit) { state.users[t.key] = { id: hit.id, username: hit.username }; break; }
+      } catch { /* try next alias */ }
+    }
   }
 }
 async function loadTasks() {
@@ -346,7 +356,9 @@ function renderStations() {
     const sug = state.view === "triage" && current() && suggest(current()).team === t.key;
     const stats = !t.live
       ? `<span class="idle-note">not commissioned</span>`
-      : items === null || items === undefined
+      : !state.users[t.key]
+        ? `<span class="idle-note">⚠ not shared into this project</span>`
+        : items === null || items === undefined
         ? `<span class="idle-note">ploegd unreachable</span>`
         : `<span class="depth">${queued}</span>` +
           (leased ? `<span class="live"><span class="dot"></span>RUNNING ×${leased}</span>` : `<span class="idle-note">idle</span>`) +
@@ -454,7 +466,7 @@ async function route(teamKey) {
   if (!t || state.busy || state.view === "floor") return;
   if (!team || !team.live) { toast(`${team ? team.name : teamKey} is not commissioned yet`, true); return; }
   const user = state.users[teamKey];
-  if (!user) { toast(`Cannot resolve Vikunja user '${team.user}'`, true); return; }
+  if (!user) { toast(`'${team.user}' isn't shared into this project — add them in Vikunja share settings (and check the ploegd webhook is registered here)`, true); return; }
   state.busy = true;
   try {
     await apiJSON(`/tasks/${t.id}/assignees`, { method: "PUT", body: JSON.stringify({ user_id: user.id }) });
@@ -472,7 +484,9 @@ async function route(teamKey) {
     renderTicket(true);
     setTimeout(loadFloor, 4000); // give ploegd time to ingest the webhook
   } catch (e) {
-    toast(`Routing failed: ${e.message}`, true);
+    toast(/403/.test(e.message)
+      ? `Routing refused (403): '${user.username}' likely lost access to this project — check Vikunja share settings`
+      : `Routing failed: ${e.message}`, true);
   } finally { state.busy = false; }
 }
 
@@ -531,6 +545,7 @@ async function refresh() {
 $("project-select").addEventListener("change", async (e) => {
   state.project = +e.target.value;
   localStorage.setItem("vloer_project", state.project);
+  await resolveUsers();
   await loadTasks();
   renderTicket(false);
 });
