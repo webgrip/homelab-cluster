@@ -209,11 +209,18 @@ data:
       if [ -z "$$_rid" ] || [ "$$_rid" = "null" ]; then
         log "WARN: renovate robot not resolvable (pid=$$_pid)"; return 0
       fi
-      _upd="{\"name\":\"robot$$webgrip+renovate\",\"description\":\"renovate read-only tag enumeration (managed)\",\"duration\":-1,\"level\":\"project\",\"disable\":false,\"permissions\":$$_perms}"
-      if _out="$$(hc PUT "/robots/$$_rid" "$$_upd" 2>&1)"; then
-        log "renovate robot (id=$$_rid) access converged (repository pull)"
-      else
-        log "WARN: failed to update renovate robot permissions (id=$$_rid): $$_out"
+      # UpdateRobot needs the exact stored name — fetch it from the API rather than writing the
+      # literal robot$webgrip+renovate: in this double-quoted string the '$' survives Flux's
+      # $$ -> $ render and gets shell-expanded at runtime ("webgrip: parameter not set", set -u
+      # aborts the whole script before the secret PATCH below).
+      _rname="$$(hc GET "/robots/$$_rid" 2>/dev/null | jq -r '.name // empty' 2>/dev/null)"
+      if [ -n "$$_rname" ]; then
+        _upd="{\"name\":\"$$_rname\",\"description\":\"renovate read-only tag enumeration (managed)\",\"duration\":-1,\"level\":\"project\",\"disable\":false,\"permissions\":$$_perms}"
+        if _out="$$(hc PUT "/robots/$$_rid" "$$_upd" 2>&1)"; then
+          log "renovate robot (id=$$_rid) access converged (repository pull)"
+        else
+          log "WARN: failed to update renovate robot permissions (id=$$_rid): $$_out"
+        fi
       fi
       if _out="$$(hc PATCH "/robots/$$_rid" "{\"secret\":\"$${RENOVATE_ROBOT_TOKEN}\"}" 2>&1)"; then
         log "renovate robot (id=$$_rid) secret ensured"
