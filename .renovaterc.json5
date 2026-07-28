@@ -15,6 +15,14 @@
     ":automergeBranch",
   ],
   dependencyDashboardTitle: "Renovate Dashboard 🤖",
+  // Concurrency: the shared preset ships prConcurrentLimit 5 and Renovate takes the LOWEST
+  // value among a branch's upgrades, so the admin ConfigMap's 10 never applied — 5 open PRs
+  // (three of them hand-edited and unmergeable) deadlocked PR creation entirely and every
+  // update rendered as "Rate-Limited". 15 restores headroom while keeping CI bursts survivable
+  // on the single worker node (each PR triggers an e2e run, and flux-local is disk-IOPS bound).
+  // branchConcurrentLimit must match or branches cap before PRs do.
+  prConcurrentLimit: 15,
+  branchConcurrentLimit: 15,
   // NOTE on Harbor-proxied charts: non-bootstrap OCI Helm charts have their
   // OCIRepository url pointed at Harbor's pull-through proxy (harbor.${SECRET_DOMAIN}/ghcr/…,
   // ADR-0023/0017). Renovate does its version lookup *through* Harbor — verified that
