@@ -30,7 +30,7 @@ spec:
       # mapped for the existing tickets/automation. Unmapped assignees fall
       # back to PLOEG_DEFAULT_TEAM, so never assign an unmapped human on a
       # webhook-carrying project unless a bronze run is what they want.
-      PLOEG_TEAM_MAP: "bronze=bronze,silver=silver,jake=bronze,jane=silver"
+      PLOEG_TEAM_MAP: "bronze=bronze,silver=silver,jake=bronze,jane=silver,copper=copper"
     executor:
       enabled: true
       # Chart default lags a release behind; pin the runner here. 1.0.2 killed
@@ -86,3 +86,27 @@ spec:
           # run 8 into a parallel universe (VIK-589, chart >= rc.5).
           baseBranch: development
           maxReplicaCount: 1
+        # copper: seam-smoke team for the pluggable harness/image work
+        # (chart >= rc.5). The exec adapter runs /bin/cat on the generated
+        # taskspec.json inside the same agent-runner image and exits 0, so a
+        # run proves per-team harness selection, taskspec/task.md composition,
+        # per-run key mint/revoke, and the no_change_needed outcome path —
+        # without spending a single LLM token. dind: false also exercises the
+        # sidecar-less pod shape (no privileged container, so this team is
+        # outside the DinD PolicyException entirely).
+        # ORDERING: on chart rc.4 the harness block is silently ignored and
+        # copper would run as a plain OpenHands team — do not assign copper
+        # tickets until the rc.5 chart bump lands (Renovate).
+        - name: copper
+          model: litellm_proxy/deepseek-chat # key scope only; the exec harness never calls the LLM
+          budget: "1"
+          repoOwner: webgrip
+          repoName: erfbeeld
+          baseBranch: main
+          maxReplicaCount: 1
+          harness:
+            name: exec
+            args:
+              - "/bin/cat"
+              - "{taskspec}"
+            dind: false
