@@ -23,6 +23,16 @@
   // branchConcurrentLimit must match or branches cap before PRs do.
   prConcurrentLimit: 15,
   branchConcurrentLimit: 15,
+  // The preset ships rebaseWhen "behind-base-branch", which throttles automerge to roughly ONE
+  // PR per run here: merging the first PR moves main, every other renovate branch is then
+  // "behind", each gets rebased, the rebase restarts its four e2e checks, and none can merge
+  // until the next run 6h later. `main` also has concurrent human/agent writers, so branches
+  // fall behind constantly even when Renovate merges nothing — every rebase re-runs CI on the
+  // single worker node. "conflicted" rebases only on a real conflict, so a run can merge many
+  // PRs. What we give up (each merge tested against the exact tip of main) we never actually
+  // had: branch protection sets no required checks and Renovate does not wait for e2e; the
+  // post-merge flux-local run on main is the real net.
+  rebaseWhen: "conflicted",
   // NOTE on Harbor-proxied charts: non-bootstrap OCI Helm charts have their
   // OCIRepository url pointed at Harbor's pull-through proxy (harbor.${SECRET_DOMAIN}/ghcr/…,
   // ADR-0023/0017). Renovate does its version lookup *through* Harbor — verified that
