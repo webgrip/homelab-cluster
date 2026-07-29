@@ -28,9 +28,31 @@ mkdir -p "${workspace}/chainsaw/reports"
 chmod -R a+rwX "${workspace}/chainsaw"
 
 log info "Creating KinD cluster for Chainsaw" "cluster=${cluster_name}" "node=${KIND_NODE_IMAGE}"
-# Pin the node image through the Harbor proxy so the ~1 GiB kindest/node pull is LAN-speed and
-# rate-limit-free instead of a cold docker.io pull on the runner's emptyDir daemon.
-"${kind_bin}" create cluster --name "${cluster_name}" --image "${KIND_NODE_IMAGE}" \
+# etcd on the node's tmpfs, not its disk. The CI node's disk saturates at ~12MB/s and the shared
+# per-node dind runs several jobs at once (two KinD clusters overlapped in run 587), which
+# starved etcd hard enough to fail the install with "etcdserver: request timed out" and to time
+# out the admission-controller rollout at 0/1 replicas. KinD already mounts a tmpfs at /tmp in
+# every node container (verified: `docker inspect` -> HostConfig.Tmpfs {"/run":"","/tmp":""}), so
+# pointing kubeadm's etcd dataDir there costs no extra mount and works the same on any daemon,
+# local or remote. The data is throwaway — the cluster is deleted at the end of the run — and a
+# single-node test cluster's etcd is well under 100MB of the dind container's memory budget.
+#
+# Node image is pinned through the Harbor proxy so the ~1 GiB kindest/node pull is LAN-speed and
+# rate-limit-free instead of a cold docker.io pull.
+cat >"${workspace}/kind-config.yaml" <<EOF
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    image: ${KIND_NODE_IMAGE}
+kubeadmConfigPatches:
+  - |
+    kind: ClusterConfiguration
+    etcd:
+      local:
+        dataDir: /tmp/etcd
+EOF
+"${kind_bin}" create cluster --name "${cluster_name}" --config "${workspace}/kind-config.yaml" \
     --kubeconfig "${kubeconfig}" --wait 2m
 chmod a+r "${kubeconfig}"
 
@@ -82,8 +104,27 @@ kind_kubectl "${cluster_name}" wait --for=condition=Established crd/clusterpolic
 # Only the admission + background controllers are exercised by the suites (validate/enforce +
 # generate). The reports and cleanup controllers aren't asserted on by any chainsaw test
 # (grep-verified), so we don't block on their rollout — they still install, we just don't wait.
-kind_kubectl "${cluster_name}" -n kyverno rollout status deploy/kyverno-admission-controller --timeout=180s
-kind_kubectl "${cluster_name}" -n kyverno rollout status deploy/kyverno-background-controller --timeout=180s
+#
+# 180s was not enough on a contended CI node (run 587 died at "0 of 1 updated replicas are
+# available"). A rollout that needs >7min is a real failure, not slowness, so the ceiling stays
+# finite — and when it IS hit, dump why instead of leaving "timed out waiting for the condition"
+# as the only evidence.
+wait_for_rollout() {
+    local deployment="${1:?deployment is required}"
+
+    if kind_kubectl "${cluster_name}" -n kyverno rollout status "deploy/${deployment}" --timeout=420s; then
+        return 0
+    fi
+
+    log warn "Rollout failed — dumping cluster state" "deployment=${deployment}"
+    kind_kubectl "${cluster_name}" -n kyverno get pods -o wide || true
+    kind_kubectl "${cluster_name}" -n kyverno describe "deploy/${deployment}" || true
+    kind_kubectl "${cluster_name}" -n kyverno get events --sort-by=.lastTimestamp | tail -40 || true
+    return 1
+}
+
+wait_for_rollout kyverno-admission-controller
+wait_for_rollout kyverno-background-controller
 
 log info "Applying Kyverno policies under test"
 apply_with_webhook_retry() {
