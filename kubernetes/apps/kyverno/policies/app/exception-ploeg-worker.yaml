@@ -1,11 +1,38 @@
 ---
 # yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/policyexception_v2.json
-# Exception for the KEDA-scaled ploeg OpenHands worker (ploeg namespace).
-# Worker pods carry the same privileged docker:dind native sidecar as the
-# forgejo runners (OpenHands' sandbox + repo quality gates need a daemon,
-# DOCKER_HOST=tcp://localhost:2376). Matched by label, not name: KEDA generates
-# ephemeral Jobs/Pods with random suffixes, and exception-governance forbids
-# wildcard names.
+# Exception for ploeg worker pods that carry a privileged docker:dind native
+# sidecar (ploeg namespace) — OpenHands' sandbox and the repo quality gates
+# need a daemon at DOCKER_HOST=tcp://localhost:2376. Same waiver shape and
+# rationale as exception-forgejo-runner-privileged.
+#
+# KEYED ON THE HAZARD, NOT THE WORKLOAD. The ploeg chart emits
+# `ploeg.webgrip.dev/privileged-dind: "true"` on precisely the pods that render
+# the privileged sidecar, and this exception matches that and nothing else.
+# Two reasons it is written that way:
+#
+#   * Scope. The previous Pod match was `app.kubernetes.io/name: ploeg-worker`
+#     — the label EVERY worker pod carries — so a team running `dind: false`
+#     (copper today; every reader Role under Shifts) was waived for
+#     privileged-containers, run-as-non-root and drop-all-capabilities while
+#     running no privileged container at all. Matching the hazard makes the
+#     waiver strictly narrower: no dind, no exception.
+#
+#   * Drift. Ploeg is moving to one workload per (team, Role), so a name-keyed
+#     exception would need a new entry here for every writer Role added in
+#     another repo. A waiver that must be edited to keep working is a waiver
+#     that eventually gets copy-pasted wider than it needs to be. The hazard
+#     label is a function of what the pod actually does.
+#
+# exception-governance forbids wildcard resources.names[]; it places no
+# constraint on label selectors, and this exception uses no names at all. The
+# label is emitted only by that chart's templates and guarded by committed
+# golden renders in webgrip/ploeg (scripts/helm-golden.sh, run in CI), so
+# widening it cannot land without appearing in a reviewed diff.
+#
+# Tracking: this exception exists only because dockerd requires privileged.
+# Revisit together with exception-forgejo-runner and exception-forgejo-dind if
+# the fleet moves to a rootless or sysbox daemon — at which point the waiver
+# disappears rather than merely getting narrower.
 apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
@@ -15,15 +42,17 @@ metadata:
     owner: platform-team
   annotations:
     policies.kyverno.io/description: >-
-      The ploeg-worker-bronze ScaledJob runs a privileged docker:dind native
-      sidecar so OpenHands agent runs can use a real Docker daemon for the
-      sandbox and the repo quality gates. Same waiver shape and rationale as
-      exception-forgejo-runner-privileged: dind's privileged:true inherently
-      trips the baseline privileged-containers rule plus the hardening audits
-      at the pod level; the worker-bin init container and the worker main
-      container are hardened, but Kyverno waives per-resource, not
-      per-container. Revisit alongside the runners if DinD moves to a
-      rootless/sysbox setup.
+      Ploeg worker pods that run a privileged docker:dind native sidecar, so
+      agent runs get a real Docker daemon for the harness sandbox and the repo
+      quality gates. Matched by the ploeg.webgrip.dev/privileged-dind label the
+      chart emits on exactly those pods — not by workload name — so the waiver
+      tracks the privilege rather than the roster: worker Roles that need no
+      Docker (readers, and any team with harness.dind false) carry no label and
+      stay under the full baseline. dind's privileged:true inherently trips the
+      baseline privileged-containers rule plus the hardening audits at the pod
+      level; the worker-bin init container and the worker main container are
+      hardened, but Kyverno waives per-resource, not per-container. Revisit
+      alongside the forgejo runners if DinD moves to a rootless/sysbox setup.
 spec:
   exceptions:
     - policyName: pod-security-baseline-enforce
@@ -40,9 +69,39 @@ spec:
         - require-drop-all-capabilities
   match:
     any:
-      # The resource the webhook actually rejects: the KEDA-generated worker Job.
-      # One entry per team ScaledJob (exception-governance forbids wildcard
-      # names; label matches must be exact).
+      # The resource the webhook actually rejects: the KEDA-generated worker
+      # Job. Its pod template carries the label, so the Job selector sees it.
+      - resources:
+          kinds:
+            - Job
+          namespaces:
+            - ploeg
+          selector:
+            matchLabels:
+              ploeg.webgrip.dev/privileged-dind: "true"
+      # The ephemeral worker Pod the Job spawns, carrying the same label. KEDA
+      # generates random pod names, so a label match is the only stable handle.
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - ploeg
+          selector:
+            matchLabels:
+              ploeg.webgrip.dev/privileged-dind: "true"
+
+      # --- TRANSITIONAL, remove once the chart bump has landed ---------------
+      # The hazard label ships in the ploeg chart release that introduces Role
+      # partitioning. Until the ploeg HelmRelease runs that chart, live
+      # bronze/silver worker pods carry only the old labels, and deleting these
+      # two entries first would start rejecting production worker Jobs at
+      # admission.
+      #
+      # REMOVE all three entries below after the chart bump, once
+      #   kubectl -n ploeg get job -l ploeg.webgrip.dev/privileged-dind=true
+      # returns the running worker Jobs. Their removal is what actually narrows
+      # the waiver; leaving them in place preserves the status quo, which is
+      # not the goal.
       - resources:
           kinds:
             - Job
@@ -59,7 +118,12 @@ spec:
           selector:
             matchLabels:
               scaledjob.keda.sh/name: ploeg-worker-silver
-      # The ephemeral worker Pod the Job spawns, carrying the template label.
+      # The old broad Pod match. This is the over-grant the hazard label
+      # replaces — it waives EVERY worker pod, including teams running
+      # `dind: false` that take no privilege at all. It has to outlive the two
+      # Job entries above by exactly one reconcile: a pod admitted before the
+      # chart bump carries only this label, and dropping it early would reject
+      # a running worker.
       - resources:
           kinds:
             - Pod
