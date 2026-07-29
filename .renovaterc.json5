@@ -396,6 +396,28 @@
       commitBodyTable: true,
     },
     {
+      // Upstream tags this project with FOUR numeric components (v0.15.5.4, v0.16.6.3) alongside
+      // 2- and 3-component ones. The default docker versioning can't parse a 4th segment, so
+      // Renovate couldn't anchor the pinned value and reported "Can't find version matching
+      // v0.16.6.3" — it offered no updates at all while upstream moved to v0.17.x. `loose`
+      // compares arbitrary dot-separated numerics and ignores non-version tags (dev, latest).
+      // Grouped because the web and server images ship in lockstep and MUST move together:
+      // separate PRs merge independently and would leave the UI and API on different versions
+      // (the same failure that left Harbor on chart 1.19.1 with v2.15.2 component images).
+      description: "sparkyfitness: loose versioning for 4-component tags, and keep web+server in lockstep",
+      matchDatasources: [
+        "docker"
+      ],
+      matchPackageNames: [
+        "harbor.webgrip.dev/dockerhub/codewithcj/sparkyfitness",
+        "harbor.webgrip.dev/dockerhub/codewithcj/sparkyfitness_server"
+      ],
+      versioning: "loose",
+      groupName: "sparkyfitness",
+      additionalBranchPrefix: "sparkyfitness-",
+      commitBodyTable: true,
+    },
+    {
       // Environment promotion policy (erfbeeld first; any app adopting the
       // dev/staging/production tree inherits it). Branch model: the app repo's `development`
       // branch cuts prerelease versions (<v>-development.N — the staging channel) and `main`
