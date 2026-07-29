@@ -66,16 +66,24 @@ ensure_kind() {
     printf '%s\n' "${bin_dir}/kind"
 }
 
-kubectl_cmd() {
-    if command -v kubectl >/dev/null 2>&1; then
-        kubectl "$@"
-        return
-    fi
-
-    if command -v mise >/dev/null 2>&1; then
-        mise exec -- kubectl "$@"
-        return
-    fi
-
-    log error "kubectl is required to run Chainsaw tests"
+# Talk to a KinD cluster from INSIDE its own control-plane container, never through the
+# kubeconfig KinD writes on the client.
+#
+# KinD publishes the API server on 127.0.0.1:<random> in the DOCKER DAEMON's network namespace.
+# That kubeconfig is only usable by a client that shares that namespace. On the CI runner it no
+# longer does: DOCKER_HOST points at the shared per-node dind DaemonSet (forgejo-runner/app/
+# dind-daemonset.yaml), a separate pod, so the runner's own 127.0.0.1 has nothing on that port
+# — every client-side kubectl died with "dial tcp 127.0.0.1:<port>: connect: connection refused"
+# (bit CI run 584, 2026-07-29). KinD's own `--wait` never notices: it polls readiness with
+# `docker exec` on the node, not through the kubeconfig, so cluster creation reports healthy.
+# `docker exec` runs on the daemon, so this works identically for a local docker and a remote
+# one. Containerized steps (chainsaw) keep using the kubeconfig with `--network host`, which
+# puts them in the daemon's namespace where 127.0.0.1 IS the API server.
+#
+# Pass manifests on stdin (`-f -`); the client's filesystem is not the node's.
+kind_kubectl() {
+    local cluster="${1:?cluster name is required}"
+    shift
+    docker exec -i "${cluster}-control-plane" \
+        kubectl --kubeconfig /etc/kubernetes/admin.conf "$@"
 }

@@ -8,9 +8,12 @@ name: "e2e"
 #     mktemp workspaces the validator scripts mount must live on the emptyDir the scaledjob
 #     mounts into BOTH the runner and dind containers at this path.
 #   - yamllint runs in a container (the toolchain image ships python3 but no pip).
-#   - kind + kubectl are fetched as static binaries for the chainsaw step (the image has
-#     neither, nor a go toolchain for scripts/lib ensure_kind's fallback). kind's
-#     127.0.0.1 kubeconfig works because the runner shares the pod netns with dind.
+#   - kind is fetched as a static binary for the chainsaw step (the image has neither it nor a
+#     go toolchain for scripts/lib ensure_kind's fallback). The kubeconfig kind writes is NOT
+#     usable from the runner: since the per-pod DinD sidecar became a shared per-node dind
+#     DaemonSet, the API server's 127.0.0.1:<port> publish lands in the DAEMON's netns, not the
+#     runner's (run 584). The script talks to the cluster via `docker exec` on the node, and
+#     containerized steps use `--network host` — see scripts/lib/kyverno-tests.sh::kind_kubectl.
 #   - checkout@v4: proven on this runner (see forgejo-runner scaledjob.yaml notes); v6 is
 #     GitHub-only.
 #
@@ -227,8 +230,10 @@ jobs:
         run: |-
           bin="$TMPDIR/bin"
           mkdir -p "$bin"
+          # kubectl is deliberately NOT fetched: every cluster call runs inside the KinD node
+          # via `docker exec` (the node image ships kubectl), because the client-side kubeconfig
+          # points at a 127.0.0.1 port that only exists in the dind daemon's netns.
           curl -fsSL -o "$bin/kind" "https://kind.sigs.k8s.io/dl/v0.27.0/kind-linux-amd64"
-          curl -fsSL -o "$bin/kubectl" "https://dl.k8s.io/release/v1.33.2/bin/linux/amd64/kubectl"
-          chmod +x "$bin/kind" "$bin/kubectl"
+          chmod +x "$bin/kind"
           export PATH="$bin:$PATH"
           ./scripts/run-kyverno-chainsaw.sh "$GITHUB_WORKSPACE"

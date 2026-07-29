@@ -41,6 +41,8 @@ curl -fsSL "${KYVERNO_INSTALL_URL}" -o "${workspace}/kyverno-install.yaml"
 if [[ -n "${KYVERNO_IMAGE_PROXY}" ]]; then
     sed -i "s#ghcr.io/kyverno/#${KYVERNO_IMAGE_PROXY}kyverno/#g" "${workspace}/kyverno-install.yaml"
 fi
+# Applied from inside the node (kind_kubectl) — see scripts/lib/kyverno-tests.sh for why the
+# client-side kubeconfig is unusable on the CI runner.
 # Server-side apply (not `create`): the freshly-created KinD node's etcd can time out partway
 # through applying install.yaml's ~40 CRDs+resources under CI disk load ("etcdserver: request
 # timed out" — bit CI 2026-07-18). `create` is not idempotent, so a retry after a partial
@@ -55,7 +57,7 @@ install_kyverno_with_retry() {
 
     while true; do
         local output
-        if output="$(kubectl_cmd --kubeconfig "${kubeconfig}" apply --server-side --force-conflicts -f "${file}" 2>&1)"; then
+        if output="$(kind_kubectl "${cluster_name}" apply --server-side --force-conflicts -f - <"${file}" 2>&1)"; then
             printf '%s\n' "${output}"
             return 0
         fi
@@ -76,12 +78,12 @@ install_kyverno_with_retry() {
 }
 
 install_kyverno_with_retry "${workspace}/kyverno-install.yaml"
-kubectl_cmd --kubeconfig "${kubeconfig}" wait --for=condition=Established crd/clusterpolicies.kyverno.io --timeout=120s
+kind_kubectl "${cluster_name}" wait --for=condition=Established crd/clusterpolicies.kyverno.io --timeout=120s
 # Only the admission + background controllers are exercised by the suites (validate/enforce +
 # generate). The reports and cleanup controllers aren't asserted on by any chainsaw test
 # (grep-verified), so we don't block on their rollout — they still install, we just don't wait.
-kubectl_cmd --kubeconfig "${kubeconfig}" -n kyverno rollout status deploy/kyverno-admission-controller --timeout=180s
-kubectl_cmd --kubeconfig "${kubeconfig}" -n kyverno rollout status deploy/kyverno-background-controller --timeout=180s
+kind_kubectl "${cluster_name}" -n kyverno rollout status deploy/kyverno-admission-controller --timeout=180s
+kind_kubectl "${cluster_name}" -n kyverno rollout status deploy/kyverno-background-controller --timeout=180s
 
 log info "Applying Kyverno policies under test"
 apply_with_webhook_retry() {
@@ -92,7 +94,7 @@ apply_with_webhook_retry() {
 
     while true; do
         local output
-        if output="$(kubectl_cmd --kubeconfig "${kubeconfig}" apply -f "${file}" 2>&1)"; then
+        if output="$(kind_kubectl "${cluster_name}" apply -f - <"${file}" 2>&1)"; then
             printf '%s\n' "${output}"
             return 0
         fi
