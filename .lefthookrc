@@ -1,0 +1,15 @@
+# Sourced by lefthook before it runs any hook command (see `rc` in .lefthook.toml).
+#
+# GUI git clients (VS Code's Source Control panel, Tower, …) launch hooks from a
+# login-less environment whose PATH is missing Homebrew and ~/.local/bin, so the
+# `mise exec -- …` commands die with `sh: mise: command not found` (exit 127)
+# even though the same commit works fine from a terminal. Re-add the usual
+# install locations; directories that don't exist are harmless.
+for _lh_dir in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
+  case ":$PATH:" in
+    *":$_lh_dir:"*) ;;
+    *) PATH="$_lh_dir:$PATH" ;;
+  esac
+done
+unset _lh_dir
+export PATH
