@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-07-17
+status: superseded by [ADR-0051](adr-0051-harness-plurality-acp.md)
+date: 2026-07-29
 ---
 
 # OpenHands is the agent runtime, superseding opencode
@@ -129,3 +129,11 @@ Load-bearing specifics:
 * Consumes the metered keys of [ADR-0044](adr-0044-metered-inference-plane-litellm.md).
 * 2026-07-17 — proposed, superseding ADR-0045 after the OpenHands evaluation; pending ratification
   with the OpenHands author-pilot (`#270` reworked).
+* 2026-07-29 — superseded by [ADR-0051](adr-0051-harness-plurality-acp.md), never ratified. The
+  decisive objection above — *"opencode's only viable build is a pinned beta"* — expired: opencode
+  `v1.0.0` shipped 2025-10-31 and is on `v1.18.9` as of 2026-07-28 (MIT, repo now
+  `anomalyco/opencode`). The "Run both" option rejected here as doubling the surface also became
+  cheap, because ACP wire version 1 is spoken natively by both harnesses and `webgrip/ploeg`'s
+  `harness.Adapter` seam selects one per team from Helm values. **The outcome of this record
+  survives as the default** — OpenHands remains the runtime unless a team overrides it — and
+  `builder ≠ judge` remains a pipeline property per ADR-0048. Only the exclusivity is withdrawn.

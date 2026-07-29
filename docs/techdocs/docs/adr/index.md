@@ -168,10 +168,11 @@ Tenant apps the platform hosts — decisions about *what* runs, not how the plat
 | [0044](adr-0044-metered-inference-plane-litellm.md) | All inference is metered through a self-hosted LiteLLM proxy | proposed | 2026-07-14 |
 | [0045](adr-0045-opencode-runtime-server-side-guards.md) | opencode is the agent runtime; safety guards move server-side | superseded by 0047 | 2026-07-17 |
 | [0046](adr-0046-harbor-proxy-credential-convergence.md) | Harbor proxy reconcile converges credentials and fails loud on upstream auth | accepted | 2026-07-15 |
-| [0047](adr-0047-openhands-agent-runtime.md) | OpenHands is the agent runtime, superseding opencode | proposed | 2026-07-17 |
+| [0047](adr-0047-openhands-agent-runtime.md) | OpenHands is the agent runtime, superseding opencode | superseded by 0051 | 2026-07-29 |
 | [0048](adr-0048-dark-factory-execution-layer.md) | Dark-factory agents run on a dedicated Forgejo Actions pool, poll-dispatched, as two role bots | proposed | 2026-07-18 |
 | [0049](adr-0049-dark-factory-failure-states.md) | Dark-factory failure-state management under permanent scarcity | accepted | 2026-07-25 |
 | [0050](adr-0050-per-repo-delivery-contract.md) | Per-repo delivery contract, server-enforced via branch protection | accepted | 2026-07-26 |
+| [0051](adr-0051-harness-plurality-acp.md) | Agent harnesses are plural behind ACP; OpenHands stays the default | proposed | 2026-07-29 |
 
 ## Renumbering (2026-07-03)
 
