@@ -21,8 +21,62 @@ spec:
   values:
     imagePullSecrets:
       - name: harbor-pull
+    # Routing and roster as a FILE (mounted at /etc/ploeg/ploeg.yaml), not the
+    # PLOEG_TARGET_MAP / PLOEG_TEAM_MAP / PLOEG_TEAM_PLANS env-var DSLs.
+    #
+    # Projects are NAMED. ploegd asks Vikunja for the id at boot, logs what it
+    # resolved, and refuses to start if a name matches nothing — so no bare
+    # project number lives in this file, where it would say nothing about which
+    # board it is and would silently reroute work the day a project is rebuilt.
+    config:
+      trackers:
+        vikunja:
+          projects:
+            # Everything is wired on one project today (the dispatch-topology
+            # trap in docs/ops/board.md), so the team decides the repo. One
+            # project per repository is the target state; then `team:` goes.
+            - name: "Ploeg Test"
+              team: bronze
+              repo: webgrip/ploeg
+              branch: development
+            - name: "Ploeg Test"
+              team: silver
+              repo: webgrip/ploeg
+              branch: development
+            - name: "Ploeg Test"
+              team: copper
+              repo: webgrip/erfbeeld
+              branch: main
+      teams:
+        # Named agents: a human assigns a colleague, not an infrastructure
+        # tier. Replaces PLOEG_TEAM_MAP.
+        bronze:
+          assignees:
+            - bronze
+            - jake
+        silver:
+          assignees:
+            - silver
+            - jane
+        copper:
+          assignees:
+            - copper
+    # Tracker write-backs: how a closed Shift reaches a person with the pull
+    # request link (backlog #31). Without both, the provider keeps its logging
+    # no-op — runs still finish, the board is simply not updated.
+    tracker:
+      url: https://vikunja.webgrip.dev/api/v1
+      tokenSecret:
+        name: agent-vikunja-token
+        key: VIKUNJA_API_TOKEN
     env:
-      PLOEG_DEFAULT_TEAM: bronze
+      # copper, not bronze: an unmapped assignee falls through to the default
+      # team, and copper's exec harness makes no LLM call, opens no PR and
+      # exits no_change_needed. A colleague accidentally assigned on a
+      # webhook-carrying project costs $0 instead of a live agent run against
+      # a real repository. PLOEG_TARGET_STRICT (backlog #108) supersedes this
+      # when it ships — refusing to route beats routing somewhere harmless.
+      PLOEG_DEFAULT_TEAM: copper
       PLOEG_LEASE_TTL: 15m
       # Assignee-username -> team routing (ploegd parseTeamMap). Named agents:
       # assigning `jake` dispatches bronze, `jane` dispatches silver — humans
