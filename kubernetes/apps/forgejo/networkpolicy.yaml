@@ -140,6 +140,23 @@ spec:
     # The working allows are identity-based CiliumNetworkPolicies: components/cnpg-netpol
     # (wired in the forgejo-db layer) for the DB pods, and allow-provisioner-apiserver
     # (below) for the provisioner Jobs. Same trap as ADR-0005's gateway hairpin.
+    # Forgejo repository webhooks -> ploegd (review submitted, check failed,
+    # merge state dirty). Identity-based on purpose: the ipBlock rule below
+    # excludes the pod and service CIDRs, so an in-cluster call cannot go out
+    # that way, and a CIDR rule for ploeg would hit exactly the trap the NOTE
+    # above describes. This keeps the delivery INSIDE the cluster — no public
+    # gateway hairpin, no exposure of ploegd's mutating surface, which has no
+    # ingress route at all and should not gain one for this.
+    #
+    # ploegd verifies the HMAC on the raw body before parsing and deduplicates
+    # on the delivery id, so reachability is not the security boundary here.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ploeg
+      ports:
+        - protocol: TCP
+          port: 8080
     # internet + LAN: Garage S3 (10.0.0.110:3900, forgejo's bulk-object storage +
     # backups), gitea-mirror pulling from GitHub, the CI runner pulling arbitrary
     # images/cloning arbitrary repos/installing packages during workflow steps.
