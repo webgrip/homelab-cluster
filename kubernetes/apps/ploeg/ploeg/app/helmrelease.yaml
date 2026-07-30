@@ -28,7 +28,7 @@ spec:
     # runnerImage below already uses; the digest is the multi-arch index, so
     # both amd64 and arm64 nodes still resolve their own manifest.
     image:
-      tag: "0.2.0-rc.13@sha256:a7d1238707bfaede8d25434f45b8d526eb38f4264544d2e5f01a07ce08620d27"
+      tag: "0.2.0-rc.14@sha256:0c84e0d29f96329d17008acfc00b3937581bcc7ce2bf62777d5213cca15ba409"
     # Routing and roster as a FILE (mounted at /etc/ploeg/ploeg.yaml), not the
     # PLOEG_TARGET_MAP / PLOEG_TEAM_MAP / PLOEG_TEAM_PLANS env-var DSLs.
     #
@@ -210,20 +210,40 @@ spec:
           # board above pins its own branch.
           baseBranch: main
           maxReplicaCount: 1
-          # SINGLE WRITER until a reader-capable harness exists in the runner
-          # image. The multi-Role machinery itself is proven — on 2026-07-30
-          # this team dispatched builder, then fanned out reviewer + devops as
-          # their own workloads with their own resources — but both readers
-          # died on arrival:
-          #   outcome=failed "acp agent did not start"
+          # Writer, then one reader. The fan-out to reviewer + devops came off
+          # on 2026-07-30 when both readers died with
           #   exec: "opencode": executable file not found in $PATH
-          # agent-runner 1.0.3 installs OpenHands and nothing else (its own
-          # Dockerfile: `uv tool install openhands`), so acp/opencode and
-          # claude-code are both unavailable. Roles that cannot start are worse
-          # than no roles: they burn a Round and produce no review.
+          # and the note left here — "SINGLE WRITER until a reader-capable
+          # harness exists in the runner image" — was wrong about the cause.
+          # openhands is reader-capable on the image we already run: it is the
+          # one adapter with the PLOEG_OUTCOME_FILE drop box a review comes
+          # back through, and its entrypoint's docker wait is skipped outright
+          # when DOCKER_HOST is unset, which dind:false does.
           #
-          # Restore the fan-out when the image ships a reader harness. Board
-          # tickets cover the image gap and the openhands-as-reader question.
+          # The real blockers were in ploegd, and are fixed in >= rc.14: a
+          # reader was handed a shallow single-branch clone of the BASE, so it
+          # never received the work it was asked to review; it was never told
+          # the pull request existed; and it held a full push credential while
+          # being told it did not. See webgrip/ploeg#32.
+          #
+          # One reader, not three: rounds are sequential but a fan-out is
+          # concurrent, and three readers at once do not fit the worker pool
+          # (fringe ~2.3 CPU / 2.3Gi free, worker-1 at 99% CPU requests).
+          plan:
+            - roles:
+                - {name: builder, writes: true, cap: "2.00"}
+            - roles:
+                - name: reviewer
+                  writes: false
+                  cap: "0.40"
+                  # dind:false is load-bearing twice over: it skips the docker
+                  # wait, and it drops the privileged-dind hazard label, so a
+                  # reader is held to the full Kyverno baseline instead of
+                  # being waived for a privilege it never takes.
+                  harness: {name: openhands, dind: false}
+                  workerResources:
+                    requests: {cpu: 500m, memory: 384Mi}
+                    limits: {cpu: 500m, memory: 384Mi}
         # silver: the ploeg-repo team — the factory working on its own
         # dispatch plane (first job: the per-run key leak, VIK ticket).
         # sonnet-5 at $4/run: real Go surgery, inside the anthropic
