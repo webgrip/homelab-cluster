@@ -39,6 +39,20 @@ spec:
       ports:
         - protocol: TCP
           port: 3456
+    # ploegd (ploeg ns) -> API. Needed as its own rule even though the ipBlocks
+    # above cover 10.0.0.0/8 and pods live in 10.42.0.0/16: under Cilium a CIDR
+    # rule only matches entities OUTSIDE the cluster, so in-cluster pod traffic
+    # has to be selected by identity. Those ipBlocks exist for gateway traffic
+    # masquerading to a node IP, which is a different path entirely.
+    # Not optional: ploegd resolves its NAMED projects through this API at boot
+    # and exits when the lookup times out, so denying it crash-loops the daemon.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ploeg
+      ports:
+        - protocol: TCP
+          port: 3456
     # Prometheus (observability ns) scraping db metrics (cnpg-monitoring)
     - from:
         - namespaceSelector:
