@@ -16,11 +16,19 @@ spec:
     remediation:
       retries: 3
       remediateLastFailure: true
-  # Image tag defaults to the chart's appVersion (semantic-release-helm3 keeps
-  # both in lockstep), so the OCIRepository ref is the single version knob.
   values:
     imagePullSecrets:
       - name: harbor-pull
+    # The tag would default to the chart's appVersion (semantic-release-helm3
+    # keeps both in lockstep), which made the OCIRepository ref the single
+    # version knob. Pinning the digest buys immutability — a retagged
+    # ploegd:0.2.0-rc.12 cannot silently become what runs here — at the cost
+    # of a SECOND knob: this line and the OCIRepository tag must move together
+    # or the release deploys an image from a different build. Same form the
+    # runnerImage below already uses; the digest is the multi-arch index, so
+    # both amd64 and arm64 nodes still resolve their own manifest.
+    image:
+      tag: "0.2.0-rc.12@sha256:1b4193968b3b272ddae42931c2d1bb601b5e8c0f0bf2e05f7f8087546def29d5"
     # Routing and roster as a FILE (mounted at /etc/ploeg/ploeg.yaml), not the
     # PLOEG_TARGET_MAP / PLOEG_TEAM_MAP / PLOEG_TEAM_PLANS env-var DSLs.
     #
