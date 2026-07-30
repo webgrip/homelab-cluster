@@ -202,15 +202,23 @@ const API = "/api/v1";
 const PLOEG = "/vloer/ploeg"; // nginx → ploegd /api/v1 (GET only)
 
 /* Stations. `user` = the Vikunja team user whose assignment IS the dispatch
-   (PLOEG_TEAM_MAP in the ploeg HelmRelease). live:false = not commissioned
-   yet — see the De Vloer board, papyrus+gold enabler ticket. */
+   (config.teams[].assignees in the ploeg HelmRelease — PLOEG_TEAM_MAP is
+   gone). live:false = not commissioned yet — see the De Vloer board,
+   papyrus+gold enabler ticket.
+
+   `role` describes the STATION, not a person. The named agents inside a
+   Shift — builder, reviewer, devops, security — are Roles under
+   executor.teams[].plan and are never assignable on the board. */
 const TEAMS = [
   { key: "papyrus", n: 1, user: null,     name: "Papyrus", mark: "▲", role: "refines & estimates — raw reed in, spec out", live: false },
   { key: "bronze",  n: 2, user: "bronze", name: "Bronze",  mark: "◆", role: "builds the feature — first cast",             live: true  },
   { key: "silver",  n: 3, user: "silver", name: "Silver",  mark: "●", role: "reviews & fixes — polish & inspect",          live: true  },
   { key: "gold",    n: 4, user: null,     name: "Gold",    mark: "★", role: "10×'s it — gild what works",                  live: false },
 ];
-const TEAM_ALIASES = { bronze: ["bronze", "jake"], silver: ["silver", "jane"] };
+/* jake/jane are gone: invented so a human could "assign a colleague", but
+   neither ever existed as a Vikunja user, so the alias could never resolve.
+   The team user is the only assignable identity. */
+const TEAM_ALIASES = { bronze: ["bronze"], silver: ["silver"] };
 
 const state = {
   token: null, projects: [], labels: new Map(), users: {}, // teamKey -> {id, username}

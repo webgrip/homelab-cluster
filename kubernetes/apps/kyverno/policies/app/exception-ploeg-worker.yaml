@@ -90,45 +90,22 @@ spec:
             matchLabels:
               ploeg.webgrip.dev/privileged-dind: "true"
 
-      # --- TRANSITIONAL, remove once the chart bump has landed ---------------
-      # The hazard label ships in the ploeg chart release that introduces Role
-      # partitioning. Until the ploeg HelmRelease runs that chart, live
-      # bronze/silver worker pods carry only the old labels, and deleting these
-      # two entries first would start rejecting production worker Jobs at
-      # admission.
-      #
-      # REMOVE all three entries below after the chart bump, once
-      #   kubectl -n ploeg get job -l ploeg.webgrip.dev/privileged-dind=true
-      # returns the running worker Jobs. Their removal is what actually narrows
-      # the waiver; leaving them in place preserves the status quo, which is
-      # not the goal.
-      - resources:
-          kinds:
-            - Job
-          namespaces:
-            - ploeg
-          selector:
-            matchLabels:
-              scaledjob.keda.sh/name: ploeg-worker-bronze
-      - resources:
-          kinds:
-            - Job
-          namespaces:
-            - ploeg
-          selector:
-            matchLabels:
-              scaledjob.keda.sh/name: ploeg-worker-silver
-      # The old broad Pod match. This is the over-grant the hazard label
-      # replaces — it waives EVERY worker pod, including teams running
-      # `dind: false` that take no privilege at all. It has to outlive the two
-      # Job entries above by exactly one reconcile: a pod admitted before the
-      # chart bump carries only this label, and dropping it early would reject
-      # a running worker.
-      - resources:
-          kinds:
-            - Pod
-          namespaces:
-            - ploeg
-          selector:
-            matchLabels:
-              app.kubernetes.io/name: ploeg-worker
+    # The two Job entries and the broad `app.kubernetes.io/name: ploeg-worker`
+    # Pod match that used to sit here are GONE, and the removal criterion
+    # this file carried was itself wrong. It said to wait until
+    #   kubectl -n ploeg get job -l ploeg.webgrip.dev/privileged-dind=true
+    # returned the running Jobs — but the chart puts the hazard label on the
+    # POD TEMPLATE, not on the Job's own metadata, so that command returns
+    # nothing and always will. Verified on rc.12: the silver worker POD
+    # carries the label, its Job does not, and copper (dind: false) carries
+    # it on neither, which is exactly the precision the label was added for.
+    #
+    # The Job entries could not have mattered anyway: pod-security-baseline-
+    # enforce matches `kinds: [Pod]` only, carries no autogen-controllers
+    # annotation, and its live rule list contains `privileged-containers`
+    # with no `autogen-` sibling. Kyverno never evaluates the Job at all.
+    #
+    # Dropping the broad Pod match is what finally narrows the waiver: it
+    # covered EVERY worker pod, so every dind-less reader Role added by the
+    # Shift plans would have been silently waived for privileged-containers,
+    # run-as-non-root and drop-all-capabilities while taking no privilege.

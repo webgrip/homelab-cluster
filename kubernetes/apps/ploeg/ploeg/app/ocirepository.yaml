@@ -15,11 +15,19 @@ spec:
   secretRef:
     name: harbor-pull
   ref:
-    tag: 0.2.0-rc.12
-    # Read from the rc.12 release's own `helm push` output (run 132, Publish
-    # Helm chart (Harbor)). Not the Forgejo mirror's digest — that registry
-    # re-runs `helm package`, which is not byte-reproducible, so it publishes
-    # the same chart under a different digest (rc.10: 2f28764a there vs
-    # 754ce7a0 here). Kyverno's require-ocirepository-digest makes this line
-    # mandatory, so it must move with every tag bump.
-    digest: sha256:e90f4c50f32579f4a7354b3585ef38d9afcad52e2c9e3af49120611ebe2c29b7
+    # rc.13 closes the write-back hole found in the 2026-07-30 e2e: a Shift
+    # that opened a pull request settled `done` and told the board nothing,
+    # because the notify was gated on needs_human. Also adds the two chart
+    # keys this HelmRelease now sets — executor.serviceAccountName and
+    # per-Role workerResources — so the tag and the values MUST move together;
+    # on rc.12 the roles[].workerResources keys fail schema validation
+    # outright (planRole is additionalProperties:false).
+    tag: 0.2.0-rc.13
+    # Read straight off the Harbor registry (HEAD /v2/…/manifests/0.2.0-rc.13)
+    # after the Publish Helm chart (Harbor) job went green. Not the Forgejo
+    # mirror's digest — that registry re-runs `helm package`, which is not
+    # byte-reproducible, so it publishes the same chart under a different
+    # digest (rc.10: 2f28764a there vs 754ce7a0 here). Kyverno's
+    # require-ocirepository-digest makes this line mandatory, so it must move
+    # with every tag bump.
+    digest: sha256:9411f33cb0c9337b212cd9c90a4b6818a0fbbff600fc97629d3d0a7a8e48844e

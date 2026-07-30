@@ -28,7 +28,7 @@ spec:
     # runnerImage below already uses; the digest is the multi-arch index, so
     # both amd64 and arm64 nodes still resolve their own manifest.
     image:
-      tag: "0.2.0-rc.12@sha256:1b4193968b3b272ddae42931c2d1bb601b5e8c0f0bf2e05f7f8087546def29d5"
+      tag: "0.2.0-rc.13@sha256:a7d1238707bfaede8d25434f45b8d526eb38f4264544d2e5f01a07ce08620d27"
     # Routing and roster as a FILE (mounted at /etc/ploeg/ploeg.yaml), not the
     # PLOEG_TARGET_MAP / PLOEG_TEAM_MAP / PLOEG_TEAM_PLANS env-var DSLs.
     #
@@ -39,33 +39,74 @@ spec:
     config:
       trackers:
         vikunja:
+          # One entry per BOARD, and no `team:` key — so whichever team is
+          # assigned, the board decides the repository. This is the shape the
+          # chart's own values.yaml calls the target state, and it replaces
+          # the previous three-entries-on-one-project arrangement where the
+          # TEAM picked the repo. That was the dispatch-topology trap in
+          # docs/ops/board.md and it misfired immediately: a ticket asking for
+          # an erfbeeld README change was assigned to silver, whose rule
+          # pointed at webgrip/ploeg, and the agent dutifully edited the wrong
+          # repository's README (PR webgrip/ploeg#30, 2026-07-30).
+          #
+          # Boards that legitimately touch several repos (Dark Factory, De
+          # Vloer, CI/CD) take the repo they touch MOST as the default. A
+          # per-ticket override needs the label selector held for rc.14 —
+          # ADR-0015 requires a hint to select among pre-registered routes
+          # rather than construct one, since tracker text is untrusted input.
+          #
+          # NOT routed on purpose:
+          #   Forgejo Migration — irreducibly multi-repo ("port CI: telemetry-
+          #     service, common-charts, …"); any default is wrong more often
+          #     than right. Waits for rc.14.
+          #   Vellum — describes a real UI product with no repo in the webgrip
+          #     org. Nothing to route to yet.
+          #   Inbox — triage only.
+          #
+          # Each routed board also needs its team users shared in and the
+          # ploegd webhook registered on it, or assignment 403s (an assignee
+          # needs read access) and nothing fires. Today only Ploeg Test has
+          # both.
           projects:
-            # Everything is wired on one project today (the dispatch-topology
-            # trap in docs/ops/board.md), so the team decides the repo. One
-            # project per repository is the target state; then `team:` goes.
             - name: "Ploeg Test"
-              team: bronze
               repo: webgrip/ploeg
               branch: development
-            - name: "Ploeg Test"
-              team: silver
+            - name: "Ploeg"
               repo: webgrip/ploeg
               branch: development
-            - name: "Ploeg Test"
-              team: copper
+            - name: "Erfbeeld"
               repo: webgrip/erfbeeld
               branch: main
+            - name: "Homelab Roadmap"
+              repo: webgrip/homelab-cluster
+              branch: main
+            - name: "CI/CD"
+              repo: webgrip/homelab-cluster
+              branch: main
+            - name: "Dark Factory"
+              repo: webgrip/homelab-cluster
+              branch: main
+            - name: "De Vloer"
+              repo: webgrip/homelab-cluster
+              branch: main
       teams:
-        # Named agents: a human assigns a colleague, not an infrastructure
-        # tier. Replaces PLOEG_TEAM_MAP.
+        # The board only ever sees the TEAM user. Roles (builder, reviewer,
+        # devops, security) are internal to a Shift and live under
+        # executor.teams[].plan — they are not assignable names, and putting
+        # them here would be actively harmful: an assignee listed under two
+        # teams used to resolve by Go map iteration order, dispatching the
+        # same person's tickets to a different team on different boots.
+        # ploegd >= 0.2.0-rc.13 refuses to start on that instead.
+        #
+        # jake/jane are gone. They were invented so a human could "assign a
+        # colleague", but neither existed as a Vikunja user, so the mapping
+        # could never fire.
         bronze:
           assignees:
             - bronze
-            - jake
         silver:
           assignees:
             - silver
-            - jane
         copper:
           assignees:
             - copper
@@ -94,15 +135,22 @@ spec:
       # when it ships — refusing to route beats routing somewhere harmless.
       PLOEG_DEFAULT_TEAM: copper
       PLOEG_LEASE_TTL: 15m
-      # Assignee-username -> team routing (ploegd parseTeamMap). Named agents:
-      # assigning `jake` dispatches bronze, `jane` dispatches silver — humans
-      # assign a colleague, not an infra tier. The bare team usernames stay
-      # mapped for the existing tickets/automation. Unmapped assignees fall
-      # back to PLOEG_DEFAULT_TEAM, so never assign an unmapped human on a
-      # webhook-carrying project unless a bronze run is what they want.
-      PLOEG_TEAM_MAP: "bronze=bronze,silver=silver,jake=bronze,jane=silver,copper=copper"
+      # PLOEG_TEAM_MAP is gone: config.teams[].assignees above is the roster
+      # now, and ploegd merges the two. Keeping both meant the same fact in
+      # two syntaxes, and the env copy still carried jake/jane after the file
+      # dropped them. Unmapped assignees still fall back to
+      # PLOEG_DEFAULT_TEAM, so do not assign an unmapped human on a
+      # webhook-carrying board unless a copper no-op is what you want.
     executor:
       enabled: true
+      # Workers get their own identity (chart >= rc.13). Naming none left them
+      # on `default`, which trips Kyverno's require-non-default-serviceaccount
+      # and makes every workload in the namespace look the same in an audit
+      # log. Empty would take the chart's <fullname>-worker; named here so the
+      # value is visible where the RBAC question gets asked. Deliberately not
+      # ploegd's account — ploegd holds the LiteLLM master key and the forge
+      # admin credential.
+      serviceAccountName: ploeg-worker
       # Chart default lags a release behind; pin the runner here. 1.0.2 killed
       # ~5 min of startup dead time per run (no public-skills git sync, local
       # LiteLLM cost map — VIK-590); 1.0.3 bakes the version banner so the
@@ -149,26 +197,91 @@ spec:
         # the worker only ever opens PRs, never merges.
         - name: bronze
           model: litellm_proxy/deepseek-chat
-          budget: "2"
+          budget: "3"
           repoOwner: webgrip
           repoName: erfbeeld
           # erfbeeld's real trunk; explicit so a default-branch change can
           # never silently move the working tree (VIK-589, chart >= rc.5).
+          # Only a FALLBACK now: the board's routing rule wins, and every
+          # board above pins its own branch.
           baseBranch: main
           maxReplicaCount: 1
+          # Two Rounds: one writer, then the readers who grade it. ADR-0010
+          # forbids mixing a writer and readers in a Round, so the fan-out
+          # comes after. `plan` is the bare list of Rounds — the Shift pool is
+          # the team's `budget` above, which the chart serialises as
+          # {pool: budget, rounds: plan}. Per-Role `cap` bounds one Run inside
+          # that pool.
+          #
+          # No maxFixRounds: the chart does not serialise it, so ADR-0017's
+          # request_changes loop cannot be turned on from values at all. The
+          # plan runs to exhaustion and a reviewer's verdict lands as a PR
+          # comment rather than re-opening the writing Round. Chart gap, not a
+          # choice — noted for rc.14.
+          plan:
+            - roles:
+                - {name: builder, writes: true, cap: "2.00"}
+            - roles:
+                - name: reviewer
+                  writes: false
+                  cap: "0.30"
+                  harness: {name: acp, acp: {profile: opencode}, dind: false}
+                  workerResources: &readerResources
+                    requests: {cpu: 500m, memory: 384Mi}
+                    limits: {cpu: 500m, memory: 384Mi}
+                - name: devops
+                  writes: false
+                  cap: "0.30"
+                  harness: {name: acp, acp: {profile: opencode}, dind: false}
+                  workerResources: *readerResources
         # silver: the ploeg-repo team — the factory working on its own
         # dispatch plane (first job: the per-run key leak, VIK ticket).
         # sonnet-5 at $4/run: real Go surgery, inside the anthropic
         # 5 USD/day router cap (falls back to deepseek-chat if it trips).
         - name: silver
           model: litellm_proxy/claude-sonnet-5
-          budget: "4"
+          budget: "6"
           repoOwner: webgrip
           repoName: ploeg
           # ploeg's trunk is development — main was a stale stub that sent
-          # run 8 into a parallel universe (VIK-589, chart >= rc.5).
+          # run 8 into a parallel universe (VIK-589, chart >= rc.5). Fallback
+          # only; the board's rule decides.
           baseBranch: development
           maxReplicaCount: 1
+          # Three Rounds: recon, then the write, then a wider review than
+          # bronze gets. Readers are deliberately CHEAP and dind-less — they
+          # read and grade, they do not build, and three writer-sized pods at
+          # once do not fit the worker pool (fringe had ~2.3Gi/2.3 CPU free
+          # and worker-1 is at 99% CPU requests). Per-Role sizing needs chart
+          # >= rc.13; on an older chart these keys are silently ignored and
+          # every reader books a full 1 CPU / 768Mi, which will sit Pending.
+          plan:
+            - roles:
+                - name: analyst
+                  writes: false
+                  cap: "0.50"
+                  harness: {name: claude-code, dind: false}
+                  workerResources: &silverReaderResources
+                    requests: {cpu: 500m, memory: 384Mi}
+                    limits: {cpu: 500m, memory: 384Mi}
+            - roles:
+                - {name: builder, writes: true, cap: "4.00"}
+            - roles:
+                - name: reviewer
+                  writes: false
+                  cap: "0.60"
+                  harness: {name: claude-code, dind: false}
+                  workerResources: *silverReaderResources
+                - name: devops
+                  writes: false
+                  cap: "0.30"
+                  harness: {name: acp, acp: {profile: opencode}, dind: false}
+                  workerResources: *silverReaderResources
+                - name: security
+                  writes: false
+                  cap: "0.60"
+                  harness: {name: claude-code, dind: false}
+                  workerResources: *silverReaderResources
         # copper: seam-smoke team for the pluggable harness/image work
         # (chart >= rc.5). The exec adapter runs /bin/cat on the generated
         # taskspec.json inside the same agent-runner image and exits 0, so a
