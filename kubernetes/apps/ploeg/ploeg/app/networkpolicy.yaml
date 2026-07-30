@@ -95,3 +95,17 @@ spec:
       ports:
         - protocol: TCP
           port: 3000
+    # ploegd -> Vikunja API. NOT optional: with routing-as-a-file the projects
+    # are NAMED, and ploegd resolves those names to ids at boot and exits when
+    # the lookup fails — so without this rule the daemon cannot start at all, it
+    # does not merely lose write-backs. The LAN ipBlock above does not cover it:
+    # the 10.0.0.27 ingress VIP is DNAT'd to a backend pod before policy is
+    # evaluated, so the packet is matched against a 10.42.x.x pod IP that no rule
+    # allows. Hence the in-cluster service, same shape as ai/forgejo above.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vikunja
+      ports:
+        - protocol: TCP
+          port: 3456
