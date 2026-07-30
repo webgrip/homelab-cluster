@@ -90,22 +90,39 @@ spec:
             matchLabels:
               ploeg.webgrip.dev/privileged-dind: "true"
 
-    # The two Job entries and the broad `app.kubernetes.io/name: ploeg-worker`
-    # Pod match that used to sit here are GONE, and the removal criterion
-    # this file carried was itself wrong. It said to wait until
-    #   kubectl -n ploeg get job -l ploeg.webgrip.dev/privileged-dind=true
-    # returned the running Jobs — but the chart puts the hazard label on the
-    # POD TEMPLATE, not on the Job's own metadata, so that command returns
-    # nothing and always will. Verified on rc.12: the silver worker POD
-    # carries the label, its Job does not, and copper (dind: false) carries
-    # it on neither, which is exactly the precision the label was added for.
-    #
-    # The Job entries could not have mattered anyway: pod-security-baseline-
-    # enforce matches `kinds: [Pod]` only, carries no autogen-controllers
-    # annotation, and its live rule list contains `privileged-containers`
-    # with no `autogen-` sibling. Kyverno never evaluates the Job at all.
-    #
-    # Dropping the broad Pod match is what finally narrows the waiver: it
-    # covered EVERY worker pod, so every dind-less reader Role added by the
-    # Shift plans would have been silently waived for privileged-containers,
-    # run-as-non-root and drop-all-capabilities while taking no privilege.
+      # --- DinD roles, matched by workload name -----------------------------
+      # The label match above does NOT admit these. A Job selector matches the
+      # JOB's own labels; the hazard label lives on the pod TEMPLATE, so the
+      # Job never carries it. Kyverno autogens a Job rule for
+      # pod-security-baseline-enforce, and that is what rejects the KEDA Job —
+      # every DinD team was denied at admission with
+      # autogen-privileged-containers until these came back (2026-07-30,
+      # bronze could not dispatch at all, KEDAJobCreateFailed in a loop).
+      #
+      # An earlier cleanup deleted the equivalent entries after checking
+      # `.spec.rules` for an `autogen-` sibling and finding none. That check
+      # was wrong: .spec.rules lists only AUTHORED rules and Kyverno generates
+      # the autogen variants at admission time.
+      #
+      # Only the two DinD roles are named. Readers run dind: false and carry no
+      # privileged container, so the rule never fires for them and a waiver
+      # would be the over-grant this narrowing was meant to end.
+      #
+      # These names stop being load-bearing once the chart stamps the hazard
+      # label on the Job as well as the pod template. Ticket on the board.
+      - resources:
+          kinds:
+            - Job
+          namespaces:
+            - ploeg
+          selector:
+            matchLabels:
+              scaledjob.keda.sh/name: ploeg-worker-bronze-builder
+      - resources:
+          kinds:
+            - Job
+          namespaces:
+            - ploeg
+          selector:
+            matchLabels:
+              scaledjob.keda.sh/name: ploeg-worker-silver-builder
