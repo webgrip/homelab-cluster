@@ -143,14 +143,18 @@ spec:
       # webhook-carrying board unless a copper no-op is what you want.
     executor:
       enabled: true
-      # Workers get their own identity (chart >= rc.13). Naming none left them
-      # on `default`, which trips Kyverno's require-non-default-serviceaccount
-      # and makes every workload in the namespace look the same in an audit
-      # log. Empty would take the chart's <fullname>-worker; named here so the
-      # value is visible where the RBAC question gets asked. Deliberately not
-      # ploegd's account — ploegd holds the LiteLLM master key and the forge
-      # admin credential.
-      serviceAccountName: ploeg-worker
+      # Workers run under their own identity, ploeg-worker, created by the
+      # chart (>= rc.13). Naming none left them on `default`, which trips
+      # Kyverno's require-non-default-serviceaccount and makes every workload
+      # in the namespace indistinguishable in an audit log.
+      #
+      # Do NOT set executor.serviceAccountName here. The chart reads that key
+      # as "an externally-managed account exists, so do not create one", so
+      # naming ploeg-worker — the chart's own default — suppressed creation of
+      # the very account the pods then referenced, and every worker Job died
+      # with `serviceaccount "ploeg-worker" not found`. Silence gets both the
+      # account and the reference. The chart's guard is the wrong shape and
+      # wants a create/name split; ticket on the board.
       # Chart default lags a release behind; pin the runner here. 1.0.2 killed
       # ~5 min of startup dead time per run (no public-skills git sync, local
       # LiteLLM cost map — VIK-590); 1.0.3 bakes the version banner so the
