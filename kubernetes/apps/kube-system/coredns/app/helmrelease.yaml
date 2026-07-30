@@ -47,6 +47,20 @@ spec:
             configBlock: |-
               prefetch 20
               serve_stale
+              # Bound NEGATIVE caching to 30s for this zone. The default is
+              # 1800s, and on 2026-07-30 that turned a k8s-gateway restart
+              # (it flapped 10 times) into a half-hour cluster-wide outage of
+              # harbor.webgrip.dev: k8s-gateway briefly had no record, CoreDNS
+              # cached the NXDOMAIN, and kept serving it long after the
+              # upstream recovered. Flux could not pull any chart or image
+              # from Harbor for the whole window.
+              #
+              # This zone forwards to a single in-cluster pod, so upstream
+              # gaps are expected and must be cheap. Positive caching and
+              # serve_stale are untouched — serving a KNOWN address through an
+              # outage is the behaviour we want; inventing a lasting "does not
+              # exist" from a restart is not.
+              denial 9984 30
           - name: log
             configBlock: |-
               class error
