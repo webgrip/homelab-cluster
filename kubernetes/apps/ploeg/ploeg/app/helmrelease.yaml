@@ -109,6 +109,19 @@ spec:
       # entrypoint no longer cold-imports the CLI tree (2m20s at 500m) just to
       # log it, and silences dependency DeprecationWarnings in run logs.
       runnerImage: harbor.webgrip.dev/webgrip/agent-runner:1.0.3@sha256:53a1f11bd80956241a57772d1deb8a4fbd6b91e2e3310087fdd7bb7e6415c6f6
+      # The chart's dindImage default is tag-only, so every worker pod failed
+      # Kyverno's require-image-digest (Audit, so nothing was blocked — the
+      # finding just sat in the PolicyReport). Pinned here rather than waiting
+      # on a chart bump. Same digest the forgejo runners already use, so the
+      # node has the layers cached.
+      #
+      # NOT Renovate-maintained. The custom managers live in the shared
+      # webgrip/renovate-config preset, and neither this line nor runnerImage
+      # above has a matcher there — both are manual bumps today. A marker
+      # comment alone would not help: without a separate (?<currentDigest>…)
+      # capture group Renovate treats the whole string as an opaque version
+      # and never refreshes the digest.
+      dindImage: harbor.webgrip.dev/dockerhub/library/docker:29.6.2-dind@sha256:bfec1f5159c63a81ca6fdedbd81404d2c0e16378ed0feec3bb3fbf3998847659
       # Guaranteed QoS stays (requests==limits — ADR-0049 P1), sized down from
       # the chart defaults so a run fits the rebalanced fringe node: worker
       # peak measured 438Mi (run 8), dind must still hold a go build +
