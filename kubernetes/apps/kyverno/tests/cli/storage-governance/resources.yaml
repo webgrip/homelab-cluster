@@ -1,0 +1,86 @@
+---
+# MUST PASS — the three approved classes.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: approved-general
+  namespace: app
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn-general
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: approved-single
+  namespace: app
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn-single
+  resources:
+    requests:
+      storage: 100Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: approved-longhorn
+  namespace: app
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 5Gi
+---
+# MUST FAIL — `longhorn-cold` is a real StorageClass in this cluster but is
+# deliberately NOT on the allowlist (its diskSelector "cold" matches no disk, so
+# a PVC on it would sit Pending forever). This is the case that proves the
+# allowlist still rejects, i.e. that widening it for longhorn-single did not
+# accidentally widen it to any `longhorn-*` name.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: unapproved-cold
+  namespace: app
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn-cold
+  resources:
+    requests:
+      storage: 5Gi
+---
+# MUST FAIL — an arbitrary non-Longhorn class.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: unapproved-hostpath
+  namespace: app
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+---
+# MUST FAIL — ReadWriteMany is denied outright, even on an approved class.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rwx-denied
+  namespace: app
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: longhorn-general
+  resources:
+    requests:
+      storage: 5Gi

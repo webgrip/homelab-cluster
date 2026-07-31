@@ -1,0 +1,47 @@
+---
+# Single-replica tier for bulk data whose durability comes from somewhere OTHER
+# than Longhorn replication — i.e. content that is either regenerable or has an
+# offsite copy. Added 2026-07-31 for the in-cluster Garage backing Harbor's
+# registry blobs (proxy-cache layers re-pull on demand; the hosted `webgrip`
+# project is rebuildable from CI and additionally gets a Longhorn volume backup
+# to offsite S3).
+#
+# WHY A NEW CLASS RATHER THAN longhorn-general (ADR-0010 consolidated the set,
+# so this needs a justification):
+#   - `longhorn-general` is 2 replicas, and with only two storage nodes and HARD
+#     anti-affinity (replicaDiskSoftAntiAffinity: false) every 2-replica volume
+#     must fit on BOTH. fringe-workstation has ~26.6 GiB free, which caps any new
+#     2-replica volume there — smaller than Harbor's 20.5 GiB of hosted blobs
+#     plus growth.
+#   - The chart-created `longhorn` class is 3 replicas against 2 storage nodes,
+#     so a volume on it can never leave Degraded.
+# One replica lands on worker-1 (~617 GiB free) and stays out of fringe's way.
+#
+# NOT FOR: anything whose only copy is this volume. No Postgres, no WAL, no
+# irreplaceable user data. If losing the volume means losing the data, use
+# `longhorn-general`.
+#
+# EXIT PATH: once the reclaimed Proxmox host joins as a third storage node,
+# migrate these volumes to `longhorn-general` (2 replicas fit again) and retire
+# this class. `replicaAutoBalance: best-effort` will already have spread what it
+# can; the class change itself needs a recreate.
+#
+# No diskSelector on purpose — `longhorn-cold` carries diskSelector "cold" and no
+# disk in the cluster is tagged `cold` yet, so it is INERT and cannot be used.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: longhorn-single
+provisioner: driver.longhorn.io
+parameters:
+  dataEngine: v1
+  dataLocality: disabled
+  numberOfReplicas: "1"
+  replicaAutoBalance: best-effort
+  staleReplicaTimeout: "30"
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+# Immediate: dataLocality=disabled → network-attached → WFFC only bakes a
+# node-restrictive PV nodeAffinity that would permanently exclude nodes added
+# later (see general.yaml — this is what locked volumes off worker-1).
+volumeBindingMode: Immediate

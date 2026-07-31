@@ -1,0 +1,42 @@
+---
+# Coverage for storage-cnpg-governance (Enforce). Added alongside the
+# `longhorn-single` allowlist widening on 2026-07-31 — the policy previously had
+# no CLI test at all, so the allowlist could have been widened to anything
+# without CI noticing.
+#
+# Deliberately asserts BOTH directions: the three approved classes pass, and an
+# unapproved-but-plausible class (longhorn-cold) still fails. A failure-only test
+# cannot tell a working allowlist from a policy that rejects everything.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: storage-governance
+policies:
+  - ../../policies/storage-cnpg-governance.yaml
+resources:
+  - resources.yaml
+results:
+  # --- approved classes admit ---
+  - policy: storage-cnpg-governance
+    rule: require-approved-pvc-storageclass
+    resources:
+      - app/approved-general
+      - app/approved-single
+      - app/approved-longhorn
+    kind: PersistentVolumeClaim
+    result: pass
+  # --- everything else is still rejected ---
+  - policy: storage-cnpg-governance
+    rule: require-approved-pvc-storageclass
+    resources:
+      - app/unapproved-cold
+      - app/unapproved-hostpath
+    kind: PersistentVolumeClaim
+    result: fail
+  # --- RWX stays denied regardless of class ---
+  - policy: storage-cnpg-governance
+    rule: disallow-rwx-pvcs
+    resources:
+      - app/rwx-denied
+    kind: PersistentVolumeClaim
+    result: fail

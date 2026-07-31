@@ -23,10 +23,15 @@ spec:
               kinds:
                 - PersistentVolumeClaim
       validate:
-        message: "PVCs must use an approved Longhorn StorageClass."
+        # `longhorn-single` (1 replica) added 2026-07-31 for the in-cluster Garage
+        # backing Harbor's registry blobs. It is deliberately NOT a general-purpose
+        # class — see the header of storageclass/single.yaml for when it is and is
+        # not appropriate. `longhorn-cold` and `longhorn-snapshot` stay off this
+        # list on purpose (inert diskSelector / volsync staging respectively).
+        message: "PVCs must use an approved Longhorn StorageClass (longhorn, longhorn-general, longhorn-single)."
         pattern:
           spec:
-            storageClassName: "longhorn | longhorn-general"
+            storageClassName: "longhorn | longhorn-general | longhorn-single"
     - name: disallow-rwx-pvcs
       match:
         any:
