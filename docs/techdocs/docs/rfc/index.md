@@ -18,7 +18,9 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
   [Backstage TechDocs](rfc-backstage-techdocs.md) (+ [implementation
   plan](plan-backstage-techdocs.md)), [layered hardware
   architecture](rfc-layered-hardware-architecture.md) (program doc),
-  [task management](rfc-task-management.md) (top-20 field survey → Vikunja, ADR-0040).
+  [task management](rfc-task-management.md) (top-20 field survey → Vikunja, ADR-0040),
+  [Proxmox evacuation & offsite storage](rfc-proxmox-evacuation-offsite-storage.md) (object storage
+  goes offsite, Immich/deadman to a cloud VM, reclaim the host as a Talos worker).
 
 ## Decision-landscape gap RFCs (2026-07-02)
 

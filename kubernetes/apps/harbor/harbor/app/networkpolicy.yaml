@@ -81,8 +81,20 @@ spec:
     # server-side OIDC discovery to authentik is granted by the shared
     # components/gateway-egress component (see ADR-0005), NOT a rule here — a
     # CIDR/port rule cannot express it under Cilium.
-    # internet + LAN (Garage S3 blobs/WAL, Trivy CVE feeds, proxy-cache upstream
-    # registries); blocks only direct cross-namespace pod IPs.
+    # in-cluster Garage S3 (registry blobs). REQUIRED as its own identity-based
+    # rule: the 0.0.0.0/0 rule below excludes the pod CIDR, so an in-cluster S3
+    # endpoint is silently unreachable without this — blob push/pull would fail
+    # with no policy error to point at. Same class as the renovate provisioner
+    # that was dead for three days because a netpol sweep only covered egress.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: garage
+      ports:
+        - protocol: TCP
+          port: 3900
+    # internet + LAN (off-cluster Garage S3 blobs/WAL, Trivy CVE feeds,
+    # proxy-cache upstream registries); blocks only direct cross-namespace pod IPs.
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0

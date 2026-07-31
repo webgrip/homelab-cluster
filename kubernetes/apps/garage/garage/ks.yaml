@@ -1,0 +1,63 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# In-cluster Garage S3 — the LAN-fast object store for REGENERABLE bulk data
+# (Harbor registry blobs). Irreplaceable data (CNPG WAL/backups, Longhorn volume
+# backups, OpenBao snapshots, Forgejo LFS) goes to offsite S3 instead, NOT here:
+# this store deliberately fate-shares with the cluster.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: garage
+spec:
+  dependsOn:
+    # ExternalSecret for the admin token resolves against the OpenBao stores.
+    - name: external-secrets-stores
+      namespace: security
+  interval: 1h
+  retryInterval: 5m
+  path: ./kubernetes/apps/garage/garage/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: garage
+  timeout: 20m
+  wait: false
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# Bootstrap: assign the Garage layout, create the bucket + access key, and publish
+# the key so Harbor can consume it. Split from the app ks so it can be gated on the
+# StatefulSet actually being Ready — `garage layout assign` against a node that is
+# not up yet just fails.
+#
+# NO postBuild.substituteFrom on purpose: envsubst would run over the Job's inline
+# shell and blank every braced ${VAR} that is not a real substitution variable.
+# flux-local does not catch that — the blanked script is still valid YAML.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: garage-bootstrap
+spec:
+  dependsOn:
+    - name: garage
+  # Job pod templates are immutable, so a spec change would wedge this ks forever
+  # without force (delete+recreate = the Job re-runs). Safe here because the ks
+  # holds only the Job and its RBAC.
+  force: true
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: garage
+      namespace: garage
+  interval: 1h
+  retryInterval: 5m
+  path: ./kubernetes/apps/garage/garage/bootstrap
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: garage
+  timeout: 10m
+  wait: true

@@ -1,0 +1,28 @@
+---
+# Scrape Garage's native Prometheus metrics from the admin API port.
+#
+# Unauthenticated on purpose: garage.toml deliberately leaves `metrics_token`
+# unset, so /metrics needs no credential, and reachability is instead constrained
+# by networkpolicy.yaml (only the observability namespace may reach 3903).
+#
+# These are `garage_*` series (bucket/object counts, RPC, block resync queue) and
+# do NOT overlap with the blackbox `probe_success{endpoint=...}` series used by
+# the off-cluster Garage's probe and SLO — the two stores are independently
+# observable.
+#
+# Worth alerting on once there is a baseline: resync queue length and
+# blocks-with-errors. The off-cluster node currently sits at 3 blocks with resync
+# errors and nobody noticed, because nothing scraped it.
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: garage
+  namespace: garage
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: garage
+  endpoints:
+    - port: admin
+      path: /metrics
+      interval: 60s

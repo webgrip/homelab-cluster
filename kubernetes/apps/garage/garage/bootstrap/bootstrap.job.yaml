@@ -1,0 +1,191 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: garage-bootstrap
+  namespace: garage
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: garage-bootstrap
+  namespace: garage
+rules:
+  # `create` cannot be name-scoped; keep it separate so the mutating verbs below
+  # stay pinned to the single Secret this Job owns.
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - create
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    resourceNames:
+      - garage-harbor-key
+    verbs:
+      - get
+      - update
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: garage-bootstrap
+  namespace: garage
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: garage-bootstrap
+subjects:
+  - kind: ServiceAccount
+    name: garage-bootstrap
+    namespace: garage
+---
+# Do-once, gated, idempotent bootstrap (ADR-0003). Gated on the Garage StatefulSet
+# being Ready by the healthChecks in ks.yaml — a layout cannot be assigned to a
+# node that is not up.
+#
+# Drives Garage's ADMIN API over HTTP rather than the `garage` CLI, because the
+# CLI lives in the Garage image (no kubectl) and this Job has to write a Secret.
+# One image, one hop.
+#
+# Every step is guarded on current state, so a re-run against an already-bootstrapped
+# Garage is a no-op — that matters because Flux `force: true` re-creates this Job on
+# any spec change.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: garage-bootstrap
+  namespace: garage
+  labels:
+    cleanup.webgrip.io/retry-failed: "true"
+spec:
+  backoffLimit: 4
+  template:
+    spec:
+      serviceAccountName: garage-bootstrap
+      automountServiceAccountToken: true
+      restartPolicy: Never
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: bootstrap
+          image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.36.2@sha256:44ef4942e171939b9c665a4a84beb80e2dcdb9a24330d4651cfdfd2e9deecc47
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: HOME
+              value: /tmp
+            - name: NAMESPACE
+              value: garage
+            - name: ADMIN
+              value: http://garage-s3.garage.svc.cluster.local:3903
+            - name: BUCKET
+              value: harbor
+            - name: KEY_NAME
+              value: harbor-registry
+            - name: KEY_SECRET
+              value: garage-harbor-key
+            - name: ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: garage-admin
+                  key: admin_token
+          command:
+            - /bin/sh
+            - -ceu
+            - |
+              # This ks has NO postBuild.substituteFrom, so braced ${VAR} survives
+              # to the shell. Adding substituteFrom without rewriting these to
+              # unbraced $VAR would silently blank them — flux-local cannot see it.
+              auth="Authorization: Bearer ${ADMIN_TOKEN}"
+              api() { curl -fsS -H "${auth}" -H 'Content-Type: application/json' "$@"; }
+
+              echo "== waiting for the admin API to answer"
+              for i in $(seq 1 30); do
+                if api "${ADMIN}/health" >/dev/null 2>&1; then break; fi
+                echo "  not ready yet (${i}/30)"; sleep 5
+              done
+
+              echo "== 1. cluster layout"
+              status="$(api "${ADMIN}/v2/GetClusterStatus")"
+              node_id="$(echo "${status}" | jq -r '.nodes[0].id')"
+              layout_ver="$(echo "${status}" | jq -r '.layoutVersion // 0')"
+              if [ "${layout_ver}" -gt 0 ]; then
+                echo "  layout already at version ${layout_ver} — skipping assign"
+              else
+                echo "  assigning node ${node_id} to zone dc1"
+                api -X POST "${ADMIN}/v2/UpdateClusterLayout" \
+                  -d "[{\"id\":\"${node_id}\",\"zone\":\"dc1\",\"capacity\":107374182400,\"tags\":[]}]" >/dev/null
+                api -X POST "${ADMIN}/v2/ApplyClusterLayout" -d '{"version":1}' >/dev/null
+                echo "  layout applied"
+              fi
+
+              echo "== 2. bucket ${BUCKET}"
+              # Capture the bucket ID, not just existence: AllowBucketKey below
+              # takes the ID (a hex string), NOT the global alias. Passing the
+              # alias there silently grants nothing.
+              info="$(api "${ADMIN}/v2/GetBucketInfo?globalAlias=${BUCKET}" 2>/dev/null || true)"
+              bucket_id="$(echo "${info}" | jq -r '.id // empty')"
+              if [ -n "${bucket_id}" ]; then
+                echo "  already exists (${bucket_id})"
+              else
+                created_bucket="$(api -X POST "${ADMIN}/v2/CreateBucket" -d "{\"globalAlias\":\"${BUCKET}\"}")"
+                bucket_id="$(echo "${created_bucket}" | jq -r '.id // empty')"
+                [ -n "${bucket_id}" ] || { echo "bucket creation returned no id" >&2; exit 1; }
+                echo "  created (${bucket_id})"
+              fi
+
+              echo "== 3. access key ${KEY_NAME}"
+              if kubectl -n "${NAMESPACE}" get secret "${KEY_SECRET}" >/dev/null 2>&1; then
+                echo "  ${KEY_SECRET} already exists — not minting a second key"
+                echo "  (a new key would orphan the one Harbor is already using)"
+              else
+                created="$(api -X POST "${ADMIN}/v2/CreateKey" -d "{\"name\":\"${KEY_NAME}\"}")"
+                akid="$(echo "${created}" | jq -r '.accessKeyId')"
+                askey="$(echo "${created}" | jq -r '.secretAccessKey')"
+                [ -n "${akid}" ] && [ "${akid}" != "null" ] || { echo "key creation returned no id" >&2; exit 1; }
+
+                echo "  granting read/write on ${BUCKET} (${bucket_id})"
+                api -X POST "${ADMIN}/v2/AllowBucketKey" \
+                  -d "{\"bucketId\":\"${bucket_id}\",\"accessKeyId\":\"${akid}\",\"permissions\":{\"read\":true,\"write\":true,\"owner\":false}}" >/dev/null
+
+                # Key names match what the goharbor chart expects. A PushSecret
+                # mirrors this to OpenBao secret/harbor/s3-cluster — a SEPARATE
+                # path from the off-cluster store's secret/harbor/s3, so the old
+                # credentials are never overwritten and rollback stays a git
+                # revert.
+                kubectl -n "${NAMESPACE}" create secret generic "${KEY_SECRET}" \
+                  --from-literal=REGISTRY_STORAGE_S3_ACCESSKEY="${akid}" \
+                  --from-literal=REGISTRY_STORAGE_S3_SECRETKEY="${askey}" \
+                  --dry-run=client -o yaml | kubectl apply -f -
+                echo "  created ${KEY_SECRET}"
+              fi
+
+              echo "== done"
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

@@ -1,0 +1,12 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./bootstrap.job.yaml
+  # Safe to wire from day one: it writes secret/harbor/s3-cluster, a DIFFERENT KV
+  # path from the off-cluster store's secret/harbor/s3. Nothing is overwritten, so
+  # the old credentials survive and rollback stays a git revert. (An earlier draft
+  # pushed to harbor/s3 directly and had to be staged for the cutover, because
+  # PushSecret's default updatePolicy: Replace would have destroyed them.)
+  - ./pushsecret.yaml

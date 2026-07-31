@@ -1,0 +1,45 @@
+# Single-node Garage. Version-matched to the existing off-cluster Garage (v2.1.0)
+# so the config schema and on-disk formats are identical — that removes a whole
+# class of surprise from the migration.
+#
+# Secrets are NOT in this file. They are supplied by the documented env vars
+# GARAGE_RPC_SECRET_FILE / GARAGE_ADMIN_TOKEN_FILE (see garage.yaml) rather than
+# TOML keys — `garage --help` lists those env vars explicitly, so they are the
+# unambiguous contract. Never inline secrets here: this ConfigMap is readable by
+# anything that can read the namespace.
+#
+# Garage refuses to start if a secret file is world-readable (see
+# --allow-world-readable-secrets), which is why those Secrets mount 0440 and not
+# 0444.
+
+metadata_dir = "/var/lib/garage/meta"
+data_dir     = "/var/lib/garage/data"
+
+# LMDB is Garage's recommended metadata engine. (The off-cluster node runs sqlite,
+# which is the slower option and part of why its 18M-object bucket is painful.)
+db_engine = "lmdb"
+
+# One node, one copy. Durability for what lives here comes from regenerability
+# (proxy-cache layers re-pull; hosted images rebuild from CI) plus a Longhorn
+# volume backup of the data PVC to offsite S3 — NOT from Garage replication.
+replication_factor = 1
+
+rpc_bind_addr = "[::]:3901"
+# rpc_public_addr is deliberately unset: it is only needed so OTHER nodes can
+# reach this one, and this is a single-node cluster. Setting it would mean baking
+# in a pod IP that changes on every reschedule.
+
+[s3_api]
+# Kept as `garage` to match the endpoint being replaced, so Harbor's `region`
+# value does not need to change at cutover — only the endpoint URL does.
+s3_region     = "garage"
+api_bind_addr = "[::]:3900"
+# No root_domain: clients use path-style addressing (Harbor sets
+# disableredirect + path style), so virtual-host routing is unnecessary.
+
+[admin]
+api_bind_addr = "[::]:3903"
+# admin_token comes from GARAGE_ADMIN_TOKEN_FILE (see garage.yaml).
+# metrics_token intentionally unset: the /metrics endpoint is then unauthenticated,
+# which is what the observability scrape expects, and the NetworkPolicy already
+# restricts who can reach 3903.

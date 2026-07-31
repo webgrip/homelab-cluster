@@ -1,4 +1,15 @@
 ---
+# Blackbox probe for the OFF-CLUSTER Garage (the Proxmox box at 10.0.0.110) — the
+# store being retired. The `endpoint` label was renamed garage -> garage-offcluster
+# on 2026-07-31, when an in-cluster Garage was added in the `garage` namespace, so
+# "is garage up?" stays unambiguous during the cutover window.
+#
+# Side effect, accepted: the Sloth SLO built on this selector loses continuity with
+# its pre-rename series, so its error budget effectively restarts. Cheap, on a
+# component scheduled for decommissioning.
+#
+# The in-cluster Garage is observed differently — natively, via
+# apps/garage/garage/app/vmservicescrape.yaml (garage_* series), not by a probe.
 # yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/probe_v1.json
 apiVersion: monitoring.coreos.com/v1
 kind: Probe
@@ -17,4 +28,4 @@ spec:
       static:
         - http://10.0.0.110:3900/
       labels:
-        endpoint: garage
+        endpoint: garage-offcluster

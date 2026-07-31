@@ -1,0 +1,22 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./garage.yaml
+  - ./secrets.yaml
+  - ./rpc-secret.job.yaml
+  - ./networkpolicy.yaml
+  - ./vmservicescrape.yaml
+configMapGenerator:
+  # Hash-suffixed: editing garage.toml renames the ConfigMap, which rolls the
+  # StatefulSet automatically — no reloader needed.
+  - name: garage-config
+    files:
+      - ./garage.toml
+    options:
+      annotations:
+        # This ks does not currently substitute, but the annotation makes the
+        # intent explicit and keeps the TOML safe if substituteFrom is ever added:
+        # envsubst would otherwise try to expand any $-text in the config.
+        kustomize.toolkit.fluxcd.io/substitute: disabled

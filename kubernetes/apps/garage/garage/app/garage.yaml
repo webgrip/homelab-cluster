@@ -1,0 +1,197 @@
+---
+# Dedicated identity. Garage never calls the Kubernetes API, so this carries no
+# Role at all and the token is not mounted — but running as `default` would be
+# both a workload-hardening finding and a needless shared identity.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: garage
+  namespace: garage
+automountServiceAccountToken: false
+---
+# Headless service — gives the StatefulSet its stable pod identity and carries the
+# RPC port. Garage derives its node address from this.
+apiVersion: v1
+kind: Service
+metadata:
+  name: garage
+  labels:
+    app.kubernetes.io/name: garage
+    app.kubernetes.io/part-of: garage
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: garage
+  ports:
+    - name: rpc
+      port: 3901
+      targetPort: rpc
+---
+# The address consumers use. `garage-s3.garage.svc.cluster.local:3900`.
+apiVersion: v1
+kind: Service
+metadata:
+  name: garage-s3
+  labels:
+    app.kubernetes.io/name: garage
+    app.kubernetes.io/part-of: garage
+spec:
+  selector:
+    app.kubernetes.io/name: garage
+  ports:
+    - name: s3
+      port: 3900
+      targetPort: s3
+    - name: admin
+      port: 3903
+      targetPort: admin
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: garage
+  labels:
+    app.kubernetes.io/name: garage
+    app.kubernetes.io/part-of: garage
+spec:
+  serviceName: garage
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: garage
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: garage
+        app.kubernetes.io/part-of: garage
+    spec:
+      # Garage never calls the Kubernetes API — its config is a file and its
+      # bootstrap is a separate Job.
+      serviceAccountName: garage
+      automountServiceAccountToken: false
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: garage
+          image: harbor.webgrip.dev/dockerhub/dxflrs/garage:v2.1.0@sha256:4c9b34c113e61358466e83fd6e7d66e6d18657ede14b776eb78a93ee8da7cf6a
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: s3
+              containerPort: 3900
+            - name: rpc
+              containerPort: 3901
+            - name: admin
+              containerPort: 3903
+          # The image has no ENTRYPOINT; its CMD is ["/garage","server"], which we
+          # keep. Config and secret locations come from the env vars documented in
+          # `garage --help` rather than CLI flags or TOML keys — the env-var names
+          # are the part of the contract that is explicitly documented.
+          env:
+            # Garage's default config path is /etc/garage.toml, NOT the directory
+            # this mounts into. Without this the config is silently not found.
+            - name: GARAGE_CONFIG_FILE
+              value: /etc/garage/garage.toml
+            - name: GARAGE_RPC_SECRET_FILE
+              value: /etc/garage/rpc_secret
+            - name: GARAGE_ADMIN_TOKEN_FILE
+              value: /etc/garage/admin_token
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: admin
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: admin
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/garage/garage.toml
+              subPath: garage.toml
+              readOnly: true
+            - name: rpc-secret
+              mountPath: /etc/garage/rpc_secret
+              subPath: rpc_secret
+              readOnly: true
+            - name: admin-token
+              mountPath: /etc/garage/admin_token
+              subPath: admin_token
+              readOnly: true
+            - name: meta
+              mountPath: /var/lib/garage/meta
+            - name: data
+              mountPath: /var/lib/garage/data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: garage-config
+        # 0440, not 0400 and not 0444. Secret volume files are owned root:fsGroup,
+        # so 0400 (owner-only) would be UNREADABLE by the uid-1000 process, while
+        # 0444 is world-readable and Garage refuses to start on it unless
+        # --allow-world-readable-secrets is passed. 0440 satisfies both.
+        - name: rpc-secret
+          secret:
+            # Minted by rpc-secret.job.yaml (must be 32 bytes hex, which the ESO
+            # password generator cannot produce). The pod stays in
+            # ContainerCreating until it exists — self-resolving, not a deadlock,
+            # because that Job does not depend on Garage running.
+            secretName: garage-rpc
+            defaultMode: 0440
+        - name: admin-token
+          secret:
+            secretName: garage-admin
+            defaultMode: 0440
+        - name: tmp
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: meta
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: longhorn-single
+        resources:
+          requests:
+            storage: 5Gi
+    - metadata:
+        name: data
+      spec:
+        # Sized for Harbor's hosted `webgrip` project (20.5 GiB measured
+        # 2026-07-31) plus room for the proxy cache to re-warm and grow.
+        # `longhorn-single` is 1 replica on purpose — see the class header.
+        # Expandable online (allowVolumeExpansion) once the reclaimed node adds
+        # capacity, at which point this should move to a 2-replica class.
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: longhorn-single
+        resources:
+          requests:
+            storage: 100Gi
