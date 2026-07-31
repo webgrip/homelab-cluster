@@ -152,6 +152,24 @@ it. The ledger keeps the money and the key *hash*; it no longer knows whose key 
 draft claimed the correlation id was "revocation-proof" via an exporter reading the alias out of
 request metadata — that path needs re-checking before the new post repeats the claim.
 
+> **CORRECTION, 2026-07-31 (later the same morning).** The paragraph above is **wrong**, and the
+> post's "The ledger forgets whose key it was" line is wrong with it. Attribution survives
+> revocation perfectly well; I looked in the wrong table.
+>
+> LiteLLM denormalises the alias into the immutable spend log rather than referencing the token
+> row, so `LiteLLM_SpendLogs.metadata->>'user_api_key_alias'` is populated on **83 of 83** rows
+> from 2026-07-30 after 19:00, carrying values like `ploeg-58aaeefccd95`. That is
+> `"ploeg-" + run_token[:12]`, and `agent_runs.run_token` is intact, so
+> `left(run_token,12)` joins spend to run directly — for every run ever dispatched, ~$0.74 total
+> across 20 aliases. The Grafana spend-attribution dashboard already does exactly this join.
+>
+> Deleting the token row loses the *foreign key*, not the *label*. What is genuinely broken is
+> the enforcement ledger (`shifts.spent`, §5), which is a different problem with a different fix.
+> `request_tags` really is useless — it only ever contains the User-Agent.
+>
+> The draft must be corrected before publishing: the honest version is "the money and the name
+> both survive; the dispatcher just never reads them back."
+
 ---
 
 ## 3. The board, told properly for the first time
