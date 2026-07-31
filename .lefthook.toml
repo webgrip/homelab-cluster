@@ -1,7 +1,19 @@
-# Makes `lefthook install` emit `. .lefthookrc` into .git/hooks/* — that puts mise
-# back on PATH for GUI git clients. Note it is the generated hook script that
-# sources it, so a direct `lefthook run <hook>` does NOT pick the rc file up.
-rc = ".lefthookrc"
+# Makes `lefthook install` emit `. ./.lefthookrc` into .git/hooks/* — that puts
+# mise back on PATH for GUI git clients. Note it is the generated hook script
+# that sources it, so a direct `lefthook run <hook>` does NOT pick the rc file up.
+#
+# The "./" is load-bearing and not cosmetic. POSIX `.` resolves an operand with
+# no slash in it through $PATH, NOT through the working directory, so the
+# generated `. .lefthookrc` fails on any system whose /bin/sh is dash — Debian
+# and Ubuntu, i.e. this machine:
+#
+#   $ dash -c '. .lefthookrc'   → dash: 1: .: .lefthookrc: not found  (exit 2)
+#   $ dash -c '. ./.lefthookrc' → sourced                             (exit 0)
+#
+# and a failing pre-commit hook aborts the commit. It stayed hidden until
+# lefthook re-synced the hook scripts, at which point every commit on this
+# machine started failing with a message about a file that is plainly there.
+rc = "./.lefthookrc"
 
 [pre-commit]
 parallel = true
