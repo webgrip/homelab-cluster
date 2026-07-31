@@ -107,3 +107,12 @@ is [ADR-0025](adr-0025-harbor-config-idempotent-job.md).
 * 2026-06-23 — non-bootstrap OCI Helm charts rewritten through the proxy (`595ee402`); see the
   fail-open-narrowing consequence above
 * 2026-07-03 — renumbered from ADR-0016 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-07-31 — coverage extended to **eight** projects. `mcr` (mcr.microsoft.com, playwright base)
+  and `dhi` (dhi.io, Docker Hardened Images — `webgrip/infrastructure` ADR-0006) are **proxy-only**:
+  build-time bases with no Talos `machine.registries.mirrors` entry, since nothing in-cluster runs
+  `FROM` them. `dhi` is also the first endpoint to **reuse another upstream's credential** — dhi.io
+  advertises `service="registry.docker.io"`, so the existing Docker Hub token authenticates it. Note
+  this qualifies the decision above: credentials there "exist solely to lift anonymous rate limits",
+  which is no longer true for every endpoint — DHI cannot be pulled anonymously at all
+  (`GET https://dhi.io/v2/` → `401`), so for `dhi` the credential is an access requirement rather
+  than an optimisation. Recorded here rather than rewriting a decision that was correct when made.
