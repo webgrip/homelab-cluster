@@ -1,28 +1,26 @@
 ---
+# Image-verification CLI test.
+#
+# Previously asserted against image-verify-audit and image-attestations-audit, both of which
+# targeted ghcr.io/webgrip/* and were retired on 2026-07-31 (Forgejo publishes only to Harbor;
+# both policies had produced zero PolicyReport results and no ghcr.io/webgrip image was running).
+# The policy paths in that version were also stale — they pointed at ../../policies/, but the
+# manifests live in ../../policies/app/, so the test could not have loaded them.
+#
+# What remains worth asserting is the negative case: image-verify-harbor-audit must NOT claim
+# jurisdiction over third-party images. A verifyImages policy whose imageReferences accidentally
+# widen is how an admission control turns into a cluster-wide outage.
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: image-verification
 policies:
-  - ../../policies/image-verify-audit.yaml
-  - ../../policies/image-attestations-audit.yaml
+  - ../../policies/app/image-verify-harbor-audit.yaml
 resources:
   - resources.yaml
 results:
-  - policy: image-verify-audit
-    rule: verify-webgrip-images
-    resources:
-      - app/third-party-digest
-    kind: Pod
-    result: skip
-  - policy: image-attestations-audit
-    rule: verify-github-slsa-provenance
-    resources:
-      - app/third-party-digest
-    kind: Pod
-    result: skip
-  - policy: image-attestations-audit
-    rule: verify-cyclonedx-sbom
+  - policy: image-verify-harbor-audit
+    rule: verify-webgrip-harbor-images
     resources:
       - app/third-party-digest
     kind: Pod

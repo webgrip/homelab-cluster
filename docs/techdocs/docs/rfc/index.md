@@ -47,3 +47,5 @@ that had no decision record. All **Proposed**. Roughly by stakes:
   anchor, own the verify-enforce waves, DT-vs-GUAC.
 - [GitHub Actions retirement](rfc-github-actions-retirement.md) — ARC has been 0/0 "TEMP" since
   2026-06-18; retire or restore, on purpose.
+- [Container runtime isolation](rfc-container-runtime-isolation.md) — gVisor/Kata via Talos
+  system extensions for the CI runner tier; complements ADR-0026 rather than replacing it.
