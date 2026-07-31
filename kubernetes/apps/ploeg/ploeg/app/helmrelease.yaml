@@ -67,28 +67,47 @@ spec:
           # ploegd webhook registered on it, or assignment 403s (an assignee
           # needs read access) and nothing fires. Today only Ploeg Test has
           # both.
+          #
+          # `forge` names the INSTANCE that holds the repo, and it is stated
+          # on every rule rather than left to the default. Omitting it is what
+          # broke review publishing: ploegd read PLOEG_TARGET_FORGE twice, with
+          # a "forgejo" default for the forge registry and no default for the
+          # target resolver, so every Target carried forge="" while the
+          # registry was keyed "forgejo" and the lookup missed. A reviewer
+          # returned verdict=approve on erfbeeld#9 on 2026-07-30 and the pull
+          # request never heard about it. Fixed in ploegd >= rc.16 (empty now
+          # resolves to the configured default), and pinned here so the value
+          # is visible in the manifest rather than inferred from an env var
+          # that appears in no chart, no values file and no doc.
           projects:
             - name: "Ploeg Test"
               repo: webgrip/ploeg
               branch: development
+              forge: forgejo
             - name: "Ploeg"
               repo: webgrip/ploeg
               branch: development
+              forge: forgejo
             - name: "Erfbeeld"
               repo: webgrip/erfbeeld
               branch: main
+              forge: forgejo
             - name: "Homelab Roadmap"
               repo: webgrip/homelab-cluster
               branch: main
+              forge: forgejo
             - name: "CI/CD"
               repo: webgrip/homelab-cluster
               branch: main
+              forge: forgejo
             - name: "Dark Factory"
               repo: webgrip/homelab-cluster
               branch: main
+              forge: forgejo
             - name: "De Vloer"
               repo: webgrip/homelab-cluster
               branch: main
+              forge: forgejo
       teams:
         # The board only ever sees the TEAM user. Roles (builder, reviewer,
         # devops, security) are internal to a Shift and live under
@@ -195,13 +214,20 @@ spec:
         # so the chart's short in-namespace default never resolves there.
         host: ploeg-db-rw.ploeg.svc.cluster.local
       teams:
-        # bronze: cheapest model, $2/run budget. Target repo pinned per team
-        # in v0 (repo-from-ticket mapping is a follow-up); erfbeeld is the
-        # proven agent-run target (AGENTS.md + team-bronze skill in-repo) and
-        # the worker only ever opens PRs, never merges.
+        # bronze: cheapest model. `budget` is the SHIFT POOL, not a per-run
+        # figure — the comment here used to say "$2/run budget", which was a
+        # category error: $2 is the builder Role's cap and the pool is the
+        # envelope all Rounds draw from. Raised 3 -> 8 to fund the review loop
+        # below (builder 2.00 + reviewer 0.40 = 2.40 per pass, and a fix round
+        # is another writer+reader pair).
+        #
+        # Target repo pinned per team in v0 (repo-from-ticket mapping is a
+        # follow-up); erfbeeld is the proven agent-run target (AGENTS.md +
+        # team-bronze skill in-repo) and the worker only ever opens PRs, never
+        # merges.
         - name: bronze
           model: litellm_proxy/deepseek-chat
-          budget: "3"
+          budget: "8"
           repoOwner: webgrip
           repoName: erfbeeld
           # erfbeeld's real trunk; explicit so a default-branch change can
@@ -229,6 +255,30 @@ spec:
           # One reader, not three: rounds are sequential but a fan-out is
           # concurrent, and three readers at once do not fit the worker pool
           # (fringe ~2.3 CPU / 2.3Gi free, worker-1 at 99% CPU requests).
+          #
+          # maxFixRounds turns on the arc that makes this a loop rather than a
+          # line: a reviewer returning request_changes re-opens the writing
+          # Round with its findings in the builder's prompt, then re-reviews.
+          # The machinery has been built, tested against a live Postgres and
+          # deployed since rc.14 — it was simply never switched on, because
+          # MaxFixRounds defaults to 0 and reviewloop.go returns on the first
+          # line when it is.
+          #
+          # 2, not more. ADR-0017 bounds it three ways in this order: money
+          # first (the pool above), then this cap, then the verdict — and only
+          # a READING Role's verdict counts, so the loop cannot grade its own
+          # work.
+          #
+          # Be precise about the money bound: it reads shifts.spent, which is
+          # 0.0000 on every row ever written because the deployed adapters
+          # report no usage, so on rc.14 that first bound is INERT. What
+          # actually caps this today is the per-run key ceiling LiteLLM
+          # enforces (2.00 for the builder, 0.40 for the reviewer) multiplied
+          # by the round count: 1 writer + 1 reader + 2 fix rounds of the same
+          # pair = 6 runs, worst case $7.20, inside the $8 pool. The pool
+          # becomes a real second bound when ploegd rc.16 lands and settles
+          # each run's cost from the gateway.
+          maxFixRounds: 2
           plan:
             - roles:
                 - {name: builder, writes: true, cap: "2.00"}
@@ -246,8 +296,19 @@ spec:
                     limits: {cpu: 500m, memory: 384Mi}
         # silver: the ploeg-repo team — the factory working on its own
         # dispatch plane (first job: the per-run key leak, VIK ticket).
-        # sonnet-5 at $4/run: real Go surgery, inside the anthropic
-        # 5 USD/day router cap (falls back to deepseek-chat if it trips).
+        # sonnet-5 for real Go surgery, inside the anthropic 5 USD/day router
+        # cap (falls back to deepseek-chat if it trips).
+        #
+        # silver has no `plan:`, so it runs as a synthesized one-writer Shift
+        # with no pool — which means `budget` here is the PER-RUN key ceiling,
+        # the opposite of what it means for bronze above. The comment used to
+        # say "$4/run" and had been wrong since the value was bumped to 6
+        # without anyone touching it; the real figure is $6 per run.
+        #
+        # An explicit `perRunBudget` key that says this in the manifest instead
+        # of in a comment lands with chart rc.16 — rc.14's values.schema.json
+        # is additionalProperties:false, so setting it today fails validation
+        # outright.
         - name: silver
           model: litellm_proxy/claude-sonnet-5
           budget: "6"
@@ -274,9 +335,8 @@ spec:
         # without spending a single LLM token. dind: false also exercises the
         # sidecar-less pod shape (no privileged container, so this team is
         # outside the DinD PolicyException entirely).
-        # ORDERING: on chart rc.4 the harness block is silently ignored and
-        # copper would run as a plain OpenHands team — do not assign copper
-        # tickets until the rc.5 chart bump lands (Renovate).
+        # copper has no `plan:` either, so `budget` is its per-run ceiling and
+        # not a pool, same as silver above.
         - name: copper
           model: litellm_proxy/deepseek-chat # key scope only; the exec harness never calls the LLM
           budget: "1"
