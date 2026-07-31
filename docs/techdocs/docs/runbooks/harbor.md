@@ -64,13 +64,25 @@ Design: [RFC: Harbor Pull-Through Proxy Cache](../rfc/rfc-harbor-proxy-cache.md)
 
 ### Pull third-party images through the proxy cache
 
-**Seven** proxy-cache projects are created idempotently by the `harbor-proxy-config` CronJob (creds from
+**Eight** proxy-cache projects are created idempotently by the `harbor-proxy-config` CronJob (creds from
 OpenBao `secret/harbor/registry-proxy`, [ADR-0025](../adr/adr-0025-harbor-config-idempotent-job.md)):
 `dockerhub` → `docker.io`, `ghcr` → `ghcr.io`, `quay` → `quay.io`, `gcrmirror` → `mirror.gcr.io`,
-`k8s` → `registry.k8s.io`, `forgejo` → `code.forgejo.org`, and `mcr` → `mcr.microsoft.com` (playwright base).
+`k8s` → `registry.k8s.io`, `forgejo` → `code.forgejo.org`, `mcr` → `mcr.microsoft.com` (playwright base),
+and `dhi` → `dhi.io` (Docker Hardened Images; `webgrip/infrastructure` ADR-0006).
 `dockerhub` uses Harbor's **native `docker-hub` provider** (url `hub.docker.com`), not a generic
-docker-registry endpoint. The Talos registry mirror covers only **six** of these — `mcr` is proxy-only,
-with no Talos `machine.registries.mirrors` entry. Two ways to consume them:
+docker-registry endpoint. The Talos registry mirror covers only **six** of these — `mcr` and `dhi` are
+proxy-only, with no Talos `machine.registries.mirrors` entry, because both are build-time bases rather
+than workload images (nothing in-cluster runs `FROM` them).
+
+`dhi` is the only endpoint that **reuses another upstream's credential**: dhi.io advertises
+`service="registry.docker.io"`, the same Docker identity service as Docker Hub, so `DOCKERHUB_USERNAME`
+/`DOCKERHUB_TOKEN` authenticate it. Unlike `quay`/`gcrmirror`/`k8s` it cannot be anonymous —
+`GET https://dhi.io/v2/` returns `401`. If Docker ever splits those identities, `verify_registry_health`
+marks the reconcile DEGRADED and `HarborProxyReconcileStale` fires
+([ADR-0046](../adr/adr-0046-harbor-proxy-credential-convergence.md)) rather than the cache silently
+serving nothing.
+
+Two ways to consume them:
 
 - **Explicit** (works now): pull through the project path —
   `docker pull harbor.${SECRET_DOMAIN}/dockerhub/library/<repo>:<tag>` (or `.../ghcr/<owner>/<repo>`).

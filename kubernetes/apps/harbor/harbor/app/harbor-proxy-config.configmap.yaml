@@ -290,6 +290,35 @@ data:
       [ -n "$${GHCR_TOKEN:-}" ] && verify_registry_health ghcr "$$GH_ID" || true
     fi
 
+    # dhi.io -> proxy project "dhi" (Docker Hardened Images; webgrip/infrastructure ADR-0006)
+    #
+    # Reuses the DOCKERHUB credential deliberately, not by accident. dhi.io advertises
+    #   Bearer realm="https://dhi.io/token", service="registry.docker.io"
+    # — a different token realm but the SAME Docker identity service as registry-1.docker.io, which
+    # is why `docker login dhi.io` is a Docker Hub login. The DHI catalog is Apache 2.0 and the
+    # Community tier is free, but pulls are NOT anonymous (GET https://dhi.io/v2/ -> 401), so this
+    # cannot be an anonymous endpoint like quay/gcrmirror/k8s below.
+    #
+    # This is what keeps the credential out of CI: builders never authenticate to dhi.io. Image
+    # builds resolve their base through --build-arg REGISTRY_DHI=harbor.${SECRET_DOMAIN}/dhi, the
+    # same way REGISTRY_DOCKERHUB/REGISTRY_GHCR/REGISTRY_MCR already work, and Harbor holds the
+    # only copy of the token.
+    #
+    # NB no Talos machine.registries mirror for dhi.io — deliberately, following the mcr precedent
+    # below. Mirrors exist for WORKLOAD pulls; DHI images are build-time bases only (nothing runs
+    # FROM dhi.io in-cluster), so the explicit build-arg is the whole integration.
+    DHI_ID="$$(ensure_registry dhi docker-registry https://dhi.io \
+      "$${DOCKERHUB_USERNAME:-}" "$${DOCKERHUB_TOKEN:-}")"
+    if [ -n "$$DHI_ID" ] && [ "$$DHI_ID" != "null" ]; then
+      ensure_proxy_project dhi "$$DHI_ID"
+      # Health-check is load-bearing here, not decoration: this is the first endpoint whose
+      # credential is REUSED from another upstream, so "the Docker Hub PAT also authenticates to
+      # dhi.io" is an assumption that must be proven per tick rather than believed. A scope
+      # mismatch or a realm Harbor cannot follow sets DEGRADED and fires
+      # HarborProxyReconcileStale (ADR-0046) instead of silently serving nothing.
+      [ -n "$${DOCKERHUB_TOKEN:-}" ] && verify_registry_health dhi "$$DHI_ID" || true
+    fi
+
     # Anonymous upstreams (no creds needed); each maps to a Talos machine.registries mirror.
     # quay.io -> proxy project "quay" (prometheus, jetstack/cert-manager)
     QUAY_ID="$$(ensure_registry quay docker-registry https://quay.io)"
