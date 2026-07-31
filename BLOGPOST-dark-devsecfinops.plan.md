@@ -40,13 +40,43 @@ Be careful here: this is the section that decides whether the post is honest.
 | Multi-Role Shifts dispatch as separate workloads | bronze fanned out `builder` → `reviewer` + `devops`, each its own ScaledJob with its own resources |
 | Per-run LLM credentials, minted and revoked | `minted per-run key trace=ploeg-…`, LiteLLM ledger rows |
 | Workers hold no Kubernetes API authority | `automountServiceAccountToken: false`, own `ploeg-worker` identity |
+| **A second agent reviews the first agent's pull request** | **webgrip/erfbeeld#10 (VIK-630), 2026-07-31** — see below |
+
+### The reviewed PR, in full, because it is the post's spine
+
+VIK-630 on the Erfbeeld board → `webgrip/erfbeeld@main`. Round 1 builder opened
+**erfbeeld#10**; round 2 reviewer read it and posted a review to the PR. Verbatim extracts:
+
+> **Verdict: approve**
+>
+> `git diff main...agent/vik-630` (merge-base 1a13d54) is exactly one insertion:
+> `README.md:113` (new) … Single commit `e770550` with trailer `VIK-630`. Nothing else touched
+> (`git diff --stat` = 1 file, 1 insertion; working tree clean).
+>
+> — *Posted by Ploeg on behalf of the reviewing agent. It could not push to this branch.*
+
+That is not boilerplate. It resolved the merge-base, counted the insertions, cited the exact file and
+line, named the commit and its trailer, checked the sentence against the style of the sibling bullets,
+and validated the factual claim against `AGENTS.md`. And the board got:
+
+> **Outcome:** the reviewer approved; a person is asked to merge
+> **Pull request:** …/erfbeeld/pulls/10 · `2 agent run(s) across 2 round(s).`
+
+Each of the four rc.14 reader fixes is visible in that one artifact: it saw the diff (branch fetch),
+it knew the PR existed, it could not push, and it was not miscredited with a push.
+
+**One honest wrinkle to keep in the post.** The reviewer also wrote:
+
+> I could not open the PR at forgejo.webgrip.dev/… the instance is LAN-only and timed out from this run.
+
+It reviewed from the diff instead. The PR URL handed to a reader is the *public* hostname, which a
+worker pod's NetworkPolicy cannot reach — it only has the in-cluster forge. Harmless here, wrong in
+principle, and a good miniature of the whole theme: the thing worked, and the reason it worked was
+not quite the reason we thought.
 
 ### Does NOT run today — do not imply otherwise
 
-- **A reviewed pull request.** This is the milestone gate and **it has not been run yet.** The
-  reader path is fixed and merged (rc.14) but unproven live. If the post ships before that run, it
-  cannot claim review. *Currently the honest sentence is: "the reviewer is wired and about to get
-  its first real run".*
+- ~~A reviewed pull request.~~ **Proven 2026-07-31 — see below.**
 - **Per-run forge credentials.** ADR-0013 tier 2 has never worked on this Forgejo: the broker calls
   `/api/v1/admin/users/{bot}/tokens`, which 404s on Forgejo 15.0.2. Every run has used the shared
   token. The boot log said "disabled" and nobody had exercised it.
@@ -58,6 +88,8 @@ Be careful here: this is the section that decides whether the post is honest.
   on token scopes.
 
 ## The failure museum — this milestone's contributions
+
+*Ten now, not nine.*
 
 These are the best material in the post. Each is verifiable.
 
@@ -98,7 +130,18 @@ These are the best material in the post. Each is verifiable.
    review away* — ACP and claude-code set no outcome file and populate no findings, so only
    `openhands` and `exec` can return a review at all. The fix was four defects deeper, and the
    reader now runs on the image that was already there.
-9. **Removing a waiver revealed what it was hiding.** Narrowing the Kyverno exception to the
+9. **The first reviewed PR reviewed nothing, into the void.** The run before the one that worked
+   (VIK-628) did everything right — builder opened erfbeeld#9, the reviewer read it and reported
+   *"Clear, correct, and well-placed addition documenting how changes arrive in this repo"* — and
+   then ploegd dropped the review on the floor:
+   `WARN findings not published: no provider for forge forge="" shift=4`.
+   One environment variable, read twice with different defaults:
+   `envOr("PLOEG_TARGET_FORGE", "forgejo")` for the registry, bare
+   `os.Getenv("PLOEG_TARGET_FORGE")` for the resolver. Unset, the provider registers under
+   `forgejo` and every target carries `""`, so the lookup missed every time. The review existed,
+   was good, and nobody could see it. This is the best single illustration in the post of why
+   "it ran" and "it worked" are different claims.
+10. **Removing a waiver revealed what it was hiding.** Narrowing the Kyverno exception to the
    `privileged-dind` hazard label surfaced that non-dind workers fail `run-as-non-root`,
    `privilege-escalation`, `seccomp` and `drop-all-capabilities`. The broad waiver had been
    concealing that for every team, including ones that take no privilege.
