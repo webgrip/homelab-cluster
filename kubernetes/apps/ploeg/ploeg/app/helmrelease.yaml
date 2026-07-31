@@ -154,6 +154,20 @@ spec:
       # when it ships — refusing to route beats routing somewhere harmless.
       PLOEG_DEFAULT_TEAM: copper
       PLOEG_LEASE_TTL: 15m
+      # Which forge instance a resolved Work Target belongs to. Unset looks
+      # harmless and is not: ploegd reads this variable TWICE with different
+      # defaults —
+      #   forgeID := envOr("PLOEG_TARGET_FORGE", "forgejo")   // registration
+      #   target.NewMapResolver(spec, os.Getenv("PLOEG_TARGET_FORGE"))
+      # — so with it unset the provider registers under "forgejo" while every
+      # Target carries forge="". The lookup in publishRound then misses and
+      # the round's findings are dropped with
+      #   WARN findings not published: no provider for forge forge=""
+      # which is exactly how VIK-628's reviewer produced a real review that
+      # never reached PR webgrip/erfbeeld#9 (2026-07-30). Setting it makes
+      # both reads agree. The two defaults should not be able to disagree at
+      # all — ticket on the board for ploegd.
+      PLOEG_TARGET_FORGE: forgejo
       # PLOEG_TEAM_MAP is gone: config.teams[].assignees above is the roster
       # now, and ploegd merges the two. Keeping both meant the same fact in
       # two syntaxes, and the env copy still carried jake/jane after the file
