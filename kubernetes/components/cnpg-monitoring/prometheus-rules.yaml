@@ -106,6 +106,81 @@ spec:
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/cnpg-backups"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"
 
+        # CNPGWALArchivingFailed tells you archiving BROKE. These two tell you how long
+        # you have left before that break kills the database — the gap that turned the
+        # 2026-07-15 netpol outage into "5Gi filled in ~1.5 days" (forgejo cluster.yaml).
+        # When archiving stops, pg_wal grows at >= 16MB per `archive_timeout` (default
+        # 5m => ~4.6 GB/day) and Postgres stops when the volume fills. A 2Gi walStorage
+        # is ~10 hours of runway; the instance-manager then dies BEFORE Postgres starts,
+        # so it can never archive its way out (see the cnpg-database skill).
+        - alert: CNPGWALVolumeFillingUp
+          expr: |
+            100 * (
+              1 - kubelet_volume_stats_available_bytes{persistentvolumeclaim=~".+-wal"}
+                  / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim=~".+-wal"}
+            ) > 75
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: cnpg
+          annotations:
+            summary: "CNPG WAL volume >75% full ({{$labels.namespace}}/{{$labels.persistentvolumeclaim}})"
+            description: |
+              What's happening:
+              - The dedicated pg_wal volume is over 75% full and has been for 15m.
+
+              Impact/risk:
+              - If this is a WAL backlog, the database STOPS when the volume fills, and
+                a restart at that point kills the instance-manager before Postgres opens.
+
+              Likely causes:
+              - WAL archiving is failing (check CNPGWALArchivingFailed) — object store
+                unreachable, credentials stale, or an egress NetworkPolicy blocking it
+              - A long-running transaction or replication slot holding WAL
+              - Genuine write growth outrunning walStorage.size
+
+              First actions:
+              - Check whether archiving is failing first; fixing that drains the backlog
+              - Inspect pg_stat_archiver and the plugin-barman-cloud sidecar logs
+              - Check for inactive replication slots pinning WAL
+              - Do NOT restart the instance while the backlog is near capacity
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/cnpg-backups"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"
+
+        - alert: CNPGWALVolumeCritical
+          expr: |
+            100 * (
+              1 - kubelet_volume_stats_available_bytes{persistentvolumeclaim=~".+-wal"}
+                  / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim=~".+-wal"}
+            ) > 90
+          for: 5m
+          labels:
+            severity: critical
+            owner: platform
+            service: cnpg
+          annotations:
+            summary: "CNPG WAL volume >90% full ({{$labels.namespace}}/{{$labels.persistentvolumeclaim}})"
+            description: |
+              What's happening:
+              - The dedicated pg_wal volume is over 90% full. The database is close to
+                halting.
+
+              Impact/risk:
+              - Postgres stops accepting writes when pg_wal fills. Restarting an instance
+                whose backlog exceeds walStorage.size kills the instance-manager before
+                Postgres starts, so it cannot recover on its own.
+
+              First actions:
+              - Restore object-store connectivity so the backlog drains; that is the only
+                clean exit
+              - Verify egress reaches the S3 endpoint from THIS namespace specifically
+              - Check for inactive replication slots pinning WAL
+              - Expanding walStorage in git does NOT resize the live PVC — see the
+                cnpg-database skill before attempting it under pressure
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/cnpg-backups"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"
+
         - alert: CNPGWALArchivingFailed
           expr: max by (namespace) (increase(cnpg_pg_stat_archiver_failed_count[10m])) > 0
           for: 10m
