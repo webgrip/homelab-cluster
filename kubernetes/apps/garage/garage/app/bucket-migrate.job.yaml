@@ -127,27 +127,53 @@ spec:
               # shell variables survive to the shell. Adding substituteFrom later
               # without rewriting them would silently blank them, and flux-local
               # cannot see it.
+              # SNAPSHOT, THEN COPY, THEN VERIFY THE SNAPSHOT.
+              #
+              # The source is a LIVE backup store: 13 databases archive a WAL
+              # segment every archive_timeout (5 min), so objects appear in it
+              # continuously. A plain `rclone check` after `rclone copy` can
+              # therefore never pass — the first run reported 15 "differences",
+              # every one a WAL written during the copy
+              # (.../wals/0000000100000061/...3A.gz), and the retry reported 1.
+              # Nothing was lost or corrupted; the check was simply asking a
+              # moving target to hold still, and it failed the Job each time.
+              #
+              # Taking a listing first makes the pass deterministic: this run is
+              # responsible for exactly the objects that existed when it started,
+              # and --files-from scopes both the copy and the check to that set.
+              # Anything archived afterwards is out of scope by construction and
+              # gets picked up by the delta pass at cutover, which is what the
+              # PASS counter exists for.
+              #
+              # A real fault — a truncated or altered object — still fails the
+              # check, because those objects ARE in the manifest.
               copy_bucket() {
-                src="$1"; dst="$2"; name="$3"
-                echo "== ${name}: size before"
+                src="$1"; dst="$2"; name="$3"; manifest="/tmp/${name}.manifest"
+
+                echo "== ${name}: snapshotting the source listing"
+                rclone lsf -R --files-only "${src}" > "${manifest}"
+                echo "   $(wc -l < "${manifest}") objects in scope for this pass"
                 echo "   source:      $(rclone size "${src}" --json 2>/dev/null || echo unavailable)"
                 echo "   destination: $(rclone size "${dst}" --json 2>/dev/null || echo unavailable)"
 
-                # copy, NOT sync. --checksum rather than the default size+modtime:
-                # these are backup artefacts where a truncated or rewritten object
-                # of identical size must not be skipped.
+                # copy, NOT sync. sync deletes on the destination; the source is
+                # never written to. --checksum rather than the default
+                # size+modtime: these are backup artefacts where a rewritten
+                # object of identical size must not be skipped.
                 rclone copy "${src}" "${dst}" \
+                  --files-from "${manifest}" \
                   --checksum \
                   --transfers 8 --checkers 16 \
                   --s3-chunk-size 16M --s3-upload-concurrency 4 \
                   --stats 30s --stats-one-line --stats-log-level NOTICE
 
-                echo "== ${name}: verifying every source object exists at the destination"
-                # --one-way: the destination may legitimately hold more (a later
-                # delta pass, or backups written after the copy started).
-                # Multipart ETags are not MD5s, so rclone falls back to a size
-                # comparison for those and says so; that is expected here.
-                rclone check "${src}" "${dst}" --one-way --checksum
+                echo "== ${name}: verifying every snapshotted object reached the destination"
+                # --one-way: the destination may legitimately hold more (an
+                # earlier pass, or a later delta). Multipart ETags are not MD5s,
+                # so rclone falls back to size for those and says so; expected.
+                rclone check "${src}" "${dst}" \
+                  --files-from "${manifest}" \
+                  --one-way --checksum
 
                 echo "== ${name}: size after"
                 rclone size "${dst}"
