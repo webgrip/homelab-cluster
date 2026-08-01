@@ -107,13 +107,30 @@ spec:
               # to the shell. Adding substituteFrom without rewriting these to
               # unbraced $VAR would silently blank them — flux-local cannot see it.
               auth="Authorization: Bearer ${ADMIN_TOKEN}"
-              api() { curl -fsS -H "${auth}" -H 'Content-Type: application/json' "$@"; }
+              # Always bound the request. Without --connect-timeout an attempt
+              # against a Service with no endpoints hangs for minutes, which
+              # turned a "30 x 5s" loop into a 90-minute one on first bring-up.
+              api() {
+                curl -fsS --connect-timeout 5 --max-time 60 \
+                  -H "${auth}" -H 'Content-Type: application/json' "$@"
+              }
 
+              # Wait for the HTTP server to ANSWER — not for the cluster to be
+              # healthy. /health returns 503 until a layout is assigned, and
+              # assigning it is this Job's whole purpose, so waiting on /health
+              # can never succeed. Any HTTP status proves the API is up; only a
+              # connection failure (000) means keep waiting.
               echo "== waiting for the admin API to answer"
-              for i in $(seq 1 30); do
-                if api "${ADMIN}/health" >/dev/null 2>&1; then break; fi
-                echo "  not ready yet (${i}/30)"; sleep 5
+              ready=no
+              for i in $(seq 1 60); do
+                code="$(curl -sS -o /dev/null -w '%{http_code}' \
+                  --connect-timeout 5 --max-time 10 "${ADMIN}/metrics" 2>/dev/null || echo 000)"
+                if [ "${code}" != "000" ]; then
+                  echo "  admin API answering (HTTP ${code})"; ready=yes; break
+                fi
+                echo "  no connection yet (${i}/60)"; sleep 5
               done
+              [ "${ready}" = yes ] || { echo "admin API never answered" >&2; exit 1; }
 
               echo "== 1. cluster layout"
               status="$(api "${ADMIN}/v2/GetClusterStatus")"
