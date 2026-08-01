@@ -47,7 +47,20 @@ spec:
   # already hit FailedScheduling "Insufficient cpu, Insufficient memory" at this value.
   # Raising it only manufactures Pending pods and makes KEDA's queue numbers lie. The lever
   # that actually works is making CI do less work per push (see .forgejo/workflows/e2e.yml).
-  minReplicaCount: 4
+  # Back to 2 (2026-08-01). The 2->4 raise above was made because a Renovate wave drained at 2
+  # runners for 2+ hours — but the CORRECTION recorded immediately above it establishes that the
+  # cause was the `keda` namespace missing from forgejo-allow-ingress, so every scaler poll was
+  # dropped by the netpol regardless of queue depth. That netpol was fixed. The warm floor was
+  # compensating for a bug that no longer exists, and 4 idle runners reserve 1000m CPU + 2Gi of
+  # memory permanently on a worker pool the comment below already describes as out of room.
+  #
+  # Measured 2026-08-01: idle runners use 1-2m CPU and 6-7Mi memory each against 250m/512Mi
+  # requested. The waste is the COUNT of idle runners, not the per-runner request — a busy runner
+  # genuinely needs its 250m, so cutting the request would just under-request real work.
+  #
+  # If KEDA's metric read breaks again, raise this — but fix the read first, and record which it
+  # was. That is the mistake this comment exists to stop repeating.
+  minReplicaCount: 2
   maxReplicaCount: 6
   successfulJobsHistoryLimit: 3
   # 0: don't retain Failed runner Jobs. The warm-pool runner blocks on `one-job --wait`;
