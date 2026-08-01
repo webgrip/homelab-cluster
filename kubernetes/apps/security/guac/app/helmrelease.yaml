@@ -152,9 +152,13 @@ spec:
           limits:
             cpu: 250m
             memory: 128Mi
-      # gocloud blob-store URI — points at the cluster-wide Garage S3.
-      # Credentials come from the security-s3 secret env vars below.
-      blobAddr: "s3://guac?endpoint=http://10.0.0.110:3900&region=garage&disable_https=true&use_path_style=true"
+            # gocloud blob-store URI — points at the cluster-wide Garage S3.
+            # Credentials come from the security-s3 secret env vars below.
+            # OFF-SITE as of 2026-08-01. disable_https is GONE, not just flipped: Caddy
+        # terminates TLS off-site and Garage binds to loopback behind it, so plain
+        # HTTP cannot connect. NOTE this endpoint is hardcoded here rather than read
+        # from the secret, so repointing security-s3 alone would NOT have moved guac.
+        blobAddr: "s3://guac?endpoint=s3-offsite.webgrip.dev&region=garage&use_path_style=true"
       customLabels:
         release: kube-prometheus-stack
       common:
