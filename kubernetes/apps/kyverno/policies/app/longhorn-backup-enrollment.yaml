@@ -36,6 +36,17 @@ metadata:
       Stamps the recurring-job-group labels onto the longhorn.io Volume CRs behind
       an explicit list of PVCs, so off-cluster backup enrolment is declared in git
       rather than applied by hand.
+    # mutateExistingOnPolicyUpdate fires only when this object CHANGES. Editing the
+    # lists below is itself a change, so the normal path needs nothing extra — but
+    # the first pass on 2026-08-01 enrolled 12 of 14 volumes with no error, no event
+    # and no log line, and a second pass picked up the remaining two. Enumeration is
+    # evidently not guaranteed complete in one go. Bump this counter to force a
+    # re-run without otherwise altering the policy, and ALWAYS verify enrolment
+    # afterwards rather than assuming:
+    #   kubectl -n longhorn-system get volumes.longhorn.io \
+    #     -l recurring-job-group.longhorn.io/gitops-backup=enabled \
+    #     -o custom-columns=NS:.status.kubernetesStatus.namespace,PVC:.status.kubernetesStatus.pvcName
+    webgrip.io/enrolment-revision: "2"
 spec:
   # Mutate-only policy: it never rejects anything, so there is no Enforce/Audit
   # distinction to make here.
