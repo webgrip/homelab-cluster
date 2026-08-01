@@ -2,15 +2,17 @@
 # so the config schema and on-disk formats are identical — that removes a whole
 # class of surprise from the migration.
 #
-# Secrets are NOT in this file. They are supplied by the documented env vars
-# GARAGE_RPC_SECRET_FILE / GARAGE_ADMIN_TOKEN_FILE (see garage.yaml) rather than
-# TOML keys — `garage --help` lists those env vars explicitly, so they are the
-# unambiguous contract. Never inline secrets here: this ConfigMap is readable by
-# anything that can read the namespace.
+# Secrets are NOT in this file. They arrive as the env vars GARAGE_RPC_SECRET and
+# GARAGE_ADMIN_TOKEN (see garage.yaml), sourced from Kubernetes Secrets. Never
+# inline them here: this ConfigMap is readable by anything that can read the
+# namespace.
 #
-# Garage refuses to start if a secret file is world-readable (see
-# --allow-world-readable-secrets), which is why those Secrets mount 0440 and not
-# 0444.
+# Env vars rather than the *_FILE variants on purpose. Garage requires secret
+# FILES to be mode 0600 and counts group-readable as world-readable, but
+# Kubernetes secret volumes are owned root:fsGroup — so 0600 cannot be read by
+# the uid-1000 process and 0440 is refused. Env vars sidestep the check entirely
+# without running as root or weakening it with
+# GARAGE_ALLOW_WORLD_READABLE_SECRETS.
 
 metadata_dir = "/var/lib/garage/meta"
 data_dir     = "/var/lib/garage/data"

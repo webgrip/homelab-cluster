@@ -99,10 +99,24 @@ spec:
             # this mounts into. Without this the config is silently not found.
             - name: GARAGE_CONFIG_FILE
               value: /etc/garage/garage.toml
-            - name: GARAGE_RPC_SECRET_FILE
-              value: /etc/garage/rpc_secret
-            - name: GARAGE_ADMIN_TOKEN_FILE
-              value: /etc/garage/admin_token
+            # Secrets come in as env vars, NOT as mounted files, because the file
+            # path is unwinnable here: Garage demands mode 0600 and treats
+            # group-readable as world-readable, but Kubernetes secret volumes are
+            # owned by root:fsGroup — so 0600 is unreadable by the uid-1000
+            # process and 0440 is rejected outright ("File ... is world-readable!
+            # (mode: 0100440, expected 0600)"). The alternatives were running as
+            # root or setting GARAGE_ALLOW_WORLD_READABLE_SECRETS; env vars need
+            # neither, and match how every other app in this repo takes secrets.
+            - name: GARAGE_RPC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: garage-rpc
+                  key: rpc_secret
+            - name: GARAGE_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: garage-admin
+                  key: admin_token
           livenessProbe:
             httpGet:
               path: /health
@@ -135,14 +149,6 @@ spec:
               mountPath: /etc/garage/garage.toml
               subPath: garage.toml
               readOnly: true
-            - name: rpc-secret
-              mountPath: /etc/garage/rpc_secret
-              subPath: rpc_secret
-              readOnly: true
-            - name: admin-token
-              mountPath: /etc/garage/admin_token
-              subPath: admin_token
-              readOnly: true
             - name: meta
               mountPath: /var/lib/garage/meta
             - name: data
@@ -153,22 +159,6 @@ spec:
         - name: config
           configMap:
             name: garage-config
-        # 0440, not 0400 and not 0444. Secret volume files are owned root:fsGroup,
-        # so 0400 (owner-only) would be UNREADABLE by the uid-1000 process, while
-        # 0444 is world-readable and Garage refuses to start on it unless
-        # --allow-world-readable-secrets is passed. 0440 satisfies both.
-        - name: rpc-secret
-          secret:
-            # Minted by rpc-secret.job.yaml (must be 32 bytes hex, which the ESO
-            # password generator cannot produce). The pod stays in
-            # ContainerCreating until it exists — self-resolving, not a deadlock,
-            # because that Job does not depend on Garage running.
-            secretName: garage-rpc
-            defaultMode: 0440
-        - name: admin-token
-          secret:
-            secretName: garage-admin
-            defaultMode: 0440
         - name: tmp
           emptyDir: {}
   volumeClaimTemplates:
