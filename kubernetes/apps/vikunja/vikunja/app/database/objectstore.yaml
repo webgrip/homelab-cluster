@@ -6,17 +6,28 @@ metadata:
 spec:
   retentionPolicy: 14d # Tier 2 — see docs/techdocs/docs/general/database-backup-tiers.md
   configuration:
-    endpointURL: http://10.0.0.110:3900
+    # CUT OVER to the off-site store (Hetzner FSN1) 2026-08-01, after freshrss
+    # piloted it and a post-cutover WAL was observed landing there.
+    #
+    # destinationPath is unchanged: the bucket name and prefix are identical on
+    # both stores, the whole bucket was copied and verified (25596 objects, 0
+    # differences), and barman's catalogue is endpoint-independent — so existing
+    # base backups and WAL stay restorable through this change.
+    #
+    # Rollback is reverting this hunk. cnpg-backup-s3 still exists and the old
+    # store is untouched; the plugin re-reads the ObjectStore on a 10s cache, so
+    # neither direction needs a restart.
+    endpointURL: https://s3-offsite.webgrip.dev
     destinationPath: s3://cnpg-backups-bucket/homelab-cluster/vikunja-db/
     s3Credentials:
       accessKeyId:
-        name: cnpg-backup-s3
+        name: cnpg-backup-s3-offsite
         key: S3_ACCESS_KEY_ID
       secretAccessKey:
-        name: cnpg-backup-s3
+        name: cnpg-backup-s3-offsite
         key: S3_SECRET_ACCESS_KEY
       region:
-        name: cnpg-backup-s3
+        name: cnpg-backup-s3-offsite
         key: S3_REGION
     wal:
       compression: gzip
