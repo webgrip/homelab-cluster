@@ -21,6 +21,10 @@ spec:
             limits:
               memory: 1Gi
         pod:
+          # Ingress is platform, not application. Without this the data plane queued behind
+          # erfbeeld/authentik/weave-gitops when worker-1 filled up on 2026-08-01 and the VIP
+          # refused connections cluster-wide. See priorityclass.yaml.
+          priorityClassName: platform-critical
           # Pins in git what the envoy-gateway operator already applies to the
           # container (runAsUser/Group 65532, drop-ALL, seccomp) but never
           # declares at the pod level -- nothing in git guaranteed it. Ticket #27.
@@ -49,7 +53,8 @@ spec:
                     matchExpressions:
                       - key: kubernetes.io/hostname
                         operator: NotIn
-                        values: ["fringe-workstation"]
+                        values:
+                          - "fringe-workstation"
       envoyService:
         externalTrafficPolicy: Cluster
   shutdown:

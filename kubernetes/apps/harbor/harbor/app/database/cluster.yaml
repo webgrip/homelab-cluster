@@ -23,6 +23,9 @@ spec:
   # Pin the DB off the soyo control-planes onto the worker pool (ADR-0002).
   # This was the missing pin that let harbor-db reschedule onto soyo-3 when
   # the 2026-07-11 resources rollout recreated the pod.
+  # Harbor cannot serve a manifest without its database, so the DB is platform tier too. CNPG
+  # exposes this on the Cluster spec rather than a pod template.
+  priorityClassName: platform-critical
   affinity:
     nodeSelector:
       node.webgrip.io/pool: worker

@@ -1,0 +1,32 @@
+---
+# Platform tier: the things every other workload depends on to be reachable or deployable.
+#
+# Created after the 2026-08-01 outage. fringe-workstation dropped off the API server (it has done so
+# ~623 times in 38 days), which tainted it NoSchedule and pushed the whole worker pool onto worker-1.
+# worker-1 was already at 3947m/3950m in CPU REQUESTS — while using 660m — so the scheduler could
+# not place anything, and envoy-internal, harbor-core and harbor-registry sat Pending alongside
+# authentik, erfbeeld and weave-gitops. The registry and the ingress competed on equal terms with
+# everything else and lost.
+#
+# Priority does not create capacity, but it decides who gets it. With this class, envoy and Harbor
+# preempt lower-priority workloads instead of queueing behind them, so a node failure degrades the
+# apps rather than the platform they run on.
+#
+# Value sits deliberately below longhorn-critical (1000000000): storage must come back before the
+# things that store data. Above the default (0), which is everything else.
+#
+#   system-node-critical      2000001000
+#   system-cluster-critical   2000000000
+#   longhorn-critical         1000000000
+#   platform-critical          900000000  <- this
+#   (unset)                            0  <- application workloads
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: platform-critical
+value: 900000000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: >-
+  Ingress data plane and container registry. Workloads that every other workload depends on for
+  reachability or image pulls. Not for applications, however important the application is.

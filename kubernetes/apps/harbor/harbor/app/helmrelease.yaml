@@ -148,6 +148,7 @@ spec:
     redis:
       type: internal
       internal:
+        priorityClassName: platform-critical
         nodeSelector:
           node.webgrip.io/pool: worker
         # Dedicated SA (chart never creates one -- serviceAccountName is only
@@ -171,6 +172,7 @@ spec:
     # requests.memory + limits.memory match the policy; cpu limit omitted to avoid
     # throttling the registry under image push/pull. Memory limits sized generously.
     core:
+      priorityClassName: platform-critical
       nodeSelector:
         node.webgrip.io/pool: worker
       # Dedicated SA + digest-pin, direct against docker.io. VIK-253.
@@ -190,6 +192,7 @@ spec:
       # worker), so it schedules there. The goharbor chart hardcodes RollingUpdate,
       # so the soyo-3->fringe move deadlocks on Multi-Attach until the old pod is
       # deleted by hand (done at migration time) — the new pod then attaches.
+      priorityClassName: platform-critical
       nodeSelector:
         node.webgrip.io/pool: worker
       # The CNPG outage left this Deployment deleted; Helm's no-op upgrade won't
@@ -213,6 +216,7 @@ spec:
     registry:
       # Pinned to the worker pool (same Multi-Attach-move handling as jobservice;
       # its PVC is config/cache only — blobs are in Garage S3).
+      priorityClassName: platform-critical
       nodeSelector:
         node.webgrip.io/pool: worker
       # Same as jobservice above — force re-creation of the deleted registry Deployment.
@@ -243,6 +247,7 @@ spec:
             memory: 128Mi
 
     portal:
+      priorityClassName: platform-critical
       nodeSelector:
         node.webgrip.io/pool: worker
       # Dedicated SA + digest-pin, direct against docker.io. VIK-253.
@@ -273,6 +278,7 @@ spec:
           memory: 128Mi
 
     exporter:
+      priorityClassName: platform-critical
       nodeSelector:
         node.webgrip.io/pool: worker
       # Dedicated SA + digest-pin, direct against docker.io. VIK-253.
@@ -288,6 +294,7 @@ spec:
           memory: 128Mi
 
     trivy:
+      priorityClassName: platform-critical
       nodeSelector:
         node.webgrip.io/pool: worker
       enabled: true
