@@ -23,6 +23,11 @@ spec:
         key: S3_REGION
     wal:
       compression: gzip
-      maxParallel: 1
+      # 4, not 1: at 1 barman ships WAL segments serially, which is fine against a
+      # LAN store (sub-ms RTT) but not the off-site one over WireGuard. If postgres
+      # ever outpaces the uploader the backlog lands on the walStorage PVC and
+      # postgres stops when that fills (CNPGWALVolumeCritical). This buys latency
+      # headroom, not bandwidth -- segments are 16MB and gzip to far less.
+      maxParallel: 4
     data:
       compression: gzip

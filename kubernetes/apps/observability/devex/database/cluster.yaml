@@ -41,8 +41,14 @@ spec:
   walStorage:
     # Mandatory separate WAL volume — Garage-down WAL SPOF hardening
     # (see docs + the CNPG↔Garage WAL incident).
+    # 5Gi, not 2Gi: this volume is the buffer that absorbs a stalled archive, and
+    # 2Gi is only ~128 WAL segments. Once it fills postgres cannot write WAL and
+    # stops — the outage the separate volume exists to prevent. 5Gi is the floor
+    # every other cluster already runs; devex and ploeg were the two outliers.
+    # Raised ahead of the object store moving off-site, where a transient link
+    # failure is a normal event rather than an incident.
     resizeInUseVolumes: true
-    size: 2Gi
+    size: 5Gi
     storageClass: longhorn
   postgresql:
     parameters:
