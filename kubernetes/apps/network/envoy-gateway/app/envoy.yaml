@@ -16,7 +16,15 @@ spec:
           imageRepository: mirror.gcr.io/envoyproxy/envoy
           resources:
             requests:
-              cpu: 100m
+              # 25m, not 100m. Measured 2026-08-01: all four envoy pods (2 external
+              # + 2 internal) sit at 2-3m steady, so 100m each reserved 400m of a
+              # 4-core node for ~10m of real work. worker-1 hit 99% CPU *requests*
+              # against ~28% actual use and stopped being able to schedule anything
+              # at all -- including Longhorn's instance-manager, which is how a
+              # capacity problem turned into a storage one.
+              # There is deliberately no CPU limit here, so this changes scheduling
+              # only: envoy still bursts freely under load. 25m is ~10x observed.
+              cpu: 25m
               memory: 128Mi
             limits:
               memory: 1Gi
