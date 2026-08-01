@@ -11,16 +11,37 @@
 # invoiceninja's MariaDB (financial records, and NOT a CNPG cluster, so barman
 # does not cover it) and OpenBao's storage.
 #
-# WHY THE TRIGGER IS THE PVC AND THE TARGET IS THE VOLUME:
-# Volume CRs are named `pvc-<uuid>`, so they cannot be listed in git by name. The
-# PVC can — namespace + name are stable and human-meaningful — and it carries
-# `spec.volumeName`, which IS the Volume CR's name. So the enrolled set is
-# expressed here as PVCs and Kyverno follows the pointer.
+# WHY THE TRIGGER IS THE PersistentVolume:
+# Longhorn Volume CRs are named `pvc-<uuid>`, so they cannot be listed in git by
+# name. Something stable and human-meaningful has to name the enrolled set, and
+# then point at the Volume CR. The obvious candidate is the PVC — but triggering
+# on the PVC fails in two ways that were both hit on 2026-08-01 and are both
+# invisible without reading the background controller's logs:
 #
-# mutateExistingOnPolicyUpdate re-runs this over every already-bound PVC whenever
-# this file changes, which is what makes editing the lists below sufficient: no
-# imperative step, and if Longhorn ever recreates a Volume CR the label comes back
-# on the next policy update rather than silently staying off.
+#   1. Kyverno records the trigger resource's NAME in a label on the UpdateRequest
+#      it creates. Labels cap at 63 characters. The Prometheus PVC name is 91,
+#      truncates to a string ending in "-", and UR creation fails outright with
+#      "a valid label must be ... alphanumeric". Any PVC over 63 chars is affected.
+#   2. Kyverno is deployed into the `security` namespace, so the chart adds
+#      `*/*,security,*` to resourceFilters to avoid mutating itself. That excludes
+#      EVERY resource in `security` from all policy processing — so the PVC for
+#      OpenBao produced no UpdateRequest and, worse, no error at all.
+#
+# The PersistentVolume has neither problem: it is cluster-scoped (so no namespace
+# filter applies), it is named `pvc-<uuid>` at 40 characters (so no label
+# truncation), it is low-churn (so this does not put a webhook on a hot path), and
+# its name is IDENTICAL to the Longhorn Volume CR's name — which is precisely the
+# target this policy needs. spec.claimRef then names the PVC for the list below.
+#
+# mutateExistingOnPolicyUpdate re-runs this over every existing PV whenever this
+# object changes, so editing the lists below is sufficient — no imperative step,
+# and if Longhorn ever recreates a Volume CR the label returns on the next update.
+#
+# ALWAYS VERIFY ENROLMENT AFTER CHANGING THE LISTS. A partial enrolment looks
+# exactly like a complete one; the failure mode is a volume nobody is backing up:
+#   kubectl -n longhorn-system get volumes.longhorn.io \
+#     -l recurring-job-group.longhorn.io/gitops-backup=enabled \
+#     -o custom-columns=NS:.status.kubernetesStatus.namespace,PVC:.status.kubernetesStatus.pvcName
 #
 # REQUIRES kyverno:longhorn-volume-label (rbac-longhorn-volume-label.yaml). Without
 # that RBAC this policy patches nothing and reports no error.
@@ -36,17 +57,8 @@ metadata:
       Stamps the recurring-job-group labels onto the longhorn.io Volume CRs behind
       an explicit list of PVCs, so off-cluster backup enrolment is declared in git
       rather than applied by hand.
-    # mutateExistingOnPolicyUpdate fires only when this object CHANGES. Editing the
-    # lists below is itself a change, so the normal path needs nothing extra — but
-    # the first pass on 2026-08-01 enrolled 12 of 14 volumes with no error, no event
-    # and no log line, and a second pass picked up the remaining two. Enumeration is
-    # evidently not guaranteed complete in one go. Bump this counter to force a
-    # re-run without otherwise altering the policy, and ALWAYS verify enrolment
-    # afterwards rather than assuming:
-    #   kubectl -n longhorn-system get volumes.longhorn.io \
-    #     -l recurring-job-group.longhorn.io/gitops-backup=enabled \
-    #     -o custom-columns=NS:.status.kubernetesStatus.namespace,PVC:.status.kubernetesStatus.pvcName
-    webgrip.io/enrolment-revision: "2"
+    # Bump to force a re-run without otherwise altering the policy.
+    webgrip.io/enrolment-revision: "3"
 spec:
   # Mutate-only policy: it never rejects anything, so there is no Enforce/Audit
   # distinction to make here.
@@ -58,36 +70,42 @@ spec:
     - name: enrol-irreplaceable
       match:
         any:
-          # User avatars and branding uploaded through the UI; not in any blueprint.
-          - resources: {kinds: [PersistentVolumeClaim], namespaces: [authentik], names: [authentik-media]}
-          # invoiceninja-mariadb is the DATABASE. It is MariaDB, not CNPG, so none
-          # of the barman tooling touches it and it had no backup whatsoever.
-          - resources: {kinds: [PersistentVolumeClaim], namespaces: [invoiceninja], names: [invoiceninja-storage, invoiceninja-mariadb]}
-          # Uploads + the app's own dump directory. The Postgres side is CNPG-backed.
-          - resources: {kinds: [PersistentVolumeClaim], namespaces: [sparkyfitness], names: [sparkyfitness-uploads, sparkyfitness-backup]}
-          # File attachments. The DB is CNPG-backed, but attachments live only here,
-          # and the roadmap board is in Vikunja (ADR-0043).
-          - resources: {kinds: [PersistentVolumeClaim], namespaces: [vikunja], names: [vikunja]}
-          # Config, extensions and per-user state; the DB is CNPG-backed.
-          - resources: {kinds: [PersistentVolumeClaim], namespaces: [freshrss], names: [freshrss]}
-          # OpenBao's raft store — every secret ESO serves. Raft snapshots exist,
-          # but they land on this same volume.
-          - resources: {kinds: [PersistentVolumeClaim], namespaces: [security], names: [data-openbao-0]}
-          # World save. Regenerable only in the sense that a new world is a world.
-          - resources: {kinds: [PersistentVolumeClaim], namespaces: [minecraft], names: [minecraft]}
+          - resources:
+              kinds:
+                - PersistentVolume
       preconditions:
-        all:
-          # An unbound PVC has no spec.volumeName, and targeting a Volume CR named
-          # "" makes the rule error rather than wait. Skip until it binds; the
-          # bind itself is a PVC update, which re-triggers this rule.
-          - key: "{{ request.object.spec.volumeName || '' }}"
-            operator: NotEquals
-            value: ""
+        any:
+          - key: "{{ request.object.spec.claimRef.namespace || '' }}/{{ request.object.spec.claimRef.name || '' }}"
+            operator: AnyIn
+            value:
+              # User avatars and branding uploaded through the UI; not in any blueprint.
+              - authentik/authentik-media
+              # invoiceninja-mariadb is the DATABASE. It is MariaDB, not CNPG, so
+              # none of the barman tooling touches it — it had no backup at all.
+              - invoiceninja/invoiceninja-storage
+              - invoiceninja/invoiceninja-mariadb
+              # Uploads + the app's own dump directory. Postgres side is CNPG-backed.
+              - sparkyfitness/sparkyfitness-uploads
+              - sparkyfitness/sparkyfitness-backup
+              # File attachments. The DB is CNPG-backed, but attachments live only
+              # here, and the roadmap board is in Vikunja (ADR-0043).
+              - vikunja/vikunja
+              # Config, extensions and per-user state; the DB is CNPG-backed.
+              - freshrss/freshrss
+              # OpenBao's raft store — every secret ESO serves. Raft snapshots
+              # exist, but they land on this same volume. Only reachable at all
+              # because the trigger is the PV: the PVC is in `security`, which
+              # Kyverno excludes wholesale (see the header).
+              - security/data-openbao-0
+              # World save. Regenerable only in the sense that a new world is a world.
+              - minecraft/minecraft
       mutate:
         targets:
           - apiVersion: longhorn.io/v1beta2
             kind: Volume
-            name: "{{ request.object.spec.volumeName }}"
+            # PV name == Longhorn Volume CR name. This is the whole reason the
+            # PersistentVolume is the right trigger.
+            name: "{{ request.object.metadata.name }}"
             namespace: longhorn-system
         patchStrategicMerge:
           metadata:
@@ -109,24 +127,22 @@ spec:
         any:
           - resources:
               kinds:
-                - PersistentVolumeClaim
-              namespaces:
-                - observability
-              names:
-                - prometheus-kube-prometheus-stack-prometheus-db-prometheus-kube-prometheus-stack-prometheus-0
-                - vmsingle-vmsingle
-                - vlsingle-victorialogs
-                - vtsingle-victoriatraces
+                - PersistentVolume
       preconditions:
-        all:
-          - key: "{{ request.object.spec.volumeName || '' }}"
-            operator: NotEquals
-            value: ""
+        any:
+          - key: "{{ request.object.spec.claimRef.namespace || '' }}/{{ request.object.spec.claimRef.name || '' }}"
+            operator: AnyIn
+            value:
+              # 91 characters — the name that broke the PVC-triggered version.
+              - observability/prometheus-kube-prometheus-stack-prometheus-db-prometheus-kube-prometheus-stack-prometheus-0
+              - observability/vmsingle-vmsingle
+              - observability/vlsingle-victorialogs
+              - observability/vtsingle-victoriatraces
       mutate:
         targets:
           - apiVersion: longhorn.io/v1beta2
             kind: Volume
-            name: "{{ request.object.spec.volumeName }}"
+            name: "{{ request.object.metadata.name }}"
             namespace: longhorn-system
         patchStrategicMerge:
           metadata:
