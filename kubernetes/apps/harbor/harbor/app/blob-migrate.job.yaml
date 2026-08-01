@@ -1,0 +1,178 @@
+---
+# One-shot migration of Harbor's registry blobs from the off-cluster Garage
+# (10.0.0.110) to the in-cluster Garage (namespace `garage`).
+#
+# WHY THE WHOLE BUCKET AND NOT JUST THE HOSTED `webgrip` PROJECT:
+# distribution's S3 layout is a GLOBAL content-addressed blob store plus
+# per-repository trees of 71-byte link files pointing into it:
+#   docker/registry/v2/blobs/<algo>/<xx>/<digest>/data   <- shared by ALL projects
+#   docker/registry/v2/repositories/<project>/.../link   <- pointers only
+# Copying `repositories/webgrip/**` alone moves the pointers and none of the
+# data, producing a registry that resolves tags and then 404s
+# "blob unknown to registry" on every layer. A selective copy would mean walking
+# every manifest and recursing into indexes, cosign .sig, .att/.sbom accessories
+# and buildx cache manifests — and a missed digest class surfaces weeks later as
+# one failing pull. 37.3 GiB over LAN is not worth that risk.
+#
+# WHY THIS LIVES IN THE `harbor` NAMESPACE:
+# harbor-allow-egress already permits BOTH legs — 0.0.0.0/0-except-pod-CIDR
+# reaches 10.0.0.110, and the namespaceSelector rule reaches `garage` on 3900 —
+# and BOTH credential Secrets already exist here. In `garage` it would need a new
+# egress rule and a mirrored secret.
+#
+# SAFETY: `rclone copy`, never `sync`. sync deletes on the destination, which
+# would turn rollback from a git revert into a restore. The source bucket is
+# never written to.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: harbor-blob-migrate
+  namespace: harbor
+  annotations:
+    # Job spec.template is immutable. Bump PASS below (or edit any arg) and this
+    # annotation makes Flux delete+recreate so the Job re-runs — that is how the
+    # pre-cutover delta pass is triggered. Per-resource, NOT ks-level force: this
+    # ks also owns Harbor's HelmRelease and PVCs.
+    kustomize.toolkit.fluxcd.io/force: enabled
+  labels:
+    # Terminal-Failed Jobs are reaped hourly by the Kyverno cleanup policy and
+    # recreated by Flux = automatic retry. Complete runs are left alone.
+    cleanup.webgrip.io/retry-failed: "true"
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: rclone
+          # Pulled DIRECT from docker.io, deliberately NOT through
+          # harbor.webgrip.dev/dockerhub/. This Job migrates Harbor's own blob
+          # storage; routing its image through Harbor would make the migration
+          # depend on the thing being migrated. Same reasoning as the redis/core/
+          # registry images in helmrelease.yaml. This trips the approved-registries
+          # policy, which is Audit — deliberate, and the exception is the point.
+          image: docker.io/rclone/rclone:1.75.0@sha256:b06aed988cf5967de7c25be5925240983981c757f4ed1ac9d2fa659d51d60548
+          imagePullPolicy: IfNotPresent
+          # Entrypoint is `rclone`; override it so the script can run several
+          # commands and verify its own work.
+          command:
+            - "/bin/sh"
+            - "-ceu"
+          env:
+            # The image sets XDG_CONFIG_HOME=/config and WorkingDir=/data, neither
+            # writable under readOnlyRootFilesystem. Point everything at the tmp
+            # emptyDir. Remotes are configured purely by env — no config file.
+            - name: XDG_CONFIG_HOME
+              value: /tmp
+            - name: TMPDIR
+              value: /tmp
+            - name: HOME
+              value: /tmp
+            # Bump to trigger a re-run (see the force annotation above).
+            # 1 = initial hot copy, 2 = pre-cutover delta pass.
+            - name: PASS
+              value: "1"
+
+            - name: RCLONE_CONFIG_OLD_TYPE
+              value: s3
+            - name: RCLONE_CONFIG_OLD_PROVIDER
+              value: Other
+            - name: RCLONE_CONFIG_OLD_ENDPOINT
+              value: http://10.0.0.110:3900
+            - name: RCLONE_CONFIG_OLD_REGION
+              value: garage
+            # The access key is scoped to this bucket with owner:false, so a
+            # bucket-existence probe can 403. Skip it.
+            - name: RCLONE_CONFIG_OLD_NO_CHECK_BUCKET
+              value: "true"
+            - name: RCLONE_CONFIG_OLD_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: {name: harbor-s3, key: REGISTRY_STORAGE_S3_ACCESSKEY}
+            - name: RCLONE_CONFIG_OLD_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: {name: harbor-s3, key: REGISTRY_STORAGE_S3_SECRETKEY}
+
+            - name: RCLONE_CONFIG_NEW_TYPE
+              value: s3
+            - name: RCLONE_CONFIG_NEW_PROVIDER
+              value: Other
+            - name: RCLONE_CONFIG_NEW_ENDPOINT
+              value: http://garage-s3.garage.svc.cluster.local:3900
+            - name: RCLONE_CONFIG_NEW_REGION
+              value: garage
+            - name: RCLONE_CONFIG_NEW_NO_CHECK_BUCKET
+              value: "true"
+            - name: RCLONE_CONFIG_NEW_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: {name: harbor-s3-cluster, key: REGISTRY_STORAGE_S3_ACCESSKEY}
+            - name: RCLONE_CONFIG_NEW_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: {name: harbor-s3-cluster, key: REGISTRY_STORAGE_S3_SECRETKEY}
+          args:
+            - |
+              # NO shell variables in this script, deliberately. This ks has
+              # postBuild.substituteFrom, so envsubst rewrites these args before
+              # Kubernetes ever sees them: a brace-wrapped reference to anything
+              # absent from cluster-secrets is silently blanked, and the
+              # double-dollar escape form fails the whole build. flux-local
+              # catches neither, because a blanked script is still valid YAML.
+              # Literals cannot be misread, so the bucket name is inlined.
+              # (Note: this comment avoids writing either dollar-brace form
+              # literally, since envsubst processes comments too.)
+              # PASS is still an env var: it exists to change the pod spec and
+              # trigger a re-run, and is visible in `kubectl describe job`.
+              echo "== harbor blob migrate: old(10.0.0.110) -> new(in-cluster)"
+
+              echo "== source size before"
+              rclone size "OLD:harbor"
+
+              echo "== destination size before"
+              rclone size "NEW:harbor"
+
+              # copy, NOT sync. --checksum rather than the default size+modtime:
+              # the only mutable objects here are _manifests/tags/<tag>/current/link
+              # and every one is exactly 71 bytes, so a size-based comparison
+              # would skip a re-tagged image and leave a stale pointer. Those
+              # files are far too small to be multipart, so their ETag is a real
+              # MD5 and the checksum comparison is meaningful.
+              rclone copy "OLD:harbor" "NEW:harbor" \
+                --checksum \
+                --exclude "docker/registry/v2/repositories/**/_uploads/**" \
+                --transfers 8 --checkers 16 \
+                --s3-chunk-size 16M --s3-upload-concurrency 4 \
+                --stats 30s --stats-one-line --stats-log-level NOTICE
+
+              echo "== verifying: every source object must exist at the destination"
+              rclone check "OLD:harbor" "NEW:harbor" \
+                --one-way --checksum \
+                --exclude "docker/registry/v2/repositories/**/_uploads/**"
+
+              echo "== destination size after"
+              rclone size "NEW:harbor"
+              echo "== migrate pass complete"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
