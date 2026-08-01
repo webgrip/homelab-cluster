@@ -53,6 +53,22 @@ spec:
       automountServiceAccountToken: false
       nodeSelector:
         node.webgrip.io/pool: worker
+      # Keep OFF fringe-workstation. It is the smallest node (16GB), sits at 83%
+      # memory requests with limits at 318%, and Talos's userspace OOM controller
+      # is actively SIGKILLing cgroups there — cilium-agent on that node has
+      # restarted 728 times. A 2Gi rclone process is exactly the kind of load
+      # that node does not need. Preferred rather than required so the Job still
+      # runs if fringe is the only worker available.
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - "fringe-workstation"
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534
