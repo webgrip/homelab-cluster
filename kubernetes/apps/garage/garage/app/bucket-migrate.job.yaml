@@ -97,7 +97,7 @@ spec:
             # 1 = initial bulk copy, 2 = delta + guac _db-backups/, 3 = FINAL
             # delta after every consumer had cut over, capturing anything the old
             # store received between pass 2 and the last cutover.
-            - {name: PASS, value: "3"}
+            - {name: PASS, value: "4"}
 
             # --- old store: the Proxmox box, plain HTTP on the LAN ---
             - {name: RCLONE_CONFIG_OLDCNPG_TYPE, value: s3}
@@ -193,11 +193,7 @@ spec:
                 src="$1"; dst="$2"; name="$3"; manifest="/tmp/${name}.manifest"
 
                 echo "== ${name}: snapshotting the source listing"
-                if [ "${GUAC_FILTER:-0}" = "1" ]; then
-                  rclone lsf -R --files-only "${src}" --include "_db-backups/**" > "${manifest}"
-                else
-                  rclone lsf -R --files-only "${src}" > "${manifest}"
-                fi
+                rclone lsf -R --files-only "${src}" > "${manifest}"
                 echo "   $(wc -l < "${manifest}") objects in scope for this pass"
                 echo "   source:      $(rclone size "${src}" --json 2>/dev/null || echo unavailable)"
                 echo "   destination: $(rclone size "${dst}" --json 2>/dev/null || echo unavailable)"
@@ -234,7 +230,13 @@ spec:
               # its only backup) and is a handful of small objects. sboms/ is the
               # 18.2M-object staging queue trivy refills on every scan, and copying
               # it would dominate this migration to reproduce regenerable data.
-              GUAC_FILTER=1 copy_bucket "OLDGUAC:guac" "NEWGUAC:guac" "guac"
+              # Scoped to the PREFIX, not the bucket with a filter. `rclone lsf -R`
+              # walks every key before any --include is applied, so filtering
+              # would still enumerate all 18.2M sboms/ objects to find a handful
+              # of dumps — pass 3 sat on exactly that for minutes. Addressing the
+              # prefix as the remote path makes the listing proportional to what
+              # is actually being copied.
+              copy_bucket "OLDGUAC:guac/_db-backups" "NEWGUAC:guac/_db-backups" "guac-db-backups"
 
               echo "== migration pass complete"
           resources:
