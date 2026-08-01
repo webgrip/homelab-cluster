@@ -24,17 +24,16 @@ roadmap file in git — see
 
 - MCP server: `vikunja` · project: `Homelab Roadmap` (id 3) · instance list cap
   (maxitemsperpage): 250
-- Dark-factory work lives in its own project: `Dark Factory` (id 5, since 2026-07-17) — all
-  `theme/dark-factory` tickets (agent-execution program, LiteLLM inference plane, MCP gateway,
-  agent identity/budgets); same conventions/labels as the main board
+- Dark-factory work lives in its own project: `Dark Factory` (id 5, since 2026-07-17) — agent-execution program, LiteLLM
+  inference plane, MCP gateway, agent identity/budgets; same conventions as the main board
 - The custom board front end has its own project: `Vellum` (id 6, since 2026-07-18) —
-  `theme/vellum` tickets for the board page itself (`kubernetes/apps/vikunja/board`, served at
+  the board page itself (`kubernetes/apps/vikunja/board`, served at
   `vikunja.<domain>/board`); same conventions/labels as the main board
 - The agent dispatch plane has its own project: `Ploeg` (id 10, since 2026-07-21) —
-  `theme/ploeg` tickets for the standalone repo `webgrip/ploeg` (Forgejo-leading, GitHub
+  the standalone repo `webgrip/ploeg` (Forgejo-leading, GitHub
   mirror; design doc lives in-repo at docs/design.md); same conventions/labels as the main board
-- CI/CD improvement work lives in its own project: `CI/CD` (id 9, since 2026-07-18) — all
-  `theme/ci-cd` tickets (runner pool, image supply chain, pipeline efficiency; mechanics
+- CI/CD improvement work lives in its own project: `CI/CD` (id 9, since 2026-07-18) — runner pool, image supply
+  chain, pipeline efficiency (mechanics
   reference: docs/techdocs/docs/general/ci-image-flow.md); same conventions/labels as the
   main board. The techdocs *serving* decision stays on Homelab Roadmap (#340)
 - Product boards exist alongside the infra boards: `Erfbeeld` (id 4, repo
@@ -44,16 +43,22 @@ roadmap file in git — see
   in this repo's techdocs
 - Ticket prefix: `VIK` (commit trailers `VIK-<taskID>`; see
   [rfc-dark-factory](docs/techdocs/docs/rfc/rfc-dark-factory.md) for the full agent-execution program)
-- Labels: `theme/<kebab>` (security-kyverno-audit-enforce, security-network-containment,
-  security-auth-identity, security-pod-hardening, security-supply-chain, security-runtime-detection,
-  secrets-endgame, reliability-ha-pdbs-priorities, reliability-backup-dr, reliability-garage,
-  observability-alert-delivery, observability-pipeline, observability-programs, storage-tails,
-  talos-nodes, flux-gitops-capacity, ci-shift-left, dx-docs-horizon, dark-factory) ·
-  `impact/H|M|L` · **3D estimation** (since 2026-07-18): `effort/S|M|L` (work size) ·
-  `time/hours|days|weeks` (wall-clock lead incl. soaks/waits) · `uncertainty/low|med|high`
-  (how well-understood; `high` ⇒ never `agent-ready` — spike/de-risk first) ·
-  `do-next` (≤10) · `ready` / `needs-refinement` / `review` / `agent-ready` ·
-  `agent/<name>` (claims)
+- Labels — **the board is authoritative, not this file.** Enumerate with `labels_list` before
+  applying any. Only the *dimensions* below are contract; the values are board state and are not
+  transcribed here.
+  - `theme/<kebab>` — one per ticket, from whatever the board currently defines
+  - `impact/H|M|L`
+  - **3D estimation** (since 2026-07-18): `effort/S|M|L` (work size) ·
+    `time/hours|days|weeks` (wall-clock lead incl. soaks/waits) · `uncertainty/low|med|high`
+    (how well-understood; `high` ⇒ never `agent-ready` — spike/de-risk first)
+  - `do-next` (≤10) · `ready` / `needs-refinement` / `review` / `agent-ready` ·
+    `agent/<name>` (claims)
+  - If no existing `theme/*` fits, that is a taxonomy decision for a human — raise it; do not
+    create a label to unblock a write.
+  - *Why this is not a list:* it was one until 2026-08-01, naming nine `theme/security-*` values,
+    **none of which existed on the instance**. An agent trusting it either fails to label or
+    invents taxonomy to make the write succeed. Enumerated state does not belong in a file that
+    nothing validates.
 - **Stages** (since 2026-07-18) are DERIVED from labels + done, never stored separately —
   every surface (MCP agents, Vellum board, stock UI) reads the same truth:
   **Backlog** (`needs-refinement` or unlabelled) → **To Do** (`ready`; DoR incl. all three
