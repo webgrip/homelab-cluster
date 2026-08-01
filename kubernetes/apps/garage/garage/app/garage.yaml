@@ -117,18 +117,28 @@ spec:
                 secretKeyRef:
                   name: garage-admin
                   key: admin_token
+          # tcpSocket, NOT httpGet /health — deliberately.
+          #
+          # Garage's /health reports CLUSTER health and returns 503 until a layout
+          # has been assigned. Probing it deadlocks bring-up: 503 -> pod not Ready
+          # -> the garage-s3 Service has no endpoints -> the bootstrap Job cannot
+          # reach the admin API -> no layout is ever assigned -> /health stays 503.
+          # On liveness it is worse still: the kubelet restarts the container every
+          # couple of minutes forever. Both observed on first bring-up.
+          #
+          # These probes answer "is the process serving?", which is what a probe is
+          # for. Cluster health is a monitoring concern and belongs on the
+          # garage_* metrics from vmservicescrape.yaml, not on the kubelet.
           livenessProbe:
-            httpGet:
-              path: /health
-              port: admin
+            tcpSocket:
+              port: s3
             initialDelaySeconds: 15
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 6
           readinessProbe:
-            httpGet:
-              path: /health
-              port: admin
+            tcpSocket:
+              port: s3
             initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 5
