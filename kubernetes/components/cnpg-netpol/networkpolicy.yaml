@@ -27,8 +27,23 @@ spec:
         - {protocol: TCP, port: 8000}
         - {protocol: TCP, port: 5432}
 ---
-# Allow CNPG instance pods to reach the OFF-SITE object store over the WireGuard
-# tunnel (10.90.0.0/24) — WAL archiving, base backups, and restore.
+# Allow CNPG instance pods to reach the OFF-SITE object store — WAL archiving,
+# base backups, and restore.
+#
+# 116.202.53.185/32:443, not a tunnel. An earlier revision of this rule allowed
+# 10.90.0.0/24:3900 for a WireGuard design that was abandoned: putting a per-node
+# WireGuard key anywhere in git meant either plaintext in talconfig.yaml or an
+# edit to talsecret.sops.yaml, and an in-cluster tunnel pod needed NET_ADMIN and
+# so a fifth pod-security PolicyException. The store is instead fronted by Caddy
+# with a Let's Encrypt certificate, with Garage bound to loopback behind it — so
+# the transport is TLS to a public address and this is an ordinary egress allow.
+#
+# Verified 2026-08-01: with the stale 10.90.0.0/24 rule in place an authentik pod
+# could resolve the endpoint but timed out connecting, because authentik grants
+# no general internet egress (only its own namespace, 10.43.0.0/16 and
+# 10.0.0.0/24). forgejo and invoiceninja already allow 0.0.0.0/0 and were never
+# affected, which is exactly why a namespace-by-namespace check was needed rather
+# than assuming the CNPG namespaces looked alike.
 #
 # WHY THIS EXISTS AS ITS OWN RULE:
 # Every app that archives to S3 grants it today as `ipBlock: 10.0.0.0/24` in its
@@ -49,14 +64,19 @@ spec:
 # security) have no default-deny, so their egress is already unrestricted.
 #
 # WHY A CIDR RULE IS THE RIGHT MECHANISM HERE (it is not, for the API server):
-# the tunnel peer is genuinely outside the cluster, so Cilium resolves it to the
+# the store is genuinely outside the cluster, so Cilium resolves it to the
 # `world` identity and an ipBlock matches. The kube-apiserver trap does not apply
 # — that one needs a reserved identity, and is handled in ciliumnetworkpolicy.yaml.
 #
-# SCOPE: the whole /24 is the tunnel, which carries only hosts we run; the
-# meaningful restriction is the port. 3900 is Garage's S3 API. Garage's ADMIN api
-# (3903) is deliberately NOT allowed — it can mint keys and delete buckets, and no
-# database has any business reaching it.
+# SCOPE: a /32 to the one host, on 443 only. Garage's S3 API (3900) and ADMIN API
+# (3903) both listen on the box's loopback and are not routable from here at all;
+# only Caddy on 443 is, and it proxies exclusively to the S3 API. The admin API
+# can mint keys and delete buckets, and nothing in this cluster should reach it.
+#
+# The address is a Hetzner dedicated-server IP, so it is stable — but it IS
+# hardcoded, and moving the box means editing this file. That is deliberate:
+# resolving a hostname inside a NetworkPolicy is not something NetworkPolicy can
+# do, and a wider CIDR would grant egress to unrelated Hetzner customers.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -70,9 +90,9 @@ spec:
   egress:
     - to:
         - ipBlock:
-            cidr: 10.90.0.0/24
+            cidr: 116.202.53.185/32
       ports:
-        - {protocol: TCP, port: 3900}
+        - {protocol: TCP, port: 443}
 ---
 # Same allow for CNPG bootstrap/recovery Job pods, which carry cnpg.io/jobRole but
 # NOT cnpg.io/podRole=instance and so are missed by the selector above. A `recovery`
@@ -94,6 +114,6 @@ spec:
   egress:
     - to:
         - ipBlock:
-            cidr: 10.90.0.0/24
+            cidr: 116.202.53.185/32
       ports:
-        - {protocol: TCP, port: 3900}
+        - {protocol: TCP, port: 443}
