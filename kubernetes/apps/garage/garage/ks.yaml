@@ -13,6 +13,16 @@ spec:
     # ExternalSecret for the admin token resolves against the OpenBao stores.
     - name: external-secrets-stores
       namespace: security
+  # The StatefulSet health-check lives HERE, not on the bootstrap ks. A
+  # Kustomization's healthChecks gate when IT reports Ready — they do not delay
+  # applying its own resources. Putting the check on the bootstrap ks therefore
+  # let the bootstrap Job start before Garage existed, and it sat polling a dead
+  # endpoint. Gating here is what makes `dependsOn: garage` mean anything.
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: garage
+      namespace: garage
   interval: 1h
   retryInterval: 5m
   path: ./kubernetes/apps/garage/garage/app
@@ -23,13 +33,14 @@ spec:
     namespace: flux-system
   targetNamespace: garage
   timeout: 20m
-  wait: false
+  wait: true
 ---
 # yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
 # Bootstrap: assign the Garage layout, create the bucket + access key, and publish
-# the key so Harbor can consume it. Split from the app ks so it can be gated on the
-# StatefulSet actually being Ready — `garage layout assign` against a node that is
-# not up yet just fails.
+# the key so Harbor can consume it. Split from the app ks so `dependsOn: garage`
+# holds it until Garage is genuinely serving — the app ks now carries the
+# StatefulSet healthCheck and `wait: true`, which is what gives that dependency
+# teeth. `garage layout assign` against a node that is not up just fails.
 #
 # NO postBuild.substituteFrom on purpose: envsubst would run over the Job's inline
 # shell and blank every braced ${VAR} that is not a real substitution variable.
@@ -45,11 +56,6 @@ spec:
   # without force (delete+recreate = the Job re-runs). Safe here because the ks
   # holds only the Job and its RBAC.
   force: true
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: StatefulSet
-      name: garage
-      namespace: garage
   interval: 1h
   retryInterval: 5m
   path: ./kubernetes/apps/garage/garage/bootstrap
