@@ -7,10 +7,14 @@
 #                                 dumps, and OpenBao's raft snapshots
 #   forgejo              ~1.2 GiB attachments and LFS objects
 #
-# The `guac` bucket is deliberately NOT copied. It is a staging queue: trivy writes
-# CycloneDX SBOMs under sboms/ and guaccollect scans them. Its 18.2M tiny objects
-# would dominate the runtime of this migration to reproduce data that regenerates
-# on the next scan. It is created empty on the far side instead.
+#   guac                 small    the _db-backups/ prefix ONLY
+#
+# guac is copied SELECTIVELY. Its sboms/ prefix is a staging queue — trivy writes
+# CycloneDX SBOMs there and guaccollect scans them — and its 18.2M tiny objects
+# would dominate this migration to reproduce data that regenerates on the next
+# scan. But _db-backups/ holds guac-db's daily pg_dump, and guac-db has no CNPG
+# ObjectStore, so that cronjob is its ONLY backup. Dropping the whole bucket
+# would have silently discarded it; the manifest filter keeps it.
 #
 # WHY THIS RUNS IN THE `garage` NAMESPACE:
 # it needs both credential sets and egress to both stores, and nothing else does.
@@ -74,8 +78,8 @@ spec:
             - {name: TMPDIR, value: /tmp}
             - {name: HOME, value: /tmp}
             # Bump to trigger a re-run (see the force annotation above).
-            # 1 = initial bulk copy, 2 = pre-cutover delta pass.
-            - {name: PASS, value: "1"}
+            # 1 = initial bulk copy, 2 = delta pass + guac _db-backups/.
+            - {name: PASS, value: "2"}
 
             # --- old store: the Proxmox box, plain HTTP on the LAN ---
             - {name: RCLONE_CONFIG_OLDCNPG_TYPE, value: s3}
@@ -121,6 +125,26 @@ spec:
               valueFrom: {secretKeyRef: {name: bucket-migrate-s3, key: NEW_FORGEJO_KEY}}
             - name: RCLONE_CONFIG_NEWFORGEJO_SECRET_ACCESS_KEY
               valueFrom: {secretKeyRef: {name: bucket-migrate-s3, key: NEW_FORGEJO_SECRET}}
+
+            - {name: RCLONE_CONFIG_OLDGUAC_TYPE, value: s3}
+            - {name: RCLONE_CONFIG_OLDGUAC_PROVIDER, value: Other}
+            - {name: RCLONE_CONFIG_OLDGUAC_ENDPOINT, value: "http://10.0.0.110:3900"}
+            - {name: RCLONE_CONFIG_OLDGUAC_REGION, value: garage}
+            - {name: RCLONE_CONFIG_OLDGUAC_NO_CHECK_BUCKET, value: "true"}
+            - name: RCLONE_CONFIG_OLDGUAC_ACCESS_KEY_ID
+              valueFrom: {secretKeyRef: {name: bucket-migrate-s3, key: OLD_GUAC_KEY}}
+            - name: RCLONE_CONFIG_OLDGUAC_SECRET_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: bucket-migrate-s3, key: OLD_GUAC_SECRET}}
+
+            - {name: RCLONE_CONFIG_NEWGUAC_TYPE, value: s3}
+            - {name: RCLONE_CONFIG_NEWGUAC_PROVIDER, value: Other}
+            - {name: RCLONE_CONFIG_NEWGUAC_ENDPOINT, value: "https://s3-offsite.webgrip.dev"}
+            - {name: RCLONE_CONFIG_NEWGUAC_REGION, value: garage}
+            - {name: RCLONE_CONFIG_NEWGUAC_NO_CHECK_BUCKET, value: "true"}
+            - name: RCLONE_CONFIG_NEWGUAC_ACCESS_KEY_ID
+              valueFrom: {secretKeyRef: {name: bucket-migrate-s3, key: NEW_GUAC_KEY}}
+            - name: RCLONE_CONFIG_NEWGUAC_SECRET_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: bucket-migrate-s3, key: NEW_GUAC_SECRET}}
           args:
             - |
               # This ks has NO postBuild.substituteFrom (see ks.yaml), so braced
@@ -151,7 +175,11 @@ spec:
                 src="$1"; dst="$2"; name="$3"; manifest="/tmp/${name}.manifest"
 
                 echo "== ${name}: snapshotting the source listing"
-                rclone lsf -R --files-only "${src}" > "${manifest}"
+                if [ "${GUAC_FILTER:-0}" = "1" ]; then
+                  rclone lsf -R --files-only "${src}" --include "_db-backups/**" > "${manifest}"
+                else
+                  rclone lsf -R --files-only "${src}" > "${manifest}"
+                fi
                 echo "   $(wc -l < "${manifest}") objects in scope for this pass"
                 echo "   source:      $(rclone size "${src}" --json 2>/dev/null || echo unavailable)"
                 echo "   destination: $(rclone size "${dst}" --json 2>/dev/null || echo unavailable)"
@@ -182,6 +210,14 @@ spec:
               echo "== off-site bucket migration: 10.0.0.110 -> s3-offsite (pass ${PASS})"
               copy_bucket "OLDCNPG:cnpg-backups-bucket" "NEWCNPG:cnpg-backups-bucket" "cnpg-backups-bucket"
               copy_bucket "OLDFORGEJO:forgejo" "NEWFORGEJO:forgejo" "forgejo"
+
+              # guac: the _db-backups/ prefix ONLY. That prefix holds guac-db's
+              # daily pg_dump (guac-db has no CNPG ObjectStore, so this cronjob is
+              # its only backup) and is a handful of small objects. sboms/ is the
+              # 18.2M-object staging queue trivy refills on every scan, and copying
+              # it would dominate this migration to reproduce regenerable data.
+              GUAC_FILTER=1 copy_bucket "OLDGUAC:guac" "NEWGUAC:guac" "guac"
+
               echo "== migration pass complete"
           resources:
             requests:

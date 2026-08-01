@@ -280,8 +280,11 @@ spec:
         # Garage requires path-style addressing and plain HTTP.
         storage:
           STORAGE_TYPE: minio
-          MINIO_ENDPOINT: "10.0.0.110:3900"
+          # Off-site store (Hetzner) as of 2026-08-01. USE_SSL must flip with the
+          # endpoint: Caddy terminates TLS there and Garage itself binds to
+          # loopback, so plain HTTP on 443 would simply fail to connect.
+          MINIO_ENDPOINT: "s3-offsite.webgrip.dev"
           MINIO_BUCKET: forgejo
           MINIO_LOCATION: garage
-          MINIO_USE_SSL: false
+          MINIO_USE_SSL: true
           MINIO_BUCKET_LOOKUP: path
