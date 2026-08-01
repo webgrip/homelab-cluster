@@ -128,13 +128,24 @@ spec:
                   spec:
                     containers:
                       - name: longhorn-manager
+                        # Right-sized 2026-08-01 against measured usage across all 5 nodes:
+                        # 10-24m CPU, 348-417Mi memory. 250m/1Gi reserved ~10x the CPU and ~2.5x
+                        # the memory actually used, on every node, permanently — 1.25Gi and 0.5
+                        # CPU of cluster-wide phantom booking that helped make worker-1
+                        # unschedulable at 3947m/3950m requested while using 660m.
+                        #
+                        # 150m = 6x headroom over the observed peak; 768Mi = ~84% headroom.
+                        # requests == limits deliberately: this is the storage control plane, and
+                        # Guaranteed QoS keeps it last in line for eviction under node memory
+                        # pressure. Dropping requests below limits would have reclaimed slightly
+                        # more and made it evictable, which is the wrong trade for Longhorn.
                         resources:
                           requests:
-                            cpu: 250m
-                            memory: 1Gi
+                            cpu: 150m
+                            memory: 768Mi
                           limits:
-                            cpu: 250m
-                            memory: 1Gi
+                            cpu: 150m
+                            memory: 768Mi
                       - name: pre-pull-share-manager-image
                         resources:
                           requests:
