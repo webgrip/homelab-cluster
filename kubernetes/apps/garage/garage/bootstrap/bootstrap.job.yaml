@@ -133,6 +133,11 @@ spec:
               [ "${ready}" = yes ] || { echo "admin API never answered" >&2; exit 1; }
 
               echo "== 1. cluster layout"
+              # Field names below are taken from the v2 admin OpenAPI spec
+              # (garagehq.deuxfleurs.fr/api/garage-admin-v2.json), not guessed:
+              # GetClusterStatusResponse{layoutVersion,nodes[].id},
+              # GetClusterLayoutResponse{version,roles},
+              # UpdateClusterLayoutRequest{parameters,roles[]}.
               status="$(api "${ADMIN}/v2/GetClusterStatus")"
               node_id="$(echo "${status}" | jq -r '.nodes[0].id')"
               layout_ver="$(echo "${status}" | jq -r '.layoutVersion // 0')"
@@ -140,10 +145,16 @@ spec:
                 echo "  layout already at version ${layout_ver} — skipping assign"
               else
                 echo "  assigning node ${node_id} to zone dc1"
+                # UpdateClusterLayout takes an OBJECT with a `roles` array. A bare
+                # array -- which is what v1 accepted -- is rejected with HTTP 400.
                 api -X POST "${ADMIN}/v2/UpdateClusterLayout" \
-                  -d "[{\"id\":\"${node_id}\",\"zone\":\"dc1\",\"capacity\":107374182400,\"tags\":[]}]" >/dev/null
-                api -X POST "${ADMIN}/v2/ApplyClusterLayout" -d '{"version":1}' >/dev/null
-                echo "  layout applied"
+                  -d "{\"roles\":[{\"id\":\"${node_id}\",\"zone\":\"dc1\",\"capacity\":107374182400,\"tags\":[]}]}" >/dev/null
+                # Apply the STAGED layout, which is always current+1. Hardcoding 1
+                # only works on a virgin cluster and silently mis-applies later.
+                cur="$(api "${ADMIN}/v2/GetClusterLayout" | jq -r '.version // 0')"
+                api -X POST "${ADMIN}/v2/ApplyClusterLayout" \
+                  -d "{\"version\":$((cur + 1))}" >/dev/null
+                echo "  layout applied (version $((cur + 1)))"
               fi
 
               echo "== 2. bucket ${BUCKET}"
