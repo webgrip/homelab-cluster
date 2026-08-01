@@ -1,0 +1,28 @@
+---
+# longhorn-backup-enrollment mutates longhorn.io Volume CRs (a mutateExisting
+# rule whose target is a different kind from its trigger). Kyverno's background
+# controller has no RBAC for that CRD out of the box, so without this the policy
+# loads cleanly, reports no error on the PVC, and silently patches nothing —
+# the same failure mode as the ScheduledBackup apiCall in
+# rbac-cnpg-scheduledbackup-read.yaml.
+#
+# get/list/watch are needed to resolve the target; update/patch to write the
+# label. No create or delete: this policy only ever adds a label to a Volume
+# that Longhorn's CSI driver already created.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno:longhorn-volume-label
+  labels:
+    rbac.kyverno.io/aggregate-to-background-controller: "true"
+rules:
+  - apiGroups:
+      - longhorn.io
+    resources:
+      - volumes
+    verbs:
+      - get
+      - list
+      - watch
+      - update
+      - patch

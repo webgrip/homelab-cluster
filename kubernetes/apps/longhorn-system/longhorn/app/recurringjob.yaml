@@ -47,3 +47,30 @@ spec:
     - gitops-backup
   retain: 7
   concurrency: 1
+---
+# Second tier for the observability volumes (Prometheus, VictoriaMetrics,
+# VictoriaLogs, VictoriaTraces) — same daily backup, retain 2 instead of 7.
+#
+# These are ~78 GiB of high-churn time-series. Block compaction rewrites large
+# regions, so each incremental is far larger than the data actually added that
+# day; at retain 7 the backup target would grow by a multiple of the live size,
+# on an off-site box that also has to hold Immich and the CNPG backups. Two days
+# covers the cluster-loss case that justifies backing up metrics at all.
+#
+# Runs at 02:30 rather than 02:00 so the small irreplaceable tier finishes first
+# and is never queued behind ~78 GiB of blocks (concurrency is per-job, but both
+# jobs contend for the same volume engines and the same uplink).
+#
+# Membership is stamped onto Volume CRs by the longhorn-backup-enrollment Kyverno
+# policy, not by hand — see that file for why enrolment lives there.
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: gitops-backup-bulk
+spec:
+  cron: "30 2 * * *"
+  task: backup
+  groups:
+    - gitops-backup-bulk
+  retain: 2
+  concurrency: 1

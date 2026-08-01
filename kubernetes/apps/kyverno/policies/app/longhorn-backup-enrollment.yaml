@@ -1,0 +1,123 @@
+---
+# Enrol named volumes into Longhorn's recurring off-cluster backup jobs.
+#
+# THE GAP THIS CLOSES:
+# `gitops-backup` (…/longhorn/app/recurringjob.yaml) backs up any volume carrying
+# `recurring-job-group.longhorn.io/gitops-backup=enabled`. That label lives on the
+# longhorn.io Volume CR, which the CSI driver creates at bind time — so nothing in
+# git owned it and enrolment was a one-off `kubectl label` per volume, recorded in
+# a runbook. Predictably, only four volumes were ever enrolled; an audit on
+# 2026-08-01 found 25 attached volumes with no backup of any kind, including
+# invoiceninja's MariaDB (financial records, and NOT a CNPG cluster, so barman
+# does not cover it) and OpenBao's storage.
+#
+# WHY THE TRIGGER IS THE PVC AND THE TARGET IS THE VOLUME:
+# Volume CRs are named `pvc-<uuid>`, so they cannot be listed in git by name. The
+# PVC can — namespace + name are stable and human-meaningful — and it carries
+# `spec.volumeName`, which IS the Volume CR's name. So the enrolled set is
+# expressed here as PVCs and Kyverno follows the pointer.
+#
+# mutateExistingOnPolicyUpdate re-runs this over every already-bound PVC whenever
+# this file changes, which is what makes editing the lists below sufficient: no
+# imperative step, and if Longhorn ever recreates a Volume CR the label comes back
+# on the next policy update rather than silently staying off.
+#
+# REQUIRES kyverno:longhorn-volume-label (rbac-longhorn-volume-label.yaml). Without
+# that RBAC this policy patches nothing and reports no error.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: longhorn-backup-enrollment
+  annotations:
+    policies.kyverno.io/title: Longhorn backup enrolment
+    policies.kyverno.io/category: Storage
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Stamps the recurring-job-group labels onto the longhorn.io Volume CRs behind
+      an explicit list of PVCs, so off-cluster backup enrolment is declared in git
+      rather than applied by hand.
+spec:
+  # Mutate-only policy: it never rejects anything, so there is no Enforce/Audit
+  # distinction to make here.
+  mutateExistingOnPolicyUpdate: true
+  rules:
+    # ---------------------------------------------------------------------------
+    # Tier 1 — irreplaceable, small (~6 GiB total). Daily, retain 7.
+    # ---------------------------------------------------------------------------
+    - name: enrol-irreplaceable
+      match:
+        any:
+          # User avatars and branding uploaded through the UI; not in any blueprint.
+          - resources: {kinds: [PersistentVolumeClaim], namespaces: [authentik], names: [authentik-media]}
+          # invoiceninja-mariadb is the DATABASE. It is MariaDB, not CNPG, so none
+          # of the barman tooling touches it and it had no backup whatsoever.
+          - resources: {kinds: [PersistentVolumeClaim], namespaces: [invoiceninja], names: [invoiceninja-storage, invoiceninja-mariadb]}
+          # Uploads + the app's own dump directory. The Postgres side is CNPG-backed.
+          - resources: {kinds: [PersistentVolumeClaim], namespaces: [sparkyfitness], names: [sparkyfitness-uploads, sparkyfitness-backup]}
+          # File attachments. The DB is CNPG-backed, but attachments live only here,
+          # and the roadmap board is in Vikunja (ADR-0043).
+          - resources: {kinds: [PersistentVolumeClaim], namespaces: [vikunja], names: [vikunja]}
+          # Config, extensions and per-user state; the DB is CNPG-backed.
+          - resources: {kinds: [PersistentVolumeClaim], namespaces: [freshrss], names: [freshrss]}
+          # OpenBao's raft store — every secret ESO serves. Raft snapshots exist,
+          # but they land on this same volume.
+          - resources: {kinds: [PersistentVolumeClaim], namespaces: [security], names: [data-openbao-0]}
+          # World save. Regenerable only in the sense that a new world is a world.
+          - resources: {kinds: [PersistentVolumeClaim], namespaces: [minecraft], names: [minecraft]}
+      preconditions:
+        all:
+          # An unbound PVC has no spec.volumeName, and targeting a Volume CR named
+          # "" makes the rule error rather than wait. Skip until it binds; the
+          # bind itself is a PVC update, which re-triggers this rule.
+          - key: "{{ request.object.spec.volumeName || '' }}"
+            operator: NotEquals
+            value: ""
+      mutate:
+        targets:
+          - apiVersion: longhorn.io/v1beta2
+            kind: Volume
+            name: "{{ request.object.spec.volumeName }}"
+            namespace: longhorn-system
+        patchStrategicMerge:
+          metadata:
+            labels:
+              recurring-job-group.longhorn.io/gitops-backup: enabled
+    # ---------------------------------------------------------------------------
+    # Tier 2 — observability history (~78 GiB). Daily, retain 2, NOT 7.
+    #
+    # Separate tier on purpose. These are high-churn time-series volumes: block
+    # compaction rewrites large regions, so each incremental is far bigger than the
+    # data actually added that day. At retain 7 the backup target would grow by a
+    # multiple of the 78 GiB live size, on a 477 GiB off-site box that also has to
+    # hold Immich (70 GB) and the CNPG backups. Two days is enough to survive the
+    # cluster-loss case this protects against, which is the point of backing up
+    # metrics at all.
+    # ---------------------------------------------------------------------------
+    - name: enrol-observability-bulk
+      match:
+        any:
+          - resources:
+              kinds:
+                - PersistentVolumeClaim
+              namespaces:
+                - observability
+              names:
+                - prometheus-kube-prometheus-stack-prometheus-db-prometheus-kube-prometheus-stack-prometheus-0
+                - vmsingle-vmsingle
+                - vlsingle-victorialogs
+                - vtsingle-victoriatraces
+      preconditions:
+        all:
+          - key: "{{ request.object.spec.volumeName || '' }}"
+            operator: NotEquals
+            value: ""
+      mutate:
+        targets:
+          - apiVersion: longhorn.io/v1beta2
+            kind: Volume
+            name: "{{ request.object.spec.volumeName }}"
+            namespace: longhorn-system
+        patchStrategicMerge:
+          metadata:
+            labels:
+              recurring-job-group.longhorn.io/gitops-backup-bulk: enabled
