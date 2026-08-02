@@ -159,7 +159,7 @@ Blackbox exporter + `Probe` CRs for ingress-level uptime checks
 - `https://grafana.${SECRET_DOMAIN}`
 - `https://prometheus.${SECRET_DOMAIN}`
 - `https://alertmanager.${SECRET_DOMAIN}`
-- Garage S3 (`10.0.0.110:3900` — off-cluster; own PrometheusRule + SLO)
+- Garage S3 (`https://s3-offsite.webgrip.dev` — off-site, Hetzner FSN1; own PrometheusRule + SLO)
 
 ## Validation checklist
 

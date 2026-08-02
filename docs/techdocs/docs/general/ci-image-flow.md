@@ -15,7 +15,7 @@ number here was measured on 2026-07-18 during the CI-stall investigation.
 |---|---|---|
 | **fringe-workstation** (8c / ~15 Gi) | Runs the KEDA runner pods — so all CI **builds** and all job-container **extractions** happen here. Also hosts Longhorn replicas and part of Harbor. | Single Micron M600 256 GB SATA SSD. **~12 MB/s effective writes under load; the cluster's #1 CI bottleneck.** |
 | **worker-1** (4c) | Runs Forgejo + its Postgres — serves every `git clone`/push that CI does. | Samsung 870 EVO 1 TB (healthier, but shared with the DB — don't move CI here). |
-| **Garage box** (`10.0.0.110`) | Harbor's **blob storage** (ADR-0018). Registry *processes* run in-cluster; the actual layer bytes live here. | Garage S3. |
+| **In-cluster Garage** (ns `garage`) | Harbor's **blob storage** (ADR-0018). Registry *processes* and the layer bytes both live in-cluster as of 2026-08-01. | Garage S3, `longhorn-single` PVCs. |
 | **soyos ×3** | Control plane only. No CI, by doctrine. | — |
 
 ## Build path (first-party images)
@@ -29,7 +29,7 @@ flowchart LR
   POD -->|"semantic-release cuts tag,<br/>dispatches build"| POD2["runner pod: buildx<br/>inside the DinD sidecar"]
   POD2 -->|"push (primary)"| HARBOR["Harbor webgrip/*<br/>registry pods in-cluster"]
   POD2 -->|"push (mirror)"| GHCR["ghcr.io/webgrip/*"]
-  HARBOR -->|"layer blobs"| GARAGE["Garage S3<br/>10.0.0.110"]
+  HARBOR -->|"layer blobs"| GARAGE["Garage S3<br/>in-cluster (ns garage)"]
 ```
 
 Wall-clock for a `ci-runner`-sized release: **~20–25 min** end-to-end (semantic-release ~6 min,

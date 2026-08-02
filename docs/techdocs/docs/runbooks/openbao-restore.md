@@ -37,7 +37,7 @@ export and store it in your password manager:
    ```bash
    mise exec -- kubectl get cronjob openbao-snapshot -n security    # suspend should be false
    # list snapshots in Garage (run from any pod with aws-cli + the creds, or the Garage host):
-   #   aws --endpoint-url http://10.0.0.110:3900 s3 ls s3://cnpg-backups-bucket/openbao-snapshots/
+   #   aws --endpoint-url https://s3-offsite.webgrip.dev s3 ls s3://cnpg-backups-bucket/openbao-snapshots/
    ```
 2. **Let openbao come up fresh-but-sealed** (if the PVC was wiped, the auto-init CronJob initialises a new
    empty vault). **Stop here before relying on that empty vault** — you're about to overwrite it.

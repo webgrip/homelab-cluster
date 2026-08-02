@@ -30,7 +30,8 @@ lives in [Applications — canonical inventory](general/applications.md).
 | `cluster_dns_gateway_addr` | `k8s-gateway` LoadBalancer (split DNS) | `kubernetes/apps/network/k8s-gateway` | `10.0.0.26` |
 | `cluster_gateway_addr` | `envoy-internal` LoadBalancer (LAN-only) | `kubernetes/apps/network/envoy-gateway` | `10.0.0.27` |
 | `cloudflare_gateway_addr` | `envoy-external` / Cloudflare Tunnel origin | `kubernetes/apps/network/cloudflare-tunnel` | `10.0.0.28` |
-| Garage S3 | Object storage (off-cluster VM) | — | `10.0.0.110:3900` |
+| Garage S3 (in-cluster) | Harbor registry blobs | — | `garage-s3.garage.svc.cluster.local:3900` |
+| Garage S3 (off-site) | All backups: CNPG, Longhorn, OpenBao, Forgejo, guac | Hetzner FSN1 | `https://s3-offsite.webgrip.dev` |
 
 Supporting controllers in `kubernetes/apps/network/`: `k8s-gateway` (split DNS, watches
 `HTTPRoute` + `Service`), `envoy-gateway` (both `Gateway` resources), `cloudflare-tunnel`
