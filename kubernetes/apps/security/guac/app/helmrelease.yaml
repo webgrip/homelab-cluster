@@ -152,12 +152,17 @@ spec:
           limits:
             cpu: 250m
             memory: 128Mi
-            # gocloud blob-store URI — points at the cluster-wide Garage S3.
-            # Credentials come from the security-s3 secret env vars below.
-            # OFF-SITE as of 2026-08-01. disable_https is GONE, not just flipped: Caddy
-        # terminates TLS off-site and Garage binds to loopback behind it, so plain
-        # HTTP cannot connect. NOTE this endpoint is hardcoded here rather than read
+        # gocloud blob-store URI. OFF-SITE as of 2026-08-01; credentials come from
+        # the security-s3 env vars below. disable_https is GONE rather than flipped:
+        # Caddy terminates TLS off-site and Garage binds to loopback behind it, so
+        # plain HTTP cannot connect. The endpoint is hardcoded here rather than read
         # from the secret, so repointing security-s3 alone would NOT have moved guac.
+        #
+        # NOTE: the guac-cm ConfigMap that every guac Deployment actually mounts
+        # carries its OWN blob-addr, and it still holds the chart's placeholder
+        # (s3://bucketname at security-minio.security.svc, a Service that does not
+        # exist). That is why cd-certifier has been crash-looping since long before
+        # this migration. Tracked separately — this value alone does not fix it.
         blobAddr: "s3://guac?endpoint=s3-offsite.webgrip.dev&region=garage&use_path_style=true"
       customLabels:
         release: kube-prometheus-stack
