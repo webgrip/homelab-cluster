@@ -13,7 +13,7 @@ _Kubernetes/Talos versions track `talos/talenv.yaml` (Kubernetes v1.36.1). Five 
 | soyo-3 | 10.0.0.22 | control-plane, schedulable | v1.13.4 | v1.36.1 | 6.18.34-talos | containerd 2.2.4 |
 | fringe-workstation | 10.0.0.23 | worker, schedulable | v1.13.4 | v1.36.1 | 6.18.34-talos | containerd 2.2.4 |
 | worker-1 | 10.0.0.24 | worker, schedulable | v1.13.4 | v1.36.1 | 6.18.34-talos | containerd 2.2.4 |
-| worker-2 | 10.0.0.70 | worker, schedulable | v1.13.7 | v1.36.1 | — | — |
+| worker-2 | 10.0.0.32 | worker, schedulable | v1.13.7 | v1.36.1 | — | — |
 
 Captured via:
 

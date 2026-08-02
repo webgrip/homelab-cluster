@@ -18,7 +18,7 @@ Last verified: **2026-08-02**.
 | `soyo-3` | `10.0.0.22` | Intel N150 · 4C/4T | 12 GB | 512 GB WUXIN G15 SSD | `soyo` / `standard` / `low` | no |
 | `fringe-workstation` | `10.0.0.23` | i7-4770 · 4C/8T · 3.4 GHz | 16 GB | 256 GB Micron SSD + 1 TB Seagate HDD | `worker` / `high` / `standard` | yes |
 | `worker-1` | `10.0.0.24` | i5-4670K · 4C · 3.4 GHz | 24 GB | 1 TB Samsung 870 SSD | `worker` / `standard` / `high` | yes |
-| `worker-2` | `10.0.0.70` | i7-6700K · 4C/8T · 4.0 GHz | 16 GB | **2 TB Samsung 990 EVO Plus NVMe** + 250 GB 850 + 1 TB 860 SSD + 1 TB Seagate HDD + 2 TB Samsung HDD | `worker` / `high` / `standard` | yes |
+| `worker-2` | `10.0.0.32` | i7-6700K · 4C/8T · 4.0 GHz | 16 GB | **2 TB Samsung 990 EVO Plus NVMe** + 250 GB 850 + 1 TB 860 SSD + 1 TB Seagate HDD + 2 TB Samsung HDD | `worker` / `high` / `standard` | yes |
 
 **Totals:** 6 nodes · 24 cores · 96 GB RAM · Talos v1.13.4 (worker-2: v1.13.7) · Kubernetes v1.36.1
 
@@ -84,9 +84,9 @@ graph TD
   S2 --> K1([soyo-1 .20])
   S2 --> K2([soyo-2 .21])
   S2 --> K3([soyo-3 .22])
-  S2 --> F([fringe .23])
-  S2 --> W1N([worker-1 .24])
-  S2 --> W2N([worker-2 .70])
+  S2 --> F([fringe .30])
+  S2 --> W1N([worker-1 .31])
+  S2 --> W2N([worker-2 .32])
   R --> |WAN · HTTPS 443| HZ([garage-fsn1 · Hetzner FSN1<br/>off-site S3 · Immich · uptime-kuma])
   W --> H([Philips Hue bridge])
   W --> P([Raspberry Pi · Home Assistant])
@@ -97,19 +97,20 @@ graph TD
 | Range | Use |
 |---|---|
 | `10.0.0.1` – `.3` | Router, managed switch, Wi-Fi bridge |
-| `10.0.0.20` – `.24` | Talos nodes |
+| `10.0.0.20` – `.24` | Talos control plane (`.23`–`.24` free once workers renumber) |
 | `10.0.0.25` | Kubernetes / Talos API VIP |
 | `10.0.0.26` | `k8s-gateway` — split-DNS responder |
 | `10.0.0.27` | `envoy-internal` — LAN-only ingress |
 | `10.0.0.28` | `envoy-external` — public ingress origin |
+| `10.0.0.30` – `.39` | Talos workers — `fringe` `.30`, `worker-1` `.31`, `worker-2` `.32` |
+| `10.0.0.40` – `.49` | Other static infra (Home Assistant, Hue) |
 | `10.0.0.50` – `.150` | **DHCP scope** |
-| `10.0.0.70` | `worker-2` — static, **inside the DHCP scope** |
 
-!!! warning "worker-2 breaks the addressing convention"
-    Every other node sits below `.50` specifically so DHCP cannot collide with
-    it. `worker-2` is static at `.70`, inside the scope. It **requires** a
-    reservation or exclusion in OPNsense — otherwise DHCP can lease the same
-    address to another client.
+!!! note "Renumbering in progress"
+    The worker block is the target layout, not yet fully applied. `worker-2` is
+    live on `10.0.0.29` until its `.32` config is applied; `worker-1` and `fringe`
+    still sit at `.24` and `.23`. Renumber only when the node is quiet — Longhorn
+    replicas and etcd do not enjoy address changes mid-rebuild.
 
 ### DNS
 

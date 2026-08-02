@@ -88,7 +88,7 @@ them is in [Talos cluster → Network Wiring](general/talos-cluster.md#network-w
 	- Port 1 → Philips Hue bridge
 	- Port 2 → Raspberry Pi Home Assistant
 
-Static infrastructure keeps IPs below `.50`, reserved in OPNsense so DHCP drift cannot move critical nodes. **Exception:** `worker-2` is static at `10.0.0.70`, inside the DHCP scope — it needs an explicit reservation. See [Infrastructure](general/infrastructure.md) for the full address map.
+Static infrastructure keeps IPs below `.50`, reserved in OPNsense so DHCP drift cannot move critical nodes. See [Infrastructure](general/infrastructure.md) for the full address map.
 
 ### Home DNS
 
