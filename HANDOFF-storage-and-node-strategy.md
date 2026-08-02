@@ -1,3 +1,14 @@
+> [!WARNING]
+> **Superseded 2026-08-02 — historical.** This handoff describes the 5-node fleet as it
+> stood on 2026-06-19, before the Proxmox host was evacuated and rejoined as `worker-2`.
+> Its storage assumptions no longer hold: Longhorn now spans worker-1 **and** worker-2,
+> and all backups moved off-site. The placement conclusions it proposed were ratified as
+> [ADR-0001](docs/techdocs/docs/adr/adr-0001-node-taxonomy.md) and
+> [ADR-0002](docs/techdocs/docs/adr/adr-0002-application-workload-placement.md).
+> For current hardware see
+> [Infrastructure at a glance](docs/techdocs/docs/general/infrastructure.md).
+> Kept for the reasoning, not as a description of the cluster.
+
 # Handoff — Longhorn storage migration + node placement strategy
 
 **From:** cluster-health / Longhorn-remediation thread (2026-06-19)

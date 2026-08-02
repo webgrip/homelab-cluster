@@ -1,5 +1,14 @@
 # RFC: Offsite object storage, and reclaiming the Proxmox host as a Talos node
 
+!!! success "Implemented 2026-08-02"
+    Executed end to end. All 13 CNPG ObjectStores, the Longhorn backup target,
+    OpenBao snapshots, Forgejo LFS, guac and invoiceninja now use
+    `https://s3-offsite.webgrip.dev` (Hetzner FSN1); Harbor registry blobs moved to
+    the in-cluster Garage. Immich (21,056 assets) and uptime-kuma were migrated to
+    the same off-site host. A restore drill from the off-site store was proven
+    before the box was wiped. The machine rejoined as Talos node `worker-2`.
+    Current-state inventory: [Infrastructure](../general/infrastructure.md).
+
 > Status: **Proposed** · Date: 2026-07-31 · Executes the substrate half of
 > [object storage — Garage](rfc-object-storage-garage.md) and L5 of the
 > [layered hardware architecture](rfc-layered-hardware-architecture.md)

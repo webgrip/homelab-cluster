@@ -8,7 +8,7 @@ TechDocs for the Flux-managed Talos homelab. Everything here mirrors the manifes
 | Concern | Implementation |
 | --- | --- |
 | GitOps | Flux (flux-operator + flux-instance); 3 layers: root `kubernetes/flux/cluster/ks.yaml` → per-app `ks.yaml` → `app/` manifests |
-| Nodes | 5 × bare-metal Talos (3 soyo control-plane + 2 workers) — [Talos cluster](general/talos-cluster.md) |
+| Nodes | 6 × bare-metal Talos (3 soyo control-plane + 3 workers) — [Infrastructure](general/infrastructure.md) · [Talos cluster](general/talos-cluster.md) |
 | Ingress | Gateway API via Envoy Gateway: `envoy-internal` (LAN) + `envoy-external` (public via Cloudflare Tunnel) |
 | DNS | Split-horizon: `k8s-gateway` answers `*.${SECRET_DOMAIN}` on the LAN; ExternalDNS → Cloudflare for public records |
 | Secrets | **ESO + OpenBao** (`ExternalSecret`/`PushSecret`; see the [ESO reference](rfc/external-secrets-plan.md)). Minimal SOPS floor remains: age key, `cluster-secrets`, `talsecret` (+ one zomboid straggler) |
@@ -88,7 +88,7 @@ them is in [Talos cluster → Network Wiring](general/talos-cluster.md#network-w
 	- Port 1 → Philips Hue bridge
 	- Port 2 → Raspberry Pi Home Assistant
 
-Static infrastructure keeps IPs below `.50`, reserved in OPNsense so DHCP drift cannot move critical nodes.
+Static infrastructure keeps IPs below `.50`, reserved in OPNsense so DHCP drift cannot move critical nodes. **Exception:** `worker-2` is static at `10.0.0.70`, inside the DHCP scope — it needs an explicit reservation. See [Infrastructure](general/infrastructure.md) for the full address map.
 
 ### Home DNS
 
