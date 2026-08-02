@@ -25,9 +25,25 @@ spec:
   # persistent queue buffers scrapes across the gap (VIK-331 slice 1).
   # (Old dedicated=fringe toleration removed — that taint was retired 2026-06-19,
   # ADR-0002; it was dead config.)
+  # HARD pool=worker (ADR-0002), SOFT ram=high. ram=high resolves to worker-1
+  # ALONE, and hard-pinning the metrics TSDB there is a large part of why
+  # worker-1 sat at ~98% CPU requests for 14 days. Measured peak is 1883Mi — the
+  # biggest of the seven ram=high consumers, and still comfortable on any worker.
+  # The preference is kept because a TSDB grows; the requirement is not, because
+  # "Pending forever if worker-1 is full" is a worse failure than "runs on
+  # worker-2". ADR-0002 rejected soft *pool* placement, not soft secondary tiers.
   nodeSelector:
     node.webgrip.io/pool: worker
-    node.webgrip.io/ram: high
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: node.webgrip.io/ram
+                operator: In
+                values:
+                  - "high"
   # Right-sized down from Prometheus's mirrored 400m/3Gi after measuring steady
   # state: VMSingle uses ~1Gi RAM / ~120m CPU for this workload (~390k active
   # series, ~8.7k samples/s). Request 1.5Gi (~50% headroom); 4Gi limit absorbs

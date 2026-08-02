@@ -46,13 +46,16 @@ spec:
       podAnnotations:
         reloader.stakater.com/auto: "true"
       # Single-node by design (RWO /data shared by server+worker; the cluster
-      # disallows RWX). Pin to the high-CPU node via the capability label
-      # node.webgrip.io/cpu=high — which resolves to fringe (the only high-CPU
-      # node), replacing the legacy nodegroup=fringe. Keeps authentik exactly
-      # where it is (no risky move) while dropping the legacy-label dependency.
-      # Node-level HA needs media on S3 first (follow-up). ADR-0002.
-      nodeSelector:
-        node.webgrip.io/cpu: high
+      # disallows RWX). Both server replicas therefore sit on ONE node on
+      # purpose — do NOT add a topologySpreadConstraint here; it would make the
+      # second replica unschedulable. Node-level HA needs media on S3 first
+      # (follow-up). ADR-0002.
+      #
+      # cpu=high no longer means "fringe, the only high-CPU node" — worker-2 was
+      # added 2026-08-02 with cpu=high (8 cores), so this now selects a set of
+      # two and authentik may legitimately land on either. The redundant
+      # nodeSelector was dropped 2026-08-02; the hard nodeAffinity below already
+      # expresses exactly the same constraint.
       affinity:
         podAntiAffinity: soft
         nodeAffinity:

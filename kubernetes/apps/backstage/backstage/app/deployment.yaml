@@ -16,16 +16,13 @@ spec:
       annotations:
         reloader.stakater.com/auto: "true"
     spec:
+      # `ram: high` dropped 2026-08-02: it resolves to worker-1 alone, and
+      # backstage peaks at 305Mi. The 2026-07-25 rebalance moved it here to get
+      # off fringe; `pool: worker` achieves that without monopolising the 24Gi
+      # node. The dedicated=fringe toleration was dead config — that taint was
+      # retired 2026-06-19 (ADR-0002).
       nodeSelector:
         node.webgrip.io/pool: worker
-        # ram=high resolves to worker-1: moved off the memory-starved fringe
-        # node in the 2026-07-25 rebalance (VIK-595/ADR-0049).
-        node.webgrip.io/ram: high
-      tolerations:
-        - key: dedicated
-          operator: Equal
-          value: fringe
-          effect: NoSchedule
       serviceAccountName: backstage-kubernetes
       securityContext:
         runAsNonRoot: true
