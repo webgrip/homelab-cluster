@@ -77,9 +77,9 @@ Changes to `talos/patches/` (such as the etcd heartbeat/election-timeout tuning)
 
 ```bash
 # Drains workloads, applies config, waits for Ready, uncordons — one node at a time
-task talos:apply-node-safe NODE=soyo-1
-task talos:apply-node-safe NODE=soyo-2
-task talos:apply-node-safe NODE=soyo-3
+just talos-apply-node-safe soyo-1
+just talos-apply-node-safe soyo-2
+just talos-apply-node-safe soyo-3
 ```
 
 ## Known issues after node reboots
@@ -113,7 +113,7 @@ kubectl exec -n observability grafana-db-1 -c postgres -- \
 kubectl delete pod -n observability -l app=grafana
 ```
 
-**Prevention:** Use `task talos:apply-node-safe` to drain the node first — Longhorn unmounts cleanly and PostgreSQL shuts down gracefully before the reboot.
+**Prevention:** Use `just talos-apply-node-safe` to drain the node first — Longhorn unmounts cleanly and PostgreSQL shuts down gracefully before the reboot.
 
 ## Diagnosing disk I/O contention
 
@@ -148,7 +148,7 @@ mise exec -- kubectl get pods -A -o wide --field-selector spec.nodeName=soyo-1 |
 
 - Pyroscope suspended in Flux and HelmRelease deleted (pod + service removed, PVC preserved).
 - `talos/patches/controller/cluster.yaml`: etcd `heartbeat-interval: 500`, `election-timeout: 5000`.
-- Config applied to all 3 nodes via `task talos:apply-node` (each node rebooted). Confirmed via `talosctl get machineconfig`.
+- Config applied to all 3 nodes via the apply-node recipe (each node rebooted). Confirmed via `talosctl get machineconfig`.
 - etcd DB utilization increased from ~37% to ~91% after the reboots triggered compaction.
 - **Still required:** `talosctl etcd defrag` (one member at a time) — reclaims fragmented boltdb pages.
 
@@ -156,6 +156,6 @@ mise exec -- kubectl get pods -A -o wide --field-selector spec.nodeName=soyo-1 |
 
 - All 3 nodes rebooted; stranded Error pods in longhorn-system, kube-system, security cleaned up manually.
 - `grafana-db-1` was SIGKILL'd mid-operation on soyo-2 reboot → `server_lock` orphaned → Grafana CrashLoopBackOff. Fixed by deleting the stale lock row and restarting the pod.
-- **Mitigation added:** `task talos:apply-node-safe` (drain → apply → wait → uncordon) added to `.taskfiles/talos/Taskfile.yaml` to prevent this in future.
+- **Mitigation added:** `just talos-apply-node-safe` (drain → apply → wait → uncordon), to prevent this in future. Lived in `.taskfiles/talos/Taskfile.yaml` until the 2026-08-02 move to `just`; it is now a recipe in the root `justfile`.
 
 **Structural limitation:** The extra disks on soyo nodes are iSCSI LUNs (vendor: IET, rotational HDD). They are NOT suitable for etcd. The only viable long-term fix is a second physical local SSD per soyo node, configured via `machine.disks` in Talos to mount at `/var/lib/etcd` before etcd starts.

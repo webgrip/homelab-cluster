@@ -1,7 +1,7 @@
 ---
 name: talos
 description: Operate the Talos Linux nodes and decide node placement — apply/upgrade machine config, upgrade Kubernetes, reboot-safe drains, add a node, and where to schedule write-heavy workloads.
-when_to_use: Use when touching talos/ (talconfig.yaml, talenv.yaml, patches), running `task talos:*` or talosctl, upgrading Talos/k8s, draining/rebooting nodes, or choosing a node / nodeAffinity for a workload.
+when_to_use: Use when touching talos/ (talconfig.yaml, talenv.yaml, patches), running `just talos-*` or talosctl, upgrading Talos/k8s, draining/rebooting nodes, or choosing a node / nodeAffinity for a workload.
 ---
 
 # Talos node operations
@@ -28,22 +28,33 @@ Full hardware specs: `docs/techdocs/docs/general/talos-cluster.md`.
 `apply-node` is **not always a reboot**. A label/annotation-only change applies **live**; it reboots
 under `--mode=auto` only when the node has reboot-requiring config drift (e.g. a stale stored
 `install.image`). Choose per change:
+Recipe args are **positional**: `<node> [at] [mode] [insecure]`. `node` is a hostname *or* the
+configured IP; `at` is where the machine answers **right now** (leave `''` for the configured one).
 ```bash
 # label/annotation-only change (esp. etcd nodes): apply live, stage any drift, NEVER reboot
-mise exec -- task talos:apply-node NODE=<hostname> MODE=no-reboot   # NODE takes a hostname or the configured IP
+mise exec -- just talos-apply-node <hostname> '' no-reboot
 
 # change that genuinely needs a reboot (disk, kernel, network): drain→apply→wait→uncordon
-mise exec -- task talos:apply-node-safe NODE=<hostname>             # never a bare reboot-y apply
-# AT=<current-ip> when the machine is not yet at its configured address
-# (fresh node in maintenance mode, or mid-renumber):
-mise exec -- task talos:apply-node NODE=worker-2 AT=10.0.0.29
+mise exec -- just talos-apply-node-safe <hostname>          # never a bare reboot-y apply
+
+# machine not yet at its configured address (mid-renumber, or fresh in maintenance mode)
+mise exec -- just talos-apply-node worker-2 10.0.0.29
+mise exec -- just talos-apply-node worker-3 10.0.0.70 auto true   # maintenance mode → insecure
 ```
 Rebooting a **storage node** churns Longhorn (degraded waves + zombie replicas — see the `longhorn`
-skill); prefer `MODE=no-reboot` and reboot deliberately when unavoidable.
+skill); prefer `no-reboot` and reboot deliberately when unavoidable.
 
-## Recipes (`.taskfiles/talos/Taskfile.yaml`)
-`talos:generate-config` (after editing talconfig/patches/talenv) · `talos:apply-node-safe` · `talos:upgrade-node IP=<ip>` · `talos:upgrade-k8s` · `talos:reset` (DESTRUCTIVE wipe).
-**Version bump:** edit `talenv.yaml` → `generate-config` → `upgrade-node` per node (one at a time) and/or `upgrade-k8s`.
+## Recipes (root `justfile`, group `talos`)
+`just talos-generate-config` (after editing talconfig/patches/talenv) · `talos-apply-node` ·
+`talos-apply-node-safe` · `talos-upgrade-node <node> [at] [insecure]` · `talos-upgrade-k8s` ·
+`talos-reset` (DESTRUCTIVE wipe, prompts). `just --list` shows the lot.
+**Version bump:** edit `talenv.yaml` → `talos-generate-config` → `talos-upgrade-node` per node (one at a time) and/or `talos-upgrade-k8s`.
+
+**Why `at` exists.** `talhelper gencommand apply` always emits `--nodes=<the address in talconfig>`
+with no override, so a node on DHCP or mid-renumber fell out of the tooling entirely and got driven
+by hand-written talosctl. `--extra-flags` cannot patch around it: talosctl's `--nodes` is a string
+slice, so a second one *appends* and you target both addresses. The recipes call `talosctl` directly
+for this reason.
 
 ## ⚠️ Gotchas (learned the hard way)
 - **Adding a node ≠ existing stateful workloads can use it.** Symptom: pod `Pending` / "didn't match

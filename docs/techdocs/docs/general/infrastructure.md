@@ -136,3 +136,41 @@ OPNsense runs split-horizon: every `*.${SECRET_DOMAIN}` lookup goes to
 | `worker-2` | Four SATA disks (250 GB + 1 TB SSD, 1 TB + 2 TB HDD) are **installed but unused** — Talos installs to the NVMe only. Candidates for a Longhorn cold tier ([ADR-0009](../adr/adr-0009-longhorn-hot-cold-tiers.md)). |
 | `fringe-workstation` | 16 GB and a history of memory-pressure incidents. The smallest worker doing the most volatile work (CI, dind). |
 | control plane | 12 GB each, running apiserver + etcd + kubelet. `kube-apiserver` reached 7.4 GB RSS on 2026-08-02 and took two nodes down; now bounded by `GOMEMLIMIT=4GiB`. |
+
+---
+
+## Operating it
+
+Everything imperative lives in the root **`justfile`** — one task runner, no second
+one. (Taskfile/`.taskfiles/` were removed 2026-08-02.) Tools are pinned in
+`.mise.toml`, so always go through mise:
+
+```bash
+mise exec -- just --list      # every recipe, grouped
+```
+
+| Group | What it covers |
+|---|---|
+| `cluster` | `reconcile` — force Flux to pull from Git |
+| `validate` | `flux-local` (auto-scoped, seconds) · `flux-local-full` (~20min) · `kyverno-test` · `kyverno-chainsaw` · `verify-oci-digests` · `update-oci-digests` |
+| `talos` | `talos-generate-config` · `talos-apply-node` · `talos-apply-node-safe` · `talos-upgrade-node` · `talos-upgrade-k8s` · `talos-reset` |
+| `bootstrap` | `bootstrap-talos` · `bootstrap-apps` — building a cluster from nothing |
+| `secrets` | `bao-login` · `harbor-s3-cred` · `ntfy-auth-cred` — one-time OpenBao seeding via `gum` prompts |
+
+Talos recipe arguments are **positional**: `<node> [at] [mode] [insecure]`.
+`node` is a hostname *or* the address in `talconfig.yaml`; `at` is where the
+machine answers **right now**, which differs from `node` in exactly two cases —
+a fresh node still on DHCP in maintenance mode, and any node mid-renumber.
+
+```bash
+mise exec -- just talos-apply-node worker-1 '' no-reboot   # live label change, never reboots
+mise exec -- just talos-apply-node-safe worker-1           # drain → apply → wait Ready → uncordon
+mise exec -- just talos-apply-node worker-2 10.0.0.29      # config says .32, machine is still at .29
+```
+
+!!! note "`just` has no `preconditions:`"
+    Taskfile's precondition blocks caught real mistakes during the 2026-08-02
+    node work — an empty node name, a missing rendered config, a node that was
+    not listening. They are re-implemented as explicit `_need` / `_file` guards
+    plus a reachability probe in each recipe. Keep them: a `talosctl` command
+    built from an empty variable still does something, just not what you meant.
