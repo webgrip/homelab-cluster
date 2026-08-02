@@ -263,6 +263,11 @@ spec:
           memory: 128Mi
 
     nginx:
+      # MISSED in #485, and it is the one component that matters most for reachability: nginx is
+      # Harbor's front door, so when it could not schedule the whole registry returned 503 while
+      # every other component sat Ready on worker-1. Found by cordoning fringe-workstation — the
+      # rest of Harbor preempted its way onto worker-1 and nginx, having no priority, did not.
+      priorityClassName: platform-critical
       nodeSelector:
         node.webgrip.io/pool: worker
       # Dedicated SA + digest-pin, direct against docker.io. VIK-253.
