@@ -7,6 +7,30 @@ cluster:
     extraArgs:
       # https://kubernetes.io/docs/tasks/extend-kubernetes/configure-aggregation-layer/
       enable-aggregator-routing: true
+    # Bound kube-apiserver's heap so it stops ratcheting into the node's RAM.
+    #
+    # On 2026-08-02 this process reached 7.4GB RSS on an 11.6GB node that also
+    # runs etcd and kubelet, leaving ~120MB free. etcd and kubelet went
+    # HEALTH: Fail, kubectl timed out, and the k8s-gateway VIP stopped answering
+    # — LAN DNS for the whole domain went with it.
+    #
+    # It is not a leak: etcd holds ~355MB, so the process was retaining ~20x the
+    # dataset. Go returns freed heap to the OS lazily, so RSS settles at the
+    # largest heap the process ever needed. Event churn (3.5k-13k/hour here,
+    # 43k during the incident) keeps re-testing that peak upward.
+    #
+    # GOMEMLIMIT is a SOFT limit: past it, Go collects continuously rather than
+    # growing. That is the correct tool here. A hard memory limit under
+    # `resources` is deliberately NOT set — for a static pod that means the
+    # kubelet OOM-kills the API server, converting a slow degradation into an
+    # abrupt control-plane outage.
+    #
+    # 4GiB against a ~2GB observed live heap (a freshly restarted apiserver sits
+    # at 1.7-1.9GB) leaves roughly 2x headroom before GC pressure becomes
+    # constant. If API latency degrades after this lands, raise it rather than
+    # removing it — the failure mode of too-low is slow, of absent is an outage.
+    env:
+      GOMEMLIMIT: 4GiB
   controllerManager:
     extraArgs:
       bind-address: 0.0.0.0
