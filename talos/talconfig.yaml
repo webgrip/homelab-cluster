@@ -126,7 +126,10 @@ nodes:
   - hostname: "worker-2"
     # The reclaimed Proxmox box, wiped and rejoined 2026-08-02. Installs to the
     # 2 TB NVMe, not one of the four SATA disks it also carries.
-    ipAddress: "10.0.0.29"
+    # NOTE: .70 is inside the OPNsense DHCP scope (10.0.0.50-150), unlike every
+    # other node which sits below .50. It needs a reservation/exclusion there or
+    # DHCP can hand the same address to another client.
+    ipAddress: "10.0.0.70"
     installDisk: "/dev/nvme0n1"
     machineSpec:
       secureboot: false
@@ -139,7 +142,7 @@ nodes:
           hardwareAddr: "4c:cc:6a:6d:df:8c"
         dhcp: false
         addresses:
-          - "10.0.0.29/24"
+          - "10.0.0.70/24"
         routes:
           - network: "0.0.0.0/0"
             gateway: "10.0.0.1"
