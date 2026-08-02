@@ -81,18 +81,36 @@ spec:
         serviceMonitor:
           enabled: true
       replicas: 1
+      # The chart ships `resources: {}` for the operator — unbounded. Bounded here
+      # so a leaking operator can't contribute to the node memory pressure that
+      # kills the agent (see the agent `resources` note below).
+      resources:
+        requests:
+          cpu: 25m
+          memory: 128Mi
+        limits:
+          memory: 256Mi
       rollOutPods: true
     prometheus:
       enabled: true
       serviceMonitor:
         enabled: true
         trustCRDsExist: true
+    # Top-level `resources` is the cilium-AGENT container (chart convention).
+    # 600Mi was too tight for the busiest nodes: the agent's footprint scales with
+    # endpoints + policy revisions, and on fringe-workstation (50 pods, node at 85%
+    # memory) it crash-looped 805 times in 39 days — exit 137 ~30s after start,
+    # liveness `connection reset`. That left `node.cilium.io/agent-not-ready:NoSchedule`
+    # stuck on the node, making it intermittently unschedulable and funnelling every
+    # new pod onto worker-1 (which sat at 98% CPU requests for 14 days as a result).
+    # Measured agent usage 2026-08-02: worker-1 (80 pods) 448Mi, soyo-3 397Mi,
+    # worker-2 326Mi. 1Gi gives the busiest node real headroom.
     resources:
       requests:
         cpu: 100m
         memory: 300Mi
       limits:
-        memory: 600Mi
+        memory: 1Gi
     rollOutCiliumPods: true
     routingMode: native
     securityContext:
