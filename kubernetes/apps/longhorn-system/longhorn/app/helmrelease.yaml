@@ -31,13 +31,22 @@ spec:
       createDefaultDiskLabeledNodes: false
       defaultDataLocality: best-effort
       defaultLonghornStaticStorageClass: longhorn
-      # 2-replica ceiling (ADR-0008): only 2 storage nodes (worker-1 + fringe)
-      # with HARD anti-affinity, so 2 is the max anyway. NOTE: the chart-created
-      # default `longhorn` StorageClass still carries numberOfReplicas=3 from
-      # persistence.defaultClassReplicaCount (an immutable SC param — not changed
-      # here to avoid breaking the HR upgrade). The proper fix is migrating volumes
-      # onto the `longhorn-hot` class (2 replicas, ADR-0009); existing 3-replica
-      # volumes were already reduced to 2 at runtime on 2026-06-19.
+      # 2-replica ceiling (ADR-0008): only 2 schedulable storage nodes — worker-1
+      # and worker-2 since 2026-08-02 (fringe is `allowScheduling=false` after the
+      # 08-01/02 memory incident) — with HARD anti-affinity, so 2 is the max anyway.
+      #
+      # NOTE: the chart-created default `longhorn` StorageClass still carries
+      # numberOfReplicas=3 from persistence.defaultClassReplicaCount (an immutable
+      # SC param — not changed here, since Helm would have to delete and recreate
+      # the class out from under every bound PVC). This global only applies when a
+      # class OMITS the parameter, and that one does not — so it does not save you.
+      #
+      # The runtime reduction done by hand on 2026-06-19 regressed exactly as you
+      # would expect: every newly-provisioned PVC came back at 3, and by 2026-08-02
+      # 18 volumes were permanently `degraded` waiting on a third replica that can
+      # never schedule. The convergence is now enforced by the Kyverno policy
+      # `longhorn-replica-ceiling` (kyverno/policies/app/longhorn-replica-ceiling.yaml),
+      # which is self-healing where a `kubectl edit` was not.
       defaultReplicaCount: "2"
       defaultSharedVolumeType: nfs
       # guaranteedEngineManagerCPU/guaranteedReplicaManagerCPU are ignored since the
