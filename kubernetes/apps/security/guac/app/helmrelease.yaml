@@ -31,6 +31,23 @@ spec:
     imagePullSecrets: []
 
     guac:
+      # gocloud blob-store URI for every guac component.
+      #
+      # MUST live directly under `guac:` — the chart reads `.Values.guac.blobAddr`
+      # (templates/guac-cm.yaml). It previously sat under `guac.collectSub`, which
+      # the chart never looks at, so it was inert: guac-cm fell through to the
+      # chart's placeholder default, `s3://bucketname` at
+      # security-minio.<ns>.svc.cluster.local:9000 — a Service that does not exist
+      # in this cluster. Every guac Deployment mounts that ConfigMap, which is why
+      # cd-certifier crash-looped on "failed write document to blob store ... no
+      # such host". guac has therefore never actually used object storage here.
+      #
+      # Endpoint carries an explicit https:// scheme rather than relying on the
+      # absence of disable_https: Caddy terminates TLS off-site and Garage binds
+      # to loopback behind it, so a plain-HTTP attempt cannot connect at all.
+      # Credentials come from the security-s3 env vars (guac.common.env), which
+      # already point at the off-site store.
+      blobAddr: "s3://guac?endpoint=https://s3-offsite.webgrip.dev&region=garage&use_path_style=true"
       graphqlServer:
         backend: ent
         debug: false
@@ -152,18 +169,6 @@ spec:
           limits:
             cpu: 250m
             memory: 128Mi
-        # gocloud blob-store URI. OFF-SITE as of 2026-08-01; credentials come from
-        # the security-s3 env vars below. disable_https is GONE rather than flipped:
-        # Caddy terminates TLS off-site and Garage binds to loopback behind it, so
-        # plain HTTP cannot connect. The endpoint is hardcoded here rather than read
-        # from the secret, so repointing security-s3 alone would NOT have moved guac.
-        #
-        # NOTE: the guac-cm ConfigMap that every guac Deployment actually mounts
-        # carries its OWN blob-addr, and it still holds the chart's placeholder
-        # (s3://bucketname at security-minio.security.svc, a Service that does not
-        # exist). That is why cd-certifier has been crash-looping since long before
-        # this migration. Tracked separately — this value alone does not fix it.
-        blobAddr: "s3://guac?endpoint=s3-offsite.webgrip.dev&region=garage&use_path_style=true"
       customLabels:
         release: kube-prometheus-stack
       common:
