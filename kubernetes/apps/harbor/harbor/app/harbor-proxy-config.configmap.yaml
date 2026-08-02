@@ -125,6 +125,40 @@ data:
       fi
     }
 
+    # ensure_immutable_semver NAME — make released version tags permanent.
+    #
+    # A cosign signature binds to a DIGEST, but every consumer in this estate references a TAG:
+    # webgrip/workflows pins container images by version, the ARC and forgejo-runner ScaledJobs pin
+    # runner images, and the cross-image ARGs (tauri->rust-ci-runner, mkdocs/techdocs->techdocs-builder)
+    # pin siblings. Nothing stops a tag being repointed at a different digest after the fact, and the
+    # Kyverno policy runs mutateDigest: false — so a repointed tag would be admitted without anyone
+    # verifying the new content.
+    #
+    # The rule matches semver-shaped tags (**.**.** covers 1.2.3, 0.1.0, 2.0.0-rc.1) and deliberately
+    # does NOT match `latest` or `cache`: latest must stay mutable to mean "newest", and buildkit
+    # rewrites :cache on every build. Making either immutable would break the release path on the
+    # first push.
+    #
+    # Idempotent: Harbor has no upsert for immutable rules, so an existing rule with the same
+    # scope selector is left alone rather than duplicated.
+    ensure_immutable_semver() {
+      _name="$$1"
+      _pid="$$(hc GET "/projects/$$_name" 2>/dev/null | jq -r '.project_id' 2>/dev/null)"
+      if [ -z "$$_pid" ] || [ "$$_pid" = "null" ]; then
+        log "WARN: cannot resolve project '$$_name' for immutability rules"; return 0
+      fi
+      if hc GET "/projects/$$_pid/immutabletagrules" 2>/dev/null \
+           | jq -e '.[]? | select(.tag_selectors[]?.pattern == "**.**.**")' >/dev/null 2>&1; then
+        log "immutable semver rule already present on '$$_name'"; return 0
+      fi
+      _body='{"disabled":false,"scope_selectors":{"repository":[{"kind":"doublestar","decoration":"repoMatches","pattern":"**"}]},"tag_selectors":[{"kind":"doublestar","decoration":"matches","pattern":"**.**.**"}]}'
+      if hc POST "/projects/$$_pid/immutabletagrules" "$$_body" >/dev/null 2>&1; then
+        log "created immutable semver tag rule on '$$_name' (released versions can no longer be repointed)"
+      else
+        log "WARN: failed to create immutable tag rule on '$$_name'"
+      fi
+    }
+
     # ensure_private_project NAME (private project for our own images)
     ensure_private_project() {
       _name="$$1"
@@ -350,6 +384,7 @@ data:
     ensure_gc_schedule
     ensure_retention webgrip
     ensure_project_scanning webgrip
+    ensure_immutable_semver webgrip
 
     if [ "$$HEALTH_FAILED" != "0" ]; then
       log "reconcile finished but a credentialed upstream failed its health check — exiting 1 (HarborProxyReconcileStale will fire)"
