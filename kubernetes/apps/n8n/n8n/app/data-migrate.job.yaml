@@ -1,6 +1,6 @@
 ---
-# One-shot copy of n8n's state directory (/home/node/.n8n, ~147 MiB) from the
-# legacy `n8n` PVC to the freshly-created `n8n-data` PVC — see pvc-data.yaml for
+# One-shot copy of n8n's state directory (/home/node/.n8n) from the legacy `n8n`
+# PVC to the freshly-created `n8n-data` PVC — see pvc-data.yaml for
 # why the old volume has to be abandoned rather than repaired (its PV
 # nodeAffinity is immutable, and eviction cannot rewrite it: ADR-0002 lines
 # 90-100).
@@ -14,14 +14,22 @@
 # constraint comes from the very PV pin we are removing — so the exception
 # disappears together with this file.
 #
-# WHY runAsUser 0: this is a data-fidelity copy. `cp -a` preserving ownership
-# outright beats reasoning about whether a non-root uid may chown-to-itself for
-# every file in the tree. The n8n namespace enforces PSS `baseline` (which
-# permits root); `restricted` is audit/warn only, so this trips the Audit-mode
-# workload-hardening policy knowingly — the same deliberate-exception pattern as
-# harbor's blob-migrate Job pulling direct from docker.io. Everything else stays
-# hardened: read-only rootfs, all capabilities dropped, no privilege escalation,
-# no service-account token, no network needed.
+# WHY runAsUser 1000 AND NOT root: the first attempt ran as uid 0 and failed —
+# root with `capabilities.drop: ALL` has neither CAP_DAC_OVERRIDE (so it cannot
+# read `config`, mode 0600 owned by uid 1000) nor CAP_CHOWN (so `cp -a` cannot
+# preserve ownership). Restoring those capabilities would be the wrong fix: every
+# file in the tree is ALREADY owned by 1000:1000, because n8n runs as uid 1000
+# with fsGroup 1000. Running as that same uid reads and writes everything with no
+# capabilities at all, and the copy lands owned exactly as n8n expects. Fully
+# hardened: non-root, read-only rootfs, all capabilities dropped, no privilege
+# escalation, no service-account token, no network needed.
+#
+# WHY tar AND NOT `cp -a`: busybox `cp -a` implies -p, which attempts chown even
+# when the target ownership is already correct, and fails the Job. A tar pipe
+# preserves mode and structure, creates entries owned by the running uid, and is
+# the only form that can skip lost+found (an ext4 artifact, not app data, and
+# root-owned so unreadable here) without needing a shell variable — see the args
+# comment on why variables are forbidden in this file.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -57,10 +65,12 @@ spec:
                       - "soyo-2"
                       - "soyo-3"
       securityContext:
-        runAsUser: 0
-        runAsGroup: 0
-        # Matches the app-template pod securityContext in helmrelease.yaml, so
-        # the destination tree ends up group-owned exactly as n8n expects.
+        # uid/gid 1000 == the uid every file in the source tree is already owned
+        # by (n8n runs as `node`). fsGroup matches helmrelease.yaml so the
+        # destination ends up group-owned exactly as n8n expects.
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
         fsGroup: 1000
         fsGroupChangePolicy: OnRootMismatch
         seccompProfile: {type: RuntimeDefault}
@@ -74,7 +84,7 @@ spec:
           env:
             # Bump to trigger a re-run (see the force annotation above).
             - name: PASS
-              value: "1"
+              value: "2"
           args:
             # NO shell variables in this script, deliberately. This ks has
             # postBuild.substituteFrom, so envsubst rewrites these args before
@@ -92,20 +102,20 @@ spec:
               ls -la /old
               du -sh /old
 
-              # -a = -dpR: recursive, preserve mode/ownership/timestamps, never
-              # follow symlinks. Trailing /. copies the CONTENTS including
-              # dotfiles, which is the whole point here (.n8n/config holds the
-              # at-rest config; the encryption key itself comes from OpenBao via
-              # ESO, so this tree is recoverable-but-not-disposable).
+              # tar pipe, not `cp -a` — see the header. Preserves mode, structure
+              # and dotfiles; entries land owned by the running uid (1000), which
+              # is what n8n expects. lost+found is an ext4 artifact, root-owned
+              # and unreadable here, and is not app data.
               echo "== copying"
-              cp -a /old/. /new/
+              cd /old && tar cf - --exclude=./lost+found . | tar xf - -C /new
 
               # Real verification, not a size check: every regular file's md5 and
               # path must match on both sides. A size-only comparison would pass
-              # on a truncated-then-repadded file.
+              # on a truncated-then-repadded file. Same lost+found exclusion, or
+              # the two sides would never agree.
               echo "== verifying checksums"
-              cd /old && find . -type f -exec md5sum {} + | sort -k 2 > /tmp/old.sums
-              cd /new && find . -type f -exec md5sum {} + | sort -k 2 > /tmp/new.sums
+              cd /old && find . -path ./lost+found -prune -o -type f -exec md5sum {} + | sort -k 2 > /tmp/old.sums
+              cd /new && find . -path ./lost+found -prune -o -type f -exec md5sum {} + | sort -k 2 > /tmp/new.sums
               diff /tmp/old.sums /tmp/new.sums
 
               echo "== file count"
