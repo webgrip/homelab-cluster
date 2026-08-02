@@ -22,7 +22,15 @@ KYVERNO_TEST_SECRET_DOMAIN="${KYVERNO_TEST_SECRET_DOMAIN:-example.com}"
 prepare_kyverno_test_workspace() {
     local root_dir="${1:?root dir is required}"
     local workspace="${2:?workspace dir is required}"
-    local policy_dir="${root_dir}/kubernetes/apps/kyverno/policies/app"
+    # BOTH dirs. PolicyExceptions moved to their own Flux Kustomization on
+    # 2026-08-02 (see kubernetes/apps/kyverno/exceptions/ks.yaml) — scanning only
+    # policies/app would silently drop every exception from the test workspace,
+    # so tests would report violations the cluster actually excepts. That is the
+    # same silent-omission hole the kind-based discovery below was written to close.
+    local policy_dirs=(
+        "${root_dir}/kubernetes/apps/kyverno/policies/app"
+        "${root_dir}/kubernetes/apps/kyverno/exceptions/app"
+    )
     local tests_dir="${root_dir}/kubernetes/apps/kyverno/tests"
 
     mkdir -p "${workspace}/cli" "${workspace}/chainsaw" "${workspace}/policies"
@@ -41,7 +49,8 @@ prepare_kyverno_test_workspace() {
     while IFS= read -r -d '' policy; do
         sed "s|\${SECRET_DOMAIN}|${KYVERNO_TEST_SECRET_DOMAIN}|g; s|__SECRET_DOMAIN__|${KYVERNO_TEST_SECRET_DOMAIN}|g" \
             "${policy}" >"${workspace}/policies/$(basename "${policy}")"
-    done < <(grep -rlZ -E '^kind: (ClusterPolicy|Policy|PolicyException|ClusterCleanupPolicy)$' "${policy_dir}"/*.yaml)
+    done < <(grep -rlZ -E '^kind: (ClusterPolicy|Policy|PolicyException|ClusterCleanupPolicy)$' \
+        "${policy_dirs[0]}"/*.yaml "${policy_dirs[1]}"/*.yaml)
 
     while IFS= read -r -d '' file; do
         sed -i "s|\${SECRET_DOMAIN}|${KYVERNO_TEST_SECRET_DOMAIN}|g; s|__SECRET_DOMAIN__|${KYVERNO_TEST_SECRET_DOMAIN}|g" "${file}"
