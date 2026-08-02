@@ -171,6 +171,13 @@ spec:
                 whose backlog exceeds walStorage.size kills the instance-manager before
                 Postgres starts, so it cannot recover on its own.
 
+              Likely causes:
+              - The backup target (Garage S3) is unreachable, so WAL cannot be archived
+                and accumulates locally — the exact failure that took Grafana and
+                Dependency-Track down.
+              - A long-running transaction or an inactive replication slot holding WAL.
+              - walStorage.size set too small for the instance's write rate.
+
               First actions:
               - Restore object-store connectivity so the backlog drains; that is the only
                 clean exit

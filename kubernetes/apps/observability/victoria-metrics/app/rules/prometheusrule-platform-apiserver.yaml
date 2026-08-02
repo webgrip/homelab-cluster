@@ -90,6 +90,13 @@ spec:
                 LoadBalancer VIPs (including k8s-gateway, hence LAN DNS for the
                 whole domain) to stop answering.
 
+              Likely causes:
+              - A client hammering LIST on a large collection (a hot-looping controller,
+                an unpaginated watch, or a broad `kubectl get -A`) inflating the
+                apiserver's response cache.
+              - etcd degraded or slow, so requests queue and accumulate in memory.
+              - Node memory pressure on the control plane amplifying all of the above.
+
               First actions:
               - Rotate the static pod on THIS node now:
                 `talosctl -n <ip> service kubelet restart`
