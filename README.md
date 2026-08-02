@@ -30,7 +30,7 @@ _... managed with Flux, Renovate, GitHub Actions, and Talos_
 
 [![Age](https://img.shields.io/badge/Age-3%20yrs-informational?style=flat-square&color=0f5fff)](https://github.com/webgrip/homelab-cluster)
 [![Uptime](https://img.shields.io/badge/Uptime-99.5%25-success?style=flat-square)](https://github.com/webgrip/homelab-cluster)
-[![Nodes](https://img.shields.io/badge/Nodes-5-lightgrey?style=flat-square&logo=kubernetes)](https://github.com/webgrip/homelab-cluster)
+[![Nodes](https://img.shields.io/badge/Nodes-6-lightgrey?style=flat-square&logo=kubernetes)](https://github.com/webgrip/homelab-cluster)
 [![Pods](https://img.shields.io/badge/Pods-40+-blue?style=flat-square&logo=kubernetes)](https://github.com/webgrip/homelab-cluster)
 [![CPU](https://img.shields.io/badge/CPU-45%25-orange?style=flat-square)](https://github.com/webgrip/homelab-cluster)
 [![Memory](https://img.shields.io/badge/Memory-60%25-orange?style=flat-square)](https://github.com/webgrip/homelab-cluster)
@@ -164,11 +164,15 @@ graph TD
 
 ## 🖥️ Hardware
 
+> **Canonical, always-measured inventory:** [Infrastructure at a glance](docs/techdocs/docs/general/infrastructure.md)
+> — every machine, disk, label and address in one table. The summary below is a snapshot.
+
 | Num | Device | CPU | RAM | OS / Firmware | Function |
 |-----|--------|-----|-----|---------------|----------|
 | 3 | SOYO Mini PC M4 (Twin Lake N150) | Intel N150 (4C/4T) | 12 GB LPDDR5 | Talos Linux v1.13.4 | Control-plane + workloads; one 512 GB SATA SSD each, shared by etcd + OS + Longhorn; Wi-Fi5/BT5 disabled |
 | 1 | HP Z230 Tower Workstation | Intel Core i7-4770 (4C/8T, 3.4 GHz) | 16 GB DDR3 (1 slot free) | Talos Linux v1.13.4 | Dedicated worker `fringe-workstation` (`10.0.0.23`) for write-heavy apps; 256 GB SATA SSD (OS) + 1 TB HDD |
 | 1 | Gigabyte Z87X-D3H desktop | Intel Core i5-4670K (4C/4T, 3.4 GHz) | 24 GB DDR3-1600 | Talos Linux v1.13.4 | Worker `worker-1` (`10.0.0.24`), added 2026-06-19; most RAM in the cluster; 1 TB Samsung SSD 870 — currently the only Longhorn storage node |
+| 1 | worker-2 (reclaimed Proxmox box) | Intel Core i7-6700K (4C/8T, 4.0 GHz) | 16 GB (2 slots free) | Talos Linux v1.13.7 | Worker `worker-2` (`10.0.0.70`), rejoined 2026-08-02; 2 TB Samsung 990 EVO Plus NVMe (install + Longhorn) plus 250 GB/1 TB SSD and 1 TB/2 TB HDD unused |
 | 1 | Protectli V1410 | Intel i5 | 8 GB | OPNsense | Router/firewall, DHCP `10.0.0.50-150`, WireGuard, split DNS for `webgrip.dev` |
 | 1 | TP-Link TL-SG108PE | — | — | Managed firmware | 8-port 1 GbE switch feeding downstream fan-out |
 | 1 | Q-Link 1 GbE switch | — | — | Unmanaged | Directly uplinks Talos nodes for east-west traffic |
@@ -189,6 +193,7 @@ graph TD
 | `soyo-3` | Talos controller / worker | `10.0.0.22` |
 | `fringe-workstation` | Talos worker | `10.0.0.23` |
 | `worker-1` | Talos worker (Longhorn storage) | `10.0.0.24` |
+| `worker-2` | Talos worker (Longhorn storage) | `10.0.0.70` — **inside the DHCP scope**; needs an OPNsense reservation |
 | Kubernetes / Talos API VIP | Control-plane endpoint | `10.0.0.25` |
 | `k8s-gateway` LoadBalancer | Split DNS responder | `10.0.0.26` |
 | `envoy-internal` LoadBalancer | LAN-only ingress | `10.0.0.27` |
