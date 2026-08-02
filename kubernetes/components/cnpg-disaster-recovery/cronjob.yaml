@@ -16,6 +16,12 @@ spec:
       backoffLimit: 0
       ttlSecondsAfterFinished: 21600
       template:
+        metadata:
+          # Stable selector for the CiliumNetworkPolicy below. Job pods otherwise
+          # carry only job-name/controller-uid, which change every run and cannot
+          # be selected on.
+          labels:
+            app.kubernetes.io/name: cnpg-disaster-recovery-check
         spec:
           serviceAccountName: cnpg-disaster-recovery-check
           automountServiceAccountToken: true
