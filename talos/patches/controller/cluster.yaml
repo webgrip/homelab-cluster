@@ -51,3 +51,65 @@ cluster:
   scheduler:
     extraArgs:
       bind-address: 0.0.0.0
+    # Cluster-wide scheduler policy. Talos renders this to
+    # /system/config/kubernetes/kube-scheduler/scheduler-config.yaml and passes
+    # --config itself; do NOT try `extraArgs: {config: ...}`, which Talos rejects
+    # outright ("extra arg \"config\" is not allowed", siderolabs/talos#9091).
+    #
+    # ⚠️ BLAST RADIUS IS THE WHOLE CONTROL PLANE. A malformed block crashloops
+    # kube-scheduler on all three soyos and nothing schedules anywhere. Roll it
+    # ONE controller at a time and confirm the static pod is Running before the
+    # next. Two Talos regressions to know about, both fixed before our version:
+    #   - #13473: v1.13.3 panics "cannot deep copy int" on ANY integer in this
+    #     block (our `weight` and `maxSkew` would both trigger it) and kills
+    #     every control-plane static pod, not just the scheduler. Fixed v1.13.4.
+    #   - #13350: v1.13.2 rendered k8s-1.36 extension points into a 1.35 config.
+    #     Fixed v1.13.4.
+    # We run Talos v1.13.7 + k8s v1.36.1, so we are clear — but never downgrade
+    # below v1.13.4 while this config exists.
+    config:
+      apiVersion: kubescheduler.config.k8s.io/v1
+      kind: KubeSchedulerConfiguration
+      profiles:
+        - schedulerName: default-scheduler
+          pluginConfig:
+            # KEP-1258, stable since k8s 1.24. Without this the built-in default
+            # is maxSkew: 5 on hostname — meaningless on a 6-node cluster, which
+            # is why nothing spreads unless a workload declares its own
+            # constraint, and only a handful in this repo do. This makes spread
+            # the default for EVERY workload instead of an opt-in nobody opts in
+            # to.
+            #
+            # labelSelector is deliberately omitted: the scheduler infers it at
+            # runtime from the pod's Service/ReplicaSet/StatefulSet membership.
+            # Setting one here would be wrong, not just redundant.
+            #
+            # ScheduleAnyway, never DoNotSchedule. As a CLUSTER-WIDE default a
+            # hard constraint would apply to workloads nobody has thought about,
+            # and on 6 nodes it would let a single node drain wedge scheduling
+            # during a Talos upgrade. A pod that declares its own
+            # topologySpreadConstraints OVERRIDES this entirely (not merged).
+            - name: PodTopologySpread
+              args:
+                defaultingType: List
+                defaultConstraints:
+                  - maxSkew: 1
+                    topologyKey: kubernetes.io/hostname
+                    whenUnsatisfiable: ScheduleAnyway
+          plugins:
+            score:
+              enabled:
+                # Default weight is 1, against TaintToleration 3 and NodeAffinity
+                # / PodTopologySpread / InterPodAffinity at 2 — so balance barely
+                # registers. This plugin favours nodes where CPU% and memory% end
+                # up close together after placement, and worker-1 (98% CPU
+                # requests / 82% memory requests) is the most lopsided node in the
+                # cluster, so raising it actively steers new pods away.
+                #
+                # NOT changing NodeResourcesFit.scoringStrategy: MostAllocated
+                # exists to enable cluster-autoscaler scale-down, and with fixed
+                # bare-metal nodes there is nothing to scale down — it would buy
+                # pure concentration risk. The default LeastAllocated already
+                # favours the idle node.
+                - name: NodeResourcesBalancedAllocation
+                  weight: 5
