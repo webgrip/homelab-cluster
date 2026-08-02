@@ -29,7 +29,25 @@ spec:
         cpu: 10m
         memory: 64Mi
       limits:
-        cpu: 50m
+        # NO CPU LIMIT, deliberately. The 50m limit here was throttling this
+        # container 38% of its scheduling periods on fringe-workstation (measured
+        # 2026-08-02 via container_cpu_cfs_throttled_periods_total). A throttled
+        # node-exporter cannot answer its own liveness probe inside the timeout,
+        # which produced ~900 "context deadline exceeded" Unhealthy events and
+        # made fringe's node metrics intermittently VANISH — `kubectl top node
+        # fringe-workstation` returning "nodemetrics not found" while the node
+        # was perfectly healthy.
+        #
+        # That matters more than it sounds: this is a monitoring DaemonSet, so
+        # throttling it does not degrade a workload, it degrades your ability to
+        # SEE the workload — and the blind spot lands exactly on whichever node is
+        # busiest, i.e. the one you most need to observe. It also fed the
+        # cluster-wide event churn that ratchets the API server's heap upward
+        # (see talos/patches/controller/cluster.yaml).
+        #
+        # CPU limits throttle; CPU requests guarantee. The 10m request is what
+        # actually reserves capacity, and it stays. Memory limit stays too — that
+        # one is a real backstop, since memory is not compressible.
         memory: 128Mi
     # DaemonSet must run on EVERY node, including control-plane / tainted nodes,
     # or those nodes' metrics silently vanish. Tolerate all taints.
