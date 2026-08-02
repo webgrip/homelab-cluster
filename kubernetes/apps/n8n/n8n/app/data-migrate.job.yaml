@@ -102,27 +102,29 @@ spec:
               ls -la /old
               du -sh /old
 
-              # This Job copies into an EMPTY destination, by contract. It cannot
-              # clean up after itself: it runs as uid 1000, so anything left by a
-              # previous run under a different uid is un-removable here, and tar
-              # reports that as a bare "can't remove old file ... Permission
-              # denied" that reads like a bug rather than a dirty volume. Fail
-              # early and say so instead. To reset: delete the errored Job pods,
-              # `kubectl -n n8n delete pvc n8n-data`, let Flux recreate it, then
-              # delete the failed Job so Flux recreates that too.
-              echo "== checking destination is empty"
+              # Converge, then verify — do NOT refuse on a non-empty destination.
+              # Flux recreates this Job whenever the pod spec changes (the force
+              # annotation), and Kyverno reaps Failed ones hourly, so it WILL run
+              # again over an already-copied volume. Refusing there turns a
+              # succeeded migration into a permanently red Job. Copy only when
+              # there is nothing to copy onto; verify unconditionally either way,
+              # so a re-run is a free integrity check rather than a no-op.
+              #
+              # (Skipping the copy is also required for correctness, not just
+              # tidiness: this pod runs as uid 1000 and cannot overwrite entries
+              # a differently-owned run left behind — tar surfaces that as
+              # "can't remove old file ...: Permission denied".)
+              echo "== destination state"
               if find /new -mindepth 1 -path /new/lost+found -prune -o -print | grep -q .; then
-                echo "ERROR: /new is not empty — this Job requires a fresh volume."
-                ls -la /new
-                exit 1
+                echo "-- /new already populated; skipping copy, verifying only"
+              else
+                # tar pipe, not `cp -a` — see the header. Preserves mode,
+                # structure and dotfiles; entries land owned by the running uid
+                # (1000), which is what n8n expects. lost+found is an ext4
+                # artifact, root-owned, and not app data.
+                echo "-- /new empty; copying"
+                cd /old && tar cf - --exclude=./lost+found . | tar xf - -C /new
               fi
-
-              # tar pipe, not `cp -a` — see the header. Preserves mode, structure
-              # and dotfiles; entries land owned by the running uid (1000), which
-              # is what n8n expects. lost+found is an ext4 artifact, root-owned
-              # and unreadable here, and is not app data.
-              echo "== copying"
-              cd /old && tar cf - --exclude=./lost+found . | tar xf - -C /new
 
               # Real verification, not a size check: every regular file's md5 and
               # path must match on both sides. A size-only comparison would pass
