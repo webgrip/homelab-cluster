@@ -123,6 +123,27 @@ nodes:
             gateway: "10.0.0.1"
         mtu: 1500
 
+  - hostname: "worker-2"
+    # The reclaimed Proxmox box, wiped and rejoined 2026-08-02. Installs to the
+    # 2 TB NVMe, not one of the four SATA disks it also carries.
+    ipAddress: "10.0.0.29"
+    installDisk: "/dev/nvme0n1"
+    machineSpec:
+      secureboot: false
+    talosImageURL: factory.talos.dev/installer/1da3394e6229e507d4e3d166b718cacff86435a61c4765feedd66b43ac237558
+    controlPlane: false
+    patches:
+      - "@./patches/worker/worker-2.yaml"
+    networkInterfaces:
+      - deviceSelector:
+          hardwareAddr: "4c:cc:6a:6d:df:8c"
+        dhcp: false
+        addresses:
+          - "10.0.0.29/24"
+        routes:
+          - network: "0.0.0.0/0"
+            gateway: "10.0.0.1"
+        mtu: 1500
 # Global patches
 patches:
   - "@./patches/global/machine-files.yaml"
