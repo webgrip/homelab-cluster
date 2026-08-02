@@ -58,13 +58,25 @@ spec:
           scope is minimal and reviewable.
         deny:
           conditions:
+            # Each path is defaulted to `[]` before contains(). A PolicyException
+            # legitimately carries only ONE of match.any / match.all, and may omit
+            # resourceSelector entirely — so the other path resolves to nil, and
+            # contains(nil, '*') is a hard JMESPath type error, not `false`. That
+            # error fails the whole admission check, so this rule blocked every
+            # PolicyException it was meant to merely inspect.
+            #
+            # It went unnoticed because Kyverno excluded its own namespace
+            # wholesale, and PolicyExceptions live there — the rule never ran
+            # against a real exception until that exclusion was removed on
+            # 2026-08-02, at which point it wedged the kyverno-policies
+            # Kustomization outright.
             any:
-              - key: "{{ request.object.spec.exceptions[].resourceSelector.matchExpressions[].values[] | contains(@, '*') }}"
+              - key: "{{ (request.object.spec.exceptions[].resourceSelector.matchExpressions[].values[] || `[]`) | contains(@, '*') }}"
                 operator: Equals
                 value: true
-              - key: "{{ request.object.spec.match.any[].resources.names[] | contains(@, '*') }}"
+              - key: "{{ (request.object.spec.match.any[].resources.names[] || `[]`) | contains(@, '*') }}"
                 operator: Equals
                 value: true
-              - key: "{{ request.object.spec.match.all[].resources.names[] | contains(@, '*') }}"
+              - key: "{{ (request.object.spec.match.all[].resources.names[] || `[]`) | contains(@, '*') }}"
                 operator: Equals
                 value: true
