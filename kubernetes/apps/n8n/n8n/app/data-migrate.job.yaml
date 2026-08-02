@@ -102,6 +102,21 @@ spec:
               ls -la /old
               du -sh /old
 
+              # This Job copies into an EMPTY destination, by contract. It cannot
+              # clean up after itself: it runs as uid 1000, so anything left by a
+              # previous run under a different uid is un-removable here, and tar
+              # reports that as a bare "can't remove old file ... Permission
+              # denied" that reads like a bug rather than a dirty volume. Fail
+              # early and say so instead. To reset: delete the errored Job pods,
+              # `kubectl -n n8n delete pvc n8n-data`, let Flux recreate it, then
+              # delete the failed Job so Flux recreates that too.
+              echo "== checking destination is empty"
+              if find /new -mindepth 1 -path /new/lost+found -prune -o -print | grep -q .; then
+                echo "ERROR: /new is not empty — this Job requires a fresh volume."
+                ls -la /new
+                exit 1
+              fi
+
               # tar pipe, not `cp -a` — see the header. Preserves mode, structure
               # and dotfiles; entries land owned by the running uid (1000), which
               # is what n8n expects. lost+found is an ext4 artifact, root-owned
