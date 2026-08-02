@@ -16,8 +16,8 @@ Last verified: **2026-08-02**.
 | `soyo-1` | `10.0.0.20` | Intel N150 · 4C/4T | 12 GB | 512 GB WUXIN G15 SSD | `soyo` / `standard` / `low` | no |
 | `soyo-2` | `10.0.0.21` | Intel N150 · 4C/4T | 12 GB | 512 GB WUXIN G15 SSD | `soyo` / `standard` / `low` | no |
 | `soyo-3` | `10.0.0.22` | Intel N150 · 4C/4T | 12 GB | 512 GB WUXIN G15 SSD | `soyo` / `standard` / `low` | no |
-| `fringe-workstation` | `10.0.0.23` | i7-4770 · 4C/8T · 3.4 GHz | 16 GB | 256 GB Micron SSD + 1 TB Seagate HDD | `worker` / `high` / `standard` | yes |
-| `worker-1` | `10.0.0.24` | i5-4670K · 4C · 3.4 GHz | 24 GB | 1 TB Samsung 870 SSD | `worker` / `standard` / `high` | yes |
+| `fringe-workstation` | `10.0.0.30` | i7-4770 · 4C/8T · 3.4 GHz | 16 GB | 256 GB Micron SSD + 1 TB Seagate HDD | `worker` / `high` / `standard` | yes |
+| `worker-1` | `10.0.0.31` | i5-4670K · 4C · 3.4 GHz | 24 GB | 1 TB Samsung 870 SSD | `worker` / `standard` / `high` | yes |
 | `worker-2` | `10.0.0.32` | i7-6700K · 4C/8T · 4.0 GHz | 16 GB | **2 TB Samsung 990 EVO Plus NVMe** + 250 GB 850 + 1 TB 860 SSD + 1 TB Seagate HDD + 2 TB Samsung HDD | `worker` / `high` / `standard` | yes |
 
 **Totals:** 6 nodes · 24 cores · 96 GB RAM · Talos v1.13.4 (worker-2: v1.13.7) · Kubernetes v1.36.1
@@ -97,20 +97,56 @@ graph TD
 | Range | Use |
 |---|---|
 | `10.0.0.1` – `.3` | Router, managed switch, Wi-Fi bridge |
-| `10.0.0.20` – `.24` | Talos control plane (`.23`–`.24` free once workers renumber) |
+| `10.0.0.4` – `.19` | **LoadBalancer pool** — `minecraft` `.10`, `forgejo-ssh` `.11` |
+| `10.0.0.20` – `.22` | Talos control plane |
+| `10.0.0.23` – `.24` | Free (the workers' old addresses) |
 | `10.0.0.25` | Kubernetes / Talos API VIP |
-| `10.0.0.26` | `k8s-gateway` — split-DNS responder |
-| `10.0.0.27` | `envoy-internal` — LAN-only ingress |
-| `10.0.0.28` | `envoy-external` — public ingress origin |
+| `10.0.0.26` – `.28` | **LoadBalancer pool, pinned** — `k8s-gateway` `.26`, `envoy-internal` `.27`, `envoy-external` `.28` |
+| `10.0.0.29` | Free (worker-2's temporary address) |
 | `10.0.0.30` – `.39` | Talos workers — `fringe` `.30`, `worker-1` `.31`, `worker-2` `.32` |
 | `10.0.0.40` – `.49` | Other static infra (Home Assistant, Hue) |
 | `10.0.0.50` – `.150` | **DHCP scope** |
 
-!!! note "Renumbering in progress"
-    The worker block is the target layout, not yet fully applied. `worker-2` is
-    live on `10.0.0.29` until its `.32` config is applied; `worker-1` and `fringe`
-    still sit at `.24` and `.23`. Renumber only when the node is quiet — Longhorn
-    replicas and etcd do not enjoy address changes mid-rebuild.
+!!! warning "Worker renumbering is staged, not yet applied"
+    The `.30`–`.39` block above is what `talos/talconfig.yaml` now declares, and
+    the LoadBalancer side is **done** — `.30`/`.31` are vacant. The nodes
+    themselves still answer on their old addresses until the config is applied,
+    one at a time, and the fleet table will be right the moment it is:
+
+    ```bash
+    mise exec -- just talos-apply-node worker-2 10.0.0.29           # .29 -> .32
+    mise exec -- just talos-apply-node-safe fringe-workstation 10.0.0.23  # -> .30
+    mise exec -- just talos-apply-node-safe worker-1 10.0.0.31      # .24 -> .31
+    ```
+
+    Do them in that order and wait for `Ready` plus healthy Longhorn volumes
+    between each. worker-2 is first because it is the least loaded and its
+    address was never stable. worker-1 is last because it holds the most
+    replicas. `talos-cluster.md` keeps the captured live state and is updated
+    after the apply, so a disagreement between these two pages means the
+    renumbering is still mid-flight.
+
+!!! danger "The LoadBalancer pool is a real constraint — keep it that way"
+    `CiliumLoadBalancerIPPool` was `cidr: 10.0.0.0/24`, i.e. the whole network.
+    Cilium hands any free address in a pool to a LoadBalancer Service that does
+    not pin one with `lbipam.cilium.io/ips`, so that pool authorised it to
+    allocate a node's address, the API VIP, the router, or a DHCP-leased laptop.
+    Nothing had collided by 2026-08-02 only because every Service happened to
+    carry an explicit annotation — discipline, not a constraint. The pool is now
+    two blocks (`.4`–`.19` and `.26`–`.28`) that match this table. **If you add a
+    range here, add it to `kube-system/cilium/app/networks.yaml` too.**
+
+!!! note "Why `minecraft` and `forgejo-ssh` sit down at `.10`/`.11`"
+    They held `.30` and `.31` — the addresses the worker block wanted. ARP made
+    the conflict concrete: `.31` answered with worker-1's own MAC, so that one
+    node was announcing both its node address and a LoadBalancer IP. Both
+    Services are reached by name through `k8s-gateway`, so moving them was
+    transparent to DNS clients and git remotes. Flux was never at risk — it
+    reconciles over `forgejo-http.forgejo.svc.cluster.local:3000`, not the SSH
+    LoadBalancer. One trap while checking any of this: ping is useless for
+    telling whether a LoadBalancer address is free, because Cilium answers ARP
+    without replying to ICMP — an allocated address looks silent. Use
+    `ip neigh` (no entry at all = genuinely free) or ask Kubernetes.
 
 ### DNS
 

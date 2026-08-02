@@ -44,7 +44,7 @@ This is the living source of truth for the Talos-powered cluster behind `webgrip
 
 ## <img src="https://raw.githubusercontent.com/kubernetes/kubernetes/refs/heads/master/logo/logo.svg" alt="🌱" width="20" height="20"> Kubernetes
 
-My cluster runs on three bare-metal Talos controllers (`soyo-1`..`3`) that also schedule workloads, plus two dedicated workers — `fringe-workstation` (`10.0.0.23`) and `worker-1` (`10.0.0.24`) — that take write-heavy apps off the control-plane disks. `worker-1` carries the Longhorn replicas. Everything runs kube-proxy-free via Cilium, with split-DNS gateways and Cloudflare tunnels for ingress. GitOps keeps the manifests authoritative while just/Mise make local development reproducible.
+My cluster runs on three bare-metal Talos controllers (`soyo-1`..`3`) that also schedule workloads, plus two dedicated workers — `fringe-workstation` (`10.0.0.30`) and `worker-1` (`10.0.0.31`) — that take write-heavy apps off the control-plane disks. `worker-1` carries the Longhorn replicas. Everything runs kube-proxy-free via Cilium, with split-DNS gateways and Cloudflare tunnels for ingress. GitOps keeps the manifests authoritative while just/Mise make local development reproducible.
 
 ### Core Components
 
@@ -170,8 +170,8 @@ graph TD
 | Num | Device | CPU | RAM | OS / Firmware | Function |
 |-----|--------|-----|-----|---------------|----------|
 | 3 | SOYO Mini PC M4 (Twin Lake N150) | Intel N150 (4C/4T) | 12 GB LPDDR5 | Talos Linux v1.13.4 | Control-plane + workloads; one 512 GB SATA SSD each, shared by etcd + OS + Longhorn; Wi-Fi5/BT5 disabled |
-| 1 | HP Z230 Tower Workstation | Intel Core i7-4770 (4C/8T, 3.4 GHz) | 16 GB DDR3 (1 slot free) | Talos Linux v1.13.4 | Dedicated worker `fringe-workstation` (`10.0.0.23`) for write-heavy apps; 256 GB SATA SSD (OS) + 1 TB HDD |
-| 1 | Gigabyte Z87X-D3H desktop | Intel Core i5-4670K (4C/4T, 3.4 GHz) | 24 GB DDR3-1600 | Talos Linux v1.13.4 | Worker `worker-1` (`10.0.0.24`), added 2026-06-19; most RAM in the cluster; 1 TB Samsung SSD 870 — currently the only Longhorn storage node |
+| 1 | HP Z230 Tower Workstation | Intel Core i7-4770 (4C/8T, 3.4 GHz) | 16 GB DDR3 (1 slot free) | Talos Linux v1.13.4 | Dedicated worker `fringe-workstation` (`10.0.0.30`) for write-heavy apps; 256 GB SATA SSD (OS) + 1 TB HDD |
+| 1 | Gigabyte Z87X-D3H desktop | Intel Core i5-4670K (4C/4T, 3.4 GHz) | 24 GB DDR3-1600 | Talos Linux v1.13.4 | Worker `worker-1` (`10.0.0.31`), added 2026-06-19; most RAM in the cluster; 1 TB Samsung SSD 870 — currently the only Longhorn storage node |
 | 1 | worker-2 (reclaimed Proxmox box) | Intel Core i7-6700K (4C/8T, 4.0 GHz) | 16 GB (2 slots free) | Talos Linux v1.13.7 | Worker `worker-2` (`10.0.0.32`), rejoined 2026-08-02; 2 TB Samsung 990 EVO Plus NVMe (install + Longhorn) plus 250 GB/1 TB SSD and 1 TB/2 TB HDD unused |
 | 1 | Protectli V1410 | Intel i5 | 8 GB | OPNsense | Router/firewall, DHCP `10.0.0.50-150`, WireGuard, split DNS for `webgrip.dev` |
 | 1 | TP-Link TL-SG108PE | — | — | Managed firmware | 8-port 1 GbE switch feeding downstream fan-out |
@@ -191,8 +191,8 @@ graph TD
 | `soyo-1` | Talos controller / worker | `10.0.0.20` |
 | `soyo-2` | Talos controller / worker | `10.0.0.21` |
 | `soyo-3` | Talos controller / worker | `10.0.0.22` |
-| `fringe-workstation` | Talos worker | `10.0.0.23` |
-| `worker-1` | Talos worker (Longhorn storage) | `10.0.0.24` |
+| `fringe-workstation` | Talos worker | `10.0.0.30` |
+| `worker-1` | Talos worker (Longhorn storage) | `10.0.0.31` |
 | `worker-2` | Talos worker (Longhorn storage) | `10.0.0.32` |
 | Kubernetes / Talos API VIP | Control-plane endpoint | `10.0.0.25` |
 | `k8s-gateway` LoadBalancer | Split DNS responder | `10.0.0.26` |

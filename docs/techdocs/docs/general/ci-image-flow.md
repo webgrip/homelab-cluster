@@ -106,4 +106,4 @@ consumers (roadmap #343: the shared reusables still run `container: node:22`).
 3. Any image reference in CI or manifests: **Harbor path, never bare `docker.io`/`ghcr.io`**.
    First-party → `harbor…/webgrip/*` (needs `harbor-pull`); third-party → the proxy projects.
 4. A "stalled" job with a `container:` line is almost certainly in extraction. Check
-   fringe's IO-stall before blaming the network — `rate(node_pressure_io_waiting_seconds_total{instance="10.0.0.23:9100"}[2m])`.
+   fringe's IO-stall before blaming the network — `rate(node_pressure_io_waiting_seconds_total{instance="10.0.0.30:9100"}[2m])`.
