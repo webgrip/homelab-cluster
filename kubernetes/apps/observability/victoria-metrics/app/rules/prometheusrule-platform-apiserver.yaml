@@ -1,0 +1,143 @@
+---
+# kube-apiserver memory.
+#
+# WHY THIS EXISTS: on 2026-08-02 two of three control-plane nodes ran out of
+# memory. kube-apiserver had grown to 7.4GB RSS on 11.6GB nodes that also run
+# etcd and kubelet, leaving ~120MB free. etcd and kubelet both went
+# HEALTH: Fail, kubectl returned TLS handshake timeouts, and the k8s-gateway
+# LoadBalancer VIP stopped answering — which took LAN DNS down for the entire
+# ${SECRET_DOMAIN} zone, harbor included. Nothing alerted; the first signal was
+# a human noticing kubectl was broken.
+#
+# It is not a leak in the bug sense. etcd holds ~355MB, so the apiserver was
+# retaining ~20x the dataset: Go frees objects logically but returns memory to
+# the OS lazily, so RSS ratchets to the largest heap the process ever needed and
+# stays there. What pushes that high-water-mark up here is event churn: this
+# cluster sustains 3.5k-13k events/hour at baseline and hit 43k during the
+# incident, with Kyverno PolicyViolation events re-reporting unchanged Audit
+# findings the largest single source.
+#
+# Restarting kubelet rotates the static pod and hands the memory back, which is
+# a real fix for the symptom. These alerts exist so that happens on purpose,
+# with warning, rather than after the control plane has already fallen over.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-apiserver-rules
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: apiserver
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: platform.apiserver
+      rules:
+        # job="kubernetes", not "kube-apiserver": the VMServiceScrape sets no
+        # jobLabel, so the job takes the target Service's name. Searching for
+        # the intuitive label finds nothing and looks like a missing scrape.
+        - alert: KubeAPIServerMemoryHigh
+          expr: |
+            process_resident_memory_bytes{job="kubernetes"} > 5 * 1024 * 1024 * 1024
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: apiserver
+          annotations:
+            summary: "kube-apiserver above 5GiB RSS ({{ $labels.instance }})"
+            description: |
+              What's happening:
+              - kube-apiserver on {{ $labels.instance }} has held >5GiB RSS for 30m.
+
+              Impact/risk:
+              - Control-plane nodes have ~11.6GiB total and also run etcd and
+                kubelet. Past ~7GiB the node has no headroom left, etcd and
+                kubelet start failing health checks, and the API becomes
+                intermittently unreachable.
+
+              Likely causes:
+              - Retained Go heap from event/watch churn, growing with uptime.
+                Check the event rate first — it is the usual driver here.
+
+              First actions:
+              - Event volume: `kubectl get events -A --no-headers | wc -l`
+                (baseline here is 3.5k-13k; all events expire after 1h).
+              - Confirm on the node: `talosctl -n <ip> memory` and
+                `talosctl -n <ip> processes | grep kube-apiserver`.
+              - Reclaim by rotating the static pod, ONE node at a time, waiting
+                for health in between:
+                `talosctl -n <ip> service kubelet restart`
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-nodes/talos-nodes"
+
+        - alert: KubeAPIServerMemoryCritical
+          expr: |
+            process_resident_memory_bytes{job="kubernetes"} > 7 * 1024 * 1024 * 1024
+          for: 10m
+          labels:
+            severity: critical
+            owner: platform
+            service: apiserver
+          annotations:
+            summary: "kube-apiserver above 7GiB RSS ({{ $labels.instance }}) — control plane at risk"
+            description: |
+              What's happening:
+              - kube-apiserver on {{ $labels.instance }} has held >7GiB RSS for 10m.
+
+              Impact/risk:
+              - This is the level at which the 2026-08-02 outage occurred. Expect
+                etcd/kubelet HEALTH: Fail, kubectl TLS handshake timeouts, and
+                LoadBalancer VIPs (including k8s-gateway, hence LAN DNS for the
+                whole domain) to stop answering.
+
+              First actions:
+              - Rotate the static pod on THIS node now:
+                `talosctl -n <ip> service kubelet restart`
+              - One node at a time. Verify before moving on:
+                `talosctl -n <ip> service etcd` and `talosctl -n <ip> memory`
+              - Leave the healthiest node until last so quorum keeps serving.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-nodes/talos-nodes"
+
+        # The driver, alerted directly. Events are capped at a 1h TTL, so the
+        # live count IS the hourly creation rate, not an accumulation.
+        #
+        # Threshold from the measured 7-day baseline rather than a guess: this
+        # cluster normally sits at 3.5k-13k with occasional peaks to ~19.5k, so
+        # 20k is "above anything normal operation has produced this week". During
+        # the 2026-08-02 control-plane incident it hit 43k — more than double the
+        # weekly peak — which is the shape this is meant to catch.
+        - alert: ClusterEventChurnHigh
+          expr: |
+            sum(apiserver_storage_objects{resource="events"}) > 20000
+          for: 1h
+          labels:
+            severity: warning
+            owner: platform
+            service: apiserver
+          annotations:
+            summary: "Sustained event churn ({{ $value | humanize }} events live)"
+            description: |
+              What's happening:
+              - More than 20000 Events are live cluster-wide, against a measured
+                7-day baseline of 3.5k-13k. They expire after 1h, so this is a
+                creation rate, not a backlog.
+
+              Impact/risk:
+              - Event churn is what drives kube-apiserver's heap high-water-mark.
+                Left alone it ends in KubeAPIServerMemoryCritical and a
+                control-plane outage.
+
+              Likely causes:
+              - Kyverno re-emitting PolicyViolation events for unchanged Audit
+                findings (the dominant source on 2026-08-02: ~5.4k/hour).
+              - A crashlooping workload generating scheduling/pull events.
+
+              First actions:
+              - Top sources: `kubectl get events -A --no-headers | awk '{print $1"/"$4}' | sort | uniq -c | sort -rn | head`
+              - If PolicyViolation dominates, the durable fix is clearing the
+                violations (see the Kyverno violations dashboard), not silencing
+                them. Suppressing the event type is available as relief via
+                config.omitEvents but treats the symptom.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/kyverno-violations/kyverno-policy-violations"
