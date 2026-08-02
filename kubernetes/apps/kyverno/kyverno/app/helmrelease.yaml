@@ -112,12 +112,38 @@ spec:
     admissionController:
       replicas: 3
       apiPriorityAndFairness: true
-      resources:
-        requests:
-          cpu: 100m
-          memory: 256Mi
-        limits:
-          memory: 512Mi
+      # NOTE THE `container:` LEVEL — it is load-bearing and unique to this
+      # controller. The admission controller's deployment template reads
+      # `.Values.admissionController.container.resources`, while
+      # background/cleanup/reports read `.Values.<controller>.resources`
+      # directly. These values sat one level too high and were SILENTLY IGNORED:
+      # the chart's own defaults (128Mi request / 384Mi limit) won instead, which
+      # is exactly what the live deployment carried on 2026-08-02 while git
+      # claimed 256Mi/512Mi.
+      #
+      # That was not cosmetic. With 22 ClusterPolicies the admission controller
+      # sits at ~272Mi steady state, so a 384Mi ceiling leaves almost nothing for
+      # the reload spike a policy change causes — two of the three pods were
+      # OOMKilled (exit 137) on 2026-08-02, and while the webhook was down Flux
+      # failed the forgejo Kustomization with
+      # `failed calling webhook "validate.kyverno.svc-fail": ... EOF`. A webhook
+      # that gates every admission in the cluster must not be the tightest
+      # cgroup in it.
+      #
+      # Verify a change here actually took, rather than trusting the manifest:
+      #   kubectl -n security get deploy kyverno-admission-controller \
+      #     -o jsonpath='{.spec.template.spec.containers[0].resources}'
+      #
+      # If exit-137s recur, raise the limit rather than reverting — 512Mi is the
+      # figure this repo had already chosen, now merely made effective, and it
+      # has not yet been observed under a sustained policy-churn spike.
+      container:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 512Mi
       rbac:
         serviceAccount:
           automountServiceAccountToken: false
