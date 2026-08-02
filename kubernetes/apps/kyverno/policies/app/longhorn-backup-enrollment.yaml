@@ -58,7 +58,7 @@ metadata:
       an explicit list of PVCs, so off-cluster backup enrolment is declared in git
       rather than applied by hand.
     # Bump to force a re-run without otherwise altering the policy.
-    webgrip.io/enrolment-revision: "3"
+    webgrip.io/enrolment-revision: "4"
 spec:
   # Mutate-only policy: it never rejects anything, so there is no Enforce/Audit
   # distinction to make here.
@@ -92,6 +92,14 @@ spec:
               - vikunja/vikunja
               # Config, extensions and per-user state; the DB is CNPG-backed.
               - freshrss/freshrss
+              # n8n's /home/node/.n8n — at-rest config and any local files. The
+              # workflows and credentials live in CNPG (DB_TYPE=postgresdb) and
+              # N8N_ENCRYPTION_KEY comes from OpenBao via ESO, so this tree is
+              # recoverable-but-not-disposable. It was enrolled in NOTHING until
+              # 2026-08-02. Names the REPLACEMENT claim: the original `n8n` PVC is
+              # being retired because its PV's WFFC-era nodeAffinity excluded both
+              # workers (see kubernetes/apps/n8n/n8n/app/pvc-data.yaml).
+              - n8n/n8n-data
               # OpenBao's raft store — every secret ESO serves. Raft snapshots
               # exist, but they land on this same volume. Only reachable at all
               # because the trigger is the PV: the PVC is in `security`, which
