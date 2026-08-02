@@ -13,6 +13,45 @@ spec:
         name: authentik
         namespace: authentik
   interval: 1h
+  # authentik is single-node BY DESIGN: server (x2) and worker share one RWO
+  # /data PVC, because the cluster disallows RWX. The goauthentik chart ships
+  # RollingUpdate, which starts replacement pods BEFORE terminating the
+  # originals — so the moment the scheduler picks a different node for the new
+  # pods, they wedge in ContainerCreating on Multi-Attach and never recover. A
+  # ReadWriteOnce volume cannot attach to two nodes.
+  #
+  # Observed live on 2026-08-02: replacements landed on fringe-workstation while
+  # the running pods held /data on worker-2, and stuck. authentik pins to
+  # cpu=high, which is a SET of two nodes (fringe + worker-2 since worker-2 was
+  # added), so "same node again" was never guaranteed — the cluster-wide default
+  # topology spread added in b6d0f2dc simply made picking the other one likely.
+  #
+  # Recreate is the correct strategy for a shared-RWO workload: terminate, free
+  # the volume, then start. It costs a short SSO outage on every upgrade, which
+  # is strictly better than an upgrade that hangs forever and rolls back. Same
+  # pattern as n8n and minecraft (native) and harbor-jobservice (post-render).
+  #
+  # The durable fix is authentik media on S3 so /data stops being shared at all;
+  # until then this constraint is structural, not incidental.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: Deployment
+              name: authentik-server
+            patch: |
+              - op: replace
+                path: /spec/strategy
+                value:
+                  type: Recreate
+          - target:
+              kind: Deployment
+              name: authentik-worker
+            patch: |
+              - op: replace
+                path: /spec/strategy
+                value:
+                  type: Recreate
   install:
     timeout: 15m
     remediation:
