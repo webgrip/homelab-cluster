@@ -19,6 +19,57 @@ spec:
   values:
     fullnameOverride: kyverno
 
+    # Govern the `security` namespace like every other namespace.
+    #
+    # Kyverno is deployed INTO `security`, and the chart's default
+    # excludeKyvernoNamespace=true does exactly two things with that fact:
+    #   1. prepends [*/*,security,*] to resourceFilters
+    #   2. adds `security` to the webhook namespaceSelector
+    # Between them, NO policy of any kind applied to anything in that namespace
+    # — openbao, dependency-track, trivy and all seven guac services were outside
+    # pod-security, image verification and supply-chain enforcement entirely, and
+    # it failed silently: no PolicyReport, no event, no admission decision.
+    # Discovered 2026-08-01 while debugging why a mutate rule skipped OpenBao.
+    #
+    # Turning it off does NOT remove Kyverno's protection from itself. The ~70
+    # fine-grained self-exclusions (Pod,security,kyverno-admission-controller-*
+    # and friends) come from config.resourceFilters, which is a separate value
+    # and is unaffected.
+    #
+    # Verified before enabling: every Enforce policy was dry-run against all 38
+    # pods and 63 other resources in the namespace using the LIVE (envsubst'd)
+    # policies — 152 + 148 pass, 0 fail. Nothing in `security` violates anything,
+    # so this changes governance without changing admissibility.
+    config:
+      excludeKyvernoNamespace: false
+      # Restated because excludeKyvernoNamespace=false means the chart uses this
+      # verbatim — and the objectSelector is the part that matters.
+      #
+      # The resource webhooks are failurePolicy=Fail. Without an objectSelector,
+      # dropping `security` from the namespaceSelector would mean that if every
+      # admission-controller replica were down at once, the API server could not
+      # reach the webhook and would refuse to admit the very pods needed to
+      # recover — a self-inflicted deadlock in the one namespace that cannot
+      # tolerate it. The resourceFilters above do not help there, because they
+      # are evaluated by a Kyverno that is not running.
+      #
+      # Excluding Kyverno's own workloads by LABEL moves that decision into the
+      # API server, where it holds whether or not Kyverno is up. The label
+      # matches exactly Kyverno's 6 pods and nothing else cluster-wide.
+      webhooks:
+        namespaceSelector:
+          matchExpressions:
+            - key: kubernetes.io/metadata.name
+              operator: NotIn
+              values:
+                - kube-system
+        objectSelector:
+          matchExpressions:
+            - key: app.kubernetes.io/part-of
+              operator: NotIn
+              values:
+                - kyverno
+
     global:
       priorityClassName: system-cluster-critical
 
