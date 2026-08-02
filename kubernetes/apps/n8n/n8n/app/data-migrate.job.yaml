@@ -1,0 +1,143 @@
+---
+# One-shot copy of n8n's state directory (/home/node/.n8n, ~147 MiB) from the
+# legacy `n8n` PVC to the freshly-created `n8n-data` PVC — see pvc-data.yaml for
+# why the old volume has to be abandoned rather than repaired (its PV
+# nodeAffinity is immutable, and eviction cannot rewrite it: ADR-0002 lines
+# 90-100).
+#
+# WHY THIS POD RUNS ON A SOYO, contrary to ADR-0002's pool=worker rule:
+# both claims are RWO, so a single pod must attach BOTH at once, and the old PV
+# will only attach on soyo-1/2/3 or fringe-workstation. fringe is excluded
+# because its cilium-agent crash-loops and the resulting
+# node.cilium.io/agent-not-ready taint makes placement there a coin flip. That
+# leaves the soyos. This is a one-shot migration Job, not a resident app, and the
+# constraint comes from the very PV pin we are removing — so the exception
+# disappears together with this file.
+#
+# WHY runAsUser 0: this is a data-fidelity copy. `cp -a` preserving ownership
+# outright beats reasoning about whether a non-root uid may chown-to-itself for
+# every file in the tree. The n8n namespace enforces PSS `baseline` (which
+# permits root); `restricted` is audit/warn only, so this trips the Audit-mode
+# workload-hardening policy knowingly — the same deliberate-exception pattern as
+# harbor's blob-migrate Job pulling direct from docker.io. Everything else stays
+# hardened: read-only rootfs, all capabilities dropped, no privilege escalation,
+# no service-account token, no network needed.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: n8n-data-migrate
+  namespace: n8n
+  annotations:
+    # Job spec.template is immutable. Bump PASS below and this annotation makes
+    # Flux delete+recreate so the Job re-runs. Per-resource, NOT ks-level force:
+    # this ks also owns n8n's HelmRelease and both PVCs.
+    kustomize.toolkit.fluxcd.io/force: enabled
+  labels:
+    # Terminal-Failed Jobs are reaped hourly by the Kyverno cleanup policy and
+    # recreated by Flux = automatic retry. Complete runs are left alone.
+    cleanup.webgrip.io/retry-failed: "true"
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              # Mirrors the old PV's own nodeAffinity minus fringe-workstation
+              # (see the header). Deliberately a list, not a single hostname, so
+              # the Job still places if one soyo is cordoned for maintenance.
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - "soyo-1"
+                      - "soyo-2"
+                      - "soyo-3"
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        # Matches the app-template pod securityContext in helmrelease.yaml, so
+        # the destination tree ends up group-owned exactly as n8n expects.
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: copy
+          image: harbor.webgrip.dev/dockerhub/library/busybox:1.38.0@sha256:fd8d9aa63ba2f0982b5304e1ee8d3b90a210bc1ffb5314d980eb6962f1a9715d
+          imagePullPolicy: IfNotPresent
+          command:
+            - "/bin/sh"
+            - "-ceu"
+          env:
+            # Bump to trigger a re-run (see the force annotation above).
+            - name: PASS
+              value: "1"
+          args:
+            # NO shell variables in this script, deliberately. This ks has
+            # postBuild.substituteFrom, so envsubst rewrites these args before
+            # Kubernetes ever sees them: a brace-wrapped reference to anything
+            # absent from cluster-secrets is silently blanked, and the
+            # double-dollar escape form fails the whole Kustomization. flux-local
+            # catches neither, because a blanked script is still valid YAML.
+            # (This comment avoids writing either dollar form literally, since
+            # envsubst processes comments too.) PASS is still an env var: it
+            # exists to change the pod spec and trigger a re-run.
+            - |
+              echo "== n8n data migrate: /old (legacy PVC) -> /new (n8n-data)"
+
+              echo "== source tree"
+              ls -la /old
+              du -sh /old
+
+              # -a = -dpR: recursive, preserve mode/ownership/timestamps, never
+              # follow symlinks. Trailing /. copies the CONTENTS including
+              # dotfiles, which is the whole point here (.n8n/config holds the
+              # at-rest config; the encryption key itself comes from OpenBao via
+              # ESO, so this tree is recoverable-but-not-disposable).
+              echo "== copying"
+              cp -a /old/. /new/
+
+              # Real verification, not a size check: every regular file's md5 and
+              # path must match on both sides. A size-only comparison would pass
+              # on a truncated-then-repadded file.
+              echo "== verifying checksums"
+              cd /old && find . -type f -exec md5sum {} + | sort -k 2 > /tmp/old.sums
+              cd /new && find . -type f -exec md5sum {} + | sort -k 2 > /tmp/new.sums
+              diff /tmp/old.sums /tmp/new.sums
+
+              echo "== file count"
+              wc -l < /tmp/old.sums
+              echo "== destination tree"
+              du -sh /new
+              echo "== migrate pass complete: trees are identical"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          volumeMounts:
+            - name: old
+              mountPath: /old
+            - name: new
+              mountPath: /new
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: old
+          persistentVolumeClaim:
+            claimName: n8n
+        - name: new
+          persistentVolumeClaim:
+            claimName: n8n-data
+        - name: tmp
+          emptyDir: {}
