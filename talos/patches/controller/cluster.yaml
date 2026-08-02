@@ -31,6 +31,34 @@ cluster:
     # removing it — the failure mode of too-low is slow, of absent is an outage.
     env:
       GOMEMLIMIT: 4GiB
+    # GOMEMLIMIT above bounds what the API server USES. This bounds what the
+    # SCHEDULER RESERVES for it — a different lever, and until 2026-08-02 the
+    # second half of the same bug was still open.
+    #
+    # Talos defaults the request to 512Mi. Measured reality: 7-day p95 RSS is
+    # 5.7-6.1GB per node, and steady state after GOMEMLIMIT landed is ~3.4-3.7GB.
+    # So the scheduler was booking 512Mi for a process using ~3.5GB and treating
+    # the missing ~3GB as free space on an 11.4GB node.
+    #
+    # That is why soyo-1 reported "46% memory requested" while actually sitting
+    # at 80%: the scheduler kept placing infra onto a control plane it believed
+    # was half empty. Exactly the same class of error as the worker-side pins
+    # fixed the same day — a request that does not describe the workload makes
+    # every placement decision downstream of it wrong.
+    #
+    # 3Gi, not 4Gi: sized to observed steady state rather than to GOMEMLIMIT, so
+    # the soyos stay able to host the recovery-brain infra (coredns, cert-manager,
+    # flux, external-secrets, k8s-gateway) that ADR-0002 deliberately keeps there.
+    # This raises soyo-1's booked memory from ~46% to ~72% — honest, and still
+    # leaves headroom.
+    #
+    # requests ONLY, still no limits: unchanged from the reasoning above — a hard
+    # memory limit on a static pod means the kubelet OOM-kills the API server.
+    # Raising a request cannot evict anything; it only changes what lands here next.
+    resources:
+      requests:
+        cpu: 200m
+        memory: 3Gi
   controllerManager:
     extraArgs:
       bind-address: 0.0.0.0
