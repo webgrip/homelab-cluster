@@ -77,9 +77,9 @@ Changes to `talos/patches/` (such as the etcd heartbeat/election-timeout tuning)
 
 ```bash
 # Drains workloads, applies config, waits for Ready, uncordons — one node at a time
-task talos:apply-node-safe IP=10.0.0.20 HOSTNAME=soyo-1
-task talos:apply-node-safe IP=10.0.0.21 HOSTNAME=soyo-2
-task talos:apply-node-safe IP=10.0.0.22 HOSTNAME=soyo-3
+task talos:apply-node-safe NODE=soyo-1
+task talos:apply-node-safe NODE=soyo-2
+task talos:apply-node-safe NODE=soyo-3
 ```
 
 ## Known issues after node reboots

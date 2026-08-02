@@ -30,10 +30,13 @@ under `--mode=auto` only when the node has reboot-requiring config drift (e.g. a
 `install.image`). Choose per change:
 ```bash
 # label/annotation-only change (esp. etcd nodes): apply live, stage any drift, NEVER reboot
-mise exec -- task talos:apply-node IP=<ip> MODE=no-reboot       # soyo-3: IP=10.0.0.22
+mise exec -- task talos:apply-node NODE=<hostname> MODE=no-reboot   # NODE takes a hostname or the configured IP
 
 # change that genuinely needs a reboot (disk, kernel, network): drain→apply→wait→uncordon
-mise exec -- task talos:apply-node-safe IP=<ip> HOSTNAME=<name> # never a bare reboot-y apply
+mise exec -- task talos:apply-node-safe NODE=<hostname>             # never a bare reboot-y apply
+# AT=<current-ip> when the machine is not yet at its configured address
+# (fresh node in maintenance mode, or mid-renumber):
+mise exec -- task talos:apply-node NODE=worker-2 AT=10.0.0.29
 ```
 Rebooting a **storage node** churns Longhorn (degraded waves + zombie replicas — see the `longhorn`
 skill); prefer `MODE=no-reboot` and reboot deliberately when unavoidable.

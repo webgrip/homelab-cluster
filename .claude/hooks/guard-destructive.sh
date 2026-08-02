@@ -33,7 +33,7 @@ fi
 has 'helm[[:space:]]+(install|upgrade|uninstall|delete|rollback)[[:space:]]' && deny "direct helm release mutation."
 has 'flux[[:space:]]+(delete|uninstall)[[:space:]]' && deny "flux delete/uninstall."
 has 'talosctl[[:space:]].*(reset|apply-config|bootstrap|wipe|upgrade(-k8s)?([[:space:]]|$)|edit[[:space:]]+machineconfig)' \
-  && deny "destructive talosctl op — use 'task talos:apply-node-safe IP=<ip> HOSTNAME=<name>'."
+  && deny "destructive talosctl op — use 'task talos:apply-node-safe NODE=<hostname> [AT=<current-ip>]'."
 # Recursive remove of catastrophic targets only (root, home, parent, glob) — not arbitrary abs paths.
 has 'rm[[:space:]]+-[a-zA-Z]*[rf][a-zA-Z]*[[:space:]]+(-[a-zA-Z-]+[[:space:]]+)*(/|~|\$HOME|\.\.|\*)([[:space:]]|$)' \
   && deny "recursive remove of a catastrophic path (/, ~, .., \$HOME, or *)."

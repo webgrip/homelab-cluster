@@ -176,7 +176,7 @@ This repo’s just recipe supports applying to a maintenance-mode node by passin
 Run:
 
 ```bash
-just talos-apply-node IP=10.0.0.23 INSECURE=true
+mise exec -- task talos:apply-node NODE=<hostname> AT=<maintenance-mode-ip> INSECURE=true
 ```
 
 What it does (high level):
@@ -297,7 +297,7 @@ on a freshly-added node — but on an *older* node whose stored `install.image` 
 nodes, force the live path:
 
 ```bash
-mise exec -- task talos:apply-node IP=<ip> MODE=no-reboot
+mise exec -- task talos:apply-node NODE=<hostname> MODE=no-reboot
 ```
 
 `no-reboot` applies what it can live and **stages** any reboot-requiring drift (it refuses, never
