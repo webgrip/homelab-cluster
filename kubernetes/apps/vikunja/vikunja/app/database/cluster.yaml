@@ -23,6 +23,14 @@ spec:
   affinity:
     nodeSelector:
       node.webgrip.io/pool: worker
+    # CNPG's default anti-affinity is `preferred`, and until worker-2 joined on
+    # 2026-08-02 exactly ONE node satisfied pool=worker — so both instances of
+    # this 2-replica cluster ran on worker-1 and the PDB reported ALLOWED
+    # DISRUPTIONS: 0. Two replicas, one failure domain: HA in name only. This one
+    # matters more than most — the roadmap board lives here (ADR-0043).
+    # `required` is satisfiable now that the pool has three nodes.
+    enablePodAntiAffinity: true
+    podAntiAffinityType: required
   inheritedMetadata:
     annotations:
       reloader.stakater.com/auto: "true"
