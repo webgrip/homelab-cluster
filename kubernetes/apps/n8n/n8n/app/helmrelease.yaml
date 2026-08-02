@@ -26,14 +26,17 @@ spec:
         pod:
           # Pin to the worker pool off the soyos (ADR-0002) via native nodeSelector
           # + strategy:Recreate above — NOT the postRenderer component, which
-          # deadlocks helm-controller on this RWO move. Lands on fringe (WFFC-era
-          # volume predates worker-1).
+          # deadlocks helm-controller on this RWO move.
           nodeSelector:
-            # ram=high resolves to worker-1 (24Gi): moved off the memory-starved
-            # fringe node in the 2026-07-25 rebalance (VIK-595/ADR-0049). Still
-            # inside pool=worker; the RWO volume re-attaches via Longhorn and
-            # strategy:Recreate handles the single-writer handoff.
-            node.webgrip.io/ram: high
+            # `pool: worker`, NOT `ram: high`. ram=high resolves to worker-1 alone
+            # (24Gi), and worker-1 was excluded by the old volume's PV
+            # nodeAffinity — an empty intersection that made n8n unschedulable and
+            # took it down on 2026-08-02. The replacement volume (pvc-data.yaml)
+            # has no PV pin at all, and n8n peaks well under 400Mi, so it has no
+            # business reserving the cluster's only 24Gi node. The RWO volume
+            # re-attaches via Longhorn and strategy:Recreate handles the
+            # single-writer handoff.
+            node.webgrip.io/pool: worker
           securityContext:
             fsGroup: 1000
             fsGroupChangePolicy: OnRootMismatch
@@ -69,7 +72,9 @@ spec:
             targetPort: http
     persistence:
       data:
-        existingClaim: n8n
+        # n8n-data, not n8n — see pvc-data.yaml. The legacy claim's PV carries an
+        # immutable WFFC-era nodeAffinity excluding both workers.
+        existingClaim: n8n-data
         advancedMounts:
           n8n:
             app:
