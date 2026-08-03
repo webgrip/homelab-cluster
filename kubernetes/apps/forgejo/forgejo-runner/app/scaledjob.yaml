@@ -189,10 +189,28 @@ spec:
                 # reached via the forgejo-dind Service (internalTrafficPolicy: Local — always the
                 # daemon on THIS pod's node, preserving the same-node bind-mount contract).
                 # config.yaml's docker_host is "-" so this env is authoritative for job-container
-                # pulls and docker builds. Fallback if the service path misbehaves:
-                # export DOCKER_HOST="tcp://${NODE_IP}:2375" (hostPort kept during the staged
-                # migration — see dind-daemonset.yaml).
-                export DOCKER_HOST="tcp://forgejo-dind.forgejo.svc.cluster.local:2375"
+                # pulls and docker builds.
+                #
+                # The Service name is tried first but is NOT trusted blindly: a cluster-DNS blip
+                # took the whole nightly gate down on 2026-08-01 ("cannot connect to the Docker
+                # daemon ... lookup forgejo-dind.forgejo.svc.cluster.local: i/o timeout", run 679).
+                # The hostPort on NODE_IP reaches the same daemon on this node without DNS, so
+                # fall back to it rather than letting a name-resolution hiccup fail the job. Probe
+                # with bash's /dev/tcp, which exercises resolution AND reachability in one go.
+                dind_svc=forgejo-dind.forgejo.svc.cluster.local
+                dind_endpoint="tcp://$NODE_IP:2375"
+                for attempt in 1 2 3; do
+                  if (exec 3<>/dev/tcp/$dind_svc/2375) 2>/dev/null; then
+                    dind_endpoint="tcp://$dind_svc:2375"
+                    break
+                  fi
+                  echo "dind Service not reachable yet (attempt $attempt/3)"
+                  sleep 2
+                done
+                if [ "$dind_endpoint" = "tcp://$NODE_IP:2375" ]; then
+                  echo "falling back to the node-local hostPort: $dind_endpoint"
+                fi
+                export DOCKER_HOST="$dind_endpoint"
                 # --wait blocks until Forgejo assigns a task. Required for the warm pool
                 # (minReplicaCount): these pods start with no pending job, so without --wait they'd
                 # exit immediately and KEDA would hot-loop respawning them. Harmless for burst pods
