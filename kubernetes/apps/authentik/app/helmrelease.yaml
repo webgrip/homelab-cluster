@@ -46,6 +46,28 @@ spec:
           # That failed 6 upgrades and rolled back each time (2026-08-03).
           # A strategic merge with an explicit null tells SSA to REMOVE the
           # field rather than leave it inherited.
+          # CO-LOCATION, not spreading. All three authentik pods (2x server +
+          # worker) mount ONE ReadWriteOnce /data PVC, so they must land on the
+          # SAME node — a ReadWriteOnce volume cannot attach to two nodes.
+          #
+          # Two separate forces were pulling them apart on 2026-08-03:
+          #  1. the cluster-wide default topologySpreadConstraint added in
+          #     b6d0f2dc (maxSkew 1 across hostnames), and
+          #  2. the chart's own `global.affinity.podAntiAffinity: soft`.
+          # Result: one pod took the volume on worker-2 and the other two wedged
+          # on fringe with "Multi-Attach error". The values block below had
+          # explicitly warned "do NOT add a topologySpreadConstraint here"; the
+          # cluster-wide default bypassed that warning by applying globally.
+          #
+          # Per KEP-1258 a pod that declares ANY topologySpreadConstraints opts
+          # out of the cluster defaults entirely — that is what the maxSkew: 100
+          # entry below is for. It is not a spreading rule, it is the documented
+          # opt-out idiom. The preferred podAffinity then actively pulls the pods
+          # together, and preferred (not required) avoids the bootstrap deadlock
+          # where the first pod has no peer to attract it.
+          #
+          # The durable fix remains authentik media on S3, after which /data stops
+          # being shared and normal spreading becomes correct.
           - target:
               kind: Deployment
               name: authentik-server
@@ -58,6 +80,24 @@ spec:
                 strategy:
                   type: Recreate
                   rollingUpdate: null
+                template:
+                  spec:
+                    topologySpreadConstraints:
+                      - maxSkew: 100
+                        topologyKey: kubernetes.io/hostname
+                        whenUnsatisfiable: ScheduleAnyway
+                        labelSelector:
+                          matchLabels:
+                            app.kubernetes.io/instance: authentik
+                    affinity:
+                      podAffinity:
+                        preferredDuringSchedulingIgnoredDuringExecution:
+                          - weight: 100
+                            podAffinityTerm:
+                              topologyKey: kubernetes.io/hostname
+                              labelSelector:
+                                matchLabels:
+                                  app.kubernetes.io/instance: authentik
           - target:
               kind: Deployment
               name: authentik-worker
@@ -70,6 +110,24 @@ spec:
                 strategy:
                   type: Recreate
                   rollingUpdate: null
+                template:
+                  spec:
+                    topologySpreadConstraints:
+                      - maxSkew: 100
+                        topologyKey: kubernetes.io/hostname
+                        whenUnsatisfiable: ScheduleAnyway
+                        labelSelector:
+                          matchLabels:
+                            app.kubernetes.io/instance: authentik
+                    affinity:
+                      podAffinity:
+                        preferredDuringSchedulingIgnoredDuringExecution:
+                          - weight: 100
+                            podAffinityTerm:
+                              topologyKey: kubernetes.io/hostname
+                              labelSelector:
+                                matchLabels:
+                                  app.kubernetes.io/instance: authentik
   install:
     timeout: 15m
     remediation:
