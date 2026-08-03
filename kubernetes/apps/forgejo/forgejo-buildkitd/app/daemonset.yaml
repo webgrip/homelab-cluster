@@ -34,6 +34,18 @@
 # `:cache` registry tag; what changes is that it is now also local. Branch builds already push
 # `cache-from` only and never `cache-to` (see on_source_change.yml), which is what keeps a branch
 # from writing into what main reads.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: forgejo-buildkitd
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo-buildkitd
+# buildkitd never calls the Kubernetes API. It gets its own identity (rather than riding
+# `default`) and no token, so require-non-default-serviceaccount and
+# require-serviceaccount-token-opt-out are satisfied honestly instead of waived.
+automountServiceAccountToken: false
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -54,6 +66,8 @@ spec:
         # start and a policy edit silently does nothing until an unrelated rollout.
         reloader.stakater.com/auto: "true"
     spec:
+      serviceAccountName: forgejo-buildkitd
+      automountServiceAccountToken: false
       # Same placement as the runner pods and the dind daemon: this only serves the worker pool.
       nodeSelector:
         node.webgrip.io/pool: worker
