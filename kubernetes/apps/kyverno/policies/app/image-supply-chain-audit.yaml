@@ -51,20 +51,9 @@ spec:
           - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
             pattern:
               image: "*@sha256:*"
-    - name: disallow-latest-tag-even-with-digest
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-              namespaceSelector:
-                matchExpressions: *applicationNamespaces
-      validate:
-        message: "Use immutable version tags with digests; avoid latest even when digest-pinned."
-        foreach:
-          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
-            pattern:
-              image: "!*:latest@*"
+    # disallow-latest-tag-even-with-digest and require-fully-qualified-images were split
+    # out to image-supply-chain-enforce in wave 4 of the audit->enforce campaign
+    # (ADR-0032). They now ENFORCE; this policy keeps only the rules that cannot yet.
     - name: require-approved-registries
       # Harbor is the ONLY approved OCI host. Every other registry (docker.io,
       # ghcr.io, quay.io, registry.k8s.io, gcr.io, public.ecr.aws, mcr...) must
@@ -87,24 +76,3 @@ spec:
           - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
             pattern:
               image: "harbor.${SECRET_DOMAIN}/*"
-    - name: require-fully-qualified-images
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-              namespaceSelector:
-                matchExpressions: *applicationNamespaces
-      validate:
-        message: "Images should be fully qualified with an explicit registry hostname."
-        foreach:
-          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
-            deny:
-              conditions:
-                any:
-                  - key: "{{ contains(element.image, '/') }}"
-                    operator: Equals
-                    value: false
-                  - key: "{{ contains(split(element.image, '/')[0], '.') || contains(split(element.image, '/')[0], ':') || split(element.image, '/')[0] == 'localhost' }}"
-                    operator: Equals
-                    value: false

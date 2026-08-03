@@ -1,0 +1,87 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app
+  labels:
+    kubernetes.io/metadata.name: app
+---
+# FAIL disallow-latest-tag-even-with-digest: digest-pinned, but still tagged `latest`.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: latest-digest
+  namespace: app
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/acme/app:latest@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+---
+# FAIL require-fully-qualified-images: has a `/`, but the first segment ("acme") is a
+# Docker Hub namespace, not a registry host. This is the exact shape that the CNPG drill
+# CronJobs shipped (`alpine/k8s:...`) and that PolicyReports could not see, because their
+# pods only exist for seconds a day.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: implicit-dockerhub-namespace
+  namespace: app
+spec:
+  containers:
+    - name: app
+      image: acme/app:1.0.0@sha256:1111111111111111111111111111111111111111111111111111111111111111
+---
+# FAIL require-fully-qualified-images: no `/` at all — a bare Docker Hub library image.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bare-library-image
+  namespace: app
+spec:
+  containers:
+    - name: app
+      image: nginx:1.29.2@sha256:2222222222222222222222222222222222222222222222222222222222222222
+---
+# FAIL require-fully-qualified-images on an INIT container specifically: the rule walks
+# ephemeralContainers + initContainers + containers, so a compliant app container must not
+# mask a non-compliant init container.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unqualified-init-container
+  namespace: app
+spec:
+  initContainers:
+    - name: init
+      image: busybox:1.37@sha256:3333333333333333333333333333333333333333333333333333333333333333
+  containers:
+    - name: app
+      image: harbor.example.com/acme/app:1.0.0@sha256:4444444444444444444444444444444444444444444444444444444444444444
+---
+# PASS both rules. Without a pass case the suite cannot tell a WORKING policy from a
+# policy that rejects everything (or from a crashing checker) — see the note in
+# scripts/check-kyverno-test-coverage.sh.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fully-qualified-versioned
+  namespace: app
+spec:
+  initContainers:
+    - name: init
+      image: harbor.example.com/dockerhub/library/busybox:1.37@sha256:5555555555555555555555555555555555555555555555555555555555555555
+  containers:
+    - name: app
+      image: harbor.example.com/dockerhub/acme/app:1.0.0@sha256:6666666666666666666666666666666666666666666666666666666666666666
+---
+# PASS: a port in the registry host (`:5000`) is what makes an otherwise host-looking
+# first segment qualify, and a localhost registry is explicitly allowed by the rule.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: localhost-registry-with-port
+  namespace: app
+spec:
+  containers:
+    - name: app
+      image: localhost:5000/acme/app:1.0.0@sha256:7777777777777777777777777777777777777777777777777777777777777777
