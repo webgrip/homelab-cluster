@@ -45,15 +45,26 @@ prepare_kyverno_test_workspace() {
     # to Enforce with ZERO CLI test coverage and CI would stay green. Discovering by
     # kind closes that hole and keeps the test set in lock-step with the policies on
     # disk. See ADR-0032 + scripts/check-kyverno-test-coverage.sh.
+    # Discovery is `find -print0` + a per-file `grep -q`, NOT `grep -rlZ`. `-Z` means
+    # --null only in GNU grep; in ugrep (the default `grep` on a Homebrew Mac) it means
+    # --fuzzy, so the output carries no NUL separators, `read -r -d ''` never completes a
+    # record, and this loop copied ZERO policies while exiting 0 — the test then died with
+    # "stat /work/policies/<first-test>.yaml: no such file or directory". Linux CI hid it
+    # because GNU grep honours -Z. `find -print0` and `grep -q` behave the same everywhere.
     local policy
     while IFS= read -r -d '' policy; do
+        grep -q -E '^kind: (ClusterPolicy|Policy|PolicyException|ClusterCleanupPolicy)$' "${policy}" || continue
         sed "s|\${SECRET_DOMAIN}|${KYVERNO_TEST_SECRET_DOMAIN}|g; s|__SECRET_DOMAIN__|${KYVERNO_TEST_SECRET_DOMAIN}|g" \
             "${policy}" >"${workspace}/policies/$(basename "${policy}")"
-    done < <(grep -rlZ -E '^kind: (ClusterPolicy|Policy|PolicyException|ClusterCleanupPolicy)$' \
-        "${policy_dirs[0]}"/*.yaml "${policy_dirs[1]}"/*.yaml)
+    done < <(find "${policy_dirs[@]}" -maxdepth 1 -type f -name '*.yaml' -print0)
 
+    # NOT `sed -i` — GNU takes the suffix as an optional attached argument, BSD/macOS sed
+    # requires it as a separate one, so `sed -i "s|...|"` there consumes the EXPRESSION as
+    # the backup suffix and then reads the file as the script ("invalid command code f").
+    # Substituting into a temp file and moving it back behaves identically on both.
     while IFS= read -r -d '' file; do
-        sed -i "s|\${SECRET_DOMAIN}|${KYVERNO_TEST_SECRET_DOMAIN}|g; s|__SECRET_DOMAIN__|${KYVERNO_TEST_SECRET_DOMAIN}|g" "${file}"
+        sed "s|\${SECRET_DOMAIN}|${KYVERNO_TEST_SECRET_DOMAIN}|g; s|__SECRET_DOMAIN__|${KYVERNO_TEST_SECRET_DOMAIN}|g" \
+            "${file}" >"${file}.tmp" && mv -- "${file}.tmp" "${file}"
     done < <(find "${workspace}/cli" "${workspace}/chainsaw" -type f \( -name '*.yaml' -o -name '*.yml' \) -print0)
 
     chmod -R a+rwX "${workspace}"
