@@ -56,14 +56,25 @@ spec:
           # actually completes. Same reasoning as n8n and minecraft, which set
           # strategy: Recreate natively — this one needs a post-render patch only
           # because the chart does not expose it.
+          # `rollingUpdate: null` is REQUIRED, not decorative — see the authentik
+          # HelmRelease for the full write-up. Short version: a JSON-6902
+          # `replace /spec/strategy` only rewrites the rendered manifest, but Flux
+          # applies SERVER-SIDE and the live Deployment still carries the
+          # rollingUpdate block Kubernetes defaulted in. SSA merges them and the
+          # API rejects "rollingUpdate: Forbidden ... when type is 'Recreate'".
+          # An explicit null tells SSA to remove the inherited field.
           - target:
               kind: Deployment
               name: harbor-jobservice
             patch: |
-              - op: replace
-                path: /spec/strategy
-                value:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: harbor-jobservice
+              spec:
+                strategy:
                   type: Recreate
+                  rollingUpdate: null
           - target:
               kind: Deployment
               name: harbor-core

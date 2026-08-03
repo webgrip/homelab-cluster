@@ -36,22 +36,40 @@ spec:
   postRenderers:
     - kustomize:
         patches:
+          # `rollingUpdate: null` is REQUIRED, not decorative. A JSON-6902
+          # `replace /spec/strategy` only rewrites the rendered manifest; Flux
+          # then applies SERVER-SIDE, and the live Deployment still carries the
+          # rollingUpdate block Kubernetes defaulted in when the type was
+          # RollingUpdate. SSA merges the two and the API rejects the result:
+          #   spec.strategy.rollingUpdate: Forbidden: may not be specified when
+          #   strategy `type` is 'Recreate'
+          # That failed 6 upgrades and rolled back each time (2026-08-03).
+          # A strategic merge with an explicit null tells SSA to REMOVE the
+          # field rather than leave it inherited.
           - target:
               kind: Deployment
               name: authentik-server
             patch: |
-              - op: replace
-                path: /spec/strategy
-                value:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: authentik-server
+              spec:
+                strategy:
                   type: Recreate
+                  rollingUpdate: null
           - target:
               kind: Deployment
               name: authentik-worker
             patch: |
-              - op: replace
-                path: /spec/strategy
-                value:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: authentik-worker
+              spec:
+                strategy:
                   type: Recreate
+                  rollingUpdate: null
   install:
     timeout: 15m
     remediation:
