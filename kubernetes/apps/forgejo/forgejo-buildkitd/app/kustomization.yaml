@@ -1,0 +1,10 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  # GC policy first: the DaemonSet mounts it, and a missing ConfigMap would leave the daemon
+  # pending rather than running with an unbounded cache.
+  - ./configmap.yaml
+  # DaemonSet + node-local Service + CiliumNetworkPolicy.
+  - ./daemonset.yaml
