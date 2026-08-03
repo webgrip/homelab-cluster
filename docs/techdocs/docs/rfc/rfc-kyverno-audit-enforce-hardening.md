@@ -50,8 +50,33 @@ workload at admission.** Two structural facts shape everything:
 The 14-wave order, gating, and prerequisites live in
 [the implementation plan](rfc-kyverno-audit-enforce-hardening.md#waves) and ADR-0032. Each wave:
 clean PolicyReport for the promoted rules (base **and** autogen = 0 unwaived) for ≥1 reconcile
-cycle → CLI/chainsaw test added → `mise exec -- just kyverno-test` + flux-local green → flip → watch
+cycle → **pod-template sweep (below)** → CLI/chainsaw test added, with a `result: pass` case as
+well as a `result: fail` one → `mise exec -- just kyverno-test` + flux-local green → flip → watch
 one admission cycle. One wave per commit, spaced apart (the batched-rollout storage-collapse memory).
+
+> **A clean PolicyReport is NOT sufficient to open a wave gate.** Reports only cover resources
+> that *exist*. Anything that materialises briefly — CronJob and Job pods above all — contributes
+> no findings between runs, so a rule can read 0 FAILs and still deny those pods the moment they
+> are created.
+>
+> This is not hypothetical: it was caught during wave 4 on 2026-08-03. Both CNPG drill CronJobs
+> (`cnpg-restore-test`, `cnpg-disaster-recovery-check`) referenced a bare `alpine/k8s:1.36.2@…`,
+> which `require-fully-qualified-images` denies. Their pods live for seconds a day, so
+> `require-fully-qualified-images` reported **0 live FAILs** and passed the gate as written. Had
+> the wave shipped on that basis, it would have silently killed every backup-restore drill and
+> disaster-recovery check across eight namespaces at the next schedule tick — failing exactly the
+> safety net you would want working when you find out.
+>
+> So before any flip, sweep pod **templates**, not running pods — every
+> Deployment/StatefulSet/DaemonSet/Job/CronJob/Pod in the in-scope namespaces — and evaluate the
+> promoted rules against each image or field yourself. Kyverno's `autogen-controllers` annotation
+> lists only `DaemonSet,Deployment,StatefulSet`, so CronJob and Job pod templates get **no**
+> autogen rule and are invisible at controller admission too; the base rule first bites at pod
+> creation, in production, unattended.
+>
+> Also verify that any PolicyException covering the promoted rules is repointed at the new policy.
+> Exceptions are keyed by `policyName`, so a split silently orphans every waiver that still names
+> the old policy.
 
 <a name="waves"></a>
 
@@ -60,7 +85,7 @@ one admission cycle. One wave per commit, spaced apart (the batched-rollout stor
 | 1 | `require-pod-probes` (whole) | Enforce | probe sweep on first-party apps |
 | 2 | `image-hygiene` (whole) | Enforce | reconcile namespaceSelector to canonical set |
 | 3 | `rbac-least-privilege` — 4 clean rules | split→Enforce | none |
-| 4 | `image-supply-chain` — latest-tag + fully-qualified | split→Enforce | none |
+| 4 | `image-supply-chain` — latest-tag + fully-qualified | split→Enforce | **SHIPPED 2026-08-03** — `image-supply-chain-enforce`; prereq was NOT "none" (see the gate note above) |
 | 5 | `namespace-tenancy` — netpol-shape rules | split→Enforce | none |
 | 6 | `image-verify` — `verify-kyverno-images-keyless` | split→Enforce | none |
 | 7 | `secrets-observability-ops` — monitor-label rules | split→Enforce | label sweep (49 PrometheusRules) |
