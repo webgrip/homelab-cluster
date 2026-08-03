@@ -1,3 +1,4 @@
+---
 apiVersion: chainsaw.kyverno.io/v1alpha2
 kind: Configuration
 metadata:
@@ -8,12 +9,17 @@ spec:
   execution:
     failFast: true
     parallel: 1
+  # Teardown budgets, not assertion budgets. Every DELETE in these suites goes through Kyverno's
+  # validate.kyverno.svc-fail webhook (failurePolicy: Fail, 10s), so on a loaded CI node a
+  # namespace teardown that works fine locally in <2s can take tens of seconds — nightly runs 724
+  # and 769 both passed every assertion and then failed in CLEANUP. assert/error stay tight so a
+  # genuinely broken policy still fails fast.
   timeouts:
-    apply: 30s
-    assert: 60s
-    cleanup: 60s
-    delete: 30s
-    error: 30s
+    apply: 60s
+    assert: 120s
+    cleanup: 300s
+    delete: 180s
+    error: 60s
   namespace:
     fastDelete: true
   report:

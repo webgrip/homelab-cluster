@@ -23,6 +23,65 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Any failure dumps the cluster before the EXIT trap deletes it. Without this the only evidence a
+# failed run leaves behind is whatever chainsaw itself printed — which is how nightly 724/769 got
+# as far as "context deadline exceeded" with no way to tell whether Kyverno was slow, evicted or
+# gone. ERR runs before EXIT, so the cluster is still alive here.
+dump_cluster_state() {
+    local exit_code=$?
+    trap - ERR
+
+    if ! docker inspect "${cluster_name}-control-plane" >/dev/null 2>&1; then
+        return "${exit_code}"
+    fi
+
+    log warn "Run failed — dumping KinD cluster state" "exit=${exit_code}"
+    kind_kubectl "${cluster_name}" get pods -A -o wide || true
+    kind_kubectl "${cluster_name}" -n kyverno get deploy || true
+    kind_kubectl "${cluster_name}" get events -A --sort-by=.lastTimestamp 2>/dev/null | tail -50 || true
+    kind_kubectl "${cluster_name}" -n kyverno logs deploy/kyverno-admission-controller --tail=60 || true
+    return "${exit_code}"
+}
+trap dump_cluster_state ERR
+
+# One KinD cluster at a time per docker daemon. The shared per-node dind runs every CI job on the
+# node, so two chainsaw jobs stand up two KinD clusters on one disk — that overlap (runs 587/588)
+# is what starved etcd, and it is what makes teardown flaky: Kyverno's validate.kyverno.svc-fail
+# webhook is failurePolicy=Fail with a 10s timeout and covers DELETE on namespaces, so a
+# contended admission controller turns the suites' namespace teardown into a hard error (nightly
+# 724 and 769). Removing the contention beats padding timeouts around it.
+#
+# The lock lives in TMPDIR, which in CI is /mnt/ci-shared — the node-wide hostPath every runner
+# pod on that node mounts — so this really is one lock per daemon, not per pod. FD 9 rather than
+# {fd} so the script still parses under macOS's bash 3.2; flock itself is Linux-only, and a dev
+# box runs one suite at a time anyway.
+#
+# `timeout <n> flock -x 9`, NOT `flock -w <n> 9`: busybox's flock has no -w and exits 1 on the
+# unrecognized option, so the -w form silently degraded to no lock at all on any busybox-based
+# runner (caught by running two suites concurrently — both announced "not acquired" instantly).
+# The blocking form plus timeout is the same bounded wait on util-linux and busybox alike, and
+# the lock is held by THIS shell through FD 9 for as long as the script runs.
+# KIND_LOCK_FILE exists because advisory locks need a real filesystem: on a macOS bind mount
+# flock returns success for every caller and serializes nothing, so a dev-box harness must point
+# this at a Linux fs to exercise the lock at all. In CI the default is correct — /mnt/ci-shared is
+# a tmpfs hostPath.
+lock_file="${KIND_LOCK_FILE:-${TMPDIR:-/tmp}/kyverno-chainsaw.lock}"
+lock_wait="${KIND_LOCK_WAIT_SECONDS:-1800}"
+if command -v flock >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
+    exec 9>"${lock_file}"
+    log info "Waiting for the per-daemon KinD lock" "file=${lock_file}" "timeout=${lock_wait}s"
+    if timeout "${lock_wait}" flock -x 9; then
+        log info "Acquired the KinD lock"
+    else
+        # Never fail the run on the lock: a stuck holder should degrade to the old concurrent
+        # behaviour, not take the gate down with it.
+        log warn "KinD lock not acquired before the deadline — running concurrently" \
+            "waited=${lock_wait}s"
+    fi
+else
+    log info "flock/timeout unavailable — skipping the per-daemon KinD lock"
+fi
+
 prepare_kyverno_test_workspace "${ROOT_DIR}" "${workspace}"
 mkdir -p "${workspace}/chainsaw/reports"
 chmod -R a+rwX "${workspace}/chainsaw"
@@ -107,24 +166,17 @@ kind_kubectl "${cluster_name}" wait --for=condition=Established crd/clusterpolic
 #
 # 180s was not enough on a contended CI node (run 587 died at "0 of 1 updated replicas are
 # available"). A rollout that needs >7min is a real failure, not slowness, so the ceiling stays
-# finite — and when it IS hit, dump why instead of leaving "timed out waiting for the condition"
-# as the only evidence.
-wait_for_rollout() {
-    local deployment="${1:?deployment is required}"
+# finite; the ERR trap dumps the cluster when it IS hit.
+kind_kubectl "${cluster_name}" -n kyverno rollout status deploy/kyverno-admission-controller --timeout=420s
+kind_kubectl "${cluster_name}" -n kyverno rollout status deploy/kyverno-background-controller --timeout=420s
 
-    if kind_kubectl "${cluster_name}" -n kyverno rollout status "deploy/${deployment}" --timeout=420s; then
-        return 0
-    fi
-
-    log warn "Rollout failed — dumping cluster state" "deployment=${deployment}"
-    kind_kubectl "${cluster_name}" -n kyverno get pods -o wide || true
-    kind_kubectl "${cluster_name}" -n kyverno describe "deploy/${deployment}" || true
-    kind_kubectl "${cluster_name}" -n kyverno get events --sort-by=.lastTimestamp | tail -40 || true
-    return 1
-}
-
-wait_for_rollout kyverno-admission-controller
-wait_for_rollout kyverno-background-controller
+# The reports and cleanup controllers install but no suite exercises them (grep-verified), and the
+# reports controller writes a PolicyReport for every resource the suites touch — pure etcd and CPU
+# load on a node that has already proven it can spare neither. Scale them away so the admission
+# controller, which every teardown DELETE must round-trip through inside a 10s webhook timeout,
+# gets the headroom.
+kind_kubectl "${cluster_name}" -n kyverno scale --replicas=0 \
+    deploy/kyverno-reports-controller deploy/kyverno-cleanup-controller
 
 log info "Applying Kyverno policies under test"
 apply_with_webhook_retry() {
