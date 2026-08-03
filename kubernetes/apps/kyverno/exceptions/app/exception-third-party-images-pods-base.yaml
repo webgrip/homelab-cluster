@@ -1,0 +1,52 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/policyexception_v2.json
+# Pod-level (base-rule) companion to exception-third-party-images, exactly as
+# exception-third-party-pods-base is to exception-third-party-workloads.
+#
+# exception-third-party-images waives the CONTROLLERS via autogen-* rules, which
+# covers admission. Kyverno's background scan then re-evaluates the live Pods against
+# the BASE rules, which a controller-scoped exception does not cover — so the waived
+# workload keeps producing a Pod-level finding. That is not cosmetic: ADR-0032 gates
+# each enforce wave on "base AND autogen = 0 unwaived", so a stray Pod-level FAIL
+# blocks the promotion of a rule whose controller finding is already accepted.
+#
+# Scope is deliberately ONE rule and ONE app.
+#
+# NOT waived here, on purpose:
+#   - require-approved-registries. ADR-0033 keeps that rule Audit indefinitely and
+#     states its FAILs are the intended registry-sovereignty drift signal. Silencing
+#     it at Pod level would delete the signal the ADR is explicitly preserving.
+#   - require-image-digest. Its live failures (ploeg workers, erfbeeld, CNPG) are
+#     real and fixable; they belong to the wave-11 digest-pinning sweep, not a waiver.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: exception-third-party-images-pods-base
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      Excalidraw's upstream image publishes no immutable version tags (only `latest`
+      and abandoned 2021-era sha-<commit> tags), so the digest pin — not the tag — is
+      the real protection against a silent tag move; see the note in the excalidraw
+      HelmRelease and VIK-243, closed verify-and-close on that basis. The controller
+      is already waived in exception-third-party-images; this closes the matching
+      Pod-level finding so the wave-4 promotion gate can read clean. Remove if
+      upstream ever publishes versioned tags. Pods are matched by label selector
+      because their names are generated (governance forbids wildcard names).
+spec:
+  exceptions:
+    - policyName: image-supply-chain-audit
+      ruleNames:
+        - disallow-latest-tag-even-with-digest
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - excalidraw
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: excalidraw
