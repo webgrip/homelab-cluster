@@ -5,6 +5,7 @@ metadata:
   name: rbac-least-privilege
 policies:
   - ../../policies/rbac-least-privilege-audit.yaml
+  - ../../policies/rbac-least-privilege-enforce.yaml
 resources:
   - resources.yaml
 results:
@@ -14,27 +15,56 @@ results:
       - app/wildcard-reader
     kind: Role
     result: fail
-  - policy: rbac-least-privilege-audit
+  - policy: rbac-least-privilege-enforce
     rule: disallow-default-serviceaccount-rolebindings
     resources:
       - app/default-sa-binding
     kind: RoleBinding
     result: fail
-  - policy: rbac-least-privilege-audit
+  - policy: rbac-least-privilege-enforce
     rule: disallow-cluster-admin-rolebindings
     resources:
       - app/cluster-admin-binding
     kind: RoleBinding
     result: fail
-  - policy: rbac-least-privilege-audit
+  - policy: rbac-least-privilege-enforce
     rule: disallow-default-serviceaccount-clusterbindings
     resources:
       - default-sa-clusterbinding
     kind: ClusterRoleBinding
     result: fail
-  - policy: rbac-least-privilege-audit
+  - policy: rbac-least-privilege-enforce
     rule: disallow-cluster-admin-clusterbindings
     resources:
       - app-builder-cluster-admin
     kind: ClusterRoleBinding
     result: fail
+  # --- pass cases for the enforcing policy -------------------------------------
+  - policy: rbac-least-privilege-enforce
+    rule: disallow-default-serviceaccount-rolebindings
+    resources:
+      - app/named-sa-binding
+      - app/cluster-admin-binding
+    kind: RoleBinding
+    result: pass
+  - policy: rbac-least-privilege-enforce
+    rule: disallow-cluster-admin-rolebindings
+    resources:
+      - app/named-sa-binding
+      - app/default-sa-binding
+    kind: RoleBinding
+    result: pass
+  - policy: rbac-least-privilege-enforce
+    rule: disallow-default-serviceaccount-clusterbindings
+    resources:
+      - named-sa-clusterbinding
+      - app-builder-cluster-admin
+    kind: ClusterRoleBinding
+    result: pass
+  - policy: rbac-least-privilege-enforce
+    rule: disallow-cluster-admin-clusterbindings
+    resources:
+      - named-sa-clusterbinding
+      - default-sa-clusterbinding
+    kind: ClusterRoleBinding
+    result: pass

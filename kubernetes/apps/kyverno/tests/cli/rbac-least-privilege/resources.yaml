@@ -79,3 +79,34 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: cluster-admin
+---
+# PASS: binds a NAMED ServiceAccount (not `default`) to a non-cluster-admin Role.
+# Required so the enforcing policy is proven to ADMIT compliant RBAC, not just to
+# reject bad RBAC — a failure-only suite cannot tell those two apart.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: named-sa-binding
+  namespace: app
+subjects:
+  - kind: ServiceAccount
+    name: app-builder
+    namespace: app
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: wildcard-reader
+---
+# PASS: cluster-scoped binding for a NAMED ServiceAccount onto a read-only ClusterRole.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: named-sa-clusterbinding
+subjects:
+  - kind: ServiceAccount
+    name: app-builder
+    namespace: app
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
