@@ -1,0 +1,34 @@
+---
+# yaml-language-server: $schema=https://lds-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cnpg-monitoring
+  namespace: cnpg-system
+spec:
+  interval: 1h
+  path: ./kubernetes/apps/cnpg-system/monitoring/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: cnpg-system
+  timeout: 5m
+  wait: true
+  # THE REASON THIS KUSTOMIZATION EXISTS. The component used to be included from
+  # kubernetes/apps/cnpg-system/kustomization.yaml, i.e. applied by `cluster-apps`,
+  # which has NO postBuild.substituteFrom. So the alert annotations shipped with a
+  # literal `${SECRET_DOMAIN}` — every CNPG alert carried a dead runbook_url and
+  # dashboard_url, exactly the links you follow during a database incident. It went
+  # unnoticed because per-app copies of the same component (litellm-db, vikunja) DID
+  # substitute, so correctly-rendered duplicates masked the broken original.
+  #
+  # Substitution is safe for this payload: Flux's envsubst only replaces variables it
+  # has definitions for, so the Go-template `{{$labels.namespace}}` refs in the alert
+  # summaries pass through untouched — verified against the already-substituted copies
+  # before this change.
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-secrets
