@@ -33,14 +33,14 @@ workload at admission.** Two structural facts shape everything:
 
 | Policy | Biggest live FAIL | Verdict |
 |--------|-------------------|---------|
-| `require-pod-probes` | ~18 | Safe after a first-party probe sweep; heavily waived already |
-| `image-hygiene` | ~0 | Safe; reconcile its narrow namespaceSelector first |
+| `require-pod-probes` | 6 (not ~18) — `forgejo-dind` + `preview-host` only | Blocked on adding probes to live CI infra |
+| `image-hygiene` | ~0 (confirmed by template sweep) | DONE — wave 2 enforced |
 | `image-supply-chain` | `require-approved-registries` ~103, `require-image-digest` ~25 | SPLIT — 2 clean rules now; digest later; approved-registries **stays Audit** |
-| `rbac-least-privilege` | `disallow-wildcards-in-app-roles` ~40 | SPLIT — 4 clean RBAC rules now; wildcards after remediation |
+| `rbac-least-privilege` | `disallow-wildcards-in-app-roles` ~40 — **this figure was never real**, the rule was denying every Role (glob `*` in `AnyIn`); fixed 2026-08-04, actual count 0 | DONE — waves 3 + 10 both enforced; `-audit` policy retired |
 | `workload-hardening` | forgejo 26 | ns-by-ns via overrides; needs resource-limit sweep |
 | `workload-advanced-hardening` | SA-token / readonly-rootfs broad | SPLIT — 5 low-risk rules now; invasive rules stay Audit |
 | `namespace-tenancy` | netpol/quota/labels | SPLIT — netpol-shape rules now; require-* after roadmap #13 |
-| `secrets-observability-ops` | `require-prometheusrule-labels` ~49 | SPLIT — monitor-label rules after a label sweep |
+| `secrets-observability-ops` | `require-prometheusrule-labels` ~49 (actual: 19 across all three monitor kinds) | DONE — wave 7 enforced after remediating all 19 |
 | `image-verify` | unsigned webgrip | SPLIT — kyverno-images rule now; webgrip-images after signing proof |
 | `image-verify-harbor` | — | **Stays Audit** (failurePolicy: Fail → Harbor/OpenBao SPOF) |
 | `image-attestations` | — | Promote LAST, after image-verify |
@@ -96,26 +96,39 @@ one admission cycle. One wave per commit, spaced apart (the batched-rollout stor
 > objects, so filter the dump to the policy's own in-scope namespaces first or the sweep will
 > over-report against namespaces the policy excludes.
 >
-> One further limit: `verifyImages` rules (waves 13 and 14) cannot be swept this way at all — they
-> need registry access and the CLI evaluates nothing for them offline. Those two need a different
-> gate, not a sweep.
+> One further limit: `verifyImages` rules (waves 6, 13 and 14) cannot be swept this way at all —
+> they need registry access and the CLI evaluates nothing for them offline. Those three need a
+> different gate, not a sweep.
+>
+> Two more traps worth naming, both hit on 2026-08-04:
+>
+> - **Preserve `ownerReferences` when you synthesise pods for a sweep.** Rules legitimately key on
+>   them — `require-pod-probes` skips Job-owned pods, because probes are meaningless on a pod that
+>   runs to completion. A corpus built without that field reported 65 probe failures where the real
+>   number is 6. Stamp a `kind: Job` ownerReference on pods synthesised from Job/CronJob templates,
+>   and a `ReplicaSet` one on those from Deployments.
+> - **`operator: AnyIn` with `value: ["*"]` does NOT test for a literal asterisk.** Kyverno's
+>   In/AnyIn family treats `*` on the value side as a glob, so it matches everything. That is what
+>   made `disallow-wildcards-in-app-roles` fail all 55 Roles. Use
+>   `key: "{{ contains(element.verbs || `[]`, '*') }}" / operator: Equals / value: true` instead.
+>   Any rule written to catch a literal wildcard is suspect until it has a **passing** test case.
 
 <a name="waves"></a>
 
 | Wave | Policy / rules | Mechanism | Prereq |
 |------|----------------|-----------|--------|
-| 1 | `require-pod-probes` (whole) | Enforce | probe sweep on first-party apps |
+| 1 | `require-pod-probes` (whole) | Enforce | **NOT clean** — 6 fails, all from 2 workloads: `forgejo-dind` (DaemonSet, no probes on dind/prune) and `preview-host` (git-sync sidecar). Both are live CI infra; a bad probe restart-loops them |
 | 2 | `image-hygiene` (whole) | Enforce | **SHIPPED 2026-08-04** — namespaceSelector reconciled; swept 168 pods+templates, 0 fails |
 | 3 | `rbac-least-privilege` — 4 clean rules | split→Enforce | **SHIPPED 2026-08-04** — `rbac-least-privilege-enforce`; swept 371 RBAC objects |
 | 4 | `image-supply-chain` — latest-tag + fully-qualified | split→Enforce | **SHIPPED 2026-08-03** — `image-supply-chain-enforce`; prereq was NOT "none" (see the gate note above) |
 | 5 | `namespace-tenancy` — netpol-shape rules | split→Enforce | **SHIPPED 2026-08-04** — `namespace-tenancy-enforce` |
-| 6 | `image-verify` — `verify-kyverno-images-keyless` | split→Enforce | none |
-| 7 | `secrets-observability-ops` — monitor-label rules | split→Enforce | **NOT clean** — sweep found 19 live fails (10 PrometheusRule, 6 PodMonitor, 3 ServiceMonitor); the label sweep is NOT done |
-| 8 | `workload-advanced-hardening` — 5 low-risk rules | split→Enforce | none |
-| 9 | `workload-hardening` (4 rules) | overrides, ns-by-ns | resource-limit sweep; extend waivers (forgejo) |
-| 10 | `rbac-least-privilege` — wildcards | merge→Enforce | **NOT clean** — sweep found 55 failing Roles, nearly all CNPG-operator-generated |
-| 11 | `image-supply-chain` — `require-image-digest` | merge→Enforce | digest-pin first-party/platform images |
-| 12 | `namespace-tenancy` — require-{netpol,quota,labels} | merge→Enforce | 1 live fail: `drawio` namespace has no `webgrip.io/exposure` label |
+| 6 | `image-verify` — `verify-kyverno-images-keyless` | split→Enforce | **UNSWEPT** — `verifyImages`; needs registry access, CLI evaluates nothing offline |
+| 7 | `secrets-observability-ops` — monitor-label rules | split→Enforce | **SHIPPED 2026-08-04** — all 19 remediated (11 repo manifests + guac via chart values + renovate-operator via postRenderer), then flipped; 85/85 clean |
+| 8 | `workload-advanced-hardening` — 5 low-risk rules | split→Enforce | **NOT clean** — 65 fails: non-default-SA 24, SA-token opt-out 17, risky-volumes 7, non-baseline-caps 7, drop-ALL 6, explicit-root 4 |
+| 9 | `workload-hardening` (4 rules) | overrides, ns-by-ns | **NOT clean** — 46 fails: run-as-non-root 15, seccomp 15, validate-resources 10, privilege-escalation 6 |
+| 10 | `rbac-least-privilege` — wildcards | merge→Enforce | **SHIPPED 2026-08-04** — the "55 failing Roles" were a RULE BUG, not a backlog (see below); fixed, 55/55 pass, `-audit` policy retired |
+| 11 | `image-supply-chain` — `require-image-digest` | merge→Enforce | **NOT clean** — 11 fails: erfbeeld ×3 envs, minecraft, ploeg-worker-copper (rc.6 unpinned), and CNPG pods litellm-db-1 / ploeg-db-1 / ploeg-db-2 (operator images; extend exception-cnpg-pods) |
+| 12 | `namespace-tenancy` — require-{netpol,quota,labels} | merge→Enforce | 1 live fail: the `drawio` namespace. Git declares all three labels — the app is deliberately SUSPENDED (`kubernetes/apps/kustomization.yaml`), so Flux no longer manages the namespace and it is an orphan. Clean up the namespace, do not un-suspend |
 | 13 | `image-verify` — `verify-webgrip-images` | merge→Enforce | **UNSWEPT** — `verifyImages` rules need registry access; the CLI cannot evaluate them offline |
 | 14 | `image-attestations` | Enforce | **UNSWEPT** — same `verifyImages` limitation as wave 13 |
 | — | approved-registries, image-verify-harbor, advanced invasive rules, secrets PDB/topology/cm-keys | **stay Audit** | see ADR-0033 |
