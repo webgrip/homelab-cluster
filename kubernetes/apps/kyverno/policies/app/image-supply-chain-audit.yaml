@@ -11,20 +11,33 @@ metadata:
     policies.kyverno.io/subject: Pod
     kyverno.io/kyverno-version: 1.18.1
     policies.kyverno.io/description: >-
-      Audit image pinning and registry hygiene before requiring all workloads to
-      use digest-pinned images from approved registries.
+      Audit image pinning and registry hygiene before requiring all workloads to use digest-pinned images from approved registries.
 spec:
   validationFailureAction: Audit
   background: true
   rules:
-    - name: require-image-digest
+    # Waves 4 and 11 split disallow-latest-tag-even-with-digest,
+    # require-fully-qualified-images and require-image-digest out to
+    # image-supply-chain-enforce. require-approved-registries is all that remains, and it
+    # stays Audit INDEFINITELY per ADR-0033 — enforcing it would make Harbor a pull-time
+    # SPOF at admission. Its FAILs are the intended registry-sovereignty drift signal, so
+    # a non-zero count here is correct and must not be "fixed".
+    - name: require-approved-registries
+      # Harbor is the ONLY approved OCI host. Every other registry (docker.io,
+      # ghcr.io, quay.io, registry.k8s.io, gcr.io, public.ecr.aws, mcr...) must
+      # be mirrored/proxied through Harbor before this can move to Enforce.
+      # Kept at validationFailureAction: Audit (policy level) so this observes
+      # the blast radius via PolicyReports without blocking pulls yet.
+      # NOTE: this covers runtime container images in application namespaces only.
+      # Flux OCIRepository Helm-chart sources are NOT yet restricted to Harbor —
+      # tracked as a follow-up (see supply-chain-enforcement-roadmap.md).
       match:
         any:
           - resources:
               kinds:
                 - Pod
               namespaceSelector:
-                matchExpressions: &applicationNamespaces
+                matchExpressions:
                   - key: kubernetes.io/metadata.name
                     operator: NotIn
                     values:
@@ -45,31 +58,6 @@ spec:
                       - observability
                       - renovate
                       - security
-      validate:
-        message: "Images should be pinned by digest."
-        foreach:
-          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
-            pattern:
-              image: "*@sha256:*"
-    # disallow-latest-tag-even-with-digest and require-fully-qualified-images were split
-    # out to image-supply-chain-enforce in wave 4 of the audit->enforce campaign
-    # (ADR-0032). They now ENFORCE; this policy keeps only the rules that cannot yet.
-    - name: require-approved-registries
-      # Harbor is the ONLY approved OCI host. Every other registry (docker.io,
-      # ghcr.io, quay.io, registry.k8s.io, gcr.io, public.ecr.aws, mcr...) must
-      # be mirrored/proxied through Harbor before this can move to Enforce.
-      # Kept at validationFailureAction: Audit (policy level) so this observes
-      # the blast radius via PolicyReports without blocking pulls yet.
-      # NOTE: this covers runtime container images in application namespaces only.
-      # Flux OCIRepository Helm-chart sources are NOT yet restricted to Harbor —
-      # tracked as a follow-up (see supply-chain-enforcement-roadmap.md).
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-              namespaceSelector:
-                matchExpressions: *applicationNamespaces
       validate:
         message: "Images must come from the in-cluster Harbor registry (harbor.${SECRET_DOMAIN}); no other OCI hosts are approved."
         foreach:
