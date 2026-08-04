@@ -1,0 +1,53 @@
+---
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: namespace-tenancy-netpol
+policies:
+  - ../../policies/namespace-tenancy-enforce.yaml
+resources:
+  - resources.yaml
+results:
+  # --- fail cases ---------------------------------------------------------------
+  - policy: namespace-tenancy-enforce
+    rule: require-default-deny-egress
+    resources:
+      - app/default-deny
+    kind: NetworkPolicy
+    result: fail
+  - policy: namespace-tenancy-enforce
+    rule: require-dns-egress-policy-shape
+    resources:
+      - app/allow-dns
+    kind: NetworkPolicy
+    result: fail
+  # --- pass cases ---------------------------------------------------------------
+  # Including the name-scoping case: an unrelated NetworkPolicy must satisfy all three
+  # rules, proving they key off the resource NAME rather than demanding a shape from
+  # every NetworkPolicy in the cluster.
+  - policy: namespace-tenancy-enforce
+    rule: require-default-deny-ingress
+    resources:
+      - kube-system/default-deny
+      - kube-system/allow-dns
+      - app/default-deny
+      - app/allow-app-to-db
+    kind: NetworkPolicy
+    result: pass
+  - policy: namespace-tenancy-enforce
+    rule: require-default-deny-egress
+    resources:
+      - kube-system/default-deny
+      - kube-system/allow-dns
+      - app/allow-app-to-db
+    kind: NetworkPolicy
+    result: pass
+  - policy: namespace-tenancy-enforce
+    rule: require-dns-egress-policy-shape
+    resources:
+      - kube-system/allow-dns
+      - kube-system/default-deny
+      - app/default-deny
+      - app/allow-app-to-db
+    kind: NetworkPolicy
+    result: pass

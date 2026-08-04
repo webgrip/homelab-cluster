@@ -10,8 +10,7 @@ metadata:
     policies.kyverno.io/subject: Namespace,NetworkPolicy,ResourceQuota
     kyverno.io/kyverno-version: 1.18.1
     policies.kyverno.io/description: >-
-      Add future namespace security defaults and audit namespace readiness for
-      ownership, resource controls, and network isolation.
+      Add future namespace security defaults and audit namespace readiness for ownership, resource controls, and network isolation.
 spec:
   validationFailureAction: Audit
   background: true
@@ -26,7 +25,7 @@ spec:
         all:
           - key: "{{ request.object.metadata.name }}"
             operator: AnyNotIn
-            value: &platformNamespaces
+            value:
               - arc-systems
               - cert-manager
               - cilium-secrets
@@ -59,7 +58,23 @@ spec:
       exclude:
         any:
           - resources:
-              names: *platformNamespaces
+              names:
+                - arc-systems
+                - cert-manager
+                - cilium-secrets
+                - cnpg-system
+                - default
+                - external-secrets
+                - flux-system
+                - keda
+                - kube-node-lease
+                - kube-public
+                - kube-system
+                - kyverno
+                - longhorn-system
+                - network
+                - observability
+                - renovate
       validate:
         message: "Application namespaces should declare owner, tier, and exposure labels."
         pattern:
@@ -77,7 +92,23 @@ spec:
       exclude:
         any:
           - resources:
-              names: *platformNamespaces
+              names:
+                - arc-systems
+                - cert-manager
+                - cilium-secrets
+                - cnpg-system
+                - default
+                - external-secrets
+                - flux-system
+                - keda
+                - kube-node-lease
+                - kube-public
+                - kube-system
+                - kyverno
+                - longhorn-system
+                - network
+                - observability
+                - renovate
       context:
         - name: resourcequotas
           apiCall:
@@ -100,7 +131,23 @@ spec:
       exclude:
         any:
           - resources:
-              names: *platformNamespaces
+              names:
+                - arc-systems
+                - cert-manager
+                - cilium-secrets
+                - cnpg-system
+                - default
+                - external-secrets
+                - flux-system
+                - keda
+                - kube-node-lease
+                - kube-public
+                - kube-system
+                - kyverno
+                - longhorn-system
+                - network
+                - observability
+                - renovate
       context:
         - name: networkpolicies
           apiCall:
@@ -114,54 +161,3 @@ spec:
               - key: "{{ networkpolicies }}"
                 operator: Equals
                 value: 0
-    - name: require-default-deny-ingress
-      match:
-        any:
-          - resources:
-              kinds:
-                - NetworkPolicy
-      validate:
-        message: "Default deny NetworkPolicies should cover ingress."
-        deny:
-          conditions:
-            all:
-              - key: "{{ request.object.metadata.name }}"
-                operator: Equals
-                value: default-deny
-              - key: Ingress
-                operator: AnyNotIn
-                value: "{{ request.object.spec.policyTypes[] || `[]` }}"
-    - name: require-default-deny-egress
-      match:
-        any:
-          - resources:
-              kinds:
-                - NetworkPolicy
-      validate:
-        message: "Default deny NetworkPolicies should cover egress."
-        deny:
-          conditions:
-            all:
-              - key: "{{ request.object.metadata.name }}"
-                operator: Equals
-                value: default-deny
-              - key: Egress
-                operator: AnyNotIn
-                value: "{{ request.object.spec.policyTypes[] || `[]` }}"
-    - name: require-dns-egress-policy-shape
-      match:
-        any:
-          - resources:
-              kinds:
-                - NetworkPolicy
-      validate:
-        message: "DNS allow NetworkPolicies should explicitly allow TCP and UDP 53 egress."
-        deny:
-          conditions:
-            all:
-              - key: "{{ request.object.metadata.name }}"
-                operator: Equals
-                value: allow-dns
-              - key: 53
-                operator: AnyNotIn
-                value: "{{ request.object.spec.egress[].ports[].port || `[]` }}"
