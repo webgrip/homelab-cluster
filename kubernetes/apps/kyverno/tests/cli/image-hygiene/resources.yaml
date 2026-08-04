@@ -1,0 +1,84 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app
+  labels:
+    kubernetes.io/metadata.name: app
+---
+# FAIL require-image-tag: no tag and no digest at all.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: untagged-image
+  namespace: app
+spec:
+  containers:
+    - name: app
+      image: harbor.example.com/acme/app
+---
+# FAIL validate-image-tag: mutable `latest` tag with nothing pinning it.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mutable-latest
+  namespace: app
+spec:
+  containers:
+    - name: app
+      image: harbor.example.com/acme/app:latest
+---
+# FAIL require-image-tag on an INIT container: a compliant app container must not mask
+# a non-compliant init container.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: untagged-init-container
+  namespace: app
+spec:
+  initContainers:
+    - name: init
+      image: harbor.example.com/acme/init
+  containers:
+    - name: app
+      image: harbor.example.com/acme/app:1.0.0
+---
+# PASS both rules: ordinary semver tag.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: versioned-tag
+  namespace: app
+spec:
+  initContainers:
+    - name: init
+      image: harbor.example.com/acme/init:2.1.0
+  containers:
+    - name: app
+      image: harbor.example.com/acme/app:1.0.0
+---
+# PASS both rules: digest-only reference. `require-image-tag` matches `*:*`, which the
+# `sha256:` in a digest satisfies — this is the shape the CI runner images actually use,
+# so it must keep being admitted.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: digest-only
+  namespace: app
+spec:
+  containers:
+    - name: app
+      image: harbor.example.com/webgrip/ci-runner@sha256:1111111111111111111111111111111111111111111111111111111111111111
+---
+# PASS validate-image-tag: `:latest@sha256:` does NOT end in `:latest`, so the mutable-tag
+# rule does not fire. This is excalidraw's real shape; wave 4's separate
+# disallow-latest-tag-even-with-digest rule is what covers it, not this one.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: latest-with-digest
+  namespace: app
+spec:
+  containers:
+    - name: app
+      image: harbor.example.com/dockerhub/excalidraw/excalidraw:latest@sha256:2222222222222222222222222222222222222222222222222222222222222222
