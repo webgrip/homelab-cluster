@@ -78,24 +78,46 @@ one admission cycle. One wave per commit, spaced apart (the batched-rollout stor
 > Exceptions are keyed by `policyName`, so a split silently orphans every waiver that still names
 > the old policy.
 
+> **Worse: for several kinds there are no PolicyReports at all.** The background scanner only
+> reports on some kinds. Verified live on 2026-08-04 — across every PolicyReport in the cluster the
+> scoped kinds are Service, ConfigMap, NetworkPolicy, Deployment, Kustomization,
+> PersistentVolumeClaim, Pod, HelmRelease, OCIRepository, CronJob, Job, PolicyException,
+> HelmRepository, ScheduledBackup, StatefulSet, Certificate, DaemonSet, GitRepository. **Role,
+> RoleBinding, ClusterRoleBinding, ServiceMonitor, PodMonitor, PrometheusRule and Namespace appear
+> zero times.**
+>
+> So every rule scoped to those kinds reads "0 FAILs" whether it is clean or catastrophic. This was
+> not theoretical either: `disallow-wildcards-in-app-roles` reported 0 and a CLI sweep found **55**
+> failing Roles; the monitor-label rules reported 0 and a sweep found **19** failures. Both had been
+> recorded as gate-clean on the strength of the report count.
+>
+> The gate for any wave touching those kinds is a `kyverno apply` sweep over a live dump of the
+> matched resources. Note the CLI does **not** resolve `namespaceSelector` from supplied Namespace
+> objects, so filter the dump to the policy's own in-scope namespaces first or the sweep will
+> over-report against namespaces the policy excludes.
+>
+> One further limit: `verifyImages` rules (waves 13 and 14) cannot be swept this way at all — they
+> need registry access and the CLI evaluates nothing for them offline. Those two need a different
+> gate, not a sweep.
+
 <a name="waves"></a>
 
 | Wave | Policy / rules | Mechanism | Prereq |
 |------|----------------|-----------|--------|
 | 1 | `require-pod-probes` (whole) | Enforce | probe sweep on first-party apps |
-| 2 | `image-hygiene` (whole) | Enforce | reconcile namespaceSelector to canonical set |
-| 3 | `rbac-least-privilege` — 4 clean rules | split→Enforce | none |
+| 2 | `image-hygiene` (whole) | Enforce | **SHIPPED 2026-08-04** — namespaceSelector reconciled; swept 168 pods+templates, 0 fails |
+| 3 | `rbac-least-privilege` — 4 clean rules | split→Enforce | **SHIPPED 2026-08-04** — `rbac-least-privilege-enforce`; swept 371 RBAC objects |
 | 4 | `image-supply-chain` — latest-tag + fully-qualified | split→Enforce | **SHIPPED 2026-08-03** — `image-supply-chain-enforce`; prereq was NOT "none" (see the gate note above) |
-| 5 | `namespace-tenancy` — netpol-shape rules | split→Enforce | none |
+| 5 | `namespace-tenancy` — netpol-shape rules | split→Enforce | **SHIPPED 2026-08-04** — `namespace-tenancy-enforce` |
 | 6 | `image-verify` — `verify-kyverno-images-keyless` | split→Enforce | none |
-| 7 | `secrets-observability-ops` — monitor-label rules | split→Enforce | label sweep (49 PrometheusRules) |
+| 7 | `secrets-observability-ops` — monitor-label rules | split→Enforce | **NOT clean** — sweep found 19 live fails (10 PrometheusRule, 6 PodMonitor, 3 ServiceMonitor); the label sweep is NOT done |
 | 8 | `workload-advanced-hardening` — 5 low-risk rules | split→Enforce | none |
 | 9 | `workload-hardening` (4 rules) | overrides, ns-by-ns | resource-limit sweep; extend waivers (forgejo) |
-| 10 | `rbac-least-privilege` — wildcards | merge→Enforce | narrow ~40 Roles / per-Role exceptions |
+| 10 | `rbac-least-privilege` — wildcards | merge→Enforce | **NOT clean** — sweep found 55 failing Roles, nearly all CNPG-operator-generated |
 | 11 | `image-supply-chain` — `require-image-digest` | merge→Enforce | digest-pin first-party/platform images |
-| 12 | `namespace-tenancy` — require-{netpol,quota,labels} | merge→Enforce | roadmap #13 |
-| 13 | `image-verify` — `verify-webgrip-images` | merge→Enforce | confirm CI signing + digest pins |
-| 14 | `image-attestations` | Enforce | SLSA+CycloneDX publishing confirmed |
+| 12 | `namespace-tenancy` — require-{netpol,quota,labels} | merge→Enforce | 1 live fail: `drawio` namespace has no `webgrip.io/exposure` label |
+| 13 | `image-verify` — `verify-webgrip-images` | merge→Enforce | **UNSWEPT** — `verifyImages` rules need registry access; the CLI cannot evaluate them offline |
+| 14 | `image-attestations` | Enforce | **UNSWEPT** — same `verifyImages` limitation as wave 13 |
 | — | approved-registries, image-verify-harbor, advanced invasive rules, secrets PDB/topology/cm-keys | **stay Audit** | see ADR-0033 |
 
 ### Test harness fixes (prerequisite, shipped first)
