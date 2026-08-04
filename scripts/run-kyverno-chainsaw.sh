@@ -21,6 +21,15 @@ cleanup() {
     fi
     rm -rf "${workspace}"
 }
+# EXIT alone is correct and sufficient for every signal that CAN be trapped: bash runs an
+# EXIT trap when the shell exits, including on SIGTERM/SIGINT/SIGHUP (verified 2026-08-04
+# — adding explicit INT/TERM/HUP traps merely ran cleanup twice).
+#
+# The KinD leaks that starved fringe-workstation on 2026-08-04 were therefore NOT a
+# missing trap. Talos's PSI OOM controller kills with SIGKILL, which cannot be trapped by
+# anything, so no trap here could ever have prevented them. The backstop is the prune
+# sidecar's 15-minute orphan reaper in dind-daemonset.yaml — reaping, not trapping, is the
+# only mechanism that works against SIGKILL.
 trap cleanup EXIT
 
 # Any failure dumps the cluster before the EXIT trap deletes it. Without this the only evidence a
