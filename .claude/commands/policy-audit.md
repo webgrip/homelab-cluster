@@ -28,6 +28,17 @@ So the authority here is a `kyverno apply` sweep over live state, not a report c
 ```
 mise exec -- kubectl get clusterpolicy -o json | mise exec -- jq -r '.items[] | "\(.spec.validationFailureAction)\t\(.metadata.name)\t ready=\(.status.conditions[]? | select(.type=="Ready") | .status)"' | sort
 ```
+
+**Then resolve the EFFECTIVE action per rule — the policy-level field is not the answer.**
+Kyverno takes the rule-level `validate.failureAction` over `spec.validationFailureAction`, and this
+estate uses that deliberately: nine rules sit at `Audit` inside `Enforce` policies, under an
+`audit-*` naming convention where the prefix matches the effective action. Reading only the
+policy-level field over-reports blocking rules — on 2026-08-04 it produced a false "the CNPG DR
+component will be denied at CREATE" finding against rules that only audit.
+
+```
+mise exec -- kubectl get clusterpolicy -o json | mise exec -- jq -r '.items[] | .metadata.name as $p | (.spec.validationFailureAction // "-") as $pa | .spec.rules[] | select(.validate) | "\(.validate.failureAction // $pa)\t\($p)/\(.name)"' | sort
+```
 Flag any policy not Ready. Cross-check against the repo: a policy file present in
 `kubernetes/apps/kyverno/policies/app/` but absent in-cluster means the Kustomization is
 failing.

@@ -128,7 +128,7 @@ one admission cycle. One wave per commit, spaced apart (the batched-rollout stor
 | 9 | `workload-hardening` (4 rules) | overrides, ns-by-ns | **NOT clean** — 40 fails (re-swept 2026-08-04): run-as-non-root 14, seccomp 14, validate-resources 7, privilege-escalation 5 |
 | 10 | `rbac-least-privilege` — wildcards | merge→Enforce | **SHIPPED 2026-08-04** — the "55 failing Roles" were a RULE BUG, not a backlog (see below); fixed, 55/55 pass, `-audit` policy retired |
 | 11 | `image-supply-chain` — `require-image-digest` | merge→Enforce | **SHIPPED 2026-08-04** — erfbeeld ×3 + minecraft genuinely pinned; only CNPG operator images waived; audit policy now holds require-approved-registries alone |
-| 12 | `namespace-tenancy` — require-{netpol,quota,labels} | merge→Enforce | **NOT clean — 5 fails** (re-checked 2026-08-04). The `drawio` orphan is gone (namespace deleted; `require-namespace-ownership-labels` now sweeps 20/20 clean). But `require-resourcequota` and `require-networkpolicy` use an **`apiCall` context**, so the sweep reports them as `error`, never `fail` — they must be checked with `kubectl`. Doing so finds: `ai` (0 NetworkPolicies), `kepler` (0 quotas, 0 NetworkPolicies), `security` (0 quotas, 0 NetworkPolicies). None has a CiliumNetworkPolicy either, so this is not a CNP-accounting artifact |
+| 12 | `namespace-tenancy` — require-{netpol,quota,labels} | merge→Enforce | **3 fails left of 5** (2026-08-04). `drawio` orphan gone; `require-namespace-ownership-labels` sweeps 20/20. `require-{resourcequota,networkpolicy}` are **`apiCall`** rules — they report `error`, never `fail`, so they must be checked with `kubectl`. **kepler CLOSED** (count-only quota + `kepler-allow-scrape` ingress policy). Still open, deliberately unwaived: **`ai`** has no NetworkPolicy (its namespace manifest documents why — LiteLLM provider egress + LAN consumers — and calls zero-trust a tracked follow-up, so it stays visible as debt); **`security`** has neither, and must not be a drive-by: the generated default-deny is `podSelector: {}` over Ingress+Egress and `security` hosts the Kyverno webhook, so deny-all ingress there fails admission cluster-wide; the stock quota also fits badly (48 pods against a fixed cap of 60, and 15 pods declare no requests). Needs authored allow-rules + a bespoke cap, staged |
 | 13 | `image-verify` — `verify-webgrip-images` | merge→Enforce | **UNSWEPT** — `verifyImages` rules need registry access; the CLI cannot evaluate them offline |
 | 14 | `image-attestations` | Enforce | **UNSWEPT** — same `verifyImages` limitation as wave 13 |
 | — | approved-registries, image-verify-harbor, advanced invasive rules, secrets PDB/topology/cm-keys | **stay Audit** | see ADR-0033 |
@@ -143,6 +143,19 @@ RoleBindings, ClusterRoleBindings, Namespaces, NetworkPolicies, Services, HTTPRo
 ServiceMonitors, PodMonitors, PrometheusRules, ConfigMaps, PVCs, CNPG Clusters and Flux sources;
 all 17 exceptions applied). Inventory is clean: **25/25 policies Ready, 25/25 present in-tree** —
 no repo↔cluster drift — and **every exception's `policyName` and `ruleNames` resolve**.
+
+> **CORRECTION, same day.** The first pass of this section derived each policy's action from
+> `spec.validationFailureAction` alone and was wrong about which rules actually block. Kyverno
+> resolves the **rule-level** `validate.failureAction` over the policy-level setting, and this
+> estate uses that deliberately: **nine rules sit at `Audit` inside `Enforce` policies**, under a
+> disciplined `audit-*` naming convention where the prefix matches the effective action
+> (`cert-manager-governance/audit-certificate-{duration,private-key}`,
+> `flux-governance-enforce/audit-helmrepository-use`,
+> `network-exposure-enforce/audit-cross-namespace-backends`, and five `storage-cnpg-governance/audit-*`).
+> Any audit that reads only the policy-level field will over-report blocking rules — as this one
+> initially did, including a since-retracted claim that the CNPG DR component would be denied at
+> CREATE. Derive the action per rule:
+> `(.validate.failureAction // .spec.validationFailureAction)`.
 
 Three methodological notes worth keeping:
 
@@ -160,25 +173,41 @@ Three methodological notes worth keeping:
   the reason [the CEL migration RFC](rfc-kyverno-cel-migration.md) sequences it onto
   `DeletingPolicy`.
 
-**Latent breakage found (the finding that matters).** `kubernetes/components/cnpg-disaster-recovery`
-is a **shared component**, and its `Cluster` template fails the enforcing `storage-cnpg-governance`
-on two rules — `audit-cnpg-backup-plugin` (no `spec.plugins`) and `audit-cnpg-monitoring` (no
-`enablePodMonitor`, no `monitoring.webgrip.io/enabled` label). Verified by rendering the component
-and running the policy against it: **fail: 2**. The five live DR clusters (backstage, freshrss,
-ploeg, sparkyfitness, vikunja) survive only because they pre-date enforcement and
-`allowExistingViolations` covers UPDATE. **Onboarding a new CNPG app that adopts this component
-would have its Cluster CREATE denied.** `security/guac-db` additionally fails
-`audit-cnpg-backup-plugin` outright — no barman WAL archive plugin at all.
+**The CNPG findings were the policy being wrong, not the fleet — fixed 2026-08-04.** All 19
+`storage-cnpg-governance` fails were Audit-action rules measuring the wrong property. Sweep now
+reads **fail: 0**, and not one CNPG `Cluster` manifest changed:
 
-**Pre-existing residue against enforcing policies** (tolerated on UPDATE, would be denied on
-recreate):
+- **`audit-cnpg-monitoring` measured nothing real.** It wanted `spec.monitoring.enablePodMonitor:
+  true` or a `monitoring.webgrip.io/enabled` label. CNPG scraping here comes from the
+  `cnpg-monitoring` component's PodMonitor — selector `cnpg.io/cluster`, `namespaceSelector.any:
+  true` — so one copy covers every pod in every namespace regardless of either. Verified: all 16
+  CNPG pods report `cnpg_collector_up` while 13 of 19 Clusters "failed", and the label it accepted
+  is consumed by nothing. Worse, the fix it demanded would make CNPG create a *second* PodMonitor.
+  Replaced by `audit-cnpg-redundant-podmonitor`, which denies exactly that.
+- **The component was installed four times** (cnpg-system + ai + ploeg + vikunja), so every CNPG
+  pod was scraped **4×** and `cnpg-backup-rules` existed in four namespaces with cluster-wide
+  expressions — `CNPGOperatorDown` would have fired four times. Now one install.
+- **`audit-cnpg-backup-plugin` and `audit-cnpg-scheduledbackup` now skip replicas.** The five
+  `cnpg-disaster-recovery` clusters are designated replicas: they replay the source's WAL and must
+  **not** carry `spec.plugins` barman-cloud, because archiving from a replica writes into the
+  source's backup path — the very backups the drill verifies. They declare barman under
+  `spec.externalClusters[].plugin`, which neither rule looked at. `audit-cnpg-scheduledbackup` uses
+  an `apiCall` context, so it reported `error` rather than `fail` and hid the identical five.
+- **`security/guac-db` is a deliberate Tier-4 database** (WAL archiving dropped — SBOM ingest made
+  ~4 GiB/day for a graph that rebuilds from re-ingested SBOMs; nightly `pg_dump` to Garage
+  instead). Recorded as a PolicyException with the reasoning rather than left as permanent noise.
 
-| Policy | fails | Resources |
+**Remaining residue against genuinely enforcing rules** (`allowExistingViolations` tolerates them
+on UPDATE; they would be denied on recreate):
+
+| Policy | enforcing fails | Resources |
 | --- | --- | --- |
-| `storage-cnpg-governance` | 19 | 13 CNPG Clusters — see above |
-| `cert-manager-governance` | 7 | `security/Certificate/trust-manager` (5 rules; not covered by `exception-system-certificates`, which lists only the four kyverno certs); `ClusterIssuer/kyverno-selfsigned-issuer` + `kyverno-cleanup-selfsigned-issuer` fail `restrict-clusterissuer-acme-zone`, which requires an `acme` block that a selfSigned issuer does not have |
-| `flux-governance-enforce` | 5 | `security/HelmRelease/external-secrets` (missing `/spec/install/remediation`); HelmRepositories `aqua-security`, `dependency-track`, `guacsec`, `openbao` in `security` (unwaived — `exception-helmrepositories-http` covers only `policy-reporter` there) |
+| `cert-manager-governance` | 5 | `security/Certificate/trust-manager` fails `restrict-certificate-{issuer,dnsnames,commonname}` (not covered by `exception-system-certificates`, which lists only the four kyverno certs); `ClusterIssuer/kyverno-selfsigned-issuer` + `kyverno-cleanup-selfsigned-issuer` fail `restrict-clusterissuer-acme-zone`, which requires an `acme` block a selfSigned issuer does not have |
+| `flux-governance-enforce` | 1 | `security/HelmRelease/external-secrets` missing `/spec/install/remediation` |
 | `network-exposure-enforce` | 1 | `kube-system/Service/spegel-registry` is a NodePort |
+
+The other six fails in those policies (`audit-certificate-{duration,private-key}` ×2,
+`audit-helmrepository-use` ×4) are Audit-action rules, per the correction above.
 
 **Dangling reference.** `tests/cli/workload-hygiene/kyverno-test.yaml` asserts
 `policy: image-supply-chain-audit / rule: require-image-digest / result: fail`; that rule moved to
