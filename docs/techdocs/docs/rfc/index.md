@@ -22,6 +22,25 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
   [Proxmox evacuation & offsite storage](rfc-proxmox-evacuation-offsite-storage.md) (object storage
   goes offsite, Immich/deadman to a cloud VM, reclaim the host as a Talos worker).
 
+## Security-audit RFCs (2026-08-04)
+
+Spawned by the [full-estate Kyverno audit](rfc-kyverno-audit-enforce-hardening.md#audit-2026-08-04)
+— problems larger than a single enforcement wave. All **Proposed**, listed by urgency:
+
+- [Kyverno CEL migration](rfc-kyverno-cel-migration.md) — **dated**. All 25 policies are on the
+  legacy `kyverno.io/v1` API, deprecated in 1.17 and targeted for **removal in v1.20, October
+  2026**. A routine Renovate chart bump is currently an unguarded trapdoor.
+- [Gating the verify policies](rfc-verify-policy-gating.md) — waves 6/13/14 are `verifyImages`, and
+  **neither** ADR-0032 gate can evaluate them (near-empty PolicyReports, unsweepable offline).
+  Builds the missing evidence source; also records an inverted `failurePolicy` posture.
+- [Request authorization at the gateway](rfc-request-authorization-envoy.md) — admission is
+  enforce-grade, request authorization is ungoverned; Envoy Gateway's `SecurityPolicy`/`extAuth`
+  closes the forward-auth hole named in the [identity RFC](rfc-identity-sso.md).
+- [Attack-path analysis](rfc-attack-path-analysis.md) — the 17 waivers are each justified
+  individually and have never been evaluated as a *graph*. Read-only, laptop-run, deploys nothing.
+- [Workload identity (SPIFFE)](rfc-workload-identity-spiffe.md) — gap acknowledged and
+  **deliberately deferred**, with named re-evaluation triggers.
+
 ## Decision-landscape gap RFCs (2026-07-02)
 
 Spawned by the [decision-landscape audit](../adr/landscape.md): the parts of the running platform

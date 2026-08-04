@@ -56,8 +56,17 @@ Three gaps:
    Update rfc-security-hardening's stale re-anchor language to point here.
 2. **Scope the verify-enforce wave** (new ADR, executes via ADR-0032 machinery):
    `image-verify-harbor` signatures → Enforce first (first-party images only, small blast
-   radius), attestations next, ghcr third; each wave gated on a clean PolicyReport per ADR-0032,
-   with the verification-infrastructure namespaces carved out to break the circularity.
+   radius), attestations next, ghcr third; with the verification-infrastructure namespaces carved
+   out to break the circularity.
+
+   > **Amended 2026-08-04.** "Gated on a clean PolicyReport per ADR-0032" does not work for these
+   > policies. The [full-estate audit](rfc-kyverno-audit-enforce-hardening.md#audit-2026-08-04)
+   > established that all four `verifyImages` policies set `background: false` and so produce
+   > **8 PolicyReport results between them** (against 960 for a single Audit policy) — the report
+   > is empty, not clean — and the offline CLI sweep cannot evaluate signature verification at
+   > all. The missing gate, plus an inverted `failurePolicy` posture found in the same audit, is
+   > now owned by [RFC: gating the verify policies](rfc-verify-policy-gating.md). This RFC keeps
+   > the *anchor* and *platform* decisions; that one owns the *promotion evidence*.
 3. **Decide the SBOM-platform question** (new ADR): keep both with recorded roles (DT =
    operational CVE triage/alerting, GUAC = graph forensics), or consolidate to DT and shelve GUAC
    until a graph question actually arises. Leaning: consolidate — the
