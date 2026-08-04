@@ -110,3 +110,61 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: view
+---
+# PASS disallow-wildcards-in-app-roles. This case is the whole point: the rule previously
+# used `operator: AnyIn` with `value: ["*"]`, and Kyverno treats `*` on the value side as a
+# GLOB, so it denied every Role ever written. A fail-only suite could not see that — this
+# ordinary, fully-specific Role is what makes the difference visible.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: specific-reader
+  namespace: app
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "configmaps"
+    verbs:
+      - "get"
+      - "watch"
+---
+# PASS: the CNPG-operator shape — specific verbs plus resourceNames. 55 live Roles look
+# like this and every one of them was being flagged.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: specific-with-resourcenames
+  namespace: app
+rules:
+  - apiGroups:
+      - "postgresql.cnpg.io"
+    resourceNames:
+      - "demo-db"
+    resources:
+      - "clusters"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"
+---
+# FAIL: wildcard only in the SECOND rule — proves the foreach walks every entry rather
+# than short-circuiting on the first.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: wildcard-in-second-rule
+  namespace: app
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "configmaps"
+    verbs:
+      - "get"
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    verbs:
+      - "*"

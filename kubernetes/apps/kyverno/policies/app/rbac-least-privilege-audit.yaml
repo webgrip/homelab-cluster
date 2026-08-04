@@ -48,24 +48,34 @@ spec:
       validate:
         message: >-
           Roles in application namespaces should not use wildcard apiGroups, resources, verbs, or nonResourceURLs.
+        # Uses JMESPath contains(), NOT `operator: AnyIn` with `value: ["*"]`.
+        #
+        # Kyverno's In/AnyIn family treats `*` on the VALUE side as a GLOB, not as the
+        # literal string. `value: ["*"]` therefore matches every apiGroup, resource and
+        # verb, so the previous form failed EVERY Role — including
+        # `apiGroups: [""], resources: ["configmaps"], verbs: ["get"]`. Verified with the
+        # kyverno CLI on 2026-08-04: 3/3 sample Roles denied, wildcard or not.
+        #
+        # It went unnoticed because the policy runs Audit and this rule's kind (Role) is
+        # one the background scanner emits NO PolicyReports for, so the 100% false-positive
+        # rate showed up as a clean "0 fails". Promoting it (wave 10) would have denied
+        # every Role create/update in every application namespace.
+        #
+        # contains() compares literally and is safe on a missing field via `|| []`.
         foreach:
           - list: request.object.rules[]
             deny:
               conditions:
                 any:
-                  - key: "{{ element.apiGroups[] || `[]` }}"
-                    operator: AnyIn
-                    value:
-                      - "*"
-                  - key: "{{ element.resources[] || `[]` }}"
-                    operator: AnyIn
-                    value:
-                      - "*"
-                  - key: "{{ element.verbs[] || `[]` }}"
-                    operator: AnyIn
-                    value:
-                      - "*"
-                  - key: "{{ element.nonResourceURLs[] || `[]` }}"
-                    operator: AnyIn
-                    value:
-                      - "*"
+                  - key: "{{ contains(element.apiGroups || `[]`, '*') }}"
+                    operator: Equals
+                    value: true
+                  - key: "{{ contains(element.resources || `[]`, '*') }}"
+                    operator: Equals
+                    value: true
+                  - key: "{{ contains(element.verbs || `[]`, '*') }}"
+                    operator: Equals
+                    value: true
+                  - key: "{{ contains(element.nonResourceURLs || `[]`, '*') }}"
+                    operator: Equals
+                    value: true
