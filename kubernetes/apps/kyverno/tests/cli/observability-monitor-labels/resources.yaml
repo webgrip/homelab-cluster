@@ -1,0 +1,95 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app
+  labels:
+    kubernetes.io/metadata.name: app
+---
+# FAIL require-servicemonitor-labels: no labels map at all.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: unlabelled-servicemonitor
+  namespace: app
+spec:
+  selector:
+    matchLabels:
+      app: demo
+  endpoints:
+    - port: metrics
+---
+# FAIL require-podmonitor-labels: has labels, but not the required one. This is the
+# realistic shape — chart-rendered monitors usually carry `release:` and nothing else.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: other-labels-podmonitor
+  namespace: app
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: demo
+  podMetricsEndpoints:
+    - port: metrics
+---
+# FAIL require-prometheusrule-labels: same shape, PrometheusRule.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: unlabelled-prometheusrule
+  namespace: app
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: demo
+      rules:
+        - alert: DemoAlert
+          expr: up == 0
+---
+# PASS all three: the label present alongside other labels.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: labelled-servicemonitor
+  namespace: app
+  labels:
+    release: kube-prometheus-stack
+    app.kubernetes.io/name: demo
+spec:
+  selector:
+    matchLabels:
+      app: demo
+  endpoints:
+    - port: metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: labelled-podmonitor
+  namespace: app
+  labels:
+    app.kubernetes.io/name: demo
+spec:
+  selector:
+    matchLabels:
+      app: demo
+  podMetricsEndpoints:
+    - port: metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: labelled-prometheusrule
+  namespace: app
+  labels:
+    app.kubernetes.io/name: demo
+spec:
+  groups:
+    - name: demo
+      rules:
+        - alert: DemoAlert
+          expr: up == 0
