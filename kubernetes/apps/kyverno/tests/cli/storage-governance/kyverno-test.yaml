@@ -40,3 +40,44 @@ results:
       - app/rwx-denied
     kind: PersistentVolumeClaim
     result: fail
+  # --- CNPG backup plugin: primaries are checked, replicas are not ---
+  # The replica case is the point. A designated replica must NOT carry
+  # spec.plugins barman-cloud (it would archive into the source's backup path),
+  # so the rule has to skip it rather than report it forever.
+  - policy: storage-cnpg-governance
+    rule: audit-cnpg-backup-plugin
+    resources:
+      - app/primary-no-backup
+    kind: Cluster
+    result: fail
+  - policy: storage-cnpg-governance
+    rule: audit-cnpg-backup-plugin
+    resources:
+      - app/primary-compliant
+    kind: Cluster
+    result: pass
+  # `skip`, not `pass` — deliberately. The replica must be excluded by the
+  # PRECONDITION, not merely happen to satisfy the check. Asserting `skip` fails
+  # if someone removes the precondition and the rule starts evaluating replicas
+  # again, which `pass` would not catch.
+  - policy: storage-cnpg-governance
+    rule: audit-cnpg-backup-plugin
+    resources:
+      - app/replica-dr
+    kind: Cluster
+    result: skip
+  # --- redundant per-cluster PodMonitor is rejected, absence is fine ---
+  - policy: storage-cnpg-governance
+    rule: audit-cnpg-redundant-podmonitor
+    resources:
+      - app/duplicate-podmonitor
+    kind: Cluster
+    result: fail
+  - policy: storage-cnpg-governance
+    rule: audit-cnpg-redundant-podmonitor
+    resources:
+      - app/primary-compliant
+      - app/replica-dr
+      - app/primary-no-backup
+    kind: Cluster
+    result: pass
