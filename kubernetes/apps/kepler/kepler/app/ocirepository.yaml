@@ -9,9 +9,15 @@ spec:
   layerSelector:
     mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
     operation: copy
-  url: oci://quay.io/sustainable_computing_io/charts/kepler
+  # Routed through the Harbor pull-through proxy-cache (ADR-0025) instead of quay.io direct,
+  # matching the image below. source-controller fetches charts over its own HTTP client and does
+  # NOT use the Talos containerd mirror, so before this the chart was the one quay.io pull with
+  # no caching in front of it. Digest is unchanged: the proxy is content-addressable (verified
+  # against the Harbor manifest endpoint before landing). depName follows the url so Renovate
+  # looks the chart up through Harbor too — see the note on the image below.
+  url: oci://harbor.webgrip.dev/quay/sustainable_computing_io/charts/kepler
   ref:
-    # renovate: datasource=docker depName=quay.io/sustainable_computing_io/charts/kepler
+    # renovate: datasource=docker depName=harbor.webgrip.dev/quay/sustainable_computing_io/charts/kepler
     tag: "0.11.4"
     # Required by the flux-governance-enforce Kyverno policy (OCIRepositories must
     # pin a digest). Renovate keeps tag+digest in sync.

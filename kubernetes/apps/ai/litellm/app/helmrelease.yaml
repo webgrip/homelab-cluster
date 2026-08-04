@@ -174,10 +174,14 @@ spec:
           # Sidecar: postgres-exporter over LiteLLM's own spend ledger — the
           # metrics path ADR-0044 needs (OSS LiteLLM has no Prometheus /metrics).
           # In the litellm Deployment so the existing kyverno third-party-image
-          # exception covers its quay.io image (no new exception needed).
+          # exception covers it (no new exception needed — that exception is still
+          # required regardless, for litellm's own ghcr.io/berriai image).
           exporter:
             image:
-              repository: quay.io/prometheuscommunity/postgres-exporter
+              # Harbor pull-through proxy-cache (ADR-0025) instead of quay.io direct; digest
+              # unchanged, proxy is content-addressable. Keeps the dep on the Harbor path so
+              # Renovate's soak can actually clear — quay.io reports no release timestamps.
+              repository: harbor.webgrip.dev/quay/prometheuscommunity/postgres-exporter
               tag: v0.20.1@sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e
             # The wal collector needs pg_monitor (pg_ls_waldir) — the app user lacks
             # it and we only want the custom litellm_* queries anyway. Silence it.

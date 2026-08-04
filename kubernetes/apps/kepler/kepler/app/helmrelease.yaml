@@ -26,7 +26,13 @@ spec:
       # digest field, so it's appended inline onto tag (repo:tag@digest), same
       # pattern as gitea-mirror/KEDA. VIK-241/242, ticket #68.
       repository: harbor.webgrip.dev/quay/sustainable_computing_io/kepler
-      # renovate: datasource=docker depName=quay.io/sustainable_computing_io/kepler
+      # depName MUST track the Harbor path, not quay.io. Renovate resolves versions against
+      # depName, and quay.io reports no release timestamps, so a quay depName leaves
+      # `renovate/stability-days` pending forever — the branch status never goes green and the
+      # PR can never automerge. Pointing it at Harbor picks up the timestamp-optional rule in
+      # .renovaterc.json5. (Rewriting `repository` alone is NOT enough; this line was left on
+      # quay.io until 2026-08-04 and would have wedged the next kepler bump.)
+      # renovate: datasource=docker depName=harbor.webgrip.dev/quay/sustainable_computing_io/kepler
       tag: v0.11.4@sha256:1936d0e05276296cd4aeb0315b1c5fee5024c115bbead03daf3b3cf9b485dafc
     # DaemonSet: chart defaults already set hostPID + control-plane tolerations so
     # it runs on every node. Explicit requests keep it Burstable (this cluster

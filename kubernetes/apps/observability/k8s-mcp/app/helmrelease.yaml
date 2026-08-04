@@ -32,9 +32,14 @@ spec:
       remediateLastFailure: true
   values:
     image:
-      registry: quay.io
-      repository: containers/kubernetes_mcp_server
-      # renovate: datasource=docker depName=quay.io/containers/kubernetes_mcp_server
+      # Routed through the Harbor pull-through proxy-cache (ADR-0025) instead of quay.io direct.
+      # Digest unchanged — the proxy is content-addressable (verified against the Harbor manifest
+      # endpoint before landing). depName must track the Harbor path too: quay.io reports no
+      # release timestamps, so a quay depName leaves `renovate/stability-days` pending forever and
+      # the PR can never automerge (this is what wedged #491).
+      registry: harbor.webgrip.dev
+      repository: quay/containers/kubernetes_mcp_server
+      # renovate: datasource=docker depName=harbor.webgrip.dev/quay/containers/kubernetes_mcp_server
       version: v0.0.65
     # Read-only at the app layer (belt). The real guarantee is RBAC below.
     config:
