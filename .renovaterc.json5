@@ -29,9 +29,21 @@
   // until the next run 6h later. `main` also has concurrent human/agent writers, so branches
   // fall behind constantly even when Renovate merges nothing — every rebase re-runs CI on the
   // single worker node. "conflicted" rebases only on a real conflict, so a run can merge many
-  // PRs. What we give up (each merge tested against the exact tip of main) we never actually
-  // had: branch protection sets no required checks and Renovate does not wait for e2e; the
-  // post-merge flux-local run on main is the real net.
+  // PRs.
+  //
+  // THE TRADE-OFF (corrected 2026-08-04 — the previous note here claimed "branch protection sets
+  // no required checks and Renovate does not wait for e2e", which is false and cost us a week of
+  // frozen PRs). Forgejo Actions posts a commit status per e2e job, so every PR carries four
+  // `e2e / …` statuses and Renovate's automerge DOES gate on them. Combined with "conflicted",
+  // that means: a branch's head SHA never moves while main advances, so CI never re-runs, so a
+  // branch that went red once STAYS RED FOREVER and can never automerge — even after main is
+  // fixed. On 2026-08-04 nine PRs were wedged this way on statuses dated Jul 29–Aug 1, left over
+  // from a CI outage that main had already fixed.
+  //
+  // We keep "conflicted" anyway: the rebase storm it prevents is real and the single worker node
+  // cannot absorb it. The price is that clearing a red is a MANUAL step — tick the PR's rebase
+  // checkbox on the Renovate Dashboard 🤖 issue to rebuild it against current main. If PRs stop
+  // merging, check for stale statuses before suspecting Renovate itself.
   rebaseWhen: "conflicted",
   // NOTE on Harbor-proxied charts: non-bootstrap OCI Helm charts have their
   // OCIRepository url pointed at Harbor's pull-through proxy (harbor.${SECRET_DOMAIN}/ghcr/…,
@@ -333,12 +345,13 @@
       minimumReleaseAge: "0 days",
     },
     {
-      description: "Treat missing release timestamps as stable for GHCR Docker datasource updates; Renovate only supports Docker release timestamps on Docker Hub, so GHCR OCI artifacts can otherwise stay pending forever. Also covers charts proxied through Harbor (harbor.${SECRET_DOMAIN}/<project>/…), whose timestamps are likewise unavailable.",
+      description: "Treat missing release timestamps as stable for GHCR/quay Docker datasource updates; Renovate only supports Docker release timestamps on Docker Hub, so GHCR OCI artifacts can otherwise stay pending forever. Also covers charts proxied through Harbor (harbor.${SECRET_DOMAIN}/<project>/…), whose timestamps are likewise unavailable. quay.io was added 2026-08-04: without it `renovate/stability-days` sits pending FOREVER on every quay dep, which does not merely delay the soak — it holds the branch status non-green, so automerge never fires and the PR is stuck for good (cert-manager #467 sat 6 days on a 1-day soak). Registries land here because they cannot report a timestamp, not because we want to skip the soak.",
       matchDatasources: [
         "docker"
       ],
       matchPackageNames: [
         "/^ghcr\\.io\\//",
+        "/^quay\\.io\\//",
         "/^harbor\\.webgrip\\.dev\\//"
       ],
       minimumReleaseAgeBehaviour: "timestamp-optional",
