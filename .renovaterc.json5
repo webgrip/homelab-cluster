@@ -15,6 +15,21 @@
     ":automergeBranch",
   ],
   dependencyDashboardTitle: "Renovate Dashboard 🤖",
+  // Schedule: the shared preset ships "after 3am and before 7am every weekday" + "every weekend"
+  // (Europe/Amsterdam). That window was already MOOT for almost everything here — the digest,
+  // patch, minor, vulnerability, OCIRepository-patch and dev/staging/production rules below each
+  // override schedule to "at any time", and PR #504 (a digest bump) was demonstrably created at
+  // 09:15 Amsterdam, well outside it. What the window still bound was the handful of rules with
+  // no override: mise tools, GitHub Actions, the Flux controllers group and lock file
+  // maintenance. Those fared badly. The window opens 03:00 Amsterdam (01:00 UTC) and the only
+  // job run overlapping it ended ~01:10-01:20 UTC, leaving those managers roughly 7-17 MINUTES
+  // of eligibility per weekday — which is why mise and Actions PRs crawled while container
+  // bumps flowed. Weekends were unrestricted, so the behaviour looked random.
+  // Setting it here makes the cadence uniform and honest: the soak (minimumReleaseAge) is the
+  // deliberate safety gate, not a clock window that silently applies to four managers.
+  schedule: [
+    "at any time"
+  ],
   // Concurrency: the shared preset ships prConcurrentLimit 5 and Renovate takes the LOWEST
   // value among a branch's upgrades, so the admin ConfigMap's 10 never applied — 5 open PRs
   // (three of them hand-edited and unmergeable) deadlocked PR creation entirely and every
