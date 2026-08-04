@@ -33,9 +33,9 @@ workload at admission.** Two structural facts shape everything:
 
 | Policy | Biggest live FAIL | Verdict |
 |--------|-------------------|---------|
-| `require-pod-probes` | 6 (not ~18) — `forgejo-dind` + `preview-host` only | Blocked on adding probes to live CI infra |
+| `require-pod-probes` | 6 (not ~18) — `forgejo-dind` + `preview-host` only | DONE — wave 1 enforced after probing both sidecars |
 | `image-hygiene` | ~0 (confirmed by template sweep) | DONE — wave 2 enforced |
-| `image-supply-chain` | `require-approved-registries` ~103, `require-image-digest` ~25 | SPLIT — 2 clean rules now; digest later; approved-registries **stays Audit** |
+| `image-supply-chain` | `require-approved-registries` ~103 (intended signal, ADR-0033), `require-image-digest` actual 11 | DONE — waves 4 + 11 enforced; approved-registries **stays Audit** and is all that remains in the audit policy |
 | `rbac-least-privilege` | `disallow-wildcards-in-app-roles` ~40 — **this figure was never real**, the rule was denying every Role (glob `*` in `AnyIn`); fixed 2026-08-04, actual count 0 | DONE — waves 3 + 10 both enforced; `-audit` policy retired |
 | `workload-hardening` | forgejo 26 | ns-by-ns via overrides; needs resource-limit sweep |
 | `workload-advanced-hardening` | SA-token / readonly-rootfs broad | SPLIT — 5 low-risk rules now; invasive rules stay Audit |
@@ -117,7 +117,7 @@ one admission cycle. One wave per commit, spaced apart (the batched-rollout stor
 
 | Wave | Policy / rules | Mechanism | Prereq |
 |------|----------------|-----------|--------|
-| 1 | `require-pod-probes` (whole) | Enforce | **NOT clean** — 6 fails, all from 2 workloads: `forgejo-dind` (DaemonSet, no probes on dind/prune) and `preview-host` (git-sync sidecar). Both are live CI infra; a bad probe restart-loops them |
+| 1 | `require-pod-probes` (whole) | Enforce | **SHIPPED 2026-08-04** — prune + git-sync sidecars given probes (remediated, not waived); 101 pods/templates clean, 58 correctly skipped as Job-owned |
 | 2 | `image-hygiene` (whole) | Enforce | **SHIPPED 2026-08-04** — namespaceSelector reconciled; swept 168 pods+templates, 0 fails |
 | 3 | `rbac-least-privilege` — 4 clean rules | split→Enforce | **SHIPPED 2026-08-04** — `rbac-least-privilege-enforce`; swept 371 RBAC objects |
 | 4 | `image-supply-chain` — latest-tag + fully-qualified | split→Enforce | **SHIPPED 2026-08-03** — `image-supply-chain-enforce`; prereq was NOT "none" (see the gate note above) |
@@ -127,8 +127,8 @@ one admission cycle. One wave per commit, spaced apart (the batched-rollout stor
 | 8 | `workload-advanced-hardening` — 5 low-risk rules | split→Enforce | **NOT clean** — 65 fails: non-default-SA 24, SA-token opt-out 17, risky-volumes 7, non-baseline-caps 7, drop-ALL 6, explicit-root 4 |
 | 9 | `workload-hardening` (4 rules) | overrides, ns-by-ns | **NOT clean** — 46 fails: run-as-non-root 15, seccomp 15, validate-resources 10, privilege-escalation 6 |
 | 10 | `rbac-least-privilege` — wildcards | merge→Enforce | **SHIPPED 2026-08-04** — the "55 failing Roles" were a RULE BUG, not a backlog (see below); fixed, 55/55 pass, `-audit` policy retired |
-| 11 | `image-supply-chain` — `require-image-digest` | merge→Enforce | **NOT clean** — 11 fails: erfbeeld ×3 envs, minecraft, ploeg-worker-copper (rc.6 unpinned), and CNPG pods litellm-db-1 / ploeg-db-1 / ploeg-db-2 (operator images; extend exception-cnpg-pods) |
-| 12 | `namespace-tenancy` — require-{netpol,quota,labels} | merge→Enforce | 1 live fail: the `drawio` namespace. Git declares all three labels — the app is deliberately SUSPENDED (`kubernetes/apps/kustomization.yaml`), so Flux no longer manages the namespace and it is an orphan. Clean up the namespace, do not un-suspend |
+| 11 | `image-supply-chain` — `require-image-digest` | merge→Enforce | **SHIPPED 2026-08-04** — erfbeeld ×3 + minecraft genuinely pinned; only CNPG operator images waived; audit policy now holds require-approved-registries alone |
+| 12 | `namespace-tenancy` — require-{netpol,quota,labels} | merge→Enforce | **1 fail, needs one manual step.** The `drawio` namespace is an EMPTY orphan: Git declares all three labels, but the app is deliberately SUSPENDED so Flux no longer manages it. `kubectl delete namespace drawio` clears the wave (verified empty: 0 workloads, 0 PVCs). Do not un-suspend the app to satisfy a policy |
 | 13 | `image-verify` — `verify-webgrip-images` | merge→Enforce | **UNSWEPT** — `verifyImages` rules need registry access; the CLI cannot evaluate them offline |
 | 14 | `image-attestations` | Enforce | **UNSWEPT** — same `verifyImages` limitation as wave 13 |
 | — | approved-registries, image-verify-harbor, advanced invasive rules, secrets PDB/topology/cm-keys | **stay Audit** | see ADR-0033 |
