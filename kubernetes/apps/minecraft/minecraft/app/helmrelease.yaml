@@ -68,8 +68,14 @@ spec:
         containers:
           app:
             image:
-              repository: docker.io/itzg/minecraft-server
-              tag: java21
+              # Through the Harbor pull-through proxy and digest-pinned. `java21` is a
+              # rolling tag — it moves on every upstream rebuild, so the tag alone says
+              # nothing about what actually runs. The digest is the multi-arch INDEX
+              # digest (`docker buildx imagetools inspect`), not the per-platform one
+              # `docker manifest inspect .manifests[0]` reports; pinning the latter would
+              # silently arch-lock the image.
+              repository: harbor.webgrip.dev/dockerhub/itzg/minecraft-server
+              tag: java21@sha256:e11922070f920dd0fc49b6ddfd6c926414621055f1b14ed669948a676ef1244b
             envFrom:
               - configMapRef:
                   name: minecraft-config
