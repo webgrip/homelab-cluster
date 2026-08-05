@@ -67,12 +67,11 @@
   // forgejo platform. PREREQUISITE: the label must exist in the Forgejo repo before it can be
   // applied; Renovate consumes it, it does not create it.
   keepUpdatedLabel: "renovate/keep-updated",
-  // Flag third-party images whose upstream has gone quiet. This tree runs a lot of small
-  // community images (a2s-exporter, minecraft-server, sparkyfitness, drawio, excalidraw...) where
-  // "no Renovate PRs lately" is ambiguous between "stable" and "abandoned" — the failure mode is
-  // silently running unmaintained software rather than a broken update. Reported on the
-  // Dependency Dashboard (dependencyDashboardReportAbandonment defaults true), no PRs created.
-  abandonmentThreshold: "1 year",
+  // NOTE: abandonmentThreshold is deliberately NOT set here. It looked missing, but the shared
+  // preset extends `abandonments:recommended`, which already applies a 1-year threshold to
+  // matchPackageNames ["*"] AND ships curated per-package exceptions (packages upstream considers
+  // finished are marked "eternal" so they are never falsely flagged). Setting it here would be
+  // redundant at best and would flatten those curated exceptions at worst.
   // NOTE on Harbor-proxied charts: non-bootstrap OCI Helm charts have their
   // OCIRepository url pointed at Harbor's pull-through proxy (harbor.${SECRET_DOMAIN}/ghcr/…,
   // ADR-0023/0017). Renovate does its version lookup *through* Harbor — verified that
@@ -129,23 +128,28 @@
     "Type",
     "Update",
     "Change",
-    "Pending",
     "Released",
-    "Age",
+    "Age (d)",
   ],
   prBodyDefinitions: {
     Released: "{{#if releaseTimestamp}}{{{releaseTimestamp}}}{{else}}—{{/if}}",
-    Age: "{{#if newVersionAgeInDays}}{{{newVersionAgeInDays}}}d{{else}}—{{/if}}",
+    // Named "Age (d)", NOT "Age". `Age` is a built-in Mend badge definition and the shared preset
+    // extends `mergeConfidence:all-badges`, which legitimately uses it for the datasources Mend
+    // supports. Overloading the name would silently swap a real badge for a plain number.
+    "Age (d)": "{{#if newVersionAgeInDays}}{{{newVersionAgeInDays}}}d{{else}}—{{/if}}",
   },
   prBodyNotes: [
     "{{#if isMajor}}⚠️ Major update: review upstream migration notes, chart values, and rollout impact before merging.{{/if}}",
     "{{#if isVulnerabilityAlert}}Security update: prioritize review and verify the vulnerable component is actually deployed.{{/if}}",
     "{{#if isGroup}}Grouped GitOps PR: confirm the group is operationally coherent before enabling automerge.{{/if}}",
-    // The old note here claimed "Merge Confidence badges are included where Renovate supports
-    // them". That was false — no Confidence column was ever configured, so no badge was ever
-    // rendered — and it duplicated a near-identical sentence the shared preset already adds, so
-    // every PR body carried the same untrue claim twice. Replaced with the soak explainer, which
-    // is the thing that actually determines when a green PR merges.
+    // The note removed here duplicated a near-identical sentence the shared preset already adds,
+    // so every PR body carried the same claim twice. (An earlier version of this comment said the
+    // claim was also FALSE because no Confidence column was configured — that was wrong. The
+    // preset extends `mergeConfidence:all-badges`, which does configure those columns, scoped via
+    // matchDatasources. Badges are absent from this repo's PRs because Mend covers only go/maven/
+    // npm/nuget/packagist/pypi/rubygems — never docker or helm — so the preset's "where
+    // supported" wording is accurate; it is simply vacuous in a tree that is all containers and
+    // charts. Hence the self-hosted Released/"Age (d)" columns above.)
     "`Released` is the upstream publish time; `—` means this registry reports no timestamp, so no soak applies and the PR is eligible on the next Renovate run. Otherwise add the soak for this update type (patch 1d, minor 3d, digest 0d) to `Released` — the first hourly run after that merges it.",
   ],
   packageRules: [
