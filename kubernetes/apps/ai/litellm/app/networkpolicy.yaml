@@ -94,6 +94,22 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: ai
+    # LiteLLM is not only a provider proxy — it is also the MCP gateway, and its config
+    # registers in-cluster MCP servers as backends:
+    #   observability: mcp-grafana, mcp-victorialogs, k8s-mcp-kubernetes-mcp-server, opencost
+    #   vikunja:       mcp-vikunja
+    # Those resolve to pod IPs in 10.42/16, which the `except` below explicitly denies, so
+    # the CIDR rule alone silently broke every MCP backend the moment default-deny landed
+    # (caught 2026-08-05: litellm log volume went 192 -> 458 lines/10min with
+    # "httpx.ConnectError: All connection attempts failed"). Cross-namespace reach must be
+    # granted by IDENTITY; the CIDR rule cannot express it.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vikunja
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
