@@ -53,7 +53,13 @@ prepare_kyverno_test_workspace() {
     # because GNU grep honours -Z. `find -print0` and `grep -q` behave the same everywhere.
     local policy
     while IFS= read -r -d '' policy; do
-        grep -q -E '^kind: (ClusterPolicy|Policy|PolicyException|ClusterCleanupPolicy)$' "${policy}" || continue
+        # Both dialects. The legacy kyverno.io/v1 kinds (ClusterPolicy/Policy) AND the
+        # policies.kyverno.io CEL family, which is where the estate is migrating before
+        # v1.20 removes the legacy API (rfc-kyverno-cel-migration.md). Adding the CEL kinds
+        # BEFORE any policy moves is deliberate: a migrated policy that this grep did not
+        # recognise would be silently dropped from the test workspace and CI would stay
+        # green — the exact hole the hardcoded allowlist used to leave.
+        grep -q -E '^kind: (ClusterPolicy|Policy|PolicyException|ClusterCleanupPolicy|ValidatingPolicy|NamespacedValidatingPolicy|MutatingPolicy|NamespacedMutatingPolicy|GeneratingPolicy|NamespacedGeneratingPolicy|ImageValidatingPolicy|NamespacedImageValidatingPolicy|DeletingPolicy|NamespacedDeletingPolicy)$' "${policy}" || continue
         sed "s|\${SECRET_DOMAIN}|${KYVERNO_TEST_SECRET_DOMAIN}|g; s|__SECRET_DOMAIN__|${KYVERNO_TEST_SECRET_DOMAIN}|g" \
             "${policy}" >"${workspace}/policies/$(basename "${policy}")"
     done < <(find "${policy_dirs[@]}" -maxdepth 1 -type f -name '*.yaml' -print0)
