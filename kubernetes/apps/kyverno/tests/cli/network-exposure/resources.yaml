@@ -1,3 +1,4 @@
+---
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -126,3 +127,33 @@ spec:
     - backendRefs:
         - name: app
           port: 80
+---
+# MUST PASS. Added 2026-08-05 — the suite was fail-only, so a policy that rejected every
+# Service and every HTTPRoute would have looked identical to a working one.
+apiVersion: v1
+kind: Service
+metadata:
+  name: compliant-clusterip
+  namespace: app
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: compliant-route
+  namespace: app
+spec:
+  parentRefs:
+    - name: internal
+      namespace: network
+      sectionName: https
+  hostnames:
+    - "app.${SECRET_DOMAIN}"
+  rules:
+    - backendRefs:
+        - name: app
+          port: 8080

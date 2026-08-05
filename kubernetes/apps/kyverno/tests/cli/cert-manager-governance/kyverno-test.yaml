@@ -1,3 +1,4 @@
+---
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -31,3 +32,19 @@ results:
       - wrong-zone
     kind: ClusterIssuer
     result: fail
+  # PASS case — proves the rule admits a correctly-scoped ACME issuer rather than
+  # rejecting every ClusterIssuer it sees.
+  - policy: cert-manager-governance
+    rule: restrict-clusterissuer-acme-zone
+    resources:
+      - correct-zone
+    kind: ClusterIssuer
+    result: pass
+  # SKIP, not pass — the precondition must exclude non-ACME issuers. Asserting `skip`
+  # fails if someone removes the precondition; `pass` would not catch it.
+  - policy: cert-manager-governance
+    rule: restrict-clusterissuer-acme-zone
+    resources:
+      - selfsigned-issuer
+    kind: ClusterIssuer
+    result: skip
