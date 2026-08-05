@@ -25,13 +25,20 @@ POLICY_DIR="${ROOT_DIR}/kubernetes/apps/kyverno/policies/app"
 CLI_DIR="${ROOT_DIR}/kubernetes/apps/kyverno/tests/cli"
 
 # Pre-existing enforce policies still lacking a CLI test. Burn this down; do not grow it.
-KNOWN_UNTESTED=(
-    storage-cnpg-governance.yaml
-)
+#
+# EMPTY as of 2026-08-04. storage-cnpg-governance was baselined here when the gate was
+# introduced, but it gained a real CLI test (pass AND fail cases) on 2026-07-31 with the
+# longhorn-single allowlist widening — the entry then went stale and, because a baselined
+# policy is `continue`d past entirely, it silently disabled the gate for a policy that was
+# actually covered. A stale baseline is worse than no baseline: it reads as "known debt"
+# while quietly exempting a policy from the check it already passes.
+KNOWN_UNTESTED=()
 
 is_known_untested() {
     local name="$1"
-    for known in "${KNOWN_UNTESTED[@]}"; do
+    # `${arr[@]+...}` guard: on bash 3.2 (stock macOS) expanding an EMPTY array under
+    # `set -u` is an unbound-variable error, so the list going empty would abort the gate.
+    for known in ${KNOWN_UNTESTED[@]+"${KNOWN_UNTESTED[@]}"}; do
         [[ "${name}" == "${known}" ]] && return 0
     done
     return 1
@@ -50,10 +57,16 @@ checked=0
 
 shopt -s nullglob
 for policy in "${POLICY_DIR}"/*.yaml; do
-    # Only ClusterPolicy/Policy documents.
-    grep -qE '^kind: (ClusterPolicy|Policy)$' "${policy}" || continue
-    # Only enforcing ones.
-    grep -qE 'validationFailureAction:[[:space:]]*Enforce|failureAction:[[:space:]]*Enforce' "${policy}" || continue
+    # Policy documents in EITHER dialect: legacy kyverno.io/v1 (ClusterPolicy/Policy) and
+    # the policies.kyverno.io CEL family we are migrating to before v1.20 removes the
+    # legacy API. See docs/techdocs/docs/rfc/rfc-kyverno-cel-migration.md.
+    grep -qE '^kind: (ClusterPolicy|Policy|ValidatingPolicy|NamespacedValidatingPolicy|ImageValidatingPolicy|NamespacedImageValidatingPolicy|DeletingPolicy|NamespacedDeletingPolicy)$' "${policy}" || continue
+    # Only enforcing ones. The two dialects spell "enforce" differently:
+    #   legacy : validationFailureAction: Enforce  (policy) or failureAction: Enforce (rule)
+    #   CEL    : validationActions: [Deny]         -- Audit/Warn are the non-blocking values
+    # Missing the CEL spelling would let a migrated enforcing policy through untested,
+    # which is the same silent-omission failure the gate exists to prevent.
+    grep -qE 'validationFailureAction:[[:space:]]*Enforce|failureAction:[[:space:]]*Enforce|validationActions:.*\bDeny\b|^[[:space:]]*-[[:space:]]*Deny[[:space:]]*$' "${policy}" || continue
 
     base="$(basename "${policy}")"
 

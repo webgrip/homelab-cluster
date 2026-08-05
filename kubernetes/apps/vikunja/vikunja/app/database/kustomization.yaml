@@ -5,7 +5,12 @@ kind: Kustomization
 namespace: vikunja
 components:
   - ../../../../../components/cnpg-netpol
-  - ../../../../../components/cnpg-monitoring
+  # cnpg-monitoring removed 2026-08-04: it is a CLUSTER-WIDE component, not a per-app one.
+  # Its PodMonitor selects `cnpg.io/cluster` with `namespaceSelector.any: true` and its
+  # PrometheusRules query cnpg-system directly, so one copy covers everything. Four copies
+  # were installed (cnpg-system + ai + ploeg + vikunja), which scraped every CNPG pod 4x
+  # (verified: `count by (pod) (cnpg_collector_up)` == 4) and would have fired
+  # CNPGOperatorDown four times. The single install lives in apps/cnpg-system.
   - ../../../../../components/cnpg-restore-test
   - ../../../../../components/cnpg-disaster-recovery
 resources:

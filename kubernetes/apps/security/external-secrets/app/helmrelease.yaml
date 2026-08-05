@@ -8,6 +8,17 @@ spec:
     kind: OCIRepository
     name: external-secrets
   interval: 1h
+  # Added 2026-08-05 — this was the only HelmRelease in the tree failing the enforcing
+  # flux-governance-enforce/require-helmrelease-remediation rule. Without it a failed
+  # install or upgrade of the secret-delivery control plane just stays failed until a
+  # human notices, which is the worst component to leave in that state.
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
   values:
     installCRDs: true
     replicaCount: 1

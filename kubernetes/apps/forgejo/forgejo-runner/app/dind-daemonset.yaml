@@ -45,7 +45,7 @@ spec:
           effect: NoSchedule
       initContainers:
         - name: init-ci-shared
-          image: harbor.webgrip.dev/dockerhub/library/docker:29.7.0-dind@sha256:084e385b0c9b7ab35d5a46dfedd033721448c000dbec71adcf13da8a9e71baa8
+          image: harbor.webgrip.dev/dockerhub/library/docker:29.7.1-dind@sha256:e8faad5a8dc5279dff929afc5449f2791736912fff9f99351d742db2fad01b4c
           command:
             - "sh"
             - "-ec"
@@ -60,7 +60,7 @@ spec:
             limits: {memory: 32Mi}
       containers:
         - name: dind
-          image: harbor.webgrip.dev/dockerhub/library/docker:29.7.0-dind@sha256:084e385b0c9b7ab35d5a46dfedd033721448c000dbec71adcf13da8a9e71baa8
+          image: harbor.webgrip.dev/dockerhub/library/docker:29.7.1-dind@sha256:e8faad5a8dc5279dff929afc5449f2791736912fff9f99351d742db2fad01b4c
           args:
             - dockerd
             - --host=tcp://0.0.0.0:2375
@@ -123,13 +123,62 @@ spec:
           #   e.g. 1.3.0 after 1.4.0 ships). 85% tracks kubelet's nodefs eviction threshold —
           #   the cache must never be what pushes the node into pod eviction. Costs one cold
           #   pull per evicted image afterwards, which is the point of a pressure valve.
-          image: harbor.webgrip.dev/dockerhub/library/docker:29.7.0-dind@sha256:084e385b0c9b7ab35d5a46dfedd033721448c000dbec71adcf13da8a9e71baa8
+          image: harbor.webgrip.dev/dockerhub/library/docker:29.7.1-dind@sha256:e8faad5a8dc5279dff929afc5449f2791736912fff9f99351d742db2fad01b4c
           command:
             - sh
             - -ec
             - |
+              # Two cadences. The orphan reaper runs every 15 min; the disk work stays at 6h.
+              #
+              # WHY THE REAPER EXISTS (2026-08-04). run-kyverno-chainsaw.sh deletes its KinD
+              # cluster from an EXIT trap, which does not run when the runner pod is killed
+              # rather than exited. Four orphaned clusters were found alive on this node — the
+              # oldest up 10 HOURS for a suite that takes minutes — each holding a full KinD
+              # control plane (apiserver + etcd + scheduler + controller-manager).
+              #
+              # Those containers are created by THIS daemon, so they sit outside kubepods
+              # cgroups: Kubernetes cannot see or schedule around their memory. The node showed
+              # 11.1Gi AnonPages while every pod's working set summed to 920Mi. That invisible
+              # pressure drove Talos's PSI OOMController, which SIGKILLed cilium-agent 346 times
+              # and left the node without a CNI for 43 hours.
+              #
+              # It is self-reinforcing, which is why it never recovered on its own: leaked
+              # cluster -> memory pressure -> OOM controller kills a runner pod -> that pod's
+              # EXIT trap never runs -> another leaked cluster.
+              #
+              # 120 min is far longer than any real chainsaw run and longer than the 30-min
+              # KIND_LOCK_WAIT_SECONDS a queued job can legitimately spend waiting, so a
+              # container older than this is orphaned, not busy. `kind delete` is not available
+              # here (no kind binary, no kubeconfig), and it is not needed: removing the node
+              # container IS the cluster.
+              # Age comes from the epoch the chainsaw script embeds in the cluster name
+              # (cluster_name="kyverno-chainsaw-$(date +%s)"), NOT from parsing
+              # .State.StartedAt. This image is Alpine, so `date` is busybox: `date -d` cannot
+              # read docker's RFC3339-with-nanoseconds and would silently yield 0, making every
+              # container look infinitely old and reaping LIVE clusters mid-run. Integer maths
+              # on a field we generate ourselves has no such failure mode.
+              reap_orphaned_kind() {
+                now=$(date +%s)
+                docker -H tcp://localhost:2375 ps --format '{{.Names}}' 2>/dev/null \
+                  | grep -E '^kyverno-chainsaw-[0-9]+-control-plane$' \
+                  | while read -r c; do
+                      epoch=$(echo "$c" | sed -n 's/^kyverno-chainsaw-\([0-9][0-9]*\)-control-plane$/\1/p')
+                      [ -n "$epoch" ] || continue
+                      age_min=$(( (now - epoch) / 60 ))
+                      if [ "$age_min" -gt 120 ]; then
+                        echo "reaping orphaned KinD cluster ${c} (age ${age_min}m)"
+                        docker -H tcp://localhost:2375 rm -f "$c" >/dev/null 2>&1 || true
+                      fi
+                    done
+              }
               while true; do
-                sleep 21600
+                for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do
+                  sleep 900
+                  # Heartbeat for the liveness probe below. Touched once per reap pass, so a
+                  # wedged loop (a hung `docker` call, say) goes stale and gets restarted.
+                  : > /tmp/prune-heartbeat
+                  reap_orphaned_kind || true
+                done
                 docker -H tcp://localhost:2375 image prune -f || true
                 docker -H tcp://localhost:2375 volume prune -f || true
                 used=$(df -P /var/lib/docker | awk 'NR==2 {gsub("%","",$5); print $5}')
@@ -139,6 +188,21 @@ spec:
                 fi
                 find /mnt/ci-shared -mindepth 1 -maxdepth 1 -mmin +720 -exec rm -rf {} + || true
               done
+          # The loop touches /tmp/prune-heartbeat once per 15-min pass. 45 min of staleness
+          # means it is genuinely wedged (a hung `docker` call), not merely between passes.
+          # `find -mmin` rather than `stat -c %Y` arithmetic: this is Alpine/busybox, and
+          # -mmin behaves identically everywhere, whereas date/stat formats do not.
+          # Restarting this sidecar is safe — it holds no state and disturbs no CI job.
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - test -n "$(find /tmp/prune-heartbeat -mmin -45 2>/dev/null)"
+            initialDelaySeconds: 960
+            periodSeconds: 300
+            timeoutSeconds: 10
+            failureThreshold: 3
           volumeMounts:
             - name: ci-shared
               mountPath: /mnt/ci-shared

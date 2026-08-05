@@ -2,6 +2,13 @@
 # yaml-language-server: $schema=https://json.schemastore.org/kustomization
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+components:
+  # Count-only quota (pods/PVCs, no compute) — satisfies
+  # namespace-tenancy-audit/require-resourcequota. kepler runs 6 pods against a cap of
+  # 60, so there is no admission risk; see the component header for why it deliberately
+  # does not constrain cpu/memory.
+  - ../../../../components/resource-quota
 resources:
   - ./ocirepository.yaml
   - ./helmrelease.yaml
+  - ./networkpolicy.yaml

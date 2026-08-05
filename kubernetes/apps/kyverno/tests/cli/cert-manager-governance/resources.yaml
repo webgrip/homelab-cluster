@@ -1,3 +1,4 @@
+---
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -74,3 +75,36 @@ spec:
       - selector:
           dnsZones:
             - other.example.net
+---
+# MUST SKIP restrict-clusterissuer-acme-zone — a selfSigned issuer has no acme block to
+# scope. Before the precondition (2026-08-05) this shape was DENIED at admission by an
+# enforcing rule; the two kyverno selfSigned issuers in the cluster only survived because
+# allowExistingViolations covers UPDATE, not CREATE.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}
+---
+# MUST PASS — an ACME issuer correctly scoped to the cluster's zone. This is the pass case
+# cert-manager-governance never had: without it the suite could not tell a working rule
+# from one that rejects every ClusterIssuer.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: correct-zone
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-production
+    solvers:
+      - selector:
+          dnsZones:
+            - "${SECRET_DOMAIN}"
+        dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: cloudflare-token
+              key: token
