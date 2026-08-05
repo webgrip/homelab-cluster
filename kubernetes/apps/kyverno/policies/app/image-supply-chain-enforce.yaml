@@ -8,8 +8,10 @@
 # Deliberately NOT here, and staying in the Audit policy:
 #   - require-approved-registries — ADR-0033: stays Audit indefinitely. Enforcing it
 #     makes Harbor a pull-time SPOF at admission; it is excluded from this campaign.
-#   - require-image-digest — wave 11, gated on the digest-pinning sweep (ploeg workers,
-#     erfbeeld, CNPG images still fail it).
+# WAVE 11 merged in 2026-08-04: require-image-digest now enforces here too. Its
+# prerequisites were real remediation, not waivers — erfbeeld (3 envs) and minecraft were
+# genuinely digest-pinned, and only the CNPG operator's own images (which the Cluster CRD
+# gives no way to pin) stayed waived, via exception-cnpg-pods.
 #
 # Gate evidence for this promotion (ADR-0032 requires base AND autogen = 0 unwaived):
 # a live sweep of all 231 container/initContainer/ephemeralContainer image references
@@ -35,9 +37,9 @@ metadata:
     policies.kyverno.io/subject: Pod
     kyverno.io/kyverno-version: 1.18.1
     policies.kyverno.io/description: >-
-      Enforced image-hygiene rules: no `latest` tag even when digest-pinned, and every
-      image fully qualified with an explicit registry hostname. Split from
-      image-supply-chain-audit in wave 4 of the audit->enforce campaign.
+      Enforced image-hygiene rules: images pinned by digest, no `latest` tag even when
+      digest-pinned, and every image fully qualified with an explicit registry hostname.
+      Waves 4 and 11 of the audit->enforce campaign.
 spec:
   validationFailureAction: Enforce
   background: true
@@ -97,3 +99,37 @@ spec:
                   - key: "{{ contains(split(element.image, '/')[0], '.') || contains(split(element.image, '/')[0], ':') || split(element.image, '/')[0] == 'localhost' }}"
                     operator: Equals
                     value: false
+    - name: require-image-digest
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - arc-systems
+                      - cert-manager
+                      - cilium-secrets
+                      - cnpg-system
+                      - default
+                      - external-secrets
+                      - flux-system
+                      - keda
+                      - kube-node-lease
+                      - kube-public
+                      - kube-system
+                      - kyverno
+                      - longhorn-system
+                      - network
+                      - observability
+                      - renovate
+                      - security
+      validate:
+        message: "Images should be pinned by digest."
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            pattern:
+              image: "*@sha256:*"

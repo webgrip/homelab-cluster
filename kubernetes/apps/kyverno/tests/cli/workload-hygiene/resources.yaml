@@ -1,3 +1,4 @@
+---
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -56,3 +57,32 @@ spec:
   containers:
     - name: app
       image: ghcr.io/acme/app:1.0.0@sha256:1111111111111111111111111111111111111111111111111111111111111111
+---
+# PASS validate-probes: a readiness probe alone satisfies the rule (it wants ANY of
+# liveness/readiness/startup, not all three). Without this case the suite cannot tell a
+# working rule from one that rejects every pod.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: has-readiness-probe
+  namespace: app
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/acme/app:1.0.0@sha256:1111111111111111111111111111111111111111111111111111111111111111
+      readinessProbe:
+        httpGet:
+          path: /healthz
+          port: 8080
+---
+# MUST PASS image-supply-chain-audit — a Harbor-hosted image. Added 2026-08-05 with the
+# CEL migration; the suite previously had only the unapproved-registry fail case.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: harbor-approved
+  namespace: app
+spec:
+  containers:
+    - name: app
+      image: harbor.${SECRET_DOMAIN}/ghcr/nginxinc/nginx-unprivileged:1.29.2@sha256:1111111111111111111111111111111111111111111111111111111111111111

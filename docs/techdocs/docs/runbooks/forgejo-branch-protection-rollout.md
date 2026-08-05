@@ -49,9 +49,52 @@ for r in .profile .profile-private claude-config Tenants; do
 done
 
 # 3. LAST — homelab-cluster owner override (trunk-based, ADR-0050 §1)
-PUSH_WHITELIST=ryangr0 MERGE_WHITELIST=ryangr0 \
+#    `renovate` MUST stay in MERGE_WHITELIST (this line used to read MERGE_WHITELIST=ryangr0,
+#    which would have revoked Renovate's ability to merge its own PRs — the one repo where
+#    automerge does all the dependency work). The owner trunk-pushes; Renovate still merges.
+#    STATUS_CHECK_CONTEXTS is what actually makes e2e a merge gate — see "Why status checks".
+PUSH_WHITELIST=ryangr0 MERGE_WHITELIST=ryangr0,renovate \
+STATUS_CHECK_CONTEXTS='e2e / Lint & static validation (pull_request),e2e / Flux-local render (pull_request),e2e / Kyverno Chainsaw (KinD) (pull_request),e2e / Validate Renovate config (pull_request)' \
   ./scripts/forgejo-sync.sh --repo homelab-cluster --only protect --apply
 ```
+
+## Why status checks (added 2026-08-04)
+
+Branch protection is the **only** mechanism in Forgejo that makes CI a merge gate. The merge
+path — including the background auto-merge job — consults protected-branch rules. With no
+required contexts a red PR is mergeable, and enabling Renovate's `platformAutomerge` would merge
+PRs the moment they are scheduled, **without waiting for e2e**. So status checks are a hard
+prerequisite for `platformAutomerge`, not a nicety.
+
+Contexts must match the reported names **exactly**. Per forgejo#9288 a pattern matching zero
+tasks counts as *matched*, so a typo produces a rule that looks correct in the UI and gates
+nothing — this is exactly how forgejo#11224 ended up merging PRs with failing checks. Get the
+live names from a real PR rather than typing them:
+
+```bash
+sha=$(curl -s -H "Authorization: token $FORGEJO_TOKEN" \
+  "$FORGEJO_API/repos/webgrip/homelab-cluster/pulls/<n>" | python3 -c 'import json,sys;print(json.load(sys.stdin)["head"]["sha"])')
+curl -s -H "Authorization: token $FORGEJO_TOKEN" \
+  "$FORGEJO_API/repos/webgrip/homelab-cluster/commits/$sha/status" |
+  python3 -c 'import json,sys;[print(s["context"]) for s in json.load(sys.stdin)["statuses"]]'
+```
+
+`renovate/stability-days` is deliberately **excluded**: it is Renovate's own soak status, and
+requiring it would block a human merging during a soak window.
+
+## Mutation test — required before enabling platformAutomerge
+
+A rule that only ever passes cannot be distinguished from a rule that does nothing. Test both
+directions on homelab-cluster:
+
+1. **Must BLOCK:** take a PR whose e2e is red and attempt a merge via the UI/API. Expect refusal.
+   (If none is red, push a deliberate break to a scratch PR branch.)
+2. **Must PASS:** take a PR whose e2e is fully green and merge it. Expect success.
+
+Only after **both** behave correctly, set `platformAutomerge: true` in `.renovaterc.json5`. That
+removes Renovate's one-merge-per-run ceiling (merging one PR flips every other PR's Forgejo
+`mergeable` flag to false for the rest of the run), letting Forgejo merge each PR as soon as its
+checks pass.
 
 ## Verify
 
@@ -61,7 +104,7 @@ curl -s -H "Authorization: token $FORGEJO_TOKEN" \
   python3 -c 'import json,sys; [print(r["rule_name"], r["push_whitelist_usernames"], r["merge_whitelist_usernames"]) for r in json.load(sys.stdin)]'
 ```
 
-Expect `main ['ryangr0'] ['ryangr0']` on homelab-cluster and `['webgrip-ci']` /
+Expect `main ['ryangr0'] ['ryangr0', 'renovate']` on homelab-cluster and `['webgrip-ci']` /
 `['ryangr0', 'renovate']` on product repos. Behavioral check, both directions: a direct push
 from a non-whitelisted identity is rejected, **and** the next semantic-release run still
 commits its `chore(release)` bump — the `webgrip-ci` whitelist is what makes protection

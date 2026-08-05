@@ -1,3 +1,4 @@
+---
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -31,3 +32,28 @@ results:
       - app/privileged-pod
     kind: Pod
     result: fail
+  # PASS case — proves the baseline admits an ordinary compliant Pod.
+  - policy: pod-security-baseline-enforce
+    rule: host-namespaces
+    resources:
+      - app/compliant-pod
+    kind: Pod
+    result: pass
+  - policy: pod-security-baseline-enforce
+    rule: host-path
+    resources:
+      - app/compliant-pod
+    kind: Pod
+    result: pass
+  - policy: pod-security-baseline-enforce
+    rule: host-ports-none
+    resources:
+      - app/compliant-pod
+    kind: Pod
+    result: pass
+  - policy: pod-security-baseline-enforce
+    rule: privileged-containers
+    resources:
+      - app/compliant-pod
+    kind: Pod
+    result: pass

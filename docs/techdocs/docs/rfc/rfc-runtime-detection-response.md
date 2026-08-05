@@ -18,6 +18,18 @@ were fully uninstalled. The manifests remain — Falco 8.0.5 (modern_ebpf, custo
 rules, ServiceMonitor; **no** falcosidekick/talon) and Tetragon 1.7.0 (process/cred tracking,
 secret-redaction filters, stdout export).
 
+> **Re-verified 2026-08-04, unchanged.** `kubernetes/apps/security/kustomization.yaml` still
+> carries both lines commented out; `kubectl -n security get ds,deploy` returns neither agent.
+> Note one trap for anyone checking this quickly: the `tracingpolicies.cilium.io` CRD **still
+> exists** (created 2026-05-27) because Helm uninstall does not remove CRDs, so
+> `kubectl get tracingpolicies -A` returns `0` rather than an error — which reads like "Tetragon
+> is installed and configured with nothing" instead of "Tetragon is gone". Check the DaemonSet,
+> not the CRD.
+>
+> The [attack-path RFC](rfc-attack-path-analysis.md) raises this RFC's priority: with no detector
+> installed, any privilege-escalation chain that exists in the waiver set executes unobserved,
+> which is why that RFC proposes finding such chains *statically* in the meantime.
+
 Three problems, in order:
 
 1. **The suspension was a mitigation, not a diagnosis.** "Attributed to" is doing heavy lifting:

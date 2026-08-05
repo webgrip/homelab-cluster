@@ -46,11 +46,29 @@ spec:
             # Never give up: the repo may be briefly unreachable during forgejo restarts.
             - name: GITSYNC_MAX_FAILURES
               value: "-1"
+            # Exposes git-sync's built-in HTTP endpoint purely so the sidecar has a real
+            # health signal; it serves 200 only once a sync has succeeded. Bound to a port
+            # the pod does not publish — nginx owns 8080 and this is not a Service target.
+            - name: GITSYNC_HTTP_BIND
+              value: ":8081"
             - name: GITSYNC_USERNAME
               value: agent-builder
             - name: GITSYNC_PASSWORD
               valueFrom:
                 secretKeyRef: {name: agent-builder-token, key: FORGEJO_TOKEN}
+          # Readiness only, no liveness: GITSYNC_MAX_FAILURES is -1 ("never give up", because
+          # forgejo restarts make the repo briefly unreachable), and a liveness probe would
+          # flatly contradict that by restarting the sidecar for the exact transient this
+          # sidecar is configured to ride out. Readiness reports the same fact without acting
+          # on it — and it is what require-pod-probes asks for.
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
           securityContext:
             allowPrivilegeEscalation: false
             runAsNonRoot: true

@@ -1,3 +1,4 @@
+---
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -43,3 +44,23 @@ results:
       - default/bad-hostname-route
     kind: HTTPRoute
     result: fail
+  # PASS cases — a ClusterIP Service and an internal HTTPRoute on the https listener with
+  # an approved hostname must be admitted.
+  - policy: network-exposure-enforce
+    rule: disallow-nodeport-services
+    resources:
+      - app/compliant-clusterip
+    kind: Service
+    result: pass
+  - policy: network-exposure-enforce
+    rule: require-httproute-https-listener
+    resources:
+      - app/compliant-route
+    kind: HTTPRoute
+    result: pass
+  - policy: network-exposure-enforce
+    rule: require-approved-httproute-hostnames
+    resources:
+      - app/compliant-route
+    kind: HTTPRoute
+    result: pass

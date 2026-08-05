@@ -19,7 +19,23 @@ metadata:
       itself, not a waiver. Verified 2026-07-15 with `kyverno apply` against
       Job-owned/ReplicaSet-owned/bare pods before landing.
 spec:
-  validationFailureAction: Audit
+  # Wave 1 of the audit->enforce campaign (ADR-0032), promoted 2026-08-04.
+  #
+  # Resource name keeps its `-audit` suffix: it is a historical name, not a claim about
+  # enforcement, and renaming risks the same silent breakage that repointing
+  # rbac-least-privilege cost in wave 10 (nine dashboard panels) and that PolicyExceptions
+  # keyed by policyName cost in waves 4 and 11.
+  #
+  # The RFC estimated ~18 failures; the real number was 6, from exactly two workloads —
+  # forgejo-dind's prune sidecar and preview-host's git-sync sidecar, both fixed in the
+  # preceding commit. An earlier sweep of mine reported 65, which was wrong: it stripped
+  # ownerReferences when synthesizing pods, and this rule's precondition deliberately
+  # skips Job-owned pods (probes are meaningless on a pod that runs to completion). Any
+  # re-sweep must preserve ownerReferences or it will invent failures.
+  #
+  # Gate evidence: 101 in-scope pods and pod templates, 0 failures, 58 correctly skipped
+  # as Job-owned.
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: validate-probes

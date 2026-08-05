@@ -23,8 +23,16 @@
 #              not skipped. Still OPT-IN (not in the default set): roll out deliberately — one
 #              repo, verify a real release cuts, then --all. Overrides per run, e.g. the homelab
 #              GitOps repo (owner trunk-pushes, no release bot — ADR-0050):
-#                PUSH_WHITELIST=ryangr0 MERGE_WHITELIST=ryangr0 \
+#                PUSH_WHITELIST=ryangr0 MERGE_WHITELIST=ryangr0,renovate \
+#                STATUS_CHECK_CONTEXTS='e2e / Lint & static validation (pull_request),e2e / Flux-local render (pull_request),e2e / Kyverno Chainsaw (KinD) (pull_request),e2e / Validate Renovate config (pull_request)' \
 #                  scripts/forgejo-sync.sh --repo homelab-cluster --only protect --apply
+#              NOTE the `renovate` in MERGE_WHITELIST: this override previously read
+#              MERGE_WHITELIST=ryangr0, which would have revoked Renovate's ability to merge its
+#              own PRs on the one repo where automerge does all the dependency work. The owner
+#              trunk-pushes here, but Renovate still merges.
+#              STATUS_CHECK_CONTEXTS is what actually makes CI a gate — see sync_protect().
+#              Deliberately NOT `renovate/stability-days`: that is Renovate's own soak status, and
+#              requiring it would block a human merging during a soak window.
 #   webhook  — register a Forgejo repo webhook -> the renovate-operator receiver so ticking a
 #              Dependency-Dashboard / PR checkbox triggers an immediate Renovate run (not the 6h cron).
 #              Idempotent: matches an existing hook by receiver URL; creates if missing, refreshes if
@@ -186,6 +194,9 @@ sync_mirror() {
 PUSH_WHITELIST="${PUSH_WHITELIST:-webgrip-ci}"
 DEV_PUSH_WHITELIST="${DEV_PUSH_WHITELIST:-webgrip-ci,ryangr0}"
 MERGE_WHITELIST="${MERGE_WHITELIST:-ryangr0,renovate}"
+# Comma-separated required status-check contexts. EMPTY = omit the keys entirely (the historical
+# behaviour, and why other repos' hand-set checks survive a converge PATCH — see sync_protect).
+STATUS_CHECK_CONTEXTS="${STATUS_CHECK_CONTEXTS:-}"
 
 sync_protect() {
   local r="$1" b body exists push_list
@@ -197,27 +208,42 @@ sync_protect() {
       push_list="$DEV_PUSH_WHITELIST"
     fi
     # Any rule blocks force-push + deletion; the contract lives in the whitelists.
-    # We deliberately do NOT set status checks here: Forgejo check names differ per repo —
-    # add them by hand once that repo's CI has run under Forgejo names.
+    # Status checks stay OPT-IN via $STATUS_CHECK_CONTEXTS, because Forgejo check names differ per
+    # repo and several repos have them set by hand. When the var is empty we omit the two keys
+    # ENTIRELY rather than sending false — a converge PATCH carrying enable_status_check:false
+    # would silently wipe those hand-set contexts.
+    #
+    # WHY THIS MATTERS (2026-08-04): required status checks are the ONLY thing in Forgejo that
+    # makes CI a merge gate. Branch-protection rules are what the merge path — including the
+    # background auto-merge job — actually consults. With no contexts required, a red PR is
+    # mergeable and `platformAutomerge` would merge it the moment it is scheduled, without
+    # waiting for e2e. Contexts must match the reported names EXACTLY: forgejo#9288 means a
+    # pattern matching zero tasks counts as MATCHED, so a typo yields a rule that looks correct
+    # in the UI and gates nothing. Always mutation-test both directions after applying.
     body=$(python3 -c '
 import sys,json
-b,push,merge=sys.argv[1],sys.argv[2],sys.argv[3]
-print(json.dumps({
+b,push,merge,checks=sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4]
+rule={
     "rule_name": b,
     "enable_push": True,
     "enable_push_whitelist": True,
     "push_whitelist_usernames": [u for u in push.split(",") if u],
     "enable_merge_whitelist": True,
     "merge_whitelist_usernames": [u for u in merge.split(",") if u],
-}))' "$b" "$push_list" "$MERGE_WHITELIST")
+}
+ctx=[c.strip() for c in checks.split(",") if c.strip()]
+if ctx:
+    rule["enable_status_check"]=True
+    rule["status_check_contexts"]=ctx
+print(json.dumps(rule))' "$b" "$push_list" "$MERGE_WHITELIST" "$STATUS_CHECK_CONTEXTS")
     # Listing rules needs repo ADMIN scope; on 403 assume absent (POST; a duplicate 409s harmlessly).
     exists=$(fj "$FORGEJO_API/repos/$ORG/$r/branch_protections" 2>/dev/null \
       | python3 -c 'import sys,json;bn=sys.argv[1];print(any((x.get("rule_name") or x.get("branch_name"))==bn for x in json.load(sys.stdin)))' "$b" 2>/dev/null || echo False)
     if [ "$exists" = "True" ]; then
-      mut "converge protection $r:$b (push={$push_list} merge={$MERGE_WHITELIST})" \
+      mut "converge protection $r:$b (push={$push_list} merge={$MERGE_WHITELIST} checks={${STATUS_CHECK_CONTEXTS:-none}})" \
         -X PATCH "$FORGEJO_API/repos/$ORG/$r/branch_protections/$b" -d "$body"
     else
-      mut "protect $r:$b (push={$push_list} merge={$MERGE_WHITELIST})" \
+      mut "protect $r:$b (push={$push_list} merge={$MERGE_WHITELIST} checks={${STATUS_CHECK_CONTEXTS:-none}})" \
         -X POST "$FORGEJO_API/repos/$ORG/$r/branch_protections" -d "$body"
     fi
   done
