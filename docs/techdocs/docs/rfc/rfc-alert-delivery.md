@@ -1,4 +1,46 @@
-# RFC: Alert delivery — no alert currently reaches a human
+# RFC: Alert delivery — solved; the open problem is saturation
+
+> Status: **Superseded in premise (2026-08-05).** Delivery is DONE. What follows below the
+> "Original proposal" heading is preserved as written on 2026-07-02 and is no longer accurate.
+
+> **UPDATE 2026-08-05.** Verified against the live cluster: VMAlertmanager now routes `critical`
+> and `warning` to ntfy webhooks (`alerts-critical` / `alerts-warning`), the ntfy deployment has
+> been up 12 days, and the `"null"` receiver survives only as the deliberate sink for muted
+> routes. The premise below — "both alerting planes terminate in the void" — has not been true
+> for some time, and this document was still steering the roadmap as the highest-value open item.
+>
+> **The real failure mode turned out to be the opposite of a silent pipe: too much noise.**
+>
+> On 2026-08-04, `cilium-agent` on `fringe-workstation` crash-looped for **43 hours**, leaving the
+> node with no CNI. `CiliumAgentRestarting` fired correctly the entire time. Nobody saw it —
+> because **60 alerts were firing, 26 of them critical, several continuously for 2–3 days**. A
+> warning arriving into that is indistinguishable from the background.
+>
+> Delivering an alert nobody can act on is not better than not delivering it. The triage on
+> 2026-08-05 took it to **18 firing / 2 critical**, and every removal was a verified false
+> positive, duplicate, or backlog metric — not a suppressed real signal:
+>
+> | Removed | Was | Why |
+> |---|---|---|
+> | `SLO: Prometheus TSDB Reload Failures` | 1 permanent critical | Queried `prometheus_tsdb_reloads_failures_total` — a Prometheus-internal metric, on a VictoriaMetrics backend. 0 series, so `noDataState: NoData` fired `DatasourceNoData` forever. Replaced with `min(vm_free_disk_space_bytes)`. |
+> | `TrivyExposedSecretsDetected` | 3 permanent criticals | All three were `/etc/ssl/private/ssl-cert-snakeoil.key`, Debian's placeholder key in the CNPG Postgres image. Waived **by count**, so a second finding in that image still pages. |
+> | `TrivyCriticalImageVulnerabilities` | 19 permanent criticals | Grouped per workload. A published base-image CVE is a burn-down, not a 3am page. Aggregated to one warning; `SLO: Critical CVEs in Portfolio` already tracks the trend. |
+>
+> **What is still open, and what this RFC should now be about:**
+>
+> 1. **Keep the critical count near zero.** A critical that is always firing is not a critical.
+>    Anything permanently on should be re-baselined, aggregated, or demoted — the three above are
+>    the method, not the whole job.
+> 2. **Alert on the absence of signal, not just its presence.** The 43-hour outage would have been
+>    caught sooner by "a node has had no working CNI for 10 minutes" than by a restart counter.
+> 3. **Prove the loop end-to-end.** The Watchdog deadman is firing, but nobody has confirmed a
+>    page actually lands on a phone. That check is still owed, and it is the one thing the
+>    original proposal below got most right: render success proves nothing.
+> 4. **Beware alerts that cannot clear.** Checked and, pleasingly, NOT a problem here: the Kyverno
+>    SLO thresholds sit deliberately above the permanent ADR-0033 baseline, so they are a genuine
+>    burn-down. Worth re-checking whenever a policy's intended-permanent findings change.
+
+## Original proposal (2026-07-02, premise no longer accurate)
 
 > Status: **Proposed** · Date: 2026-07-02 · Part of the [decision-landscape gap register](../adr/landscape.md)
 

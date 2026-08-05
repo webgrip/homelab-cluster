@@ -11,6 +11,12 @@ resources:
   - grafana-ro.pushsecret.yaml
 components:
   - ../../../../../components/cnpg-backup
+  # Required before `ai` gets a default-deny: lets the CNPG operator (ns cnpg-system) poll
+  # litellm-db on 8000/5432, and lets the instance + bootstrap jobs reach offsite S3. It
+  # MUST live in this database layer, not the app layer — an operator allow placed in the
+  # app Kustomization deadlocks, because that one dependsOn the DB being ready and the DB
+  # cannot become ready until the operator can poll it.
+  - ../../../../../components/cnpg-netpol
   # cnpg-monitoring removed 2026-08-04 — cluster-wide component, one install only
   # (apps/cnpg-system). See the note in vikunja's database kustomization: four copies
   # scraped every CNPG pod 4x and duplicated the CNPG alert rules.
