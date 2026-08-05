@@ -33,9 +33,9 @@ workload at admission.** Two structural facts shape everything:
 
 | Policy | Biggest live FAIL | Verdict |
 |--------|-------------------|---------|
-| `require-pod-probes` | 6 (not ~18) — `forgejo-dind` + `preview-host` only | Blocked on adding probes to live CI infra |
+| `require-pod-probes` | 6 (not ~18) — `forgejo-dind` + `preview-host` only | DONE — wave 1 enforced after probing both sidecars |
 | `image-hygiene` | ~0 (confirmed by template sweep) | DONE — wave 2 enforced |
-| `image-supply-chain` | `require-approved-registries` ~103, `require-image-digest` ~25 | SPLIT — 2 clean rules now; digest later; approved-registries **stays Audit** |
+| `image-supply-chain` | `require-approved-registries` ~103 (intended signal, ADR-0033), `require-image-digest` actual 11 | DONE — waves 4 + 11 enforced; approved-registries **stays Audit** and is all that remains in the audit policy |
 | `rbac-least-privilege` | `disallow-wildcards-in-app-roles` ~40 — **this figure was never real**, the rule was denying every Role (glob `*` in `AnyIn`); fixed 2026-08-04, actual count 0 | DONE — waves 3 + 10 both enforced; `-audit` policy retired |
 | `workload-hardening` | forgejo 26 | ns-by-ns via overrides; needs resource-limit sweep |
 | `workload-advanced-hardening` | SA-token / readonly-rootfs broad | SPLIT — 5 low-risk rules now; invasive rules stay Audit |
@@ -117,21 +117,121 @@ one admission cycle. One wave per commit, spaced apart (the batched-rollout stor
 
 | Wave | Policy / rules | Mechanism | Prereq |
 |------|----------------|-----------|--------|
-| 1 | `require-pod-probes` (whole) | Enforce | **NOT clean** — 6 fails, all from 2 workloads: `forgejo-dind` (DaemonSet, no probes on dind/prune) and `preview-host` (git-sync sidecar). Both are live CI infra; a bad probe restart-loops them |
+| 1 | `require-pod-probes` (whole) | Enforce | **SHIPPED 2026-08-04** — prune + git-sync sidecars given probes (remediated, not waived); 101 pods/templates clean, 58 correctly skipped as Job-owned |
 | 2 | `image-hygiene` (whole) | Enforce | **SHIPPED 2026-08-04** — namespaceSelector reconciled; swept 168 pods+templates, 0 fails |
 | 3 | `rbac-least-privilege` — 4 clean rules | split→Enforce | **SHIPPED 2026-08-04** — `rbac-least-privilege-enforce`; swept 371 RBAC objects |
 | 4 | `image-supply-chain` — latest-tag + fully-qualified | split→Enforce | **SHIPPED 2026-08-03** — `image-supply-chain-enforce`; prereq was NOT "none" (see the gate note above) |
 | 5 | `namespace-tenancy` — netpol-shape rules | split→Enforce | **SHIPPED 2026-08-04** — `namespace-tenancy-enforce` |
 | 6 | `image-verify` — `verify-kyverno-images-keyless` | split→Enforce | **UNSWEPT** — `verifyImages`; needs registry access, CLI evaluates nothing offline |
 | 7 | `secrets-observability-ops` — monitor-label rules | split→Enforce | **SHIPPED 2026-08-04** — all 19 remediated (11 repo manifests + guac via chart values + renovate-operator via postRenderer), then flipped; 85/85 clean |
-| 8 | `workload-advanced-hardening` — 5 low-risk rules | split→Enforce | **NOT clean** — 65 fails: non-default-SA 24, SA-token opt-out 17, risky-volumes 7, non-baseline-caps 7, drop-ALL 6, explicit-root 4 |
-| 9 | `workload-hardening` (4 rules) | overrides, ns-by-ns | **NOT clean** — 46 fails: run-as-non-root 15, seccomp 15, validate-resources 10, privilege-escalation 6 |
+| 8 | `workload-advanced-hardening` — 5 low-risk rules | split→Enforce | **NOT clean** — 62 fails (re-swept 2026-08-04): non-default-SA 22, SA-token opt-out 17, risky-volumes 7, non-baseline-caps 7, drop-ALL 5, explicit-root 4 |
+| 9 | `workload-hardening` (4 rules) | overrides, ns-by-ns | **NOT clean** — 40 fails (re-swept 2026-08-04): run-as-non-root 14, seccomp 14, validate-resources 7, privilege-escalation 5 |
 | 10 | `rbac-least-privilege` — wildcards | merge→Enforce | **SHIPPED 2026-08-04** — the "55 failing Roles" were a RULE BUG, not a backlog (see below); fixed, 55/55 pass, `-audit` policy retired |
-| 11 | `image-supply-chain` — `require-image-digest` | merge→Enforce | **NOT clean** — 11 fails: erfbeeld ×3 envs, minecraft, ploeg-worker-copper (rc.6 unpinned), and CNPG pods litellm-db-1 / ploeg-db-1 / ploeg-db-2 (operator images; extend exception-cnpg-pods) |
-| 12 | `namespace-tenancy` — require-{netpol,quota,labels} | merge→Enforce | 1 live fail: the `drawio` namespace. Git declares all three labels — the app is deliberately SUSPENDED (`kubernetes/apps/kustomization.yaml`), so Flux no longer manages the namespace and it is an orphan. Clean up the namespace, do not un-suspend |
+| 11 | `image-supply-chain` — `require-image-digest` | merge→Enforce | **SHIPPED 2026-08-04** — erfbeeld ×3 + minecraft genuinely pinned; only CNPG operator images waived; audit policy now holds require-approved-registries alone |
+| 12 | `namespace-tenancy` — require-{netpol,quota,labels} | merge→Enforce | **3 fails left of 5** (2026-08-04). `drawio` orphan gone; `require-namespace-ownership-labels` sweeps 20/20. `require-{resourcequota,networkpolicy}` are **`apiCall`** rules — they report `error`, never `fail`, so they must be checked with `kubectl`. **kepler CLOSED** (count-only quota + `kepler-allow-scrape` ingress policy). Still open, deliberately unwaived: **`ai`** has no NetworkPolicy (its namespace manifest documents why — LiteLLM provider egress + LAN consumers — and calls zero-trust a tracked follow-up, so it stays visible as debt); **`security`** has neither, and must not be a drive-by: the generated default-deny is `podSelector: {}` over Ingress+Egress and `security` hosts the Kyverno webhook, so deny-all ingress there fails admission cluster-wide; the stock quota also fits badly (48 pods against a fixed cap of 60, and 15 pods declare no requests). Needs authored allow-rules + a bespoke cap, staged |
 | 13 | `image-verify` — `verify-webgrip-images` | merge→Enforce | **UNSWEPT** — `verifyImages` rules need registry access; the CLI cannot evaluate them offline |
 | 14 | `image-attestations` | Enforce | **UNSWEPT** — same `verifyImages` limitation as wave 13 |
 | — | approved-registries, image-verify-harbor, advanced invasive rules, secrets PDB/topology/cm-keys | **stay Audit** | see ADR-0033 |
+
+<a name="audit-2026-08-04"></a>
+
+### Full-estate audit, 2026-08-04
+
+First complete sweep of all 25 policies against live state (corpus: 456 pods — every controller
+pod-template plus every live Pod, `ownerReferences` preserved, 101 Job-owned — plus live Roles,
+RoleBindings, ClusterRoleBindings, Namespaces, NetworkPolicies, Services, HTTPRoutes,
+ServiceMonitors, PodMonitors, PrometheusRules, ConfigMaps, PVCs, CNPG Clusters and Flux sources;
+all 17 exceptions applied). Inventory is clean: **25/25 policies Ready, 25/25 present in-tree** —
+no repo↔cluster drift — and **every exception's `policyName` and `ruleNames` resolve**.
+
+> **CORRECTION, same day.** The first pass of this section derived each policy's action from
+> `spec.validationFailureAction` alone and was wrong about which rules actually block. Kyverno
+> resolves the **rule-level** `validate.failureAction` over the policy-level setting, and this
+> estate uses that deliberately: **nine rules sit at `Audit` inside `Enforce` policies**, under a
+> disciplined `audit-*` naming convention where the prefix matches the effective action
+> (`cert-manager-governance/audit-certificate-{duration,private-key}`,
+> `flux-governance-enforce/audit-helmrepository-use`,
+> `network-exposure-enforce/audit-cross-namespace-backends`, and five `storage-cnpg-governance/audit-*`).
+> Any audit that reads only the policy-level field will over-report blocking rules — as this one
+> initially did, including a since-retracted claim that the CNPG DR component would be denied at
+> CREATE. Derive the action per rule:
+> `(.validate.failureAction // .spec.validationFailureAction)`.
+
+Three methodological notes worth keeping:
+
+- **Every `validate` rule in the estate sets `allowExistingViolations: true`.** Existing violators
+  are therefore tolerated on UPDATE but **still denied on CREATE**. A live FAIL against an
+  enforcing policy is not necessarily breakage today; it is a *latent* denial for anything
+  recreated. This distinction is what makes the CNPG finding below serious and the others
+  cosmetic.
+- **A rescope changed the answer.** `rbac-least-privilege-enforce` first read 2 fails
+  (`flux-system/Role/wego-admin-role`, `longhorn-system/Role/longhorn`); both namespaces are in
+  the rule's own `NotIn` selector, which the CLI does not resolve. Correctly scoped: **0 fails,
+  399 pass.** Confirms waves 3 and 10.
+- **`stateful-delete-protection-enforce` cannot be swept at all** — its rules fire on DELETE, so a
+  static corpus evaluates nothing. It is the one enforcing policy with zero offline coverage, and
+  the reason [the CEL migration RFC](rfc-kyverno-cel-migration.md) sequences it onto
+  `DeletingPolicy`.
+
+**The CNPG findings were the policy being wrong, not the fleet — fixed 2026-08-04.** All 19
+`storage-cnpg-governance` fails were Audit-action rules measuring the wrong property. Sweep now
+reads **fail: 0**, and not one CNPG `Cluster` manifest changed:
+
+- **`audit-cnpg-monitoring` measured nothing real.** It wanted `spec.monitoring.enablePodMonitor:
+  true` or a `monitoring.webgrip.io/enabled` label. CNPG scraping here comes from the
+  `cnpg-monitoring` component's PodMonitor — selector `cnpg.io/cluster`, `namespaceSelector.any:
+  true` — so one copy covers every pod in every namespace regardless of either. Verified: all 16
+  CNPG pods report `cnpg_collector_up` while 13 of 19 Clusters "failed", and the label it accepted
+  is consumed by nothing. Worse, the fix it demanded would make CNPG create a *second* PodMonitor.
+  Replaced by `audit-cnpg-redundant-podmonitor`, which denies exactly that.
+- **The component was installed four times** (cnpg-system + ai + ploeg + vikunja), so every CNPG
+  pod was scraped **4×** and `cnpg-backup-rules` existed in four namespaces with cluster-wide
+  expressions — `CNPGOperatorDown` would have fired four times. Now one install.
+- **`audit-cnpg-backup-plugin` and `audit-cnpg-scheduledbackup` now skip replicas.** The five
+  `cnpg-disaster-recovery` clusters are designated replicas: they replay the source's WAL and must
+  **not** carry `spec.plugins` barman-cloud, because archiving from a replica writes into the
+  source's backup path — the very backups the drill verifies. They declare barman under
+  `spec.externalClusters[].plugin`, which neither rule looked at. `audit-cnpg-scheduledbackup` uses
+  an `apiCall` context, so it reported `error` rather than `fail` and hid the identical five.
+- **`security/guac-db` is a deliberate Tier-4 database** (WAL archiving dropped — SBOM ingest made
+  ~4 GiB/day for a graph that rebuilds from re-ingested SBOMs; nightly `pg_dump` to Garage
+  instead). Recorded as a PolicyException with the reasoning rather than left as permanent noise.
+
+**Remaining residue against genuinely enforcing rules** (`allowExistingViolations` tolerates them
+on UPDATE; they would be denied on recreate):
+
+| Policy | enforcing fails | Resources |
+| --- | --- | --- |
+| `cert-manager-governance` | 5 | `security/Certificate/trust-manager` fails `restrict-certificate-{issuer,dnsnames,commonname}` (not covered by `exception-system-certificates`, which lists only the four kyverno certs); `ClusterIssuer/kyverno-selfsigned-issuer` + `kyverno-cleanup-selfsigned-issuer` fail `restrict-clusterissuer-acme-zone`, which requires an `acme` block a selfSigned issuer does not have |
+| `flux-governance-enforce` | 1 | `security/HelmRelease/external-secrets` missing `/spec/install/remediation` |
+| `network-exposure-enforce` | 1 | `kube-system/Service/spegel-registry` is a NodePort |
+
+The other six fails in those policies (`audit-certificate-{duration,private-key}` ×2,
+`audit-helmrepository-use` ×4) are Audit-action rules, per the correction above.
+
+**Dangling reference.** `tests/cli/workload-hygiene/kyverno-test.yaml` asserts
+`policy: image-supply-chain-audit / rule: require-image-digest / result: fail`; that rule moved to
+`image-supply-chain-enforce` in wave 11. The CLI reports it `Pass / Excluded` — green, asserting
+nothing. Real coverage exists in `tests/cli/image-supply-chain-enforce`, so this is dead weight
+rather than a hole, but it is the same silent-pass class as an orphaned waiver.
+
+**Audit-policy baselines** (unchanged posture): `require-approved-registries` 41 — the intended
+ADR-0033 drift signal, not a defect. `secrets-observability-ops-audit` 23 —
+`require-httproute-backed-probes` 18, `disallow-sensitive-configmap-keys` 3,
+`require-topology-spread` 2. Its `require-ha-pdb` rule is `apiCall`-based and therefore UNSWEPT;
+a direct check shows every namespace holding a replicated workload has at least one PDB.
+
+**Coverage.** `check-kyverno-test-coverage.sh`: 11 checked, 0 failing, 1 baselined
+(`storage-cnpg-governance`). `just kyverno-test`: 102 passed, 0 failed. Three enforcing policies
+have a fail case but **no pass case** — `cert-manager-governance`, `network-exposure-enforce`,
+`pod-security-baseline-enforce`. Grafana panel filters (`image-attestations-audit`,
+`image-verify-audit`, `rbac-least-privilege-enforce`) all still resolve.
+
+**Spawned RFCs.** The audit surfaced three problems larger than a wave, each now its own RFC:
+[Kyverno CEL migration](rfc-kyverno-cel-migration.md) (the legacy API we run on is removed in
+October 2026), [verify-policy gating](rfc-verify-policy-gating.md) (waves 6/13/14 have no working
+gate — neither PolicyReports nor the sweep can evaluate `verifyImages`), and [attack-path
+analysis](rfc-attack-path-analysis.md) (the waiver set is only evaluable as a graph).
 
 ### Test harness fixes (prerequisite, shipped first)
 

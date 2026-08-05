@@ -80,6 +80,19 @@ spec:
           - resources:
               kinds:
                 - Cluster
+      # Designated-replica clusters are EXCLUDED (added 2026-08-04). A replica does not
+      # generate its own WAL — it replays the source's — so it must not carry
+      # `spec.plugins` barman-cloud: archiving from a replica would write into the
+      # source's backup path. The five `cnpg-disaster-recovery` clusters reference
+      # barman-cloud under `spec.externalClusters[].plugin` instead, which is the correct
+      # shape and which this rule never looked at. Without this precondition the rule
+      # reported all five as violations forever, and "fixing" them would have corrupted
+      # the very backups the DR drill exists to verify.
+      preconditions:
+        all:
+          - key: "{{ request.object.spec.replica.enabled || `false` }}"
+            operator: Equals
+            value: false
       validate:
         failureAction: Audit
         message: "CNPG clusters should configure the barman-cloud WAL archive plugin."
@@ -108,6 +121,17 @@ spec:
           - resources:
               kinds:
                 - Cluster
+      # Replicas excluded for the same reason as audit-cnpg-backup-plugin (2026-08-04):
+      # a designated replica has nothing of its own to back up. This rule uses an apiCall
+      # context, so it surfaces as `error` in an offline sweep and never as `fail` — which
+      # is exactly how it hid the same five false positives that the backup-plugin rule
+      # reported openly. Verified by direct query: the only clusters without a
+      # ScheduledBackup are the five replicas and guac-db (Tier 4, waived).
+      preconditions:
+        all:
+          - key: "{{ request.object.spec.replica.enabled || `false` }}"
+            operator: Equals
+            value: false
       context:
         - name: scheduledbackups
           apiCall:
@@ -122,7 +146,22 @@ spec:
               - key: "{{ scheduledbackups }}"
                 operator: Equals
                 value: 0
-    - name: audit-cnpg-monitoring
+    # REPLACED audit-cnpg-monitoring on 2026-08-04. The old rule required either
+    # `spec.monitoring.enablePodMonitor: true` or a `monitoring.webgrip.io/enabled` label,
+    # and measured neither. CNPG scraping in this cluster is delivered by the
+    # `cnpg-monitoring` component's PodMonitor, which selects `cnpg.io/cluster` with
+    # `namespaceSelector.any: true` — one copy covers every CNPG pod in every namespace,
+    # regardless of any per-Cluster field or label. Verified live: all 16 CNPG pods report
+    # `cnpg_collector_up` while 13 of 19 Clusters "failed" the old rule, and the label it
+    # accepted is consumed by nothing.
+    #
+    # So the old rule was not just noise — it pushed toward the WRONG fix. Setting
+    # `enablePodMonitor: true` makes the CNPG operator create a SECOND PodMonitor for that
+    # cluster on top of the cluster-wide one, i.e. duplicate scrapes. This rule encodes the
+    # real invariant instead: the platform owns CNPG scraping, so a Cluster must not
+    # declare its own. (Four copies of the component were installed at the time of writing,
+    # which is why every pod was being scraped 4x — see the component kustomizations.)
+    - name: audit-cnpg-redundant-podmonitor
       match:
         any:
           - resources:
@@ -130,14 +169,13 @@ spec:
                 - Cluster
       validate:
         failureAction: Audit
-        message: "CNPG clusters should enable monitoring integration."
-        anyPattern:
-          - spec:
-              monitoring:
-                enablePodMonitor: true
-          - metadata:
-              labels:
-                monitoring.webgrip.io/enabled: "true"
+        message: "CNPG clusters must not set spec.monitoring.enablePodMonitor — the cnpg-monitoring component already scrapes every CNPG pod cluster-wide, and a per-cluster PodMonitor duplicates every series."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.monitoring.enablePodMonitor || `false` }}"
+                operator: Equals
+                value: true
     - name: require-scheduledbackup-owner
       match:
         any:

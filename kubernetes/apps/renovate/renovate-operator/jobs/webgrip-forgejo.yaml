@@ -45,8 +45,20 @@ spec:
     # Must match the Renovate config endpoint; the operator can surface this as RENOVATE_ENDPOINT, which
     # overrides the config file, so both have to point at forgejo-http to take effect.
     endpoint: http://forgejo-http.forgejo.svc.cluster.local:3000/api/v1
-  # Offset from webgrip-gitops (:17) to avoid overlapping executor runs on the fringe pool.
-  schedule: "47 */6 * * *"
+  # HOURLY (was "47 */6 * * *" — 4x/day) since 2026-08-04. At 4 runs/day the mechanics, not the
+  # soak, dominated latency: a PR waited up to 6h to be created and then up to another 6h to be
+  # merged, because Renovate only automerges while a run is active and CI usually goes green
+  # AFTER the run that pushed the branch has exited. ~12h of pure waiting on top of the soak.
+  # Hourly cuts that to ~2h. It does NOT increase PR or CI volume — the same updates are simply
+  # discovered sooner; CI cost is per-PR, not per-run.
+  #
+  # Minute moved :47 -> :33 to preserve the anti-overlap offset from webgrip-gitops (:17), which
+  # matters more now that this job runs every hour instead of every sixth. Arithmetic: this job
+  # starts ~8min after its cron (pod schedule + image pull) and runs ~29min, so it occupies
+  # roughly :41-:10. webgrip-gitops occupies :17-:33. At the old :47 the two would have collided
+  # ~6min four times a day; at :33 they clear each other by ~7-8min on both sides. If this job's
+  # runtime grows past ~40min the margin is gone — re-check before adding repos to it.
+  schedule: "33 * * * *"
   parallelism: 1
   image: docker.io/renovate/renovate:43.271.3-full@sha256:b85b0a6338c3c11fbbf9f3fad5f49675aae0bc392ffe3a439c4dac4e23af8c0e
   secretRef: renovate-forgejo-token

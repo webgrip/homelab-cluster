@@ -65,6 +65,20 @@ spec:
           - resources:
               kinds:
                 - ClusterIssuer
+      # ACME issuers only (added 2026-08-05). The pattern below asserts a dnsZone under
+      # spec.acme.solvers, which a `selfSigned` or `ca` ClusterIssuer structurally cannot
+      # have — there is no acme block to scope. Without this precondition the rule was an
+      # ENFORCING deny on every non-ACME issuer: `kyverno-selfsigned-issuer` and
+      # `kyverno-cleanup-selfsigned-issuer` are not misconfigured, the rule just did not
+      # understand their shape. allowExistingViolations protected the two that exist, but
+      # a NEW selfSigned/CA issuer was denied at CREATE — including on a Kyverno chart
+      # reinstall, which creates its own issuers.
+      preconditions:
+        all:
+          - key: "{{ request.object.spec | keys(@) }}"
+            operator: AnyIn
+            value:
+              - acme
       validate:
         message: "ClusterIssuers must be scoped to ${SECRET_DOMAIN}."
         pattern:

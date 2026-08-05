@@ -11,6 +11,13 @@ spec:
   groups:
     - name: platform.cilium
       rules:
+        # Catches a HARD-down agent only. A fast crash loop does NOT trip this:
+        # `for: 5m` needs the condition held continuously, and a restarting agent
+        # flaps up 0->1 every few minutes, resetting the timer. On 2026-07-29 the
+        # fringe-workstation agent restarted 294 times and this never fired.
+        # Crash-loop coverage lives in CiliumAgentRestarting
+        # (prometheusrule-platform-nodes.yaml, platform.scheduling group), which
+        # keys on the monotonic restart counter — deliberately NOT duplicated here.
         - alert: CiliumAgentDown
           expr: |
             up{namespace="kube-system", pod=~"cilium.*"} == 0

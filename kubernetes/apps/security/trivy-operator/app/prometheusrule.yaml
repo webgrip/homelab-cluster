@@ -10,31 +10,53 @@ spec:
   groups:
     - name: security.trivy
       rules:
+        # AGGREGATED and downgraded to warning on 2026-08-05. This was `sum by (namespace,
+        # resource_kind, resource_name) ... > 0` at severity critical, so it emitted ONE
+        # CRITICAL PER WORKLOAD — 19 of them, firing continuously since 2026-08-03, out of
+        # 26 total criticals.
+        #
+        # That is a backlog, not an incident. A published CVE in a base image is not
+        # actionable at 3am; it is actionable when someone rebuilds the image. Paging 19
+        # times for it, permanently, is what trained every critical to be ignorable — and
+        # that is not hypothetical: cilium-agent crash-looped for 43 hours in August 2026,
+        # CiliumAgentRestarting fired the whole time, and nobody saw it inside this noise.
+        #
+        # `SLO: Critical CVEs in Portfolio` (slo-security.yaml) already tracks the
+        # aggregate trend, and the per-workload detail lives where detail belongs: the
+        # VulnerabilityReport CRs and the security dashboards. This alert now says only
+        # "how many workloads are affected", once.
+        #
+        # Deliberately a judgment call, and reversible: if you want per-workload paging
+        # back, restore the `sum by (...)` grouping and severity critical.
         - alert: TrivyCriticalImageVulnerabilities
           expr: |
-            sum by (namespace, resource_kind, resource_name) (
-              trivy_image_vulnerabilities{severity="Critical"}
-            ) > 0
+            count(
+              sum by (namespace, resource_kind, resource_name) (
+                trivy_image_vulnerabilities{severity="Critical"}
+              ) > 0
+            )
           for: 30m
           labels:
-            severity: critical
+            severity: warning
             owner: platform
             service: trivy-operator
           annotations:
-            summary: "Critical image vulnerabilities detected ({{$labels.namespace}}/{{$labels.resource_name}})"
+            summary: "{{$value}} workloads have critical image vulnerabilities"
             description: |
               What's happening:
-              - Trivy reports critical image vulnerabilities for {{$labels.namespace}}/{{$labels.resource_name}}.
+              - {{$value}} workloads currently report at least one CRITICAL image CVE.
 
               Impact/risk:
-              - Known-exploitable CVEs in a running workload increase compromise risk.
+              - Known-exploitable CVEs in running workloads increase compromise risk. This is a
+                burn-down backlog, not a page: it should trend down, not clear instantly.
 
               Likely causes:
-              - Outdated base image or dependency with a published critical CVE.
+              - Outdated base images or dependencies with published critical CVEs.
 
               First actions:
-              - Review the VulnerabilityReport CR for the workload.
-              - Rebuild from a patched base, re-pin the image digest, and confirm the finding clears.
+              - Open the security dashboard for the per-workload breakdown (this alert is
+                deliberately aggregated so it stays one line).
+              - Rebuild the worst offenders from a patched base, re-pin the digest, confirm clearance.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/security-supply-chain/#trivy-operator"
 
         - alert: TrivyHighImageVulnerabilityBacklog
@@ -63,10 +85,35 @@ spec:
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/security-supply-chain/#trivy-operator"
 
         - alert: TrivyExposedSecretsDetected
+          # The cloudnative-pg/postgresql image carries exactly ONE known-benign finding:
+          # Trivy's `private-key` rule matching /etc/ssl/private/ssl-cert-snakeoil.key —
+          # the Debian placeholder self-signed key present in every Debian-based image.
+          # It is not a credential. It fired 3 permanent CRITICALs (grafana-db-1,
+          # guac-db-1, guac-db-backup) continuously from 2026-08-02, adding to a wall of
+          # 26 firing criticals that made the real signals unreadable — the 43-hour CNI
+          # outage went unnoticed inside exactly that noise.
+          #
+          # Waived by COUNT, not by exclusion: that image is still monitored, and a
+          # SECOND finding in it pages normally. A blanket
+          # `image_repository!="cloudnative-pg/postgresql"` would have silently accepted
+          # every future secret baked into our database image, which is precisely the
+          # thing this alert exists to catch.
+          #
+          # The scanner itself is left ON (operator.exposedSecretScannerEnabled) so the
+          # finding stays visible in reports and dashboards; only the page is suppressed.
+          # Re-check the baseline if the CNPG image ever changes base distro.
           expr: |
-            sum by (namespace, resource_kind, resource_name) (
-              trivy_image_exposedsecrets{severity=~"Critical|High|Medium"}
-            ) > 0
+            (
+              sum by (namespace, resource_kind, resource_name) (
+                trivy_image_exposedsecrets{severity=~"Critical|High|Medium", image_repository!="cloudnative-pg/postgresql"}
+              ) > 0
+            )
+            or
+            (
+              sum by (namespace, resource_kind, resource_name) (
+                trivy_image_exposedsecrets{severity=~"Critical|High|Medium", image_repository="cloudnative-pg/postgresql"}
+              ) > 1
+            )
           for: 15m
           labels:
             severity: critical

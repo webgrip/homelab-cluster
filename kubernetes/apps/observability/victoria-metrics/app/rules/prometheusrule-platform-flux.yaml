@@ -11,11 +11,18 @@ spec:
   groups:
     - name: platform.flux
       rules:
+        # gotk_reconcile_condition no longer exists — current Flux controllers only
+        # export gotk_reconcile_duration_seconds_* / gotk_token_*. Readiness now
+        # comes from flux-operator's flux_resource_info (ready/suspended labels),
+        # which FluxKustomizationSuspendedTooLong below already used: this was a
+        # half-finished metric migration that left the NotReady rules permanently
+        # dark. Verified over 2026-07-29T03:30-04:30Z: the old expr -> 0 series,
+        # the HelmRelease expr below -> 2 (harbor + n8n, both broken for days).
         - alert: FluxKustomizationNotReady
           expr: |
-            max by (namespace, name) (
-              gotk_reconcile_condition{kind="Kustomization", status="False"}
-            ) > 0
+            max by (exported_namespace, name) (
+              flux_resource_info{kind="Kustomization", ready="False", suspended="False"}
+            ) == 1
           for: 15m
           labels:
             severity: warning
@@ -42,11 +49,12 @@ spec:
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#flux"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/gitops-flux-health/flux-gitops-health"
 
+        # See the metric note on FluxKustomizationNotReady above.
         - alert: FluxHelmReleaseNotReady
           expr: |
-            max by (namespace, name) (
-              gotk_reconcile_condition{kind="HelmRelease", status="False"}
-            ) > 0
+            max by (exported_namespace, name) (
+              flux_resource_info{kind="HelmRelease", ready="False", suspended="False"}
+            ) == 1
           for: 15m
           labels:
             severity: warning
@@ -73,37 +81,18 @@ spec:
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#flux"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/gitops-flux-health/flux-gitops-health"
 
-        - alert: FluxResourceDriftDetected
-          expr: |
-            max by (namespace, name, kind) (
-              gotk_reconcile_condition{type=~"DriftDetected|Drifted", status="True"}
-            ) > 0
-          for: 10m
-          labels:
-            severity: warning
-            owner: platform
-            service: flux
-          annotations:
-            summary: "Flux detected runtime drift ({{$labels.kind}} {{$labels.exported_namespace}}/{{$labels.name}})"
-            description: |
-              What's happening:
-              - Flux reports that live cluster state has drifted from the reconciled GitOps state.
-
-              Impact/risk:
-              - Manual cluster changes, failed reconciliation, or controller-side mutations may be hiding differences from Git.
-              - Future reconciliations may revert the live state unexpectedly.
-
-              Likely causes:
-              - Manual kubectl/helm edits against GitOps-managed resources
-              - Controller mutation outside the declared manifest
-              - A GitOps resource with drift detection enabled found live-state differences
-
-              First actions:
-              - Run: flux get all -A
-              - Inspect the affected resource conditions and events
-              - Reconcile or revert the live change through Git
-            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#flux"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/gitops-flux-health/flux-gitops-health"
+        # NOTE — FluxResourceDriftDetected was REMOVED (2026-08-05), not migrated.
+        # It queried gotk_reconcile_condition{type="DriftDetected"}, a metric that
+        # no longer exists, so it had been permanently dark. Unlike readiness,
+        # drift has NO replacement metric: flux-operator's flux_resource_info
+        # exposes only kind/name/ready/suspended/reason/revision, and Flux emits
+        # drift solely as a Kubernetes Event (reason=DriftDetected) — which is why
+        # the erfbeeld drift during the 2026-07-29 incident showed up in
+        # `kubectl get events` but nowhere in metrics.
+        # To restore real coverage, export events as metrics (e.g. a
+        # kubernetes-event-exporter feeding VictoriaLogs/VM) and alert on that.
+        # A dead rule was removed rather than left in place, so the rule list
+        # reflects actual coverage.
 
         - alert: FluxKustomizationSuspendedTooLong
           # Excludes the 3 intentionally-parked Kustomizations (pyroscope/beyla

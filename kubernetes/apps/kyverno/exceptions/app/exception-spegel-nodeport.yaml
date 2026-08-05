@@ -1,0 +1,40 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/policyexception_v2.json
+# Spegel is the in-cluster P2P image mirror. Its registry Service is NodePort by chart
+# default; every other NodePort in the cluster is correctly denied by network-exposure-enforce.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: exception-spegel-nodeport
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      spegel-registry is a NodePort Service (30021) created by the spegel chart. It is
+      infrastructure for image distribution, not an application exposure: containerd on
+      each node reaches its local spegel peer directly, and the whole point is
+      node-addressable rather than routed-through-the-gateway traffic. The Gateway API
+      alternative that disallow-nodeport-services steers everything else toward is not
+      applicable — a container runtime cannot pull through an HTTPRoute.
+
+      Blast radius of "fixing" it instead: spegel serves every image pull in the cluster,
+      so changing its Service type is not a drive-by. Note that the chart is configured
+      with service.registry.hostPort 29999 and containerd uses that host port, which
+      suggests the NodePort may be vestigial — narrowing or removing it is a worthwhile
+      follow-up, but it needs its own validation (pull a cold image on each node and
+      confirm mirroring still works) rather than being bundled into a policy cleanup.
+spec:
+  exceptions:
+    - policyName: network-exposure-enforce
+      ruleNames:
+        - disallow-nodeport-services
+  match:
+    any:
+      - resources:
+          kinds:
+            - Service
+          namespaces:
+            - kube-system
+          names:
+            - spegel-registry
