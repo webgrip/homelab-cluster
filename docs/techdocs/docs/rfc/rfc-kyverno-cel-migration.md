@@ -108,10 +108,24 @@ carrying a tagless `image: nginx`, swept with `image-hygiene-audit` in both dial
 | CEL ValidatingPolicy | **pass: 0, fail: 0** — neither resource is evaluated at all |
 
 Not a config error: identical with an explicit `spec.autogen.podControllers.controllers`
-list, with a single-controller list, and with the block omitted entirely. The same policy
-correctly fails a bare **Pod** (`fail: 1`), so only the autogen path is dead. Corroborated
-in-cluster — the migrated pilot reports `status.autogen: {}` despite declaring three
-controllers.
+list, with a single-controller list, with the lowercase-plural spelling the docs use
+(`deployments`, `cronjobs`), with `["*"]`, and with the block omitted entirely. The same
+policy correctly fails a bare **Pod** (`fail: 1`), so only the autogen path is dead.
+
+**Proven in-cluster, not just in the CLI.** Live PolicyReports in `vikunja`, counted by the
+kind each result is scoped to:
+
+| policy | dialect | reports on |
+| --- | --- | --- |
+| `image-hygiene-audit` | legacy | Deployment 8, Pod 12, **CronJob 4** |
+| `image-supply-chain-enforce` | legacy | Deployment 12, Pod 18 |
+| `image-supply-chain-audit` | **CEL** | **Pod 6 — nothing else** |
+
+So this is not a CLI simulation gap: the migrated policy genuinely stopped evaluating
+controllers. The pilot also reports `status.autogen: {}` despite declaring three
+controllers, and no autogen feature gate exists on the admission or background controller
+(checked the Helm values and both deployments' args). Next step is upstream — a newer
+Kyverno or an issue — not more local configuration guessing.
 
 **Consequence.** Migrating an enforcing Pod policy silently moves the deny from controller
 admission to pod creation. For a Deployment that is a worse error message; for a **CronJob
