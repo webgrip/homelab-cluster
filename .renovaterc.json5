@@ -60,6 +60,19 @@
   // checkbox on the Renovate Dashboard 🤖 issue to rebuild it against current main. If PRs stop
   // merging, check for stale statuses before suspecting Renovate itself.
   rebaseWhen: "conflicted",
+  // Per-PR escape hatch for the trade-off above. `conflicted` means a branch's head never moves
+  // while main advances, so a PR that went red once can never re-test itself. Adding this label
+  // to a single PR tells Renovate to keep that one branch rebased on main — targeted, without
+  // reintroducing the repo-wide rebase storm a single worker node cannot absorb. Supported on the
+  // forgejo platform. PREREQUISITE: the label must exist in the Forgejo repo before it can be
+  // applied; Renovate consumes it, it does not create it.
+  keepUpdatedLabel: "renovate/keep-updated",
+  // Flag third-party images whose upstream has gone quiet. This tree runs a lot of small
+  // community images (a2s-exporter, minecraft-server, sparkyfitness, drawio, excalidraw...) where
+  // "no Renovate PRs lately" is ambiguous between "stable" and "abandoned" — the failure mode is
+  // silently running unmaintained software rather than a broken update. Reported on the
+  // Dependency Dashboard (dependencyDashboardReportAbandonment defaults true), no PRs created.
+  abandonmentThreshold: "1 year",
   // NOTE on Harbor-proxied charts: non-bootstrap OCI Helm charts have their
   // OCIRepository url pointed at Harbor's pull-through proxy (harbor.${SECRET_DOMAIN}/ghcr/…,
   // ADR-0023/0017). Renovate does its version lookup *through* Harbor — verified that
@@ -92,11 +105,48 @@
     ],
     executionMode: "branch",
   },
+  // PR body table. Renovate's default is [Package, Type, Update, Change, Pending] and it DROPS a
+  // column that is empty on every row — which is why these PRs only ever showed three. We add two
+  // self-hosted columns answering the question the UI could not: "when was this released, and
+  // therefore when does the soak expire?" Renovate exposes no soak countdown; the only signal is
+  // `renovate/stability-days` = pending with the generic text "Updates have not met minimum
+  // release age requirement".
+  //
+  // Deliberately NOT the built-in Age/Confidence/Adoption/Passing columns: those render
+  // <img> badges from developer.mend.io keyed on datasource + packageName. Almost every dep here
+  // is harbor.webgrip.dev/... (the pull-through proxy, ADR-0025), a name Mend has never seen, so
+  // those badges would be blank on the majority of PRs. `Age` is REDEFINED below to a plain day
+  // count from newVersionAgeInDays for the same reason — it works offline and for every registry.
+  //
+  // Reading `Released`: an em dash means the datasource reports no release timestamp. That is the
+  // normal case for ghcr.io / quay.io / harbor.webgrip.dev and is exactly why they are listed
+  // under minimumReleaseAgeBehaviour: timestamp-optional above. No timestamp = no soak to wait
+  // out = eligible on the next run. A real date means the soak IS enforced: add the
+  // minimumReleaseAge for that update type (patch 1d, minor 3d, digest/vuln 0d) to get the
+  // eligibility moment, then the next hourly run merges it.
+  prBodyColumns: [
+    "Package",
+    "Type",
+    "Update",
+    "Change",
+    "Pending",
+    "Released",
+    "Age",
+  ],
+  prBodyDefinitions: {
+    Released: "{{#if releaseTimestamp}}{{{releaseTimestamp}}}{{else}}—{{/if}}",
+    Age: "{{#if newVersionAgeInDays}}{{{newVersionAgeInDays}}}d{{else}}—{{/if}}",
+  },
   prBodyNotes: [
     "{{#if isMajor}}⚠️ Major update: review upstream migration notes, chart values, and rollout impact before merging.{{/if}}",
     "{{#if isVulnerabilityAlert}}Security update: prioritize review and verify the vulnerable component is actually deployed.{{/if}}",
     "{{#if isGroup}}Grouped GitOps PR: confirm the group is operationally coherent before enabling automerge.{{/if}}",
-    "Merge Confidence badges are included where Renovate supports them; low/neutral confidence means this update deserves a manual impact check before merge.",
+    // The old note here claimed "Merge Confidence badges are included where Renovate supports
+    // them". That was false — no Confidence column was ever configured, so no badge was ever
+    // rendered — and it duplicated a near-identical sentence the shared preset already adds, so
+    // every PR body carried the same untrue claim twice. Replaced with the soak explainer, which
+    // is the thing that actually determines when a green PR merges.
+    "`Released` is the upstream publish time; `—` means this registry reports no timestamp, so no soak applies and the PR is eligible on the next Renovate run. Otherwise add the soak for this update type (patch 1d, minor 3d, digest 0d) to `Released` — the first hourly run after that merges it.",
   ],
   packageRules: [
     {
