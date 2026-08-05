@@ -29,9 +29,6 @@ spec:
               type: GatewayNamespace
     deployment:
       pod:
-        # The operator reconciles the data plane; if it cannot schedule, no gateway is repaired.
-        # It is platform tier for the same reason envoy itself is. See envoy-gateway/app/priorityclass.yaml.
-        priorityClassName: platform-critical
         affinity: {}
         nodeSelector:
           node.webgrip.io/pool: worker
@@ -55,3 +52,22 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 20
           failureThreshold: 6 # 2 minutes before kill after startup
+
+  # The envoy-gateway chart honours deployment.pod.nodeSelector and .tolerations but has NO
+  # template reference for priorityClassName — Helm accepts the unknown value and silently drops
+  # it. Verified on the live Deployment: nodeSelector and tolerations present, priorityClassName
+  # empty, while the EnvoyProxy CR (which does support it) applied cleanly to the data plane.
+  #
+  # The operator is platform tier for the same reason the data plane is: it reconciles the
+  # gateways, so if it cannot schedule, nothing repairs them. Patched in directly rather than
+  # waiting for chart support.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: Deployment
+              name: envoy-gateway
+            patch: |-
+              - op: add
+                path: /spec/template/spec/priorityClassName
+                value: platform-critical
