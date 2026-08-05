@@ -38,6 +38,9 @@ Spawned by the [full-estate Kyverno audit](rfc-kyverno-audit-enforce-hardening.m
   closes the forward-auth hole named in the [identity RFC](rfc-identity-sso.md).
 - [Attack-path analysis](rfc-attack-path-analysis.md) — the 17 waivers are each justified
   individually and have never been evaluated as a *graph*. Read-only, laptop-run, deploys nothing.
+- [Third-party image supply chain](rfc-third-party-image-supply-chain.md) — the first-party chain
+  covers **7 of 151** images; the other 144 have scan data that gates nothing (117 critical / 2,165
+  high) and 114 bypass Harbor entirely. Four phases, routing first.
 - [Workload identity (SPIFFE)](rfc-workload-identity-spiffe.md) — gap acknowledged and
   **deliberately deferred**, with named re-evaluation triggers.
 
