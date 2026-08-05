@@ -65,6 +65,68 @@ evaluations **into the API server**, off the webhook path. On a single-worker ho
 Kyverno admission controller is a cluster-wide availability dependency, shortening that path is a
 resilience win, not just a performance one.
 
+## Findings from execution (2026-08-05)
+
+Two things learned by migrating, both of which change the plan below. Neither was visible
+from reading the docs.
+
+### 1. Waiver granularity forces splits — but far fewer than one-per-rule
+
+The CEL `PolicyException` has `policyRefs: [{kind, name}]` and **no `ruleNames`**: waivers
+are whole-policy. Naively that means one ValidatingPolicy per rule, to keep a whole-policy
+waiver equal to the old per-rule one. Measured against the live estate, the real requirement
+is much smaller — rules whose waiver-sets are **identical** can share a policy:
+
+| | |
+| --- | --- |
+| validate rules today | 78 |
+| ValidatingPolicies actually needed | **35** |
+| policies needing no split at all | **9** |
+
+The 9 that migrate 1:1 (name preserved, so no dashboard breakage): `exception-governance`,
+`image-hygiene-audit`, `namespace-tenancy-audit`, `namespace-tenancy-enforce`,
+`rbac-least-privilege-enforce`, `require-pod-probes-audit`, `secrets-observability-ops-enforce`,
+`stateful-delete-protection-enforce`, and the already-migrated `image-supply-chain-audit`.
+Notably `rbac-least-privilege-enforce` (5 rules, one waiver-set) is among them, which
+removes the concern about renaming a policy that nine Grafana panels select on.
+
+The worst case is `workload-advanced-hardening-audit`: 11 rules across 6 distinct
+waiver-sets. `pod-security-baseline-enforce` needs 4 from 4 rules — every rule has a
+different waiver-set.
+
+Regenerate the grouping before each wave; it changes whenever an exception is added.
+
+### 2. **BLOCKER: CEL autogen does not work — Pod policies cannot migrate**
+
+Legacy Pod policies rely on autogen to evaluate *controllers* at admission. Verified on
+2026-08-05 that the CEL equivalent produces nothing. A Deployment and a CronJob both
+carrying a tagless `image: nginx`, swept with `image-hygiene-audit` in both dialects:
+
+| dialect | result |
+| --- | --- |
+| legacy ClusterPolicy | **fail: 2** — `autogen-require-image-tag` and `autogen-cronjob-require-image-tag` both fire |
+| CEL ValidatingPolicy | **pass: 0, fail: 0** — neither resource is evaluated at all |
+
+Not a config error: identical with an explicit `spec.autogen.podControllers.controllers`
+list, with a single-controller list, and with the block omitted entirely. The same policy
+correctly fails a bare **Pod** (`fail: 1`), so only the autogen path is dead. Corroborated
+in-cluster — the migrated pilot reports `status.autogen: {}` despite declaring three
+controllers.
+
+**Consequence.** Migrating an enforcing Pod policy silently moves the deny from controller
+admission to pod creation. For a Deployment that is a worse error message; for a **CronJob
+it means the failure lands at the next schedule tick, in production, unattended** — exactly
+the trap the audit→enforce RFC's gate note exists to prevent. `image-hygiene-audit` was
+written, differentially tested, and **reverted unmigrated** for this reason.
+
+The already-migrated `image-supply-chain-audit` stays: it is Audit-only, so nothing is
+un-enforced, and every controller's pods are still evaluated by the base rule, so the drift
+signal survives. It loses only the duplicate controller-level report row.
+
+**Until autogen is understood, only non-Pod policies may migrate.** Next step is a spike:
+determine whether CEL autogen requires a newer Kyverno, a feature gate, or a different
+spec shape — and whether the CLI and the controller disagree.
+
 ## Proposal
 
 Kyverno runs both APIs side by side through 1.19, so this is a staged migration with a hard
