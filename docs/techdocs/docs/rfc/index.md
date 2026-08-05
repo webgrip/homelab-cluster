@@ -7,14 +7,18 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
   cache](rfc-harbor-proxy-cache.md), [node taxonomy & storage
   placement](rfc-node-taxonomy-and-storage-placement.md), [observability alerting
   reliability](rfc-observability-alerting-reliability.md), [external-secrets migration
-  plan](external-secrets-plan.md) (complete; canonical secret inventory).
+  plan](external-secrets-plan.md) (complete; canonical secret inventory), [Flux source →
+  Forgejo](rfc-flux-forgejo-source.md) (Accepted 2026-07-14 and executed — the RFC itself has said
+  so since; this index was still listing it as the open "big cutover" as late as 2026-08-05.
+  Verified live: flux-system's GitRepository is
+  `http://forgejo-http.forgejo.svc.cluster.local:3000/webgrip/homelab-cluster.git`).
 - **Accepted, executing** — [Renovate on Forgejo](rfc-renovate-forgejo.md) (GitHub retirement
   gated on the Flux cutover), [CI pipeline performance](rfc-ci-pipeline-performance.md) (lives in
   `webgrip/workflows`), [Codeberg Pages TechDocs](rfc-codeberg-pages-techdocs.md) (interim;
   publish path unproven), [security hardening](rfc-security-hardening.md) (program frame),
   [Kyverno audit→enforce hardening](rfc-kyverno-audit-enforce-hardening.md) (waves pending).
-- **Proposed / open** — [Flux source → Forgejo](rfc-flux-forgejo-source.md) (the big cutover),
-  [dynamic database credentials](rfc-dynamic-database-credentials.md) (pilot rolled back),
+- **Proposed / open** — [dynamic database credentials](rfc-dynamic-database-credentials.md)
+  (pilot rolled back),
   [Backstage TechDocs](rfc-backstage-techdocs.md) (+ [implementation
   plan](plan-backstage-techdocs.md)), [layered hardware
   architecture](rfc-layered-hardware-architecture.md) (program doc),
@@ -49,8 +53,8 @@ Spawned by the [full-estate Kyverno audit](rfc-kyverno-audit-enforce-hardening.m
 Spawned by the [decision-landscape audit](../adr/landscape.md): the parts of the running platform
 that had no decision record. All **Proposed**. Roughly by stakes:
 
-- [Alert delivery](rfc-alert-delivery.md) — no alert currently reaches a human (both planes end in
-  `"null"`/nothing).
+- [Alert delivery](rfc-alert-delivery.md) — **delivery is solved** (ntfy receivers wired and
+  working). Reframed 2026-08-05: the open problem is alert *saturation*, not delivery.
 - [Backup & DR program](rfc-backup-dr.md) — tier map, the OpenBao unseal-key escrow hole, second
   backup leg, drill cadence.
 - [Object storage — Garage](rfc-object-storage-garage.md) — the unrecorded S3 backbone everything
