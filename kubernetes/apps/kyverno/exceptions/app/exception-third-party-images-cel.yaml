@@ -1,0 +1,49 @@
+---
+# CEL-dialect twin of the image-supply-chain-audit half of exception-third-party-images.
+#
+# WHY THIS FILE EXISTS. Migrating image-supply-chain-audit to a ValidatingPolicy on
+# 2026-08-05 ORPHANED its waiver: a legacy kyverno.io/v2 PolicyException keys on
+# `policyName` + `ruleNames`, and after the migration no ClusterPolicy by that name exists.
+# Verified live — the waiver-integrity query reported
+# `ORPHANED: exception-third-party-image-supply-chain -> image-supply-chain-audit`, and the
+# cluster held zero CEL-dialect exceptions. Same failure mode the RFC already warned about
+# for policy *splits*; it applies to dialect *migration* too, and every future wave must
+# port its exceptions in the same commit as the policy.
+#
+# GRANULARITY NOTE. The CEL PolicyException has `policyRefs: [{kind, name}]` and NO
+# `ruleNames` — waivers are whole-policy only. That is lossless here because
+# image-supply-chain-audit has exactly one rule, which is part of why it was chosen as the
+# pilot. It is NOT lossless for multi-rule policies: see the migration RFC.
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-third-party-images-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      Third-party Deployments whose images are not Harbor-hosted, waived from the
+      Harbor-only registry check. Ports the image-supply-chain-audit half of
+      exception-third-party-images to the CEL dialect after that policy migrated to a
+      ValidatingPolicy; the legacy exception keeps the image-supply-chain-enforce half,
+      which is still a ClusterPolicy.
+
+      litellm runs the upstream ghcr.io/berriai/litellm-database image (ADR-0044) —
+      digest-pinned, but ghcr.io is not an approved registry and no in-cluster mirror
+      image is built for it yet. ploeg-work-items-exporter is very likely redundant now
+      that its postgres-exporter image is pulled through Harbor; it is retained
+      deliberately, because dropping it is only safe once a report confirms the workload
+      passes unwaived and that check has not been run.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: image-supply-chain-audit
+  matchConditions:
+    # The legacy waiver covered only `autogen-require-approved-registries` — the
+    # controller-level variant — so Pods were never waived and their FAILs continued to be
+    # reported. Matching on the Deployment name preserves exactly that scope.
+    - name: third-party-deployments
+      expression: >-
+        (object.metadata.namespace == 'ai' && object.metadata.name == 'litellm') ||
+        (object.metadata.namespace == 'ploeg' && object.metadata.name == 'ploeg-work-items-exporter')
