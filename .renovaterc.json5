@@ -15,6 +15,36 @@
     ":automergeBranch",
   ],
   dependencyDashboardTitle: "Renovate Dashboard 🤖",
+  // Resolve the Harbor Docker Hub pull-through path against Docker Hub itself. The NOTE further
+  // down used to say registryAliases "keys match on registry host only, so they can't
+  // disambiguate multiple upstreams behind one Harbor host+path". That is wrong — Renovate
+  // matches `currentFrom.startsWith(name + "/")`, a PATH PREFIX — and the alias then does exactly
+  // the split we want:
+  //     packageName -> docker.io/<repo>          (what Renovate looks up)
+  //     depName     -> harbor.webgrip.dev/...    (what stays written in the manifest)
+  // So version discovery and digest resolution go to Docker Hub while every pull still goes
+  // through Harbor. The shared preset already uses this exact pattern for mirror.gcr.io.
+  //
+  // WHY IT MATTERS — two bugs, one fix:
+  //  1. Renovate only reads release timestamps from Docker Hub's `tag_last_pushed` field (its own
+  //     docker datasource says "Only supported on Docker Hub"). A harbor.* packageName therefore
+  //     has NO timestamp, which means minimumReleaseAgeBehaviour: timestamp-optional treats the
+  //     soak as satisfied. Every Harbor-proxied dep has effectively been merging with a ZERO-day
+  //     soak, and the `Released` PR column could only ever print an em dash for them.
+  //  2. Harbor's proxy intermittently fails digest resolution — the dashboard has been carrying
+  //     "Could not determine new digest for update" for vikunja and both sparkyfitness images.
+  //     Resolving against Docker Hub avoids the proxy for lookups entirely.
+  //
+  // NOT aliasing the ghcr/quay/forgejo Harbor projects: those upstreams report no release
+  // timestamps either, so it would add blast radius for zero gain.
+  //
+  // COVERAGE IS PARTIAL — registryAliases supportedManagers covers kubernetes/kustomize/helmfile/
+  // dockerfile but NOT helm-values, so ~8 HelmRelease `values.…image.repository` sites keep the
+  // harbor packageName and keep the old behaviour. Any packageRule keying on one of these must
+  // therefore list BOTH forms; see the sparkyfitness rule.
+  registryAliases: {
+    "harbor.webgrip.dev/dockerhub": "docker.io",
+  },
   // Schedule: the shared preset ships "after 3am and before 7am every weekday" + "every weekend"
   // (Europe/Amsterdam). That window was already MOOT for almost everything here — the digest,
   // patch, minor, vulnerability, OCIRepository-patch and dev/staging/production rules below each
@@ -76,8 +106,12 @@
   // OCIRepository url pointed at Harbor's pull-through proxy (harbor.${SECRET_DOMAIN}/ghcr/…,
   // ADR-0023/0017). Renovate does its version lookup *through* Harbor — verified that
   // Harbor 2.15's proxy returns the full upstream tag list (not just cached tags), so
-  // discovery is complete. registryAliases is NOT used: its keys match on registry host
-  // only, so they can't disambiguate multiple upstreams behind one Harbor host+path.
+  // discovery is complete. CORRECTED 2026-08-05: this used to claim "registryAliases is NOT
+  // used: its keys match on registry host only, so they can't disambiguate multiple upstreams
+  // behind one Harbor host+path." That is false — Renovate matches a PATH PREFIX
+  // (`currentFrom.startsWith(name + "/")`), so `harbor.webgrip.dev/dockerhub` disambiguates
+  // perfectly. It IS now used for the dockerhub project; see registryAliases at the top. The
+  // ghcr/quay projects stay unaliased on purpose (no upstream timestamps to gain).
   // Pinned @sha256: digests stay valid (proxy is content-addressable). The two packageRules
   // below that keyed on ghcr.io are widened to also match the harbor.…/ghcr proxy path.
   ignorePaths: [
@@ -490,9 +524,16 @@
       matchDatasources: [
         "docker"
       ],
+      // BOTH forms are load-bearing. registryAliases rewrites packageName to docker.io/... for
+      // managers it supports, but NOT for helm-values — and these two images are declared in a
+      // HelmRelease values block. List only one form and this rule silently stops matching for
+      // half the tree, which costs `versioning: loose` and brings back the exact
+      // "Can't find version matching v0.16.6.3" wedge documented below.
       matchPackageNames: [
         "harbor.webgrip.dev/dockerhub/codewithcj/sparkyfitness",
-        "harbor.webgrip.dev/dockerhub/codewithcj/sparkyfitness_server"
+        "harbor.webgrip.dev/dockerhub/codewithcj/sparkyfitness_server",
+        "docker.io/codewithcj/sparkyfitness",
+        "docker.io/codewithcj/sparkyfitness_server"
       ],
       versioning: "loose",
       groupName: "sparkyfitness",
