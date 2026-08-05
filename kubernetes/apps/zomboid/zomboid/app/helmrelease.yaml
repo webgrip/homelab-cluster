@@ -90,7 +90,13 @@ spec:
           a2s-exporter:
             image:
               repository: docker.io/armsnyder/a2s-exporter
-              tag: v0.4.0
+              # Digest-pinned 2026-08-05. zomboid is not deployed (disabled pending its
+              # SOPS->ESO secret migration), but require-image-digest went to Enforce in
+              # wave 11 and `zomboid` is NOT in that rule's excluded-namespace list — so
+              # re-enabling this app with a bare tag would have been denied at admission,
+              # presenting as a mysteriously stuck rollout during an unrelated migration.
+              # Multi-arch index digest via `docker buildx imagetools inspect`.
+              tag: v0.4.0@sha256:76c98734c8e56f056d8f5f090601b3b8320a297c4e6f4acadbb153ffe219aaef
             args:
               - -address
               - 127.0.0.1:8766
