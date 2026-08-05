@@ -6,20 +6,38 @@ metadata:
 spec:
   retentionPolicy: 14d # Tier 2 — see docs/techdocs/docs/general/database-backup-tiers.md
   configuration:
-    endpointURL: http://10.0.0.110:3900
+    # CUT OVER to the off-site store 2026-08-01, LAST of the thirteen.
+    #
+    # Held back deliberately: this cluster still runs 2Gi walStorage and the
+    # expansion to 5Gi is stuck behind "cannot expand volume before replica
+    # scheduling success" (the longhorn class wants 3 replicas, there is one
+    # schedulable storage node). A thin WAL buffer facing a remote endpoint is
+    # the combination worth avoiding, so it went last — after eleven other
+    # databases had run against the off-site store with zero archive failures.
+    #
+    # Moved now regardless because the Proxmox box holding the old endpoint is
+    # being reclaimed; leaving this on 10.0.0.110 would break archiving the
+    # moment it is wiped. Once the reclaimed box joins as node 3 the resize
+    # unblocks on its own and the buffer returns to the fleet floor.
+    endpointURL: https://s3-offsite.webgrip.dev
     destinationPath: s3://cnpg-backups-bucket/homelab-cluster/ploeg-db/
     s3Credentials:
       accessKeyId:
-        name: cnpg-backup-s3
+        name: cnpg-backup-s3-offsite
         key: S3_ACCESS_KEY_ID
       secretAccessKey:
-        name: cnpg-backup-s3
+        name: cnpg-backup-s3-offsite
         key: S3_SECRET_ACCESS_KEY
       region:
-        name: cnpg-backup-s3
+        name: cnpg-backup-s3-offsite
         key: S3_REGION
     wal:
       compression: gzip
-      maxParallel: 1
+      # 4, not 1: at 1 barman ships WAL segments serially, which is fine against a
+      # LAN store (sub-ms RTT) but not the off-site one over the internet. If postgres
+      # ever outpaces the uploader the backlog lands on the walStorage PVC and
+      # postgres stops when that fills (CNPGWALVolumeCritical). This buys latency
+      # headroom, not bandwidth -- segments are 16MB and gzip to far less.
+      maxParallel: 4
     data:
       compression: gzip

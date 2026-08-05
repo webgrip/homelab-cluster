@@ -1,0 +1,22 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: forgejo-buildkitd
+spec:
+  # Deliberately NOT a dependency of forgejo-runner. The runner pool must keep starting if this
+  # is broken or absent: builds fall back to the per-job docker-container driver, which is what
+  # they do today. A shared build cache is an optimisation, not a prerequisite for CI.
+  dependsOn:
+    - name: forgejo
+  interval: 1h
+  retryInterval: 5m
+  path: ./kubernetes/apps/forgejo/forgejo-buildkitd/app
+  prune: true
+  wait: false
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: forgejo

@@ -18,6 +18,32 @@ spec:
     remediation:
       retries: 3
       remediateLastFailure: true
+  # The chart renders its ServiceMonitor with no way to add labels via values, and
+  # secrets-observability-ops require-servicemonitor-labels (wave 7, ADR-0032) is being
+  # promoted to Enforce. Patching the rendered object is preferable to waiving the rule:
+  # the label is what makes the monitor attributable, and a waiver would just hide that.
+  #
+  # Safe to define here ONLY because this app includes no components — the
+  # components/placement/worker-pool strategic-merge patch REPLACES spec.postRenderers
+  # wholesale and silently dropped guac's patches for three days in 2026-07. If a
+  # component is ever added to this app, carry its patches inline here instead.
+  postRenderers:
+    - kustomize:
+        patches:
+          # Strategic merge, NOT a JSON `op: add` on /metadata/labels/... — that form
+          # errors out if the chart renders the object without a labels map at all,
+          # and it would fail at reconcile time rather than here. A merge patch
+          # creates the map if absent and leaves any existing labels alone.
+          - target:
+              kind: ServiceMonitor
+              name: renovate-operator
+            patch: |
+              apiVersion: monitoring.coreos.com/v1
+              kind: ServiceMonitor
+              metadata:
+                name: renovate-operator
+                labels:
+                  app.kubernetes.io/name: renovate-operator
   values:
     # Burstable, not BestEffort — the Talos PSI OOM controller strikes BestEffort
     # first (killed alongside the CNPG DBs on fringe, 2026-07-11 01:27).

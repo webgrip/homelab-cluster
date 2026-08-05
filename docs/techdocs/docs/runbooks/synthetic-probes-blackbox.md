@@ -50,16 +50,18 @@ From the same shell:
 
 ## Garage S3 (CNPG backup / WAL target) unavailable
 
-Fires as `GarageDown` / `GarageProbeSlow` / `GarageS3Availability` when the blackbox probe to `http://10.0.0.110:3900` (endpoint `garage`) fails.
+Fires as `GarageDown` / `GarageProbeSlow` / `GarageS3Availability` when the blackbox probe to `https://s3-offsite.webgrip.dev` (endpoint `garage-offsite`) fails.
 
-**Why this matters:** Garage S3 is the barman-cloud WAL-archive and backup target for **every** CloudNativePG database, and it runs **outside** this cluster (no app/namespace; not Flux-managed). When it is unreachable, WAL archiving fails cluster-wide, Postgres cannot recycle `pg_wal`, and database data volumes fill until they CrashLoop with `no free disk space for WALs` (heavy writers like `grafana-db` / `dependency-track-db` fill first). The backup/WAL wiring behind this single point of failure is documented in the [CNPG backups runbook](cnpg-backups.md).
+**Why this matters:** Garage S3 is the barman-cloud WAL-archive and backup target for **every** CloudNativePG database, and it runs **off-site** on a Hetzner box in Falkenstein (`garage-fsn1`; no app/namespace, not Flux-managed). Since 2026-08-02 it is reached over the public internet through Caddy on 443 — so a failure can be the host, the Garage process, TLS/cert renewal, DNS, or your own uplink, not simply "the box is down". When it is unreachable, WAL archiving fails cluster-wide, Postgres cannot recycle `pg_wal`, and database data volumes fill until they CrashLoop with `no free disk space for WALs` (heavy writers like `grafana-db` / `dependency-track-db` fill first). The backup/WAL wiring behind this single point of failure is documented in the [CNPG backups runbook](cnpg-backups.md).
 
 Triage:
 
 1. Confirm reachability (403 = healthy — it's an unsigned S3 request):
-   - From a pod: `curl -sS -o /dev/null -w '%{http_code}\n' http://10.0.0.110:3900/`
-   - `connection refused` / timeout ⇒ Garage host or process is down, or a network/firewall issue.
-2. Restore Garage on its host (`10.0.0.110:3900`) — this is the root fix and unblocks every database.
+   - From a pod: `curl -sS -o /dev/null -w '%{http_code}\n' https://s3-offsite.webgrip.dev/`
+   - `connection refused` / timeout ⇒ host, Caddy, or the network path is down.
+   - TLS error ⇒ the Let's Encrypt certificate failed to renew; check `journalctl -u caddy` on the box.
+   - NXDOMAIN **from a pod only** ⇒ CoreDNS lost its longest-match zone for this name. k8s-gateway is authoritative for the domain and NXDOMAINs anything it does not itself host, so off-cluster names need an explicit zone (`kubernetes/apps/kube-system/coredns`) plus k8s-gateway `fallthrough`.
+2. Recover the off-site host: `ssh root@116.202.53.185`, then `systemctl status garage caddy`. Garage binds to 127.0.0.1 only and Caddy on 443 is the sole public path, so check both. This is the root fix and unblocks every database.
 3. Confirm recovery from inside the cluster: a healthy DB's barman sidecar should log `Archived WAL file`:
    - `kubectl -n authentik logs authentik-db-1 -c plugin-barman-cloud --tail=20`
 4. Check for fallout — any CNPG instance `1/2 CrashLoopBackOff` with `no free disk space for WALs`:

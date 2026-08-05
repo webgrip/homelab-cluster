@@ -1,0 +1,55 @@
+---
+# GC policy is the load-bearing part of this file. A build cache that never prunes fills the node
+# disk and then every build on that node fails — and unlike the throwaway builders this replaces,
+# nothing here is discarded automatically. The dind daemon needed a prune sidecar for the same
+# reason; buildkitd has GC built in, so it is configured rather than bolted on.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: forgejo-buildkitd-config
+  namespace: forgejo
+data:
+  buildkitd.toml: |-
+    root = "/var/lib/buildkit"
+
+    [worker.oci]
+      enabled = true
+      # overlayfs on the node's own filesystem. snapshotter = "auto" would pick this anyway;
+      # naming it means a kernel or base-image change that breaks the assumption fails loudly
+      # here instead of silently falling back to the much slower native snapshotter.
+      snapshotter = "overlayfs"
+      gc = true
+
+      # Ordered rules; the first matching one wins. Sizes are per node.
+      #
+      # Rule 1: anything internal/frontend-related is cheap to rebuild, so keep only a little.
+      [[worker.oci.gcpolicy]]
+        filters = ["type==source.local", "type==exec.cachemount", "type==source.git.checkout"]
+        keepDuration = "48h"
+        keepBytes = "2GB"
+
+      # Rule 2: unshared build cache — the bulk of it. 20GB per node is roughly a handful of the
+      # larger CI images' layer sets. Raise it if `buildctl du` shows steady eviction of entries
+      # that are still being hit; lower it if node disk gets tight.
+      [[worker.oci.gcpolicy]]
+        all = false
+        keepBytes = "20GB"
+
+      # Rule 3: the hard ceiling. Includes everything, runs last, and is what actually protects
+      # the node from a runaway cache.
+      [[worker.oci.gcpolicy]]
+        all = true
+        keepBytes = "30GB"
+
+    [worker.containerd]
+      enabled = false
+
+    # Registry auth is NOT configured here on purpose. With the `remote` driver, buildx forwards
+    # the CLIENT's credentials over the build session, so buildkitd pulls and pushes as the job
+    # that asked it to — the Harbor robot for a release, nothing at all for an anonymous build.
+    # Putting a credential in this file would give every build on the node standing push access to
+    # Harbor, which is strictly worse than what the job already carries.
+
+    [registry."harbor.webgrip.dev"]
+      # Harbor serves valid certs; this block exists only so the mirror/insecure knobs have an
+      # obvious home if that ever changes. Left empty deliberately.

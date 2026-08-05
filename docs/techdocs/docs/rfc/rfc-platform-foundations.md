@@ -26,7 +26,7 @@ What exists today (verified in-tree, 2026-07-02):
 
 - **Talos** — 5 bare-metal amd64 nodes, machine config GitOps-managed under `talos/`
   (talhelper: `talconfig.yaml` + patches), API VIP `10.0.0.25`, etcd sealed with `secretbox`,
-  immutable rootfs. Operations via `task talos:*`.
+  immutable rootfs. Operations via `just talos-*`.
 - **Flux** — flux-operator + a `FluxInstance` (sync: GitHub `homelab-cluster`, `main`); one root
   Kustomization `cluster-apps` (`kubernetes/flux/cluster/ks.yaml`, 1h interval, prune, SOPS
   decryption) that applies HelmRelease defaults by patch; per-app `ks.yaml` wiring (`dependsOn`,

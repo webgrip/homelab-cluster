@@ -154,13 +154,13 @@ spec:
     # sweeps). Required-not-preferred per ADR-0002 (soft affinity loses to
     # image-locality). Non-critical scanner: Pending during a worker-1 outage
     # is acceptable. Operator Deployment has no PVC — no RWO move deadlock.
+    # Was `ram: high` with NO pool key at all — so it pinned to worker-1 by RAM
+    # tier while never actually asserting the ADR-0002 worker-pool rule it was
+    # relying on. trivy-operator peaks at 611Mi; `pool: worker` is the constraint
+    # that was always meant. The dedicated=fringe toleration was dead config —
+    # that taint was retired 2026-06-19 (ADR-0002).
     nodeSelector:
-      node.webgrip.io/ram: high
-    tolerations:
-      - key: dedicated
-        operator: Equal
-        value: fringe
-        effect: NoSchedule
+      node.webgrip.io/pool: worker
     resources:
       requests:
         cpu: 100m

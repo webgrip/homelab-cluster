@@ -125,7 +125,13 @@ spec:
         port: 22
         externalTrafficPolicy: Cluster
         annotations:
-          lbipam.cilium.io/ips: "10.0.0.31"
+          # Moved off .31 on 2026-08-02: that address is inside the .30-.39
+          # Talos worker block, and worker-1 was already answering ARP for
+          # both its own .24 and this LB IP. Reached by name
+          # (forgejo-ssh.${SECRET_DOMAIN} via k8s-gateway), so git remotes
+          # follow automatically. Flux is unaffected either way — it
+          # reconciles over forgejo-http.forgejo.svc.cluster.local:3000.
+          lbipam.cilium.io/ips: "10.0.0.11"
           coredns.io/hostname: forgejo-ssh.${SECRET_DOMAIN}
 
     # Custom Actions-UI injection (selectors pinned to the deployed Forgejo
@@ -280,8 +286,11 @@ spec:
         # Garage requires path-style addressing and plain HTTP.
         storage:
           STORAGE_TYPE: minio
-          MINIO_ENDPOINT: "10.0.0.110:3900"
+          # Off-site store (Hetzner) as of 2026-08-01. USE_SSL must flip with the
+          # endpoint: Caddy terminates TLS there and Garage itself binds to
+          # loopback, so plain HTTP on 443 would simply fail to connect.
+          MINIO_ENDPOINT: "s3-offsite.webgrip.dev"
           MINIO_BUCKET: forgejo
           MINIO_LOCATION: garage
-          MINIO_USE_SSL: false
+          MINIO_USE_SSL: true
           MINIO_BUCKET_LOOKUP: path

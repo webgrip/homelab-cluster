@@ -81,18 +81,64 @@ spec:
         serviceMonitor:
           enabled: true
       replicas: 1
+      # The chart ships `resources: {}` for the operator — unbounded. Bounded here
+      # so a leaking operator can't contribute to the node memory pressure that
+      # kills the agent (see the agent `resources` note below).
+      resources:
+        requests:
+          cpu: 25m
+          memory: 128Mi
+        limits:
+          memory: 256Mi
       rollOutPods: true
     prometheus:
       enabled: true
       serviceMonitor:
         enabled: true
         trustCRDsExist: true
+    # Top-level `resources` is the cilium-AGENT container (chart convention).
+    # 600Mi was too tight for the busiest nodes: the agent's footprint scales with
+    # endpoints + policy revisions, and on fringe-workstation (50 pods, node at 85%
+    # memory) it crash-looped 805 times in 39 days — exit 137 ~30s after start,
+    # liveness `connection reset`. That left `node.cilium.io/agent-not-ready:NoSchedule`
+    # stuck on the node, making it intermittently unschedulable and funnelling every
+    # new pod onto worker-1 (which sat at 98% CPU requests for 14 days as a result).
+    # Measured agent usage 2026-08-02: worker-1 (80 pods) 448Mi, soyo-3 397Mi,
+    # worker-2 326Mi. 1Gi gives the busiest node real headroom.
+    #
+    # 2026-08-04: raising the LIMIT did not fix it. fringe-workstation's agent has
+    # crash-looped another 74 times in the 43h since, and the node has been effectively
+    # CNI-less that whole time (pods stuck FailedCreatePodSandBox on
+    # `cilium.sock: no such file or directory`).
+    #
+    # The limit was never the binding constraint. The container is not hitting its cgroup
+    # limit at all — kubelet reports `reason: Error`, not `OOMKilled`. `talosctl dmesg`
+    # shows the killer is Talos's own userspace PSI OOM controller:
+    #
+    #   [talos] OOM controller triggered {controller: runtime.OOMController}
+    #   [talos] Sending SIGKILL to cgroup {cgroup: /sys/fs/cgroup/kubepods/burstable/pod09ec36cf-...}
+    #
+    # ...where that pod UID is cilium-agent, and 346 of the 386 kills on this node target
+    # it. Victim selection keys on a cgroup's usage RELATIVE TO ITS REQUEST, so a 300Mi
+    # request against a real startup footprint of ~450-900Mi (BPF map allocation while
+    # restoring endpoints) made cilium permanently the most over-request cgroup on the
+    # node, and therefore the standing first victim. Raising the ceiling changed nothing
+    # because nothing was hitting the ceiling. It also self-reinforces: each kill drops
+    # the endpoints, so the next start has more to restore and allocates harder.
+    #
+    # priorityClassName: system-node-critical does NOT help — the Talos controller
+    # selects by cgroup pressure, not by pod priority.
+    #
+    # So: request what it actually uses. requests.memory == limits.memory removes the
+    # over-request signal entirely. Deliberately NOT adding a CPU limit to reach
+    # Guaranteed QoS — throttling a CNI datapath agent trades a crash loop for packet
+    # latency, which is worse.
     resources:
       requests:
         cpu: 100m
-        memory: 300Mi
+        memory: 1Gi
       limits:
-        memory: 600Mi
+        memory: 1Gi
     rollOutCiliumPods: true
     routingMode: native
     securityContext:

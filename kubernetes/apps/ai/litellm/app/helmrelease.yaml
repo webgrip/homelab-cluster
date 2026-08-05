@@ -23,12 +23,33 @@ spec:
         annotations:
           reloader.stakater.com/auto: "true" # restart on ESO/config rotation
         pod:
-          nodeSelector:
-            node.webgrip.io/pool: worker # ADR-0002 — off the soyo control planes
-            # ram: high = worker-1. litellm drifted onto the memory-saturated fringe
-            # workstation during the 2026-07-17 valkey rollout (~1GB app + 794MB
-            # prisma engine on a node with <2GB available) — VIK-331 slice 1.
-            node.webgrip.io/ram: high
+          # HARD pool=worker (ADR-0002 — off the soyo control planes), SOFT
+          # ram=high. litellm drifted onto the memory-saturated fringe workstation
+          # during the 2026-07-17 valkey rollout (~1GB app + 794MB prisma engine
+          # on a node with <2GB available) — VIK-331 slice 1 — and the fix was a
+          # hard ram=high pin. But ram=high resolves to worker-1 ALONE, so that
+          # pin is a large part of why worker-1 sat at ~98% CPU requests for 14
+          # days. Measured peak is 996Mi, which fits any worker. Preferring the
+          # 24Gi node keeps the original intent; requiring it caused the problem.
+          # ADR-0002 rejected soft *pool* placement, not soft secondary tiers —
+          # the pool pin stays hard.
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: node.webgrip.io/pool
+                        operator: In
+                        values:
+                          - "worker"
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                      - key: node.webgrip.io/ram
+                        operator: In
+                        values:
+                          - "high"
           securityContext:
             seccompProfile:
               type: RuntimeDefault
@@ -153,10 +174,14 @@ spec:
           # Sidecar: postgres-exporter over LiteLLM's own spend ledger — the
           # metrics path ADR-0044 needs (OSS LiteLLM has no Prometheus /metrics).
           # In the litellm Deployment so the existing kyverno third-party-image
-          # exception covers its quay.io image (no new exception needed).
+          # exception covers it (no new exception needed — that exception is still
+          # required regardless, for litellm's own ghcr.io/berriai image).
           exporter:
             image:
-              repository: quay.io/prometheuscommunity/postgres-exporter
+              # Harbor pull-through proxy-cache (ADR-0025) instead of quay.io direct; digest
+              # unchanged, proxy is content-addressable. Keeps the dep on the Harbor path so
+              # Renovate's soak can actually clear — quay.io reports no release timestamps.
+              repository: harbor.webgrip.dev/quay/prometheuscommunity/postgres-exporter
               tag: v0.20.1@sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e
             # The wal collector needs pg_monitor (pg_ls_waldir) — the app user lacks
             # it and we only want the custom litellm_* queries anyway. Silence it.

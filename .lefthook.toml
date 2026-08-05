@@ -19,7 +19,12 @@ rc = "./.lefthookrc"
 parallel = true
 
 [pre-commit.commands.format-just]
-run = "for f in {staged_files}; do just --justfile $f --fmt; done"
+# `mise exec --`, like every other command here: `just` is a mise-managed tool,
+# not a PATH binary, so a bare `just` exits 127 and fails the commit. This hook
+# had never actually run — found 2026-08-02 when the justfile became the repo's
+# only task runner and edits to it stopped being rare. `--fmt` also needs
+# JUST_UNSTABLE=1, which .mise.toml exports.
+run = "for f in {staged_files}; do mise exec -- just --justfile $f --fmt; done"
 glob = ["*.just", ".justfile", "justfile"]
 stage_fixed = true
 

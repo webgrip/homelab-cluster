@@ -10,9 +10,19 @@ metadata:
     policies.kyverno.io/subject: Pod
     kyverno.io/kyverno-version: 1.18.1
     policies.kyverno.io/description: >-
-      Audit application workloads that still rely on missing or mutable image tags.
+      Reject application workloads that rely on missing or mutable image tags.
 spec:
-  validationFailureAction: Audit
+  # Wave 2 of the audit->enforce campaign (ADR-0032), promoted 2026-08-04.
+  #
+  # The resource name keeps its `-audit` suffix ON PURPOSE. Two Grafana dashboards
+  # (security-overview, security-cosign-github-oidc) select on `policy="image-hygiene-audit"`;
+  # renaming for cosmetic accuracy would silently blank those panels. The suffix is a
+  # historical name, not a statement of enforcement.
+  #
+  # Gate evidence: swept all 168 in-scope Pods AND synthesized pod templates from every
+  # Deployment/StatefulSet/DaemonSet/Job/CronJob — 336 assertions, 0 failures. The template
+  # sweep is the gate, not the PolicyReport count; see the gate note in the RFC.
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: require-image-tag
@@ -22,17 +32,28 @@ spec:
               kinds:
                 - Pod
               namespaceSelector:
+                # Reconciled to the canonical exclusion set (the wave-2 prerequisite).
+                # This list was missing cilium-secrets, default, external-secrets, keda and
+                # kyverno, so it covered five platform namespaces the other policies do not.
+                # The sweep found those five clean either way, so this is for consistency,
+                # not to dodge a failure: a platform-component bump in kyverno or keda should
+                # not be gated by an application image-hygiene rule.
                 matchExpressions: &applicationNamespaces
                   - key: kubernetes.io/metadata.name
                     operator: NotIn
                     values:
                       - arc-systems
                       - cert-manager
+                      - cilium-secrets
                       - cnpg-system
+                      - default
+                      - external-secrets
                       - flux-system
+                      - keda
                       - kube-node-lease
                       - kube-public
                       - kube-system
+                      - kyverno
                       - longhorn-system
                       - network
                       - observability

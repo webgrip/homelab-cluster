@@ -9,6 +9,16 @@ metadata:
 spec:
   instances: 1
 
+  # Every other CNPG cluster in the tree pins to the worker pool (ADR-0002); this
+  # one did not, so a rehydrated DR cluster could land on a 12Gi soyo control
+  # plane — precisely the OOM-cascade condition ADR-0002 exists to prevent, and
+  # at the worst possible moment (a restore, i.e. during an incident). Latent
+  # rather than live only because the cluster ships hibernated, which is exactly
+  # why it went unnoticed.
+  affinity:
+    nodeSelector:
+      node.webgrip.io/pool: worker
+
   # DR cluster is intentionally hibernated; disable PDB to avoid constant
   # KubePdbNotEnoughHealthyPods alerts when no pods are running.
   enablePDB: false
@@ -27,6 +37,16 @@ spec:
 
   storage:
     size: 10Gi
+    storageClass: longhorn
+
+  # Dedicated WAL volume, matching every real cluster in the tree (5Gi/longhorn).
+  # Without it pg_wal shares the data disk, and if Garage S3 is unreachable WAL
+  # grows unbounded until the DB CrashLoops with "no free disk space for WALs" —
+  # the failure that took Grafana and Dependency-Track down. A DR cluster is
+  # rehydrated precisely when things are already broken, so it is the LAST place
+  # to leave that trap armed.
+  walStorage:
+    size: 5Gi
     storageClass: longhorn
 
   monitoring:

@@ -10,8 +10,7 @@ metadata:
     policies.kyverno.io/subject: Namespace,NetworkPolicy,ResourceQuota
     kyverno.io/kyverno-version: 1.18.1
     policies.kyverno.io/description: >-
-      Add future namespace security defaults and audit namespace readiness for
-      ownership, resource controls, and network isolation.
+      Add future namespace security defaults and audit namespace readiness for ownership, resource controls, and network isolation.
 spec:
   validationFailureAction: Audit
   background: true
@@ -26,7 +25,7 @@ spec:
         all:
           - key: "{{ request.object.metadata.name }}"
             operator: AnyNotIn
-            value: &platformNamespaces
+            value:
               - arc-systems
               - cert-manager
               - cilium-secrets
@@ -58,8 +57,17 @@ spec:
                 - Namespace
       exclude:
         any:
+          # Label-driven, replacing a hand-maintained 16-name list (2026-08-04). The list
+          # was EXACTLY the set of namespaces carrying no `webgrip.io/tier` label, i.e. it
+          # duplicated a label that already existed and had to be edited by hand every time
+          # a namespace was added. Same scope today, but it can no longer drift: a new
+          # infrastructure namespace is out of scope by virtue of not being a tenant, and a
+          # new tenant namespace is in scope the moment it declares its tier.
           - resources:
-              names: *platformNamespaces
+              selector:
+                matchExpressions:
+                  - key: webgrip.io/tier
+                    operator: DoesNotExist
       validate:
         message: "Application namespaces should declare owner, tier, and exposure labels."
         pattern:
@@ -76,8 +84,17 @@ spec:
                 - Namespace
       exclude:
         any:
+          # Label-driven, replacing a hand-maintained 16-name list (2026-08-04). The list
+          # was EXACTLY the set of namespaces carrying no `webgrip.io/tier` label, i.e. it
+          # duplicated a label that already existed and had to be edited by hand every time
+          # a namespace was added. Same scope today, but it can no longer drift: a new
+          # infrastructure namespace is out of scope by virtue of not being a tenant, and a
+          # new tenant namespace is in scope the moment it declares its tier.
           - resources:
-              names: *platformNamespaces
+              selector:
+                matchExpressions:
+                  - key: webgrip.io/tier
+                    operator: DoesNotExist
       context:
         - name: resourcequotas
           apiCall:
@@ -99,8 +116,17 @@ spec:
                 - Namespace
       exclude:
         any:
+          # Label-driven, replacing a hand-maintained 16-name list (2026-08-04). The list
+          # was EXACTLY the set of namespaces carrying no `webgrip.io/tier` label, i.e. it
+          # duplicated a label that already existed and had to be edited by hand every time
+          # a namespace was added. Same scope today, but it can no longer drift: a new
+          # infrastructure namespace is out of scope by virtue of not being a tenant, and a
+          # new tenant namespace is in scope the moment it declares its tier.
           - resources:
-              names: *platformNamespaces
+              selector:
+                matchExpressions:
+                  - key: webgrip.io/tier
+                    operator: DoesNotExist
       context:
         - name: networkpolicies
           apiCall:
@@ -114,54 +140,3 @@ spec:
               - key: "{{ networkpolicies }}"
                 operator: Equals
                 value: 0
-    - name: require-default-deny-ingress
-      match:
-        any:
-          - resources:
-              kinds:
-                - NetworkPolicy
-      validate:
-        message: "Default deny NetworkPolicies should cover ingress."
-        deny:
-          conditions:
-            all:
-              - key: "{{ request.object.metadata.name }}"
-                operator: Equals
-                value: default-deny
-              - key: Ingress
-                operator: AnyNotIn
-                value: "{{ request.object.spec.policyTypes[] || `[]` }}"
-    - name: require-default-deny-egress
-      match:
-        any:
-          - resources:
-              kinds:
-                - NetworkPolicy
-      validate:
-        message: "Default deny NetworkPolicies should cover egress."
-        deny:
-          conditions:
-            all:
-              - key: "{{ request.object.metadata.name }}"
-                operator: Equals
-                value: default-deny
-              - key: Egress
-                operator: AnyNotIn
-                value: "{{ request.object.spec.policyTypes[] || `[]` }}"
-    - name: require-dns-egress-policy-shape
-      match:
-        any:
-          - resources:
-              kinds:
-                - NetworkPolicy
-      validate:
-        message: "DNS allow NetworkPolicies should explicitly allow TCP and UDP 53 egress."
-        deny:
-          conditions:
-            all:
-              - key: "{{ request.object.metadata.name }}"
-                operator: Equals
-                value: allow-dns
-              - key: 53
-                operator: AnyNotIn
-                value: "{{ request.object.spec.egress[].ports[].port || `[]` }}"

@@ -64,8 +64,21 @@ spec:
         slo: observability
         team: platform
 
-    - uid: slo-prometheus-tsdb-reload-fail
-      title: "SLO: Prometheus TSDB Reload Failures"
+    # Replaced 2026-08-05. This was "SLO: Prometheus TSDB Reload Failures", querying
+    # `prometheus_tsdb_reloads_failures_total` — a Prometheus-internal metric that does
+    # not exist on this stack. The whole `prometheus_tsdb_*` family returns 0 series
+    # because the backend is VictoriaMetrics. The rule therefore evaluated to NoData
+    # forever, and with `noDataState: NoData` it fired a CRITICAL `DatasourceNoData`
+    # continuously from 2026-08-02 — 26 criticals were firing when this was found, and
+    # this permanent one was pure noise sitting among them.
+    #
+    # The intent (is the metrics store's storage healthy?) is kept, using the
+    # VictoriaMetrics-native signal: free disk on the vmsingle data volume. Alerting on
+    # the store running out of space is more directly useful than reload counts anyway —
+    # VM stops accepting writes when the volume fills, and all of these SLOs go blind
+    # with it. Threshold 5 GiB against ~36 GiB free today.
+    - uid: slo-vm-storage-low-disk
+      title: "SLO: VictoriaMetrics Storage Low Disk"
       condition: threshold
       data:
         - refId: query
@@ -74,7 +87,7 @@ spec:
             to: 0
           datasourceUid: prometheus
           model:
-            expr: "increase(prometheus_tsdb_reloads_failures_total[10m])"
+            expr: "min(vm_free_disk_space_bytes)"
             instant: true
             refId: query
             datasource:
@@ -95,9 +108,9 @@ spec:
             conditions:
               - type: query
                 evaluator:
-                  type: gt
+                  type: lt
                   params:
-                    - 0
+                    - 5368709120
                 operator:
                   type: and
                 query:
@@ -105,17 +118,19 @@ spec:
                     - query
                 reducer:
                   type: last
-      noDataState: NoData
+      # OK, not NoData: if this metric ever disappears the store is unreachable, which
+      # `SLO: Prometheus Scrape Targets Down` already covers. A second permanent critical
+      # for the same condition is what created the noise this replaces.
+      noDataState: OK
       execErrState: Error
-      for: 5m
+      for: 10m
       annotations:
-        summary: "Prometheus TSDB reload failures detected"
-        description: "Prometheus has failed to reload its TSDB in the last 10 minutes. This may indicate storage issues."
+        summary: "VictoriaMetrics is running out of storage"
+        description: "Free disk on the VictoriaMetrics data volume is below 5 GiB. VictoriaMetrics stops accepting writes when the volume fills, which blinds every other SLO in this folder."
       labels:
         severity: critical
         slo: observability
         team: platform
-
     - uid: slo-grafana-operator-recon-fail
       title: "SLO: Grafana Operator Reconcile Failures"
       condition: threshold

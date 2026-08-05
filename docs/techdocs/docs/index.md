@@ -8,7 +8,7 @@ TechDocs for the Flux-managed Talos homelab. Everything here mirrors the manifes
 | Concern | Implementation |
 | --- | --- |
 | GitOps | Flux (flux-operator + flux-instance); 3 layers: root `kubernetes/flux/cluster/ks.yaml` → per-app `ks.yaml` → `app/` manifests |
-| Nodes | 5 × bare-metal Talos (3 soyo control-plane + 2 workers) — [Talos cluster](general/talos-cluster.md) |
+| Nodes | 6 × bare-metal Talos (3 soyo control-plane + 3 workers) — [Infrastructure](general/infrastructure.md) · [Talos cluster](general/talos-cluster.md) |
 | Ingress | Gateway API via Envoy Gateway: `envoy-internal` (LAN) + `envoy-external` (public via Cloudflare Tunnel) |
 | DNS | Split-horizon: `k8s-gateway` answers `*.${SECRET_DOMAIN}` on the LAN; ExternalDNS → Cloudflare for public records |
 | Secrets | **ESO + OpenBao** (`ExternalSecret`/`PushSecret`; see the [ESO reference](rfc/external-secrets-plan.md)). Minimal SOPS floor remains: age key, `cluster-secrets`, `talsecret` (+ one zomboid straggler) |
@@ -30,7 +30,8 @@ lives in [Applications — canonical inventory](general/applications.md).
 | `cluster_dns_gateway_addr` | `k8s-gateway` LoadBalancer (split DNS) | `kubernetes/apps/network/k8s-gateway` | `10.0.0.26` |
 | `cluster_gateway_addr` | `envoy-internal` LoadBalancer (LAN-only) | `kubernetes/apps/network/envoy-gateway` | `10.0.0.27` |
 | `cloudflare_gateway_addr` | `envoy-external` / Cloudflare Tunnel origin | `kubernetes/apps/network/cloudflare-tunnel` | `10.0.0.28` |
-| Garage S3 | Object storage (off-cluster VM) | — | `10.0.0.110:3900` |
+| Garage S3 (in-cluster) | Harbor registry blobs | — | `garage-s3.garage.svc.cluster.local:3900` |
+| Garage S3 (off-site) | All backups: CNPG, Longhorn, OpenBao, Forgejo, guac | Hetzner FSN1 | `https://s3-offsite.webgrip.dev` |
 
 Supporting controllers in `kubernetes/apps/network/`: `k8s-gateway` (split DNS, watches
 `HTTPRoute` + `Service`), `envoy-gateway` (both `Gateway` resources), `cloudflare-tunnel`
@@ -87,7 +88,7 @@ them is in [Talos cluster → Network Wiring](general/talos-cluster.md#network-w
 	- Port 1 → Philips Hue bridge
 	- Port 2 → Raspberry Pi Home Assistant
 
-Static infrastructure keeps IPs below `.50`, reserved in OPNsense so DHCP drift cannot move critical nodes.
+Static infrastructure keeps IPs below `.50`, reserved in OPNsense so DHCP drift cannot move critical nodes. See [Infrastructure](general/infrastructure.md) for the full address map.
 
 ### Home DNS
 

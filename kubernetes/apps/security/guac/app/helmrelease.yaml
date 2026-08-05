@@ -31,6 +31,23 @@ spec:
     imagePullSecrets: []
 
     guac:
+      # gocloud blob-store URI for every guac component.
+      #
+      # MUST live directly under `guac:` — the chart reads `.Values.guac.blobAddr`
+      # (templates/guac-cm.yaml). It previously sat under `guac.collectSub`, which
+      # the chart never looks at, so it was inert: guac-cm fell through to the
+      # chart's placeholder default, `s3://bucketname` at
+      # security-minio.<ns>.svc.cluster.local:9000 — a Service that does not exist
+      # in this cluster. Every guac Deployment mounts that ConfigMap, which is why
+      # cd-certifier crash-looped on "failed write document to blob store ... no
+      # such host". guac has therefore never actually used object storage here.
+      #
+      # Endpoint carries an explicit https:// scheme rather than relying on the
+      # absence of disable_https: Caddy terminates TLS off-site and Garage binds
+      # to loopback behind it, so a plain-HTTP attempt cannot connect at all.
+      # Credentials come from the security-s3 env vars (guac.common.env), which
+      # already point at the off-site store.
+      blobAddr: "s3://guac?endpoint=https://s3-offsite.webgrip.dev&region=garage&use_path_style=true"
       graphqlServer:
         backend: ent
         debug: false
@@ -152,9 +169,6 @@ spec:
           limits:
             cpu: 250m
             memory: 128Mi
-      # gocloud blob-store URI — points at the cluster-wide Garage S3.
-      # Credentials come from the security-s3 secret env vars below.
-      blobAddr: "s3://guac?endpoint=http://10.0.0.110:3900&region=garage&disable_https=true&use_path_style=true"
       customLabels:
         release: kube-prometheus-stack
       common:
@@ -217,6 +231,10 @@ spec:
           namespace: observability
           labels:
             release: kube-prometheus-stack
+            # Required by secrets-observability-ops require-servicemonitor-labels,
+            # which is being promoted to Enforce (wave 7, ADR-0032). The chart exposes
+            # this block, so the label is set at the source rather than waived.
+            app.kubernetes.io/name: guac-nats
 
     # Use the cluster-wide Garage S3 instead of a chart-bundled MinIO.
     minio:

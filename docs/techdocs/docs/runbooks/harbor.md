@@ -10,7 +10,7 @@ Operational guide for the Harbor OCI registry. Design rationale lives in the
 - **Database** external CNPG `harbor-db` (db `registry`, owner `harbor`); CNPG mints the
   `harbor-db-app` Secret. Backups → Garage `s3://cnpg-backups-bucket/homelab-cluster/harbor-db/`.
 - **Redis** chart-internal `redis-photon`.
-- **Blobs** Garage S3 bucket `harbor` (`10.0.0.110:3900`, path-style, `disableredirect`).
+- **Blobs** Garage S3 bucket `harbor`, now the **in-cluster** Garage (`http://garage-s3.garage.svc.cluster.local:3900`, path-style, `disableredirect`). Moved off the retired Proxmox box 2026-08-01; the off-site store holds backups, not registry blobs.
 - **Ingress** LAN-only `HTTPRoute` on `envoy-internal` → `https://harbor.${SECRET_DOMAIN}` (TLS at the gateway).
 - **Secrets**: `harbor-admin` (admin password + at-rest `secretKey`) is **generated in-cluster** (ESO
   `password-generator-16/-32`, never manual); the **chart** owns its other internal secrets + the
@@ -155,7 +155,7 @@ run. Caveats:
 |---------|-------|-----|
 | HelmRelease stuck `not ready`; `harbor-admin`/`harbor-s3` not `SecretSynced` | OpenBao path missing or sealed | `kubectl -n harbor get externalsecret`; populate `secret/harbor/s3` (`just harbor-s3-cred`); check `ClusterSecretStore/openbao` Ready |
 | PVC `Pending` | no default StorageClass | every PVC must set `storageClass` (`longhorn-general`) — already pinned in the HelmRelease |
-| `registry` pod errors talking to S3 / redirect loops | Garage path-style not honored | `disableredirect: true` + `secure: false` + HTTP `regionendpoint` are mandatory (set already); check Garage at `10.0.0.110:3900` |
+| `registry` pod errors talking to S3 / redirect loops | Garage path-style not honored | `disableredirect: true` + `secure: false` + HTTP `regionendpoint` are mandatory (set already); check the in-cluster Garage at `http://garage-s3.garage.svc.cluster.local:3900` |
 | Registry 5xx / blob I/O failing | Garage down | Garage is a hard dependency (ADR-0018 / [CNPG ↔ Garage](cnpg-backups.md)); restore Garage |
 | OIDC login fails | redirect URI / RS256 | redirect must equal `https://harbor.${SECRET_DOMAIN}/c/oidc/callback`; see [Authentik OIDC login](authentik-oidc-login.md) |
 | `harbor-proxy-config` pod dies mid-run: `configure.sh: line N: <word>: parameter not set` — everything after that point (robots, GC, retention, scanning) silently skipped; a provisioned robot may exist with an **unknown secret** (POST ran, secret PATCH didn't → consumers 401) | A literal robot name like `robot$webgrip+…` inside a **double-quoted** shell string: the ConfigMap's `$$` renders to `$` (Flux postBuild), then the runtime shell expands the unset `$word` under `set -u` | Never write `$`-literals in double-quoted strings in `configure.sh`; read the stored name back from `GET /robots/{id}` into a variable (the `_rname` pattern both robot functions now use). Fixed in `fde7ef04` |

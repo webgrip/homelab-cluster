@@ -64,6 +64,44 @@ spec:
           - name: log
             configBlock: |-
               class error
+      # The off-site object store lives OUTSIDE the cluster, on a public A/AAAA
+      # record, but its name sits under ${SECRET_DOMAIN} — so the stub zone above
+      # would send it to k8s-gateway, which only knows in-cluster records and
+      # NXDOMAINs it. Every CNPG WAL archive, the Longhorn backup target and the
+      # invoiceninja dump upload would fail to resolve, and (because archiving
+      # fails open on the write path) the first symptom would be a filling WAL
+      # volume rather than a DNS error.
+      #
+      # CoreDNS routes on the LONGEST matching zone, so this more-specific block
+      # wins for exactly this name and leaves every other ${SECRET_DOMAIN} lookup
+      # on k8s-gateway. It is a different zone string from the block above, so it
+      # does not trip the duplicate-zone crash-loop warned about there.
+      #
+      # Upstream is /etc/resolv.conf, matching the main block below rather than
+      # introducing a second source of truth: the Talos nodes already set
+      # nameservers 1.1.1.1/1.0.0.1 (talos/patches/global/machine-network.yaml),
+      # which is what CoreDNS inherits. Note the LAN resolver canNOT resolve this
+      # name — 10.0.0.1 and 10.0.0.26 both shadow the zone — so pointing at the
+      # LAN would fail.
+      - zones:
+          - zone: s3-offsite.${SECRET_DOMAIN}
+            scheme: dns://
+            use_tcp: true
+        port: 53
+        plugins:
+          - name: errors
+          - name: forward
+            parameters: . /etc/resolv.conf
+          - name: cache
+            configBlock: |-
+              prefetch 20
+              serve_stale
+              # Same reasoning as the stub zone: a cached NXDOMAIN here would
+              # silently stop every backup in the cluster for up to 30 minutes.
+              denial 9984 30
+          - name: log
+            configBlock: |-
+              class error
       - zones:
           - zone: .
             scheme: dns://

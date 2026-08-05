@@ -84,3 +84,97 @@ spec:
   resources:
     requests:
       storage: 5Gi
+---
+# ---------------------------------------------------------------------------
+# CNPG Cluster cases (added 2026-08-04 with the audit-cnpg-backup-plugin
+# replica precondition and the audit-cnpg-redundant-podmonitor rewrite).
+# ---------------------------------------------------------------------------
+# MUST PASS both CNPG rules — an ordinary primary: barman-cloud plugin declared,
+# no per-cluster PodMonitor (the cnpg-monitoring component scrapes it).
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: primary-compliant
+  namespace: app
+spec:
+  instances: 1
+  storage:
+    size: 5Gi
+    storageClass: longhorn
+  walStorage:
+    size: 2Gi
+    storageClass: longhorn
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      parameters:
+        barmanObjectName: app-db-store
+---
+# MUST FAIL audit-cnpg-backup-plugin — a primary with no WAL archiving at all.
+# This is the case the rule exists for; it must survive the replica precondition.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: primary-no-backup
+  namespace: app
+spec:
+  instances: 1
+  storage:
+    size: 5Gi
+    storageClass: longhorn
+  walStorage:
+    size: 2Gi
+    storageClass: longhorn
+---
+# MUST PASS audit-cnpg-backup-plugin — a designated REPLICA (the DR-drill shape).
+# It has no spec.plugins on purpose: a replica replays the source's WAL rather than
+# archiving its own, and pointing barman-cloud at the source's path from here would
+# write into the backups the drill exists to verify. Before the precondition this
+# resource failed, and "fixing" it would have been actively harmful.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: replica-dr
+  namespace: app
+spec:
+  instances: 1
+  storage:
+    size: 5Gi
+    storageClass: longhorn
+  walStorage:
+    size: 2Gi
+    storageClass: longhorn
+  bootstrap:
+    recovery:
+      source: dr-source
+  replica:
+    enabled: true
+    source: dr-source
+  externalClusters:
+    - name: dr-source
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: app-db-store
+          serverName: app-db
+---
+# MUST FAIL audit-cnpg-redundant-podmonitor — the cnpg-monitoring component already
+# scrapes every CNPG pod cluster-wide, so enablePodMonitor duplicates every series.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: duplicate-podmonitor
+  namespace: app
+spec:
+  instances: 1
+  storage:
+    size: 5Gi
+    storageClass: longhorn
+  walStorage:
+    size: 2Gi
+    storageClass: longhorn
+  monitoring:
+    enablePodMonitor: true
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      parameters:
+        barmanObjectName: app-db-store

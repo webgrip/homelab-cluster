@@ -1,0 +1,36 @@
+---
+# API-server egress for the disaster-recovery check CronJob pods.
+#
+# The whole job is kubectl: it lists Backups, creates a recovery Cluster, waits
+# for it to go Ready, execs a verification query, then deletes it. Without
+# API-server reachability it does nothing but time out — which is exactly what a
+# manual run did on 2026-08-02:
+#   dial tcp 10.43.0.1:443: i/o timeout
+#
+# This MUST be a CiliumNetworkPolicy `toEntities: kube-apiserver`, not an
+# ipBlock. Cilium matches the API server by a reserved identity, so even
+# `ipBlock: 0.0.0.0/0` does not cover 10.43.0.1 — the rule looks permissive and
+# the calls still time out. Same trap as components/cnpg-netpol and the
+# 2026-07-17 forgejo-db outage.
+#
+# WHY THE EXISTING RULES DID NOT COVER IT:
+# components/cnpg-netpol grants this to `cnpg.io/podRole=instance` and to pods
+# with `cnpg.io/jobRole`. A restore-test pod is neither — it is a plain CronJob
+# pod, and before this change it carried only job-name/controller-uid labels,
+# which change every run and cannot be selected on. Hence the added
+# app.kubernetes.io/name label on the pod template.
+#
+# Note the recovery Cluster this job creates IS covered by cnpg-netpol once it
+# exists, because those pods are real CNPG instances. Only the driver was
+# missing.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-cnpg-disaster-recovery-check-apiserver
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: cnpg-disaster-recovery-check
+  egress:
+    - toEntities:
+        - kube-apiserver

@@ -7,6 +7,58 @@ cluster:
     extraArgs:
       # https://kubernetes.io/docs/tasks/extend-kubernetes/configure-aggregation-layer/
       enable-aggregator-routing: true
+    # Bound kube-apiserver's heap so it stops ratcheting into the node's RAM.
+    #
+    # On 2026-08-02 this process reached 7.4GB RSS on an 11.6GB node that also
+    # runs etcd and kubelet, leaving ~120MB free. etcd and kubelet went
+    # HEALTH: Fail, kubectl timed out, and the k8s-gateway VIP stopped answering
+    # — LAN DNS for the whole domain went with it.
+    #
+    # It is not a leak: etcd holds ~355MB, so the process was retaining ~20x the
+    # dataset. Go returns freed heap to the OS lazily, so RSS settles at the
+    # largest heap the process ever needed. Event churn (3.5k-13k/hour here,
+    # 43k during the incident) keeps re-testing that peak upward.
+    #
+    # GOMEMLIMIT is a SOFT limit: past it, Go collects continuously rather than
+    # growing. That is the correct tool here. A hard memory limit under
+    # `resources` is deliberately NOT set — for a static pod that means the
+    # kubelet OOM-kills the API server, converting a slow degradation into an
+    # abrupt control-plane outage.
+    #
+    # 4GiB against a ~2GB observed live heap (a freshly restarted apiserver sits
+    # at 1.7-1.9GB) leaves roughly 2x headroom before GC pressure becomes
+    # constant. If API latency degrades after this lands, raise it rather than
+    # removing it — the failure mode of too-low is slow, of absent is an outage.
+    env:
+      GOMEMLIMIT: 4GiB
+    # GOMEMLIMIT above bounds what the API server USES. This bounds what the
+    # SCHEDULER RESERVES for it — a different lever, and until 2026-08-02 the
+    # second half of the same bug was still open.
+    #
+    # Talos defaults the request to 512Mi. Measured reality: 7-day p95 RSS is
+    # 5.7-6.1GB per node, and steady state after GOMEMLIMIT landed is ~3.4-3.7GB.
+    # So the scheduler was booking 512Mi for a process using ~3.5GB and treating
+    # the missing ~3GB as free space on an 11.4GB node.
+    #
+    # That is why soyo-1 reported "46% memory requested" while actually sitting
+    # at 80%: the scheduler kept placing infra onto a control plane it believed
+    # was half empty. Exactly the same class of error as the worker-side pins
+    # fixed the same day — a request that does not describe the workload makes
+    # every placement decision downstream of it wrong.
+    #
+    # 3Gi, not 4Gi: sized to observed steady state rather than to GOMEMLIMIT, so
+    # the soyos stay able to host the recovery-brain infra (coredns, cert-manager,
+    # flux, external-secrets, k8s-gateway) that ADR-0002 deliberately keeps there.
+    # This raises soyo-1's booked memory from ~46% to ~72% — honest, and still
+    # leaves headroom.
+    #
+    # requests ONLY, still no limits: unchanged from the reasoning above — a hard
+    # memory limit on a static pod means the kubelet OOM-kills the API server.
+    # Raising a request cannot evict anything; it only changes what lands here next.
+    resources:
+      requests:
+        cpu: 200m
+        memory: 3Gi
   controllerManager:
     extraArgs:
       bind-address: 0.0.0.0
@@ -27,3 +79,65 @@ cluster:
   scheduler:
     extraArgs:
       bind-address: 0.0.0.0
+    # Cluster-wide scheduler policy. Talos renders this to
+    # /system/config/kubernetes/kube-scheduler/scheduler-config.yaml and passes
+    # --config itself; do NOT try `extraArgs: {config: ...}`, which Talos rejects
+    # outright ("extra arg \"config\" is not allowed", siderolabs/talos#9091).
+    #
+    # ⚠️ BLAST RADIUS IS THE WHOLE CONTROL PLANE. A malformed block crashloops
+    # kube-scheduler on all three soyos and nothing schedules anywhere. Roll it
+    # ONE controller at a time and confirm the static pod is Running before the
+    # next. Two Talos regressions to know about, both fixed before our version:
+    #   - #13473: v1.13.3 panics "cannot deep copy int" on ANY integer in this
+    #     block (our `weight` and `maxSkew` would both trigger it) and kills
+    #     every control-plane static pod, not just the scheduler. Fixed v1.13.4.
+    #   - #13350: v1.13.2 rendered k8s-1.36 extension points into a 1.35 config.
+    #     Fixed v1.13.4.
+    # We run Talos v1.13.7 + k8s v1.36.1, so we are clear — but never downgrade
+    # below v1.13.4 while this config exists.
+    config:
+      apiVersion: kubescheduler.config.k8s.io/v1
+      kind: KubeSchedulerConfiguration
+      profiles:
+        - schedulerName: default-scheduler
+          pluginConfig:
+            # KEP-1258, stable since k8s 1.24. Without this the built-in default
+            # is maxSkew: 5 on hostname — meaningless on a 6-node cluster, which
+            # is why nothing spreads unless a workload declares its own
+            # constraint, and only a handful in this repo do. This makes spread
+            # the default for EVERY workload instead of an opt-in nobody opts in
+            # to.
+            #
+            # labelSelector is deliberately omitted: the scheduler infers it at
+            # runtime from the pod's Service/ReplicaSet/StatefulSet membership.
+            # Setting one here would be wrong, not just redundant.
+            #
+            # ScheduleAnyway, never DoNotSchedule. As a CLUSTER-WIDE default a
+            # hard constraint would apply to workloads nobody has thought about,
+            # and on 6 nodes it would let a single node drain wedge scheduling
+            # during a Talos upgrade. A pod that declares its own
+            # topologySpreadConstraints OVERRIDES this entirely (not merged).
+            - name: PodTopologySpread
+              args:
+                defaultingType: List
+                defaultConstraints:
+                  - maxSkew: 1
+                    topologyKey: kubernetes.io/hostname
+                    whenUnsatisfiable: ScheduleAnyway
+          plugins:
+            score:
+              enabled:
+                # Default weight is 1, against TaintToleration 3 and NodeAffinity
+                # / PodTopologySpread / InterPodAffinity at 2 — so balance barely
+                # registers. This plugin favours nodes where CPU% and memory% end
+                # up close together after placement, and worker-1 (98% CPU
+                # requests / 82% memory requests) is the most lopsided node in the
+                # cluster, so raising it actively steers new pods away.
+                #
+                # NOT changing NodeResourcesFit.scoringStrategy: MostAllocated
+                # exists to enable cluster-autoscaler scale-down, and with fixed
+                # bare-metal nodes there is nothing to scale down — it would buy
+                # pure concentration risk. The default LeastAllocated already
+                # favours the idle node.
+                - name: NodeResourcesBalancedAllocation
+                  weight: 5

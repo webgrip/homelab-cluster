@@ -1,0 +1,121 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/policyexception_v2.json
+# Exception for third-party apps using Docker Hub or other non-approved registries.
+# These apps will be migrated to use approved registries (mirror.gcr.io, ghcr.io)
+# when upstream charts support it or when we build mirror images.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: exception-third-party-image-supply-chain
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      Third-party Helm chart workloads use images from Docker Hub or without fully
+      qualified registry prefixes. Migration path: each app should be updated to
+      use ghcr.io mirror images or approved registries when available.
+      Apps using 'latest' tag with digest are also excepted here.
+      Reviewed quarterly for migration progress.
+spec:
+  exceptions:
+    # image-supply-chain-audit was here until 2026-08-05. It migrated to a CEL
+    # ValidatingPolicy, and a legacy exception keys on policyName against ClusterPolicy
+    # only, so this entry became a DEAD waiver the moment the policy moved. Ported to
+    # exception-third-party-images-cel.yaml; removed rather than left to rot, because an
+    # orphaned entry reads as coverage that does not exist.
+    # Wave 4 (ADR-0032) split these two rules into their own ENFORCING policy. The
+    # waiver has to follow them: a PolicyException is keyed by policyName, so leaving
+    # them listed above would have silently orphaned the waiver and let the new
+    # enforcing policy deny these workloads at admission.
+    - policyName: image-supply-chain-enforce
+      ruleNames:
+        - autogen-require-fully-qualified-images
+        - autogen-disallow-latest-tag-even-with-digest
+        # Moved here by wave 11 along with the rule itself.
+        - autogen-require-image-digest
+  match:
+    any:
+      # LiteLLM proxy — upstream image ghcr.io/berriai/litellm-database (ADR-0044).
+      # Digest-pinned, but ghcr.io is not an "approved" registry; same third-party
+      # posture as the apps below (no in-cluster mirror image built for it yet).
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - ai
+          names:
+            - litellm
+      # ploeg dispatch-DB metrics exporter — same postgres-exporter image (digest-pinned) as the
+      # litellm sidecar, but a standalone Deployment because ploegd is an external chart we cannot
+      # sidecar into. As of 2026-08-04 that image is pulled through Harbor
+      # (harbor.${SECRET_DOMAIN}/quay/prometheuscommunity/postgres-exporter), so this waiver is
+      # very likely redundant now — every image on this Deployment is Harbor-hosted and
+      # digest-pinned. Left in place deliberately: dropping it is only safe once the PolicyReport
+      # confirms the workload passes unwaived, and that check has not been run.
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - ploeg
+          names:
+            - ploeg-work-items-exporter
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - backstage
+          names:
+            - backstage
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - drawio
+          names:
+            - drawio
+            - drawio-plantuml-server
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - excalidraw
+          names:
+            - excalidraw
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - freshrss
+          names:
+            - freshrss
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - invoiceninja
+          names:
+            - invoiceninja
+            - invoiceninja-mariadb
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - minecraft
+          names:
+            - minecraft
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - n8n
+          names:
+            - n8n
+      - resources:
+          kinds:
+            - Deployment
+          namespaces:
+            - sparkyfitness
+          names:
+            - sparkyfitness-frontend
+            - sparkyfitness-server

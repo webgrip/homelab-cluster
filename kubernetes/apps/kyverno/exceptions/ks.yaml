@@ -1,0 +1,43 @@
+---
+# PolicyExceptions, deliberately in their own Kustomization, ordered AFTER the
+# policies that judge them.
+#
+# WHY THIS IS SPLIT OUT (2026-08-02 GitOps deadlock):
+# Every PolicyException is itself validated by the `exception-governance`
+# ClusterPolicy on admission. While both lived in `kyverno-policies`, a bug in
+# that ClusterPolicy became unrecoverable: kustomize-controller server-side
+# dry-runs the whole set before applying any of it, so one denied
+# PolicyException aborted the entire apply — including the fix to the very
+# policy doing the denying. The repair was committed (8bf66308) and could not
+# be delivered; `kyverno-policies` sat NotReady for hours while the cluster
+# kept running the broken policy.
+#
+# Concretely: exception-governance's deny conditions resolved
+# `spec.match.all[].resources.names[]` on an exception that only sets
+# `match.any`, and JMESPath raised a hard type error on nil rather than
+# returning empty. Any exception missing that field wedged all policy
+# reconciliation.
+#
+# With the split, a policy fix always lands first and the exceptions are then
+# admitted by the repaired policy. Same class as the 2026-07-17 forgejo-db
+# netpol outage: a control-plane object that gates its own delivery path.
+#
+# So: keep ClusterPolicies in ./policies (including exception-governance, which
+# is a ClusterPolicy, not an exception) and PolicyExceptions here.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: kyverno-exceptions
+spec:
+  dependsOn:
+    - name: kyverno-policies
+      namespace: security
+  interval: 1h
+  path: ./kubernetes/apps/kyverno/exceptions/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: security
+  wait: false

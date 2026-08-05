@@ -1,0 +1,186 @@
+---
+# One shared BuildKit daemon PER NODE for the CI runner pool, replacing the throwaway
+# docker-container builder every build job creates for itself.
+#
+# WHY
+#
+# `docker buildx create --driver docker-container` starts a buildkit container, bootstraps it,
+# builds, and tears it down — per job. Three consequences, all of them paid on every build:
+#
+#   1. The buildkit image is pulled and the container created and bootstrapped before any build
+#      work starts.
+#   2. BuildKit's LOCAL cache lives in that container, so it is EMPTY every time. Every build is
+#      cache-cold locally and leans entirely on `cache-from type=registry`, which is a network
+#      round-trip per layer against Harbor. We have been paying network for what should be a
+#      disk read.
+#   3. The builder has to be explicitly removed afterwards, because it runs on the shared
+#      per-node dind daemon rather than in the job pod and would otherwise outlive the job.
+#
+# A long-lived daemon removes all three. Builds connect with `--driver remote`, which creates
+# nothing and therefore needs no cleanup.
+#
+# WHY A DAEMONSET AND NOT A DEPLOYMENT
+#
+# Same reasoning as forgejo-dind, and the same disk. A single Deployment would need its cache on
+# a PVC, and the Longhorn read path is exactly what makes Forgejo serve git at ~3 MB/s in this
+# cluster. A node-local hostPath keeps the cache on local disk. The cost is that the cache is
+# per-node rather than cluster-wide: a job on worker-1 does not benefit from worker-2's local
+# cache. `cache-from type=registry` remains the cross-node layer, so this is a strict improvement
+# on today — it is the same trade already accepted for the dind image store.
+#
+# ISOLATION TRADE (accepted for a single-tenant homelab, and narrower than the one dind already
+# makes): jobs on the same node share one buildkitd, so they share its cache. A poisoned cache
+# entry from one build is visible to the next. Today that exposure exists anyway via the shared
+# `:cache` registry tag; what changes is that it is now also local. Branch builds already push
+# `cache-from` only and never `cache-to` (see on_source_change.yml), which is what keeps a branch
+# from writing into what main reads.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: forgejo-buildkitd
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo-buildkitd
+# buildkitd never calls the Kubernetes API. It gets its own identity (rather than riding
+# `default`) and no token, so require-non-default-serviceaccount and
+# require-serviceaccount-token-opt-out are satisfied honestly instead of waived.
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: forgejo-buildkitd
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo-buildkitd
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: forgejo-buildkitd
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: forgejo-buildkitd
+      annotations:
+        # Restart the daemon when its GC policy changes, otherwise the config is read once at
+        # start and a policy edit silently does nothing until an unrelated rollout.
+        reloader.stakater.com/auto: "true"
+    spec:
+      serviceAccountName: forgejo-buildkitd
+      automountServiceAccountToken: false
+      # Same placement as the runner pods and the dind daemon: this only serves the worker pool.
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: fringe
+          effect: NoSchedule
+      containers:
+        - name: buildkitd
+          # renovate: datasource=docker depName=moby/buildkit versioning=docker
+          image: harbor.webgrip.dev/dockerhub/moby/buildkit:v0.32.2@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8
+          args:
+            - --addr
+            - tcp://0.0.0.0:1234
+            - --addr
+            - unix:///run/buildkit/buildkitd.sock
+            - --config
+            - /etc/buildkit/buildkitd.toml
+          # PRIVILEGED, like forgejo-dind. BuildKit needs to create mounts and namespaces for build
+          # steps. The rootless variant exists and would be tighter, but it needs its own
+          # OverlayFS story and a different security profile; adopting it is a separate change,
+          # tracked rather than smuggled in here. The exposure is bounded the same way dind's is:
+          # the CiliumNetworkPolicy below, plus no hostPort (see the Service).
+          securityContext:
+            privileged: true
+          ports:
+            - name: buildkit
+              containerPort: 1234
+              protocol: TCP
+          readinessProbe:
+            exec:
+              command:
+                - "buildctl"
+                - "debug"
+                - "workers"
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          livenessProbe:
+            exec:
+              command:
+                - "buildctl"
+                - "debug"
+                - "workers"
+            initialDelaySeconds: 15
+            periodSeconds: 60
+            failureThreshold: 3
+          volumeMounts:
+            - name: buildkit-state
+              mountPath: /var/lib/buildkit
+            - name: buildkitd-config
+              mountPath: /etc/buildkit
+          resources:
+            # No CPU limit, matching the runner: builds are bursty and CPU-throttling a build
+            # daemon converts spare capacity into wall-clock for no benefit. Memory IS limited —
+            # an unbounded buildkit will happily consume a node.
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              memory: 4Gi
+      volumes:
+        # The whole point: a cache that survives the build. On local disk, NOT Longhorn — see the
+        # header. Same convention as /var/lib/forgejo-dind.
+        - name: buildkit-state
+          hostPath:
+            path: /var/lib/forgejo-buildkitd
+            type: DirectoryOrCreate
+        - name: buildkitd-config
+          configMap:
+            name: forgejo-buildkitd-config
+---
+# Node-local service front, mirroring forgejo-dind: internalTrafficPolicy Local routes each runner
+# pod to ITS OWN node's buildkitd. Deliberately NO hostPort — dind's hostPort turned out to be
+# reachable from the whole LAN (verified 2026-07-27 with an unauthenticated
+# `docker -H tcp://10.0.0.23:2375 info` from a workstation) and is being retired. There is no
+# reason to reintroduce that shape for a new component.
+apiVersion: v1
+kind: Service
+metadata:
+  name: forgejo-buildkitd
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo-buildkitd
+spec:
+  selector:
+    app.kubernetes.io/name: forgejo-buildkitd
+  internalTrafficPolicy: Local
+  ports:
+    - name: buildkit
+      port: 1234
+      targetPort: 1234
+      protocol: TCP
+---
+# buildkitd speaks an unauthenticated API on this port. TLS/mTLS is supported and is the right
+# answer if this ever leaves the node; today the policy is the boundary, exactly as it is for the
+# dind daemon.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: forgejo-buildkitd
+  namespace: forgejo
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: forgejo-buildkitd
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: forgejo-runner
+        - matchLabels:
+            app.kubernetes.io/name: forgejo-agent-runner
+      toPorts:
+        - ports:
+            - port: "1234"
+              protocol: TCP

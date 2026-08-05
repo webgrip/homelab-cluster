@@ -57,6 +57,43 @@ spec:
             matchLabels:
               kubernetes.io/metadata.name: garage
 ---
+# Egress for the one-shot bucket migration Job ONLY — scoped by job-name, not
+# granted namespace-wide, so Garage itself keeps its intra-namespace-only egress.
+#
+# Two destinations, both genuinely outside the cluster, which is why ipBlock is
+# correct here and namespaceSelector is not (the reverse of the rule above: the
+# post-DNAT-identity trap applies to Service traffic, not to external addresses).
+#
+#   10.0.0.110:3900     the Proxmox box's Garage, plain HTTP on the LAN. Source.
+#   116.202.53.185:443  the off-site Garage behind Caddy. Destination. Garage
+#                       binds to loopback there, so 443 is the only open port and
+#                       the admin API on 3903 is unreachable by construction.
+#
+# This policy can be deleted along with the Job once the Proxmox box is retired.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: garage-bucket-migrate-egress
+  labels:
+    app.kubernetes.io/part-of: garage
+spec:
+  podSelector:
+    matchLabels:
+      job-name: garage-bucket-migrate
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.110/32
+      ports:
+        - {protocol: TCP, port: 3900}
+    - to:
+        - ipBlock:
+            cidr: 116.202.53.185/32
+      ports:
+        - {protocol: TCP, port: 443}
+---
 # API-server egress for the two provisioner Jobs (they write Secrets via kubectl).
 # This MUST be a CiliumNetworkPolicy `toEntities: kube-apiserver`, not a CIDR rule:
 # Cilium matches the API server by a reserved identity, so even an

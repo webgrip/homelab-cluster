@@ -13,6 +13,121 @@ spec:
         name: authentik
         namespace: authentik
   interval: 1h
+  # authentik is single-node BY DESIGN: server (x2) and worker share one RWO
+  # /data PVC, because the cluster disallows RWX. The goauthentik chart ships
+  # RollingUpdate, which starts replacement pods BEFORE terminating the
+  # originals — so the moment the scheduler picks a different node for the new
+  # pods, they wedge in ContainerCreating on Multi-Attach and never recover. A
+  # ReadWriteOnce volume cannot attach to two nodes.
+  #
+  # Observed live on 2026-08-02: replacements landed on fringe-workstation while
+  # the running pods held /data on worker-2, and stuck. authentik pins to
+  # cpu=high, which is a SET of two nodes (fringe + worker-2 since worker-2 was
+  # added), so "same node again" was never guaranteed — the cluster-wide default
+  # topology spread added in b6d0f2dc simply made picking the other one likely.
+  #
+  # Recreate is the correct strategy for a shared-RWO workload: terminate, free
+  # the volume, then start. It costs a short SSO outage on every upgrade, which
+  # is strictly better than an upgrade that hangs forever and rolls back. Same
+  # pattern as n8n and minecraft (native) and harbor-jobservice (post-render).
+  #
+  # The durable fix is authentik media on S3 so /data stops being shared at all;
+  # until then this constraint is structural, not incidental.
+  postRenderers:
+    - kustomize:
+        patches:
+          # `rollingUpdate: null` is REQUIRED, not decorative. A JSON-6902
+          # `replace /spec/strategy` only rewrites the rendered manifest; Flux
+          # then applies SERVER-SIDE, and the live Deployment still carries the
+          # rollingUpdate block Kubernetes defaulted in when the type was
+          # RollingUpdate. SSA merges the two and the API rejects the result:
+          #   spec.strategy.rollingUpdate: Forbidden: may not be specified when
+          #   strategy `type` is 'Recreate'
+          # That failed 6 upgrades and rolled back each time (2026-08-03).
+          # A strategic merge with an explicit null tells SSA to REMOVE the
+          # field rather than leave it inherited.
+          # CO-LOCATION, not spreading. All three authentik pods (2x server +
+          # worker) mount ONE ReadWriteOnce /data PVC, so they must land on the
+          # SAME node — a ReadWriteOnce volume cannot attach to two nodes.
+          #
+          # Two separate forces were pulling them apart on 2026-08-03:
+          #  1. the cluster-wide default topologySpreadConstraint added in
+          #     b6d0f2dc (maxSkew 1 across hostnames), and
+          #  2. the chart's own `global.affinity.podAntiAffinity: soft`.
+          # Result: one pod took the volume on worker-2 and the other two wedged
+          # on fringe with "Multi-Attach error". The values block below had
+          # explicitly warned "do NOT add a topologySpreadConstraint here"; the
+          # cluster-wide default bypassed that warning by applying globally.
+          #
+          # Per KEP-1258 a pod that declares ANY topologySpreadConstraints opts
+          # out of the cluster defaults entirely — that is what the maxSkew: 100
+          # entry below is for. It is not a spreading rule, it is the documented
+          # opt-out idiom. The preferred podAffinity then actively pulls the pods
+          # together, and preferred (not required) avoids the bootstrap deadlock
+          # where the first pod has no peer to attract it.
+          #
+          # The durable fix remains authentik media on S3, after which /data stops
+          # being shared and normal spreading becomes correct.
+          - target:
+              kind: Deployment
+              name: authentik-server
+            patch: |
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: authentik-server
+              spec:
+                strategy:
+                  type: Recreate
+                  rollingUpdate: null
+                template:
+                  spec:
+                    topologySpreadConstraints:
+                      - maxSkew: 100
+                        topologyKey: kubernetes.io/hostname
+                        whenUnsatisfiable: ScheduleAnyway
+                        labelSelector:
+                          matchLabels:
+                            app.kubernetes.io/instance: authentik
+                    affinity:
+                      podAffinity:
+                        preferredDuringSchedulingIgnoredDuringExecution:
+                          - weight: 100
+                            podAffinityTerm:
+                              topologyKey: kubernetes.io/hostname
+                              labelSelector:
+                                matchLabels:
+                                  app.kubernetes.io/instance: authentik
+          - target:
+              kind: Deployment
+              name: authentik-worker
+            patch: |
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: authentik-worker
+              spec:
+                strategy:
+                  type: Recreate
+                  rollingUpdate: null
+                template:
+                  spec:
+                    topologySpreadConstraints:
+                      - maxSkew: 100
+                        topologyKey: kubernetes.io/hostname
+                        whenUnsatisfiable: ScheduleAnyway
+                        labelSelector:
+                          matchLabels:
+                            app.kubernetes.io/instance: authentik
+                    affinity:
+                      podAffinity:
+                        preferredDuringSchedulingIgnoredDuringExecution:
+                          - weight: 100
+                            podAffinityTerm:
+                              topologyKey: kubernetes.io/hostname
+                              labelSelector:
+                                matchLabels:
+                                  app.kubernetes.io/instance: authentik
   install:
     timeout: 15m
     remediation:
@@ -46,13 +161,16 @@ spec:
       podAnnotations:
         reloader.stakater.com/auto: "true"
       # Single-node by design (RWO /data shared by server+worker; the cluster
-      # disallows RWX). Pin to the high-CPU node via the capability label
-      # node.webgrip.io/cpu=high — which resolves to fringe (the only high-CPU
-      # node), replacing the legacy nodegroup=fringe. Keeps authentik exactly
-      # where it is (no risky move) while dropping the legacy-label dependency.
-      # Node-level HA needs media on S3 first (follow-up). ADR-0002.
-      nodeSelector:
-        node.webgrip.io/cpu: high
+      # disallows RWX). Both server replicas therefore sit on ONE node on
+      # purpose — do NOT add a topologySpreadConstraint here; it would make the
+      # second replica unschedulable. Node-level HA needs media on S3 first
+      # (follow-up). ADR-0002.
+      #
+      # cpu=high no longer means "fringe, the only high-CPU node" — worker-2 was
+      # added 2026-08-02 with cpu=high (8 cores), so this now selects a set of
+      # two and authentik may legitimately land on either. The redundant
+      # nodeSelector was dropped 2026-08-02; the hard nodeAffinity below already
+      # expresses exactly the same constraint.
       affinity:
         podAntiAffinity: soft
         nodeAffinity:

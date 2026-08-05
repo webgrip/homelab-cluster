@@ -22,7 +22,15 @@ KYVERNO_TEST_SECRET_DOMAIN="${KYVERNO_TEST_SECRET_DOMAIN:-example.com}"
 prepare_kyverno_test_workspace() {
     local root_dir="${1:?root dir is required}"
     local workspace="${2:?workspace dir is required}"
-    local policy_dir="${root_dir}/kubernetes/apps/kyverno/policies/app"
+    # BOTH dirs. PolicyExceptions moved to their own Flux Kustomization on
+    # 2026-08-02 (see kubernetes/apps/kyverno/exceptions/ks.yaml) — scanning only
+    # policies/app would silently drop every exception from the test workspace,
+    # so tests would report violations the cluster actually excepts. That is the
+    # same silent-omission hole the kind-based discovery below was written to close.
+    local policy_dirs=(
+        "${root_dir}/kubernetes/apps/kyverno/policies/app"
+        "${root_dir}/kubernetes/apps/kyverno/exceptions/app"
+    )
     local tests_dir="${root_dir}/kubernetes/apps/kyverno/tests"
 
     mkdir -p "${workspace}/cli" "${workspace}/chainsaw" "${workspace}/policies"
@@ -37,14 +45,32 @@ prepare_kyverno_test_workspace() {
     # to Enforce with ZERO CLI test coverage and CI would stay green. Discovering by
     # kind closes that hole and keeps the test set in lock-step with the policies on
     # disk. See ADR-0032 + scripts/check-kyverno-test-coverage.sh.
+    # Discovery is `find -print0` + a per-file `grep -q`, NOT `grep -rlZ`. `-Z` means
+    # --null only in GNU grep; in ugrep (the default `grep` on a Homebrew Mac) it means
+    # --fuzzy, so the output carries no NUL separators, `read -r -d ''` never completes a
+    # record, and this loop copied ZERO policies while exiting 0 — the test then died with
+    # "stat /work/policies/<first-test>.yaml: no such file or directory". Linux CI hid it
+    # because GNU grep honours -Z. `find -print0` and `grep -q` behave the same everywhere.
     local policy
     while IFS= read -r -d '' policy; do
+        # Both dialects. The legacy kyverno.io/v1 kinds (ClusterPolicy/Policy) AND the
+        # policies.kyverno.io CEL family, which is where the estate is migrating before
+        # v1.20 removes the legacy API (rfc-kyverno-cel-migration.md). Adding the CEL kinds
+        # BEFORE any policy moves is deliberate: a migrated policy that this grep did not
+        # recognise would be silently dropped from the test workspace and CI would stay
+        # green — the exact hole the hardcoded allowlist used to leave.
+        grep -q -E '^kind: (ClusterPolicy|Policy|PolicyException|ClusterCleanupPolicy|ValidatingPolicy|NamespacedValidatingPolicy|MutatingPolicy|NamespacedMutatingPolicy|GeneratingPolicy|NamespacedGeneratingPolicy|ImageValidatingPolicy|NamespacedImageValidatingPolicy|DeletingPolicy|NamespacedDeletingPolicy)$' "${policy}" || continue
         sed "s|\${SECRET_DOMAIN}|${KYVERNO_TEST_SECRET_DOMAIN}|g; s|__SECRET_DOMAIN__|${KYVERNO_TEST_SECRET_DOMAIN}|g" \
             "${policy}" >"${workspace}/policies/$(basename "${policy}")"
-    done < <(grep -rlZ -E '^kind: (ClusterPolicy|Policy|PolicyException|ClusterCleanupPolicy)$' "${policy_dir}"/*.yaml)
+    done < <(find "${policy_dirs[@]}" -maxdepth 1 -type f -name '*.yaml' -print0)
 
+    # NOT `sed -i` — GNU takes the suffix as an optional attached argument, BSD/macOS sed
+    # requires it as a separate one, so `sed -i "s|...|"` there consumes the EXPRESSION as
+    # the backup suffix and then reads the file as the script ("invalid command code f").
+    # Substituting into a temp file and moving it back behaves identically on both.
     while IFS= read -r -d '' file; do
-        sed -i "s|\${SECRET_DOMAIN}|${KYVERNO_TEST_SECRET_DOMAIN}|g; s|__SECRET_DOMAIN__|${KYVERNO_TEST_SECRET_DOMAIN}|g" "${file}"
+        sed "s|\${SECRET_DOMAIN}|${KYVERNO_TEST_SECRET_DOMAIN}|g; s|__SECRET_DOMAIN__|${KYVERNO_TEST_SECRET_DOMAIN}|g" \
+            "${file}" >"${file}.tmp" && mv -- "${file}.tmp" "${file}"
     done < <(find "${workspace}/cli" "${workspace}/chainsaw" -type f \( -name '*.yaml' -o -name '*.yml' \) -print0)
 
     chmod -R a+rwX "${workspace}"

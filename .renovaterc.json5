@@ -15,6 +15,51 @@
     ":automergeBranch",
   ],
   dependencyDashboardTitle: "Renovate Dashboard 🤖",
+  // Resolve the Harbor Docker Hub pull-through path against Docker Hub itself. The NOTE further
+  // down used to say registryAliases "keys match on registry host only, so they can't
+  // disambiguate multiple upstreams behind one Harbor host+path". That is wrong — Renovate
+  // matches `currentFrom.startsWith(name + "/")`, a PATH PREFIX — and the alias then does exactly
+  // the split we want:
+  //     packageName -> docker.io/<repo>          (what Renovate looks up)
+  //     depName     -> harbor.webgrip.dev/...    (what stays written in the manifest)
+  // So version discovery and digest resolution go to Docker Hub while every pull still goes
+  // through Harbor. The shared preset already uses this exact pattern for mirror.gcr.io.
+  //
+  // WHY IT MATTERS — two bugs, one fix:
+  //  1. Renovate only reads release timestamps from Docker Hub's `tag_last_pushed` field (its own
+  //     docker datasource says "Only supported on Docker Hub"). A harbor.* packageName therefore
+  //     has NO timestamp, which means minimumReleaseAgeBehaviour: timestamp-optional treats the
+  //     soak as satisfied. Every Harbor-proxied dep has effectively been merging with a ZERO-day
+  //     soak, and the `Released` PR column could only ever print an em dash for them.
+  //  2. Harbor's proxy intermittently fails digest resolution — the dashboard has been carrying
+  //     "Could not determine new digest for update" for vikunja and both sparkyfitness images.
+  //     Resolving against Docker Hub avoids the proxy for lookups entirely.
+  //
+  // NOT aliasing the ghcr/quay/forgejo Harbor projects: those upstreams report no release
+  // timestamps either, so it would add blast radius for zero gain.
+  //
+  // COVERAGE IS PARTIAL — registryAliases supportedManagers covers kubernetes/kustomize/helmfile/
+  // dockerfile but NOT helm-values, so ~8 HelmRelease `values.…image.repository` sites keep the
+  // harbor packageName and keep the old behaviour. Any packageRule keying on one of these must
+  // therefore list BOTH forms; see the sparkyfitness rule.
+  registryAliases: {
+    "harbor.webgrip.dev/dockerhub": "docker.io",
+  },
+  // Schedule: the shared preset ships "after 3am and before 7am every weekday" + "every weekend"
+  // (Europe/Amsterdam). That window was already MOOT for almost everything here — the digest,
+  // patch, minor, vulnerability, OCIRepository-patch and dev/staging/production rules below each
+  // override schedule to "at any time", and PR #504 (a digest bump) was demonstrably created at
+  // 09:15 Amsterdam, well outside it. What the window still bound was the handful of rules with
+  // no override: mise tools, GitHub Actions, the Flux controllers group and lock file
+  // maintenance. Those fared badly. The window opens 03:00 Amsterdam (01:00 UTC) and the only
+  // job run overlapping it ended ~01:10-01:20 UTC, leaving those managers roughly 7-17 MINUTES
+  // of eligibility per weekday — which is why mise and Actions PRs crawled while container
+  // bumps flowed. Weekends were unrestricted, so the behaviour looked random.
+  // Setting it here makes the cadence uniform and honest: the soak (minimumReleaseAge) is the
+  // deliberate safety gate, not a clock window that silently applies to four managers.
+  schedule: [
+    "at any time"
+  ],
   // Concurrency: the shared preset ships prConcurrentLimit 5 and Renovate takes the LOWEST
   // value among a branch's upgrades, so the admin ConfigMap's 10 never applied — 5 open PRs
   // (three of them hand-edited and unmergeable) deadlocked PR creation entirely and every
@@ -29,16 +74,44 @@
   // until the next run 6h later. `main` also has concurrent human/agent writers, so branches
   // fall behind constantly even when Renovate merges nothing — every rebase re-runs CI on the
   // single worker node. "conflicted" rebases only on a real conflict, so a run can merge many
-  // PRs. What we give up (each merge tested against the exact tip of main) we never actually
-  // had: branch protection sets no required checks and Renovate does not wait for e2e; the
-  // post-merge flux-local run on main is the real net.
+  // PRs.
+  //
+  // THE TRADE-OFF (corrected 2026-08-04 — the previous note here claimed "branch protection sets
+  // no required checks and Renovate does not wait for e2e", which is false and cost us a week of
+  // frozen PRs). Forgejo Actions posts a commit status per e2e job, so every PR carries four
+  // `e2e / …` statuses and Renovate's automerge DOES gate on them. Combined with "conflicted",
+  // that means: a branch's head SHA never moves while main advances, so CI never re-runs, so a
+  // branch that went red once STAYS RED FOREVER and can never automerge — even after main is
+  // fixed. On 2026-08-04 nine PRs were wedged this way on statuses dated Jul 29–Aug 1, left over
+  // from a CI outage that main had already fixed.
+  //
+  // We keep "conflicted" anyway: the rebase storm it prevents is real and the single worker node
+  // cannot absorb it. The price is that clearing a red is a MANUAL step — tick the PR's rebase
+  // checkbox on the Renovate Dashboard 🤖 issue to rebuild it against current main. If PRs stop
+  // merging, check for stale statuses before suspecting Renovate itself.
   rebaseWhen: "conflicted",
+  // Per-PR escape hatch for the trade-off above. `conflicted` means a branch's head never moves
+  // while main advances, so a PR that went red once can never re-test itself. Adding this label
+  // to a single PR tells Renovate to keep that one branch rebased on main — targeted, without
+  // reintroducing the repo-wide rebase storm a single worker node cannot absorb. Supported on the
+  // forgejo platform. PREREQUISITE: the label must exist in the Forgejo repo before it can be
+  // applied; Renovate consumes it, it does not create it.
+  keepUpdatedLabel: "renovate/keep-updated",
+  // NOTE: abandonmentThreshold is deliberately NOT set here. It looked missing, but the shared
+  // preset extends `abandonments:recommended`, which already applies a 1-year threshold to
+  // matchPackageNames ["*"] AND ships curated per-package exceptions (packages upstream considers
+  // finished are marked "eternal" so they are never falsely flagged). Setting it here would be
+  // redundant at best and would flatten those curated exceptions at worst.
   // NOTE on Harbor-proxied charts: non-bootstrap OCI Helm charts have their
   // OCIRepository url pointed at Harbor's pull-through proxy (harbor.${SECRET_DOMAIN}/ghcr/…,
   // ADR-0023/0017). Renovate does its version lookup *through* Harbor — verified that
   // Harbor 2.15's proxy returns the full upstream tag list (not just cached tags), so
-  // discovery is complete. registryAliases is NOT used: its keys match on registry host
-  // only, so they can't disambiguate multiple upstreams behind one Harbor host+path.
+  // discovery is complete. CORRECTED 2026-08-05: this used to claim "registryAliases is NOT
+  // used: its keys match on registry host only, so they can't disambiguate multiple upstreams
+  // behind one Harbor host+path." That is false — Renovate matches a PATH PREFIX
+  // (`currentFrom.startsWith(name + "/")`), so `harbor.webgrip.dev/dockerhub` disambiguates
+  // perfectly. It IS now used for the dockerhub project; see registryAliases at the top. The
+  // ghcr/quay projects stay unaliased on purpose (no upstream timestamps to gain).
   // Pinned @sha256: digests stay valid (proxy is content-addressable). The two packageRules
   // below that keyed on ghcr.io are widened to also match the harbor.…/ghcr proxy path.
   ignorePaths: [
@@ -65,11 +138,53 @@
     ],
     executionMode: "branch",
   },
+  // PR body table. Renovate's default is [Package, Type, Update, Change, Pending] and it DROPS a
+  // column that is empty on every row — which is why these PRs only ever showed three. We add two
+  // self-hosted columns answering the question the UI could not: "when was this released, and
+  // therefore when does the soak expire?" Renovate exposes no soak countdown; the only signal is
+  // `renovate/stability-days` = pending with the generic text "Updates have not met minimum
+  // release age requirement".
+  //
+  // Deliberately NOT the built-in Age/Confidence/Adoption/Passing columns: those render
+  // <img> badges from developer.mend.io keyed on datasource + packageName. Almost every dep here
+  // is harbor.webgrip.dev/... (the pull-through proxy, ADR-0025), a name Mend has never seen, so
+  // those badges would be blank on the majority of PRs. `Age` is REDEFINED below to a plain day
+  // count from newVersionAgeInDays for the same reason — it works offline and for every registry.
+  //
+  // Reading `Released`: an em dash means the datasource reports no release timestamp. That is the
+  // normal case for ghcr.io / quay.io / harbor.webgrip.dev and is exactly why they are listed
+  // under minimumReleaseAgeBehaviour: timestamp-optional above. No timestamp = no soak to wait
+  // out = eligible on the next run. A real date means the soak IS enforced: add the
+  // minimumReleaseAge for that update type (patch 1d, minor 3d, digest/vuln 0d) to get the
+  // eligibility moment, then the next hourly run merges it.
+  prBodyColumns: [
+    "Package",
+    "Type",
+    "Update",
+    "Change",
+    "Released",
+    "Age (d)",
+  ],
+  prBodyDefinitions: {
+    Released: "{{#if releaseTimestamp}}{{{releaseTimestamp}}}{{else}}—{{/if}}",
+    // Named "Age (d)", NOT "Age". `Age` is a built-in Mend badge definition and the shared preset
+    // extends `mergeConfidence:all-badges`, which legitimately uses it for the datasources Mend
+    // supports. Overloading the name would silently swap a real badge for a plain number.
+    "Age (d)": "{{#if newVersionAgeInDays}}{{{newVersionAgeInDays}}}d{{else}}—{{/if}}",
+  },
   prBodyNotes: [
     "{{#if isMajor}}⚠️ Major update: review upstream migration notes, chart values, and rollout impact before merging.{{/if}}",
     "{{#if isVulnerabilityAlert}}Security update: prioritize review and verify the vulnerable component is actually deployed.{{/if}}",
     "{{#if isGroup}}Grouped GitOps PR: confirm the group is operationally coherent before enabling automerge.{{/if}}",
-    "Merge Confidence badges are included where Renovate supports them; low/neutral confidence means this update deserves a manual impact check before merge.",
+    // The note removed here duplicated a near-identical sentence the shared preset already adds,
+    // so every PR body carried the same claim twice. (An earlier version of this comment said the
+    // claim was also FALSE because no Confidence column was configured — that was wrong. The
+    // preset extends `mergeConfidence:all-badges`, which does configure those columns, scoped via
+    // matchDatasources. Badges are absent from this repo's PRs because Mend covers only go/maven/
+    // npm/nuget/packagist/pypi/rubygems — never docker or helm — so the preset's "where
+    // supported" wording is accurate; it is simply vacuous in a tree that is all containers and
+    // charts. Hence the self-hosted Released/"Age (d)" columns above.)
+    "`Released` is the upstream publish time; `—` means this registry reports no timestamp, so no soak applies and the PR is eligible on the next Renovate run. Otherwise add the soak for this update type (patch 1d, minor 3d, digest 0d) to `Released` — the first hourly run after that merges it.",
   ],
   packageRules: [
     {
@@ -333,12 +448,13 @@
       minimumReleaseAge: "0 days",
     },
     {
-      description: "Treat missing release timestamps as stable for GHCR Docker datasource updates; Renovate only supports Docker release timestamps on Docker Hub, so GHCR OCI artifacts can otherwise stay pending forever. Also covers charts proxied through Harbor (harbor.${SECRET_DOMAIN}/<project>/…), whose timestamps are likewise unavailable.",
+      description: "Treat missing release timestamps as stable for GHCR/quay Docker datasource updates; Renovate only supports Docker release timestamps on Docker Hub, so GHCR OCI artifacts can otherwise stay pending forever. Also covers charts proxied through Harbor (harbor.${SECRET_DOMAIN}/<project>/…), whose timestamps are likewise unavailable. quay.io was added 2026-08-04: without it `renovate/stability-days` sits pending FOREVER on every quay dep, which does not merely delay the soak — it holds the branch status non-green, so automerge never fires and the PR is stuck for good (cert-manager #467 sat 6 days on a 1-day soak). Registries land here because they cannot report a timestamp, not because we want to skip the soak.",
       matchDatasources: [
         "docker"
       ],
       matchPackageNames: [
         "/^ghcr\\.io\\//",
+        "/^quay\\.io\\//",
         "/^harbor\\.webgrip\\.dev\\//"
       ],
       minimumReleaseAgeBehaviour: "timestamp-optional",
@@ -408,9 +524,16 @@
       matchDatasources: [
         "docker"
       ],
+      // BOTH forms are load-bearing. registryAliases rewrites packageName to docker.io/... for
+      // managers it supports, but NOT for helm-values — and these two images are declared in a
+      // HelmRelease values block. List only one form and this rule silently stops matching for
+      // half the tree, which costs `versioning: loose` and brings back the exact
+      // "Can't find version matching v0.16.6.3" wedge documented below.
       matchPackageNames: [
         "harbor.webgrip.dev/dockerhub/codewithcj/sparkyfitness",
-        "harbor.webgrip.dev/dockerhub/codewithcj/sparkyfitness_server"
+        "harbor.webgrip.dev/dockerhub/codewithcj/sparkyfitness_server",
+        "docker.io/codewithcj/sparkyfitness",
+        "docker.io/codewithcj/sparkyfitness_server"
       ],
       versioning: "loose",
       groupName: "sparkyfitness",

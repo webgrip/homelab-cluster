@@ -1,0 +1,32 @@
+---
+# Kepler is a privileged, hostPID DaemonSet that reads host RAPL counters via
+# /sys/class/powercap. It is the most privileged workload in the cluster that is NOT
+# part of the CI path, and until now nothing constrained what could talk to it.
+#
+# This policy restricts INGRESS to the metrics port, from the observability namespace
+# only (VMAgent scrapes it via the chart's ServiceMonitor -> vmservicescrape/kepler,
+# job="kepler", verified live at 38k series).
+#
+# EGRESS IS DELIBERATELY NOT CONSTRAINED YET, and this policy is deliberately NOT named
+# `default-deny` so it does not trip namespace-tenancy-enforce/require-default-deny-egress.
+# Kepler's egress dependencies (kube-apiserver for pod attribution, kubelet) have not been
+# observed, and guessing them wrong silently kills power metrics rather than failing loudly.
+# Closing egress is a follow-up gated on reading actual flows (Hubble), not on assumption.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kepler-allow-scrape
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kepler
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - port: 28282
+          protocol: TCP

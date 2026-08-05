@@ -1,0 +1,258 @@
+---
+# One-shot copy of the two data-bearing buckets from the off-cluster Garage on the
+# Proxmox box (10.0.0.110) to the off-site Garage in Hetzner FSN1.
+#
+#   cnpg-backups-bucket  ~32 GiB  13 CNPG ObjectStores, the Longhorn backup target
+#                                 under longhorn-backups/, invoiceninja's MariaDB
+#                                 dumps, and OpenBao's raft snapshots
+#   forgejo              ~1.2 GiB attachments and LFS objects
+#
+#   guac                 small    the _db-backups/ prefix ONLY
+#
+# guac is copied SELECTIVELY. Its sboms/ prefix is a staging queue — trivy writes
+# CycloneDX SBOMs there and guaccollect scans them — and its 18.2M tiny objects
+# would dominate this migration to reproduce data that regenerates on the next
+# scan. But _db-backups/ holds guac-db's daily pg_dump, and guac-db has no CNPG
+# ObjectStore, so that cronjob is its ONLY backup. Dropping the whole bucket
+# would have silently discarded it; the manifest filter keeps it.
+#
+# WHY THIS RUNS IN THE `garage` NAMESPACE:
+# it needs both credential sets and egress to both stores, and nothing else does.
+# Running it here keeps the blast radius inside a namespace whose egress is
+# otherwise intra-namespace-only, rather than widening one of the 13 app
+# namespaces. The matching egress rules are scoped to this Job's pod by job-name
+# in networkpolicy.yaml — not granted namespace-wide.
+#
+# SAFETY: `rclone copy`, never `sync`. sync deletes on the destination; the source
+# is never written to. Re-running is safe and idempotent — copy skips objects that
+# already match. The old store keeps serving every app throughout; nothing cuts
+# over because of this Job.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: garage-bucket-migrate
+  namespace: garage
+  annotations:
+    # Job spec.template is immutable. Bump PASS below and this annotation makes
+    # Flux delete+recreate so the Job re-runs — that is how the pre-cutover delta
+    # pass is triggered. Per-resource, NOT ks-level force: this ks also owns the
+    # Garage StatefulSet and its PVCs.
+    kustomize.toolkit.fluxcd.io/force: enabled
+  labels:
+    # Terminal-Failed Jobs are reaped hourly by the Kyverno cleanup policy and
+    # recreated by Flux = automatic retry. Complete runs are left alone.
+    cleanup.webgrip.io/retry-failed: "true"
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        job-name: garage-bucket-migrate
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      # Keep OFF fringe-workstation. It is the smallest node (16GB), sits at 83%
+      # memory requests with limits at 318%, and Talos's userspace OOM controller
+      # is actively SIGKILLing cgroups there — cilium-agent on that node has
+      # restarted 728 times. A 2Gi rclone process is exactly the kind of load
+      # that node does not need. Preferred rather than required so the Job still
+      # runs if fringe is the only worker available.
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - "fringe-workstation"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: rclone
+          # Through the Harbor proxy, unlike the harbor blob migration which had to
+          # pull direct: that Job was migrating Harbor's own backing store, so
+          # routing its image through Harbor would have been circular. This one
+          # touches neither Harbor nor its blobs, and Harbor now serves from the
+          # in-cluster Garage, so the proxy path is both safe and policy-compliant.
+          image: harbor.webgrip.dev/dockerhub/rclone/rclone:1.75.0@sha256:b06aed988cf5967de7c25be5925240983981c757f4ed1ac9d2fa659d51d60548
+          imagePullPolicy: IfNotPresent
+          command:
+            - "/bin/sh"
+            - "-ceu"
+          env:
+            # The image sets XDG_CONFIG_HOME=/config and WorkingDir=/data, neither
+            # writable under readOnlyRootFilesystem. Point everything at the tmp
+            # emptyDir. Remotes are configured purely by env — no config file.
+            - {name: XDG_CONFIG_HOME, value: /tmp}
+            - {name: TMPDIR, value: /tmp}
+            - {name: HOME, value: /tmp}
+            # Bump to trigger a re-run (see the force annotation above).
+            # 1 = initial bulk copy, 2 = delta + guac _db-backups/, 3 = FINAL
+            # delta after every consumer had cut over, capturing anything the old
+            # store received between pass 2 and the last cutover.
+            - {name: PASS, value: "4"}
+
+            # --- old store: the Proxmox box, plain HTTP on the LAN ---
+            - {name: RCLONE_CONFIG_OLDCNPG_TYPE, value: s3}
+            - {name: RCLONE_CONFIG_OLDCNPG_PROVIDER, value: Other}
+            - {name: RCLONE_CONFIG_OLDCNPG_ENDPOINT, value: "http://10.0.0.110:3900"}
+            - {name: RCLONE_CONFIG_OLDCNPG_REGION, value: garage}
+            # Keys are bucket-scoped with owner:false, so a bucket-existence probe
+            # can 403. Skip it.
+            - {name: RCLONE_CONFIG_OLDCNPG_NO_CHECK_BUCKET, value: "true"}
+            - name: RCLONE_CONFIG_OLDCNPG_ACCESS_KEY_ID
+              valueFrom: {secretKeyRef: {name: bucket-migrate-s3, key: OLD_CNPG_KEY}}
+            - name: RCLONE_CONFIG_OLDCNPG_SECRET_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: bucket-migrate-s3, key: OLD_CNPG_SECRET}}
+
+            - {name: RCLONE_CONFIG_OLDFORGEJO_TYPE, value: s3}
+            - {name: RCLONE_CONFIG_OLDFORGEJO_PROVIDER, value: Other}
+            - {name: RCLONE_CONFIG_OLDFORGEJO_ENDPOINT, value: "http://10.0.0.110:3900"}
+            - {name: RCLONE_CONFIG_OLDFORGEJO_REGION, value: garage}
+            - {name: RCLONE_CONFIG_OLDFORGEJO_NO_CHECK_BUCKET, value: "true"}
+            - name: RCLONE_CONFIG_OLDFORGEJO_ACCESS_KEY_ID
+              valueFrom: {secretKeyRef: {name: bucket-migrate-s3, key: OLD_FORGEJO_KEY}}
+            - name: RCLONE_CONFIG_OLDFORGEJO_SECRET_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: bucket-migrate-s3, key: OLD_FORGEJO_SECRET}}
+
+            # --- new store: Hetzner, HTTPS via Caddy. Garage itself binds to
+            # loopback there, so 443 is the only reachable port. ---
+            - {name: RCLONE_CONFIG_NEWCNPG_TYPE, value: s3}
+            - {name: RCLONE_CONFIG_NEWCNPG_PROVIDER, value: Other}
+            - {name: RCLONE_CONFIG_NEWCNPG_ENDPOINT, value: "https://s3-offsite.webgrip.dev"}
+            - {name: RCLONE_CONFIG_NEWCNPG_REGION, value: garage}
+            - {name: RCLONE_CONFIG_NEWCNPG_NO_CHECK_BUCKET, value: "true"}
+            - name: RCLONE_CONFIG_NEWCNPG_ACCESS_KEY_ID
+              valueFrom: {secretKeyRef: {name: bucket-migrate-s3, key: NEW_CNPG_KEY}}
+            - name: RCLONE_CONFIG_NEWCNPG_SECRET_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: bucket-migrate-s3, key: NEW_CNPG_SECRET}}
+
+            - {name: RCLONE_CONFIG_NEWFORGEJO_TYPE, value: s3}
+            - {name: RCLONE_CONFIG_NEWFORGEJO_PROVIDER, value: Other}
+            - {name: RCLONE_CONFIG_NEWFORGEJO_ENDPOINT, value: "https://s3-offsite.webgrip.dev"}
+            - {name: RCLONE_CONFIG_NEWFORGEJO_REGION, value: garage}
+            - {name: RCLONE_CONFIG_NEWFORGEJO_NO_CHECK_BUCKET, value: "true"}
+            - name: RCLONE_CONFIG_NEWFORGEJO_ACCESS_KEY_ID
+              valueFrom: {secretKeyRef: {name: bucket-migrate-s3, key: NEW_FORGEJO_KEY}}
+            - name: RCLONE_CONFIG_NEWFORGEJO_SECRET_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: bucket-migrate-s3, key: NEW_FORGEJO_SECRET}}
+
+            - {name: RCLONE_CONFIG_OLDGUAC_TYPE, value: s3}
+            - {name: RCLONE_CONFIG_OLDGUAC_PROVIDER, value: Other}
+            - {name: RCLONE_CONFIG_OLDGUAC_ENDPOINT, value: "http://10.0.0.110:3900"}
+            - {name: RCLONE_CONFIG_OLDGUAC_REGION, value: garage}
+            - {name: RCLONE_CONFIG_OLDGUAC_NO_CHECK_BUCKET, value: "true"}
+            - name: RCLONE_CONFIG_OLDGUAC_ACCESS_KEY_ID
+              valueFrom: {secretKeyRef: {name: bucket-migrate-s3, key: OLD_GUAC_KEY}}
+            - name: RCLONE_CONFIG_OLDGUAC_SECRET_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: bucket-migrate-s3, key: OLD_GUAC_SECRET}}
+
+            - {name: RCLONE_CONFIG_NEWGUAC_TYPE, value: s3}
+            - {name: RCLONE_CONFIG_NEWGUAC_PROVIDER, value: Other}
+            - {name: RCLONE_CONFIG_NEWGUAC_ENDPOINT, value: "https://s3-offsite.webgrip.dev"}
+            - {name: RCLONE_CONFIG_NEWGUAC_REGION, value: garage}
+            - {name: RCLONE_CONFIG_NEWGUAC_NO_CHECK_BUCKET, value: "true"}
+            - name: RCLONE_CONFIG_NEWGUAC_ACCESS_KEY_ID
+              valueFrom: {secretKeyRef: {name: bucket-migrate-s3, key: NEW_GUAC_KEY}}
+            - name: RCLONE_CONFIG_NEWGUAC_SECRET_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: bucket-migrate-s3, key: NEW_GUAC_SECRET}}
+          args:
+            - |
+              # This ks has NO postBuild.substituteFrom (see ks.yaml), so braced
+              # shell variables survive to the shell. Adding substituteFrom later
+              # without rewriting them would silently blank them, and flux-local
+              # cannot see it.
+              # SNAPSHOT, THEN COPY, THEN VERIFY THE SNAPSHOT.
+              #
+              # The source is a LIVE backup store: 13 databases archive a WAL
+              # segment every archive_timeout (5 min), so objects appear in it
+              # continuously. A plain `rclone check` after `rclone copy` can
+              # therefore never pass — the first run reported 15 "differences",
+              # every one a WAL written during the copy
+              # (.../wals/0000000100000061/...3A.gz), and the retry reported 1.
+              # Nothing was lost or corrupted; the check was simply asking a
+              # moving target to hold still, and it failed the Job each time.
+              #
+              # Taking a listing first makes the pass deterministic: this run is
+              # responsible for exactly the objects that existed when it started,
+              # and --files-from scopes both the copy and the check to that set.
+              # Anything archived afterwards is out of scope by construction and
+              # gets picked up by the delta pass at cutover, which is what the
+              # PASS counter exists for.
+              #
+              # A real fault — a truncated or altered object — still fails the
+              # check, because those objects ARE in the manifest.
+              copy_bucket() {
+                src="$1"; dst="$2"; name="$3"; manifest="/tmp/${name}.manifest"
+
+                echo "== ${name}: snapshotting the source listing"
+                rclone lsf -R --files-only "${src}" > "${manifest}"
+                echo "   $(wc -l < "${manifest}") objects in scope for this pass"
+                echo "   source:      $(rclone size "${src}" --json 2>/dev/null || echo unavailable)"
+                echo "   destination: $(rclone size "${dst}" --json 2>/dev/null || echo unavailable)"
+
+                # copy, NOT sync. sync deletes on the destination; the source is
+                # never written to. --checksum rather than the default
+                # size+modtime: these are backup artefacts where a rewritten
+                # object of identical size must not be skipped.
+                rclone copy "${src}" "${dst}" \
+                  --files-from "${manifest}" \
+                  --checksum \
+                  --transfers 8 --checkers 16 \
+                  --s3-chunk-size 16M --s3-upload-concurrency 4 \
+                  --stats 30s --stats-one-line --stats-log-level NOTICE
+
+                echo "== ${name}: verifying every snapshotted object reached the destination"
+                # --one-way: the destination may legitimately hold more (an
+                # earlier pass, or a later delta). Multipart ETags are not MD5s,
+                # so rclone falls back to size for those and says so; expected.
+                rclone check "${src}" "${dst}" \
+                  --files-from "${manifest}" \
+                  --one-way --checksum
+
+                echo "== ${name}: size after"
+                rclone size "${dst}"
+              }
+
+              echo "== off-site bucket migration: 10.0.0.110 -> s3-offsite (pass ${PASS})"
+              copy_bucket "OLDCNPG:cnpg-backups-bucket" "NEWCNPG:cnpg-backups-bucket" "cnpg-backups-bucket"
+              copy_bucket "OLDFORGEJO:forgejo" "NEWFORGEJO:forgejo" "forgejo"
+
+              # guac: the _db-backups/ prefix ONLY. That prefix holds guac-db's
+              # daily pg_dump (guac-db has no CNPG ObjectStore, so this cronjob is
+              # its only backup) and is a handful of small objects. sboms/ is the
+              # 18.2M-object staging queue trivy refills on every scan, and copying
+              # it would dominate this migration to reproduce regenerable data.
+              # Scoped to the PREFIX, not the bucket with a filter. `rclone lsf -R`
+              # walks every key before any --include is applied, so filtering
+              # would still enumerate all 18.2M sboms/ objects to find a handful
+              # of dumps — pass 3 sat on exactly that for minutes. Addressing the
+              # prefix as the remote path makes the listing proportional to what
+              # is actually being copied.
+              copy_bucket "OLDGUAC:guac/_db-backups" "NEWGUAC:guac/_db-backups" "guac-db-backups"
+
+              echo "== migration pass complete"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}

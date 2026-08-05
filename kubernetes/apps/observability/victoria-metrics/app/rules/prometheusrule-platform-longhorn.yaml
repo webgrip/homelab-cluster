@@ -11,8 +11,13 @@ spec:
   groups:
     - name: platform.longhorn
       rules:
+        # longhorn_volume_robustness is ONE-HOT, not an enum: Longhorn emits one
+        # series per state (healthy/degraded/faulted/unknown) valued 0 or 1. The
+        # old `== 2` could therefore never match — it was silently dark through
+        # the 2026-07-29 rebuild storm (56 degraded volumes, zero alerts).
+        # Verified against that window: `== 2` -> 0, the expr below -> 29..57.
         - alert: LonghornVolumeDegraded
-          expr: longhorn_volume_robustness == 2
+          expr: longhorn_volume_robustness{state="degraded"} == 1
           for: 10m
           labels:
             severity: warning
@@ -39,8 +44,9 @@ spec:
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-longhorn"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-longhorn-health/longhorn-storage-health"
 
+        # One-hot, as above — `== 3` could never match.
         - alert: LonghornVolumeFault
-          expr: longhorn_volume_robustness == 3
+          expr: longhorn_volume_robustness{state="faulted"} == 1
           for: 5m
           labels:
             severity: critical
@@ -95,21 +101,26 @@ spec:
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-longhorn"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-longhorn-health/longhorn-storage-health"
 
+        # KSM series are relabelled here: the scrape does not set honorLabels, so
+        # `namespace` is always the scrape ns (observability) and the workload's
+        # real labels live in exported_namespace/exported_pod/exported_container.
+        # The plain-label form below matched nothing, so this rule was dark. See
+        # the file header of dark-factory-runner-fleet.yaml for the same caveat.
         - alert: LonghornManagerOOMKilled
           expr: |
-            increase(kube_pod_container_status_restarts_total{namespace="longhorn-system", container="longhorn-manager"}[15m]) > 0
-            and on (namespace, pod, container)
-            (kube_pod_container_status_last_terminated_reason{namespace="longhorn-system", container="longhorn-manager", reason="OOMKilled"} == 1)
+            increase(kube_pod_container_status_restarts_total{exported_namespace="longhorn-system", exported_container="longhorn-manager"}[15m]) > 0
+            and on (exported_namespace, exported_pod, exported_container)
+            (kube_pod_container_status_last_terminated_reason{exported_namespace="longhorn-system", exported_container="longhorn-manager", reason="OOMKilled"} == 1)
           for: 1m
           labels:
             severity: critical
             owner: platform
             service: longhorn
           annotations:
-            summary: "Longhorn manager OOMKilled ({{$labels.pod}})"
+            summary: "Longhorn manager OOMKilled ({{$labels.exported_pod}})"
             description: |
               What's happening:
-              - The longhorn-manager container on {{$labels.pod}} was OOMKilled.
+              - The longhorn-manager container on {{$labels.exported_pod}} was OOMKilled.
 
               Impact/risk:
               - The storage control plane flaps; this is the root trigger of the
@@ -131,19 +142,20 @@ spec:
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/incidents/2026-06-09-longhorn-oom-cascade/"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-longhorn-health/longhorn-storage-health"
 
+        # exported_* labels — see the KSM caveat on LonghornManagerOOMKilled.
         - alert: LonghornManagerRestarting
           expr: |
-            increase(kube_pod_container_status_restarts_total{namespace="longhorn-system", container="longhorn-manager"}[1h]) >= 3
+            increase(kube_pod_container_status_restarts_total{exported_namespace="longhorn-system", exported_container="longhorn-manager"}[1h]) >= 3
           for: 5m
           labels:
             severity: warning
             owner: platform
             service: longhorn
           annotations:
-            summary: "Longhorn manager restarting ({{$labels.pod}})"
+            summary: "Longhorn manager restarting ({{$labels.exported_pod}})"
             description: |
               What's happening:
-              - longhorn-manager on {{$labels.pod}} restarted >=3 times in the last hour.
+              - longhorn-manager on {{$labels.exported_pod}} restarted >=3 times in the last hour.
 
               Impact/risk:
               - Storage control-plane instability; precursor to rebuild/scheduling
@@ -154,7 +166,7 @@ spec:
                 liveness-probe failures, or node pressure
 
               First actions:
-              - `kubectl -n longhorn-system describe pod {{$labels.pod}}` for the
+              - `kubectl -n longhorn-system describe pod {{$labels.exported_pod}}` for the
                 last-terminated reason
               - Check node memory/CPU pressure and Longhorn node readiness
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/incidents/2026-06-09-longhorn-oom-cascade/"

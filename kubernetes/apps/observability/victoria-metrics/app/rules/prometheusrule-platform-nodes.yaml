@@ -68,52 +68,200 @@ spec:
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-nodes/talos-nodes"
 
+        # The signal that was missing on 2026-07-29: fringe-workstation spent 11-50%
+        # of total CPU in iowait for hours while every memory/readiness rule stayed
+        # silent (memory oscillated 0.75-0.86 against NodeMemoryHigh's 0.85 and
+        # never held 15m). Saturation that deep starves runc of forks — the node
+        # reported Ready while containers died with
+        # "runc create failed: can't get final child's PID from pipe: EOF".
+        # Normalised to a fraction of cores so it is node-size independent.
+        # Verified: healthy nodes sit at 0.005-0.016, fringe hit 0.45-0.50 during
+        # the incident; this expr -> 0 on the recovered cluster.
+        - alert: NodeHighIOWait
+          expr: |
+            sum by (instance) (rate(node_cpu_seconds_total{mode="iowait"}[15m]))
+            / on (instance) group_left
+            count by (instance) (count by (instance, cpu) (node_cpu_seconds_total{mode="idle"}))
+            > 0.25
+          for: 20m
+          labels:
+            severity: warning
+            owner: platform
+            service: nodes
+          annotations:
+            summary: "Node I/O saturated, >25% of CPU in iowait ({{ $labels.instance }})"
+            description: |
+              What's happening:
+              - Node {{ $labels.instance }} has spent >25% of its total CPU capacity
+                waiting on disk for 20m. Healthy nodes here sit near 1%.
+
+              Impact/risk:
+              - This is the failure mode that does NOT show up as NotReady. Under
+                sustained iowait the node cannot fork processes or answer probes in
+                time, so kubelet starts killing healthy containers (exit 137,
+                reason=Error, and NO OOM event). On 2026-07-29 that killed the
+                Cilium agent, which killed Longhorn's instance-manager, which
+                stopped 60 replicas and left 56 volumes on a single copy.
+              - Longhorn rebuilds triggered by the fallout generate more I/O, so
+                this condition is self-sustaining once it starts.
+
+              Likely causes:
+              - CI/build load co-located with storage replicas on the same node
+              - A Longhorn rebuild storm (check degraded volume count)
+              - A backup/restore or large snapshot purge
+
+              First actions:
+              - Identify the load: is CI running on this node? Are Longhorn volumes
+                rebuilding (`kubectl -n longhorn-system get volumes.longhorn.io`)?
+              - Shed load first (cordon the node / move CI off it) — restarting the
+                components that are dying will not help while the disk is saturated
+              - Check whether this node is BOTH a CI target and a storage node; if
+                so that co-location is the standing cause, not this incident
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-nodes/talos-nodes"
+
     - name: platform.scheduling
       rules:
-        # Apps-tier workloads (forgejo, n8n, sparkyfitness-server, dependency-track)
-        # carry a soft nodeAffinity preference for workload-tier=apps (worker-1). The
-        # only untainted fallback target is a soyo control-plane, so an apps-tier pod
-        # landing on a control-plane node means it SPILLED off the apps tier — usually
-        # because worker-1 was unavailable or full. Soft fallback keeps the app up;
-        # this alert tells you it happened so you can restore worker-1 / add headroom.
-        - alert: AppsTierWorkloadSpilledToControlPlane
+        # ⚠️ LABEL TRAP, verified in vmui 2026-08-02: kube-state-metrics series in
+        # this cluster carry the target pod's identity in exported_namespace /
+        # exported_pod / exported_container. The plain namespace/pod/container
+        # labels hold KUBE-STATE-METRICS' OWN identity (observability/
+        # kube-state-metrics-*), because the scrape does not honor_labels. Any
+        # rule matching kube_pod_*{namespace="foo"} therefore matches nothing and
+        # never fires. The alert this group replaces
+        # (AppsTierWorkloadSpilledToControlPlane) did exactly that, on top of
+        # describing a workload-tier=apps model retired in June 2026. Always
+        # confirm a new expr returns rows before merging it.
+
+        # worker-1 sat at ~98% CPU REQUESTS for 14 straight days while using 27%,
+        # so nothing new could schedule onto an almost-idle node. Requests, not
+        # usage, are what the scheduler sees — this watches the number that
+        # actually gates placement.
+        - alert: NodeCPURequestsSaturated
           expr: |
-            kube_pod_info{
-              namespace=~"forgejo|n8n|sparkyfitness|security",
-              pod=~"forgejo-.*|n8n-.*|sparkyfitness-server-.*|dependency-track-.*",
-              pod!~".*-db-.*",
-              pod!~".*-(runner|metrics-exporter|sbom-uploader|policy-bootstrap)-.*"
-            }
-            * on (node) group_left (role)
-            kube_node_role{role="control-plane"}
+            sum by (node) (kube_pod_container_resource_requests{resource="cpu"})
+            / on (node) group_left
+            sum by (node) (kube_node_status_allocatable{resource="cpu"})
+            > 0.85
           for: 30m
           labels:
             severity: warning
             owner: platform
             service: scheduling
           annotations:
-            summary: "Apps-tier workload spilled onto a control-plane node ({{ $labels.pod }} on {{ $labels.node }})"
+            summary: "Node CPU requests are saturated ({{ $labels.node }})"
             description: |
               What's happening:
-              - Pod {{ $labels.namespace }}/{{ $labels.pod }} is running on control-plane
-                node {{ $labels.node }} instead of the apps tier (worker-1).
+              - {{ $labels.node }} has committed more than 85% of its allocatable CPU
+                to pod requests ({{ $value | humanizePercentage }}).
 
               Impact/risk:
-              - The soft affinity worked as designed (the app stayed up via fallback),
-                but it's now adding memory pressure to a RAM-tight soyo, which is the
-                condition that has triggered control-plane cascades before.
+              - The scheduler places on REQUESTS, not usage, so this node is
+                effectively full even when idle. New pods, and any pod that restarts,
+                get pushed elsewhere or go Pending — which is how one node ends up
+                hoarding every database while another sits empty.
 
               Likely causes:
-              - worker-1 (workload-tier=apps) is NotReady, cordoned, or out of capacity
-                — e.g. a Talos reboot/upgrade, a node fault, or too much packed onto it.
+              - A capability label (e.g. node.webgrip.io/ram=high) that resolves to
+                this node alone, hard-pinning workloads that do not need it.
+              - Requests copy-pasted far above measured usage and never revisited.
+              - Longhorn instance-manager booking a percentage of node CPU
+                (guaranteedInstanceManagerCPU) that has not converged after a change;
+                it only applies as instance-manager pods recreate.
 
               First actions:
-              - `kubectl get nodes` — is worker-1 Ready and schedulable?
-              - If it's a planned worker-1 drain/upgrade, this is expected; it clears
-                when worker-1 returns and the pod is rescheduled.
-              - If unplanned: restore worker-1, then `kubectl delete pod {{ $labels.pod }}
-                -n {{ $labels.namespace }}` to let it reschedule onto the apps tier.
-              - If worker-1 is simply full, add a second apps-tier node (label it
-                workload-tier=apps) or right-size what's on it.
+              - Compare booked against used: `kubectl describe node {{ $labels.node }}`
+                versus `kubectl top node {{ $labels.node }}`.
+              - List the biggest bookers on the node:
+                `kubectl get pods -A --field-selector spec.nodeName={{ $labels.node }} -o wide`
+              - If booked greatly exceeds used, right-size requests in Git rather than
+                moving pods. In-place pod resize is GA on this cluster (k8s 1.35+), so
+                a correction needs no restart.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-nodes/talos-nodes"
+
+        # Two instances of one CNPG cluster on one node is HA in name only — what
+        # ploeg-db and vikunja-db were doing until 2026-08-02, both replicas on
+        # worker-1 with their PDBs reporting ALLOWED DISRUPTIONS: 0.
+        # created_by_kind/created_by_name come straight off kube_pod_info, so this
+        # needs no join and dodges the exported_* trap above entirely.
+        - alert: CNPGInstancesCoLocated
+          expr: |
+            count by (node, created_by_name) (kube_pod_info{created_by_kind="Cluster"}) > 1
+          for: 1h
+          labels:
+            severity: warning
+            owner: platform
+            service: scheduling
+          annotations:
+            summary: "Two instances of one CNPG cluster share a node ({{ $labels.created_by_name }} on {{ $labels.node }})"
+            description: |
+              What's happening:
+              - More than one instance of CNPG cluster {{ $labels.created_by_name }} is
+                running on node {{ $labels.node }}.
+
+              Impact/risk:
+              - The replica count is a lie. Losing {{ $labels.node }} takes out every
+                copy of a database that exists specifically to survive that.
+
+              Likely causes:
+              - spec.affinity.podAntiAffinityType is `preferred` (the CNPG default) and
+                only one node satisfies the cluster's nodeSelector, so the preference
+                has nowhere to prefer and collapses silently.
+              - A worker was drained and the instances never rebalanced afterwards —
+                Kubernetes never moves a running pod on its own.
+
+              First actions:
+              - Confirm placement:
+                `kubectl -n <ns> get pods -l cnpg.io/cluster={{ $labels.created_by_name }} -o wide`
+              - Set `enablePodAntiAffinity: true` + `podAntiAffinityType: required` on
+                the Cluster in Git if not already set.
+              - Then `kubectl cnpg promote <cluster> <instance>` onto another node and
+                delete the co-located pod so it reschedules.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-nodes/talos-nodes"
+
+        # The cilium agent on fringe restarted 805 times in 39 days before anyone
+        # noticed, and every death re-armed node.cilium.io/agent-not-ready:NoSchedule
+        # — so the node was only intermittently schedulable and new pods funnelled
+        # onto worker-1. A CNI agent restarting is never routine.
+        - alert: CiliumAgentRestarting
+          expr: |
+            increase(kube_pod_container_status_restarts_total{exported_namespace="kube-system", exported_container="cilium-agent"}[1h]) > 0
+          for: 5m
+          labels:
+            severity: warning
+            owner: platform
+            service: network
+          annotations:
+            summary: "cilium-agent is restarting ({{ $labels.exported_pod }})"
+            description: |
+              What's happening:
+              - The cilium-agent container in {{ $labels.exported_pod }} restarted
+                within the last hour ({{ $value | humanize }} times).
+
+              Impact/risk:
+              - Each restart re-applies node.cilium.io/agent-not-ready:NoSchedule until
+                the agent is ready again, so the node drops in and out of the
+                schedulable set. Sustained, this silently redirects all new placement
+                onto other nodes. Pod metrics from that node can also disappear while
+                the agent is down, which blinds autoscaling and cost reporting.
+
+              Likely causes:
+              - Node memory pressure. On Talos this appears as exit 137 with reason
+                "Error" and NO OOMKilled marker (ADR-0049): the userspace
+                OOMController SIGKILLs the pod cgroup under PSI pressure. It is NOT
+                necessarily the container hitting its own limit, so raising the limit
+                may change nothing.
+              - A genuinely undersized limit on a node with many endpoints — the
+                agent's footprint scales with endpoint and policy-revision count.
+
+              First actions:
+              - `kubectl -n kube-system describe pod {{ $labels.exported_pod }}` and
+                read lastState.terminated exitCode and reason.
+              - exit 137 + reason "Error" + high node memory => reduce what is
+                scheduled on that node; a bigger container limit will not help.
+              - `kubectl get node <node> -o jsonpath={.spec.taints}` to confirm the
+                agent-not-ready taint has cleared.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-nodes/talos-nodes"

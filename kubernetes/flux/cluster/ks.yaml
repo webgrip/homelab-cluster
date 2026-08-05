@@ -9,6 +9,10 @@ spec:
     provider: sops
   deletionPolicy: WaitForTermination
   interval: 1h
+  # Retry a FAILED reconciliation in 5m rather than waiting out `interval`.
+  # See the child-Kustomization patch below for why this matters; it applies
+  # here too, and this one is the parent of every app in the cluster.
+  retryInterval: 5m
   path: ./kubernetes/apps
   prune: true
   sourceRef:
@@ -27,6 +31,26 @@ spec:
           decryption:
             provider: sops
           deletionPolicy: WaitForTermination
+          # retryInterval is NOT interval. Per the CRD: "When not specified, the
+          # controller uses the KustomizationSpec.Interval value to retry
+          # failures." Every Kustomization here is interval: 1h, so before this
+          # default existed a FAILED one sat broken for a full hour before Flux
+          # tried again — 87 of 100 were in that state.
+          #
+          # That is not theoretical. On 2026-08-02 a Kyverno admission-controller
+          # restart made the validating webhook briefly unreachable; twelve
+          # Kustomizations failed their dry-run with
+          # `failed calling webhook … EOF` and were still broken 7+ minutes
+          # later, recovering only when reconciled by hand. The trigger was a
+          # few seconds long; the outage it caused was bounded by this value.
+          #
+          # 5m matches what the thirteen Kustomizations that already set it
+          # chose, so this makes the house standard the default rather than
+          # something each app has to remember. Deliberately not shorter: a
+          # retry is a full server-side dry-run + apply, and ~100 of them
+          # hammering a struggling API server is how a brief webhook blip
+          # becomes a real incident.
+          retryInterval: 5m
           patches:
             - patch: |-
                 apiVersion: helm.toolkit.fluxcd.io/v2

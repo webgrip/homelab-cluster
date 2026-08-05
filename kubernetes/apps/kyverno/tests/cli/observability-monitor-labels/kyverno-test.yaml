@@ -1,0 +1,48 @@
+---
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: observability-monitor-labels
+policies:
+  - ../../policies/secrets-observability-ops-enforce.yaml
+resources:
+  - resources.yaml
+results:
+  # --- fail cases ---------------------------------------------------------------
+  - policy: secrets-observability-ops-enforce
+    rule: require-servicemonitor-labels
+    resources:
+      - app/unlabelled-servicemonitor
+    kind: ServiceMonitor
+    result: fail
+  - policy: secrets-observability-ops-enforce
+    rule: require-podmonitor-labels
+    resources:
+      - app/other-labels-podmonitor
+    kind: PodMonitor
+    result: fail
+  - policy: secrets-observability-ops-enforce
+    rule: require-prometheusrule-labels
+    resources:
+      - app/unlabelled-prometheusrule
+    kind: PrometheusRule
+    result: fail
+  # --- pass cases ---------------------------------------------------------------
+  - policy: secrets-observability-ops-enforce
+    rule: require-servicemonitor-labels
+    resources:
+      - app/labelled-servicemonitor
+    kind: ServiceMonitor
+    result: pass
+  - policy: secrets-observability-ops-enforce
+    rule: require-podmonitor-labels
+    resources:
+      - app/labelled-podmonitor
+    kind: PodMonitor
+    result: pass
+  - policy: secrets-observability-ops-enforce
+    rule: require-prometheusrule-labels
+    resources:
+      - app/labelled-prometheusrule
+    kind: PrometheusRule
+    result: pass

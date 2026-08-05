@@ -1,0 +1,106 @@
+---
+# Hold Longhorn volumes at 2 replicas — the most this cluster can actually schedule.
+#
+# THE PROBLEM THIS SOLVES:
+# The chart-created default `longhorn` StorageClass carries numberOfReplicas=3
+# (persistence.defaultClassReplicaCount). There are only ever 2 schedulable
+# storage nodes — worker-1 and worker-2, with HARD anti-affinity (ADR-0008) —
+# so every volume provisioned from that class is born wanting a third replica
+# that can never be placed. Longhorn tries, fails with
+# ReplicaSchedulingFailure, and parks the volume in `degraded` FOREVER: the
+# third replica sits with node="" and state=stopped.
+#
+# On 2026-08-02 that was 18 volumes (litellm, vikunja, ploeg, devex, the whole
+# VictoriaMetrics/Logs/Traces set, ntfy, alertmanager). None of them were at
+# risk — two running replicas on two separate machines, plus off-site backups —
+# but permanently-degraded volumes destroy the signal: a genuinely degraded
+# volume becomes invisible in a sea of 18 that are degraded by construction.
+#
+# WHY NOT JUST FIX THE StorageClass:
+# StorageClass `parameters` are IMMUTABLE. Changing
+# persistence.defaultClassReplicaCount means Helm must delete and recreate the
+# class, which is why longhorn/app/helmrelease.yaml deliberately left it at 3
+# and set the global defaultReplicaCount to 2 instead — that global only applies
+# when a class omits the parameter, and this one does not. That deferral is
+# still the right call; this policy converges the outcome without forcing a
+# recreate of the default StorageClass out from under every bound PVC.
+#
+# It also makes the fix SELF-HEALING rather than one-shot. The same volumes were
+# already reduced to 2 by hand on 2026-06-19 (see the helmrelease comment); they
+# came back at 3 because every newly-provisioned PVC re-created the problem.
+# A policy does not regress the way a `kubectl edit` does.
+#
+# WHY THE TRIGGER IS THE PersistentVolume:
+# Identical reasoning to longhorn-backup-enrollment.yaml — read that header. In
+# short: the PV is cluster-scoped (so the chart's `*/*,security,*`
+# resourceFilter cannot silently exclude it), it is named `pvc-<uuid>` at 40
+# characters (so Kyverno's 63-char UpdateRequest label cap cannot truncate it),
+# and its name is IDENTICAL to the Longhorn Volume CR this needs to patch.
+#
+# WHY THIS IS SAFE:
+# Going 3 -> 2 deletes the replica Longhorn could never schedule in the first
+# place (node="", state=stopped). No data moves and no running replica is
+# touched. Volumes deliberately at 1 replica (longhorn-cold, -single,
+# -snapshot) are left alone by the conditional anchor below — this only ever
+# lowers 3 to 2, never raises anything.
+#
+# IF A THIRD STORAGE NODE EVER RETURNS (fringe re-enabled, or a new worker),
+# delete this policy rather than editing it — the default class already asks for
+# 3, so removing the ceiling is the whole change.
+#
+# REQUIRES kyverno:longhorn-volume-label (rbac-longhorn-volume-label.yaml) — the
+# same ClusterRole the enrolment policy uses; it already grants patch on
+# longhorn.io/volumes and get/list/watch on persistentvolumes. Without it this
+# policy patches nothing and reports no error.
+#
+# VERIFY AFTER CHANGING THIS. The failure mode is silent:
+#   kubectl -n longhorn-system get volumes.longhorn.io \
+#     -o json | jq -r '[.items[] | {r:.status.robustness, n:.spec.numberOfReplicas}]
+#                       | group_by(.r) | map({(.[0].r): length}) | add'
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: longhorn-replica-ceiling
+  annotations:
+    policies.kyverno.io/title: Longhorn replica ceiling
+    policies.kyverno.io/category: Storage
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Lowers longhorn.io Volume CRs from 3 replicas to 2, the most this cluster
+      can schedule with two storage nodes under hard anti-affinity. Without it,
+      every volume from the default StorageClass is permanently `degraded`.
+    # Bump to force a re-run without otherwise altering the policy.
+    webgrip.io/ceiling-revision: "1"
+spec:
+  # Mutate-only: it never rejects anything, so there is no Enforce/Audit
+  # distinction to make here.
+  mutateExistingOnPolicyUpdate: true
+  rules:
+    - name: cap-replicas-at-two
+      match:
+        any:
+          - resources:
+              kinds:
+                - PersistentVolume
+      preconditions:
+        all:
+          # Longhorn volumes only. Other CSI drivers have no Volume CR to patch,
+          # and the mutate would resolve to a target that does not exist.
+          - key: "{{ request.object.spec.csi.driver || '' }}"
+            operator: Equals
+            value: driver.longhorn.io
+      mutate:
+        targets:
+          - apiVersion: longhorn.io/v1beta2
+            kind: Volume
+            # PV name == Longhorn Volume CR name. This is the whole reason the
+            # PersistentVolume is the right trigger.
+            name: "{{ request.object.metadata.name }}"
+            namespace: longhorn-system
+        patchStrategicMerge:
+          spec:
+            # Conditional anchor: apply ONLY where the volume currently asks for
+            # 3. Deliberate 1-replica classes are untouched, and this can never
+            # raise a replica count.
+            (numberOfReplicas): 3
+            numberOfReplicas: 2

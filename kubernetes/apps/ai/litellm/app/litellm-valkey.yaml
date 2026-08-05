@@ -59,9 +59,9 @@ spec:
       automountServiceAccountToken: false
       nodeSelector:
         node.webgrip.io/pool: worker # ADR-0002 — off the soyo control planes
-        # ram: high = worker-1, co-located with the litellm app it caches for
-        # (and off the memory-saturated fringe workstation) — VIK-331 slice 1.
-        node.webgrip.io/ram: high
+        # `ram: high` dropped 2026-08-02: it resolves to worker-1 alone, and this
+        # valkey peaks at 3Mi. Co-locating a 3Mi cache with its app was never
+        # worth a hard pin to the cluster's only 24Gi node.
       securityContext:
         fsGroup: 1000
         fsGroupChangePolicy: OnRootMismatch
@@ -69,7 +69,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: valkey
-          image: harbor.webgrip.dev/dockerhub/valkey/valkey:9.1.0@sha256:8e8d64b405ce18f41b8e5ee20aa4687a8ed0022d1298f2ce31cdcf3a76e09411
+          image: harbor.webgrip.dev/dockerhub/valkey/valkey:9.1.1@sha256:3acc0687f2a2e1091fae6450d7842dd658c941338cf0a873ddd9e14b9e4ea4dd
           imagePullPolicy: IfNotPresent
           ports:
             - name: redis

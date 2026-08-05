@@ -106,3 +106,59 @@ spec:
               - kubectl -n {{ $labels.namespace }} describe job {{ $labels.job_name }}
               - If it is a CronJob child, check whether later runs succeeded
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+
+        # Platform-namespace crash-loop coverage. The group header above claims
+        # crashloop is "already covered by apps-rules" — it is NOT, in two ways:
+        #   1. AppCrashLoopBackOff explicitly EXCLUDES these namespaces
+        #      (namespace!~"kube-system|flux-system|observability|...").
+        #   2. It keys on kube_pod_container_status_waiting_reason, which only
+        #      samples instantaneous state — it read 0 for the entire 2026-07-29
+        #      cilium crash loop (294 restarts) because a fast loop is rarely in
+        #      CrashLoopBackOff at scrape time.
+        # This rule uses the monotonic restart counter instead, so it cannot be
+        # missed between scrapes. Verified: -> 1..3 over that incident window,
+        # -> 0 on a healthy cluster.
+        # exported_* labels: the KSM scrape does not set honorLabels, so
+        # `namespace` is the scrape ns (observability) and real labels are exported_*.
+        # cilium-agent and longhorn-manager are excluded: they already have
+        # dedicated, MORE sensitive rules (CiliumAgentRestarting in
+        # prometheusrule-platform-nodes.yaml fires at >0 restarts;
+        # LonghornManagerRestarting at >=3). Without these exclusions the same
+        # event would page twice. This rule is the safety net for everything
+        # else in the platform namespaces that has no bespoke rule.
+        - alert: PlatformContainerCrashLooping
+          expr: |
+            increase(kube_pod_container_status_restarts_total{exported_namespace=~"kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems", exported_container!~"cilium-agent|longhorn-manager"}[1h]) >= 5
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: kubernetes
+          annotations:
+            summary: "Platform container crash looping ({{ $labels.exported_namespace }}/{{ $labels.exported_pod }})"
+            description: |
+              What's happening:
+              - Container {{ $labels.exported_container }} in
+                {{ $labels.exported_namespace }}/{{ $labels.exported_pod }} restarted
+                >=5 times in the last hour.
+
+              Impact/risk:
+              - These are platform namespaces, so a loop here degrades the substrate
+                every app depends on (CNI, storage, GitOps, certs) rather than one
+                workload. The 2026-07-29 incident began exactly this way and was
+                invisible to every existing rule.
+
+              Likely causes:
+              - Node resource starvation (check NodeHighIOWait / NodeMemoryHigh on
+                the pod's node before blaming the component)
+              - Liveness-probe timeouts under load killing an otherwise healthy pod
+              - A genuine crash — check the previous container's logs
+              - OOM kill (compare against the component's memory limit)
+
+              First actions:
+              - kubectl -n {{ $labels.exported_namespace }} logs {{ $labels.exported_pod }} --previous
+              - kubectl -n {{ $labels.exported_namespace }} describe pod {{ $labels.exported_pod }}
+                — check lastState.terminated.reason (OOMKilled vs Error) and events
+              - If several components on the SAME node are looping, treat it as node
+                saturation, not N component bugs
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"

@@ -4,6 +4,23 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: security
 
+components:
+  # Satisfies namespace-tenancy-audit/require-resourcequota, which is wave 12 of the
+  # audit->enforce campaign (ADR-0032). `security` was the last in-scope namespace with
+  # no ResourceQuota at all.
+  #
+  # This component is COUNT-ONLY (pods 60, PVCs 25) by deliberate design — see its header:
+  # a compute quota would force every pod in the namespace, including the operator-managed
+  # CNPG database pods that set no requests/limits, to declare resources or be rejected at
+  # admission. `security` runs two CNPG clusters (guac, dependency-track), so that failure
+  # mode is not hypothetical here.
+  #
+  # Headroom checked before adding, not assumed: security currently runs 47 pods and 9
+  # PVCs, so 60/25 leaves room without ever blocking admission. The Kyverno-GENERATED
+  # quota (kyverno.io/default-resource-controls label) would NOT have worked — it caps
+  # pods at 40, below current usage, and would have started rejecting pods immediately.
+  - ../../components/resource-quota
+
 resources:
   - ./namespace.yaml
   - ./external-secrets/ks.yaml

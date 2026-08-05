@@ -1,0 +1,28 @@
+---
+# worker-2 — the reclaimed Proxmox box (2026-08-02). Placement is label-driven
+# (capability taxonomy, ADR-0001), never hostname-pinned.
+#
+# Hardware, measured in maintenance mode rather than taken from the old docs:
+#   CPU  Intel i7-6700K, 4C/8T @ 4.00GHz  — the fastest clock in the fleet
+#   RAM  16 GB (2 x 8 GB Kingston HyperX; TWO DIMM SLOTS FREE — cheap upgrade)
+#   Disk 2 TB Samsung 990 EVO Plus NVMe (install + Longhorn)
+#        + 250 GB Samsung 850, 1 TB Samsung 860, 1 TB Seagate HDD, 2 TB Samsung HDD
+#
+# The old README listed this machine as 32 GB; it is 16 GB. Labels follow what
+# the hardware actually reports.
+machine:
+  nodeLabels:
+    node.webgrip.io/pool: worker
+    # cpu=high: 4.00GHz beats fringe's i7-4770 (3.40GHz). This is the point of
+    # adding it — cpu=high previously resolved to fringe ALONE, so authentik and
+    # every other cpu=high workload had no fallback and piled onto one node that
+    # was already OOM-thrashing. Two high nodes means the scheduler has a choice.
+    node.webgrip.io/cpu: high
+    # ram=standard: 16 GB, same class as fringe. worker-1 (24 GB) keeps ram=high.
+    node.webgrip.io/ram: standard
+    # The reason this node matters most. Until now worker-1 was the ONLY
+    # schedulable Longhorn node, which is why 58 of 69 volumes sat degraded and
+    # why no PVC in the cluster could be expanded ("cannot expand volume before
+    # replica scheduling success"). A second storage node lets replicas schedule
+    # and both of those resolve on their own.
+    storage.webgrip.io/longhorn: "true"

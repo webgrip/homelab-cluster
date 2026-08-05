@@ -1,0 +1,135 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/clusterpolicy_v1.json
+# Wave 4 of the audit->enforce campaign (RFC: Kyverno audit→enforce hardening, ADR-0032):
+# the two image-supply-chain rules that are enforceable WITHOUT creating a Harbor
+# pull-time dependency, split out of image-supply-chain-audit so they can enforce while
+# the rest of that policy stays Audit.
+#
+# Deliberately NOT here, and staying in the Audit policy:
+#   - require-approved-registries — ADR-0033: stays Audit indefinitely. Enforcing it
+#     makes Harbor a pull-time SPOF at admission; it is excluded from this campaign.
+# WAVE 11 merged in 2026-08-04: require-image-digest now enforces here too. Its
+# prerequisites were real remediation, not waivers — erfbeeld (3 envs) and minecraft were
+# genuinely digest-pinned, and only the CNPG operator's own images (which the Cluster CRD
+# gives no way to pin) stayed waived, via exception-cnpg-pods.
+#
+# Gate evidence for this promotion (ADR-0032 requires base AND autogen = 0 unwaived):
+# a live sweep of all 231 container/initContainer/ephemeralContainer image references
+# across Deployments, StatefulSets, DaemonSets, Jobs, CronJobs and Pods in every
+# in-scope namespace found zero unqualified references and no `:latest` outside
+# excalidraw, which is waived at both controller and Pod level.
+#
+# That sweep is the gate, NOT the PolicyReport count. PolicyReports only cover resources
+# that EXIST. The CNPG restore-test and disaster-recovery-check CronJobs referenced a
+# bare `alpine/k8s:...` and reported zero FAILs purely because their pods live for
+# seconds a day — this rule would have denied every backup drill in eight namespaces on
+# the next schedule tick. Fixed in the preceding commit. Any future wave must sweep
+# pod TEMPLATES, not just running pods.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: image-supply-chain-enforce
+  annotations:
+    pod-policies.kyverno.io/autogen-controllers: DaemonSet,Deployment,StatefulSet
+    policies.kyverno.io/title: Image Supply Chain (Enforced)
+    policies.kyverno.io/category: Software Supply Chain
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Enforced image-hygiene rules: images pinned by digest, no `latest` tag even when
+      digest-pinned, and every image fully qualified with an explicit registry hostname.
+      Waves 4 and 11 of the audit->enforce campaign.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: disallow-latest-tag-even-with-digest
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: &applicationNamespaces
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - arc-systems
+                      - cert-manager
+                      - cilium-secrets
+                      - cnpg-system
+                      - default
+                      - external-secrets
+                      - flux-system
+                      - keda
+                      - kube-node-lease
+                      - kube-public
+                      - kube-system
+                      - kyverno
+                      - longhorn-system
+                      - network
+                      - observability
+                      - renovate
+                      - security
+      validate:
+        message: "Use immutable version tags with digests; avoid latest even when digest-pinned."
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            pattern:
+              image: "!*:latest@*"
+    - name: require-fully-qualified-images
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions: *applicationNamespaces
+      validate:
+        message: "Images should be fully qualified with an explicit registry hostname."
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            deny:
+              conditions:
+                any:
+                  - key: "{{ contains(element.image, '/') }}"
+                    operator: Equals
+                    value: false
+                  - key: "{{ contains(split(element.image, '/')[0], '.') || contains(split(element.image, '/')[0], ':') || split(element.image, '/')[0] == 'localhost' }}"
+                    operator: Equals
+                    value: false
+    - name: require-image-digest
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - arc-systems
+                      - cert-manager
+                      - cilium-secrets
+                      - cnpg-system
+                      - default
+                      - external-secrets
+                      - flux-system
+                      - keda
+                      - kube-node-lease
+                      - kube-public
+                      - kube-system
+                      - kyverno
+                      - longhorn-system
+                      - network
+                      - observability
+                      - renovate
+                      - security
+      validate:
+        message: "Images should be pinned by digest."
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            pattern:
+              image: "*@sha256:*"

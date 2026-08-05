@@ -30,7 +30,7 @@ _... managed with Flux, Renovate, GitHub Actions, and Talos_
 
 [![Age](https://img.shields.io/badge/Age-3%20yrs-informational?style=flat-square&color=0f5fff)](https://github.com/webgrip/homelab-cluster)
 [![Uptime](https://img.shields.io/badge/Uptime-99.5%25-success?style=flat-square)](https://github.com/webgrip/homelab-cluster)
-[![Nodes](https://img.shields.io/badge/Nodes-4-lightgrey?style=flat-square&logo=kubernetes)](https://github.com/webgrip/homelab-cluster)
+[![Nodes](https://img.shields.io/badge/Nodes-6-lightgrey?style=flat-square&logo=kubernetes)](https://github.com/webgrip/homelab-cluster)
 [![Pods](https://img.shields.io/badge/Pods-40+-blue?style=flat-square&logo=kubernetes)](https://github.com/webgrip/homelab-cluster)
 [![CPU](https://img.shields.io/badge/CPU-45%25-orange?style=flat-square)](https://github.com/webgrip/homelab-cluster)
 [![Memory](https://img.shields.io/badge/Memory-60%25-orange?style=flat-square)](https://github.com/webgrip/homelab-cluster)
@@ -44,7 +44,7 @@ This is the living source of truth for the Talos-powered cluster behind `webgrip
 
 ## <img src="https://raw.githubusercontent.com/kubernetes/kubernetes/refs/heads/master/logo/logo.svg" alt="🌱" width="20" height="20"> Kubernetes
 
-My cluster runs on three bare-metal Talos controllers (`soyo-1`..`3`) that also schedule workloads, plus a dedicated worker node (`fringe-workstation`, `10.0.0.23`) that takes write-heavy apps off the control-plane disk. Everything runs kube-proxy-free via Cilium, with split-DNS gateways and Cloudflare tunnels for ingress. GitOps keeps the manifests authoritative while just/Mise make local development reproducible.
+My cluster runs on three bare-metal Talos controllers (`soyo-1`..`3`) that also schedule workloads, plus two dedicated workers — `fringe-workstation` (`10.0.0.30`) and `worker-1` (`10.0.0.31`) — that take write-heavy apps off the control-plane disks. `worker-1` carries the Longhorn replicas. Everything runs kube-proxy-free via Cilium, with split-DNS gateways and Cloudflare tunnels for ingress. GitOps keeps the manifests authoritative while just/Mise make local development reproducible.
 
 ### Core Components
 
@@ -120,7 +120,7 @@ graph TD
   S2 --> |Port 6 → soyo-2| K2([soyo-2])
   S2 --> |Port 5 → soyo-3| K3([soyo-3])
   S2 --> |Port 2 → NAS| N([NAS])
-  S2 --> |Port 1 → Proxmox| PX([Proxmox host])
+  R --> |WAN · HTTPS 443| HZ([Hetzner garage-fsn1<br/>off-site S3 · Immich · uptime-kuma])
   W --> |Port 1 → Hue| H([Philips Hue bridge])
   W --> |Port 2 → Home Assistant| P([Raspberry Pi Home Assistant])
   W --> |SSID| W1([Main Wi-Fi])
@@ -136,7 +136,7 @@ graph TD
 | TL-SG108PE | Managed switch | `10.0.0.2` | Port 1 uplinks to the Protectli WAN handoff, port 2 feeds the Wi-Fi bridge, and port 3 uplinks the Q-Link switch. |
 | Zyxel VMG8825-T50 | Wi-Fi bridge/AP | `10.0.0.3` | Bridge mode so SSIDs land on the same subnet as wired clients. |
 
-Static infrastructure (Talos nodes, Proxmox host, Synology, Home Assistant) keeps IPs below `.50` and is reserved in OPNsense Terraform so DHCP drift is impossible.
+Static infrastructure (Talos nodes, Synology, Home Assistant) keeps IPs below `.50` and is reserved in OPNsense Terraform so DHCP drift is impossible.
 
 ### 🌎 DNS
 
@@ -164,16 +164,21 @@ graph TD
 
 ## 🖥️ Hardware
 
+> **Canonical, always-measured inventory:** [Infrastructure at a glance](docs/techdocs/docs/general/infrastructure.md)
+> — every machine, disk, label and address in one table. The summary below is a snapshot.
+
 | Num | Device | CPU | RAM | OS / Firmware | Function |
 |-----|--------|-----|-----|---------------|----------|
-| 3 | SOYO Mini PC M4 (Twin Lake N150) | Intel N150 (4C/4T) | 12 GB LPDDR5 | Talos Linux v1.13.3 | Control-plane + workloads; one 512 GB SATA SSD each, shared by etcd + OS + Longhorn; Wi-Fi5/BT5 disabled |
-| 1 | HP Z230 Tower Workstation | Intel Core i7-4770 (4C/8T, 3.4 GHz) | 16 GB DDR3 (1 slot free) | Talos Linux v1.13.3 | Dedicated worker `fringe-workstation` (`10.0.0.23`) for write-heavy apps; 256 GB SATA SSD (OS) + 1 TB HDD |
-| 1 | Gigabyte Z87X-D3H desktop | Intel Core i5-4670K (4C/4T, 3.4 GHz) | 24 GB DDR3-1600 | Talos Linux v1.13.3 | Worker `worker-1` (`10.0.0.24`), added 2026-06-19; most RAM in the cluster; 960 GB SATA SSD |
+| 3 | SOYO Mini PC M4 (Twin Lake N150) | Intel N150 (4C/4T) | 12 GB LPDDR5 | Talos Linux v1.13.4 | Control-plane + workloads; one 512 GB SATA SSD each, shared by etcd + OS + Longhorn; Wi-Fi5/BT5 disabled |
+| 1 | HP Z230 Tower Workstation | Intel Core i7-4770 (4C/8T, 3.4 GHz) | 16 GB DDR3 (1 slot free) | Talos Linux v1.13.4 | Dedicated worker `fringe-workstation` (`10.0.0.30`) for write-heavy apps; 256 GB SATA SSD (OS) + 1 TB HDD |
+| 1 | Gigabyte Z87X-D3H desktop | Intel Core i5-4670K (4C/4T, 3.4 GHz) | 24 GB DDR3-1600 | Talos Linux v1.13.4 | Worker `worker-1` (`10.0.0.31`), added 2026-06-19; most RAM in the cluster; 1 TB Samsung SSD 870 — currently the only Longhorn storage node |
+| 1 | worker-2 (reclaimed Proxmox box) | Intel Core i7-6700K (4C/8T, 4.0 GHz) | 16 GB (2 slots free) | Talos Linux v1.13.7 | Worker `worker-2` (`10.0.0.32`), rejoined 2026-08-02; 2 TB Samsung 990 EVO Plus NVMe (install + Longhorn) plus 250 GB/1 TB SSD and 1 TB/2 TB HDD unused |
 | 1 | Protectli V1410 | Intel i5 | 8 GB | OPNsense | Router/firewall, DHCP `10.0.0.50-150`, WireGuard, split DNS for `webgrip.dev` |
 | 1 | TP-Link TL-SG108PE | — | — | Managed firmware | 8-port 1 GbE switch feeding downstream fan-out |
 | 1 | Q-Link 1 GbE switch | — | — | Unmanaged | Directly uplinks Talos nodes for east-west traffic |
 | 1 | Zyxel VMG8825-T50 | — | — | Bridge/AP firmware | Wi-Fi AP bridging onto the same flat LAN |
-| 1 | NAS + Proxmox host | Intel i7 | 32 GB | Arch Linux + Proxmox | Backups, bulk storage, automation VMs |
+| 1 | Hetzner EX-line (Falkenstein, `garage-fsn1`) | Intel Core i7-6700 (4C/8T, 3.4 GHz) | 62 GB | Debian 12 | **Off-site**: Garage S3 (all backups), Immich, uptime-kuma. 2 × 512 GB Samsung NVMe in RAID1 (452 GB usable). Reachable only via Caddy on 443 |
+| ~~1~~ | ~~NAS + Proxmox host~~ | ~~Intel i7~~ | ~~32 GB~~ | ~~Arch Linux + Proxmox~~ | **Decommissioned 2026-08-02.** Held Garage S3, Immich and uptime-kuma; all migrated off-site, then the machine was reclaimed as a Talos node |
 | 1 | Raspberry Pi 4 (Home Assistant) | Broadcom | 4 GB | Home Assistant OS | Local automations + integrations |
 
 ## 🔢 Cluster & Upstream IPs
@@ -186,10 +191,14 @@ graph TD
 | `soyo-1` | Talos controller / worker | `10.0.0.20` |
 | `soyo-2` | Talos controller / worker | `10.0.0.21` |
 | `soyo-3` | Talos controller / worker | `10.0.0.22` |
+| `fringe-workstation` | Talos worker | `10.0.0.30` |
+| `worker-1` | Talos worker (Longhorn storage) | `10.0.0.31` |
+| `worker-2` | Talos worker (Longhorn storage) | `10.0.0.32` |
 | Kubernetes / Talos API VIP | Control-plane endpoint | `10.0.0.25` |
 | `k8s-gateway` LoadBalancer | Split DNS responder | `10.0.0.26` |
 | `envoy-internal` LoadBalancer | LAN-only ingress | `10.0.0.27` |
 | `envoy-external` / Cloudflare tunnel VIP | Public ingress origin | `10.0.0.28` |
+| `garage-fsn1` (Hetzner, off-site) | S3 backups, Immich, uptime-kuma | `116.202.53.185` |
 
 ## 🙏 Thanks
 

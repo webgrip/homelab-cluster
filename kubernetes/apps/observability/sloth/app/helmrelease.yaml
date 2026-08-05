@@ -35,5 +35,9 @@ spec:
         cpu: 25m
         memory: 96Mi
       limits:
-        cpu: 500m
+        # CPU limit dropped 2026-08-02: sloth was throttled 22% of its scheduling
+        # periods on fringe-workstation. It regenerates SLO rules in bursts, so a
+        # 500m ceiling is hit exactly when it has work to do, stretching each
+        # regeneration and holding the container busy longer than necessary.
+        # CPU limits throttle; the 25m request is what reserves capacity.
         memory: 256Mi

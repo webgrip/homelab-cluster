@@ -1,4 +1,29 @@
 ---
+# LoadBalancer address pool — deliberately NOT the whole LAN.
+#
+# This was `cidr: 10.0.0.0/24`, i.e. every address on the network. Cilium will
+# hand any free address in a pool to a LoadBalancer Service that does not pin
+# one with `lbipam.cilium.io/ips`, so that pool authorised it to allocate a
+# Talos node's address, the API-server VIP (.25), the router (.1), or an
+# address already leased to a laptop by DHCP. Nothing had collided by
+# 2026-08-02 purely because every Service happened to carry an explicit
+# annotation — discipline, not a constraint.
+#
+# The blocks below encode the address map in docs/techdocs/docs/general/
+# infrastructure.md, so the pool can no longer reach anything it does not own:
+#   .1 – .3    router, managed switch, Wi-Fi bridge
+#   .4 – .19   LoadBalancer pool  <-- here
+#   .20 – .24  Talos nodes
+#   .25        Kubernetes / Talos API VIP
+#   .26 – .28  LoadBalancer pool, pinned  <-- here
+#   .30 – .39  Talos workers (renumbering target)
+#   .40 – .49  other static infra (Home Assistant, Hue)
+#   .50 – .150 DHCP scope
+#
+# .26 – .28 are a separate block because those three are effectively immovable:
+# k8s-gateway (.26) is what OPNsense forwards the whole domain to, and
+# envoy-internal (.27) / envoy-external (.28) are the documented ingress
+# origins. Everything else allocates from .4 – .19.
 apiVersion: cilium.io/v2alpha1
 kind: CiliumLoadBalancerIPPool
 metadata:
@@ -6,7 +31,14 @@ metadata:
 spec:
   allowFirstLastIPs: "No"
   blocks:
-    - cidr: "10.0.0.0/24"
+    # General pool. minecraft (.10) and forgejo-ssh (.11) moved here on
+    # 2026-08-02 to vacate .30/.31 for the worker address block; worker-1 was
+    # already answering ARP for BOTH its own .24 and forgejo-ssh's .31.
+    - start: "10.0.0.4"
+      stop: "10.0.0.19"
+    # Pinned ingress/gateway trio — see the note above before moving these.
+    - start: "10.0.0.26"
+      stop: "10.0.0.28"
 ---
 apiVersion: cilium.io/v2alpha1
 kind: CiliumL2AnnouncementPolicy

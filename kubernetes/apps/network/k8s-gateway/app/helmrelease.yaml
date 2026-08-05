@@ -26,4 +26,43 @@ spec:
       annotations:
         lbipam.cilium.io/ips: "10.0.0.26"
       externalTrafficPolicy: Cluster
-    watchedResources: ["HTTPRoute", "Service"]
+    watchedResources:
+      - "HTTPRoute"
+      - "Service"
+    # Answer for names this cluster does NOT host, instead of NXDOMAIN.
+    #
+    # The whole ${SECRET_DOMAIN} zone is delegated here — by CoreDNS in-cluster,
+    # and by the LAN resolver for every other device on the network. k8s_gateway
+    # is authoritative for it and only knows names backed by an HTTPRoute or
+    # Service, so anything hosted OUTSIDE the cluster under this domain was
+    # unresolvable from the LAN entirely: s3-offsite, hetzner, immich and uptime
+    # all returned empty from 10.0.0.1 and 10.0.0.26 while resolving correctly
+    # from 1.1.1.1.
+    fallthrough:
+      enabled: true
+    # The chart's default plugin list with ONE line changed — and that change is
+    # the whole reason this block is here rather than just setting fallthrough.
+    #
+    # Upstream defaults to `forward . /etc/resolv.conf`. This pod runs with
+    # dnsPolicy ClusterFirst (the chart does not expose dnsPolicy), so its
+    # resolv.conf IS CoreDNS — and CoreDNS forwards ${SECRET_DOMAIN} straight
+    # back here. Turning on fallthrough against that default builds a loop:
+    # CoreDNS -> k8s-gateway -> fallthrough -> CoreDNS -> ... Both ends run the
+    # `loop` plugin, so the failure mode is CoreDNS refusing to start, i.e.
+    # cluster-wide DNS loss. Forwarding straight to public resolvers breaks the
+    # cycle, and they are the same ones the Talos nodes already use
+    # (talos/patches/global/machine-network.yaml).
+    extraZonePlugins:
+      - name: log
+      - name: errors
+      - name: health
+        configBlock: |-
+          lameduck 5s
+      - name: ready
+      - name: prometheus
+        parameters: 0.0.0.0:9153
+      - name: forward
+        parameters: . 1.1.1.1 1.0.0.1
+      - name: loop
+      - name: reload
+      - name: loadbalance

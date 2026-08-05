@@ -58,7 +58,7 @@ Hostnames follow `<app>.${SECRET_DOMAIN}` (`cluster-secrets`, SOPS-encrypted). G
 | minecraft | `minecraft` | `10.0.0.30` | game TCP/UDP |
 | forgejo-ssh | `forgejo` | `10.0.0.31` | 22 (git SSH) |
 
-Garage S3 (CNPG/Loki/Harbor object storage) is **off-cluster** at `10.0.0.110:3900`.
+Object storage is split as of 2026-08-02: Harbor registry blobs on the **in-cluster** Garage (`http://garage-s3.garage.svc.cluster.local:3900`), and all backups (CNPG, Longhorn, OpenBao snapshots, Forgejo, guac) on the **off-site** Garage (`https://s3-offsite.webgrip.dev`, Hetzner FSN1).
 
 ## Not routed (no HTTPRoute, by design)
 

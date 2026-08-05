@@ -30,6 +30,17 @@ spec:
     # without rewriting them, and VMAgent/VMAlert (selectAllByDefault) pick them up.
     operator:
       disable_prometheus_converter: false
+      # Make converted CRs owned by the CR they were converted from, so deleting a
+      # ServiceMonitor/PodMonitor/PrometheusRule garbage-collects its VM twin.
+      #
+      # Default is FALSE, which means converted objects carry NO ownerReferences at
+      # all — and Flux never had them in its inventory either (the operator created
+      # them), so nothing GC'd them from either direction. Deleting the source left
+      # the twin running forever. Found 2026-08-04: three cnpg-monitoring PodMonitors
+      # were removed from Git and every CNPG pod was still scraped 4x, because the
+      # orphaned VMPodScrapes kept scraping. The same trap applies to every
+      # Prometheus-operator CR this repo has ever deleted.
+      enable_converter_ownership: true
     # Drop the admission webhook: it needs cert plumbing (a cert race during the
     # single-reconcile cutover) and only validates the VM CRs we author in-repo,
     # which flux-local already builds. Fewer moving parts for the swap.

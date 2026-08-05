@@ -1,110 +1,104 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# MIGRATED to the CEL policy family 2026-08-05 — first policy of the
+# rfc-kyverno-cel-migration.md programme. The legacy kyverno.io/v1 ClusterPolicy API is
+# deprecated since Kyverno 1.17 and planned for REMOVAL in v1.20 (October 2026); this
+# estate runs 1.18.1, which upstream already classes as critical-fixes-only for it.
+#
+# Chosen as the pilot because it is Audit-only (nothing can be blocked by getting the
+# translation wrong) and single-rule, and because its 41 live FAILs give an exact
+# differential to verify against. Verified before landing: swept against the same 155-pod
+# corpus in both dialects — legacy and CEL both report pass:114 fail:41, and the failing
+# resource sets are identical.
+#
+# BEHAVIOUR CHANGE TO KNOW ABOUT: CEL policies have no named rules, so PolicyReport
+# results for this policy carry `policy` and `source: KyvernoValidatingPolicy` but NO
+# `rule` field. Nothing downstream groups this policy by rule (the three Grafana panels
+# that filter on `policy=` name other policies), but any future dashboard or alert that
+# does would need the policy name instead.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: image-supply-chain-audit
   annotations:
-    pod-policies.kyverno.io/autogen-controllers: DaemonSet,Deployment,StatefulSet
     policies.kyverno.io/title: Image Supply Chain Audit
     policies.kyverno.io/category: Software Supply Chain
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod
     kyverno.io/kyverno-version: 1.18.1
     policies.kyverno.io/description: >-
-      Audit image pinning and registry hygiene before requiring all workloads to
-      use digest-pinned images from approved registries.
+      Audit that runtime container images come from the in-cluster Harbor registry.
+
+      Waves 4 and 11 split disallow-latest-tag-even-with-digest, require-fully-qualified-images
+      and require-image-digest out to image-supply-chain-enforce. Harbor-only registry
+      sovereignty is all that remains here, and it stays AUDIT INDEFINITELY per ADR-0033 —
+      enforcing it would make Harbor a pull-time SPOF at admission. Its FAILs are the intended
+      registry-sovereignty drift signal, so a non-zero count is correct and must NOT be "fixed".
+      The plan for actually reducing that count is routing, not enforcement — see
+      rfc-third-party-image-supply-chain.md, which measured 114 of 144 third-party images
+      bypassing Harbor entirely.
+
+      Covers runtime container images in application namespaces only. Flux OCIRepository
+      Helm-chart sources are NOT yet restricted to Harbor — tracked as a follow-up.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-    - name: require-image-digest
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-              namespaceSelector:
-                matchExpressions: &applicationNamespaces
-                  - key: kubernetes.io/metadata.name
-                    operator: NotIn
-                    values:
-                      - arc-systems
-                      - cert-manager
-                      - cilium-secrets
-                      - cnpg-system
-                      - default
-                      - external-secrets
-                      - flux-system
-                      - keda
-                      - kube-node-lease
-                      - kube-public
-                      - kube-system
-                      - kyverno
-                      - longhorn-system
-                      - network
-                      - observability
-                      - renovate
-                      - security
-      validate:
-        message: "Images should be pinned by digest."
-        foreach:
-          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
-            pattern:
-              image: "*@sha256:*"
-    - name: disallow-latest-tag-even-with-digest
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-              namespaceSelector:
-                matchExpressions: *applicationNamespaces
-      validate:
-        message: "Use immutable version tags with digests; avoid latest even when digest-pinned."
-        foreach:
-          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
-            pattern:
-              image: "!*:latest@*"
-    - name: require-approved-registries
-      # Harbor is the ONLY approved OCI host. Every other registry (docker.io,
-      # ghcr.io, quay.io, registry.k8s.io, gcr.io, public.ecr.aws, mcr...) must
-      # be mirrored/proxied through Harbor before this can move to Enforce.
-      # Kept at validationFailureAction: Audit (policy level) so this observes
-      # the blast radius via PolicyReports without blocking pulls yet.
-      # NOTE: this covers runtime container images in application namespaces only.
-      # Flux OCIRepository Helm-chart sources are NOT yet restricted to Harbor —
-      # tracked as a follow-up (see supply-chain-enforcement-roadmap.md).
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-              namespaceSelector:
-                matchExpressions: *applicationNamespaces
-      validate:
-        message: "Images must come from the in-cluster Harbor registry (harbor.${SECRET_DOMAIN}); no other OCI hosts are approved."
-        foreach:
-          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
-            pattern:
-              image: "harbor.${SECRET_DOMAIN}/*"
-    - name: require-fully-qualified-images
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-              namespaceSelector:
-                matchExpressions: *applicationNamespaces
-      validate:
-        message: "Images should be fully qualified with an explicit registry hostname."
-        foreach:
-          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
-            deny:
-              conditions:
-                any:
-                  - key: "{{ contains(element.image, '/') }}"
-                    operator: Equals
-                    value: false
-                  - key: "{{ contains(split(element.image, '/')[0], '.') || contains(split(element.image, '/')[0], ':') || split(element.image, '/')[0] == 'localhost' }}"
-                    operator: Equals
-                    value: false
+  # `Audit` is the CEL spelling of validationFailureAction: Audit. `Deny` is the enforcing
+  # value — do not set it here without re-reading ADR-0033.
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  # Replaces the legacy `pod-policies.kyverno.io/autogen-controllers` annotation. Note this
+  # list still omits CronJob and Job by design: their pod templates get no autogen rule, so
+  # the base rule first bites at pod creation.
+  autogen:
+    podControllers:
+      controllers:
+        - DaemonSet
+        - Deployment
+        - StatefulSet
+  matchConstraints:
+    # Harbor is the ONLY approved OCI host. Every other registry (docker.io, ghcr.io,
+    # quay.io, registry.k8s.io, gcr.io, public.ecr.aws, mcr...) must be mirrored/proxied
+    # through Harbor. Platform namespaces are excluded — they bootstrap the cluster and
+    # several of them must be able to pull before Harbor exists.
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - arc-systems
+            - cert-manager
+            - cilium-secrets
+            - cnpg-system
+            - default
+            - external-secrets
+            - flux-system
+            - keda
+            - kube-node-lease
+            - kube-public
+            - kube-system
+            - kyverno
+            - longhorn-system
+            - network
+            - observability
+            - renovate
+            - security
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+  validations:
+    # The has() guards are required: initContainers and ephemeralContainers are optional,
+    # and CEL errors on an absent field rather than treating it as empty. The legacy
+    # JMESPath foreach over a flattened list handled that implicitly.
+    - expression: >-
+        (!has(object.spec.containers) || object.spec.containers.all(c, c.image.startsWith('harbor.${SECRET_DOMAIN}/'))) &&
+        (!has(object.spec.initContainers) || object.spec.initContainers.all(c, c.image.startsWith('harbor.${SECRET_DOMAIN}/'))) &&
+        (!has(object.spec.ephemeralContainers) || object.spec.ephemeralContainers.all(c, c.image.startsWith('harbor.${SECRET_DOMAIN}/')))
+      message: "Images must come from the in-cluster Harbor registry (harbor.${SECRET_DOMAIN}); no other OCI hosts are approved."

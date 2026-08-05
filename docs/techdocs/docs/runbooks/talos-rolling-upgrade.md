@@ -43,7 +43,7 @@ Then `mise install` and confirm: `mise exec -- talosctl version --client`
 
 ```bash
 mise exec -- just talos-upgrade-node <node-ip>
-# equivalently: mise exec -- task talos:upgrade-node IP=<node-ip>
+# equivalently: mise exec -- just talos-upgrade-node <hostname>
 ```
 
 > **`IP` is a positional just argument.** `just talos-upgrade-node IP=<node-ip>` is broken — just
@@ -64,4 +64,4 @@ At `talosVersion: v1.13.4` the bundled etcd is `v3.6.12`.
 - Upgrading a maintenance-mode node (no machine config yet) needs the insecure variant —
   `INSECURE` is the second positional argument to just:
   - `mise exec -- just talos-upgrade-node <ip> true`
-  - (or `mise exec -- task talos:upgrade-node IP=<ip> INSECURE=true`)
+  - (or `mise exec -- just talos-upgrade-node <hostname> <current-ip> true`)

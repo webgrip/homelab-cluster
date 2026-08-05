@@ -26,3 +26,94 @@ spec:
       ports:
         - {protocol: TCP, port: 8000}
         - {protocol: TCP, port: 5432}
+---
+# Allow CNPG instance pods to reach the OFF-SITE object store — WAL archiving,
+# base backups, and restore.
+#
+# 116.202.53.185/32:443, not a tunnel. An earlier revision of this rule allowed
+# 10.90.0.0/24:3900 for a WireGuard design that was abandoned: putting a per-node
+# WireGuard key anywhere in git meant either plaintext in talconfig.yaml or an
+# edit to talsecret.sops.yaml, and an in-cluster tunnel pod needed NET_ADMIN and
+# so a fifth pod-security PolicyException. The store is instead fronted by Caddy
+# with a Let's Encrypt certificate, with Garage bound to loopback behind it — so
+# the transport is TLS to a public address and this is an ordinary egress allow.
+#
+# Verified 2026-08-01: with the stale 10.90.0.0/24 rule in place an authentik pod
+# could resolve the endpoint but timed out connecting, because authentik grants
+# no general internet egress (only its own namespace, 10.43.0.0/16 and
+# 10.0.0.0/24). forgejo and invoiceninja already allow 0.0.0.0/0 and were never
+# affected, which is exactly why a namespace-by-namespace check was needed rather
+# than assuming the CNPG namespaces looked alike.
+#
+# WHY THIS EXISTS AS ITS OWN RULE:
+# Every app that archives to S3 grants it today as `ipBlock: 10.0.0.0/24` in its
+# own <app>-allow-egress policy, because the store has always been on the LAN
+# (10.0.0.110:3900). Moving the store off-site puts the endpoint outside that
+# CIDR, and NetworkPolicy fails CLOSED and SILENTLY: postgres keeps accepting
+# writes, archive_command keeps failing, WAL accumulates on the PVC, and the
+# first symptom is a full volume — not a backup alert. That is the failure this
+# rule exists to prevent. See docs/.../2026-07-17-forgejo-netpol-wal-gitops-deadlock.md.
+#
+# WHY HERE AND NOT IN 9 SEPARATE APP POLICIES:
+# this component is already wired into exactly the 9 default-deny namespaces that
+# own an ObjectStore (authentik, backstage, forgejo, freshrss, harbor, n8n, ploeg,
+# sparkyfitness, vikunja). NetworkPolicy egress is ADDITIVE across policies, so
+# this grants the new path without touching any app's existing 10.0.0.0/24 rule —
+# both endpoints stay reachable, and rollback of an endpoint move needs no netpol
+# change at all. The other three ObjectStore namespaces (ai, observability,
+# security) have no default-deny, so their egress is already unrestricted.
+#
+# WHY A CIDR RULE IS THE RIGHT MECHANISM HERE (it is not, for the API server):
+# the store is genuinely outside the cluster, so Cilium resolves it to the
+# `world` identity and an ipBlock matches. The kube-apiserver trap does not apply
+# — that one needs a reserved identity, and is handled in ciliumnetworkpolicy.yaml.
+#
+# SCOPE: a /32 to the one host, on 443 only. Garage's S3 API (3900) and ADMIN API
+# (3903) both listen on the box's loopback and are not routable from here at all;
+# only Caddy on 443 is, and it proxies exclusively to the S3 API. The admin API
+# can mint keys and delete buckets, and nothing in this cluster should reach it.
+#
+# The address is a Hetzner dedicated-server IP, so it is stable — but it IS
+# hardcoded, and moving the box means editing this file. That is deliberate:
+# resolving a hostname inside a NetworkPolicy is not something NetworkPolicy can
+# do, and a wider CIDR would grant egress to unrelated Hetzner customers.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cnpg-offsite-s3
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/podRole: instance
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 116.202.53.185/32
+      ports:
+        - {protocol: TCP, port: 443}
+---
+# Same allow for CNPG bootstrap/recovery Job pods, which carry cnpg.io/jobRole but
+# NOT cnpg.io/podRole=instance and so are missed by the selector above. A `recovery`
+# bootstrap reads the base backup and WAL straight from the object store, so without
+# this a restore FROM the off-site store hangs — which is exactly the moment the
+# off-site copy is supposed to be earning its keep. Mirrors the pairing in
+# ciliumnetworkpolicy.yaml (allow-cnpg-apiserver / allow-cnpg-bootstrap-apiserver).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cnpg-bootstrap-offsite-s3
+spec:
+  podSelector:
+    matchExpressions:
+      - key: cnpg.io/jobRole
+        operator: Exists
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 116.202.53.185/32
+      ports:
+        - {protocol: TCP, port: 443}

@@ -11,6 +11,16 @@ All `kind: ClusterPolicy` in `kubernetes/apps/kyverno/policies/app/`, registered
 `kustomization.yaml`. Three rule kinds: **validate** (Audit or Enforce), **generate** (e.g. namespace
 defaults), and **PolicyException** (waivers).
 
+**PolicyExceptions live in `kubernetes/apps/kyverno/exceptions/app/`** — a separate Flux
+Kustomization (`kyverno-exceptions`) that `dependsOn` `kyverno-policies`. They are split out
+because every exception is itself admission-validated by the `exception-governance` ClusterPolicy:
+while both lived in one Kustomization, a bug in that policy was **unrecoverable**, since
+kustomize-controller dry-runs the whole set before applying any of it, so one denied exception
+aborted the apply that carried the fix (2026-08-02 deadlock). Put new exceptions there; the
+`exception-governance` ClusterPolicy itself stays in `policies/` — it is a policy, not an exception.
+`scripts/lib/kyverno-tests.sh` scans **both** dirs; if you add a third, add it there too or its
+contents silently vanish from the test workspace.
+
 ## Audit vs Enforce
 New validate policies land in **`validationFailureAction: Audit`** (reports violations to a PolicyReport,
 doesn't block) → promote to **Enforce** (admission-blocks) once the fleet is clean. ~10 policies sit in

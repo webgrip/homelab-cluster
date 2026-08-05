@@ -35,6 +35,46 @@ spec:
   postRenderers:
     - kustomize:
         patches:
+          # jobservice mounts an RWO Longhorn PVC (jobLog) and the goharbor chart
+          # HARDCODES RollingUpdate, which creates the replacement pod before
+          # terminating the old one. A ReadWriteOnce volume cannot attach to two
+          # nodes, so any move between workers deadlocks the new pod in
+          # ContainerCreating on Multi-Attach — forever, with no Events — until
+          # someone deletes the old pod by hand. That workaround is recorded in
+          # the jobservice values block below and was performed manually during
+          # the soyo-3 -> fringe migration.
+          #
+          # It stopped being theoretical on 2026-08-02: the cluster-wide default
+          # topology spread + NodeResourcesBalancedAllocation weighting (see
+          # talos/patches/controller/cluster.yaml) made the scheduler prefer a
+          # DIFFERENT worker for the replacement pod, which is exactly the case
+          # that deadlocks. It sat stuck for 9 hours. The combination was always
+          # broken; previously the replacement just happened to land back on the
+          # same node by luck.
+          #
+          # Recreate trades a few seconds of jobservice downtime for a move that
+          # actually completes. Same reasoning as n8n and minecraft, which set
+          # strategy: Recreate natively — this one needs a post-render patch only
+          # because the chart does not expose it.
+          # `rollingUpdate: null` is REQUIRED, not decorative — see the authentik
+          # HelmRelease for the full write-up. Short version: a JSON-6902
+          # `replace /spec/strategy` only rewrites the rendered manifest, but Flux
+          # applies SERVER-SIDE and the live Deployment still carries the
+          # rollingUpdate block Kubernetes defaulted in. SSA merges them and the
+          # API rejects "rollingUpdate: Forbidden ... when type is 'Recreate'".
+          # An explicit null tells SSA to remove the inherited field.
+          - target:
+              kind: Deployment
+              name: harbor-jobservice
+            patch: |
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: harbor-jobservice
+              spec:
+                strategy:
+                  type: Recreate
+                  rollingUpdate: null
           - target:
               kind: Deployment
               name: harbor-core
@@ -103,10 +143,10 @@ spec:
         type: s3
         disableredirect: true
         s3:
-          existingSecret: harbor-s3 # keys REGISTRY_STORAGE_S3_ACCESSKEY / SECRETKEY
+          existingSecret: harbor-s3-cluster # keys REGISTRY_STORAGE_S3_ACCESSKEY / SECRETKEY
           region: garage
           bucket: harbor
-          regionendpoint: http://10.0.0.110:3900
+          regionendpoint: http://garage-s3.garage.svc.cluster.local:3900
           secure: false
           v4auth: true
       # No cluster default StorageClass exists — every PVC sets storageClass and
@@ -263,6 +303,11 @@ spec:
           memory: 128Mi
 
     nginx:
+      # MISSED in #485, and it is the one component that matters most for reachability: nginx is
+      # Harbor's front door, so when it could not schedule the whole registry returned 503 while
+      # every other component sat Ready on worker-1. Found by cordoning fringe-workstation — the
+      # rest of Harbor preempted its way onto worker-1 and nginx, having no priority, did not.
+      priorityClassName: platform-critical
       nodeSelector:
         node.webgrip.io/pool: worker
       # Dedicated SA + digest-pin, direct against docker.io. VIK-253.

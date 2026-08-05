@@ -1,0 +1,81 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/policyexception_v2.json
+# Exception for the shared per-node BuildKit daemon (forgejo-buildkitd DaemonSet, forgejo ns).
+# Sibling of exception-forgejo-dind: same shape, same rationale, one layer up the build stack.
+# Without this the DaemonSet is denied at admission by pod-security-baseline-enforce and the
+# forgejo-buildkitd Kustomization never reconciles.
+#
+# What it necessarily violates, and why:
+#   - privileged: BuildKit creates mounts and namespaces per build step. The rootless variant
+#     exists and is tighter, but needs its own OverlayFS story and security profile; adopting it
+#     is tracked as a separate change (see the DaemonSet header), not smuggled in here.
+#   - hostPath (/var/lib/forgejo-buildkitd): the POINT of the design — a build cache that
+#     survives the job, on local disk rather than Longhorn, matching /var/lib/forgejo-dind.
+#
+# What it deliberately does NOT waive, because the manifest satisfies them honestly:
+#   - host-ports-none: there is no hostPort. dind's hostPort 2375 turned out to be reachable from
+#     the whole LAN (verified 2026-07-27) and is being retired; this component never had one.
+#     Reachability is a node-local Service (internalTrafficPolicy: Local) fenced by the
+#     forgejo-buildkitd CiliumNetworkPolicy.
+#   - require-non-default-serviceaccount / require-serviceaccount-token-opt-out: the DaemonSet
+#     ships a dedicated ServiceAccount with automountServiceAccountToken: false. buildkitd does
+#     not call the Kubernetes API.
+# Tracking: revisit with exception-forgejo-dind if the pool moves to a rootless/sysbox daemon.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: exception-forgejo-buildkitd
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      Shared per-node CI BuildKit daemon: privileged (BuildKit must create mounts and
+      namespaces for build steps) and hostPath (persistent per-node build cache on local disk —
+      the purpose of the design). No hostPort and a dedicated non-default ServiceAccount with
+      the token opt-out, so those rules are satisfied rather than waived. Kyverno waives
+      per-resource rather than per-container, so this covers the whole pod.
+spec:
+  exceptions:
+    - policyName: pod-security-baseline-enforce
+      ruleNames:
+        - privileged-containers
+        - autogen-privileged-containers
+        - host-path
+        - autogen-host-path
+    - policyName: workload-hardening-audit
+      ruleNames:
+        - privilege-escalation
+        - autogen-privilege-escalation
+        - run-as-non-root
+        - autogen-run-as-non-root
+        - check-seccomp-strict
+        - autogen-check-seccomp-strict
+    - policyName: workload-advanced-hardening-audit
+      ruleNames:
+        - require-drop-all-capabilities
+        - autogen-require-drop-all-capabilities
+        # Audit-only, but the hostPath volume is the design (persistent build cache) —
+        # waive so PolicyReports stay signal, not noise.
+        - disallow-risky-volume-types
+        - autogen-disallow-risky-volume-types
+        # A privileged build daemon writes to its own root (/run/buildkit, /tmp) by design.
+        - require-readonly-root-filesystem
+        - autogen-require-readonly-root-filesystem
+  match:
+    any:
+      - resources:
+          kinds:
+            - DaemonSet
+          namespaces:
+            - forgejo
+          names:
+            - forgejo-buildkitd
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - forgejo
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: forgejo-buildkitd

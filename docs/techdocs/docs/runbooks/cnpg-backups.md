@@ -12,7 +12,7 @@ The CNPG ops runbook: how Postgres is provided (one namespace-scoped `Cluster` p
 | CNPG operator (`clusterWide: true`) | `kubernetes/apps/cnpg-system/cloudnative-pg/` |
 | barman-cloud plugin | `kubernetes/apps/cnpg-system/plugin-barman-cloud/` |
 | App database | `kubernetes/apps/<ns>/<app>/app/database/cluster.yaml` (CNPG `Cluster`) |
-| Backup target | Garage S3 `http://10.0.0.110:3900`, bucket `cnpg-backups-bucket` — **external** to the cluster (see [Garage outage triage](synthetic-probes-blackbox.md#garage-s3-cnpg-backup-wal-target-unavailable)) |
+| Backup target | Garage S3 `https://s3-offsite.webgrip.dev`, bucket `cnpg-backups-bucket` — **off-site** (Hetzner FSN1) as of 2026-08-02; see [Garage outage triage](synthetic-probes-blackbox.md#garage-s3-cnpg-backup-wal-target-unavailable) |
 | Backup config | one `ObjectStore` CR per app (`<app>-db-store`) + a `plugins:` block on the `Cluster` + a `ScheduledBackup` |
 | Credentials | Secret `cnpg-backup-s3` — `kubernetes/components/cnpg-backup/cnpg-backup-s3.externalsecret.yaml`, ESO ← OpenBao KV `s3/cnpg-backup` |
 | Restore drill | `kubernetes/components/cnpg-restore-test/` (CronJob per app namespace) |
@@ -48,7 +48,7 @@ metadata:
 spec:
   retentionPolicy: 30d          # per the backup tier
   configuration:
-    endpointURL: http://10.0.0.110:3900
+    endpointURL: https://s3-offsite.webgrip.dev
     destinationPath: s3://cnpg-backups-bucket/homelab-cluster/<app>-db/
     s3Credentials:
       accessKeyId: {name: cnpg-backup-s3, key: S3_ACCESS_KEY_ID}
@@ -137,7 +137,7 @@ was restored.
 Garage requires SigV4 requests signed with its configured region (`garage`):
 
 ```bash
-aws --profile garage --region garage --endpoint-url http://10.0.0.110:3900 \
+aws --profile garage --region garage --endpoint-url https://s3-offsite.webgrip.dev \
   s3 ls s3://cnpg-backups-bucket/homelab-cluster/ --recursive | head -50
 ```
 

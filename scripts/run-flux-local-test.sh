@@ -52,7 +52,7 @@ total="$(wc -l < "${ks_list}")"
 
 # Change-detection scope. Precedence:
 #   FLUX_LOCAL_FULL=1          -> render EVERYTHING (the nightly full-validation workflow, and
-#                                `--full` / `task flux-local-full`). Use after touching the flux
+#                                `--full` / `just flux-local-full`). Use after touching the flux
 #                                root, or for a belt-and-suspenders pass.
 #   FLUX_LOCAL_BASE_REF=<ref>  -> scope to the diff against <ref> (CI e2e passes the push's
 #                                `before` SHA / a PR merge base -- see .forgejo/workflows/e2e.yml).

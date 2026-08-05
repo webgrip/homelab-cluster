@@ -1,0 +1,35 @@
+---
+# Replacement for the original `n8n` PVC, whose PV (pvc-e7485271) carries a
+# WaitForFirstConsumer-era `nodeAffinity` allowing only soyo-1/2/3 +
+# fringe-workstation — a pin recorded when the volume was first bound, long
+# before worker-1 and worker-2 existed. The pod meanwhile pins to
+# `node.webgrip.io/ram: high`, which resolves to worker-1 alone, so the
+# intersection is EMPTY: n8n could never schedule, Helm retried 4x and then
+# uninstalled the Deployment (2026-08-02 outage).
+#
+# The affinity is stale bookkeeping, not a data constraint — the Longhorn volume's
+# only replica is on worker-1, i.e. the very node the PV forbids. Longhorn is
+# network-attached, so the replica's location never restricted the pod.
+#
+# Every Longhorn StorageClass is `volumeBindingMode: Immediate` now, so a
+# NEWLY-CREATED PVC gets a PV with no nodeAffinity at all. Recreating the volume
+# is therefore the whole fix — no StorageClass migration needed.
+#
+# `longhorn` rather than `longhorn-general`: same effect here, but general is
+# slated for retirement (ADR-0010 stage 2) and this is a free chance to move off
+# it. The class declares numberOfReplicas: 3 (immutable) against 2 schedulable
+# storage nodes, so the volume is born Degraded until the Kyverno
+# longhorn-replica-ceiling policy heals it back to 2 — expected, not a fault.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: n8n-data
+  namespace: n8n
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: longhorn
+  volumeMode: Filesystem

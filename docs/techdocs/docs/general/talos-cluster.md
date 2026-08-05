@@ -1,6 +1,8 @@
 # Talos Cluster Reference
 
-_Kubernetes/Talos versions track `talos/talenv.yaml` (Talos v1.13.4 / Kubernetes v1.36.1). Versions re-verified live 2026-07-02 (all five nodes converged on v1.13.4); node inventory + hardware refreshed 2026-06-19; the service/etcd/health snapshots further down are from 2025-12-08 — re-run the shown commands to refresh._
+_**Physical hardware, disks and addressing now live in [Infrastructure at a glance](infrastructure.md)** — that page is the canonical inventory; this one covers Talos/Kubernetes runtime state._
+
+_Kubernetes/Talos versions track `talos/talenv.yaml` (Kubernetes v1.36.1). Five nodes run Talos v1.13.4; `worker-2` joined 2026-08-02 on v1.13.7 (the current talenv pin), so the fleet is mid-upgrade. Node inventory refreshed 2026-08-02; the service/etcd/health snapshots further down are from 2025-12-08 — re-run the shown commands to refresh._
 
 ## Node Inventory
 
@@ -11,6 +13,7 @@ _Kubernetes/Talos versions track `talos/talenv.yaml` (Talos v1.13.4 / Kubernetes
 | soyo-3 | 10.0.0.22 | control-plane, schedulable | v1.13.4 | v1.36.1 | 6.18.34-talos | containerd 2.2.4 |
 | fringe-workstation | 10.0.0.23 | worker, schedulable | v1.13.4 | v1.36.1 | 6.18.34-talos | containerd 2.2.4 |
 | worker-1 | 10.0.0.24 | worker, schedulable | v1.13.4 | v1.36.1 | 6.18.34-talos | containerd 2.2.4 |
+| worker-2 | 10.0.0.32 | worker, schedulable | v1.13.7 | v1.36.1 | — | — |
 
 Captured via:
 
