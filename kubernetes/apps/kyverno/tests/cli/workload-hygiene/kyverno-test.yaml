@@ -10,20 +10,29 @@ resources:
   - resources.yaml
 variables: values.yaml
 results:
-  - policy: image-supply-chain-audit
-    rule: require-image-digest
-    resources:
-      - app/missing-digest
-    kind: Pod
-    result: fail
+  # require-image-digest was asserted here until 2026-08-05. It moved to
+  # image-supply-chain-enforce in wave 11, so this assertion named a rule the policy no
+  # longer has — and the CLI scores that as Pass/Excluded, i.e. green while proving
+  # nothing. Real coverage (fail AND pass) lives in tests/cli/image-supply-chain-enforce;
+  # removed rather than repointed because this test does not load that policy.
   # disallow-latest-tag-even-with-digest moved to image-supply-chain-enforce in wave 4;
   # its coverage lives in tests/cli/image-supply-chain-enforce.
+  # No `rule:` field -- image-supply-chain-audit is a CEL ValidatingPolicy as of
+  # 2026-08-05 and CEL policies have no named rules. Asserting the old
+  # `require-approved-registries` name here would silently score as Pass/Excluded.
   - policy: image-supply-chain-audit
-    rule: require-approved-registries
     resources:
       - app/unapproved-registry
     kind: Pod
     result: fail
+  # PASS case, new: proves the policy still admits a Harbor-hosted image rather than
+  # rejecting every Pod. The migration was verified by differential sweep (both dialects
+  # report the same 41 failing resources), and this keeps that honest going forward.
+  - policy: image-supply-chain-audit
+    resources:
+      - app/harbor-approved
+    kind: Pod
+    result: pass
   - policy: require-pod-probes-audit
     rule: validate-probes
     resources:

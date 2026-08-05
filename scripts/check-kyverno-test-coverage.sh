@@ -57,10 +57,16 @@ checked=0
 
 shopt -s nullglob
 for policy in "${POLICY_DIR}"/*.yaml; do
-    # Only ClusterPolicy/Policy documents.
-    grep -qE '^kind: (ClusterPolicy|Policy)$' "${policy}" || continue
-    # Only enforcing ones.
-    grep -qE 'validationFailureAction:[[:space:]]*Enforce|failureAction:[[:space:]]*Enforce' "${policy}" || continue
+    # Policy documents in EITHER dialect: legacy kyverno.io/v1 (ClusterPolicy/Policy) and
+    # the policies.kyverno.io CEL family we are migrating to before v1.20 removes the
+    # legacy API. See docs/techdocs/docs/rfc/rfc-kyverno-cel-migration.md.
+    grep -qE '^kind: (ClusterPolicy|Policy|ValidatingPolicy|NamespacedValidatingPolicy|ImageValidatingPolicy|NamespacedImageValidatingPolicy|DeletingPolicy|NamespacedDeletingPolicy)$' "${policy}" || continue
+    # Only enforcing ones. The two dialects spell "enforce" differently:
+    #   legacy : validationFailureAction: Enforce  (policy) or failureAction: Enforce (rule)
+    #   CEL    : validationActions: [Deny]         -- Audit/Warn are the non-blocking values
+    # Missing the CEL spelling would let a migrated enforcing policy through untested,
+    # which is the same silent-omission failure the gate exists to prevent.
+    grep -qE 'validationFailureAction:[[:space:]]*Enforce|failureAction:[[:space:]]*Enforce|validationActions:.*\bDeny\b|^[[:space:]]*-[[:space:]]*Deny[[:space:]]*$' "${policy}" || continue
 
     base="$(basename "${policy}")"
 

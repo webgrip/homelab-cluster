@@ -25,8 +25,15 @@ So the authority here is a `kyverno apply` sweep over live state, not a report c
 ## Steps
 
 ### 1. Enforcement inventory
+
+**Two dialects now.** The estate is migrating off legacy `kyverno.io/v1` ClusterPolicy to the
+`policies.kyverno.io` CEL family before v1.20 removes it (rfc-kyverno-cel-migration.md), so an
+inventory that only lists `clusterpolicy` silently omits every migrated policy. **Readiness lives
+in a different field too**: legacy uses `status.conditions[type=Ready].status == "True"`, CEL uses
+`status.conditionStatus.ready == true`. Query both or a migrated policy reads as not-Ready.
+
 ```
-mise exec -- kubectl get clusterpolicy -o json | mise exec -- jq -r '.items[] | "\(.spec.validationFailureAction)\t\(.metadata.name)\t ready=\(.status.conditions[]? | select(.type=="Ready") | .status)"' | sort
+mise exec -- kubectl get clusterpolicy,validatingpolicy,mutatingpolicy,generatingpolicy,imagevalidatingpolicy,deletingpolicy -o json | mise exec -- jq -r '.items[] | "\(.kind)\t\(.metadata.name)\tready=\(.status.conditionStatus.ready // ([.status.conditions[]?|select(.type=="Ready")|.status=="True"]|first) // "?")"' | sort
 ```
 
 **Then resolve the EFFECTIVE action per rule — the policy-level field is not the answer.**
@@ -38,7 +45,13 @@ component will be denied at CREATE" finding against rules that only audit.
 
 ```
 mise exec -- kubectl get clusterpolicy -o json | mise exec -- jq -r '.items[] | .metadata.name as $p | (.spec.validationFailureAction // "-") as $pa | .spec.rules[] | select(.validate) | "\(.validate.failureAction // $pa)\t\($p)/\(.name)"' | sort
+mise exec -- kubectl get validatingpolicy,imagevalidatingpolicy -o json | mise exec -- jq -r '.items[] | "\(if ([.spec.validationActions[]?] | index("Deny")) then "Enforce" else "Audit" end)\t\(.metadata.name)\t(CEL, no named rules)"' | sort
 ```
+
+**CEL policies have no named rules.** Their PolicyReport results carry `policy` and
+`source: KyvernoValidatingPolicy` but NO `rule` field, and CLI Test `results[]` entries must omit
+`rule:` — asserting a rule name against a CEL policy scores as `Pass / Excluded`, green while
+proving nothing. Their enforce signal is `validationActions: [Deny]`; `Audit`/`Warn` do not block.
 Flag any policy not Ready. Cross-check against the repo: a policy file present in
 `kubernetes/apps/kyverno/policies/app/` but absent in-cluster means the Kustomization is
 failing.
