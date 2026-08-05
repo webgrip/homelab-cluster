@@ -1,0 +1,102 @@
+---
+# Zero-trust for the `ai` namespace, closing the deferral recorded in
+# kubernetes/apps/ai/namespace.yaml. These allow-rules ship FIRST, in their own commit:
+# they are harmless no-ops until the namespace opts into the Kyverno-generated
+# default-deny, and shipping them the other way round would black-hole LiteLLM in the
+# window between the two Kustomizations reconciling (the namespace is applied by
+# `cluster-apps`, these by `ai/litellm` — ordering between them is not guaranteed).
+#
+# Shape follows searxng, the closest analogue: an app that must reach the public internet
+# and is consumed from the LAN.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: litellm-private-ingress
+  labels:
+    app.kubernetes.io/name: litellm
+    app.kubernetes.io/part-of: litellm
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: litellm
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ai
+        # envoy-internal terminates litellm.${SECRET_DOMAIN}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: network
+        # LAN consumers call the proxy directly — this is the reason the namespace
+        # deferred zero-trust in the first place, so it is preserved explicitly.
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16
+        - ipBlock:
+            cidr: 127.0.0.0/8
+        - ipBlock:
+            cidr: fd00::/8
+        - ipBlock:
+            cidr: ::1/128
+      ports:
+        - protocol: TCP
+          port: 4000
+---
+# Intra-namespace (litellm -> valkey:6379, litellm -> litellm-db:5432) plus metrics
+# scraping of every pod from observability (VMAgent scrapes litellm :9187 via
+# vmservicescrape, and the CNPG pods via the cluster-wide cnpg-clusters PodMonitor).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: litellm-allow-internal
+  labels:
+    app.kubernetes.io/part-of: litellm
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ai
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+---
+# Egress: intra-namespace, plus the public internet for upstream provider APIs
+# (api.anthropic.com et al) — the other half of the recorded deferral. Cluster pod and
+# service CIDRs are excluded, so cross-namespace traffic stays denied and must be granted
+# by identity (namespaceSelector) instead; see components/gateway-egress for the OIDC
+# hairpin, which a CIDR rule cannot express.
+#
+# Garage S3 (10.0.0.110) is deliberately reachable here: it sits in the LAN range, not in
+# 10.42/10.43, so CNPG barman backups keep working under this rule.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: litellm-allow-egress
+  labels:
+    app.kubernetes.io/part-of: litellm
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ai
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.42.0.0/16
+              - 10.43.0.0/16
