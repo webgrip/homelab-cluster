@@ -9,6 +9,7 @@ resources:
   - ./ocirepository.yaml
   - ./helmrelease.yaml
   - ./httproute.yaml
+  - ./networkpolicy.yaml
   - ./litellm-secret.externalsecret.yaml
   - ./litellm-oidc.externalsecret.yaml
   - ./litellm-valkey.externalsecret.yaml
@@ -17,3 +18,9 @@ resources:
   - ./vmservicescrape.yaml
   - ./grafana-dashboard.yaml
   - ./grafana-dashboard-reliability.yaml
+components:
+  # Server-side OIDC to authentik hairpins through the envoy-internal VIP, which under a
+  # default-deny needs an IDENTITY allow (not a CIDR or port rule) — see the component
+  # header and ADR-0005. litellm does OIDC (litellm-oidc.externalsecret), so this is
+  # required the moment the namespace opts into default-deny.
+  - ../../../../components/gateway-egress
