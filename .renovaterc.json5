@@ -9,8 +9,8 @@
     // local> = resolved from the Renovate platform host — the in-cluster Forgejo, where
     // renovate-config is authoritative (Forgejo-leading). github> would read the downstream
     // push-mirror copy instead of the source of truth.
-    "local>webgrip/renovate-config#v1.5.2",
-    "local>webgrip/renovate-config:gitops#v1.5.2",
+    "local>webgrip/renovate-config#v1.6.0",
+    "local>webgrip/renovate-config:gitops#v1.6.0",
     "docker:enableMajor",
     ":automergeBranch",
   ],
@@ -138,53 +138,14 @@
     ],
     executionMode: "branch",
   },
-  // PR body table. Renovate's default is [Package, Type, Update, Change, Pending] and it DROPS a
-  // column that is empty on every row — which is why these PRs only ever showed three. We add two
-  // self-hosted columns answering the question the UI could not: "when was this released, and
-  // therefore when does the soak expire?" Renovate exposes no soak countdown; the only signal is
-  // `renovate/stability-days` = pending with the generic text "Updates have not met minimum
-  // release age requirement".
-  //
-  // Deliberately NOT the built-in Age/Confidence/Adoption/Passing columns: those render
-  // <img> badges from developer.mend.io keyed on datasource + packageName. Almost every dep here
-  // is harbor.webgrip.dev/... (the pull-through proxy, ADR-0025), a name Mend has never seen, so
-  // those badges would be blank on the majority of PRs. `Age` is REDEFINED below to a plain day
-  // count from newVersionAgeInDays for the same reason — it works offline and for every registry.
-  //
-  // Reading `Released`: an em dash means the datasource reports no release timestamp. That is the
-  // normal case for ghcr.io / quay.io / harbor.webgrip.dev and is exactly why they are listed
-  // under minimumReleaseAgeBehaviour: timestamp-optional above. No timestamp = no soak to wait
-  // out = eligible on the next run. A real date means the soak IS enforced: add the
-  // minimumReleaseAge for that update type (patch 1d, minor 3d, digest/vuln 0d) to get the
-  // eligibility moment, then the next hourly run merges it.
-  prBodyColumns: [
-    "Package",
-    "Type",
-    "Update",
-    "Change",
-    "Released",
-    "Age (d)",
-  ],
-  prBodyDefinitions: {
-    Released: "{{#if releaseTimestamp}}{{{releaseTimestamp}}}{{else}}—{{/if}}",
-    // Named "Age (d)", NOT "Age". `Age` is a built-in Mend badge definition and the shared preset
-    // extends `mergeConfidence:all-badges`, which legitimately uses it for the datasources Mend
-    // supports. Overloading the name would silently swap a real badge for a plain number.
-    "Age (d)": "{{#if newVersionAgeInDays}}{{{newVersionAgeInDays}}}d{{else}}—{{/if}}",
-  },
+  // PR body columns (Released / "Age (d)", self-hosted from releaseTimestamp /
+  // newVersionAgeInDays) moved to the shared preset in v1.6.0 — they apply org-wide, not just
+  // here. The preset also carries the generic notes (major/security/grouped/soak explainer), so
+  // this repo no longer re-states them: prBodyNotes is MERGEABLE, and locally-restated variants
+  // render as near-duplicate lines in every PR body. Only the note below stays, because it is
+  // homelab POLICY the generic preset text cannot know.
   prBodyNotes: [
-    "{{#if isMajor}}⚠️ Major update: review upstream migration notes, chart values, and rollout impact before merging.{{/if}}",
-    "{{#if isVulnerabilityAlert}}Security update: prioritize review and verify the vulnerable component is actually deployed.{{/if}}",
-    "{{#if isGroup}}Grouped GitOps PR: confirm the group is operationally coherent before enabling automerge.{{/if}}",
-    // The note removed here duplicated a near-identical sentence the shared preset already adds,
-    // so every PR body carried the same claim twice. (An earlier version of this comment said the
-    // claim was also FALSE because no Confidence column was configured — that was wrong. The
-    // preset extends `mergeConfidence:all-badges`, which does configure those columns, scoped via
-    // matchDatasources. Badges are absent from this repo's PRs because Mend covers only go/maven/
-    // npm/nuget/packagist/pypi/rubygems — never docker or helm — so the preset's "where
-    // supported" wording is accurate; it is simply vacuous in a tree that is all containers and
-    // charts. Hence the self-hosted Released/"Age (d)" columns above.)
-    "`Released` is the upstream publish time; `—` means this registry reports no timestamp, so no soak applies and the PR is eligible on the next Renovate run. Otherwise add the soak for this update type (patch 1d, minor 3d, digest 0d) to `Released` — the first hourly run after that merges it.",
+    "Homelab soak tiers: patch 1d, minor 3d, digest/vulnerability 0 days; platform-critical minors 7d + dashboard approval; talos/** always manual. A green PR merges on the first hourly Renovate run after its soak expires.",
   ],
   packageRules: [
     {
