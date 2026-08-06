@@ -1,0 +1,38 @@
+---
+# Kyverno has NO RBAC for rbac.authorization.k8s.io out of the box, so it cannot
+# read Roles, ClusterRoles or their bindings for background reporting.
+#
+# THIS EXPLAINS A LONG-STANDING MYSTERY. The 2026-08-04 audit recorded that Role,
+# RoleBinding and ClusterRoleBinding "appear zero times across every PolicyReport"
+# and treated it as a limitation of the background scanner — which is why the
+# audit gate requires an offline `kyverno apply` sweep for those kinds, and why
+# `disallow-wildcards-in-app-roles` could report 0 while failing all 55 Roles.
+# It was never a scanner limitation: Kyverno simply lacked permission to list
+# them. The policies evaluated fine at ADMISSION; only reporting was blind.
+#
+# Surfaced 2026-08-06 by the new RBAC controls, which reported
+# `RBACPermissionsGranted: False` with "missing permissions: get/list/watch
+# rbac.authorization.k8s.io Resource=roles, Resource=clusterroles". The webhook
+# was configured and admission worked; background reporting did not.
+#
+# Read-only, and only the kinds our policies match on.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno:rbac-kinds-read
+  labels:
+    rbac.kyverno.io/aggregate-to-admission-controller: "true"
+    rbac.kyverno.io/aggregate-to-background-controller: "true"
+    rbac.kyverno.io/aggregate-to-reports-controller: "true"
+rules:
+  - apiGroups:
+      - rbac.authorization.k8s.io
+    resources:
+      - roles
+      - clusterroles
+      - rolebindings
+      - clusterrolebindings
+    verbs:
+      - get
+      - list
+      - watch
