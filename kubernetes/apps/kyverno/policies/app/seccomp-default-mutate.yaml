@@ -1,0 +1,83 @@
+---
+# Sets seccompProfile: RuntimeDefault on pods that declare none. 206 pods had no
+# profile at all; `check-seccomp-strict` reported 196 findings once the exclusion
+# lists were widened, making this the single largest remediation item in the
+# 2026-08-06 Kubescape baseline (C-0055 Linux hardening, 118).
+#
+# WHY MUTATE RATHER THAN 200 HELM-VALUES EDITS. RuntimeDefault is what containerd
+# applies to any container that does not ask for something else, so for the vast
+# majority of workloads this makes the manifest state MATCH the runtime state
+# rather than changing behaviour. The fields that genuinely change behaviour —
+# automountServiceAccountToken, runAsNonRoot, CPU limits — are deliberately NOT
+# done this way: those get per-app edits, because a fleet-wide mutation of them
+# would break workloads silently and we already learned that lesson on litellm.
+#
+# EXCLUSIONS ARE THE SAFETY. Anything needing broader syscalls than RuntimeDefault
+# is skipped, and those are exactly the workloads already holding privileged
+# waivers:
+#   forgejo         — DinD / buildkitd / runners build nested containers
+#   kube-system     — cilium runs Unconfined; static pods cannot be mutated anyway
+#   longhorn-system — engine/instance-manager need raw device access
+#   arc-systems     — GitHub Actions runners, same nested-container shape
+# Plus a precondition skipping any pod with a privileged container, so a new
+# privileged workload is never silently given a profile that breaks it.
+#
+# LEGACY ClusterPolicy DELIBERATELY. This is a mutate, and legacy mutate gets
+# autogen for controllers for free — so Deployment/StatefulSet/DaemonSet/CronJob
+# templates are patched too, not just Pods at CREATE. The CEL MutatingPolicy path
+# is unverified in this cluster and ValidatingPolicy autogen is known broken
+# (rfc-kyverno-cel-migration.md), so proving it is a prerequisite, not a detail.
+# Revisit with the rest of the CEL migration.
+#
+# NOTE ON EFFECT: mutation applies at admission. The 206 existing pods keep their
+# current spec until they are recreated, so the Kubescape score will move as
+# workloads roll, not immediately.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: seccomp-default-mutate
+  annotations:
+    policies.kyverno.io/title: Default seccompProfile RuntimeDefault
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Adds spec.securityContext.seccompProfile.type=RuntimeDefault to pods that
+      declare no profile, skipping privileged workloads and the namespaces whose
+      containers legitimately need Unconfined.
+spec:
+  background: false
+  rules:
+    - name: add-runtime-default-seccomp
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - arc-systems
+                - forgejo
+                - kube-system
+                - longhorn-system
+      preconditions:
+        all:
+          # Only when nothing is declared — never override an explicit choice,
+          # including a deliberate Unconfined.
+          - key: "{{ request.object.spec.securityContext.seccompProfile.type || '' }}"
+            operator: Equals
+            value: ""
+          # And never touch a pod with a privileged container: those routinely
+          # need syscalls RuntimeDefault blocks.
+          - key: "{{ request.object.spec.containers[?securityContext.privileged == `true`] | length(@) }}"
+            operator: Equals
+            value: 0
+      mutate:
+        patchStrategicMerge:
+          spec:
+            securityContext:
+              seccompProfile:
+                type: RuntimeDefault
