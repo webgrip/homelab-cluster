@@ -286,8 +286,10 @@ operator from that evidence.
    Always `--submit=false`.
 1. **Unblock and re-plan the CEL migration** on explicit multi-kind matching; delete the
    autogen dependency from the wave plan.
-2. **Baseline the estate with Kubescape CLI** — one command, no install, gives the
-   framework-scored starting point that this RFC's claims should be checked against.
+2. **Narrow the 17-namespace exclusion lists.** The measured baseline shows this is the
+   single largest source of blind spots: the platform tier is where the privileged workloads
+   live and it is scored not at all by our own policies today. Expect the numbers to jump —
+   that is the point.
 3. **Adopt `pod-security-cel` baseline + restricted**, replacing three of our policies.
    This is the single biggest correctness win: 4-of-13 → complete. Audit first; our existing
    exceptions must be re-pointed at the upstream policy names in the same commit.
@@ -297,7 +299,10 @@ operator from that evidence.
 7. **Adopt the missing controls in themed batches**, Audit first, most-valuable first:
    privilege-escalation verbs → secrets-in-env-vars → hostPath narrowing + ephemeral
    containers → placement/availability. Each batch is one commit with a sweep, per ADR-0032.
-8. **Evaluate the Kubescape operator** for network-policy generation before attempting
+8. **Harden the API server** — `--kubelet-certificate-authority`, `AlwaysPullImages`,
+   `EventRateLimit` — via `talos/patches/controller/`. Not a policy change; a surface the
+   Kyverno programme never touched.
+9. **Evaluate the Kubescape operator** for network-policy generation before attempting
    `security` zero-trust.
 
 ## Decisions
