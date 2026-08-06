@@ -117,6 +117,70 @@ Plus the nine PSS Baseline controls above. **A cluster that believes it enforces
 implements 4 of 13 controls is the most dangerous state in this document** — the belief is
 what's wrong, not the coverage.
 
+## Measured baseline (2026-08-06)
+
+`kubescape scan framework nsa,mitre --submit=false` — **compliance score 70/100**, coverage
+86% (38/40; the two gaps need the in-cluster operator for kubelet data).
+
+The headline is not the score. It is the **size difference between what our policies report
+and what an independent scorer finds on the same cluster**:
+
+| Control | Kubescape failures | Our equivalent rule reports |
+| --- | --- | --- |
+| C-0053 Access container service account | **289** | `require-serviceaccount-token-opt-out` — 17 |
+| C-0270 Ensure CPU limits are set | **147** | `validate-resources` — 7 |
+| C-0015 List Kubernetes secrets (RBAC) | **142** | *no coverage* |
+| C-0030 Ingress and Egress blocked | **140** | *no equivalent* |
+| C-0017 Immutable container filesystem | **134** | `require-readonly-root-filesystem` — 0 (Audit) |
+| C-0034 Automatic mapping of service account | **134** | 17 |
+| C-0055 Linux hardening (seccomp/AppArmor/caps) | **118** | 14 |
+| C-0013 Non-root containers | **111** | `run-as-non-root` — 14 |
+| C-0002 Prevent command execution (`exec` RBAC) | **94** | *no coverage* |
+| C-0037 CoreDNS poisoning (endpoint RBAC) | **87** | *no coverage* |
+| C-0016 Allow privilege escalation | **76** | `privilege-escalation` — 5 |
+| C-0012 Credentials in configuration files | **49** | *no coverage* |
+
+**The order-of-magnitude gap is the finding.** It is not that our rules are wrong — it is that
+every Pod policy carries a 17-namespace `NotIn` exclusion, so we grade ourselves on the
+application tier and score the platform tier not at all. `arc-systems`, `cert-manager`,
+`cnpg-system`, `flux-system`, `kube-system`, `longhorn-system`, `network`, `observability`,
+`security` are all invisible to our own reporting — and they are where the privileged
+workloads live.
+
+C-0012, C-0015, C-0002 and C-0037 confirm the "controls we never considered" section below
+with real numbers: **secrets-in-config and RBAC read/exec paths have zero coverage today.**
+
+### Controls that are noise for this cluster
+
+Do not chase these; record them as accepted:
+
+- **C-0026 Kubernetes CronJob** (31 failures, score 0) — flags *every* CronJob as a MITRE
+  persistence technique. All 31 are ours and legitimate.
+- **C-0036 / C-0039 Validate/mutate admission controller** — flags the existence of admission
+  webhooks. That is Kyverno.
+- **C-0068 PSP enabled** — PodSecurityPolicy was removed from Kubernetes years ago.
+
+### CIS: score 43, and largely not trustworthy on Talos
+
+`cis-v1.10.0` reports 43/100 at **59% coverage**, and much of the deficit is control-plane
+**file-permission and ownership** checks (`C-0092`–`C-0097` et al) that have no meaning on an
+immutable OS with no host filesystem to `chmod`. Several flagged items are in fact configured
+correctly — Talos already sets `--audit-log-path`, `--audit-policy-file`,
+`--audit-log-maxbackup=10` and `--audit-log-maxsize=100`, yet C-0132/C-0133 report failed.
+
+**Treat the CIS number as uninformative here.** Three findings from it are real, verified
+against the live API server flags, and none of them are Kyverno's business — they are Talos
+machine config:
+
+| Finding | Why it matters |
+| --- | --- |
+| `--kubelet-certificate-authority` unset | the API server does not verify kubelet serving certs — MITM between control plane and kubelet |
+| `AlwaysPullImages` not in `--enable-admission-plugins` (only `NodeRestriction`) | a pod can reuse an image another namespace already pulled with credentials it does not have |
+| `EventRateLimit` not enabled | event-flood DoS on etcd — **this cluster has already lived it**: the Kyverno hourly rescan emitted ~12k events/hour and inflated the apiserver watch cache to 3.4 GiB, which is why background scanning was moved to daily |
+
+That is a whole hardening surface — **API server configuration** — that the entire Kyverno
+programme does not touch. It belongs in `talos/patches/controller/`, not in a policy.
+
 ## Controls we never considered
 
 The sections above compare our estate to what it *tried* to be. This section is the larger
@@ -217,10 +281,9 @@ operator from that evidence.
 
 ## Proposal
 
-0. **Establish an independent baseline before changing anything.** `kubescape` is not in
-   `.mise.toml`; add it and run a framework scan, so every claim in this RFC — especially
-   "4 of 13 Baseline controls" — is checked against a scorer we did not write. Doing this
-   first also gives a before/after number for the whole programme.
+0. **DONE 2026-08-06** — `kubescape` added to `.mise.toml` (4.0.11) and the baseline taken:
+   **NSA/MITRE 70/100**. Re-run after each batch; that number is the programme's scoreboard.
+   Always `--submit=false`.
 1. **Unblock and re-plan the CEL migration** on explicit multi-kind matching; delete the
    autogen dependency from the wave plan.
 2. **Baseline the estate with Kubescape CLI** — one command, no install, gives the
