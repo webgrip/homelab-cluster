@@ -31,6 +31,10 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
 Spawned by the [full-estate Kyverno audit](rfc-kyverno-audit-enforce-hardening.md#audit-2026-08-04)
 — problems larger than a single enforcement wave. All **Proposed**, listed by urgency:
 
+- [Policy estate gap analysis](rfc-policy-estate-gap-analysis.md) — **read first**. ~half our 79
+  rules reimplement published standards, incompletely: our "PSS Baseline" covers **4 of ~13**
+  Baseline controls. Adopt upstream for those; hand-write only what encodes our own decisions.
+  Also records the fix that unblocks the CEL migration.
 - [Kyverno CEL migration](rfc-kyverno-cel-migration.md) — **dated**. All 25 policies are on the
   legacy `kyverno.io/v1` API, deprecated in 1.17 and targeted for **removal in v1.20, October
   2026**. A routine Renovate chart bump is currently an unguarded trapdoor.
