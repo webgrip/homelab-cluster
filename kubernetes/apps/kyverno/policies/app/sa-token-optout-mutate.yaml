@@ -1,0 +1,123 @@
+---
+# Stops mounting API tokens into workloads whose ServiceAccount cannot use one.
+#
+# Kubescape C-0053 (Access container service account) is the single largest row in
+# the 2026-08-06 baseline at 289 findings. 201 pods still automount a token; of
+# those, the ServiceAccount of 53 has **zero RoleBindings or ClusterRoleBindings**,
+# so the token grants nothing beyond system:authenticated — it is pure attack
+# surface, readable by anything that can exec into or read the filesystem of the pod.
+#
+# WHY MUTATE THE SERVICEACCOUNT, NOT THE POD OR THE HELM VALUES.
+#   * Helm: most of these charts (guac, dependency-track, victoria-metrics) do not
+#     expose automountServiceAccountToken at all, so "fix it in values" is not
+#     available for the majority. Verified before writing this.
+#   * Pod: would need every workload edited, and re-edited on every chart bump.
+#   * ServiceAccount: Kubernetes' own inheritance point. A pod inherits from its SA
+#     unless it explicitly opts back in, so one mutation covers every pod that uses
+#     it, now and in future, and a workload that genuinely needs a token can still
+#     override at the pod level.
+#
+# SAFETY. Both rules target ServiceAccounts confirmed against live state to have NO
+# RBAC bindings. The `default` SA case is the textbook control (upstream ships
+# restrict-automount-sa-token for it): a pod deliberately running as `default` with
+# no bindings has nothing to lose. The named list is enumerated rather than
+# pattern-matched so that adding a workload is a reviewed decision.
+#
+# DELIBERATELY EXCLUDED despite having no bindings, because a token may be used for
+# something other than calling the API server (TokenReview, webhook auth):
+#   external-secrets-webhook, kyverno-migrate-resources, openbao-snapshot,
+#   authentik-app, forgejo
+# kube-system is excluded outright — those are Talos static pods and not mutable.
+#
+# EFFECT IS GRADUAL: the token volume is decided at pod creation, so running pods
+# keep theirs until they are recreated.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: sa-token-optout-mutate
+  annotations:
+    policies.kyverno.io/title: Opt Out Unused ServiceAccount Tokens
+    policies.kyverno.io/category: Least Privilege, Secrets
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: ServiceAccount
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Sets automountServiceAccountToken=false on ServiceAccounts verified to have no
+      RoleBindings or ClusterRoleBindings, so their pods stop carrying a credential
+      that grants nothing.
+spec:
+  background: false
+  rules:
+    # The `default` ServiceAccount, which by design should never be granted RBAC.
+    # Platform namespaces that bootstrap the cluster are left alone.
+    - name: default-sa-no-token
+      match:
+        any:
+          - resources:
+              kinds:
+                - ServiceAccount
+              names:
+                - default
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - cert-manager
+                - flux-system
+                - kube-node-lease
+                - kube-public
+                - kube-system
+      preconditions:
+        all:
+          - key: "{{ request.object.automountServiceAccountToken || 'unset' }}"
+            operator: Equals
+            value: "unset"
+      mutate:
+        patchStrategicMerge:
+          automountServiceAccountToken: false
+    # Named data-plane ServiceAccounts confirmed to hold no RBAC: metrics/log/trace
+    # stores, UIs and the GUAC ingest pipeline. None of these call the API server.
+    - name: dataplane-sa-no-token
+      match:
+        any:
+          - resources:
+              kinds:
+                - ServiceAccount
+              namespaces:
+                - observability
+              names:
+                - grafana-sa
+                - vlsingle-victorialogs
+                - vmalert-vmalert
+                - vmsingle-vmsingle
+                - vtsingle-victoriatraces
+          - resources:
+              kinds:
+                - ServiceAccount
+              namespaces:
+                - longhorn-system
+              names:
+                - longhorn-ui-service-account
+          - resources:
+              kinds:
+                - ServiceAccount
+              namespaces:
+                - security
+              names:
+                - cd-certifier
+                - collectsub
+                - dependency-track
+                - depsdev-collector
+                - graphql-server
+                - guac-nats
+                - ingestor
+                - oci-collector
+                - osv-certifier
+      preconditions:
+        all:
+          - key: "{{ request.object.automountServiceAccountToken || 'unset' }}"
+            operator: Equals
+            value: "unset"
+      mutate:
+        patchStrategicMerge:
+          automountServiceAccountToken: false
