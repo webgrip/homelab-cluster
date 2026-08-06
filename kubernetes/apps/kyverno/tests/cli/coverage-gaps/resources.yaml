@@ -136,3 +136,43 @@ rules:
       - "secrets"
     verbs:
       - "get"
+---
+# MUST FAIL restrict-pod-exec-verbs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: exec-role}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "pods/exec"
+    verbs:
+      - "create"
+---
+# MUST FAIL restrict-endpoint-write-verbs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: endpoint-writer}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "endpoints"
+    verbs:
+      - "update"
+      - "patch"
+---
+# MUST PASS restrict-endpoint-write-verbs — read-only on endpoints is fine, and
+# controllers legitimately watch them.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: endpoint-reader}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "endpoints"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"

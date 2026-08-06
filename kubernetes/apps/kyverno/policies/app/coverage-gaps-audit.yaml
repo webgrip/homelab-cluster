@@ -323,3 +323,103 @@ spec:
       message: >-
         ClusterRoles must not list or watch Secrets cluster-wide; scope to a
         namespaced Role, or use get on named secrets.
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: restrict-pod-exec-verbs
+  annotations:
+    policies.kyverno.io/title: Restrict pods/exec and pods/attach
+    policies.kyverno.io/category: CIS Kubernetes Benchmark, Least Privilege
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Role, ClusterRole
+    policies.kyverno.io/description: >-
+      `pods/exec` and `pods/attach` give a shell inside any matching container,
+      inheriting its ServiceAccount, mounts and network identity. It is the
+      cheapest lateral-movement primitive in Kubernetes and it bypasses every
+      admission control we have — the pod was already admitted.
+
+      Kubescape C-0002 found 94 findings; the estate had no control at all.
+      `pods/portforward` is included: it tunnels straight past NetworkPolicy.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - "rbac.authorization.k8s.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "roles"
+          - "clusterroles"
+  matchConditions:
+    - name: exclude-kubernetes-builtins
+      expression: >-
+        !object.metadata.name.startsWith('system:') &&
+        !(object.metadata.name in ['admin', 'edit', 'view', 'cluster-admin'])
+  validations:
+    - expression: >-
+        object.?rules.orValue([]).all(r, !r.?resources.orValue([]).exists(res,
+        res in ['pods/exec', 'pods/attach', 'pods/portforward']))
+      message: >-
+        Roles must not grant pods/exec, pods/attach or pods/portforward — each
+        gives a shell or a tunnel inside an already-admitted pod.
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: restrict-endpoint-write-verbs
+  annotations:
+    policies.kyverno.io/title: Restrict Endpoint and EndpointSlice Writes
+    policies.kyverno.io/category: CIS Kubernetes Benchmark, Least Privilege
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Role, ClusterRole
+    policies.kyverno.io/description: >-
+      Write access to endpoints or endpointslices lets a subject repoint any
+      Service at addresses it controls — CVE-2021-25740. Aimed at the CoreDNS
+      Service this is DNS poisoning for the whole cluster (Kubescape C-0037, 87
+      findings); aimed at anything else it is silent traffic interception.
+
+      This estate is especially exposed: k8s-gateway serves split-horizon DNS and
+      Cilium resolves NetworkPolicy by identity, so a repointed endpoint is not
+      caught by the network layer.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - "rbac.authorization.k8s.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "roles"
+          - "clusterroles"
+  matchConditions:
+    - name: exclude-kubernetes-builtins
+      expression: >-
+        !object.metadata.name.startsWith('system:') &&
+        !(object.metadata.name in ['admin', 'edit', 'view', 'cluster-admin'])
+  validations:
+    - expression: >-
+        object.?rules.orValue([]).all(r,
+        !(r.?resources.orValue([]).exists(res,
+        res in ['endpoints', 'endpointslices']) &&
+        r.?verbs.orValue([]).exists(v,
+        v in ['create', 'update', 'patch', 'delete', '*'])))
+      message: >-
+        Roles must not write endpoints or endpointslices — it allows repointing
+        any Service, including CoreDNS, at attacker-controlled addresses.
