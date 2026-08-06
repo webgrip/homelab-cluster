@@ -1,0 +1,325 @@
+---
+# Controls the estate never had. Each closes a row the 2026-08-06 Kubescape
+# baseline reported as ZERO coverage — see rfc-policy-estate-gap-analysis.md.
+#
+# THREE DELIBERATE CHOICES:
+#
+# 1. All Audit. New controls on a live cluster; enforcing them unseen is how you
+#    take a platform down. Promote per ADR-0032 once a sweep is clean.
+#
+# 2. NO namespace exclusion list. Every existing Pod policy carries a
+#    17-namespace `NotIn`, which is why our reporting found 17 service-account
+#    -token violations where Kubescape found 289 — we grade the application tier
+#    and score the platform tier not at all, and the platform tier is where the
+#    privileged workloads live. These are cluster-wide on purpose. Expect high
+#    initial counts: that is a blind spot becoming visible, not a regression.
+#
+# 3. CEL (`ValidatingPolicy`), ONE POLICY PER CONTROL. The legacy API is removed
+#    in Kyverno v1.20 (Oct 2026), so new policy should not be written on it.
+#    One-per-control is required, not stylistic: a CEL PolicyException carries
+#    `policyRefs` but NO `ruleNames`, so waivers are whole-policy — grouping
+#    controls would make any future waiver over-broad.
+#
+# Controller coverage uses EXPLICIT multi-kind matching, not autogen:
+# `ValidatingPolicy` autogen produces nothing (verified 2026-08-05/06), and
+# explicit matching is testable and covers Job/CronJob without a second
+# mechanism. The matchConstraints/variables blocks are repeated per policy
+# because YAML anchors do not cross document boundaries.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: disallow-secrets-from-env-vars
+  annotations:
+    policies.kyverno.io/title: Disallow Secrets as Individual Env Vars
+    policies.kyverno.io/category: Secrets
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Secret values injected as individual environment variables via
+      env[].valueFrom.secretKeyRef leak into `kubectl describe`, crash dumps and
+      any log line that prints the environment. Kubescape C-0012 found 49.
+
+      Scoped to secretKeyRef ONLY. `envFrom[].secretRef` is deliberately NOT
+      flagged: it is the pattern CLAUDE.md prescribes for this estate
+      (existingSecret / extraEnvFrom / envFromSecret), and flagging it would
+      contradict our own documented convention. Matches upstream's scope.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "deployments"
+          - "statefulsets"
+          - "daemonsets"
+      - apiGroups:
+          - "batch"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "jobs"
+          - "cronjobs"
+  variables:
+    - name: podSpec
+      expression: >-
+        object.kind == 'Pod' ? object.spec : (object.kind == 'CronJob' ?
+        object.spec.jobTemplate.spec.template.spec : object.spec.template.spec)
+    - name: allContainers
+      expression: >-
+        variables.podSpec.?containers.orValue([]) +
+        variables.podSpec.?initContainers.orValue([]) +
+        variables.podSpec.?ephemeralContainers.orValue([])
+  validations:
+    - expression: >-
+        variables.allContainers.all(c, c.?env.orValue([]).all(e,
+        !has(e.valueFrom) || !has(e.valueFrom.secretKeyRef)))
+      message: >-
+        Secrets must not be mounted as individual environment variables
+        (env[].valueFrom.secretKeyRef); use envFrom/existingSecret or a file.
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: disallow-cri-socket-mount
+  annotations:
+    policies.kyverno.io/title: Disallow Container Runtime Socket Mounts
+    policies.kyverno.io/category: Pod Security Standards (Baseline)
+    policies.kyverno.io/severity: critical
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Mounting the container runtime socket grants control of every container on
+      the node — a direct container escape. This estate waives `host-path`
+      wholesale for four CI workloads (forgejo-dind, buildkitd, the runners), so
+      that blanket waiver currently permits this. This control narrows the
+      waiver rather than removing it.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "deployments"
+          - "statefulsets"
+          - "daemonsets"
+      - apiGroups:
+          - "batch"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "jobs"
+          - "cronjobs"
+  variables:
+    - name: podSpec
+      expression: >-
+        object.kind == 'Pod' ? object.spec : (object.kind == 'CronJob' ?
+        object.spec.jobTemplate.spec.template.spec : object.spec.template.spec)
+  validations:
+    - expression: >-
+        variables.podSpec.?volumes.orValue([]).all(v, !has(v.hostPath) ||
+        !(v.hostPath.path.endsWith('docker.sock') ||
+        v.hostPath.path.endsWith('containerd.sock') ||
+        v.hostPath.path.endsWith('crio.sock') ||
+        v.hostPath.path.endsWith('cri-dockerd.sock')))
+      message: >-
+        Mounting the container runtime socket (docker/containerd/crio) is a
+        container escape and is not permitted.
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: restrict-escalation-verbs
+  annotations:
+    policies.kyverno.io/title: Restrict RBAC Escalation Verbs
+    policies.kyverno.io/category: CIS Kubernetes Benchmark, Least Privilege
+    policies.kyverno.io/severity: critical
+    policies.kyverno.io/subject: Role, ClusterRole
+    policies.kyverno.io/description: >-
+      `escalate`, `bind` and `impersonate` let a subject grant itself
+      permissions it does not have — escalate bypasses the
+      privilege-escalation-prevention check outright, bind allows referencing
+      any role, impersonate allows acting as any user or group.
+
+      rbac-least-privilege-enforce checks WILDCARDS and cluster-admin bindings
+      across 109 Roles and 118 ClusterRoleBindings, but never these verbs. This
+      was the largest uncovered escalation path in the 2026-08-06 gap analysis.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - "rbac.authorization.k8s.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "roles"
+          - "clusterroles"
+  # Kubernetes ships `admin`, `edit`, `view`, `cluster-admin` and the whole
+  # `system:*` set, and re-creates them on every control-plane restart. Flagging
+  # them produces a permanent non-zero count nobody can act on, which trains the
+  # reader to ignore the rule — the exact failure mode that let 41 registry FAILs
+  # become background noise. Scope to roles we actually author.
+  matchConditions:
+    - name: exclude-kubernetes-builtins
+      expression: >-
+        !object.metadata.name.startsWith('system:') &&
+        !(object.metadata.name in ['admin', 'edit', 'view', 'cluster-admin'])
+  validations:
+    - expression: >-
+        object.?rules.orValue([]).all(r, !r.?verbs.orValue([]).exists(v,
+        v in ['escalate', 'bind', 'impersonate']))
+      message: >-
+        Roles must not grant escalate, bind or impersonate — each allows a
+        subject to acquire permissions it was not given.
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: restrict-clusterrole-nodes-proxy
+  annotations:
+    policies.kyverno.io/title: Restrict nodes/proxy Access
+    policies.kyverno.io/category: CIS Kubernetes Benchmark, Least Privilege
+    policies.kyverno.io/severity: critical
+    policies.kyverno.io/subject: ClusterRole
+    policies.kyverno.io/description: >-
+      `nodes/proxy` reaches the kubelet API directly, which permits executing in
+      any container on any node — full node compromise. It also bypasses
+      API-server audit logging, so the access leaves no trace in the audit trail
+      we do keep.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - "rbac.authorization.k8s.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "clusterroles"
+  # Kubernetes ships `admin`, `edit`, `view`, `cluster-admin` and the whole
+  # `system:*` set, and re-creates them on every control-plane restart. Flagging
+  # them produces a permanent non-zero count nobody can act on, which trains the
+  # reader to ignore the rule — the exact failure mode that let 41 registry FAILs
+  # become background noise. Scope to roles we actually author.
+  matchConditions:
+    - name: exclude-kubernetes-builtins
+      expression: >-
+        !object.metadata.name.startsWith('system:') &&
+        !(object.metadata.name in ['admin', 'edit', 'view', 'cluster-admin'])
+  validations:
+    - expression: >-
+        object.?rules.orValue([]).all(r, !r.?resources.orValue([]).exists(res,
+        res in ['nodes/proxy', 'nodes/*']))
+      message: >-
+        ClusterRoles must not grant nodes/proxy — it reaches the kubelet API
+        directly and bypasses API-server audit logging.
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: restrict-secret-read-verbs
+  annotations:
+    policies.kyverno.io/title: Restrict Cluster-Wide Secret Reads
+    policies.kyverno.io/category: Secrets, Least Privilege
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: ClusterRole
+    policies.kyverno.io/description: >-
+      A ClusterRole that can list or watch Secrets can read every secret in the
+      cluster, which defeats the ESO + OpenBao delivery model entirely — the
+      secret is protected in transit and at rest, then readable by anything
+      holding this verb. Kubescape C-0015 found 142.
+
+      `get` is deliberately NOT flagged: controllers legitimately fetch named
+      secrets. `list` and `watch` are the bulk-read verbs and are what matters.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - "rbac.authorization.k8s.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "clusterroles"
+  # Kubernetes ships `admin`, `edit`, `view`, `cluster-admin` and the whole
+  # `system:*` set, and re-creates them on every control-plane restart. Flagging
+  # them produces a permanent non-zero count nobody can act on, which trains the
+  # reader to ignore the rule — the exact failure mode that let 41 registry FAILs
+  # become background noise. Scope to roles we actually author.
+  matchConditions:
+    - name: exclude-kubernetes-builtins
+      expression: >-
+        !object.metadata.name.startsWith('system:') &&
+        !(object.metadata.name in ['admin', 'edit', 'view', 'cluster-admin'])
+  validations:
+    - expression: >-
+        object.?rules.orValue([]).all(r,
+        !(r.?resources.orValue([]).exists(res, res in ['secrets', '*']) &&
+        r.?verbs.orValue([]).exists(v, v in ['list', 'watch', '*'])))
+      message: >-
+        ClusterRoles must not list or watch Secrets cluster-wide; scope to a
+        namespaced Role, or use get on named secrets.

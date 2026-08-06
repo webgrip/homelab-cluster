@@ -1,0 +1,64 @@
+---
+# Coverage for the controls added 2026-08-06 to close the zero-coverage rows in the
+# Kubescape baseline. Every policy asserts BOTH directions; the RBAC ones also assert
+# `skip` on a Kubernetes built-in, which fails if the built-in exclusion is removed.
+# CEL policies have no named rules, so results carry no `rule:` field.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: coverage-gaps
+policies:
+  - ../../policies/coverage-gaps-audit.yaml
+resources:
+  - resources.yaml
+results:
+  - policy: disallow-secrets-from-env-vars
+    resources:
+      - app/secret-env-pod
+    kind: Pod
+    result: fail
+  - policy: disallow-secrets-from-env-vars
+    resources:
+      - app/envfrom-pod
+    kind: Pod
+    result: pass
+  - policy: disallow-cri-socket-mount
+    resources:
+      - app/cri-deploy
+    kind: Deployment
+    result: fail
+  - policy: disallow-cri-socket-mount
+    resources:
+      - app/ok-hostpath-deploy
+    kind: Deployment
+    result: pass
+  - policy: restrict-escalation-verbs
+    resources:
+      - escalating-role
+    kind: ClusterRole
+    result: fail
+  - policy: restrict-escalation-verbs
+    resources:
+      - benign-role
+    kind: ClusterRole
+    result: pass
+  - policy: restrict-escalation-verbs
+    resources:
+      - "system:controller:test"
+    kind: ClusterRole
+    result: skip
+  - policy: restrict-clusterrole-nodes-proxy
+    resources:
+      - nodeproxy-role
+    kind: ClusterRole
+    result: fail
+  - policy: restrict-secret-read-verbs
+    resources:
+      - secret-lister
+    kind: ClusterRole
+    result: fail
+  - policy: restrict-secret-read-verbs
+    resources:
+      - secret-getter
+    kind: ClusterRole
+    result: pass

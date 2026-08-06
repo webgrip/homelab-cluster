@@ -1,0 +1,138 @@
+---
+# MUST FAIL disallow-secrets-from-env-vars — secretKeyRef as an individual env var.
+apiVersion: v1
+kind: Pod
+metadata: {name: secret-env-pod, namespace: app}
+spec:
+  containers:
+    - name: c
+      image: harbor.example.com/x:1.0
+      env:
+        - name: TOKEN
+          valueFrom:
+            secretKeyRef: {name: s, key: token}
+---
+# MUST PASS — envFrom is the prescribed pattern for this estate and is deliberately
+# not flagged; a plain literal env var is fine too.
+apiVersion: v1
+kind: Pod
+metadata: {name: envfrom-pod, namespace: app}
+spec:
+  containers:
+    - name: c
+      image: harbor.example.com/x:1.0
+      env:
+        - name: MODE
+          value: production
+      envFrom:
+        - secretRef: {name: s}
+---
+# MUST FAIL disallow-cri-socket-mount, via a Deployment — proves the explicit
+# controller matching works, not just Pods.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: cri-deploy, namespace: app}
+spec:
+  selector: {matchLabels: {app: c}}
+  template:
+    metadata: {labels: {app: c}}
+    spec:
+      containers:
+        - {name: c, image: 'harbor.example.com/x:1.0'}
+      volumes:
+        - name: sock
+          hostPath: {path: /run/containerd/containerd.sock}
+---
+# MUST PASS — an ordinary hostPath that is not a runtime socket.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-hostpath-deploy, namespace: app}
+spec:
+  selector: {matchLabels: {app: o}}
+  template:
+    metadata: {labels: {app: o}}
+    spec:
+      containers:
+        - {name: c, image: 'harbor.example.com/x:1.0'}
+      volumes:
+        - name: data
+          hostPath: {path: /var/lib/myapp}
+---
+# MUST FAIL restrict-escalation-verbs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: escalating-role}
+rules:
+  - apiGroups:
+      - "rbac.authorization.k8s.io"
+    resources:
+      - "clusterroles"
+    verbs:
+      - "get"
+      - "escalate"
+---
+# MUST PASS — ordinary read verbs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: benign-role}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "configmaps"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"
+---
+# MUST SKIP all three RBAC policies — a Kubernetes built-in. Asserting `skip`
+# proves the built-in exclusion fires; `pass` would not catch its removal.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: "system:controller:test"}
+rules:
+  - apiGroups:
+      - "rbac.authorization.k8s.io"
+    resources:
+      - "clusterroles"
+    verbs:
+      - "escalate"
+      - "bind"
+---
+# MUST FAIL restrict-clusterrole-nodes-proxy.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: nodeproxy-role}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "nodes/proxy"
+    verbs:
+      - "get"
+---
+# MUST FAIL restrict-secret-read-verbs — cluster-wide list of Secrets.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: secret-lister}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    verbs:
+      - "list"
+      - "watch"
+---
+# MUST PASS restrict-secret-read-verbs — `get` on named secrets is legitimate
+# controller behaviour and is deliberately not flagged.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: secret-getter}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    verbs:
+      - "get"
