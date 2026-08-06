@@ -31,16 +31,45 @@ spec:
       runAsUser: 65532
     dns01RecursiveNameservers: https://1.1.1.1:443/dns-query,https://1.0.0.1:443/dns-query
     dns01RecursiveNameserversOnly: true
+    # Requests, not limits — Burstable QoS. priorityClassName above protects
+    # EVICTION ORDER but gives no CPU weight: a BestEffort cgroup gets the
+    # smallest share under cgroup v2, so any burst on the node can starve it.
+    # Same reasoning as the CNPG clusters ("Burstable, not BestEffort").
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
     webhook:
       securityContext:
         runAsGroup: 65532
         runAsNonRoot: true
         runAsUser: 65532
+      resources:
+        requests:
+          cpu: 10m
+          memory: 64Mi
+      # Chart default is timeoutSeconds: 1 on both probes. That is far too tight
+      # for a BestEffort-scheduled pod and is what actually killed this webhook:
+      # it started cleanly, generated its serving cert and bound :10250, then the
+      # kubelet failed /livez three times and SIGKILLed it (exit 137, 51
+      # restarts, 2026-08-06). The 137 looks like an OOM kill and is not one —
+      # the event is "failed liveness probe". Widened to 5s; with the requests
+      # above the pod now also has a guaranteed CPU share to answer with.
+      livenessProbe:
+        timeoutSeconds: 5
+        failureThreshold: 5
+      readinessProbe:
+        timeoutSeconds: 5
+        failureThreshold: 5
     cainjector:
       securityContext:
         runAsGroup: 65532
         runAsNonRoot: true
         runAsUser: 65532
+      resources:
+        requests:
+          cpu: 10m
+          memory: 128Mi
     startupapicheck:
       securityContext:
         runAsGroup: 65532
