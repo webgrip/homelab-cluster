@@ -117,6 +117,83 @@ Plus the nine PSS Baseline controls above. **A cluster that believes it enforces
 implements 4 of 13 controls is the most dangerous state in this document** — the belief is
 what's wrong, not the coverage.
 
+## Controls we never considered
+
+The sections above compare our estate to what it *tried* to be. This section is the larger
+gap: controls that were never on the list. `other-cel` alone holds **66 policies**; these are
+the ones that matter for **this** cluster, each tied to something already true here.
+
+### Privilege escalation — the biggest hole
+
+`rbac-least-privilege-enforce` checks wildcards on **Roles** and cluster-admin bindings. It
+does not check the verbs that let a subject grant themselves more, across 109 Roles and 118
+ClusterRoleBindings:
+
+| Policy | Why it matters here |
+| --- | --- |
+| **`restrict-escalation-verbs-roles`** | `escalate`, `bind`, `impersonate` are the classic self-promotion path and are **completely uncovered** today |
+| **`restrict-clusterrole-nodesproxy`** | `nodes/proxy` is the kubelet API — full node compromise, no audit trail |
+| `restrict-binding-system-groups` | binding to `system:masters` bypasses RBAC entirely |
+| `restrict-secret-role-verbs` | who may read Secrets — the counterpart to the whole ESO/OpenBao investment |
+| `restrict-edit-for-endpoints` | endpoint hijack (CVE-2021-25740) |
+| `restrict-wildcard-verbs` / `restrict-wildcard-resources` | our wildcard rule covers Roles only, not ClusterRoles |
+
+### Secrets — we enforce delivery but not consumption
+
+The estate moved to ESO + OpenBao and consumes via `existingSecret`/`envFromSecret` **by
+convention**. Nothing enforces it:
+
+- **`disallow-secrets-from-env-vars`** — inline secret env vars leak into logs, crash dumps
+  and `kubectl describe`. This is the single control that would make the ESO migration
+  *enforced* rather than merely adopted.
+- `check-serviceaccount-secrets`, `deny-secret-service-account-token-type`,
+  `restrict-sa-automount-sa-token`
+
+### Container escape — narrowing the CI waivers
+
+Four CI workloads hold `hostPath` + `privileged` waivers. Rather than leave them open:
+
+- **`disallow-cri-sock-mount`** (best-practices) and `docker-socket-requires-label`
+- **`ensure-readonly-hostpath`**, `limit-hostpath-vols`, `limit-hostpath-type-pv` — turn a
+  blanket hostPath waiver into a *scoped* one
+- **`block-ephemeral-containers`** — `kubectl debug` attaches a container that sidesteps the
+  original pod's admission decision entirely
+- `prevent-cr8escape`, `check-node-for-cve-2022-0185`
+
+### Availability and placement — encode what we learned the hard way
+
+- **`restrict-controlplane-scheduling`** — ADR-0002 pins workloads to the worker pool after
+  the soyo control-plane OOM cascade. It is currently a *convention*; this makes it a rule.
+- **`ensure-probes-different`** — identical liveness and readiness turns a slow dependency
+  into a restart storm. Directly relevant given the restart incidents in this cluster.
+- `require-deployments-have-multiple-replicas`, `pdb-maxunavailable`,
+  `topologyspreadconstraints-policy` — we audit PDB/topology already; these are the enforcing
+  counterparts
+- `require-qos-guaranteed` / `memory-requests-equal-limits` — QoS class decided which pods
+  Talos' PSI OOM controller killed first in the 2026-07-11 incident
+- `prevent-bare-pods` — a Pod with no controller never comes back
+
+### Workload and supply-chain hygiene
+
+`imagepullpolicy-always`, `require-image-checksum`, `restrict-deprecated-registry`,
+`deny-commands-in-exec-probe`, `limit-containers-per-pod`, `restrict-jobs`,
+`enforce-pod-duration`.
+
+### Networking and storage
+
+`restrict-networkpolicy-empty-podselector` (relevant to the default-deny contract),
+`disallow-localhost-services`, `restrict-service-port-range`, `enforce-readwriteonce-pod`,
+`require-emptydir-requests-limits`.
+
+### Also missing, from best-practices
+
+`disallow-default-namespace`, `check-deprecated-apis`, `require-drop-cap-net-raw`.
+
+**Rough shape of the gap:** we enforce ~79 rules; a defensible enterprise baseline for this
+cluster is closer to **120–140 controls**, and the additions are weighted toward privilege
+escalation and secret handling — the two areas where a homelab most resembles a production
+estate and where our current coverage is thinnest.
+
 ## Kubescape is an assurance layer, not an admission engine
 
 Do **not** replace Kyverno with it. Adopt it for what admission control structurally cannot do:
@@ -140,6 +217,10 @@ operator from that evidence.
 
 ## Proposal
 
+0. **Establish an independent baseline before changing anything.** `kubescape` is not in
+   `.mise.toml`; add it and run a framework scan, so every claim in this RFC — especially
+   "4 of 13 Baseline controls" — is checked against a scorer we did not write. Doing this
+   first also gives a before/after number for the whole programme.
 1. **Unblock and re-plan the CEL migration** on explicit multi-kind matching; delete the
    autogen dependency from the wave plan.
 2. **Baseline the estate with Kubescape CLI** — one command, no install, gives the
@@ -150,7 +231,10 @@ operator from that evidence.
 4. **Adopt the four missing best-practices**, `disallow-cri-sock-mount` first.
 5. **Rebase the parameterised ones**, keeping our allowlists.
 6. **Keep and migrate by hand only the KEEP list** — roughly 8 policies rather than 25.
-7. **Evaluate the Kubescape operator** for network-policy generation before attempting
+7. **Adopt the missing controls in themed batches**, Audit first, most-valuable first:
+   privilege-escalation verbs → secrets-in-env-vars → hostPath narrowing + ephemeral
+   containers → placement/availability. Each batch is one commit with a sweep, per ADR-0032.
+8. **Evaluate the Kubescape operator** for network-policy generation before attempting
    `security` zero-trust.
 
 ## Decisions
