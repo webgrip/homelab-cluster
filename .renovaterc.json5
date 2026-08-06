@@ -308,6 +308,62 @@
       ],
     },
     {
+      // Splits the shared preset's single "Flux OCI Helm charts" group in two. That preset rule
+      // exists to keep pinDigests off (spec.ref.digest is a separate YAML key); its groupName
+      // rode along and was never a considered decision, and the result was PR #449: FIFTEEN
+      // unrelated charts in one commit — cert-manager, coredns, kyverno and envoy-gateway
+      // alongside pyroscope and opencost — automerging unattended via the rule directly above,
+      // because the cluster-critical gate below only matches `minor`.
+      //
+      // Three concrete problems with that, in order of how much they cost:
+      //  1. Rollback is all-or-nothing. If coredns breaks DNS, reverting takes cert-manager and
+      //     thirteen others with it. There is no partial revert of a grouped bump.
+      //  2. Group branches fail ATOMICALLY — one dep Renovate cannot resolve aborts the whole
+      //     branch ("Error updating branch: update failure"), so a single bad chart blocks the
+      //     other fourteen indefinitely. #448/#449 sat open from 2026-07-31 for exactly this shape.
+      //  3. A post-merge cluster fault has fifteen candidate causes in one commit.
+      //
+      // Grouping is still RIGHT for the non-critical remainder: ungrouping entirely would mean
+      // ~60 e2e jobs on the single disk-IOPS-bound worker and, at 1-2 merges per Renovate run,
+      // most of a day to drain. That is the pressure that timed out three PRs on 2026-08-04.
+      // So this keeps the CI saving everywhere and only removes UNATTENDED merging from the
+      // platform paths — they still group, still get one PR, but a human presses merge.
+      //
+      // Path list mirrors the cluster-critical gate below, plus TWO additions that list omits.
+      // Both are flagged rather than assumed — if either omission was deliberate, drop it here
+      // and the rest of the rule still holds:
+      //   kyverno  — admission control; a broken webhook fails every create in the cluster,
+      //              which is at least as load-bearing as cert-manager.
+      //   forgejo  — the git source Flux reconciles FROM. Break it and GitOps stops delivering,
+      //              including the fix; you are then repairing the delivery system by hand.
+      //              Running workloads survive, so this is recoverable rather than fatal, but it
+      //              is the one component whose failure removes your ability to ship a revert.
+      description: "Platform-critical Flux OCI Helm charts group separately and never automerge — a 15-chart bundle spanning cert-manager/coredns/kyverno/envoy-gateway cannot be partially reverted",
+      matchManagers: [
+        "custom.regex"
+      ],
+      matchFileNames: [
+        "kubernetes/apps/cert-manager/**/ocirepository.yaml",
+        "kubernetes/apps/cnpg-dr/**/ocirepository.yaml",
+        "kubernetes/apps/cnpg-system/**/ocirepository.yaml",
+        "kubernetes/apps/flux-system/**/ocirepository.yaml",
+        "kubernetes/apps/forgejo/**/ocirepository.yaml",
+        "kubernetes/apps/harbor/**/ocirepository.yaml",
+        "kubernetes/apps/kube-system/**/ocirepository.yaml",
+        "kubernetes/apps/kyverno/**/ocirepository.yaml",
+        "kubernetes/apps/longhorn-system/**/ocirepository.yaml",
+        "kubernetes/apps/network/**/ocirepository.yaml",
+        "kubernetes/apps/renovate/**/ocirepository.yaml",
+      ],
+      matchUpdateTypes: [
+        "patch"
+      ],
+      groupName: "Flux OCI Helm charts (platform)",
+      additionalBranchPrefix: "platform-",
+      automerge: false,
+      commitBodyTable: true,
+    },
+    {
       description: "Disable digest pinning for talos/ version files — talhelper uses plain semver strings; appending @sha256: makes talenv.yaml unparseable",
       matchFileNames: [
         "talos/**"
