@@ -174,7 +174,17 @@ spec:
             # Pulled from the in-cluster Harbor (not ghcr): LAN-local, survives a WAN outage, and
             # sidesteps ghcr package visibility. Verification is unchanged -- image-verify-harbor-audit
             # targets harbor.${SECRET_DOMAIN}/webgrip/*. Needs the harbor-pull imagePullSecret above.
-            image: harbor.webgrip.dev/webgrip/ci-runner@sha256:a69a2af67455dc6fdd22166f176880f1ba87d46e26aa1c9ecd2b972e257614c2
+            # 1.2.2 -> 1.2.3. 1.2.3 is the first ci-runner that bakes `grype` and the `cve-gate`
+            # binary (webgrip/infrastructure #91), which is what lets the CVE gate stop being a
+            # `docker run` against a remote daemon and become a step calling a binary on PATH.
+            # infrastructure #90 depends on this bump: it fails with an explicit message naming
+            # this pin if the runner is older.
+            #
+            # This digest is UNSIGNED, as 1.2.1 and 1.2.2 before it were — the gate that would
+            # have signed it is the thing being fixed. image-verify-harbor-audit is in Audit, so
+            # nothing blocks; it is recorded here rather than left to be noticed later, and it
+            # resolves on the first release that gets through a working gate.
+            image: harbor.webgrip.dev/webgrip/ci-runner@sha256:4a65b09800d6447d3b7b13a885aabe3372d993ddd3942916e716a790e6900718
             command:
               - bash
               - -ec
