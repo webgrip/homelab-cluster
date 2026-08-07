@@ -98,6 +98,11 @@ spec:
             - name: buildkit
               containerPort: 1234
               protocol: TCP
+          # timeoutSeconds is the load-bearing field here and it was MISSING, which means it
+          # defaulted to 1. `buildctl debug workers` had one second to answer, on a daemon
+          # saturated by a multi-GB image build. Three misses and the kubelet killed the pod —
+          # mid-build, with the client seeing exactly what run 246 shows:
+          #   rpc error: code = Unavailable ... "error reading from server: EOF", prior goaway
           readinessProbe:
             exec:
               command:
@@ -106,15 +111,19 @@ spec:
                 - "workers"
             initialDelaySeconds: 5
             periodSeconds: 30
-          livenessProbe:
-            exec:
-              command:
-                - "buildctl"
-                - "debug"
-                - "workers"
-            initialDelaySeconds: 15
-            periodSeconds: 60
+            timeoutSeconds: 10
             failureThreshold: 3
+          # NO LIVENESS PROBE, deliberately.
+          #
+          # Liveness answers "should the kubelet kill this?" — and for a build daemon the honest
+          # answer is almost never. A buildkitd too busy to reply is doing exactly what it exists
+          # to do; killing it destroys in-flight builds on every runner on the node and loses the
+          # cache work already done. The wedge it would protect against is rare; the false positive
+          # is what actually happened.
+          #
+          # Readiness is the right lever: a slow daemon drops out of the Service, new builds take
+          # the docker-container fallback, and in-flight builds keep their established connection.
+          # Degraded instead of destroyed.
           volumeMounts:
             - name: buildkit-state
               mountPath: /var/lib/buildkit
@@ -127,8 +136,16 @@ spec:
             requests:
               cpu: 200m
               memory: 512Mi
+            # 4Gi -> 6Gi, matching forgejo-dind, which does comparable work and was given 6Gi for
+            # the same reason. Building ci-runner (PHP + .NET + Node + Python, multi-GB layers,
+            # zstd export) through a single daemon is not a 4Gi workload, and an OOMKill presents
+            # to the client identically to the probe kill above — so this removes the second
+            # candidate rather than leaving it to be discovered on the next long build.
+            #
+            # A limit reserves nothing; requests stay at 512Mi. This costs the cluster only if it
+            # is actually used.
             limits:
-              memory: 4Gi
+              memory: 6Gi
       volumes:
         # The whole point: a cache that survives the build. On local disk, NOT Longhorn — see the
         # header. Same convention as /var/lib/forgejo-dind.
