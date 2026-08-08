@@ -1,0 +1,26 @@
+---
+# Bespoke, NOT components/resource-quota. The stock component is a fixed
+# pods: "60", and `security` already runs 40 pods across 26 Deployments and
+# StatefulSets — a rolling update of everything at once surges to ~66 and would be
+# REFUSED at admission, wedging the namespace that hosts the admission controller.
+# Sizing a shared component for its largest consumer would then over-cap every
+# other namespace, so this one is namespaced-local by design.
+#
+# Count-only, deliberately. A compute quota would force every pod here to declare
+# requests or be refused, and 15 pods in this namespace declare none (openbao
+# init/config jobs, the ESO webhooks, guac one-shots). That is a remediation task,
+# not something to enforce by side effect — see the SA-token and seccomp work for
+# how the compute side is being approached instead.
+#
+# Satisfies namespace-tenancy-audit/require-resourcequota, which was the last open
+# wave-12 finding alongside the NetworkPolicy in this same Kustomization.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: security-resourcequota
+spec:
+  hard:
+    # 40 in use, ~66 worst-case surge, doubled for headroom.
+    pods: "120"
+    # 9 in use; PVCs here are OpenBao, the CNPG databases and trivy's cache.
+    persistentvolumeclaims: "20"
