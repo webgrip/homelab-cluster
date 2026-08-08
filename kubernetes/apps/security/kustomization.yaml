@@ -5,21 +5,27 @@ kind: Kustomization
 namespace: security
 
 components:
-  # Satisfies namespace-tenancy-audit/require-resourcequota, which is wave 12 of the
-  # audit->enforce campaign (ADR-0032). `security` was the last in-scope namespace with
-  # no ResourceQuota at all.
-  #
-  # This component is COUNT-ONLY (pods 60, PVCs 25) by deliberate design — see its header:
-  # a compute quota would force every pod in the namespace, including the operator-managed
-  # CNPG database pods that set no requests/limits, to declare resources or be rejected at
-  # admission. `security` runs two CNPG clusters (guac, dependency-track), so that failure
-  # mode is not hypothetical here.
-  #
-  # Headroom checked before adding, not assumed: security currently runs 47 pods and 9
-  # PVCs, so 60/25 leaves room without ever blocking admission. The Kyverno-GENERATED
-  # quota (kyverno.io/default-resource-controls label) would NOT have worked — it caps
-  # pods at 40, below current usage, and would have started rejecting pods immediately.
-  - ../../components/resource-quota
+# Satisfies namespace-tenancy-audit/require-resourcequota, which is wave 12 of the
+# audit->enforce campaign (ADR-0032). `security` was the last in-scope namespace with
+# no ResourceQuota at all.
+#
+# This component is COUNT-ONLY (pods 60, PVCs 25) by deliberate design — see its header:
+# a compute quota would force every pod in the namespace, including the operator-managed
+# CNPG database pods that set no requests/limits, to declare resources or be rejected at
+# admission. `security` runs two CNPG clusters (guac, dependency-track), so that failure
+# mode is not hypothetical here.
+#
+# Headroom checked before adding, not assumed: security currently runs 47 pods and 9
+# PVCs, so 60/25 leaves room without ever blocking admission. The Kyverno-GENERATED
+# quota (kyverno.io/default-resource-controls label) would NOT have worked — it caps
+# pods at 40, below current usage, and would have started rejecting pods immediately.
+# components/resource-quota REMOVED 2026-08-08. It stamps a fixed pods: "60",
+# and two ResourceQuotas in one namespace means Kubernetes enforces the MOST
+# RESTRICTIVE — so the stock 60 silently overrode the bespoke 120 in
+# netpol/app/resourcequota.yaml and the surge headroom did not exist. `security`
+# runs 26 Deployments/StatefulSets, so a mass rolling update can exceed 60 and
+# would be refused at admission, in the namespace that hosts the admission
+# controller. Single source of truth is the bespoke quota; see the header there.
 
 resources:
   - ./namespace.yaml
