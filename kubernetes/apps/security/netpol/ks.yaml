@@ -1,0 +1,22 @@
+---
+# yaml-language-server: $schema=https://lds-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: security-netpol
+  namespace: security
+spec:
+  # Its OWN Kustomization, with no dependsOn, on purpose. If a network policy here
+  # ever wedges the namespace, this path must stay independently revertible without
+  # waiting on kyverno or openbao to become Ready first — the lesson from the
+  # cert-manager deadlock, where the fix lived inside the thing that was broken.
+  interval: 1h
+  path: ./kubernetes/apps/security/netpol/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: security
+  timeout: 5m
+  wait: true

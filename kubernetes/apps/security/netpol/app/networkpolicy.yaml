@@ -1,0 +1,66 @@
+---
+# Zero-trust INGRESS for the `security` namespace — the last wave-12 gap.
+#
+# STAGE 1 OF 2: these are ALLOW rules only. They are inert until the deny lands in
+# a separate commit, which is deliberate — the namespace hosts the Kyverno
+# admission webhook, so a missing allow here does not degrade one app, it fails
+# admission cluster-wide and blocks the very GitOps push that would fix it.
+#
+# INGRESS ONLY, EGRESS DELIBERATELY UNTOUCHED. Observed egress needs the API
+# server, DNS, the envoy gateway VIP hairpin (network:10443, for image
+# verification against harbor), OTLP to observability, and the public internet
+# for OSV/vulnerability feeds. That is a much larger surface with a much worse
+# failure mode; it gets its own wave and its own observation window.
+#
+# THE ALLOW LIST IS OBSERVED, NOT INFERRED. Derived from 1740 Hubble flows
+# captured across all six nodes on 2026-08-08, with zero DROPPED flows in the
+# sample (so the baseline was clean and nothing below is papering over an
+# existing break). Sources seen reaching this namespace, and nothing else:
+#   reserved:host        kubelet health probes on 9443/8081/8222/9090/8080/8000/
+#                        4954, and the API server itself when it runs on the
+#                        local node
+#   reserved:kube-apiserver  admission webhook calls to kyverno :9443
+#   observability        VMAgent scraping kyverno :8000 and dependency-track-db
+#                        :9187
+#   security             intra-namespace (guac pipeline -> nats :4222,
+#                        oci-collector -> collectsub :2782, apps -> their DBs)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: security-allow-control-plane-ingress
+spec:
+  description: >-
+    Admission webhook and health-probe ingress. MUST be a CiliumNetworkPolicy with
+    fromEntities, not a NetworkPolicy with ipBlock: Cilium matches the API server
+    and the node by reserved identity, so a CIDR rule does not cover them — the
+    same trap already documented in components/cnpg-netpol for egress. Getting
+    this wrong means the API server cannot reach the Kyverno webhook and every
+    admission request in the cluster fails.
+  endpointSelector: {}
+  ingress:
+    - fromEntities:
+        - host
+        - remote-node
+        - kube-apiserver
+        - health
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: security-allow-internal-ingress
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    # Intra-namespace: the GUAC ingest pipeline, apps reaching their own CNPG
+    # databases, policy-reporter reaching Kyverno.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: security
+    # VMAgent scrapes kyverno :8000 and the CNPG postgres-exporter :9187.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
