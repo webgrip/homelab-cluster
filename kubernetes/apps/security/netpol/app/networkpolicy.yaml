@@ -151,3 +151,42 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+---
+# Forgejo CI runners signing releases against OpenBao Transit. The missing twin of the
+# dependency-track rule above, and the gap that shipped two unsigned releases
+# (node-ci-runner v1.0.1, semantic-release-rust v0.1.1 — infrastructure runs 294/301):
+# the runner's egress side has DECLARED this path since forgejo/networkpolicy.yaml's
+# forgejo-runner-allow-openbao, but only its dependency-track sibling was mirrored here,
+# so the ingress default-deny dropped the JWT-login connect on the floor. The failure
+# reads as an OpenBao outage — `curl: (28) ... after 134s` / `OpenBao JWT login HTTP
+# 000000` — while /sys/health through the gateway answers 200, because the network-
+# namespace rule above keeps envoy's path open. Same lesson as the header, third time:
+# signing happens only at releases, so no capture between releases will ever observe it;
+# this entry exists because forgejo DECLARED it.
+#
+# Own policy, one source workload, one destination workload, one port — same reasoning
+# as the dependency-track rule: folding it into the namespace-wide policy would open
+# :8200 from forgejo to everything here. forgejo-agent-runner is deliberately NOT
+# matched (ADR-0048: it executes LLM-authored code and must not reach a secrets
+# backend) — the label selector carries that boundary on both sides now.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: security-allow-forgejo-runner-openbao
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: openbao
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: forgejo
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: forgejo-runner
+      ports:
+        - protocol: TCP
+          port: 8200
