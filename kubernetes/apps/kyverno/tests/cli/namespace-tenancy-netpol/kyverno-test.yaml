@@ -1,4 +1,15 @@
 ---
+# Restructured for the CEL migration (2026-08-08). CEL ValidatingPolicies have no named
+# rules, so results carry `policy` but no `rule` and every assertion is ONE VERDICT PER
+# RESOURCE. Leaving a `rule:` field here would not fail loudly — it scores Pass/Excluded,
+# which is green while proving nothing.
+#
+# The consequence for coverage: `app/default-deny` used to be recorded twice, as a fail
+# on require-default-deny-egress and a pass on require-default-deny-ingress. At policy
+# level it is a single fail, because any failing validation fails the policy. The
+# per-rule attribution is no longer expressible; the differential run against all 119
+# live NetworkPolicies plus the injected corpus is what establishes the two dialects
+# agree.
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -9,45 +20,39 @@ resources:
   - resources.yaml
 results:
   # --- fail cases ---------------------------------------------------------------
+  # default-deny covering Ingress only — the dangerous shape this policy exists for.
   - policy: namespace-tenancy-enforce
-    rule: require-default-deny-egress
     resources:
       - app/default-deny
     kind: NetworkPolicy
     result: fail
+  # allow-dns forwarding 8053 rather than 53.
   - policy: namespace-tenancy-enforce
-    rule: require-dns-egress-policy-shape
     resources:
       - app/allow-dns
     kind: NetworkPolicy
     result: fail
+  # The CEL edge cases: each must reach a VERDICT rather than raising a policy error.
+  # A CEL runtime error under validationActions: [Deny] blocks admission too, so an
+  # error here would look like a working gate while failing for the wrong reason.
+  - policy: namespace-tenancy-enforce
+    resources:
+      - edge-nopolicytypes/default-deny
+      - edge-noegress/allow-dns
+      - edge-noports/allow-dns
+      - edge-namedport/allow-dns
+    kind: NetworkPolicy
+    result: fail
   # --- pass cases ---------------------------------------------------------------
-  # Including the name-scoping case: an unrelated NetworkPolicy must satisfy all three
-  # rules, proving they key off the resource NAME rather than demanding a shape from
-  # every NetworkPolicy in the cluster.
+  # Correctly shaped policies, plus the name-scoping case: an unrelated NetworkPolicy
+  # must pass, proving the policy keys off the resource NAME rather than demanding a
+  # shape from every NetworkPolicy in the cluster. And edge-secondrule proves 53 is
+  # found in any egress rule, not only the first.
   - policy: namespace-tenancy-enforce
-    rule: require-default-deny-ingress
-    resources:
-      - kube-system/default-deny
-      - kube-system/allow-dns
-      - app/default-deny
-      - app/allow-app-to-db
-    kind: NetworkPolicy
-    result: pass
-  - policy: namespace-tenancy-enforce
-    rule: require-default-deny-egress
     resources:
       - kube-system/default-deny
       - kube-system/allow-dns
       - app/allow-app-to-db
-    kind: NetworkPolicy
-    result: pass
-  - policy: namespace-tenancy-enforce
-    rule: require-dns-egress-policy-shape
-    resources:
-      - kube-system/allow-dns
-      - kube-system/default-deny
-      - app/default-deny
-      - app/allow-app-to-db
+      - edge-secondrule/allow-dns
     kind: NetworkPolicy
     result: pass

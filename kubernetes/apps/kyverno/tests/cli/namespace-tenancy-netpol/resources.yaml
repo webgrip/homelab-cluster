@@ -83,3 +83,85 @@ spec:
         - podSelector:
             matchLabels:
               app: web
+---
+# The four cases below were added with the CEL migration (2026-08-08). CEL raises a
+# runtime error where JMESPath quietly returned null, and under validationActions:
+# [Deny] a policy ERROR fails admission just like a violation — but for the wrong
+# reason, on resources the policy was never meant to judge. Each of these must produce
+# a policy VERDICT, never an error.
+#
+# FAIL, must not ERROR: named default-deny with no policyTypes field at all. Exercises
+# .?policyTypes.orValue([]); a bare object.spec.policyTypes raises "no such key".
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: edge-nopolicytypes
+spec:
+  podSelector: {}
+---
+# FAIL, must not ERROR: named allow-dns with no egress field. Exercises
+# .?egress.orValue([]).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: edge-noegress
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+---
+# FAIL, must not ERROR: named allow-dns whose egress rule carries no ports key.
+# Exercises e.?ports.orValue([]).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: edge-noports
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+---
+# FAIL, must not ERROR: named allow-dns with a NAMED (string) port. `port` is an
+# IntOrString, so an integer comparison `p.port == 53` raises a type error here. The
+# policy uses string(p.port) == '53' so this simply does not match.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: edge-namedport
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - protocol: UDP
+          port: dns
+---
+# PASS: named allow-dns reaching 53 in the SECOND egress rule. Proves the nested
+# exists() reproduces the legacy flatten of spec.egress[].ports[].port rather than
+# checking only egress[0].
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: edge-secondrule
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - protocol: TCP
+          port: 8080
+    - ports:
+        - protocol: UDP
+          port: 53

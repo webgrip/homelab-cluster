@@ -1,5 +1,7 @@
 ---
-# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/clusterpolicy_v1.json
+# MIGRATED to the CEL policy family 2026-08-08 (rfc-kyverno-cel-migration.md).
+# Third policy after image-supply-chain-audit (pilot) and image-hygiene-audit.
+#
 # Wave 5 of the audit->enforce campaign (ADR-0032): the three NetworkPolicy SHAPE rules,
 # split out of namespace-tenancy-audit so they can enforce while the Namespace-scoped
 # require-* rules stay Audit (those are wave 12).
@@ -15,13 +17,18 @@
 # Those are wave 12; require-namespace-ownership-labels still has one live failure (the
 # `drawio` namespace carries no webgrip.io/exposure label).
 #
-# Gate evidence: kyverno-CLI sweep over every in-scope NetworkPolicy and Namespace —
-# 341 assertions, and the only failure was require-namespace-ownership-labels, which is
-# staying behind. NetworkPolicy is one of the few kinds the background scanner DOES
-# report on (107 reports live), so here the PolicyReport count independently agreed with
-# the sweep — unlike the RBAC and monitor-label waves, where it cannot.
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# 1:1 — no split needed. All three rules share one scope (kind NetworkPolicy, all
+# namespaces) and NONE is waived by any PolicyException, so the CEL whole-policy waiver
+# model loses nothing. No autogen concern either: NetworkPolicy is not a pod controller,
+# which is what made this the safest policy to migrate after image-hygiene-audit.
+#
+# NOTE: CEL policies have no named rules. PolicyReport results carry `policy` and
+# `source: KyvernoValidatingPolicy` but no `rule`, so CLI tests must omit `rule:` and
+# assert one verdict per resource. `app/default-deny` therefore reads as a single policy
+# fail here, where the legacy test recorded it as fail on require-default-deny-egress and
+# pass on require-default-deny-ingress.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: namespace-tenancy-enforce
   annotations:
@@ -35,57 +42,56 @@ metadata:
       both Ingress and Egress, and one named `allow-dns` must actually allow port 53
       egress. Split from namespace-tenancy-audit in wave 5 of the audit->enforce campaign.
 spec:
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: require-default-deny-ingress
-      match:
-        any:
-          - resources:
-              kinds:
-                - NetworkPolicy
-      validate:
-        message: "Default deny NetworkPolicies should cover ingress."
-        deny:
-          conditions:
-            all:
-              - key: "{{ request.object.metadata.name }}"
-                operator: Equals
-                value: default-deny
-              - key: Ingress
-                operator: AnyNotIn
-                value: "{{ request.object.spec.policyTypes[] || `[]` }}"
-    - name: require-default-deny-egress
-      match:
-        any:
-          - resources:
-              kinds:
-                - NetworkPolicy
-      validate:
-        message: "Default deny NetworkPolicies should cover egress."
-        deny:
-          conditions:
-            all:
-              - key: "{{ request.object.metadata.name }}"
-                operator: Equals
-                value: default-deny
-              - key: Egress
-                operator: AnyNotIn
-                value: "{{ request.object.spec.policyTypes[] || `[]` }}"
-    - name: require-dns-egress-policy-shape
-      match:
-        any:
-          - resources:
-              kinds:
-                - NetworkPolicy
-      validate:
-        message: "DNS allow NetworkPolicies should explicitly allow TCP and UDP 53 egress."
-        deny:
-          conditions:
-            all:
-              - key: "{{ request.object.metadata.name }}"
-                operator: Equals
-                value: allow-dns
-              - key: 53
-                operator: AnyNotIn
-                value: "{{ request.object.spec.egress[].ports[].port || `[]` }}"
+  # `Deny` is the CEL spelling of validationFailureAction: Enforce.
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    # No namespaceSelector: the legacy policy applied to every namespace including
+    # kube-system, and the test corpus asserts exactly that (kube-system/default-deny is
+    # an in-scope PASS, not an exclusion). Narrowing scope here would be a behaviour
+    # change smuggled into a dialect migration.
+    resourceRules:
+      - apiGroups:
+          - "networking.k8s.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "networkpolicies"
+  validations:
+    # Each expression must be TRUE to pass — the inverse of the legacy `deny.conditions`,
+    # which denied when the name matched AND the shape was wrong. The leading name
+    # inequality is what keeps these scoped by NAME: any NetworkPolicy called something
+    # else short-circuits to true and is none of this policy's business.
+    - expression: >-
+        object.metadata.name != 'default-deny' ||
+        'Ingress' in object.spec.?policyTypes.orValue([])
+      message: "Default deny NetworkPolicies should cover ingress."
+    - expression: >-
+        object.metadata.name != 'default-deny' ||
+        'Egress' in object.spec.?policyTypes.orValue([])
+      message: "Default deny NetworkPolicies should cover egress."
+    # The legacy rule flattened spec.egress[].ports[].port and asked whether 53 appeared
+    # anywhere in it. The nested exists() below is that same flatten-then-search.
+    #
+    # BEHAVIOUR PRESERVED, INCLUDING ITS WEAKNESS. The message promises "TCP and UDP",
+    # but the check only ever required that 53 appear ONCE, in either protocol — a
+    # UDP-only allow-dns has always passed. Tightening it to demand both protocols is a
+    # real improvement and a REAL BEHAVIOUR CHANGE: 36 in-scope NetworkPolicies are live,
+    # and a migration commit must be provably behaviour-preserving or the differential
+    # proves nothing. Tracked separately rather than fixed here.
+    #
+    # `port` is an IntOrString, so it is compared via string() rather than `== 53`. A
+    # named port (`port: dns`) would make an integer comparison raise a type error, which
+    # under validationActions: [Deny] fails admission on a policy ERROR rather than a
+    # policy verdict — a far worse failure than simply not matching.
+    - expression: >-
+        object.metadata.name != 'allow-dns' ||
+        object.spec.?egress.orValue([]).exists(e,
+          e.?ports.orValue([]).exists(p, has(p.port) && string(p.port) == '53'))
+      message: "DNS allow NetworkPolicies should explicitly allow TCP and UDP 53 egress."
