@@ -1,4 +1,13 @@
 ---
+# Restructured for the CEL migration (2026-08-08). CEL ValidatingPolicies have no named
+# rules, so results carry `policy` but no `rule` and every assertion is ONE VERDICT PER
+# RESOURCE. A leftover `rule:` field would not fail loudly — it scores Pass/Excluded,
+# green while proving nothing.
+#
+# Unlike namespace-tenancy-enforce, the assertion COUNT is unchanged here: the three
+# rules match three disjoint kinds, so each resource only ever produced one result in
+# either dialect. The differential over all 79 live monitors plus the injected corpus
+# returned 86 rows from both dialects and an identical verdict on all 86.
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -9,39 +18,42 @@ resources:
   - resources.yaml
 results:
   # --- fail cases ---------------------------------------------------------------
+  # No labels map at all — must reach a verdict, not a CEL "no such key" error.
   - policy: secrets-observability-ops-enforce
-    rule: require-servicemonitor-labels
     resources:
       - app/unlabelled-servicemonitor
     kind: ServiceMonitor
     result: fail
+  # Labels present but not the required one — the realistic chart-rendered shape.
   - policy: secrets-observability-ops-enforce
-    rule: require-podmonitor-labels
     resources:
       - app/other-labels-podmonitor
     kind: PodMonitor
     result: fail
   - policy: secrets-observability-ops-enforce
-    rule: require-prometheusrule-labels
     resources:
       - app/unlabelled-prometheusrule
     kind: PrometheusRule
     result: fail
+  # Label present but EMPTY — pins the second half of the legacy `?*` semantics, which a
+  # key-membership-only CEL port would silently drop.
+  - policy: secrets-observability-ops-enforce
+    resources:
+      - app/empty-value-servicemonitor
+    kind: ServiceMonitor
+    result: fail
   # --- pass cases ---------------------------------------------------------------
   - policy: secrets-observability-ops-enforce
-    rule: require-servicemonitor-labels
     resources:
       - app/labelled-servicemonitor
     kind: ServiceMonitor
     result: pass
   - policy: secrets-observability-ops-enforce
-    rule: require-podmonitor-labels
     resources:
       - app/labelled-podmonitor
     kind: PodMonitor
     result: pass
   - policy: secrets-observability-ops-enforce
-    rule: require-prometheusrule-labels
     resources:
       - app/labelled-prometheusrule
     kind: PrometheusRule

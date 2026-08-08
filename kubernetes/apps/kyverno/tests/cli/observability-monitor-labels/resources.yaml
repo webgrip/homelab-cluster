@@ -93,3 +93,22 @@ spec:
       rules:
         - alert: DemoAlert
           expr: up == 0
+---
+# FAIL, added with the CEL migration (2026-08-08). The legacy pattern was `"?*"` — one
+# character then any number — so a label PRESENT but set to the empty string failed it.
+# A naive CEL port checking only key membership ('app.kubernetes.io/name' in labels)
+# would pass this and silently weaken the policy, and no live resource has this shape to
+# catch it. This is the case that pins the second half of the `?*` semantics.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: empty-value-servicemonitor
+  namespace: app
+  labels:
+    app.kubernetes.io/name: ""
+spec:
+  selector:
+    matchLabels:
+      app: demo
+  endpoints:
+    - port: metrics
