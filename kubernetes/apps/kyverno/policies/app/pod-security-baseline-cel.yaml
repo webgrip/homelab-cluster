@@ -1,0 +1,400 @@
+---
+# CEL SPLIT of pod-security-baseline-enforce, STAGE 1 OF 2
+# (rfc-kyverno-cel-migration.md).
+#
+# STAGE 1 (this commit): the four policies below run at AUDIT, alongside the
+# legacy ClusterPolicy which keeps ENFORCING unchanged. Nothing about admission
+# changes. This is the audit->enforce shape ADR-0032 already uses, applied to a
+# dialect change.
+# STAGE 2 (separate commit): delete the legacy ClusterPolicy, flip these to Deny,
+# and port the six PolicyExceptions — all in ONE commit, because it cannot be
+# staged.
+#
+# WHY FOUR POLICIES AND NOT ONE. A CEL PolicyException has `policyRefs` and NO
+# `ruleNames` — it waives a WHOLE POLICY. The six live exceptions waive four
+# different subsets of the four rules:
+#
+#   exception              privileged  host-path  host-ports  host-namespaces
+#   forgejo-agent-runner       y
+#   forgejo-buildkitd          y           y
+#   forgejo-dind               y           y           y
+#   forgejo-runner             y           y
+#   kepler                                 y                       y
+#   ploeg-worker               y
+#
+# Migrating to a single CEL policy would grant every exception all four waivers.
+# That is not a theoretical loss: exception-kepler.yaml states outright that
+# "privileged-containers is NOT waived: kepler runs privileged:false since ticket
+# #68's fix", and a whole-policy waiver would silently hand it back. One policy
+# per rule keeps each waiver exactly as narrow as it is today.
+#
+# WHY STAGE 2 CANNOT BE SPLIT FURTHER. Five of the six exceptions also waive
+# workload-hardening-audit and workload-advanced-hardening-audit, which stay
+# legacy for now. A PolicyException is single-dialect — legacy keys on
+# spec.exceptions[].policyName, CEL on spec.policyRefs[] — so each must become two
+# objects. Until both halves exist the waiver is missing, and the workloads behind
+# it are forgejo's CI runners, dind and buildkitd, plus kepler and the ploeg
+# worker. Landing that in one commit is the whole point.
+#
+# EXPLICIT CONTROLLER KINDS, NOT AUTOGEN. ValidatingPolicy autogen emits nothing
+# (probed 2026-08-05/06; see image-hygiene-audit). The legacy policy matched only
+# Pod and relied on Kyverno generating autogen-* rules — which is why the
+# exceptions name autogen-privileged-containers and friends. Those controller
+# kinds are therefore listed by hand here; dropping them would move every denial
+# from "your Job is rejected now" to "the pod fails later, unattended".
+#
+# NO YAML ANCHORS. The namespace list and resourceRules are repeated verbatim in
+# all four policies instead of being shared: anchors do not cross YAML document
+# boundaries, and kubeconform rejects the file outright if you try.
+#
+# SCOPE IS UNCHANGED: the same 12-namespace exclusion, carried verbatim.
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: pod-security-baseline-host-namespaces
+  annotations:
+    policies.kyverno.io/title: Baseline — Host Namespaces
+    policies.kyverno.io/category: Pod Security Standards (Baseline)
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Pods must not share the host's PID, IPC or network namespaces. CEL split of
+      pod-security-baseline-enforce/host-namespaces; waived only by kepler.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - arc-systems
+            - cert-manager
+            - cnpg-system
+            - flux-system
+            - kube-node-lease
+            - kube-public
+            - kube-system
+            - longhorn-system
+            - network
+            - observability
+            - renovate
+            - security
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "deployments"
+          - "statefulsets"
+          - "daemonsets"
+      - apiGroups:
+          - "batch"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "jobs"
+          - "cronjobs"
+  variables:
+    - name: podSpec
+      expression: >-
+        object.kind == 'Pod' ? object.spec : (object.kind == 'CronJob' ?
+        object.spec.jobTemplate.spec.template.spec : object.spec.template.spec)
+  validations:
+    # Legacy used =(hostPID): "false" — an optional key that, when present, must be
+    # false. orValue(false) is the same: absent is fine, true is not.
+    - expression: >-
+        !variables.podSpec.?hostPID.orValue(false) &&
+        !variables.podSpec.?hostIPC.orValue(false) &&
+        !variables.podSpec.?hostNetwork.orValue(false)
+      message: >-
+        Sharing the host namespaces is disallowed. The fields spec.hostNetwork,
+        spec.hostIPC, and spec.hostPID must be unset or set to `false`.
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: pod-security-baseline-host-path
+  annotations:
+    policies.kyverno.io/title: Baseline — HostPath Volumes
+    policies.kyverno.io/category: Pod Security Standards (Baseline)
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod,Volume
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Pods must not mount hostPath volumes. CEL split of
+      pod-security-baseline-enforce/host-path; waived by buildkitd, dind, runner
+      and kepler.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - arc-systems
+            - cert-manager
+            - cnpg-system
+            - flux-system
+            - kube-node-lease
+            - kube-public
+            - kube-system
+            - longhorn-system
+            - network
+            - observability
+            - renovate
+            - security
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "deployments"
+          - "statefulsets"
+          - "daemonsets"
+      - apiGroups:
+          - "batch"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "jobs"
+          - "cronjobs"
+  variables:
+    - name: podSpec
+      expression: >-
+        object.kind == 'Pod' ? object.spec : (object.kind == 'CronJob' ?
+        object.spec.jobTemplate.spec.template.spec : object.spec.template.spec)
+  validations:
+    # Legacy: =(volumes): [ X(hostPath): "null" ] — for each volume, hostPath must
+    # be absent. A pod with no volumes passes vacuously, which orValue([]) keeps.
+    - expression: "variables.podSpec.?volumes.orValue([]).all(v, !has(v.hostPath))"
+      message: >-
+        HostPath volumes are forbidden. The field spec.volumes[*].hostPath must be
+        unset.
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: pod-security-baseline-host-ports
+  annotations:
+    policies.kyverno.io/title: Baseline — Host Ports
+    policies.kyverno.io/category: Pod Security Standards (Baseline)
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Containers must not bind host ports. CEL split of
+      pod-security-baseline-enforce/host-ports-none; waived only by dind.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - arc-systems
+            - cert-manager
+            - cnpg-system
+            - flux-system
+            - kube-node-lease
+            - kube-public
+            - kube-system
+            - longhorn-system
+            - network
+            - observability
+            - renovate
+            - security
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "deployments"
+          - "statefulsets"
+          - "daemonsets"
+      - apiGroups:
+          - "batch"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "jobs"
+          - "cronjobs"
+  variables:
+    - name: podSpec
+      expression: >-
+        object.kind == 'Pod' ? object.spec : (object.kind == 'CronJob' ?
+        object.spec.jobTemplate.spec.template.spec : object.spec.template.spec)
+    # Legacy listed containers, initContainers and ephemeralContainers separately;
+    # concatenating them is the same set in one expression.
+    - name: allContainers
+      expression: >-
+        variables.podSpec.?containers.orValue([]) +
+        variables.podSpec.?initContainers.orValue([]) +
+        variables.podSpec.?ephemeralContainers.orValue([])
+  validations:
+    # Legacy: =(hostPort): 0 — optional, and 0 if present. Unset and 0 both pass.
+    - expression: >-
+        variables.allContainers.all(c,
+          c.?ports.orValue([]).all(p, p.?hostPort.orValue(0) == 0))
+      message: >-
+        Use of host ports is disallowed. The fields
+        spec.containers[*].ports[*].hostPort,
+        spec.initContainers[*].ports[*].hostPort, and
+        spec.ephemeralContainers[*].ports[*].hostPort must either be unset or set
+        to `0`.
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: pod-security-baseline-privileged
+  annotations:
+    policies.kyverno.io/title: Baseline — Privileged Containers
+    policies.kyverno.io/category: Pod Security Standards (Baseline)
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Containers must not run privileged. CEL split of
+      pod-security-baseline-enforce/privileged-containers; waived by the forgejo CI
+      workloads and ploeg-worker — deliberately NOT by kepler.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - arc-systems
+            - cert-manager
+            - cnpg-system
+            - flux-system
+            - kube-node-lease
+            - kube-public
+            - kube-system
+            - longhorn-system
+            - network
+            - observability
+            - renovate
+            - security
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "deployments"
+          - "statefulsets"
+          - "daemonsets"
+      - apiGroups:
+          - "batch"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "jobs"
+          - "cronjobs"
+  variables:
+    - name: podSpec
+      expression: >-
+        object.kind == 'Pod' ? object.spec : (object.kind == 'CronJob' ?
+        object.spec.jobTemplate.spec.template.spec : object.spec.template.spec)
+    - name: allContainers
+      expression: >-
+        variables.podSpec.?containers.orValue([]) +
+        variables.podSpec.?initContainers.orValue([]) +
+        variables.podSpec.?ephemeralContainers.orValue([])
+  validations:
+    # securityContext is itself optional, hence orValue({}) before reading
+    # privileged.
+    - expression: >-
+        variables.allContainers.all(c,
+          !c.?securityContext.orValue({}).?privileged.orValue(false))
+      message: >-
+        Privileged mode is disallowed. The fields
+        spec.containers[*].securityContext.privileged,
+        spec.initContainers[*].securityContext.privileged, and
+        spec.ephemeralContainers[*].securityContext.privileged must be unset or set
+        to `false`.
