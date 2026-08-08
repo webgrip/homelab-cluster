@@ -8,38 +8,27 @@ policies:
 resources:
   - resources.yaml
 results:
-  # --- fail cases ---------------------------------------------------------------
+  # image-hygiene-audit became a CEL ValidatingPolicy on 2026-08-08. CEL policies
+  # have no named rules, so `rule:` is omitted and the verdict is per-POLICY: a
+  # resource failing EITHER validation fails the policy. The old per-rule split
+  # (mutable-latest passing require-image-tag while failing validate-image-tag) can
+  # no longer be expressed, and asserting a rule name here would silently score as
+  # Pass/Excluded — green while proving nothing.
   - policy: image-hygiene-audit
-    rule: require-image-tag
     resources:
       - app/untagged-image
       - app/untagged-init-container
-    kind: Pod
-    result: fail
-  - policy: image-hygiene-audit
-    rule: validate-image-tag
-    resources:
       - app/mutable-latest
     kind: Pod
     result: fail
-  # --- pass cases ---------------------------------------------------------------
-  # An enforcing policy has to be proven in both directions: a failure-only suite
-  # cannot tell a working policy from one that rejects everything.
+  # digest-only (foo@sha256:…) satisfies "contains a colon" exactly as the legacy
+  # `*:*` pattern did, and latest-with-digest does not END with :latest so it is
+  # deliberately not caught here — that is
+  # image-supply-chain-enforce/disallow-latest-tag-even-with-digest's job.
   - policy: image-hygiene-audit
-    rule: require-image-tag
     resources:
       - app/versioned-tag
       - app/digest-only
       - app/latest-with-digest
-      - app/mutable-latest
-    kind: Pod
-    result: pass
-  - policy: image-hygiene-audit
-    rule: validate-image-tag
-    resources:
-      - app/versioned-tag
-      - app/digest-only
-      - app/latest-with-digest
-      - app/untagged-image
     kind: Pod
     result: pass

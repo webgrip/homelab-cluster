@@ -1,6 +1,29 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# MIGRATED to the CEL policy family 2026-08-08 (rfc-kyverno-cel-migration.md).
+# Second policy after the image-supply-chain-audit pilot, and the first ENFORCING
+# one. Written and REVERTED on 2026-08-05 when ValidatingPolicy autogen turned out
+# to produce nothing; unblocked by matching controllers EXPLICITLY instead.
+#
+# 1:1 — no split needed. Both rules share a scope and NEITHER is waived by any
+# PolicyException (verified before migrating), so the CEL whole-policy waiver model
+# loses nothing. Policies whose rules carry DIFFERENT waiver sets must be split so a
+# whole-policy waiver still equals the old per-rule one; this one does not.
+#
+# SCOPE IS UNCHANGED ON PURPOSE. The 17-namespace exclusion below is carried over
+# verbatim. Widening it is a separate decision from changing dialect, and mixing the
+# two would make the differential meaningless — a migration commit must be provably
+# behaviour-preserving.
+#
+# The resource name keeps its `-audit` suffix. Two Grafana dashboards
+# (security-overview, security-cosign-github-oidc) select on
+# policy="image-hygiene-audit"; renaming for cosmetic accuracy would blank those
+# panels. The suffix is historical — this policy DENIES.
+#
+# NOTE: CEL policies have no named rules, so PolicyReport results carry `policy` and
+# `source: KyvernoValidatingPolicy` but no `rule` field, and CLI tests must omit
+# `rule:`. The two dashboards above filter on policy=, so they are unaffected.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: image-hygiene-audit
   annotations:
@@ -11,83 +34,98 @@ metadata:
     kyverno.io/kyverno-version: 1.18.1
     policies.kyverno.io/description: >-
       Reject application workloads that rely on missing or mutable image tags.
+
+      Wave 2 of the audit->enforce campaign (ADR-0032), promoted 2026-08-04.
 spec:
-  # Wave 2 of the audit->enforce campaign (ADR-0032), promoted 2026-08-04.
-  #
-  # The resource name keeps its `-audit` suffix ON PURPOSE. Two Grafana dashboards
-  # (security-overview, security-cosign-github-oidc) select on `policy="image-hygiene-audit"`;
-  # renaming for cosmetic accuracy would silently blank those panels. The suffix is a
-  # historical name, not a statement of enforcement.
-  #
-  # Gate evidence: swept all 168 in-scope Pods AND synthesized pod templates from every
-  # Deployment/StatefulSet/DaemonSet/Job/CronJob — 336 assertions, 0 failures. The template
-  # sweep is the gate, not the PolicyReport count; see the gate note in the RFC.
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: require-image-tag
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-              namespaceSelector:
-                # Reconciled to the canonical exclusion set (the wave-2 prerequisite).
-                # This list was missing cilium-secrets, default, external-secrets, keda and
-                # kyverno, so it covered five platform namespaces the other policies do not.
-                # The sweep found those five clean either way, so this is for consistency,
-                # not to dodge a failure: a platform-component bump in kyverno or keda should
-                # not be gated by an application image-hygiene rule.
-                matchExpressions: &applicationNamespaces
-                  - key: kubernetes.io/metadata.name
-                    operator: NotIn
-                    values:
-                      - arc-systems
-                      - cert-manager
-                      - cilium-secrets
-                      - cnpg-system
-                      - default
-                      - external-secrets
-                      - flux-system
-                      - keda
-                      - kube-node-lease
-                      - kube-public
-                      - kube-system
-                      - kyverno
-                      - longhorn-system
-                      - network
-                      - observability
-                      - renovate
-                      - security
-      validate:
-        message: "An image tag is required."
-        foreach:
-          - list: "request.object.spec.containers"
-            pattern:
-              image: "*:*"
-          - list: "request.object.spec.initContainers"
-            pattern:
-              image: "*:*"
-          - list: "request.object.spec.ephemeralContainers"
-            pattern:
-              image: "*:*"
-    - name: validate-image-tag
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-              namespaceSelector:
-                matchExpressions: *applicationNamespaces
-      validate:
-        message: "Using a mutable image tag e.g. 'latest' is not allowed."
-        foreach:
-          - list: "request.object.spec.containers"
-            pattern:
-              image: "!*:latest"
-          - list: "request.object.spec.initContainers"
-            pattern:
-              image: "!*:latest"
-          - list: "request.object.spec.ephemeralContainers"
-            pattern:
-              image: "!*:latest"
+  # `Deny` is the CEL spelling of validationFailureAction: Enforce.
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    # EXPLICIT controller kinds, not spec.autogen. ValidatingPolicy autogen emits
+    # nothing (probed every way on 2026-08-05/06: explicit podControllers list,
+    # single-controller list, block omitted — a Deployment and a CronJob with a
+    # tagless image all returned pass:0 fail:0 while the legacy policy caught both).
+    # The legacy policy carried NO autogen-controllers annotation, so Kyverno's
+    # default generated autogen-cronjob-* as well as autogen-* — this policy was the
+    # only one catching CronJob pod TEMPLATES at controller admission. jobs and
+    # cronjobs are listed here so that coverage is preserved rather than quietly
+    # narrowed to "caught at pod creation, at 3am, unattended".
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - arc-systems
+            - cert-manager
+            - cilium-secrets
+            - cnpg-system
+            - default
+            - external-secrets
+            - flux-system
+            - keda
+            - kube-node-lease
+            - kube-public
+            - kube-system
+            - kyverno
+            - longhorn-system
+            - network
+            - observability
+            - renovate
+            - security
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "deployments"
+          - "statefulsets"
+          - "daemonsets"
+      - apiGroups:
+          - "batch"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "jobs"
+          - "cronjobs"
+  variables:
+    - name: podSpec
+      expression: >-
+        object.kind == 'Pod' ? object.spec : (object.kind == 'CronJob' ?
+        object.spec.jobTemplate.spec.template.spec : object.spec.template.spec)
+    - name: allContainers
+      expression: >-
+        variables.podSpec.?containers.orValue([]) +
+        variables.podSpec.?initContainers.orValue([]) +
+        variables.podSpec.?ephemeralContainers.orValue([])
+  validations:
+    # `*:*` in the legacy pattern means "contains a colon" — it does not parse a
+    # reference, so a digest-only ref (foo@sha256:…) satisfied it too.
+    # contains(':') is faithful to that deliberately: narrowing it here would be a
+    # behaviour change smuggled into a dialect migration.
+    - expression: "variables.allContainers.all(c, c.image.contains(':'))"
+      message: "An image tag is required."
+    # `!*:latest` is an anchored negation of "ends with :latest". The
+    # digest-bearing variant (foo:latest@sha256:…) is deliberately NOT caught here
+    # — that is image-supply-chain-enforce/disallow-latest-tag-even-with-digest's
+    # job, and it was not this rule's job before the migration either.
+    - expression: "variables.allContainers.all(c, !c.image.endsWith(':latest'))"
+      message: "Using a mutable image tag e.g. 'latest' is not allowed."
