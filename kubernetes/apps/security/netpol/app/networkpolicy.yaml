@@ -1,10 +1,12 @@
 ---
 # Zero-trust INGRESS for the `security` namespace — the last wave-12 gap.
 #
-# STAGE 1 OF 2: these are ALLOW rules only. They are inert until the deny lands in
-# a separate commit, which is deliberate — the namespace hosts the Kyverno
-# admission webhook, so a missing allow here does not degrade one app, it fails
-# admission cluster-wide and blocks the very GitOps push that would fix it.
+# THESE POLICIES ENFORCE ON APPLY. An earlier revision of this header claimed they
+# were "stage 1 of 2, inert until the deny lands". That was wrong twice over: a
+# NetworkPolicy with `policyTypes: [Ingress]`, and equally a CiliumNetworkPolicy
+# with an `ingress:` block, put every selected endpoint into ingress default-deny
+# the moment they are admitted. There is no inert stage. Anything not listed below
+# is dropped.
 #
 # INGRESS ONLY, EGRESS DELIBERATELY UNTOUCHED. Observed egress needs the API
 # server, DNS, the envoy gateway VIP hairpin (network:10443, for image
@@ -12,18 +14,51 @@
 # for OSV/vulnerability feeds. That is a much larger surface with a much worse
 # failure mode; it gets its own wave and its own observation window.
 #
-# THE ALLOW LIST IS OBSERVED, NOT INFERRED. Derived from 1740 Hubble flows
-# captured across all six nodes on 2026-08-08, with zero DROPPED flows in the
-# sample (so the baseline was clean and nothing below is papering over an
-# existing break). Sources seen reaching this namespace, and nothing else:
+# HOW THIS ALLOW LIST WAS DERIVED, AND HOW THE FIRST ATTEMPT GOT IT WRONG.
+# The original list came from a single short Hubble capture ("1740 flows, zero
+# DROPPED") and was described as observed-not-inferred. A short capture cannot see
+# a caller that is low-frequency or event-driven, and it recorded zero drops only
+# because no policy existed yet — so "clean baseline" proved nothing about
+# coverage. It missed two real callers and took the CNPG-backed databases down:
+#   cnpg-system  polls each instance manager every ~10s. Blocking it left both
+#                Clusters in "Instance Status Extraction Error: HTTP communication
+#                issue", which stalled the dependency-track-db / guac-db
+#                Kustomizations and, through dependsOn, dependency-track, guac and
+#                forgejo/preview-host. Proven at the datapath:
+#                cnpg-system/cloudnative-pg -> security/dependency-track-db-1:8000
+#                policy-verdict:none INGRESS DENIED.
+#   network      envoy-internal fronts four HTTPRoutes into this namespace. No drop
+#                was ever observed for it because nobody happened to load a page in
+#                the 27 minutes the broken policy was live — absence of a drop is
+#                not evidence of reachability.
+# The list below is therefore derived from DECLARED intent (HTTPRoute backends,
+# other namespaces' egress NetworkPolicies, controller ownership) and only then
+# corroborated by flows. Adding a workload here that is reached from a new
+# namespace requires adding that namespace; a Hubble capture will not warn you
+# first.
+#
+# Callers, and why each is required:
 #   reserved:host        kubelet health probes on 9443/8081/8222/9090/8080/8000/
 #                        4954, and the API server itself when it runs on the
 #                        local node
-#   reserved:kube-apiserver  admission webhook calls to kyverno :9443
+#   reserved:kube-apiserver  admission/conversion webhooks: kyverno-svc:443,
+#                        kyverno-cleanup-controller:443, external-secrets-webhook
+#                        :443, trust-manager:443. These are the reason a mistake
+#                        here fails admission cluster-wide rather than degrading
+#                        one app — and the reason the cluster survived the broken
+#                        revision at all.
 #   observability        VMAgent scraping kyverno :8000 and dependency-track-db
 #                        :9187
 #   security             intra-namespace (guac pipeline -> nats :4222,
 #                        oci-collector -> collectsub :2782, apps -> their DBs)
+#   cnpg-system          CNPG operator -> instance manager :8000 on every managed
+#                        Cluster (see above)
+#   network              envoy-internal -> dependency-track-api-server:8080,
+#                        dependency-track-frontend:8080, visualizer:3000,
+#                        openbao:8200, policy-reporter:8080
+#   forgejo              CI runners POST SBOMs to dependency-track-api-server:8080,
+#                        already declared by their own egress policy
+#                        forgejo/networkpolicy.yaml:forgejo-runner-allow-dependency-track
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -64,3 +99,55 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: observability
+    # The CNPG operator polls every managed instance's instance-manager status
+    # endpoint (:8000) roughly every 10 seconds. Namespace-wide and unported on
+    # purpose: this is the controller that OWNS these databases, the port is an
+    # implementation detail of the operator/instance contract that moves between
+    # CNPG releases, and pinning it is how a chart bump turns into a stalled
+    # Kustomization at 3am.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+    # envoy-internal fronts four HTTPRoutes into this namespace (dependency-track
+    # API + frontend, guac visualizer, openbao, policy-reporter). Namespace-wide
+    # rather than a port list: the gateway can only reach a pod that a reviewed
+    # HTTPRoute already points at, so enumerating ports here buys almost nothing
+    # and silently breaks the next Route that uses a different one.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: network
+---
+# Forgejo CI runners uploading SBOMs. Kept as its OWN policy, selecting only the
+# API server, so the grant stays exactly as narrow as the counterpart egress rule
+# in forgejo/networkpolicy.yaml (forgejo-runner-allow-dependency-track): one source
+# workload, one destination workload, one port. Folding it into the namespace-wide
+# policy above would have opened :8080 from forgejo to every pod here — which is
+# also dependency-track-frontend, policy-reporter, graphql-server and the
+# external-secrets metrics endpoint.
+#
+# This is an event-driven path: it carries traffic only while a build is uploading,
+# so it will not appear in a Hubble capture taken between CI runs. It is listed
+# here because forgejo DECLARED it, not because it was observed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: security-allow-forgejo-runner-dependency-track
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: dependency-track-api-server
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: forgejo
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: forgejo-runner
+      ports:
+        - protocol: TCP
+          port: 8080
