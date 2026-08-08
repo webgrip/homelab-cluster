@@ -1,0 +1,42 @@
+---
+# Kyverno has NO RBAC for monitoring.coreos.com out of the box, so it cannot read
+# ServiceMonitors, PodMonitors or PrometheusRules for background reporting.
+#
+# SECOND INSTANCE OF THE BUG CLASS IN kyverno:rbac-kinds-read — read that one too.
+# It explains the note carried in secrets-observability-ops-enforce since wave 7:
+# "none of these 19 appeared in any PolicyReport: the background scanner emits no
+# reports for ServiceMonitor, PodMonitor or PrometheusRule, so this policy read
+# '0 fails' throughout." That was recorded as a property of the scanner. It was
+# not. Kyverno simply lacked permission to list those kinds, so the policy was
+# reporting-blind while enforcing correctly at admission — which is exactly why
+# the wave-7 gate had to use an offline `kyverno apply` sweep to find the 19
+# failures that PolicyReports never showed.
+#
+# SURFACED BY THE CEL MIGRATION (2026-08-08), not by anything changing. The legacy
+# ClusterPolicy failed silently; the CEL ValidatingPolicy reports
+# `RBACPermissionsGranted: False` with the exact missing verbs, so the gap became
+# visible the moment the policy was ported. Admission was never affected —
+# WebhookConfigured stayed True and a tagless ServiceMonitor was still denied
+# throughout — but `ready` was false, and a policy that cannot report is a policy
+# whose dashboards and PolicyReport-based alerts are quietly empty.
+#
+# Read-only, and only the kinds our policies match on.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno:monitor-kinds-read
+  labels:
+    rbac.kyverno.io/aggregate-to-admission-controller: "true"
+    rbac.kyverno.io/aggregate-to-background-controller: "true"
+    rbac.kyverno.io/aggregate-to-reports-controller: "true"
+rules:
+  - apiGroups:
+      - monitoring.coreos.com
+    resources:
+      - servicemonitors
+      - podmonitors
+      - prometheusrules
+    verbs:
+      - get
+      - list
+      - watch
