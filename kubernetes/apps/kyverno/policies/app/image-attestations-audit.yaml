@@ -21,7 +21,13 @@ spec:
   validationFailureAction: Audit
   background: false # verifyImages requires admission context
   webhookTimeoutSeconds: 30
-  failurePolicy: Fail
+  # Ignore, not Fail (changed 2026-08-09) — same reasoning as image-verify-audit.
+  # failurePolicy covers WEBHOOK errors (registry unreachable, cosign/attestation fetch
+  # timeout), not policy verdicts, so under Fail an Audit policy could hard-deny
+  # admission for a reason it is explicitly not meant to block on. The two sibling
+  # verifyImages policies (image-cve-budget-audit, image-verify-harbor-audit) already
+  # use Ignore; these two were the outliers, with no recorded reason.
+  failurePolicy: Ignore
   rules:
     - name: verify-webgrip-ghcr-images
       match:
