@@ -28,7 +28,7 @@ spec:
     # runnerImage below already uses; the digest is the multi-arch index, so
     # both amd64 and arm64 nodes still resolve their own manifest.
     image:
-      tag: "0.2.0-rc.14@sha256:0c84e0d29f96329d17008acfc00b3937581bcc7ce2bf62777d5213cca15ba409"
+      tag: "0.2.0-rc.17@sha256:154ac590b7bd17d04d254268218a0bc8b626b9ab50bc929b5de627a6e3a2aa18"
     # Routing and roster as a FILE (mounted at /etc/ploeg/ploeg.yaml), not the
     # PLOEG_TARGET_MAP / PLOEG_TEAM_MAP / PLOEG_TEAM_PLANS env-var DSLs.
     #
@@ -283,15 +283,23 @@ spec:
           # a READING Role's verdict counts, so the loop cannot grade its own
           # work.
           #
-          # Be precise about the money bound: it reads shifts.spent, which is
+          # Be precise about the money bound: it reads shifts.spent, which was
           # 0.0000 on every row ever written because the deployed adapters
-          # report no usage, so on rc.14 that first bound is INERT. What
-          # actually caps this today is the per-run key ceiling LiteLLM
-          # enforces (2.00 for the builder, 0.40 for the reviewer) multiplied
-          # by the round count: 1 writer + 1 reader + 2 fix rounds of the same
-          # pair = 6 runs, worst case $7.20, inside the $8 pool. The pool
-          # becomes a real second bound when ploegd rc.16 lands and settles
-          # each run's cost from the gateway.
+          # reported no usage — so through rc.14 that first bound was INERT,
+          # and the note here said the pool would become real "when ploegd
+          # rc.16 lands". It has: rc.16 settles each run's cost from the
+          # gateway, so ClaimRole's `budget − spent − reserved` now subtracts a
+          # number that moves. Watch the FIRST loop that actually runs to
+          # completion on this tag — this bound has never once fired in
+          # production, and a Round denied for money looks like a stall.
+          #
+          # The margin it now has to fit inside is thin but real. The per-run
+          # key ceiling LiteLLM enforces (2.00 for the builder, 0.40 for the
+          # reviewer) times the round count — 1 writer + 1 reader + 2 fix
+          # rounds of the same pair = 6 runs — is a hard worst case of $7.20
+          # against the $8 pool. 80 cents, and LiteLLM still enforces the
+          # per-run ceiling underneath, so an overrun denies a Round rather
+          # than overspending the pool.
           maxFixRounds: 2
           plan:
             - roles:
@@ -320,9 +328,11 @@ spec:
         # without anyone touching it; the real figure is $6 per run.
         #
         # An explicit `perRunBudget` key that says this in the manifest instead
-        # of in a comment lands with chart rc.16 — rc.14's values.schema.json
-        # is additionalProperties:false, so setting it today fails validation
-        # outright.
+        # of in a comment is available as of chart rc.16, deliberately not
+        # taken here yet: the schema still lists `budget` as REQUIRED, so
+        # adopting it today means carrying both keys at the same number, which
+        # trades one ambiguous word for two redundant ones. It becomes the
+        # clear win when `budget` is made optional for a plan-less team.
         - name: silver
           model: litellm_proxy/claude-sonnet-5
           budget: "6"
