@@ -14,8 +14,32 @@
 #
 # Deliberately left behind at Audit: require-namespace-ownership-labels,
 # require-resourcequota, require-networkpolicy and the add-application-psa-labels mutate.
-# Those are wave 12; require-namespace-ownership-labels still has one live failure (the
-# `drawio` namespace carries no webgrip.io/exposure label).
+# Those are wave 12.
+#
+# WAVE-12 BACKLOG, MEASURED 2026-08-09. This block previously claimed the only live
+# failure was "the `drawio` namespace carries no webgrip.io/exposure label". That was
+# stale and had been carried forward unchecked through the CEL migration: `drawio` is
+# SUSPENDED in kubernetes/apps/kustomization.yaml and the namespace does not exist, so
+# it cannot fail anything. The real backlog is 15 failures — five namespaces, each
+# failing all three rules:
+#
+#   cilium-secrets     0 objects, NOT Flux-owned (Cilium creates it)
+#   external-secrets   0 objects, Flux-owned
+#   kyverno            0 objects, Flux-owned
+#   default            8 objects, Kubernetes built-in
+#   keda               21 objects, a real workload
+#
+# That changes what "fixing" means. Three of the five are EMPTY SHELLS — Kyverno and
+# ESO both run in the `security` namespace, so `kyverno` and `external-secrets` look
+# vestigial from before that move. For those the honest remedy is probably deletion
+# (which clears 6 of the 15) rather than adding ownership labels, a NetworkPolicy and
+# a ResourceQuota to namespaces holding nothing. `cilium-secrets` is not Flux-owned
+# and is managed by Cilium, so it wants an exclusion, not governance. Only `default`
+# and `keda` are genuine candidates for the wave-12 treatment.
+#
+# Deleting the empties is NOT done here: an empty namespace can still be a
+# targetNamespace for a Kustomization that currently renders nothing, and confirming
+# that needs more than the grep this note is based on.
 #
 # 1:1 — no split needed. All three rules share one scope (kind NetworkPolicy, all
 # namespaces) and NONE is waived by any PolicyException, so the CEL whole-policy waiver
