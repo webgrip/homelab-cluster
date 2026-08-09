@@ -282,8 +282,18 @@ spec:
 # and same reasoning as forgejo-runner-allow-openbao above: the
 # techdocs-deploy-backstage-s3 workflow (ADR-0039) publishes the built docs site into
 # the Garage `techdocs` bucket, whose ClusterIP falls in the blanket cross-namespace
-# exclusion. Scoped to the CI runner only; forgejo-agent-runner stays excluded
-# (ADR-0048 — LLM-authored workflow code must not reach the object store).
+# exclusion.
+#
+# Covers BOTH forgejo-runner AND forgejo-dind: host-mode steps run in the runner
+# pod, but jobs that declare `container:` (the techdocs jobs do) run as Docker
+# containers on the SHARED per-node dind DaemonSet — their traffic carries the
+# forgejo-dind pod identity, not the runner's. A runner-only rule let the publish
+# job dial S3 into a black hole for 5 minutes (run 1028, 2026-08-09).
+#
+# forgejo-agent-runner stays excluded (ADR-0048 — LLM-authored workflow code must
+# not reach the object store): it runs its OWN in-pod dind sidecar
+# (DOCKER_HOST=localhost:2376) and never uses the shared forgejo-dind daemon, so
+# its jobs keep the agent-runner pod identity and match neither label here.
 #
 # Reachability is not authority: the publish key only grants read/write on the
 # techdocs bucket, nothing else in Garage.
@@ -295,8 +305,12 @@ metadata:
     app.kubernetes.io/part-of: forgejo
 spec:
   podSelector:
-    matchLabels:
-      app.kubernetes.io/name: forgejo-runner
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - forgejo-runner
+          - forgejo-dind
   policyTypes:
     - Egress
   egress:
