@@ -30,6 +30,30 @@ spec:
       ports:
         - protocol: TCP
           port: 3900
+    # Backstage TechDocs reader -> S3 API (ADR-0039): `builder: external` serves
+    # prebuilt docs straight from the techdocs bucket. Read-only key; the matching
+    # EGRESS allow lives on backstage's side (its egress excludes the pod CIDR).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: backstage
+      ports:
+        - protocol: TCP
+          port: 3900
+    # Forgejo CI runner -> S3 API (ADR-0039): `techdocs-cli publish` writes the
+    # built docs into the techdocs bucket. Scoped to the CI runner's label so
+    # forgejo-agent-runner (LLM-authored workloads, ADR-0048) stays excluded —
+    # same reasoning as forgejo-runner-allow-openbao on the forgejo side.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: forgejo
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: forgejo-runner
+      ports:
+        - protocol: TCP
+          port: 3900
     # Metrics scraping.
     - from:
         - namespaceSelector:

@@ -1,0 +1,147 @@
+---
+# TechDocs bucket + keys (ADR-0039). Same do-once, gated, idempotent shape as
+# bootstrap.job.yaml, and deliberately a SEPARATE Job: the harbor bootstrap is
+# done and stable, and `force: true` on this ks re-creates every Job on any spec
+# change — keeping them apart means iterating on techdocs never re-runs the
+# layout-assign path.
+#
+# Mints TWO keys, least-privilege per consumer (plan-backstage-techdocs Phase 1):
+#   techdocs-publish  read+write  — CI (`techdocs-cli publish` from the Forgejo runner)
+#   techdocs-read     read-only   — Backstage (`builder: external` serves, never writes)
+# Both land in one Secret `garage-techdocs-keys`; techdocs.pushsecret.yaml mirrors
+# it to OpenBao secret/garage/techdocs, from which the backstage and forgejo
+# namespaces each pull only the half they need.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: garage-techdocs-bootstrap
+  namespace: garage
+  labels:
+    cleanup.webgrip.io/retry-failed: "true"
+spec:
+  backoffLimit: 4
+  template:
+    spec:
+      serviceAccountName: garage-bootstrap
+      automountServiceAccountToken: true
+      restartPolicy: Never
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: bootstrap
+          image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.36.2@sha256:44ef4942e171939b9c665a4a84beb80e2dcdb9a24330d4651cfdfd2e9deecc47
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: HOME
+              value: /tmp
+            - name: NAMESPACE
+              value: garage
+            - name: ADMIN
+              value: http://garage-s3.garage.svc.cluster.local:3903
+            - name: BUCKET
+              value: techdocs
+            - name: KEY_SECRET
+              value: garage-techdocs-keys
+            - name: ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: garage-admin
+                  key: admin_token
+          command:
+            - /bin/sh
+            - -ceu
+            - |
+              # This ks has NO postBuild.substituteFrom, so braced ${VAR} survives
+              # to the shell (same contract as bootstrap.job.yaml).
+              auth="Authorization: Bearer ${ADMIN_TOKEN}"
+              api() {
+                curl -fsS --connect-timeout 5 --max-time 60 \
+                  -H "${auth}" -H 'Content-Type: application/json' "$@"
+              }
+
+              # Any HTTP status proves the API is up; only connection failure
+              # (000) means keep waiting. Layout is assigned by the harbor
+              # bootstrap Job; this one only ever adds a bucket + keys.
+              echo "== waiting for the admin API to answer"
+              ready=no
+              for i in $(seq 1 60); do
+                code="$(curl -sS -o /dev/null -w '%{http_code}' \
+                  --connect-timeout 5 --max-time 10 "${ADMIN}/metrics" 2>/dev/null || echo 000)"
+                if [ "${code}" != "000" ]; then
+                  echo "  admin API answering (HTTP ${code})"; ready=yes; break
+                fi
+                echo "  no connection yet (${i}/60)"; sleep 5
+              done
+              [ "${ready}" = yes ] || { echo "admin API never answered" >&2; exit 1; }
+
+              echo "== 1. bucket ${BUCKET}"
+              # Capture the bucket ID: AllowBucketKey takes the ID (hex), NOT the
+              # global alias — passing the alias silently grants nothing.
+              info="$(api "${ADMIN}/v2/GetBucketInfo?globalAlias=${BUCKET}" 2>/dev/null || true)"
+              bucket_id="$(echo "${info}" | jq -r '.id // empty')"
+              if [ -n "${bucket_id}" ]; then
+                echo "  already exists (${bucket_id})"
+              else
+                created_bucket="$(api -X POST "${ADMIN}/v2/CreateBucket" -d "{\"globalAlias\":\"${BUCKET}\"}")"
+                bucket_id="$(echo "${created_bucket}" | jq -r '.id // empty')"
+                [ -n "${bucket_id}" ] || { echo "bucket creation returned no id" >&2; exit 1; }
+                echo "  created (${bucket_id})"
+              fi
+
+              echo "== 2. access keys"
+              if kubectl -n "${NAMESPACE}" get secret "${KEY_SECRET}" >/dev/null 2>&1; then
+                echo "  ${KEY_SECRET} already exists — not minting a second key pair"
+                echo "  (new keys would orphan the ones CI/Backstage already use)"
+                echo "== done"
+                exit 0
+              fi
+
+              # mint_key NAME READ WRITE -> "akid askey" on stdout, grants applied.
+              mint_key() {
+                _name="$1"; _read="$2"; _write="$3"
+                _created="$(api -X POST "${ADMIN}/v2/CreateKey" -d "{\"name\":\"${_name}\"}")"
+                _akid="$(echo "${_created}" | jq -r '.accessKeyId')"
+                _askey="$(echo "${_created}" | jq -r '.secretAccessKey')"
+                [ -n "${_akid}" ] && [ "${_akid}" != "null" ] || { echo "key creation for ${_name} returned no id" >&2; return 1; }
+                api -X POST "${ADMIN}/v2/AllowBucketKey" \
+                  -d "{\"bucketId\":\"${bucket_id}\",\"accessKeyId\":\"${_akid}\",\"permissions\":{\"read\":${_read},\"write\":${_write},\"owner\":false}}" >/dev/null
+                echo "${_akid} ${_askey}"
+              }
+
+              echo "  minting techdocs-publish (read+write)"
+              publish_pair="$(mint_key techdocs-publish true true)"
+              echo "  minting techdocs-read (read-only)"
+              read_pair="$(mint_key techdocs-read true false)"
+
+              kubectl -n "${NAMESPACE}" create secret generic "${KEY_SECRET}" \
+                --from-literal=publish_access_key_id="$(echo "${publish_pair}" | cut -d' ' -f1)" \
+                --from-literal=publish_secret_access_key="$(echo "${publish_pair}" | cut -d' ' -f2)" \
+                --from-literal=read_access_key_id="$(echo "${read_pair}" | cut -d' ' -f1)" \
+                --from-literal=read_secret_access_key="$(echo "${read_pair}" | cut -d' ' -f2)" \
+                --dry-run=client -o yaml | kubectl apply -f -
+              echo "  created ${KEY_SECRET}"
+
+              echo "== done"
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

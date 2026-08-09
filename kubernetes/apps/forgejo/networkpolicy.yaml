@@ -277,3 +277,36 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+---
+# Third narrow hole in forgejo-allow-egress's cross-namespace exclusion, same shape
+# and same reasoning as forgejo-runner-allow-openbao above: the
+# techdocs-deploy-backstage-s3 workflow (ADR-0039) publishes the built docs site into
+# the Garage `techdocs` bucket, whose ClusterIP falls in the blanket cross-namespace
+# exclusion. Scoped to the CI runner only; forgejo-agent-runner stays excluded
+# (ADR-0048 — LLM-authored workflow code must not reach the object store).
+#
+# Reachability is not authority: the publish key only grants read/write on the
+# techdocs bucket, nothing else in Garage.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: forgejo-runner-allow-garage
+  labels:
+    app.kubernetes.io/part-of: forgejo
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: forgejo-runner
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: garage
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: garage
+      ports:
+        - protocol: TCP
+          port: 3900

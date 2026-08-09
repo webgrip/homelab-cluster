@@ -69,6 +69,17 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: backstage
+    # TechDocs reader -> Garage S3 (ADR-0039). Needs its own rule because the
+    # blanket internet-egress rule below excludes the pod CIDR, and Cilium
+    # enforces on the post-DNAT backend identity — a CIDR rule for the Service
+    # IP would silently never match (the 2026-07-17 trap).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: garage
+      ports:
+        - protocol: TCP
+          port: 3900
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
