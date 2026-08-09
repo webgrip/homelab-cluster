@@ -1,4 +1,16 @@
 ---
+# Restructured for the CEL migration (2026-08-09). CEL ValidatingPolicies have no named
+# rules, so results carry `policy` but no `rule`, and every assertion is ONE VERDICT PER
+# RESOURCE. A leftover `rule:` would not fail loudly — it scores Pass/Excluded, green
+# while asserting nothing.
+#
+# The collapse is visible here: `app/cluster-admin-binding` used to be recorded twice —
+# fail on disallow-cluster-admin-rolebindings, pass on
+# disallow-default-serviceaccount-rolebindings. At policy level it is a single FAIL,
+# because any failing validation fails the policy. Same for `app/default-sa-binding`,
+# `default-sa-clusterbinding` and `app-builder-cluster-admin`. Per-rule attribution is no
+# longer expressible; the differential over all 374 live RBAC objects is what establishes
+# the two dialects agree (227-resource intersection, zero disagreements).
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -8,71 +20,44 @@ policies:
 resources:
   - resources.yaml
 results:
+  # --- fail cases -----------------------------------------------------------------
   - policy: rbac-least-privilege-enforce
-    rule: disallow-wildcards-in-app-roles
     resources:
       - app/wildcard-reader
       - app/wildcard-in-second-rule
     kind: Role
     result: fail
-  # The pass case that exposes a rule which denies everything.
   - policy: rbac-least-privilege-enforce
-    rule: disallow-wildcards-in-app-roles
+    resources:
+      - app/default-sa-binding
+      - app/cluster-admin-binding
+    kind: RoleBinding
+    result: fail
+  - policy: rbac-least-privilege-enforce
+    resources:
+      - default-sa-clusterbinding
+      - app-builder-cluster-admin
+    kind: ClusterRoleBinding
+    result: fail
+  # --- pass cases -----------------------------------------------------------------
+  # These are not decoration. The original wildcards rule used `operator: AnyIn` with
+  # `value: ["*"]`, which Kyverno treats as a GLOB — it denied EVERY Role in the cluster
+  # and read as "0 fails" because no PolicyReport covered Role at the time. A policy that
+  # rejects everything satisfies a fail-case-only gate perfectly.
+  - policy: rbac-least-privilege-enforce
     resources:
       - app/specific-reader
       - app/specific-with-resourcenames
     kind: Role
     result: pass
   - policy: rbac-least-privilege-enforce
-    rule: disallow-default-serviceaccount-rolebindings
-    resources:
-      - app/default-sa-binding
-    kind: RoleBinding
-    result: fail
-  - policy: rbac-least-privilege-enforce
-    rule: disallow-cluster-admin-rolebindings
-    resources:
-      - app/cluster-admin-binding
-    kind: RoleBinding
-    result: fail
-  - policy: rbac-least-privilege-enforce
-    rule: disallow-default-serviceaccount-clusterbindings
-    resources:
-      - default-sa-clusterbinding
-    kind: ClusterRoleBinding
-    result: fail
-  - policy: rbac-least-privilege-enforce
-    rule: disallow-cluster-admin-clusterbindings
-    resources:
-      - app-builder-cluster-admin
-    kind: ClusterRoleBinding
-    result: fail
-  # --- pass cases for the enforcing policy -------------------------------------
-  - policy: rbac-least-privilege-enforce
-    rule: disallow-default-serviceaccount-rolebindings
     resources:
       - app/named-sa-binding
-      - app/cluster-admin-binding
     kind: RoleBinding
     result: pass
   - policy: rbac-least-privilege-enforce
-    rule: disallow-cluster-admin-rolebindings
-    resources:
-      - app/named-sa-binding
-      - app/default-sa-binding
-    kind: RoleBinding
-    result: pass
-  - policy: rbac-least-privilege-enforce
-    rule: disallow-default-serviceaccount-clusterbindings
     resources:
       - named-sa-clusterbinding
-      - app-builder-cluster-admin
-    kind: ClusterRoleBinding
-    result: pass
-  - policy: rbac-least-privilege-enforce
-    rule: disallow-cluster-admin-clusterbindings
-    resources:
-      - named-sa-clusterbinding
-      - default-sa-clusterbinding
+      - no-subjects-clusterbinding
     kind: ClusterRoleBinding
     result: pass

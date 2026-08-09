@@ -168,3 +168,24 @@ rules:
       - "secrets"
     verbs:
       - "*"
+---
+# PASS, added with the CEL migration (2026-08-09). A ClusterRoleBinding with NO subjects.
+#
+# Grounded in the live corpus, not invented: `system:node` is the only such object in the
+# cluster (Kubernetes populates its subjects dynamically), and it is the single row where
+# the two dialects differed in the migration differential. Legacy `foreach: list:
+# request.object.subjects[]` over an empty list emits no result at all; the CEL
+# `!subjects.exists(...)` evaluates to true and emits a pass. Both ADMIT the resource —
+# the difference is reporting, not behaviour.
+#
+# Pinned because the CEL form must reach a VERDICT here rather than raising: under
+# validationActions: [Deny] a CEL runtime error blocks admission just like a violation,
+# and `system:node` is a control-plane binding.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: no-subjects-clusterbinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: some-role
