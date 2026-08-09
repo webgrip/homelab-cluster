@@ -1,0 +1,29 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# The human docs surface (ADR-0052): docs.<domain> -> envoy-internal -> Garage's
+# web endpoint serving the Zensical-built `docs-site` bucket. Split from the
+# garage app ks because this needs postBuild substitution for ${SECRET_DOMAIN},
+# which the app/bootstrap ks deliberately avoid (envsubst would blank the inline
+# shell in their Jobs).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: garage-docs-site
+spec:
+  dependsOn:
+    - name: garage
+  interval: 1h
+  retryInterval: 5m
+  path: ./kubernetes/apps/garage/docs-site/app
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-secrets
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: garage
+  timeout: 5m
+  wait: true

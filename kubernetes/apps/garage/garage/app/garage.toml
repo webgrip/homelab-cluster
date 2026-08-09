@@ -39,6 +39,15 @@ api_bind_addr = "[::]:3900"
 # No root_domain: clients use path-style addressing (Harbor sets
 # disableredirect + path style), so virtual-host routing is unnecessary.
 
+[s3_web]
+# Serves website-enabled buckets by Host header (ADR-0052: the docs-site bucket).
+# The HTTPRoute rewrites `docs.<domain>` to the bare bucket alias `docs-site`
+# before it reaches this port, so the SOPS-guarded domain literal never appears
+# in Garage config. root_domain is mandatory but unused — vhost matching hits
+# the exact global alias first; `.invalid` can never collide with a real Host.
+bind_addr   = "[::]:3902"
+root_domain = ".web.garage.invalid"
+
 [admin]
 api_bind_addr = "[::]:3903"
 # admin_token comes from GARAGE_ADMIN_TOKEN_FILE (see garage.yaml).

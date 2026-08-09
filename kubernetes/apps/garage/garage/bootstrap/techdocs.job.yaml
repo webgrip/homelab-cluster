@@ -1,16 +1,27 @@
 ---
-# TechDocs bucket + keys (ADR-0039). Same do-once, gated, idempotent shape as
-# bootstrap.job.yaml, and deliberately a SEPARATE Job: the harbor bootstrap is
-# done and stable, and `force: true` on this ks re-creates every Job on any spec
-# change — keeping them apart means iterating on techdocs never re-runs the
-# layout-assign path.
+# TechDocs buckets + keys (ADR-0039 + ADR-0052). Same do-once, gated, idempotent
+# shape as bootstrap.job.yaml, and deliberately a SEPARATE Job: the harbor
+# bootstrap is done and stable, and `force: true` on this ks re-creates every Job
+# on any spec change — keeping them apart means iterating on techdocs never
+# re-runs the layout-assign path.
 #
-# Mints TWO keys, least-privilege per consumer (plan-backstage-techdocs Phase 1):
-#   techdocs-publish  read+write  — CI (`techdocs-cli publish` from the Forgejo runner)
-#   techdocs-read     read-only   — Backstage (`builder: external` serves, never writes)
+# Two buckets, one key pair:
+#   techdocs   — TechDocs artifact store (`techdocs-cli publish`, entity-keyed);
+#                Backstage's external builder reads it (ADR-0039, deferred).
+#   docs-site  — the Zensical-built human site (ADR-0052), website-enabled and
+#                served anonymously via Garage's web endpoint (:3902) behind the
+#                docs HTTPRoute. Web serving needs no key; the grants below are
+#                for CI writes (publish) and debugging reads (read).
+# Keys, least-privilege per consumer (plan-backstage-techdocs Phase 1):
+#   techdocs-publish  read+write on both  — CI (publish artifact + sync site)
+#   techdocs-read     read-only  on both  — Backstage / verification
 # Both land in one Secret `garage-techdocs-keys`; techdocs.pushsecret.yaml mirrors
 # it to OpenBao secret/garage/techdocs, from which the backstage and forgejo
 # namespaces each pull only the half they need.
+#
+# Every step is guarded on current state: buckets/website/grants converge on every
+# re-run; the key pair is minted exactly once (a re-mint would orphan the keys
+# CI/Backstage already hold).
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -45,6 +56,8 @@ spec:
               value: http://garage-s3.garage.svc.cluster.local:3903
             - name: BUCKET
               value: techdocs
+            - name: DOCS_BUCKET
+              value: docs-site
             - name: KEY_SECRET
               value: garage-techdocs-keys
             - name: ADMIN_TOKEN
@@ -66,7 +79,7 @@ spec:
 
               # Any HTTP status proves the API is up; only connection failure
               # (000) means keep waiting. Layout is assigned by the harbor
-              # bootstrap Job; this one only ever adds a bucket + keys.
+              # bootstrap Job; this one only ever adds buckets + keys.
               echo "== waiting for the admin API to answer"
               ready=no
               for i in $(seq 1 60); do
@@ -79,52 +92,77 @@ spec:
               done
               [ "${ready}" = yes ] || { echo "admin API never answered" >&2; exit 1; }
 
-              echo "== 1. bucket ${BUCKET}"
-              # Capture the bucket ID: AllowBucketKey takes the ID (hex), NOT the
-              # global alias — passing the alias silently grants nothing.
-              info="$(api "${ADMIN}/v2/GetBucketInfo?globalAlias=${BUCKET}" 2>/dev/null || true)"
-              bucket_id="$(echo "${info}" | jq -r '.id // empty')"
-              if [ -n "${bucket_id}" ]; then
-                echo "  already exists (${bucket_id})"
-              else
-                created_bucket="$(api -X POST "${ADMIN}/v2/CreateBucket" -d "{\"globalAlias\":\"${BUCKET}\"}")"
-                bucket_id="$(echo "${created_bucket}" | jq -r '.id // empty')"
-                [ -n "${bucket_id}" ] || { echo "bucket creation returned no id" >&2; exit 1; }
-                echo "  created (${bucket_id})"
-              fi
-
-              echo "== 2. access keys"
-              if kubectl -n "${NAMESPACE}" get secret "${KEY_SECRET}" >/dev/null 2>&1; then
-                echo "  ${KEY_SECRET} already exists — not minting a second key pair"
-                echo "  (new keys would orphan the ones CI/Backstage already use)"
-                echo "== done"
-                exit 0
-              fi
-
-              # mint_key NAME READ WRITE -> "akid askey" on stdout, grants applied.
-              mint_key() {
-                _name="$1"; _read="$2"; _write="$3"
-                _created="$(api -X POST "${ADMIN}/v2/CreateKey" -d "{\"name\":\"${_name}\"}")"
-                _akid="$(echo "${_created}" | jq -r '.accessKeyId')"
-                _askey="$(echo "${_created}" | jq -r '.secretAccessKey')"
-                [ -n "${_akid}" ] && [ "${_akid}" != "null" ] || { echo "key creation for ${_name} returned no id" >&2; return 1; }
-                api -X POST "${ADMIN}/v2/AllowBucketKey" \
-                  -d "{\"bucketId\":\"${bucket_id}\",\"accessKeyId\":\"${_akid}\",\"permissions\":{\"read\":${_read},\"write\":${_write},\"owner\":false}}" >/dev/null
-                echo "${_akid} ${_askey}"
+              # ensure_bucket ALIAS -> prints the bucket ID. AllowBucketKey takes
+              # the ID (hex), NOT the global alias — the alias silently grants
+              # nothing.
+              ensure_bucket() {
+                _alias="$1"
+                _info="$(api "${ADMIN}/v2/GetBucketInfo?globalAlias=${_alias}" 2>/dev/null || true)"
+                _id="$(echo "${_info}" | jq -r '.id // empty')"
+                if [ -z "${_id}" ]; then
+                  _created="$(api -X POST "${ADMIN}/v2/CreateBucket" -d "{\"globalAlias\":\"${_alias}\"}")"
+                  _id="$(echo "${_created}" | jq -r '.id // empty')"
+                  [ -n "${_id}" ] || { echo "bucket creation for ${_alias} returned no id" >&2; return 1; }
+                  echo "  created ${_alias} (${_id})" >&2
+                else
+                  echo "  ${_alias} exists (${_id})" >&2
+                fi
+                echo "${_id}"
               }
 
-              echo "  minting techdocs-publish (read+write)"
-              publish_pair="$(mint_key techdocs-publish true true)"
-              echo "  minting techdocs-read (read-only)"
-              read_pair="$(mint_key techdocs-read true false)"
+              echo "== 1. buckets"
+              bucket_id="$(ensure_bucket "${BUCKET}")"
+              docs_bucket_id="$(ensure_bucket "${DOCS_BUCKET}")"
 
-              kubectl -n "${NAMESPACE}" create secret generic "${KEY_SECRET}" \
-                --from-literal=publish_access_key_id="$(echo "${publish_pair}" | cut -d' ' -f1)" \
-                --from-literal=publish_secret_access_key="$(echo "${publish_pair}" | cut -d' ' -f2)" \
-                --from-literal=read_access_key_id="$(echo "${read_pair}" | cut -d' ' -f1)" \
-                --from-literal=read_secret_access_key="$(echo "${read_pair}" | cut -d' ' -f2)" \
-                --dry-run=client -o yaml | kubectl apply -f -
-              echo "  created ${KEY_SECRET}"
+              echo "== 2. website access on ${DOCS_BUCKET}"
+              # Idempotent: UpdateBucket converges the flag on every re-run. The
+              # web endpoint (:3902) serves this bucket anonymously by Host; the
+              # HTTPRoute rewrites the public hostname to the bare alias.
+              api -X POST "${ADMIN}/v2/UpdateBucket?id=${docs_bucket_id}" \
+                -d '{"websiteAccess":{"enabled":true,"indexDocument":"index.html","errorDocument":"404.html"}}' >/dev/null
+              echo "  website access enabled (index.html / 404.html)"
+
+              # grant KEY_ID BUCKET_ID READ WRITE — idempotent (re-allow is a no-op).
+              grant() {
+                api -X POST "${ADMIN}/v2/AllowBucketKey" \
+                  -d "{\"bucketId\":\"$2\",\"accessKeyId\":\"$1\",\"permissions\":{\"read\":$3,\"write\":$4,\"owner\":false}}" >/dev/null
+              }
+
+              echo "== 3. access keys"
+              if kubectl -n "${NAMESPACE}" get secret "${KEY_SECRET}" >/dev/null 2>&1; then
+                echo "  ${KEY_SECRET} exists — not minting again; converging grants"
+                keys="$(api "${ADMIN}/v2/ListKeys")"
+                pub_id="$(echo "${keys}" | jq -r '.[] | select(.name=="techdocs-publish") | .id')"
+                read_id="$(echo "${keys}" | jq -r '.[] | select(.name=="techdocs-read") | .id')"
+                [ -n "${pub_id}" ] && [ -n "${read_id}" ] || { echo "expected keys missing from Garage" >&2; exit 1; }
+              else
+                mint_key() {
+                  _created="$(api -X POST "${ADMIN}/v2/CreateKey" -d "{\"name\":\"$1\"}")"
+                  echo "${_created}" | jq -r '.accessKeyId + " " + .secretAccessKey'
+                }
+                echo "  minting techdocs-publish (read+write)"
+                publish_pair="$(mint_key techdocs-publish)"
+                echo "  minting techdocs-read (read-only)"
+                read_pair="$(mint_key techdocs-read)"
+                pub_id="$(echo "${publish_pair}" | cut -d' ' -f1)"
+                read_id="$(echo "${read_pair}" | cut -d' ' -f1)"
+                [ -n "${pub_id}" ] && [ "${pub_id}" != "null" ] || { echo "key mint failed" >&2; exit 1; }
+
+                kubectl -n "${NAMESPACE}" create secret generic "${KEY_SECRET}" \
+                  --from-literal=publish_access_key_id="${pub_id}" \
+                  --from-literal=publish_secret_access_key="$(echo "${publish_pair}" | cut -d' ' -f2)" \
+                  --from-literal=read_access_key_id="${read_id}" \
+                  --from-literal=read_secret_access_key="$(echo "${read_pair}" | cut -d' ' -f2)" \
+                  --dry-run=client -o yaml | kubectl apply -f -
+                echo "  created ${KEY_SECRET}"
+              fi
+
+              echo "== 4. grants (converged every run)"
+              grant "${pub_id}"  "${bucket_id}"      true true
+              grant "${read_id}" "${bucket_id}"      true false
+              grant "${pub_id}"  "${docs_bucket_id}" true true
+              grant "${read_id}" "${docs_bucket_id}" true false
+              echo "  publish=rw read=ro on ${BUCKET} + ${DOCS_BUCKET}"
 
               echo "== done"
           resources:
