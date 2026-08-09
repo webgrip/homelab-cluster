@@ -418,6 +418,32 @@
       allowedVersions: "<=3.14.2",
     },
     {
+      // Kyverno chart 3.10 ships Kyverno 1.20, which REMOVES the legacy kyverno.io/v1
+      // ClusterPolicy API. 22 of those are still live in kubernetes/apps/kyverno/policies/app/
+      // (83 rules) pending the CEL migration; taking 1.20 before that finishes deletes the
+      // policy estate, silently and all at once.
+      //
+      // The chart->app mapping is exact and verified against the registry, not assumed:
+      //   3.5.1 -> v1.15.1   3.6.0 -> v1.16.0   3.7.0 -> v1.17.0   3.8.0 -> v1.18.0
+      // so 3.9 -> 1.19 (legacy deprecated but PRESENT, fine) and 3.10 -> 1.20 (removed).
+      // <3.10.0 therefore still allows 3.8.x patches and the whole 3.9 line.
+      //
+      // This is a seatbelt, not a fire: kyverno is already in the cluster-critical gate
+      // below, so a minor needs dashboard approval and never automerges. What this stops
+      // is someone APPROVING that minor without knowing what 1.20 removes.
+      //
+      // REMOVE THIS RULE once `kubectl get clusterpolicy` returns zero
+      // (rfc-kyverno-cel-migration.md).
+      description: "Hold the Kyverno chart below 3.10 until the CEL migration completes — 3.10 ships Kyverno 1.20, which removes the legacy kyverno.io/v1 ClusterPolicy API that 22 live policies still use",
+      matchDatasources: [
+        "docker"
+      ],
+      matchPackageNames: [
+        "ghcr.io/kyverno/charts/kyverno"
+      ],
+      allowedVersions: "<3.10.0",
+    },
+    {
       description: "Group application container image references outside the Kubernetes GitOps tree",
       matchManagers: [
         "dockerfile",
