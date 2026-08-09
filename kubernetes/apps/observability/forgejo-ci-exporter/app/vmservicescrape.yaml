@@ -1,0 +1,22 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: forgejo-ci-exporter
+  namespace: observability
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: forgejo-ci-exporter
+  endpoints:
+    - port: metrics
+      path: /metrics
+      # The payload is a cached snapshot refreshed on the exporter's own 300s
+      # timer, so scraping faster than that only re-reads the same bytes.
+      interval: 60s
+      scrapeTimeout: 15s
+      metricRelabelConfigs:
+        - action: keep
+          sourceLabels:
+            - __name__
+          regex: "forgejo_ci_.*"

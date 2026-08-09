@@ -1,0 +1,241 @@
+---
+# Generated from the tested exporter; see exporter.py in the PR description for provenance.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: forgejo-ci-exporter-script
+data:
+  exporter.py: |-
+    #!/usr/bin/env python3
+    """Prometheus exporter for Forgejo Actions run OUTCOMES.
+
+    The forgejo-ci alert group watches runner SUPPLY — scaler errors, queue depth,
+    pending pods, warm floor. None of it sees a job that fails instantly on a
+    healthy fleet. ploeg's release job did exactly that seven times across nine
+    days in 2026-08 and nothing said so; it was found by hand. This closes that
+    gap: it polls the Actions API and reports, per trunk pipeline, whether the last
+    run passed and how many have failed in a row.
+
+    Stdlib only, so it runs on a stock python image with a read-only rootfs and no
+    package install. Polling happens on a background timer, not on scrape, so a
+    slow Forgejo cannot stall the scrape or amplify load with concurrent scrapers.
+    """
+
+    import json
+    import os
+    import re
+    import sys
+    import threading
+    import time
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    BASE_URL = os.environ.get("FORGEJO_BASE_URL", "http://forgejo-http.forgejo.svc.cluster.local:3000").rstrip("/")
+    ORG = os.environ.get("FORGEJO_ORG", "webgrip")
+    # Optional. Absent -> anonymous, which sees public repos only. Never defaulted
+    # to a literal; provisioned as a Secret and referenced optionally.
+    TOKEN = os.environ.get("FORGEJO_TOKEN", "")
+    INTERVAL = int(os.environ.get("SCRAPE_INTERVAL_SECONDS", "300"))
+    # Deep enough to measure a streak: ploeg's outage was 7 consecutive failures.
+    RUN_WINDOW = int(os.environ.get("RUN_WINDOW", "30"))
+    PORT = int(os.environ.get("LISTEN_PORT", "9800"))
+    HTTP_TIMEOUT = int(os.environ.get("HTTP_TIMEOUT_SECONDS", "20"))
+    # Trunk only. A repo's default branch is always included; these are the other
+    # long-lived branches worth alerting on.
+    EXTRA_BRANCHES = {b for b in os.environ.get("EXTRA_BRANCHES", "main,development").split(",") if b}
+    EXCLUDE_REPOS = {r for r in os.environ.get("EXCLUDE_REPOS", "").split(",") if r}
+
+    def _parse_excludes(raw):
+        """`repo:workflow-regex` pairs, comma-separated. Repo-scoped on purpose: a
+        global workflow pattern would mute a legitimately-named workflow elsewhere."""
+        out = []
+        for item in (i.strip() for i in raw.split(",")):
+            if not item or ":" not in item:
+                continue
+            repo, pattern = item.split(":", 1)
+            try:
+                out.append((repo, re.compile(pattern)))
+            except re.error as exc:
+                print(f"[warn] bad EXCLUDE_PIPELINES entry {item!r}: {exc}", file=sys.stderr, flush=True)
+        return out
+
+    EXCLUDE_PIPELINES = _parse_excludes(os.environ.get("EXCLUDE_PIPELINES", ""))
+    _excluded_series = 0
+
+    def _is_excluded(repo, workflow):
+        return any(r == repo and pat.search(workflow) for r, pat in EXCLUDE_PIPELINES)
+
+    # pull_request runs are excluded by design: a red PR is already visible to the
+    # person who opened it. The silent class is everything that lands on trunk.
+    TRACKED_EVENTS = {"push", "release", "schedule", "cron", "workflow_dispatch"}
+    # A cancel is not a verdict, so it neither breaks nor extends a failure streak.
+    TERMINAL = {"success", "failure"}
+
+    _lock = threading.Lock()
+    _payload = "# exporter starting\n"
+    _errors_total = 0
+
+    def _api(path, params=None):
+        url = f"{BASE_URL}/api/v1{path}"
+        if params:
+            url += "?" + urllib.parse.urlencode(params)
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        if TOKEN:
+            req.add_header("Authorization", f"token {TOKEN}")
+        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+            return json.load(resp)
+
+    def _ts(value):
+        """Forgejo timestamps are RFC3339 Zulu. Returns epoch seconds, 0 if unparseable."""
+        if not value:
+            return 0.0
+        try:
+            return time.mktime(time.strptime(value, "%Y-%m-%dT%H:%M:%SZ")) - time.timezone
+        except (ValueError, TypeError):
+            return 0.0
+
+    _LABEL_ESCAPE = re.compile(r'([\\"\n])')
+
+    def _esc(value):
+        return _LABEL_ESCAPE.sub(lambda m: {"\\": r"\\", '"': r"\"", "\n": r"\n"}[m.group(1)], str(value))
+
+    def _labels(pairs):
+        return ",".join(f'{k}="{_esc(v)}"' for k, v in pairs)
+
+    def collect():
+        """Returns (metric_lines, repos_seen, repos_errored)."""
+        repos = _api(f"/orgs/{ORG}/repos", {"limit": 100})
+        lines, seen, errored = [], 0, 0
+
+        for repo in repos:
+            name = repo.get("name", "")
+            if not repo.get("has_actions") or name in EXCLUDE_REPOS:
+                continue
+            branches = {repo.get("default_branch") or "main"} | EXTRA_BRANCHES
+            seen += 1
+            try:
+                runs = _api(f"/repos/{ORG}/{name}/actions/runs", {"limit": RUN_WINDOW}).get("workflow_runs", [])
+            except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as exc:
+                errored += 1
+                print(f"[warn] {name}: {exc}", file=sys.stderr, flush=True)
+                continue
+
+            # Group newest-first. The ref label is only meaningful for a branch push;
+            # for release/schedule it is a tag or empty, which would be unbounded.
+            groups = {}
+            for run in runs:
+                event = run.get("event") or "unknown"
+                if event not in TRACKED_EVENTS:
+                    continue
+                ref = run.get("prettyref") or ""
+                if event == "push":
+                    if ref not in branches:
+                        continue
+                else:
+                    ref = ""
+                groups.setdefault((run.get("workflow_id") or "unknown", event, ref), []).append(run)
+
+            global _excluded_series
+            for (workflow, event, ref), group in groups.items():
+                if _is_excluded(name, workflow):
+                    _excluded_series += 1
+                    continue
+                lbl = [("repo", name), ("workflow", workflow), ("event", event), ("ref", ref)]
+                verdicts = [r for r in group if (r.get("status") or "") in TERMINAL]
+                if not verdicts:
+                    continue
+                last = verdicts[0]
+                status = last.get("status")
+
+                streak = 0
+                for run in verdicts:
+                    if run.get("status") != "failure":
+                        break
+                    streak += 1
+
+                last_success = next((_ts(r.get("stopped") or r.get("updated")) for r in verdicts
+                                     if r.get("status") == "success"), 0.0)
+
+                base = _labels(lbl)
+                lines.append(f'forgejo_ci_last_run_status{{{base},status="{_esc(status)}"}} 1')
+                lines.append(f"forgejo_ci_consecutive_failures{{{base}}} {streak}")
+                lines.append(f"forgejo_ci_last_run_timestamp_seconds{{{base}}} "
+                             f"{_ts(last.get('stopped') or last.get('updated')):.0f}")
+                lines.append(f"forgejo_ci_last_success_timestamp_seconds{{{base}}} {last_success:.0f}")
+
+        return lines, seen, errored
+
+    def render():
+        global _errors_total, _excluded_series
+        started = time.time()
+        _excluded_series = 0
+        try:
+            lines, seen, errored = collect()
+            up = 1
+        except Exception as exc:  # noqa: BLE001 - never let the refresh thread die
+            _errors_total += 1
+            print(f"[error] collect failed: {exc}", file=sys.stderr, flush=True)
+            lines, seen, errored, up = [], 0, 0, 0
+        _errors_total += errored
+
+        out = [
+            "# HELP forgejo_ci_last_run_status Most recent terminal run's status (1 on the current status label).",
+            "# TYPE forgejo_ci_last_run_status gauge",
+            "# HELP forgejo_ci_consecutive_failures Consecutive failing runs, newest-first, ignoring cancelled.",
+            "# TYPE forgejo_ci_consecutive_failures gauge",
+            "# HELP forgejo_ci_last_run_timestamp_seconds Unix time of the most recent terminal run.",
+            "# TYPE forgejo_ci_last_run_timestamp_seconds gauge",
+            "# HELP forgejo_ci_last_success_timestamp_seconds Unix time of the last success, 0 if none in the window.",
+            "# TYPE forgejo_ci_last_success_timestamp_seconds gauge",
+            "# HELP forgejo_ci_up 1 when the last refresh reached the Forgejo API.",
+            "# TYPE forgejo_ci_up gauge",
+            "# HELP forgejo_ci_repos_tracked Repositories with Actions enabled that were polled.",
+            "# TYPE forgejo_ci_repos_tracked gauge",
+            "# HELP forgejo_ci_refresh_duration_seconds Wall time of the last refresh.",
+            "# TYPE forgejo_ci_refresh_duration_seconds gauge",
+            "# HELP forgejo_ci_last_refresh_timestamp_seconds Unix time the last refresh completed.",
+            "# TYPE forgejo_ci_last_refresh_timestamp_seconds gauge",
+            "# HELP forgejo_ci_refresh_errors_total Cumulative refresh and per-repo errors.",
+            "# TYPE forgejo_ci_refresh_errors_total counter",
+            "# HELP forgejo_ci_pipelines_excluded Pipelines muted by EXCLUDE_PIPELINES. Muting stays visible.",
+            "# TYPE forgejo_ci_pipelines_excluded gauge",
+        ]
+        out += lines
+        out.append(f"forgejo_ci_up {up}")
+        out.append(f"forgejo_ci_repos_tracked {seen}")
+        out.append(f"forgejo_ci_refresh_duration_seconds {time.time() - started:.3f}")
+        out.append(f"forgejo_ci_last_refresh_timestamp_seconds {time.time():.0f}")
+        out.append(f"forgejo_ci_refresh_errors_total {_errors_total}")
+        out.append(f"forgejo_ci_pipelines_excluded {_excluded_series}")
+        return "\n".join(out) + "\n"
+
+    def refresh_loop():
+        global _payload
+        while True:
+            text = render()
+            with _lock:
+                _payload = text
+            time.sleep(INTERVAL)
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - BaseHTTPRequestHandler API
+            if self.path.rstrip("/") in ("/metrics", ""):
+                with _lock:
+                    body = _payload.encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def log_message(self, *args):
+            pass  # scrape logs are noise at a 60s interval
+
+    if __name__ == "__main__":
+        threading.Thread(target=refresh_loop, daemon=True).start()
+        ThreadingHTTPServer(("", PORT), Handler).serve_forever()
