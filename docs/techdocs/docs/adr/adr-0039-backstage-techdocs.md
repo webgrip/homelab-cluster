@@ -103,3 +103,12 @@ authoring in TechDocs format in the first place.
   (Starlight/Fumadocs/Docusaurus) rejected: it severs the TechDocs coupling that is this ADR's
   rationale. Enhancement adopted into the plan: emit llms.txt + per-page raw markdown at publish
   time for agent consumption. Flip triggers and watchlist live in the RFC.
+* 2026-08-09 — **build-out executed** ([plan](../rfc/plan-backstage-techdocs.md) Phases 0–4):
+  Garage `techdocs` bucket + two least-privilege keys minted in-cluster, OpenBao/ESO wiring,
+  netpols (incl. the forgejo-dind lesson — `container:` jobs carry the shared dind DaemonSet's
+  identity, not the runner's), org Actions secrets, and the `on_docs_change` publish workflow.
+  **Publish path proven live: 318 objects in the bucket under `homelab/component/homelab-cluster`**
+  (the entity ref is `homelab/…`, not the plan's assumed `default/…`). Remaining for cutover:
+  the backstage-application release carrying `app-config.k8s.yaml` (its GitHub push-mirror is
+  broken — invalid token — and Forgejo Actions never ran for that repo), then the image digest +
+  container-args bump here (plan Phase 2), then Phase 5 verification.

@@ -97,3 +97,8 @@ option lost *for the interim* on the same axis: no off-site durability.
 * 2026-06-21 — the `docs` CNAME brought under GitOps: `DNSEndpoint` added for external-dns to
   publish
 * 2026-07-03 — renumbered from ADR-0022 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-08-09 — the missing publish workflow finally wired (`.forgejo/workflows/on_docs_change.yml`,
+  `deploy-codeberg` leg; the RFC's "publish path unproven" gap). The leg **fails deliberately**
+  until the §Operations handoff is done: the non-mirror Codeberg repo (`homelab-cluster-techdocs`)
+  was never created — nor was infrastructure's (`infrastructure-techdocs`), and both callers claim
+  `docs.webgrip.dev`, which Codeberg serves from ONE repo only; owner must pick the winner.
