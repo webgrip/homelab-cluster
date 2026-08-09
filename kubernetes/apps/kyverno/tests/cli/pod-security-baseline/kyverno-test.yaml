@@ -1,58 +1,62 @@
 ---
+# Restructured for the CEL split (stage 2). The legacy ClusterPolicy's four RULES are
+# now four ValidatingPolicies, so each former `rule:` assertion becomes a separate
+# `policy:` assertion. CEL policies have no named rules — a leftover `rule:` field
+# scores Pass/Excluded, green while asserting nothing.
+#
+# Each policy keeps BOTH directions: its own violating Pod must fail, and the shared
+# compliant Pod must pass. The pass half is not decoration — the coverage gate only
+# checks that a fail case exists, and a policy that rejects everything would satisfy
+# that while being catastrophically wrong.
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: pod-security-baseline
 policies:
-  - ../../policies/pod-security-baseline-enforce.yaml
+  - ../../policies/pod-security-baseline-cel.yaml
 resources:
   - resources.yaml
 results:
-  - policy: pod-security-baseline-enforce
-    rule: host-namespaces
+  # --- host namespaces ------------------------------------------------------------
+  - policy: pod-security-baseline-host-namespaces
     resources:
       - app/host-network-pod
     kind: Pod
     result: fail
-  - policy: pod-security-baseline-enforce
-    rule: host-path
+  - policy: pod-security-baseline-host-namespaces
+    resources:
+      - app/compliant-pod
+    kind: Pod
+    result: pass
+  # --- hostPath volumes -----------------------------------------------------------
+  - policy: pod-security-baseline-host-path
     resources:
       - app/hostpath-pod
     kind: Pod
     result: fail
-  - policy: pod-security-baseline-enforce
-    rule: host-ports-none
+  - policy: pod-security-baseline-host-path
+    resources:
+      - app/compliant-pod
+    kind: Pod
+    result: pass
+  # --- host ports -----------------------------------------------------------------
+  - policy: pod-security-baseline-host-ports
     resources:
       - app/hostport-pod
     kind: Pod
     result: fail
-  - policy: pod-security-baseline-enforce
-    rule: privileged-containers
+  - policy: pod-security-baseline-host-ports
+    resources:
+      - app/compliant-pod
+    kind: Pod
+    result: pass
+  # --- privileged containers ------------------------------------------------------
+  - policy: pod-security-baseline-privileged
     resources:
       - app/privileged-pod
     kind: Pod
     result: fail
-  # PASS case — proves the baseline admits an ordinary compliant Pod.
-  - policy: pod-security-baseline-enforce
-    rule: host-namespaces
-    resources:
-      - app/compliant-pod
-    kind: Pod
-    result: pass
-  - policy: pod-security-baseline-enforce
-    rule: host-path
-    resources:
-      - app/compliant-pod
-    kind: Pod
-    result: pass
-  - policy: pod-security-baseline-enforce
-    rule: host-ports-none
-    resources:
-      - app/compliant-pod
-    kind: Pod
-    result: pass
-  - policy: pod-security-baseline-enforce
-    rule: privileged-containers
+  - policy: pod-security-baseline-privileged
     resources:
       - app/compliant-pod
     kind: Pod

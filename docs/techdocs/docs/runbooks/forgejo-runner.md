@@ -67,9 +67,15 @@ The `dind` sidecar is `privileged: true`. `forgejo` is an application namespace,
 independent admission layers** must be opened — opening one without the other still blocks the
 runner (each only surfaces once the prior is cleared):
 
-1. **Kyverno** `pod-security-baseline-enforce` denies the **Job** (`autogen-privileged-containers`).
-   Fix: PolicyException `exception-forgejo-runner` (in `security` ns) waiving *only*
-   `privileged-containers` + `autogen-privileged-containers` for the runner Job
+1. **Kyverno** `pod-security-baseline-privileged` denies the **Job**.
+   Fix: PolicyException `exception-forgejo-runner-privileged-cel` (in `security` ns),
+   a CEL-dialect waiver referencing the `pod-security-baseline-privileged` and
+   `pod-security-baseline-host-path` ValidatingPolicies for the runner Job
+   (2026-08-09: the single `pod-security-baseline-enforce` ClusterPolicy was split
+   into four ValidatingPolicies, one per rule, because a CEL PolicyException waives
+   whole policies and the six live waivers cover four different rule subsets. There
+   are no `autogen-*` rule names any more — CEL policies match controller kinds
+   explicitly instead of relying on Kyverno's autogen)
    (`scaledjob.keda.sh/name=forgejo-runner`) and Pod (`app.kubernetes.io/name=forgejo-runner`).
 2. **Built-in Pod Security Admission** denies the **Pod** (`violates PodSecurity baseline:latest`).
    PSA is namespace-scoped (no per-pod exemption), and `namespace-tenancy-audit`'s `+()` mutate
