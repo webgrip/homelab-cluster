@@ -15,22 +15,28 @@ spec:
   secretRef:
     name: harbor-pull
   ref:
-    # rc.14 makes a reading Role able to review. Before it, a reader was
-    # handed a shallow single-branch clone of the BASE — so it never received
-    # the work it was asked to review — was never told the pull request
-    # existed, and held a full push credential while the prompt told it it did
-    # not (webgrip/ploeg#32). It also stops a successful Shift announcing
-    # itself on the board as a stoppage.
+    # rc.17 closes the loop reviews were falling out of. Everything that
+    # matters here landed in rc.15 and rc.16; rc.17 adds only a CI pin change,
+    # and is taken because it is the tip, not for anything it carries. Three
+    # fixes since rc.14, all found by running it here:
+    #   - rc.15 settles spend. Without it `spent` stays 0 forever, and
+    #     ClaimRole authorizes `budget − spent − reserved` — so the only thing
+    #     holding a team to its pool was whatever happened to be running
+    #     concurrently. This is the one with a live blast radius.
+    #   - a reading Run's review now survives every harness (the drop box,
+    #     ADR-0018): the outcome used to depend on which harness ran.
+    #   - a failed writing Run re-opens its Round instead of stranding it.
     #
-    # Tag and values move together: rc.14 is what the reviewer Role below
-    # needs, and on an older chart roles[].workerResources fails schema
-    # validation outright (planRole is additionalProperties:false).
-    tag: 0.2.0-rc.14
-    # Read straight off the Harbor registry (HEAD /v2/…/manifests/0.2.0-rc.14)
+    # Tag and values move together, and this bump needs no values change: the
+    # only schema movement since rc.14 is an additive optional
+    # teams[].perRunBudget, and no migration file was added (0011 is still the
+    # head), so the values below validate unchanged on rc.17.
+    tag: 0.2.0-rc.17
+    # Read straight off the Harbor registry (HEAD /v2/…/manifests/0.2.0-rc.17)
     # after the Publish Helm chart (Harbor) job went green. Not the Forgejo
     # mirror's digest — that registry re-runs `helm package`, which is not
     # byte-reproducible, so it publishes the same chart under a different
     # digest (rc.10: 2f28764a there vs 754ce7a0 here). Kyverno's
     # require-ocirepository-digest makes this line mandatory, so it must move
     # with every tag bump.
-    digest: sha256:b8bccc91757da738d6a5313adc792dd1c84cfa9601bac42b85954078ecf16407
+    digest: sha256:147fd681b5889395ddf7a699f76ff425730f823ac30253f1d6480f2dc12969b6
