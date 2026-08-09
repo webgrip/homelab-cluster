@@ -47,6 +47,23 @@ spec:
           metadata:
             labels:
               +(pod-security.kubernetes.io/enforce): baseline
+              # PIN THE ENFORCE VERSION, LEAVE warn/audit FLOATING (2026-08-09).
+              # Omitting this label means `latest`, so the meaning of `baseline` is
+              # whatever the running control plane says it is — a Kubernetes upgrade
+              # can silently tighten the checks and start REJECTING workloads that
+              # were admitted the day before. Pinning makes that a reviewed change.
+              # warn/audit deliberately stay unpinned so the warnings surface what a
+              # future version WOULD enforce, before it does.
+              #
+              # v1.36 matches the cluster (v1.36.1). PSA versions are Kubernetes minor
+              # versions, not artifacts — there is no digest to pin, and a value newer
+              # than the control plane is rejected. Bump this in lockstep with a Talos
+              # /Kubernetes upgrade, after checking the PSS changelog for that minor.
+              #
+              # SCOPE: this fires at Namespace admission, so it lands on namespaces as
+              # they are created or re-applied. Existing namespaces pick it up on the
+              # next Flux reconcile of their manifest, not instantly.
+              +(pod-security.kubernetes.io/enforce-version): "v1.36"
               +(pod-security.kubernetes.io/audit): restricted
               +(pod-security.kubernetes.io/warn): restricted
     - name: require-namespace-ownership-labels
