@@ -95,3 +95,11 @@ authoring in TechDocs format in the first place.
 * 2026-07-02 — still unbuilt: the Backstage app carries no TechDocs builder/publisher/awsS3
   configuration yet
 * 2026-07-03 — renumbered from ADR-0023 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-08-09 — *[research]* landscape survey ([RFC: docs platform 2026](../rfc/rfc-docs-platform-2026.md))
+  **reaffirms this decision**: Material for MkDocs is EOL 2026-11-05 and MkDocs core is
+  unmaintained, but Backstage's own TechDocs maintainers propose Zensical (mkdocs.yml-compatible)
+  as the engine successor ([backstage#33990](https://github.com/backstage/backstage/issues/33990)) —
+  the `external` builder chosen here insulates serving from that swap. Generator migration
+  (Starlight/Fumadocs/Docusaurus) rejected: it severs the TechDocs coupling that is this ADR's
+  rationale. Enhancement adopted into the plan: emit llms.txt + per-page raw markdown at publish
+  time for agent consumption. Flip triggers and watchlist live in the RFC.
