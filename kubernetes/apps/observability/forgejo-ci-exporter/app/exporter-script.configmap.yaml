@@ -21,6 +21,7 @@ data:
     slow Forgejo cannot stall the scrape or amplify load with concurrent scrapers.
     """
 
+    import gc
     import json
     import os
     import re
@@ -77,6 +78,17 @@ data:
     _payload = "# exporter starting\n"
     _errors_total = 0
 
+    # Dropped at parse time, not after. A run carries `event_payload` (a push payload
+    # embeds the entire commit list) plus a full `repository` and `trigger_user` on
+    # EVERY entry: homelab-cluster returns ~20MiB for 30 runs and workflows ~17MiB,
+    # 57MiB across the org, which parsed to a ~186MiB peak and OOMKilled the pod at
+    # a 128Mi limit. Discarding these as each object is built keeps only one blob
+    # alive at a time instead of thirty.
+    _DROP_KEYS = frozenset({"event_payload", "repository", "trigger_user", "title"})
+
+    def _prune(pairs):
+        return {k: v for k, v in pairs if k not in _DROP_KEYS}
+
     def _api(path, params=None):
         url = f"{BASE_URL}/api/v1{path}"
         if params:
@@ -85,7 +97,7 @@ data:
         if TOKEN:
             req.add_header("Authorization", f"token {TOKEN}")
         with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
-            return json.load(resp)
+            return json.load(resp, object_pairs_hook=_prune)
 
     def _ts(value):
         """Forgejo timestamps are RFC3339 Zulu. Returns epoch seconds, 0 if unparseable."""
@@ -164,6 +176,9 @@ data:
                 lines.append(f"forgejo_ci_last_run_timestamp_seconds{{{base}}} "
                              f"{_ts(last.get('stopped') or last.get('updated')):.0f}")
                 lines.append(f"forgejo_ci_last_success_timestamp_seconds{{{base}}} {last_success:.0f}")
+
+            del runs, groups
+            gc.collect()
 
         return lines, seen, errored
 

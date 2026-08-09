@@ -92,18 +92,25 @@ spec:
             - name: script
               mountPath: /opt/exporter
               readOnly: true
+          # timeoutSeconds, because the default is 1s and that is not enough here.
+          # The refresh thread spends ~11s parsing tens of MiB of JSON and holds
+          # the GIL in bursts, so the handler thread can miss a 1s deadline on a
+          # perfectly healthy pod. Both probes reported "context deadline
+          # exceeded" on the first deploy for exactly that reason.
           livenessProbe:
             httpGet:
               path: /metrics
               port: metrics
             initialDelaySeconds: 15
             periodSeconds: 30
+            timeoutSeconds: 5
           readinessProbe:
             httpGet:
               path: /metrics
               port: metrics
             initialDelaySeconds: 5
             periodSeconds: 15
+            timeoutSeconds: 5
           securityContext:
             allowPrivilegeEscalation: false
             runAsNonRoot: true
@@ -112,12 +119,21 @@ spec:
             capabilities:
               drop:
                 - "ALL"
+          # Sized from measurement, after 128Mi OOMKilled this pod on its first
+          # deploy (exit 137, six seconds in). The cost is not the exporter's own
+          # state — the payload it serves is 12KiB — it is decoding the API
+          # responses: 57MiB of JSON across the org, and one repo alone
+          # (homelab-cluster) returns ~20MiB for 30 runs because every run embeds
+          # its full event_payload. Measured peak RSS is ~136MiB after the
+          # parse-time pruning in the script; interpreter baseline is ~22MiB.
+          # 320Mi is that peak plus room for the org to grow, since the driver is
+          # the LARGEST single repo's history, not the repo count.
           resources:
             requests:
               cpu: 10m
-              memory: 48Mi
+              memory: 96Mi
             limits:
-              memory: 128Mi
+              memory: 320Mi
       volumes:
         - name: script
           configMap:
