@@ -80,6 +80,36 @@ kyverno-chainsaw:
     @just _need curl docker go
     {{ root }}/scripts/run-kyverno-chainsaw.sh {{ root }}
 
+# Kubescape posture scan against the live cluster (NSA + MITRE ATT&CK)
+#
+# THE `--submit=false` IS THE POINT OF THIS RECIPE. Without it kubescape offers to
+# upload the cluster's posture — namespaces, workloads, RBAC, failing controls — to
+# ARMO's hosted SaaS. .mise.toml has told readers since 2026-08-06 to "see the just
+# recipe" for exactly this reason; the recipe did not exist until now, so the only
+# record of the safe invocation was prose in an RFC. Baking the flag in means the
+# documented path cannot leak, whatever the caller remembers.
+#
+# ASSURANCE LAYER, NOT AN ADMISSION ENGINE. Our Kyverno policies grade their own
+# homework; kubescape scores the cluster against published frameworks independently
+# and disagrees with us by an order of magnitude on several controls (C-0053: 289
+# vs our 17; C-0013: 111 vs our 14). Treat divergence as a question, not a defect.
+#
+# CLI ONLY, DELIBERATELY: the in-cluster operator ships an eBPF node agent, and this
+# cluster removed Falco and Tetragon for resource pressure. Evaluating the operator
+# is a separate, gated decision (rfc-policy-estate-gap-analysis.md step 9).
+#
+# CIS is NOT the default framework. It scored 43/100 at 59% coverage and is
+# uninformative here — mostly file-permission checks that are meaningless on an
+# immutable OS. Pass it explicitly if you want it: `just kubescape cis-v1.10.0`.
+#
+# Baseline to compare against: 70/100, coverage 86% (38/40), taken 2026-08-06.
+#
+# Kubescape posture scan (NSA + MITRE); never submits to ARMO SaaS
+[group('validate')]
+kubescape framework="nsa,mitre":
+    @just _need kubescape
+    kubescape scan framework {{ framework }} --submit=false
+
 # Verify OCIRepository spec.ref.digest values against the registry
 [group('validate')]
 verify-oci-digests:
