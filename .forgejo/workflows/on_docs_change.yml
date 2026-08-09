@@ -1,16 +1,16 @@
 ---
 name: '[Workflow] On Documentation Change'
 
-# The docs publish path that ADR-0038/ADR-0039 designed but never wired (the
-# rfc-codeberg-pages-techdocs "publish path unproven" gap). One build, two legs,
-# both consuming the same techdocs-site artifact:
-#   deploy-backstage  — PRIMARY (ADR-0039): techdocs-cli publish into the Garage
-#                       `techdocs` bucket; Backstage (builder: external) serves it
-#                       behind Authentik.
-#   deploy-codeberg   — DR/off-site mirror (ADR-0038): force-push to a Codeberg
-#                       repo's pages branch, so docs survive a cluster outage.
-# Org secrets/vars (TECHDOCS_S3_*, CODEBERG_TOKEN) are converged from OpenBao by
-# the forgejo-actions-secrets CronJob.
+# The docs publish path (ADR-0039 + ADR-0052). One mkdocs build, two consumers of
+# the same techdocs-site artifact:
+#   deploy-backstage  — TechDocs artifact (ADR-0039): techdocs-cli publish into the
+#                       Garage `techdocs` bucket; the Backstage on-ramp (deferred).
+#   deploy-docs-site  — the HUMAN site (ADR-0052): Zensical build + llms/redirect
+#                       graft from the artifact, rclone-synced into the Garage
+#                       `docs-site` bucket, served at docs.<domain> via Garage web.
+# (The ADR-0038 Codeberg leg was dropped 2026-08-09 — see ADR-0052.)
+# Org secrets/vars (TECHDOCS_S3_*) are converged from OpenBao by the
+# forgejo-actions-secrets CronJob.
 
 on:
   push:
@@ -50,18 +50,11 @@ jobs:
       TECHDOCS_S3_ACCESS_KEY_ID: ${{ secrets.TECHDOCS_S3_ACCESS_KEY_ID }}
       TECHDOCS_S3_SECRET_ACCESS_KEY: ${{ secrets.TECHDOCS_S3_SECRET_ACCESS_KEY }}
 
-  deploy-codeberg:
-    name: 'Deploy (Codeberg Pages, DR)'
-    uses: webgrip/workflows/.forgejo/workflows/techdocs-deploy-codeberg.yml@62c5c36223a1185b9c347c90117533cd26fcddf8 # main
+  deploy-docs-site:
+    name: 'Deploy (docs site / Garage web)'
+    uses: webgrip/workflows/.forgejo/workflows/techdocs-deploy-docs-site.yml@5a7edb1f58e93828eac978995c6dd58bf1fc0bfe # main
     needs: generate-documentation
     if: github.ref == 'refs/heads/main'
-    with:
-      # Handoff (ADR-0038 §Ops): create this NON-mirror Codeberg repo (a
-      # pull-mirror's pages branch can't be pushed). NOTE: infrastructure's
-      # on_docs_change claims docs.webgrip.dev for infrastructure-techdocs —
-      # Codeberg serves a custom domain from ONE repo only; whichever .domains
-      # claim lands first wins, the other serves at webgrip.codeberg.page/<repo>.
-      codeberg-repo: homelab-cluster-techdocs
-      domain: docs.webgrip.dev
     secrets:
-      CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+      TECHDOCS_S3_ACCESS_KEY_ID: ${{ secrets.TECHDOCS_S3_ACCESS_KEY_ID }}
+      TECHDOCS_S3_SECRET_ACCESS_KEY: ${{ secrets.TECHDOCS_S3_SECRET_ACCESS_KEY }}

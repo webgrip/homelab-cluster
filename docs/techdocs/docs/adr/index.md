@@ -154,8 +154,9 @@ The Harbor family — adoption, backing services, exposure, SSO — then the cac
 
 | ADR | Decision | Status | Last updated |
 | --- | -------- | ------ | ------------ |
-| [0038](adr-0038-codeberg-pages-techdocs.md) | Serve TechDocs from Codeberg Pages (interim + off-site) | accepted | 2026-06-21 |
+| [0038](adr-0038-codeberg-pages-techdocs.md) | Serve TechDocs from Codeberg Pages (interim + off-site) | superseded by 0052 | 2026-08-09 |
 | [0039](adr-0039-backstage-techdocs.md) | TechDocs served by Backstage + Garage S3 (target) | proposed | 2026-07-02 |
+| [0052](adr-0052-zensical-docs-site-garage-web.md) | Zensical builds the human docs site, served from Garage web | accepted | 2026-08-09 |
 
 ### 11. Applications
 

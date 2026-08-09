@@ -148,3 +148,10 @@ TechDocs rather than competing with it. Re-open this fork only on the triggers b
 
 - 2026-08-09 — *[research]* four-stream landscape survey (TechDocs state, generator landscape,
   AI-era trends, local estate map); verdict folded into this RFC and ADR-0039's history.
+- 2026-08-09 — the Zensical watchlist trigger was pulled **early, deliberately**, for the human
+  surface only: the owner dropped the Codeberg leg and chose a Zensical-built site served from
+  Garage's web endpoint ([ADR-0052](../adr/adr-0052-zensical-docs-site-garage-web.md)). A live
+  spike validated the bet first (this exact tree: 166 pages, 1.95 s, mermaid + search native;
+  redirects + llms.txt grafted in CI from the mkdocs artifact). The TechDocs artifact pipeline
+  (ADR-0039, recommendation 1) is unchanged and remains the Backstage on-ramp; recommendation 4's
+  "wait for the flip triggers" is thereby overtaken for the site, still standing for the artifact.

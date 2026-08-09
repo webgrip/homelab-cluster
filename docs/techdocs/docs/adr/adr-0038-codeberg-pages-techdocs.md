@@ -1,7 +1,7 @@
 # Serve TechDocs from Codeberg Pages (interim + off-site)
 
-* Status: accepted
-* Date: 2026-06-21
+* Status: superseded by [ADR-0052](adr-0052-zensical-docs-site-garage-web.md)
+* Date: 2026-08-09
 
 Technical Story: [RFC: TechDocs hosting after GitHub Pages](../rfc/rfc-codeberg-pages-techdocs.md)
 
@@ -102,3 +102,7 @@ option lost *for the interim* on the same axis: no off-site durability.
   until the §Operations handoff is done: the non-mirror Codeberg repo (`homelab-cluster-techdocs`)
   was never created — nor was infrastructure's (`infrastructure-techdocs`), and both callers claim
   `docs.webgrip.dev`, which Codeberg serves from ONE repo only; owner must pick the winner.
+* 2026-08-09 — **superseded by [ADR-0052](adr-0052-zensical-docs-site-garage-web.md)**: the owner
+  dropped Codeberg the same day (the handoff had sat undone since June); the human docs surface
+  moves to a Zensical-built site served in-cluster from Garage's web endpoint. DNSEndpoint and the
+  deploy leg removed. The record above stands as decided; it simply never served a page.
