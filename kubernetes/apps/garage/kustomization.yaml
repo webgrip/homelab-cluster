@@ -5,6 +5,10 @@ kind: Kustomization
 namespace: garage
 
 components:
+  # cluster-secrets into this namespace — the garage-docs-site ks substitutes
+  # ${SECRET_DOMAIN} in its HTTPRoute, and substituteFrom resolves in the
+  # Kustomization's OWN namespace (post-build failed without this).
+  - ../../components/sops
   - ../../components/resource-quota
 
 resources:
