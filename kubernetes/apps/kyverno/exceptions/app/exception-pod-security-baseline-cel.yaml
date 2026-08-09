@@ -1,0 +1,222 @@
+---
+# CEL-dialect waivers for the four pod-security-baseline-* ValidatingPolicies
+# (stage 1 landed in 723adf58; see pod-security-baseline-cel.yaml).
+#
+# LANDING THESE WHILE THE POLICIES ARE STILL AUDIT IS THE POINT. They are purely
+# additive right now — an Audit policy denies nothing, so a wrong expression here
+# cannot break a workload. What it CAN do is prove itself: the four policies
+# currently report 49 audit failures across exactly 30 workloads, and if these
+# waivers match correctly that count goes to ~0. That is the check which makes the
+# stage-2 flip to Deny safe, and it is available only in this window.
+#
+# WHY SIX EXCEPTIONS AND FOUR POLICIES. A CEL PolicyException has `policyRefs` and
+# NO `ruleNames`, so it waives WHOLE POLICIES. The legacy exceptions waive four
+# different subsets of the four baseline rules, which is why the policy had to be
+# split before the waivers could be ported at all. Each file below references only
+# the policies its legacy twin actually waived:
+#
+#   exception              privileged  host-path  host-ports  host-namespaces
+#   forgejo-agent-runner       y
+#   forgejo-buildkitd          y           y
+#   forgejo-dind               y           y           y
+#   forgejo-runner             y           y
+#   kepler                                 y                       y
+#   ploeg-worker               y
+#
+# kepler is the one that proves the split was necessary: exception-kepler.yaml
+# states outright that "privileged-containers is NOT waived: kepler runs
+# privileged:false since ticket #68's fix". A single-policy waiver would have
+# handed that back silently.
+#
+# MATCHING IS HAND-TRANSLATED, NOT COPIED. Legacy exceptions use
+# `match.any[].resources` (kinds + namespaces + names/selector); CEL uses
+# `matchConditions` with expressions over `object`. Every label read goes through
+# an `in` guard first — indexing a missing key raises, and a raise inside a
+# PolicyException is not a graceful "no match".
+#
+# The legacy exceptions are NOT deleted here. They still waive
+# workload-hardening-audit and workload-advanced-hardening-audit, which remain
+# ClusterPolicies, and a PolicyException is single-dialect. Trimming their
+# pod-security-baseline-enforce entries happens in the stage-2 commit, together
+# with deleting that policy — not before, or the waiver disappears while the
+# legacy policy is still enforcing.
+---
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-kepler-privileged-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      Kepler needs hostPID + hostPath (/sys powercap, /proc) to read RAPL energy
+      counters. Waives host-namespaces and host-path for the kepler DaemonSet and
+      its Pods. Deliberately does NOT waive privileged — kepler runs
+      privileged:false via CAP_SYS_PTRACE since ticket #68.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: pod-security-baseline-host-namespaces
+    - kind: ValidatingPolicy
+      name: pod-security-baseline-host-path
+  matchConditions:
+    # One expression covers both the DaemonSet and its Pods: the legacy exception
+    # selected both by the same app.kubernetes.io/name label, not by kind.
+    - name: kepler-daemonset-and-pods
+      expression: >-
+        object.metadata.namespace == 'kepler' &&
+        'app.kubernetes.io/name' in object.metadata.?labels.orValue({}) &&
+        object.metadata.labels['app.kubernetes.io/name'] == 'kepler'
+---
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-forgejo-dind-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      docker:dind creates mounts and namespaces per build step and binds the
+      daemon port. Waives privileged, host-path and host-ports for the
+      forgejo-dind DaemonSet and its Pods.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: pod-security-baseline-privileged
+    - kind: ValidatingPolicy
+      name: pod-security-baseline-host-path
+    - kind: ValidatingPolicy
+      name: pod-security-baseline-host-ports
+  matchConditions:
+    # The DaemonSet is matched by NAME and the Pods by label, exactly as the legacy
+    # exception did — the DaemonSet's own metadata does not carry the pod label.
+    - name: forgejo-dind-controller-and-pods
+      expression: >-
+        object.metadata.namespace == 'forgejo' && (
+          (object.kind == 'DaemonSet' && object.metadata.name == 'forgejo-dind') ||
+          ('app.kubernetes.io/name' in object.metadata.?labels.orValue({}) &&
+           object.metadata.labels['app.kubernetes.io/name'] == 'forgejo-dind')
+        )
+---
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-forgejo-buildkitd-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      BuildKit creates mounts and namespaces per build step; the rootless variant
+      does not work on this runner shape. Waives privileged and host-path for the
+      forgejo-buildkitd DaemonSet and its Pods.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: pod-security-baseline-privileged
+    - kind: ValidatingPolicy
+      name: pod-security-baseline-host-path
+  matchConditions:
+    - name: forgejo-buildkitd-controller-and-pods
+      expression: >-
+        object.metadata.namespace == 'forgejo' && (
+          (object.kind == 'DaemonSet' &&
+           object.metadata.name == 'forgejo-buildkitd') ||
+          ('app.kubernetes.io/name' in object.metadata.?labels.orValue({}) &&
+           object.metadata.labels['app.kubernetes.io/name'] == 'forgejo-buildkitd')
+        )
+---
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-forgejo-runner-privileged-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      KEDA submits the CI runner as a Job whose pod template carries a privileged
+      dind sidecar, so the controller is rejected before any pod exists. Waives
+      privileged and host-path for the KEDA Job and the runner Pods.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: pod-security-baseline-privileged
+    - kind: ValidatingPolicy
+      name: pod-security-baseline-host-path
+  matchConditions:
+    # The Job is matched by KEDA's own scaledjob.keda.sh/name label (pod names are
+    # random), the Pod by the template's app.kubernetes.io/name.
+    - name: forgejo-runner-job-and-pods
+      expression: >-
+        object.metadata.namespace == 'forgejo' && (
+          ('scaledjob.keda.sh/name' in object.metadata.?labels.orValue({}) &&
+           object.metadata.labels['scaledjob.keda.sh/name'] == 'forgejo-runner') ||
+          ('app.kubernetes.io/name' in object.metadata.?labels.orValue({}) &&
+           object.metadata.labels['app.kubernetes.io/name'] == 'forgejo-runner')
+        )
+---
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-forgejo-agent-runner-privileged-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      The agent runner is a separate KEDA ScaledJob (ADR-0048) with the same dind
+      shape. Waives privileged only — it holds no host-path waiver.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: pod-security-baseline-privileged
+  matchConditions:
+    - name: forgejo-agent-runner-job-and-pods
+      expression: >-
+        object.metadata.namespace == 'forgejo' && (
+          ('scaledjob.keda.sh/name' in object.metadata.?labels.orValue({}) &&
+           object.metadata.labels['scaledjob.keda.sh/name'] ==
+             'forgejo-agent-runner') ||
+          ('app.kubernetes.io/name' in object.metadata.?labels.orValue({}) &&
+           object.metadata.labels['app.kubernetes.io/name'] ==
+             'forgejo-agent-runner')
+        )
+---
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-ploeg-worker-privileged-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      DinD-enabled ploeg workers, matched by the hazard label plus the two named
+      DinD ScaledJobs. Waives privileged only.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: pod-security-baseline-privileged
+  matchConditions:
+    # BOTH arms are carried over, and the name arm is NOT dropped as redundant.
+    # exception-ploeg-worker.yaml records that a previous cleanup removed the
+    # equivalent entries after an inspection suggested they were covered, was wrong
+    # about what Kyverno generates at admission, and denied every DinD team
+    # (2026-07-30, bronze could not dispatch at all, KEDAJobCreateFailed in a loop).
+    # A 2026-07-31 note adds that live Jobs now DO carry the hazard label, which
+    # makes the name arm look redundant again — and explicitly refuses to delete it
+    # on that observation alone, because that is exactly the reasoning that broke it
+    # last time. Removing it needs its own mutation test. Redundancy costs nothing.
+    - name: ploeg-privileged-dind-workers
+      expression: >-
+        object.metadata.namespace == 'ploeg' && (
+          ('ploeg.webgrip.dev/privileged-dind' in
+             object.metadata.?labels.orValue({}) &&
+           object.metadata.labels['ploeg.webgrip.dev/privileged-dind'] == 'true') ||
+          ('scaledjob.keda.sh/name' in object.metadata.?labels.orValue({}) &&
+           object.metadata.labels['scaledjob.keda.sh/name'] in
+             ['ploeg-worker-bronze-builder', 'ploeg-worker-silver'])
+        )
