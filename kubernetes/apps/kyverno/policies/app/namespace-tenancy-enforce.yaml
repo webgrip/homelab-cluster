@@ -37,9 +37,29 @@
 # and is managed by Cilium, so it wants an exclusion, not governance. Only `default`
 # and `keda` are genuine candidates for the wave-12 treatment.
 #
-# Deleting the empties is NOT done here: an empty namespace can still be a
-# targetNamespace for a Kustomization that currently renders nothing, and confirming
-# that needs more than the grep this note is based on.
+# VERIFIED 2026-08-09 — `kyverno` and `external-secrets` really are orphans, but
+# NOT by the check you would reach for first. `kubectl get all -n kyverno` returns
+# nothing, and that is a lie: sweeping every namespaced kind finds 2 configmaps,
+# 4 TLS secrets, 1 serviceaccount, 2 policyreports and 5 LEASES. Leases are leader
+# election, so "5 leases" reads as an actively-held namespace and argues against
+# deletion — the opposite conclusion to `get all`.
+#
+# The renewal timestamps settle it: all five were last renewed 2026-05-27, ~2.5
+# months stale, and their holders (kyverno-admission-controller-54cf7d5b7d-*) no
+# longer exist — Kyverno now runs as 69788ff4b5-* in the `security` namespace.
+# They are abandoned from before that move. The TLS secrets are the same vintage:
+# every live admission webhook resolves to cert-manager, cnpg-system, keda,
+# longhorn-system or security, and nothing references kyverno-svc.kyverno.svc.
+# Nothing in the repo declares either namespace (only CLI/chainsaw test fixtures
+# match) and nothing sets targetNamespace to either.
+#
+# So deletion is correct — but it is IMPERATIVE, not GitOps: there is no manifest
+# to remove, the namespaces are unmanaged leftovers carrying a stale
+# kustomize.toolkit.fluxcd.io/name label. That makes it a deliberate hand-run step
+# (`kubectl delete namespace kyverno external-secrets`) rather than a commit, and
+# it is left undone on purpose — clearing 6 of 15 audit findings does not justify
+# an unreviewed destructive action on a namespace whose emptiness two different
+# standard checks disagreed about.
 #
 # 1:1 — no split needed. All three rules share one scope (kind NetworkPolicy, all
 # namespaces) and NONE is waived by any PolicyException, so the CEL whole-policy waiver
