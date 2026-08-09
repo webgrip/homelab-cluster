@@ -1,0 +1,115 @@
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/monitoring.coreos.com/prometheusrule_v1.json
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-forgejo-ci-outcomes
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: forgejo
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: platform.forgejo-ci-outcomes
+      # The companion to platform-forgejo-ci, which watches runner SUPPLY. These
+      # watch OUTCOMES, fed by the forgejo-ci-exporter Deployment in this same
+      # namespace. The gap was not theoretical: ploeg's release job failed on
+      # every push for nine days in 2026-08 while the fleet stayed perfectly
+      # healthy — instant failures, no queue, no pending pods, nothing to fire
+      # on. Series are trunk-only (default branch + main/development) and
+      # pull_request runs are excluded, since a red PR is already visible to
+      # whoever opened it.
+      rules:
+        - alert: ForgejoCITrunkPipelineFailing
+          # 3, not 1: a single red push is normal life and self-corrects. A third
+          # consecutive failure on trunk means nobody is coming. ploeg would have
+          # fired here on 2026-08-01 rather than being found by hand on 08-09.
+          #
+          # The 7d recency guard is not padding. Measured against the live org when
+          # this was written, four trunk pipelines were red and only ONE had run in
+          # the last week; the others were branches nobody had pushed in 2-3 weeks
+          # (including ploeg's own main, red since 2026-07-26). Without the guard
+          # every dormant red branch alerts forever, and an alert that is always
+          # firing is an alert nobody reads — which is how the outage this exists
+          # to catch went unnoticed in the first place. A pipeline failing often
+          # enough to matter runs often enough to clear this; ploeg's failed every
+          # day or two throughout.
+          #
+          # `on(...)` is required: the >= filter keeps __name__ while the time()
+          # subtraction drops it, so an unqualified `and` would match nothing.
+          expr: |
+            forgejo_ci_consecutive_failures >= 3
+              and on(repo, workflow, event, ref)
+                  (time() - forgejo_ci_last_run_timestamp_seconds < 7 * 24 * 3600)
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: forgejo-ci
+          annotations:
+            summary: "Forgejo CI trunk pipeline failing repeatedly ({{ $labels.repo }}/{{ $labels.workflow }} on {{ $labels.ref }})"
+            description: |
+              What's happening:
+              - The {{ $labels.workflow }} pipeline in {{ $labels.repo }} has failed
+                {{ $value }} consecutive times ({{ $labels.event }}{{ if $labels.ref }} on {{ $labels.ref }}{{ end }}).
+
+              Impact/risk:
+              - Whatever this pipeline delivers has stopped. For a release workflow that
+                means no new image or chart is being cut, while the branch keeps moving
+                and looks healthy — the failure mode this alert exists for.
+
+              Likely causes:
+              - An action ref that no longer resolves (a SHA pinned off a branch that was
+                later amended is unreachable to the runner even though it still resolves
+                from a workstation and over SSH)
+              - A credential or registry token that expired
+              - A genuine test/build break nobody is watching
+
+              First actions:
+              - Open the run: the failing step is usually the first one
+              - For "could not determine the commit ID of <sha>", the pinned action ref is
+                gone; repin to a tag on the target repo's default branch
+              - Confirm the fleet is healthy first (the platform.forgejo-ci group); if those
+                are also firing, fix supply before chasing this
+
+              Note:
+              - Only pipelines that have run in the last 7d alert. A trunk branch left red
+                and then abandoned stays red without paging, so `forgejo_ci_consecutive_failures > 0`
+                in vmui is the honest fleet-wide answer, not the absence of this alert.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo-ci"
+
+        - alert: ForgejoCIOutcomeExporterStale
+          # Without this the alert above fails open: no series, no alert, and the
+          # silence looks exactly like "everything is passing".
+          expr: |
+            forgejo_ci_up == 0
+            or (time() - forgejo_ci_last_refresh_timestamp_seconds) > 1800
+            or absent(forgejo_ci_up)
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: forgejo-ci
+          annotations:
+            summary: "Forgejo CI outcome exporter is not reporting (forgejo-ci-exporter)"
+            description: |
+              What's happening:
+              - forgejo-ci-exporter has not completed a refresh in 30m, or its series are
+                absent entirely.
+
+              Impact/risk:
+              - ForgejoCITrunkPipelineFailing cannot fire. A broken release pipeline would
+                once again be silent, which is the exact condition this pair was built to
+                end — so treat a stale exporter as an outage of the detection itself.
+
+              Likely causes:
+              - The exporter cannot reach the Forgejo API (NetworkPolicy, Forgejo down)
+              - A bad EXCLUDE_PIPELINES regex or a crash-looping pod
+              - The org repo listing is failing (check forgejo_ci_refresh_errors_total)
+
+              First actions:
+              - kubectl -n observability logs deploy/forgejo-ci-exporter
+              - Check forgejo_ci_refresh_errors_total and forgejo_ci_repos_tracked in vmui
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo-ci"
