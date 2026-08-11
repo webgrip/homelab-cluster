@@ -1,0 +1,230 @@
+---
+# CEL SPLIT of flux-governance-enforce, STAGE 1 OF 2
+# (rfc-kyverno-cel-migration.md).
+#
+# STAGE 1 (this commit): the three policies below run at AUDIT beside the legacy
+# ClusterPolicy, which keeps ENFORCING unchanged. STAGE 2: delete the legacy
+# policy, flip these to Deny, port the two waivers — one commit.
+#
+# STAGED BECAUSE THE OFFLINE DIFFERENTIAL IS UNAVAILABLE HERE, which is the first
+# time that has happened in this migration. `kyverno apply` cannot map GVK to GVR
+# for the Flux CRDs when run outside the cluster — it fails with
+#   failed to map gvk to gvr source.toolkit.fluxcd.io/v1, Kind=GitRepository
+# and evaluates ZERO resources while the legacy policy evaluates all 229. Passing
+# the CRDs via --resource and via --crd-path (both tried) does not help; the legacy
+# dialect works only because it matches on bare `kinds:` names rather than group +
+# resource. So the usual pre-flip proof cannot be produced offline, and the
+# in-cluster AUDIT window is the substitute: run both dialects side by side and
+# compare their PolicyReports before flipping.
+#
+# That matters more here than anywhere else so far. This policy governs Flux
+# itself, and kyverno/exceptions/ks.yaml documents the deadlock a bad admission
+# rule on the GitOps control plane produces: the fix cannot be delivered because
+# the thing that would deliver it is being rejected.
+#
+#   rule                                     action   waived by
+#   require-ocirepository-digest             Enforce  -
+#   restrict-gitrepository-url               Enforce  -
+#   require-kustomization-prune              Enforce  -
+#   require-helmrelease-remediation          Enforce  -
+#   require-helmrelease-approved-source-kind Enforce  -
+#   require-kustomization-flux-source        Enforce  flux-bootstrap-kustomization
+#   audit-helmrepository-use                 Audit    helmrepositories-http
+#
+# Three groupings: the five unwaived Enforce rules stay together under the original
+# name; require-kustomization-flux-source separates because it carries a waiver the
+# others do not; audit-helmrepository-use separates on BOTH action and waiver.
+#
+# API groups verified against the live cluster rather than assumed — a wrong
+# apiVersion in matchConstraints makes a policy match nothing and report clean:
+#   source.toolkit.fluxcd.io/v1     gitrepositories, helmrepositories, ocirepositories
+#   kustomize.toolkit.fluxcd.io/v1  kustomizations
+#   helm.toolkit.fluxcd.io/v2       helmreleases
+#
+# The first policy spans four kinds across three API groups, so every validation
+# carries an object.kind guard — one match block covers them all.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: flux-governance-enforce
+  annotations:
+    policies.kyverno.io/title: Flux Source and Reconciliation Governance (Enforced)
+    policies.kyverno.io/category: GitOps
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: OCIRepository,GitRepository,Kustomization,HelmRelease
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Flux sources must be digest-pinned and trusted, Kustomizations must prune, and
+      HelmReleases must declare remediation and an approved chart source.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - "source.toolkit.fluxcd.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "ocirepositories"
+          - "gitrepositories"
+      - apiGroups:
+          - "kustomize.toolkit.fluxcd.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "kustomizations"
+      - apiGroups:
+          - "helm.toolkit.fluxcd.io"
+        apiVersions:
+          - "v2"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "helmreleases"
+  validations:
+    # Legacy pattern `sha256:*` is a glob, so startsWith is the faithful equivalent.
+    - expression: >-
+        object.kind != 'OCIRepository' ||
+        object.spec.?ref.orValue({}).?digest.orValue('').startsWith('sha256:')
+      message: "OCIRepository resources must pin spec.ref.digest."
+    # Two allowed URLs, PERMANENTLY: Forgejo is the steady-state source (ADR-0011)
+    # and GitHub is the sanctioned break-glass/bootstrap source (ADR-0012) — the
+    # break-glass repoint must pass admission (drilled 2026-07-14,
+    # runbooks/flux-source.md). anyPattern over two EXACT urls; membership
+    # reproduces it without regex.
+    - expression: >-
+        object.kind != 'GitRepository' ||
+        object.spec.?url.orValue('') in [
+          'https://github.com/webgrip/homelab-cluster.git',
+          'http://forgejo-http.forgejo.svc.cluster.local:3000/webgrip/homelab-cluster.git']
+      message: >-
+        GitRepository sources are restricted to the homelab GitOps repository (GitHub
+        or the in-cluster Forgejo).
+    - expression: >-
+        object.kind != 'Kustomization' ||
+        object.spec.?prune.orValue(false) == true
+      message: "Flux Kustomizations must enable pruning."
+    # `retries: ">=1"` is Kyverno's numeric-operator syntax, not a string. Absent
+    # defaults to 0 and therefore fails, matching the legacy pattern's required keys.
+    - expression: >-
+        object.kind != 'HelmRelease' || (
+          object.spec.?install.orValue({}).?remediation.orValue({})
+            .?retries.orValue(0) >= 1 &&
+          object.spec.?upgrade.orValue({}).?cleanupOnFail.orValue(false) == true &&
+          object.spec.?upgrade.orValue({}).?remediation.orValue({})
+            .?retries.orValue(0) >= 1 &&
+          object.spec.?upgrade.orValue({}).?remediation.orValue({})
+            .?remediateLastFailure.orValue(false) == true)
+      message: "HelmReleases must define install and upgrade remediation."
+    # anyPattern: either a direct OCIRepository chartRef, or a chart.spec.sourceRef of
+    # an approved kind. `"HelmRepository | OCIRepository"` is an OR-pattern, and `?*`
+    # means present AND non-empty — both halves preserved.
+    - expression: >-
+        object.kind != 'HelmRelease' || (
+          (object.spec.?chartRef.orValue({}).?kind.orValue('') == 'OCIRepository' &&
+           object.spec.?chartRef.orValue({}).?name.orValue('') != '')
+          ||
+          (object.spec.?chart.orValue({}).?spec.orValue({}).?sourceRef.orValue({})
+             .?kind.orValue('') in ['HelmRepository', 'OCIRepository'] &&
+           object.spec.?chart.orValue({}).?spec.orValue({}).?sourceRef.orValue({})
+             .?name.orValue('') != ''))
+      message: >-
+        HelmReleases should use OCIRepository chartRef or an explicitly declared chart
+        sourceRef.
+---
+# Separated because it is the only Kustomization rule carrying a waiver
+# (exception-flux-bootstrap-kustomization, for flux-system/flux-system itself, which
+# necessarily reconciles from a source it also defines). Merged with the rules above,
+# that bootstrap waiver would also exempt flux-system from the prune requirement.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: flux-kustomization-source
+  annotations:
+    policies.kyverno.io/title: Flux Kustomization Source (Enforced)
+    policies.kyverno.io/category: GitOps
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Kustomization
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Flux Kustomizations must reconcile from the approved flux-system GitRepository.
+      CEL split of flux-governance-enforce/require-kustomization-flux-source.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - "kustomize.toolkit.fluxcd.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "kustomizations"
+  validations:
+    - expression: >-
+        object.spec.?sourceRef.orValue({}).?kind.orValue('') == 'GitRepository' &&
+        object.spec.?sourceRef.orValue({}).?name.orValue('') == 'flux-system' &&
+        object.spec.?sourceRef.orValue({}).?namespace.orValue('') == 'flux-system'
+      message: >-
+        Flux Kustomizations must reconcile from the approved flux-system
+        GitRepository.
+---
+# Separated on BOTH drivers: it is the policy's only Audit rule, and its only waiver
+# is exception-helmrepositories-http. Merged with the enforcing rules it would start
+# denying every HelmRepository in the cluster.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: flux-helmrepository-audit
+  annotations:
+    policies.kyverno.io/title: Prefer OCIRepository over HelmRepository (Audit)
+    policies.kyverno.io/category: GitOps
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: HelmRepository
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Flags any HelmRepository source in favour of a digest-pinned OCIRepository. CEL
+      split of flux-governance-enforce/audit-helmrepository-use.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - "source.toolkit.fluxcd.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "helmrepositories"
+  validations:
+    # The legacy rule denied on `request.object.kind == 'HelmRepository'` while ALSO
+    # matching only HelmRepository — so it fails every resource it sees, by design.
+    # Written here as the same tautology rather than a bare `false`, so the intent
+    # stays legible: existence of the resource IS the finding.
+    - expression: "object.kind != 'HelmRepository'"
+      message: >-
+        Prefer OCIRepository chart sources with digest pinning over HelmRepository
+        sources.
