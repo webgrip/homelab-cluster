@@ -1,0 +1,17 @@
+---
+# protected-pvc with the break-glass annotation added, used ONLY by the cleanup step.
+# Identical spec to protected-pvc.yaml — a PVC spec is immutable, so this must differ in
+# metadata alone or the apply is rejected for the wrong reason.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: protected-pvc
+  namespace: delete-protection-test
+  annotations:
+    policy.webgrip.io/allow-stateful-delete: "true"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Mi

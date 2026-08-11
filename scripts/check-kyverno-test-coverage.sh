@@ -70,6 +70,47 @@ for policy in "${POLICY_DIR}"/*.yaml; do
 
     base="$(basename "${policy}")"
 
+    # DELETE-TRIGGERED POLICIES CANNOT SATISFY THIS GATE, EVER (added 2026-08-11).
+    #
+    # The Kyverno CLI evaluates CREATE-shaped input. A policy whose rules match only
+    # `operations: [DELETE]` is never triggered by a CLI fixture, so no `result: fail`
+    # can be written for it — the requirement below is unsatisfiable rather than merely
+    # unmet. Demanding it would leave exactly two ways out: baseline the policy (which
+    # disables the gate for it) or hide it in a file with a covered sibling, which is
+    # what stateful-delete-protection-enforce did for its whole life. It shared
+    # storage-cnpg-governance.yaml, that file's gate compliance came entirely from the
+    # storage rules, and nothing ever asserted anything about the delete guard itself.
+    #
+    # So DELETE-only policies are held to a DIFFERENT harness rather than excused: they
+    # must be applied by the chainsaw runner AND have a chainsaw test, which runs against
+    # a real API server that can actually issue a DELETE. Both halves are required — a
+    # policy applied but never exercised, or exercised but never applied, still fails.
+    #
+    # Scoped deliberately narrowly: only when EVERY `operations:` block in the file is
+    # DELETE-only. A policy mixing DELETE with CREATE/UPDATE still owes a CLI test.
+    # Quotes optional: the legacy dialect writes `- DELETE`, the CEL one `- "DELETE"`.
+    # The first version of this check matched only the unquoted form, so it silently
+    # stopped recognising the policy the moment it was migrated — and the gate went red
+    # for a policy it was written to accommodate. Verified against BOTH spellings below.
+    if grep -qE '^[[:space:]]*operations:' "${policy}" &&
+        ! grep -qE '^[[:space:]]*-[[:space:]]*"?(CREATE|UPDATE|CONNECT)"?[[:space:]]*$' "${policy}" &&
+        grep -qE '^[[:space:]]*-[[:space:]]*"?DELETE"?[[:space:]]*$' "${policy}"; then
+        checked=$((checked + 1))
+        if ! grep -q "policies/${base}" "${ROOT_DIR}/scripts/run-kyverno-chainsaw.sh"; then
+            echo "FAIL  ${base}: DELETE-triggered policy is not applied by run-kyverno-chainsaw.sh (no harness can reach it)"
+            failures=$((failures + 1))
+            continue
+        fi
+        if [[ ! -d "${ROOT_DIR}/kubernetes/apps/kyverno/tests/chainsaw" ]] ||
+            ! grep -rqE '^[[:space:]]*-[[:space:]]*delete:' "${ROOT_DIR}/kubernetes/apps/kyverno/tests/chainsaw"; then
+            echo "FAIL  ${base}: DELETE-triggered policy has no chainsaw test issuing a delete (prove the guard fires)"
+            failures=$((failures + 1))
+            continue
+        fi
+        echo "INFO  ${base}: DELETE-triggered — covered by chainsaw, not by a CLI test"
+        continue
+    fi
+
     if is_known_untested "${base}"; then
         echo "WARN  ${base}: enforce policy with no CLI test (baselined — burn down, see roadmap #83)"
         baselined=$((baselined + 1))

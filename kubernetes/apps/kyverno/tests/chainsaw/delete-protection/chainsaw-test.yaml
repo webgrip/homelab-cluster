@@ -1,0 +1,62 @@
+---
+# The ONLY harness that can exercise stateful-delete-protection-enforce. Its rules match
+# DELETE with background scanning off, so it produces no PolicyReports, and the Kyverno
+# CLI evaluates CREATE-shaped input, so no CLI fixture can trigger it. That is why the
+# policy went its entire life untested — and why the legacy version was dormant without
+# anyone noticing. See the header of the policy for the measurement.
+#
+# This test caught it on the first run: the legacy engine logged `Unsupported type ...
+# type=<nil> value=null` and admitted the delete of an unannotated PVC.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: delete-protection
+spec:
+  concurrent: false
+  steps:
+    - name: protection-and-breakglass
+      try:
+        - apply:
+            file: namespace.yaml
+        - apply:
+            file: protected-pvc.yaml
+        # MUST BE REFUSED. A PVC without the break-glass annotation cannot be deleted.
+        # This is the direction the policy exists for, and the one that was broken.
+        - delete:
+            ref:
+              apiVersion: v1
+              kind: PersistentVolumeClaim
+              namespace: delete-protection-test
+              name: protected-pvc
+            expect:
+              - check:
+                  ($error != null): true
+        # Now annotate THAT SAME PVC and delete it again. Using one resource for both
+        # directions is what makes this conclusive: the only thing that changed between
+        # the refusal above and the success below is the break-glass annotation, so
+        # neither outcome can be explained by anything else about the resource.
+        #
+        # It also proves break-glass is operable. A guard that refuses every delete is
+        # not "safe" — it is a policy nobody can use, and against a refusal-only test it
+        # would look identical to one that works.
+        - apply:
+            file: protected-pvc-breakglass.yaml
+        - delete:
+            ref:
+              apiVersion: v1
+              kind: PersistentVolumeClaim
+              namespace: delete-protection-test
+              name: protected-pvc
+      cleanup:
+        # Only the namespace, and only after the PVC above is gone. A protected PVC
+        # blocks deletion of its whole namespace: termination garbage-collects contained
+        # resources, those deletes go through admission, and the policy refuses them — so
+        # the namespace sits in Terminating forever. An earlier revision of this test hung
+        # here for eight minutes before failing. Worth knowing as an operational
+        # consequence, not just a test detail: deleting a namespace that holds protected
+        # volumes requires annotating them first.
+        - delete:
+            ref:
+              apiVersion: v1
+              kind: Namespace
+              name: delete-protection-test

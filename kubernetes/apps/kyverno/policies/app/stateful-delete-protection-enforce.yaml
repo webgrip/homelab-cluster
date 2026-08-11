@@ -1,0 +1,93 @@
+---
+# CEL REWRITE of stateful-delete-protection-enforce (2026-08-11). This is a FIX, not a
+# dialect translation: the legacy policy did not work.
+#
+# MEASURED, not inferred. Applied in KinD and asked to block the delete of a PVC with no
+# break-glass annotation, the legacy engine logged
+#
+#   Unsupported type  logger=engine.validate  old.name=protected-pvc
+#     policy.name=stateful-delete-protection-enforce  rule.name=protect-pvc-delete
+#     type=<nil>  value=null
+#   validation passed  name=protected-pvc  operation=DELETE
+#
+# and let the delete through. Its condition read
+#
+#   key: '{{ request.oldObject.metadata.annotations."policy.webgrip.io/allow-stateful-delete" || "false" }}'
+#   operator: NotEquals
+#   value: "true"
+#
+# The dotted, slashed annotation key does not resolve, the JMESPath yields null, and
+# NotEquals cannot compare null to a string — so the deny never fires and every DELETE
+# is admitted. PersistentVolumeClaims and CNPG Clusters have therefore been UNGUARDED
+# for as long as this policy has existed.
+#
+# It is the fourth rule in this family found dormant (after require-loadbalancer-cilium-ip,
+# require-readonly-root-filesystem, and require-serviceaccount-token-opt-out under-firing),
+# and the only one protecting data rather than reporting on posture.
+#
+# Nothing detected it because nothing could: the policy matches DELETE with background
+# scanning off, so it produces no reports, and the Kyverno CLI evaluates CREATE-shaped
+# input, so no CLI fixture can trigger it. It also shared a file with policies that WERE
+# covered, which kept the file-level coverage gate green. That gate now routes
+# DELETE-only policies to chainsaw instead — see check-kyverno-test-coverage.sh.
+#
+# NOT A DeletingPolicy. That is the obvious-looking CEL target and it is wrong:
+# DeletingPolicy carries a REQUIRED cron `schedule` and is the successor to
+# ClusterCleanupPolicy — it PERFORMS deletions. Porting a guard that PREVENTS deletion
+# into one would invert it into a scheduled deleter of exactly the volumes it protects.
+# A ValidatingPolicy with operations: [DELETE] reading oldObject is the correct shape.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: stateful-delete-protection-enforce
+  annotations:
+    policies.kyverno.io/title: Stateful Delete Protection (Enforced)
+    policies.kyverno.io/category: Storage, Database, Disaster Recovery
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: PersistentVolumeClaim,Cluster
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Require an explicit break-glass annotation before deleting a PersistentVolumeClaim
+      or a CNPG Cluster.
+spec:
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      # DELETE is an admission-time trigger with no steady-state to scan, so background
+      # reporting is off — matching the legacy policy's `background: false`. This is also
+      # why the policy produces no PolicyReports and why chainsaw is the only harness
+      # that can prove it works.
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "DELETE"
+        resources:
+          - "persistentvolumeclaims"
+      - apiGroups:
+          - "postgresql.cnpg.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "DELETE"
+        resources:
+          - "clusters"
+  validations:
+    # oldObject, not object: on a DELETE admission review the incoming object is null and
+    # the resource being removed arrives as oldObject. Reading `object` here would make
+    # the policy fail open exactly like the legacy one did.
+    #
+    # Membership first, then value. Testing the value alone on a resource with no
+    # annotations map is the shape that killed the legacy rule.
+    - expression: >-
+        ('policy.webgrip.io/allow-stateful-delete' in
+           oldObject.metadata.?annotations.orValue({})) &&
+        oldObject.metadata.annotations['policy.webgrip.io/allow-stateful-delete'] == 'true'
+      message: >-
+        Deleting a PersistentVolumeClaim or CNPG Cluster requires the annotation
+        policy.webgrip.io/allow-stateful-delete=true on the resource.
