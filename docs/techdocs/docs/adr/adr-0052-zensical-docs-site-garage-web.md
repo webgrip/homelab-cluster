@@ -136,4 +136,12 @@ for the triggering commit.
   stubs escaping their prefix to the domain root). GitHub-side docs workflows retired in six
   repos. Excluded with reason: twente.dev (empty repo on Forgejo), ploeg (no docs tree),
   erfbeeld (not on this Forgejo).
+* 2026-08-11 — **estate wipe incident, same day**: every homelab docs publish erased all other
+  prefixes — the root (empty-prefix) `rclone sync`'s deletion scope is the whole bucket; the
+  "prefix-scoped, repos cannot clobber each other" claim held only for *prefixed* syncs. Caught
+  by a user-reported bare-URL 404 that verification had misread as a redirect gap (the earlier
+  200s were pre-wipe reads). Fixed in the reusable (workflows fd6771a): the root sync now
+  dynamically excludes every top-level remote directory absent from its source tree, logged per
+  run; all 11 prefixes re-published. Trade-off accepted: a top-level dir REMOVED from homelab's
+  docs stays in the bucket until cleaned manually (stale beats wiped).
 
