@@ -1,3 +1,10 @@
+---
+tags:
+  - storage
+  - longhorn
+  - runbook
+---
+
 # Runbook: Longhorn rebuild-wedge (zombie replicas hold the rebuild slot)
 
 Use when Longhorn shows **many `degraded` volumes but nothing is actually rebuilding** — the rebuild

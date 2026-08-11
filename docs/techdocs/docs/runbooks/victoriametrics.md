@@ -1,3 +1,9 @@
+---
+tags:
+  - observability
+  - runbook
+---
+
 # Runbook: VictoriaMetrics (metrics backend)
 
 Use this when Grafana dashboards are empty/no-data, the `vm-operator` HelmRelease is failing, a scrape target is missing, or you're verifying the metrics backend after a change. Design + rationale: [ADR-0034](../adr/adr-0034-victoriametrics-metrics-backend.md). Authoring guardrails: the `victoriametrics` skill.

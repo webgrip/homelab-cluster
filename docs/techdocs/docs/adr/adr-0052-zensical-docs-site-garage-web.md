@@ -1,6 +1,9 @@
 ---
 status: accepted
 date: 2026-08-09
+tags:
+  - docs
+  - adr
 ---
 
 # Zensical builds the human docs site, served in-cluster from Garage's web endpoint

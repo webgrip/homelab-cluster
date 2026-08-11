@@ -126,7 +126,14 @@ Rolling out — links go live per repo as they onboard:
   [backstage-application](/backstage-application/)
 
 Each prefix also serves its own `llms.txt`, `llms-full.txt`, and every page as raw
-markdown at its source path — agents can read `/<repo>/llms.txt` first.
+markdown at its source path — agents: fetch `/<repo>/llms.txt` first
+([infrastructure](/infrastructure/llms.txt) · [workflows](/workflows/llms.txt) ·
+[telemetry-service](/telemetry-service/llms.txt) · [ledgerflow](/ledgerflow/llms.txt) ·
+[monitoring-platform](/monitoring-platform/llms.txt) · [searxng-application](/searxng-application/llms.txt) ·
+[freshrss-application](/freshrss-application/llms.txt) · [invoiceninja-application](/invoiceninja-application/llms.txt) ·
+[action-typescript-template](/action-typescript-template/llms.txt) · [application-template](/application-template/llms.txt) ·
+[backstage-application](/backstage-application/llms.txt)). Cross-estate human search:
+[Estate search](estate-search.md).
 
 ## Maintenance
 

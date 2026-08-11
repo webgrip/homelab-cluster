@@ -1,0 +1,26 @@
+---
+name: '[Workflow] Docs external link rot'
+
+# Weekly external-link check over the docs sources (estate item #15). Internal
+# link integrity is already gated at build (`zensical build --strict`); this
+# covers what strict cannot — the outside world rotting under our references.
+# Failures are a report, not a merge gate (schedule-only; a red run here means
+# "go fix links", never "trunk is blocked").
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Mondays 06:00 UTC; default-branch only by engine rule
+  workflow_dispatch: {}
+
+jobs:
+  link-rot:
+    name: 'lychee external links'
+    runs-on: docker
+    container: harbor.webgrip.dev/dockerhub/lycheeverse/lychee:0.24.2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check external links
+        run: |-
+          lychee --no-progress --cache --max-cache-age 7d \
+            --ignore-file .lycheeignore \
+            'docs/techdocs/docs/**/*.md' 'README.md'

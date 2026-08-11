@@ -1,3 +1,10 @@
+---
+tags:
+  - flux
+  - gitops
+  - runbook
+---
+
 # Runbook: Flux
 
 Use this when Flux alerts are firing (for example `FluxKustomizationNotReady`, `FluxHelmReleaseNotReady`, or `FluxResourceDriftDetected`) or when “GitOps isn’t applying what you expect”.
