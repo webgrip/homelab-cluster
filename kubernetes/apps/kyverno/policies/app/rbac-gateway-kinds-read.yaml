@@ -1,0 +1,41 @@
+---
+# Kyverno has NO RBAC for gateway.networking.k8s.io out of the box, so it cannot
+# read HTTPRoutes for background reporting.
+#
+# THIRD INSTANCE OF THE BUG CLASS IN kyverno:rbac-kinds-read AND
+# kyverno:monitor-kinds-read — read those two as well. The pattern is identical
+# every time: Kyverno's default ClusterRoles cover core and apps kinds, so any
+# policy matching a CRD or a non-core API group evaluates correctly at ADMISSION
+# but reports nothing, and the silence is indistinguishable from "clean".
+#
+# Surfaced 2026-08-11 by the CEL migration of secrets-observability-ops-audit.
+# ops-httproute-probes-audit came up with RBACPermissionsGranted: False naming
+# the exact missing verbs. The legacy dialect never said so.
+#
+# THIS IS NOT ONLY ABOUT THE NEW POLICY. network-exposure-enforce has matched
+# HTTPRoute all along and is ENFORCING — four of its eight rules govern
+# HTTPRoutes (https listener, external gateway attachment, approved hostnames,
+# cross-namespace backends). Its admission enforcement has always worked; its
+# PolicyReports have always been empty. Any "0 fails" previously read off those
+# rules was the absence of data, not the absence of findings.
+#
+# Read-only, and only the kind our policies actually match on. Gateway,
+# GRPCRoute and the rest are deliberately omitted — no policy matches them, and
+# the precedent here is to grant exactly what is needed.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno:gateway-kinds-read
+  labels:
+    rbac.kyverno.io/aggregate-to-admission-controller: "true"
+    rbac.kyverno.io/aggregate-to-background-controller: "true"
+    rbac.kyverno.io/aggregate-to-reports-controller: "true"
+rules:
+  - apiGroups:
+      - gateway.networking.k8s.io
+    resources:
+      - httproutes
+    verbs:
+      - get
+      - list
+      - watch
