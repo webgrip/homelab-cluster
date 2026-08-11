@@ -24,6 +24,10 @@ theme:
     - navigation.path
     - navigation.prune
     - search.highlight
+    # Hover definitions for glossary terms (estate item #11): abbr + snippets
+    # auto_append below inject includes/glossary.md into every page; this
+    # feature turns the <abbr> underlines into rich tooltips. Both engines.
+    - content.tooltips
 plugins:
   - redirects:
       redirect_maps:
@@ -149,6 +153,7 @@ plugins:
       description: "GitOps homelab cluster docs — Talos + Flux + Kubernetes; ADRs, RFCs, runbooks, incidents."
 markdown_extensions:
   - admonition
+  - abbr
   - attr_list
   - toc:
       permalink: true
@@ -157,6 +162,12 @@ markdown_extensions:
   # Material 9.6+ ships this extension natively, and Zensical remaps
   # material.extensions.* to its own implementation. NEVER spell it
   # zensical.extensions.* — that crashes the Material lane at render.
+  # Glossary auto-append (mkdocs-material's own docs' no-plugin trick): every
+  # page gets the abbreviation definitions; the file lives OUTSIDE docs/ so it
+  # never renders as a page (and never trips the orphan check).
+  - pymdownx.snippets:
+      auto_append:
+        - includes/glossary.md
   - material.extensions.preview:
       configurations:
         - targets:
