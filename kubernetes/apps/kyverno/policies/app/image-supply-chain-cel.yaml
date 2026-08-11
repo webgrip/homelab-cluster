@@ -1,0 +1,278 @@
+---
+# CEL SPLIT of image-supply-chain-enforce, STAGE 1 OF 2
+# (rfc-kyverno-cel-migration.md).
+#
+# STAGE 1 (this commit): the three policies below run at AUDIT, alongside the
+# legacy ClusterPolicy which keeps ENFORCING unchanged. Admission behaviour is
+# identical before and after. STAGE 2: delete the legacy policy, flip these to
+# Deny, and trim the legacy exception entries — one commit, because a waiver
+# cannot cross dialects.
+#
+# Staged rather than atomic because this one ENFORCES. Everything else migrated
+# in Phase 1B was Audit, where a mistake produces wrong reports; here a mistake
+# denies workloads. The Audit window is what makes the waivers provable before
+# they matter.
+#
+# WHY THREE. A CEL PolicyException waives a WHOLE POLICY, and the three rules
+# carry three distinct waiver sets:
+#   require-image-digest       cnpg-pods (base) + third-party (autogen)
+#   disallow-latest-...        third-party-pods-base (base) + third-party (autogen)
+#   require-fully-qualified    third-party (autogen) only
+# Merged, cnpg-pods would gain a latest-tag waiver and excalidraw would gain a
+# digest waiver. Neither has ever held one.
+#
+# CONTROLLER KINDS COME FROM THE AUTOGEN ANNOTATION, NOT THE DEFAULT SET. The
+# legacy policy carries
+#   pod-policies.kyverno.io/autogen-controllers: DaemonSet,Deployment,StatefulSet
+# so Kyverno generated rules for exactly those three — NOT Job, CronJob,
+# ReplicaSet or ReplicationController, which the default would have added. Jobs
+# and CronJobs have therefore NEVER been checked by this policy. Listing them
+# here would widen an enforcing policy and could start denying CI Jobs that have
+# always been out of scope. matchConstraints mirrors the annotation exactly.
+#
+# NO YAML ANCHORS: they do not cross document boundaries and kubeconform rejects
+# the file outright. The namespace list, resourceRules and variables are repeated
+# verbatim in all three policies on purpose.
+#
+# SCOPE UNCHANGED: the same 17-namespace exclusion on all three, carried verbatim.
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: image-supply-chain-digest-pinned
+  annotations:
+    policies.kyverno.io/title: Images Pinned by Digest
+    policies.kyverno.io/category: Software Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Container images must be pinned by digest. CEL split of
+      image-supply-chain-enforce/require-image-digest.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - arc-systems
+            - cert-manager
+            - cilium-secrets
+            - cnpg-system
+            - default
+            - external-secrets
+            - flux-system
+            - keda
+            - kube-node-lease
+            - kube-public
+            - kube-system
+            - kyverno
+            - longhorn-system
+            - network
+            - observability
+            - renovate
+            - security
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "daemonsets"
+          - "deployments"
+          - "statefulsets"
+  variables:
+    - name: podSpec
+      expression: "object.kind == 'Pod' ? object.spec : object.spec.template.spec"
+    - name: allContainers
+      expression: >-
+        variables.podSpec.?containers.orValue([]) +
+        variables.podSpec.?initContainers.orValue([]) +
+        variables.podSpec.?ephemeralContainers.orValue([])
+  validations:
+    # Legacy pattern `*@sha256:*` is a glob, so a substring test is faithful.
+    - expression: "variables.allContainers.all(c, c.image.contains('@sha256:'))"
+      message: "Images should be pinned by digest."
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: image-supply-chain-no-latest
+  annotations:
+    policies.kyverno.io/title: No Mutable latest Tag, Even With a Digest
+    policies.kyverno.io/category: Software Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Images must not reference the latest tag even when digest-pinned. CEL split
+      of image-supply-chain-enforce/disallow-latest-tag-even-with-digest.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - arc-systems
+            - cert-manager
+            - cilium-secrets
+            - cnpg-system
+            - default
+            - external-secrets
+            - flux-system
+            - keda
+            - kube-node-lease
+            - kube-public
+            - kube-system
+            - kyverno
+            - longhorn-system
+            - network
+            - observability
+            - renovate
+            - security
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "daemonsets"
+          - "deployments"
+          - "statefulsets"
+  variables:
+    - name: podSpec
+      expression: "object.kind == 'Pod' ? object.spec : object.spec.template.spec"
+    - name: allContainers
+      expression: >-
+        variables.podSpec.?containers.orValue([]) +
+        variables.podSpec.?initContainers.orValue([]) +
+        variables.podSpec.?ephemeralContainers.orValue([])
+  validations:
+    # Legacy `!*:latest@*` is an anchored NEGATION of "contains :latest@". This is
+    # narrower than image-hygiene-audit's plain `!*:latest`, deliberately: the two
+    # cover different halves. A bare `:latest` is that policy's job; this one
+    # exists for `foo:latest@sha256:...`, which looks immutable and is not.
+    - expression: "variables.allContainers.all(c, !c.image.contains(':latest@'))"
+      message: >-
+        Use immutable version tags with digests; avoid latest even when
+        digest-pinned.
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: image-supply-chain-fully-qualified
+  annotations:
+    policies.kyverno.io/title: Fully Qualified Image References
+    policies.kyverno.io/category: Software Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Image references must name an explicit registry host. CEL split of
+      image-supply-chain-enforce/require-fully-qualified-images.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - arc-systems
+            - cert-manager
+            - cilium-secrets
+            - cnpg-system
+            - default
+            - external-secrets
+            - flux-system
+            - keda
+            - kube-node-lease
+            - kube-public
+            - kube-system
+            - kyverno
+            - longhorn-system
+            - network
+            - observability
+            - renovate
+            - security
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "daemonsets"
+          - "deployments"
+          - "statefulsets"
+  variables:
+    - name: podSpec
+      expression: "object.kind == 'Pod' ? object.spec : object.spec.template.spec"
+    - name: allContainers
+      expression: >-
+        variables.podSpec.?containers.orValue([]) +
+        variables.podSpec.?initContainers.orValue([]) +
+        variables.podSpec.?ephemeralContainers.orValue([])
+  validations:
+    # Legacy denied on either condition being false, so passing requires BOTH: the
+    # reference contains a '/', and its first path segment looks like a registry
+    # host (has a dot, or a port colon, or is exactly "localhost"). That is the
+    # standard test separating `nginx` from `docker.io/library/nginx`.
+    - expression: >-
+        variables.allContainers.all(c,
+          c.image.contains('/') && (
+            c.image.split('/')[0].contains('.') ||
+            c.image.split('/')[0].contains(':') ||
+            c.image.split('/')[0] == 'localhost'))
+      message: "Images should be fully qualified with an explicit registry hostname."
