@@ -1,9 +1,22 @@
 # Draft upstream issue — siderolabs/talos
 
 > Status: DRAFT, not yet filed. File at <https://github.com/siderolabs/talos/issues/new>
-> after the 2026-08-11 fringe-workstation incident review. Related closed issue:
-> [#12526](https://github.com/siderolabs/talos/issues/12526) (v1.12.0 OOMController
-> loop, fixed via #12602) — this reproduces a distinct variant on v1.13.4.
+> after the 2026-08-11 fringe-workstation incident review.
+>
+> **IMPORTANT — narrow before filing (research 2026-08-11):** the kill-*storm*
+> component (no cooldown on the QoS trigger clause, ~500ms kill loop) is
+> [#13622](https://github.com/siderolabs/talos/issues/13622), already **fixed in
+> v1.13.6** via [#13675](https://github.com/siderolabs/talos/pull/13675); we hit
+> it because we run v1.13.4. What remains UNFIXED (even on main) and is worth
+> filing: (a) the victim ranker walks only kubepods/podruntime/system children,
+> so cgroups outside them (escaped dind, orphaned shims) generate the pressure
+> but can never be victims; (b) no empty-victim / kill-effectiveness feedback —
+> a cgroup can rank on page-cache with zero live processes and be "killed"
+> repeatedly to no effect. Also reference
+> [discussion #11853](https://github.com/siderolabs/talos/discussions/11853)
+> (maintainers consider the privileged-dind escape itself out of scope).
+> Related fixed history: [#12526](https://github.com/siderolabs/talos/issues/12526)
+> (v1.12.0 loop, fixed via #12602).
 
 ## Title
 
@@ -52,7 +65,7 @@ Any of the following would break the failure mode:
 
 ### Logs
 
-```
+```text
 user: warning: [2026-08-11T17:20:38Z]: [talos] Sending SIGKILL to cgroup {"component": "controller-runtime", "controller": "runtime.OOMController", "cgroup": "/sys/fs/cgroup/kubepods/burstable/podc11937f9-989d-48ba-8453-06d2baa9392b"}
 user: warning: [2026-08-11T17:20:39Z]: [talos] victim processes: {"component": "controller-runtime", "controller": "runtime.OOMController", "processes": []}
 user: warning: [2026-08-11T17:20:40Z]: [talos] OOM controller triggered {"component": "controller-runtime", "controller": "runtime.OOMController"}

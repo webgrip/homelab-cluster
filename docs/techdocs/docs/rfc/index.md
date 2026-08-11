@@ -17,7 +17,11 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
   `webgrip/workflows`), [Codeberg Pages TechDocs](rfc-codeberg-pages-techdocs.md) (interim;
   publish path unproven), [security hardening](rfc-security-hardening.md) (program frame),
   [Kyverno audit→enforce hardening](rfc-kyverno-audit-enforce-hardening.md) (waves pending).
-- **Proposed / open** — [dynamic database credentials](rfc-dynamic-database-credentials.md)
+- **Proposed / open** — [CI isolation on Talos](rfc-ci-isolation-talos.md)
+  (2026-08-11 incident-driven: shared privileged dind is unsupported on Talos per Sidero;
+  containment wrapper shipped, staged plan → Talos v1.13.8, cilium OOM-exemption, kata for
+  KinD e2e, rootless end-state gated on moby#52268),
+  [dynamic database credentials](rfc-dynamic-database-credentials.md)
   (pilot rolled back),
   [Backstage TechDocs](rfc-backstage-techdocs.md) (+ [implementation
   plan](plan-backstage-techdocs.md)), [docs estate rollout plan](plan-docs-estate-rollout.md)
