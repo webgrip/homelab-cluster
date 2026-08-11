@@ -1,0 +1,38 @@
+---
+# CEL-dialect twin of exception-spegel-nodeport (2026-08-11), replacing it outright —
+# that exception waived network-exposure-enforce/disallow-nodeport-services and nothing
+# else, and the whole legacy policy is deleted in the same commit.
+#
+# It references ONLY disallow-nodeport-services, which exists as its own ValidatingPolicy
+# precisely so this waiver cannot reach the other three Service rules. A CEL
+# PolicyException has no ruleNames, so had they stayed merged, exempting spegel from the
+# NodePort ban would also have exempted it from the externalIPs ban and both
+# LoadBalancer checks.
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-spegel-nodeport-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      spegel is the in-cluster registry mirror and needs a NodePort so containerd on
+      each node can reach its local peer. Blast radius of "fixing" it instead: spegel
+      serves every image pull in the cluster, so changing its Service type is not a
+      drive-by. Note that the chart is configured with service.registry.hostPort 29999
+      and containerd uses that host port, which suggests the NodePort may be vestigial —
+      narrowing or removing it is a worthwhile follow-up, but it needs its own
+      validation (pull a cold image on each node and confirm mirroring still works)
+      rather than being bundled into a policy cleanup.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: disallow-nodeport-services
+  matchConditions:
+    # The referenced policy matches Services only, so namespace/name alone cannot widen
+    # past the single intended object.
+    - name: spegel-registry-nodeport
+      expression: >-
+        object.metadata.namespace == 'kube-system' &&
+        object.metadata.name == 'spegel-registry'

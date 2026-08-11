@@ -1,3 +1,4 @@
+---
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -15,6 +16,21 @@ spec:
                   ($error != null): true
         - apply:
             file: forbidden-lb-service.yaml
+            expect:
+              - check:
+                  ($error != null): true
+        # WIRED UP 2026-08-11. missing-ip-lb-service.yaml has existed in this directory
+        # since the suite was written and no step ever applied it — so the rule it was
+        # built for, require-loadbalancer-cilium-ip, had no coverage anywhere. That rule
+        # turned out to be DORMANT in the legacy dialect: it reported `pass` for a
+        # LoadBalancer with no lbipam.cilium.io/ips annotation at all, which is the one
+        # thing it exists to reject. The CEL rewrite fires correctly, and this step is
+        # what keeps it that way.
+        #
+        # A LoadBalancer in an approved namespace (minecraft) with no IP annotation:
+        # it must be rejected for the missing annotation, not for its namespace.
+        - apply:
+            file: missing-ip-lb-service.yaml
             expect:
               - check:
                   ($error != null): true

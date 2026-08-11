@@ -1,0 +1,314 @@
+---
+# CEL SPLIT of network-exposure-enforce (rfc-kyverno-cel-migration.md).
+#
+# FIVE policies from eight rules. Three split drivers this time — the usual action and
+# waiver, plus a third that only shows up here: two rules carry an `exclude` block, and
+# in CEL the equivalent (matchConditions) is POLICY-level rather than rule-level. Merged
+# with a rule that has no exclude, that exemption would silently widen to cover it.
+#
+#   rule                                action  kind       exclude/waiver   -> policy
+#   disallow-service-external-ips       Enforce Service    -                service-exposure
+#   restrict-loadbalancer-namespaces    Enforce Service    -                service-exposure
+#   require-loadbalancer-cilium-ip      Enforce Service    -                service-exposure
+#   disallow-nodeport-services          Enforce Service    spegel waiver    nodeport
+#   require-httproute-https-listener    Enforce HTTPRoute  https-redirect   httproute-exposure
+#   require-approved-httproute-hostnames Enforce HTTPRoute https-redirect   httproute-exposure
+#   restrict-external-gateway-attachment Enforce HTTPRoute -                external-gateway
+#   audit-cross-namespace-backends      Audit   HTTPRoute  -                cross-namespace
+#
+# restrict-external-gateway-attachment is the rule that forced the third grouping: it is
+# Enforce, HTTPRoute and unwaived like the two above it, but it deliberately has NO
+# exclude — network/https-redirect IS subject to it, and passes on its merits because
+# `network` is an approved namespace. Folding it in with the excluded pair would have
+# exempted it instead, and the differential could not have seen the difference, because
+# https-redirect passes either way.
+#
+# gateway.networking.k8s.io resolves in kyverno-cli (probed before starting, after the
+# source.toolkit.fluxcd.io group turned out not to), so the offline differential and
+# full CLI coverage are both available here.
+#
+# `${SECRET_DOMAIN}` survives into the CEL expression as literal text and is substituted
+# by Flux postBuild in-cluster, and by scripts/lib/kyverno-tests.sh (to example.com) in
+# the test workspace — the same treatment the legacy policy got, so no special handling.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: network-service-exposure
+  annotations:
+    policies.kyverno.io/title: Service Exposure Guardrails (Enforced)
+    policies.kyverno.io/category: Networking, Gateway API
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Service
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Services may not set externalIPs, LoadBalancers are restricted to approved
+      namespaces, and every LoadBalancer must request a Cilium LB IPAM address.
+spec:
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "services"
+  validations:
+    # Legacy used the GLOBAL ANCHOR `X(externalIPs): "null"`. Despite the "null" value,
+    # what it actually keys on is PRESENCE: the field must be absent. Measured across
+    # all four shapes, both dialects now agreeing:
+    #
+    #   absent      pass      empty list []   FAIL
+    #   null        FAIL      populated       FAIL
+    #
+    # Two wrong guesses got here. `size(...orValue([])) == 0` ("absent or empty") passes
+    # `externalIPs: []`, which legacy fails. Adding `|| ... == null` then passed an
+    # explicit null, which legacy also fails — Kyverno's CEL reports has() as TRUE for a
+    # field present with a null value. Neither was predictable from reading the anchor;
+    # both were caught only because every shape was injected as a fixture rather than
+    # reasoned about.
+    #
+    # The null case cannot actually reach the cluster — the API server normalizes
+    # `externalIPs: null` to absent, confirmed by server-side dry-run — so it only
+    # matters for offline fixtures. It is pinned here anyway, because a divergence that
+    # exists only in the test harness still makes the differential lie.
+    - expression: >-
+        !has(object.spec.externalIPs)
+      message: "Service externalIPs are not allowed."
+    - expression: >-
+        object.spec.?type.orValue('ClusterIP') != 'LoadBalancer' ||
+        object.metadata.namespace in
+          ['network', 'minecraft', 'zomboid', 'forgejo']
+      message: >-
+        LoadBalancer Services are restricted to approved infrastructure and game
+        namespaces.
+    # forgejo is git-over-SSH (forgejo-ssh, 10.0.0.31).
+    #
+    # ⚠️ THIS IS THE ONE DELIBERATE BEHAVIOUR CHANGE IN THE MIGRATION. The legacy rule
+    # was DORMANT — it has never fired since it was written. Its deny condition read
+    #     key: '{{ request.object.metadata.annotations."lbipam.cilium.io/ips" || "" }}'
+    #     operator: Equals
+    #     value: ""
+    # and measured against injected fixtures it reports `pass` for a LoadBalancer with
+    # NO annotations at all and for one with the annotation set to "" — the two cases it
+    # exists to catch. The dotted, slashed key does not resolve the way the expression
+    # assumes, so the condition never matches and the rule admits everything.
+    #
+    # Nothing in the cluster is affected today: all five live LoadBalancers
+    # (forgejo-ssh, minecraft, envoy-external, envoy-internal, k8s-gateway) carry a real
+    # lbipam.cilium.io/ips value, which is how they get addresses at all. So this rule
+    # has looked healthy for as long as it has been dead, because every real Service
+    # complies for reasons that have nothing to do with the policy.
+    #
+    # The CEL version below actually fires. That is a fix, not a translation, and it is
+    # called out here rather than smuggled in under "migration". The chainsaw suite even
+    # ships a missing-ip-lb-service.yaml fixture that no test step ever applied — this
+    # commit wires it up, so the rule now has a gate that would catch it going dormant
+    # again.
+    #
+    # Legacy INTENT: a missing annotation defaults to "" and denies on equality with "",
+    # so both an absent annotation and an empty one are violations. Membership plus a
+    # non-empty check reproduces both halves.
+    - expression: >-
+        object.spec.?type.orValue('ClusterIP') != 'LoadBalancer' || (
+          'lbipam.cilium.io/ips' in object.metadata.?annotations.orValue({}) &&
+          object.metadata.annotations['lbipam.cilium.io/ips'] != '')
+      message: "LoadBalancer Services must request a Cilium LB IPAM address."
+---
+# Alone because it is the only Service rule carrying a waiver (spegel, which needs a
+# NodePort for its registry mirror). A CEL PolicyException has no ruleNames, so merged
+# with the policy above this waiver would also exempt spegel from the externalIPs and
+# LoadBalancer checks.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: disallow-nodeport-services
+  annotations:
+    policies.kyverno.io/title: Disallow NodePort Services (Enforced)
+    policies.kyverno.io/category: Networking, Gateway API
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Service
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      NodePort Services are not allowed; use Gateway API or an approved LoadBalancer.
+spec:
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "services"
+  validations:
+    - expression: >-
+        object.spec.?type.orValue('ClusterIP') != 'NodePort'
+      message: >-
+        NodePort Services are not allowed; use Gateway API or approved LoadBalancer
+        Services.
+---
+# The two HTTPRoute rules that share the network/https-redirect exclusion. They are
+# grouped BECAUSE they share it: the exclusion is a policy-level matchCondition in CEL,
+# so every rule under it inherits the exemption.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: network-httproute-exposure
+  annotations:
+    policies.kyverno.io/title: HTTPRoute Listener and Hostname Guardrails (Enforced)
+    policies.kyverno.io/category: Networking, Gateway API
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: HTTPRoute
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      HTTPRoutes must attach to the HTTPS listener and use hostnames under the
+      cluster domain.
+spec:
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - "gateway.networking.k8s.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "httproutes"
+  matchConditions:
+    # The legacy `exclude` block, verbatim in scope: network/https-redirect is the
+    # HTTP->HTTPS redirect route, which by definition attaches to the http listener and
+    # carries no hostname of its own. Kept as a matchCondition rather than folded into
+    # the expressions so it still reports SKIP rather than pass.
+    - name: exclude-https-redirect
+      expression: >-
+        !(object.metadata.namespace == 'network' &&
+          object.metadata.name == 'https-redirect')
+  validations:
+    # Legacy foreach denied if ANY parentRef had a sectionName other than https, i.e.
+    # every parentRef must be on the https listener. A missing sectionName defaulted to
+    # '' and therefore failed.
+    - expression: >-
+        object.spec.?parentRefs.orValue([]).all(p,
+          p.?sectionName.orValue('') == 'https')
+      message: "HTTPRoutes must attach to the HTTPS listener."
+    # ${SECRET_DOMAIN} is substituted before this string ever reaches CEL. The doubled
+    # backslashes are CEL string escapes, not regex ones — CEL rejects `\*` as an
+    # unknown escape, so `\\*` is what produces the single backslash the regex needs.
+    # The unescaped dots inside the substituted domain are as permissive here as they
+    # were in the legacy regex; that is preserved deliberately rather than tightened,
+    # since tightening it is a policy change and not a dialect translation.
+    - expression: >-
+        object.spec.?hostnames.orValue([]).all(h,
+          h.matches('^(\\*\\.)?([A-Za-z0-9-]+\\.)*${SECRET_DOMAIN}$'))
+      message: "HTTPRoute hostnames must be under ${SECRET_DOMAIN}."
+---
+# Separate from the pair above precisely BECAUSE it has no exclude. network/https-redirect
+# is subject to this rule and passes on its merits, `network` being an approved namespace.
+# Grouping it with the excluded pair would have exempted it instead — and no differential
+# could have caught that, since the resource passes either way.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: restrict-external-gateway-attachment
+  annotations:
+    policies.kyverno.io/title: Restrict envoy-external Attachment (Enforced)
+    policies.kyverno.io/category: Networking, Gateway API
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: HTTPRoute
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Only approved namespaces may attach HTTPRoutes to the public envoy-external
+      Gateway.
+spec:
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - "gateway.networking.k8s.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "httproutes"
+  validations:
+    # erfbeeld production is deliberately public (erfbeeld.${SECRET_DOMAIN} via
+    # envoy-external); dev/staging stay on envoy-internal and are NOT listed.
+    - expression: >-
+        object.spec.?parentRefs.orValue([]).all(p,
+          p.?name.orValue('') != 'envoy-external' ||
+          object.metadata.namespace in [
+            'default', 'erfbeeld-production', 'flux-system', 'forgejo',
+            'invoiceninja', 'network', 'observability', 'renovate'])
+      message: "Only approved namespaces may attach HTTPRoutes to envoy-external."
+---
+# The lone Audit rule. Merged with any of the above it would start denying every
+# cross-namespace backendRef in the cluster.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: audit-cross-namespace-backends
+  annotations:
+    policies.kyverno.io/title: Cross-namespace HTTPRoute Backends (Audit)
+    policies.kyverno.io/category: Networking, Gateway API
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: HTTPRoute
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Cross-namespace HTTPRoute backendRefs should require explicit review and
+      ReferenceGrants.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - "gateway.networking.k8s.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "httproutes"
+  validations:
+    # Legacy iterated the flattened spec.rules[].backendRefs[] and compared each
+    # element's namespace — defaulted to the route's own — against the route namespace.
+    # Nested all() reproduces the flattening.
+    - expression: >-
+        object.spec.?rules.orValue([]).all(r,
+          r.?backendRefs.orValue([]).all(b,
+            b.?namespace.orValue(object.metadata.namespace) ==
+              object.metadata.namespace))
+      message: >-
+        Cross-namespace HTTPRoute backendRefs should require explicit review and
+        ReferenceGrants.

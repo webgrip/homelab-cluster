@@ -1,65 +1,112 @@
 ---
+# Restructured for the CEL split (2026-08-11). One 8-rule ClusterPolicy became five
+# ValidatingPolicies, so each former `rule:` assertion becomes a `policy:` assertion —
+# CEL policies have no named rules, and a leftover `rule:` scores Pass/Excluded, green
+# while asserting nothing.
+#
+# COVERAGE GREW. Three rules had no fixture before (require-loadbalancer-cilium-ip,
+# audit-cross-namespace-backends and the empty/populated externalIPs shapes), and one of
+# them turned out to be dormant in the legacy dialect — see the comment on that rule in
+# network-exposure-cel.yaml. The externalIPs shapes are asserted individually because
+# the global anchor `X(externalIPs): "null"` keys on PRESENCE rather than value, which
+# two successive wrong translations only revealed when every shape was tried.
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: network-exposure
 policies:
-  - ../../policies/network-exposure-enforce.yaml
+  - ../../policies/network-exposure-cel.yaml
 resources:
   - resources.yaml
 results:
-  - policy: network-exposure-enforce
-    rule: disallow-nodeport-services
+  # === disallow-nodeport-services (Enforce, waived for spegel) =====================
+  - policy: disallow-nodeport-services
     resources:
       - app/nodeport-service
     kind: Service
     result: fail
-  - policy: network-exposure-enforce
-    rule: disallow-service-external-ips
-    resources:
-      - app/external-ips-service
-    kind: Service
-    result: fail
-  - policy: network-exposure-enforce
-    rule: restrict-loadbalancer-namespaces
-    resources:
-      - app/forbidden-lb-service
-    kind: Service
-    result: fail
-  - policy: network-exposure-enforce
-    rule: require-httproute-https-listener
-    resources:
-      - app/http-listener-route
-    kind: HTTPRoute
-    result: fail
-  - policy: network-exposure-enforce
-    rule: restrict-external-gateway-attachment
-    resources:
-      - app/external-route
-    kind: HTTPRoute
-    result: fail
-  - policy: network-exposure-enforce
-    rule: require-approved-httproute-hostnames
-    resources:
-      - default/bad-hostname-route
-    kind: HTTPRoute
-    result: fail
-  # PASS cases — a ClusterIP Service and an internal HTTPRoute on the https listener with
-  # an approved hostname must be admitted.
-  - policy: network-exposure-enforce
-    rule: disallow-nodeport-services
+  - policy: disallow-nodeport-services
     resources:
       - app/compliant-clusterip
     kind: Service
     result: pass
-  - policy: network-exposure-enforce
-    rule: require-httproute-https-listener
+
+  # === network-service-exposure (Enforce) =========================================
+  # externalIPs: absent passes, everything else fails. Presence is the trigger.
+  - policy: network-service-exposure
+    resources:
+      - app/external-ips-service
+      - app/external-ips-empty-service
+    kind: Service
+    result: fail
+  - policy: network-service-exposure
+    resources:
+      - app/forbidden-lb-service
+    kind: Service
+    result: fail
+  # The dormant-rule case: a LoadBalancer in an APPROVED namespace with no
+  # lbipam.cilium.io/ips annotation. The legacy rule passed this.
+  - policy: network-service-exposure
+    resources:
+      - minecraft/missing-ip-lb-service
+    kind: Service
+    result: fail
+  - policy: network-service-exposure
+    resources:
+      - app/compliant-clusterip
+      - network/compliant-lb-service
+    kind: Service
+    result: pass
+
+  # === network-httproute-exposure (Enforce, excludes network/https-redirect) ======
+  - policy: network-httproute-exposure
+    resources:
+      - app/http-listener-route
+    kind: HTTPRoute
+    result: fail
+  - policy: network-httproute-exposure
+    resources:
+      - default/bad-hostname-route
+    kind: HTTPRoute
+    result: fail
+  - policy: network-httproute-exposure
     resources:
       - app/compliant-route
     kind: HTTPRoute
     result: pass
-  - policy: network-exposure-enforce
-    rule: require-approved-httproute-hostnames
+  # `skip`, not `pass` — the redirect route must be EXCLUDED from this policy, not merely
+  # happen to satisfy it. It attaches to the http listener and carries no hostname, so it
+  # would fail both checks if it were ever evaluated. Asserting `skip` catches anyone
+  # folding the exclusion into the expressions, which `pass` would not.
+  - policy: network-httproute-exposure
+    resources:
+      - network/https-redirect
+    kind: HTTPRoute
+    result: skip
+
+  # === restrict-external-gateway-attachment (Enforce, NO exclude) =================
+  - policy: restrict-external-gateway-attachment
+    resources:
+      - app/external-route
+    kind: HTTPRoute
+    result: fail
+  # https-redirect is deliberately IN scope here and passes on its merits, `network`
+  # being an approved namespace. This is the assertion that would catch it being merged
+  # into the excluded policy above.
+  - policy: restrict-external-gateway-attachment
+    resources:
+      - network/https-redirect
+      - app/compliant-route
+    kind: HTTPRoute
+    result: pass
+
+  # === audit-cross-namespace-backends (Audit) =====================================
+  - policy: audit-cross-namespace-backends
+    resources:
+      - app/cross-namespace-route
+    kind: HTTPRoute
+    result: fail
+  - policy: audit-cross-namespace-backends
     resources:
       - app/compliant-route
     kind: HTTPRoute

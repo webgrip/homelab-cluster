@@ -218,7 +218,9 @@ apply_with_webhook_retry() {
 
 apply_with_webhook_retry "${workspace}/policies/namespace-defaults-generate.yaml"
 apply_with_webhook_retry "${workspace}/policies/namespace-tenancy-audit.yaml"
-apply_with_webhook_retry "${workspace}/policies/network-exposure-enforce.yaml"
+# Renamed 2026-08-11 with the CEL migration. This list is matched by FILENAME, so a
+# policy rename breaks the KinD run at apply time rather than as a failed assertion.
+apply_with_webhook_retry "${workspace}/policies/network-exposure-cel.yaml"
 
 log info "Running Chainsaw suite" "image=${CHAINSAW_IMAGE}"
 docker run --rm \
