@@ -1,0 +1,500 @@
+---
+# CEL SPLIT of workload-advanced-hardening-audit (rfc-kyverno-cel-migration.md).
+# ELEVEN rules become SIX policies. The largest single split in the migration.
+#
+# Every rule is Audit and every rule matches Pod, so neither action nor kind drives the
+# split here — the waiver sets do, entirely. Six distinct sets:
+#
+#   policy                                  rules                          waived by
+#   workload-advanced-baseline-audit        non-baseline-capabilities,     -
+#                                           proc-mount-override,
+#                                           unconfined-apparmor,
+#                                           unsafe-sysctls,
+#                                           serviceaccount-token-opt-out
+#   workload-drop-all-capabilities-audit    require-drop-all-capabilities  7 exceptions
+#   workload-readonly-rootfs-audit          require-readonly-root-fs       buildkitd
+#   workload-root-identity-audit            explicit-root-user,            third-party
+#                                           explicit-root-group            (×2)
+#   workload-risky-volumes-audit            disallow-risky-volume-types    buildkitd,
+#                                                                          dind, runner
+#   workload-default-serviceaccount-audit   require-non-default-sa         third-party-
+#                                                                          workloads
+#
+# CONTROLLER KINDS ARE LISTED EXPLICITLY because ValidatingPolicy autogen is broken —
+# it emits nothing, so a Pod-only matchConstraints would silently stop covering
+# Deployments, StatefulSets and DaemonSets. The legacy policy relied on
+# `pod-policies.kyverno.io/autogen-controllers: DaemonSet,Deployment,StatefulSet`.
+#
+# That annotation lists exactly three controllers, so Jobs and CronJobs are NOT matched
+# here even though the sibling workload-hardening-audit CEL policy does match them.
+# Adding them would widen scope under cover of a dialect migration; Pods created BY a
+# Job are still covered by the Pod rule, which is what the legacy policy did too.
+#
+# The base-vs-autogen waiver asymmetry is the real hazard in this file and it lives in
+# the exceptions, not here: a CEL policy matches Pods and controllers under one
+# matchConstraints, so an exception that waived only `autogen-*` needs an explicit
+# object.kind guard or it silently widens to bare Pods.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: workload-advanced-baseline-audit
+  annotations:
+    policies.kyverno.io/title: Workload Advanced Hardening — Unwaived Controls (Audit)
+    policies.kyverno.io/category: Pod Security Standards (Restricted), Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Capability allowlist, procMount, AppArmor, sysctls and ServiceAccount token
+      opt-out. The five rules of the legacy policy that no exception waives.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    # WIDENED 2026-08-06 (carried over verbatim). This was a 17-namespace exclusion, and
+    # it was the single largest blind spot in the estate: our own reporting found 17
+    # service-account-token violations where Kubescape found 289, because we graded the
+    # application tier and scored the platform tier not at all — and the platform tier is
+    # where the privileged workloads live.
+    #
+    # Safe to widen because EVERY rule here is Audit: nothing is denied, only reported.
+    # Only structurally-empty system namespaces remain excluded. Note kube-system is IN
+    # scope: its Talos static pods (apiserver, scheduler, controller-manager) will report
+    # and are NOT remediable via GitOps — read them as known, not as debt.
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-node-lease
+            - kube-public
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "deployments"
+          - "statefulsets"
+          - "daemonsets"
+  variables:
+    - name: podSpec
+      expression: >-
+        object.kind == 'Pod' ? object.spec : object.spec.template.spec
+    # Legacy iterated `spec.[ephemeralContainers, initContainers, containers][]`, so all
+    # three lists in one pass.
+    - name: allContainers
+      expression: >-
+        variables.podSpec.?containers.orValue([]) +
+        variables.podSpec.?initContainers.orValue([]) +
+        variables.podSpec.?ephemeralContainers.orValue([])
+  validations:
+    # AnyNotIn over the added capabilities: a violation if ANY added capability falls
+    # outside the Pod Security Baseline allowlist.
+    - expression: >-
+        variables.allContainers.all(c,
+          c.?securityContext.orValue({}).?capabilities.orValue({}).?add.orValue([])
+            .all(a, a in [
+              'AUDIT_WRITE', 'CHOWN', 'DAC_OVERRIDE', 'FOWNER', 'FSETID', 'KILL',
+              'MKNOD', 'NET_BIND_SERVICE', 'SETFCAP', 'SETGID', 'SETPCAP', 'SETUID',
+              'SYS_CHROOT']))
+      message: >-
+        Only Linux capabilities from the Pod Security Baseline allowlist may be added.
+    - expression: >-
+        variables.allContainers.all(c,
+          c.?securityContext.orValue({}).?procMount.orValue('Default') == 'Default')
+      message: "Containers may not override procMount away from Default."
+    - expression: >-
+        variables.allContainers.all(c,
+          c.?securityContext.orValue({}).?appArmorProfile.orValue({})
+            .?type.orValue('RuntimeDefault') != 'Unconfined')
+      message: "AppArmor profiles must not be Unconfined."
+    - expression: >-
+        variables.podSpec.?securityContext.orValue({}).?sysctls.orValue([]).all(s,
+          s.?name.orValue('') in [
+            'kernel.shm_rmid_forced', 'net.ipv4.ip_local_port_range',
+            'net.ipv4.ip_unprivileged_port_start', 'net.ipv4.tcp_syncookies',
+            'net.ipv4.ping_group_range'])
+      message: "Only Kubernetes safe sysctls may be configured."
+    # Legacy denied when the value (defaulting to true) was NOT false, so an absent field
+    # is a violation and only an explicit false passes.
+    - expression: >-
+        variables.podSpec.?automountServiceAccountToken.orValue(true) == false
+      message: >-
+        Application Pods should set automountServiceAccountToken: false unless they call
+        the Kubernetes API.
+---
+# Waived by SEVEN exceptions — the most-waived rule in the estate, which is exactly why
+# it cannot share a policy with anything else.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: workload-drop-all-capabilities-audit
+  annotations:
+    policies.kyverno.io/title: Drop All Capabilities (Audit)
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Containers should drop all Linux capabilities with capabilities.drop: [ALL].
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    # Namespace exclusion carried over verbatim from the legacy policy (widened
+    # 2026-08-06). Only structurally-empty system namespaces are excluded; kube-system
+    # is deliberately IN scope, and its Talos static pods (apiserver, scheduler,
+    # controller-manager) report and are NOT remediable via GitOps — known, not debt.
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-node-lease
+            - kube-public
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "deployments"
+          - "statefulsets"
+          - "daemonsets"
+  variables:
+    - name: podSpec
+      expression: >-
+        object.kind == 'Pod' ? object.spec : object.spec.template.spec
+    - name: allContainers
+      expression: >-
+        variables.podSpec.?containers.orValue([]) +
+        variables.podSpec.?initContainers.orValue([]) +
+        variables.podSpec.?ephemeralContainers.orValue([])
+  validations:
+    # Legacy read `key: ALL, AnyNotIn, value: <drop list>` — a violation when ALL is
+    # absent from the drop list.
+    - expression: >-
+        variables.allContainers.all(c,
+          'ALL' in c.?securityContext.orValue({}).?capabilities.orValue({})
+            .?drop.orValue([]))
+      message: >-
+        Containers should drop all Linux capabilities with capabilities.drop: [ALL].
+---
+# Waived only by forgejo-buildkitd, which needs a writable root to build images.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: workload-readonly-rootfs-audit
+  annotations:
+    policies.kyverno.io/title: Read-only Root Filesystem (Audit)
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Containers should set securityContext.readOnlyRootFilesystem to true.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    # Namespace exclusion carried over verbatim from the legacy policy (widened
+    # 2026-08-06). Only structurally-empty system namespaces are excluded; kube-system
+    # is deliberately IN scope, and its Talos static pods (apiserver, scheduler,
+    # controller-manager) report and are NOT remediable via GitOps — known, not debt.
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-node-lease
+            - kube-public
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "deployments"
+          - "statefulsets"
+          - "daemonsets"
+  variables:
+    - name: podSpec
+      expression: >-
+        object.kind == 'Pod' ? object.spec : object.spec.template.spec
+    - name: allContainers
+      expression: >-
+        variables.podSpec.?containers.orValue([]) +
+        variables.podSpec.?initContainers.orValue([]) +
+        variables.podSpec.?ephemeralContainers.orValue([])
+  validations:
+    - expression: >-
+        variables.allContainers.all(c,
+          c.?securityContext.orValue({}).?readOnlyRootFilesystem.orValue(false) == true)
+      message: "Containers should set securityContext.readOnlyRootFilesystem to true."
+---
+# The two root-identity rules share a waiver set (third-party-workloads for controllers,
+# third-party-pods-base for bare Pods) and therefore share a policy.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: workload-root-identity-audit
+  annotations:
+    policies.kyverno.io/title: Explicit Root User and Group (Audit)
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Pods and containers must not explicitly run as UID 0 or with root group IDs.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    # Namespace exclusion carried over verbatim from the legacy policy (widened
+    # 2026-08-06). Only structurally-empty system namespaces are excluded; kube-system
+    # is deliberately IN scope, and its Talos static pods (apiserver, scheduler,
+    # controller-manager) report and are NOT remediable via GitOps — known, not debt.
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-node-lease
+            - kube-public
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "deployments"
+          - "statefulsets"
+          - "daemonsets"
+  variables:
+    - name: podSpec
+      expression: >-
+        object.kind == 'Pod' ? object.spec : object.spec.template.spec
+    - name: allContainers
+      expression: >-
+        variables.podSpec.?containers.orValue([]) +
+        variables.podSpec.?initContainers.orValue([]) +
+        variables.podSpec.?ephemeralContainers.orValue([])
+  validations:
+    # Legacy checked the POD-level securityContext inside the per-container foreach, so
+    # both the pod-level and the container-level value are violations. `|| -1` is the
+    # legacy default, chosen so that "unset" can never equal 0.
+    - expression: >-
+        variables.podSpec.?securityContext.orValue({}).?runAsUser.orValue(-1) != 0 &&
+        variables.allContainers.all(c,
+          c.?securityContext.orValue({}).?runAsUser.orValue(-1) != 0)
+      message: "Pods and containers must not explicitly run as UID 0."
+    - expression: >-
+        variables.podSpec.?securityContext.orValue({}).?runAsGroup.orValue(-1) != 0 &&
+        variables.podSpec.?securityContext.orValue({}).?fsGroup.orValue(-1) != 0 &&
+        variables.allContainers.all(c,
+          c.?securityContext.orValue({}).?runAsGroup.orValue(-1) != 0)
+      message: "Pods and containers must not explicitly run with root group IDs."
+---
+# Waived by the three forgejo build/run workloads that legitimately mount host paths.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: workload-risky-volumes-audit
+  annotations:
+    policies.kyverno.io/title: Risky Volume Types (Audit)
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Risky direct node/network volume sources are not allowed in application Pods.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    # Namespace exclusion carried over verbatim from the legacy policy (widened
+    # 2026-08-06). Only structurally-empty system namespaces are excluded; kube-system
+    # is deliberately IN scope, and its Talos static pods (apiserver, scheduler,
+    # controller-manager) report and are NOT remediable via GitOps — known, not debt.
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-node-lease
+            - kube-public
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "deployments"
+          - "statefulsets"
+          - "daemonsets"
+  variables:
+    - name: podSpec
+      expression: >-
+        object.kind == 'Pod' ? object.spec : object.spec.template.spec
+    - name: allContainers
+      expression: >-
+        variables.podSpec.?containers.orValue([]) +
+        variables.podSpec.?initContainers.orValue([]) +
+        variables.podSpec.?ephemeralContainers.orValue([])
+  validations:
+    # Legacy used `=(volumes)` (conditional anchor: only if volumes exists) wrapping
+    # twenty `X(source): "null"` global anchors. As established while migrating
+    # network-exposure, a global anchor keys on PRESENCE of the field, so the check is
+    # "no volume declares any of these sources". An empty/absent volumes list passes.
+    - expression: >-
+        variables.podSpec.?volumes.orValue([]).all(v, [
+          'awsElasticBlockStore', 'azureDisk', 'azureFile', 'cephfs', 'cinder', 'fc',
+          'flexVolume', 'flocker', 'gcePersistentDisk', 'glusterfs', 'hostPath',
+          'iscsi', 'nfs', 'photonPersistentDisk', 'portworxVolume', 'quobyte', 'rbd',
+          'scaleIO', 'storageos', 'vsphereVolume'].all(k, !(k in v)))
+      message: >-
+        Risky direct node/network volume sources are not allowed in application Pods.
+---
+# Waived only by third-party-workloads, and there only for the autogen (controller)
+# variant — bare Pods in those namespaces are still reported. That asymmetry is carried
+# by an object.kind guard in the CEL exception.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: workload-default-serviceaccount-audit
+  annotations:
+    policies.kyverno.io/title: Non-default ServiceAccount (Audit)
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Application Pods should use an explicit non-default ServiceAccount.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    # Namespace exclusion carried over verbatim from the legacy policy (widened
+    # 2026-08-06). Only structurally-empty system namespaces are excluded; kube-system
+    # is deliberately IN scope, and its Talos static pods (apiserver, scheduler,
+    # controller-manager) report and are NOT remediable via GitOps — known, not debt.
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-node-lease
+            - kube-public
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "deployments"
+          - "statefulsets"
+          - "daemonsets"
+  variables:
+    - name: podSpec
+      expression: >-
+        object.kind == 'Pod' ? object.spec : object.spec.template.spec
+    - name: allContainers
+      expression: >-
+        variables.podSpec.?containers.orValue([]) +
+        variables.podSpec.?initContainers.orValue([]) +
+        variables.podSpec.?ephemeralContainers.orValue([])
+  validations:
+    - expression: >-
+        variables.podSpec.?serviceAccountName.orValue('default') != 'default'
+      message: "Application Pods should use an explicit non-default ServiceAccount."
