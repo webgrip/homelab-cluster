@@ -1,58 +1,67 @@
 ---
+# Restructured for the CEL split (2026-08-11). One 7-rule ClusterPolicy became three
+# ValidatingPolicies — split by waiver and by action — so each former `rule:` assertion
+# becomes a `policy:` assertion. CEL policies have no named rules; a leftover `rule:`
+# scores Pass/Excluded, green while asserting nothing.
+#
+# COVERAGE SHRANK IN THIS COMMIT, deliberately and with a named replacement. The
+# source.toolkit.fluxcd.io kinds cannot be evaluated offline by kyverno-cli v1.18.1
+# (see the long note in resources.yaml), which costs this file its assertions for
+# OCIRepository digest pinning, the GitRepository URL allowlist, and the whole of
+# flux-helmrepository-audit — that policy now has NO assertion here at all.
+#
+# The file-level coverage gate will not notice: it associates by filename and this
+# file still names flux-governance-cel.yaml, so all three policies in that file read
+# as covered. That is the gate's known blind spot for multi-policy files, and this is
+# the first place it actually bites. The follow-up that closes it is chainsaw, which
+# runs against a real API server where the CRDs resolve.
+#
+# What still holds the three uncovered rules: a live two-directional mutation test run
+# before the flip — digest stripped from a real OCIRepository, the flux-system
+# GitRepository repointed at an untrusted URL, the ADR-0012 break-glass GitHub URL
+# confirmed still admitted, and the HelmRepository waiver checked against three waived
+# and four unwaived real repositories. Evidence, but not a regression gate.
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: flux-governance
 policies:
-  - ../../policies/flux-governance-enforce.yaml
+  - ../../policies/flux-governance-cel.yaml
 resources:
   - resources.yaml
 results:
+  # --- the five unwaived Enforce rules, now one policy -----------------------------
+  # Fails on prune, which lives in this policy. Its sourceRef violation belongs to a
+  # separate policy — asserted below.
   - policy: flux-governance-enforce
-    rule: require-ocirepository-digest
     resources:
-      - bad-oci
-    kind: OCIRepository
+      - flux-system/bad-kustomization
+    kind: Kustomization
     result: fail
   - policy: flux-governance-enforce
-    rule: restrict-gitrepository-url
     resources:
-      - bad-git
-    kind: GitRepository
-    result: fail
-  - policy: flux-governance-enforce
-    rule: restrict-gitrepository-url
-    resources:
-      - good-git-forgejo
-    kind: GitRepository
+      - flux-system/good-kustomization
+    kind: Kustomization
     result: pass
+  # One fixture, formerly two rule assertions (remediation + approved source kind).
+  # Collapsed onto the policy: CEL reports one verdict per resource, so asserting the
+  # same fixture twice would assert the same thing twice.
   - policy: flux-governance-enforce
-    rule: require-kustomization-prune
-    resources:
-      - flux-system/bad-kustomization
-    kind: Kustomization
-    result: fail
-  - policy: flux-governance-enforce
-    rule: require-kustomization-flux-source
-    resources:
-      - flux-system/bad-kustomization
-    kind: Kustomization
-    result: fail
-  - policy: flux-governance-enforce
-    rule: require-helmrelease-remediation
     resources:
       - app/bad-helmrelease
     kind: HelmRelease
     result: fail
-  - policy: flux-governance-enforce
-    rule: require-helmrelease-approved-source-kind
+  # --- Kustomization source (own policy: carries the bootstrap waiver) -------------
+  - policy: flux-kustomization-source
     resources:
-      - app/bad-helmrelease
-    kind: HelmRelease
+      - flux-system/bad-kustomization
+    kind: Kustomization
     result: fail
-  - policy: flux-governance-enforce
-    rule: audit-helmrepository-use
+  # PASS — proves this policy admits a correctly-sourced Kustomization rather than
+  # failing every one it sees. Load-bearing: every other assertion for this policy is
+  # a fail, and a policy matching nothing produces no fails either.
+  - policy: flux-kustomization-source
     resources:
-      - app/plain-helm-repo
-    kind: HelmRepository
-    result: fail
+      - flux-system/good-kustomization
+    kind: Kustomization
+    result: pass

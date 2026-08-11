@@ -1,4 +1,31 @@
 ---
+# THREE FIXTURES WERE REMOVED HERE, NOT LOST BY ACCIDENT (2026-08-11, CEL migration).
+#
+# kyverno-cli v1.18.1 cannot map GVK to GVR for the source.toolkit.fluxcd.io group
+# when evaluating a CEL policy, and the failure is fatal to the whole run rather than
+# to one assertion — a single unresolvable resource in this file errors the entire
+# test file out. So the OCIRepository (bad-oci), both GitRepositories (bad-git,
+# good-git-forgejo) and the HelmRepository (plain-helm-repo) had to go.
+#
+# The limitation is GROUP-specific, not CRD-wide, which is worth knowing before
+# assuming the same of every future migration. Measured one kind at a time:
+#
+#   kustomize.toolkit.fluxcd.io/v1  Kustomization   RESOLVES
+#   helm.toolkit.fluxcd.io/v2       HelmRelease     RESOLVES
+#   source.toolkit.fluxcd.io/v1     OCIRepository   fails
+#   source.toolkit.fluxcd.io/v1     GitRepository   fails
+#   source.toolkit.fluxcd.io/v1     HelmRepository  fails
+#
+# cert-manager.io CRDs resolve too, which is why the cert-manager CEL migration hit
+# none of this. There is no flag to fix it: `kyverno test` accepts no CRD path, and
+# feeding the CRDs through `policies:` makes the loader fail parsing their schemas.
+#
+# The three rules those fixtures covered are NOT unverified — they were mutation
+# tested against the live API server in both directions before the flip (digest
+# stripped from a real OCIRepository, the flux-system GitRepository repointed at an
+# untrusted URL, and the ADR-0012 break-glass GitHub URL confirmed still admitted).
+# They are, however, no longer covered by a REGRESSION gate. Restoring that needs
+# chainsaw, which runs against a real API server where the CRDs exist.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -12,32 +39,6 @@ metadata:
   name: flux-system
   labels:
     kubernetes.io/metadata.name: flux-system
----
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: OCIRepository
-metadata:
-  name: bad-oci
-spec:
-  interval: 1h
-  url: oci://ghcr.io/example/chart
-  ref:
-    tag: 1.0.0
----
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: GitRepository
-metadata:
-  name: bad-git
-spec:
-  interval: 1h
-  url: https://github.com/example/other-repo.git
----
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: GitRepository
-metadata:
-  name: good-git-forgejo
-spec:
-  interval: 1h
-  url: http://forgejo-http.forgejo.svc.cluster.local:3000/webgrip/homelab-cluster.git
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -53,14 +54,23 @@ spec:
     name: other-source
     namespace: flux-system
 ---
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+# PASS fixture for flux-kustomization-source and the prune validation. Without it a
+# broken policy that matched nothing would still show green: every other Kustomization
+# assertion in this test is a `fail`, and a policy evaluating zero resources produces
+# no fails either.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
 metadata:
-  name: plain-helm-repo
-  namespace: app
+  name: good-kustomization
+  namespace: flux-system
 spec:
   interval: 1h
-  url: https://charts.example.com
+  path: ./kubernetes/apps/example
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
