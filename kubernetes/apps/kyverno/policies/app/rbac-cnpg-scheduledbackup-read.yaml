@@ -13,11 +13,33 @@ metadata:
     rbac.kyverno.io/aggregate-to-admission-controller: "true"
     rbac.kyverno.io/aggregate-to-background-controller: "true"
     rbac.kyverno.io/aggregate-to-reports-controller: "true"
+#
+# `clusters` ADDED 2026-08-11 — FIFTH INSTANCE OF THE REPORTING-BLINDNESS BUG CLASS,
+# and the first one caught by counting reports rather than by a CEL status condition.
+# See also kyverno:rbac-kinds-read, kyverno:monitor-kinds-read, kyverno:gateway-kinds-read
+# and kyverno:cert-manager-kinds-read.
+#
+# Four rules in storage-cnpg-governance match kind Cluster:
+#   require-cnpg-longhorn-storage      Enforce
+#   audit-cnpg-backup-plugin           Audit
+#   audit-cnpg-walstorage              Audit
+#   audit-cnpg-redundant-podmonitor    Audit
+# Against 19 live CNPG Clusters they had produced exactly ZERO report results between
+# them, because this role granted scheduledbackups and nothing else. The ScheduledBackup
+# rule reported 13 results the whole time, which is what made the gap look like absence
+# of findings rather than absence of evaluation.
+#
+# This one is worse than the previous four: require-cnpg-longhorn-storage ENFORCES. It
+# was still rejecting bad Clusters at admission — admission needs no list permission —
+# so the control worked while its reporting said nothing at all. Several comments in
+# storage-cnpg-governance.yaml cite live Cluster counts; those came from direct queries,
+# not from these reports, which is the only reason they were right.
 rules:
   - apiGroups:
       - postgresql.cnpg.io
     resources:
       - scheduledbackups
+      - clusters
     verbs:
       - get
       - list
