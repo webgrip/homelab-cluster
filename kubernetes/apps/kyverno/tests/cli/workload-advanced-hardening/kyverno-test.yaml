@@ -1,0 +1,112 @@
+---
+# NEW with the CEL split (2026-08-11). workload-advanced-hardening-audit had NO CLI test
+# in either dialect — every rule is Audit, and the coverage gate only demands a test for
+# enforcing policies, so eleven rules sat entirely ungated.
+#
+# That is how two of them died unnoticed. require-readonly-root-filesystem never fired
+# at all, and require-serviceaccount-token-opt-out fired only on an explicit `true`,
+# missing the absent case it was written for. Both are fixtured below specifically, and
+# both fixtures fail against the legacy dialect's behaviour — they are the regression
+# gate that would have caught the rot.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: workload-advanced-hardening
+policies:
+  - ../../policies/workload-advanced-hardening-cel.yaml
+resources:
+  - resources.yaml
+results:
+  # === workload-advanced-baseline-audit (5 unwaived controls) =====================
+  - policy: workload-advanced-baseline-audit
+    resources:
+      - app/automount-absent
+      - app/non-baseline-capability
+    kind: Pod
+    result: fail
+  - policy: workload-advanced-baseline-audit
+    resources:
+      - app/compliant-pod
+      - app/no-readonly-rootfs
+      - app/no-drop-all
+      - app/hostpath-volume
+      - app/default-serviceaccount
+      - app/explicit-root
+    kind: Pod
+    result: pass
+
+  # === workload-readonly-rootfs-audit =============================================
+  # The dormant-rule fixture. Legacy passed this shape; anything that passes it again
+  # has regressed to the dead behaviour.
+  - policy: workload-readonly-rootfs-audit
+    resources:
+      - app/no-readonly-rootfs
+    kind: Pod
+    result: fail
+  # no-drop-all sets readOnlyRootFilesystem: true and must PASS here — it is the fixture
+  # for a different policy. Each fixture violates exactly one control so a verdict can
+  # only come from the control under test.
+  - policy: workload-readonly-rootfs-audit
+    resources:
+      - app/compliant-pod
+      - app/no-drop-all
+    kind: Pod
+    result: pass
+
+  # === workload-drop-all-capabilities-audit =======================================
+  - policy: workload-drop-all-capabilities-audit
+    resources:
+      - app/no-drop-all
+    kind: Pod
+    result: fail
+  - policy: workload-drop-all-capabilities-audit
+    resources:
+      - app/compliant-pod
+    kind: Pod
+    result: pass
+  # Controller coverage. ValidatingPolicy autogen emits nothing, so the apps/v1 kinds
+  # are listed explicitly in matchConstraints — this assertion is what proves it. If the
+  # controller rules are ever dropped from matchConstraints, only this line fails.
+  - policy: workload-drop-all-capabilities-audit
+    resources:
+      - app/controller-no-drop-all
+    kind: Deployment
+    result: fail
+
+  # === workload-risky-volumes-audit ===============================================
+  - policy: workload-risky-volumes-audit
+    resources:
+      - app/hostpath-volume
+    kind: Pod
+    result: fail
+  # A Pod with no volumes at all must PASS: the legacy `=(volumes)` conditional anchor
+  # only applied when the field existed.
+  - policy: workload-risky-volumes-audit
+    resources:
+      - app/compliant-pod
+    kind: Pod
+    result: pass
+
+  # === workload-default-serviceaccount-audit ======================================
+  - policy: workload-default-serviceaccount-audit
+    resources:
+      - app/default-serviceaccount
+    kind: Pod
+    result: fail
+  - policy: workload-default-serviceaccount-audit
+    resources:
+      - app/compliant-pod
+    kind: Pod
+    result: pass
+
+  # === workload-root-identity-audit ===============================================
+  - policy: workload-root-identity-audit
+    resources:
+      - app/explicit-root
+    kind: Pod
+    result: fail
+  - policy: workload-root-identity-audit
+    resources:
+      - app/compliant-pod
+    kind: Pod
+    result: pass

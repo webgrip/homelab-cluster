@@ -1,0 +1,49 @@
+---
+# CEL-dialect twin of exception-third-party-pods-base (2026-08-11), replacing it
+# outright — it waived workload-advanced-hardening-audit and nothing else.
+#
+# THE MIRROR IMAGE of exception-third-party-workloads-cel. That one waives CONTROLLERS
+# and this one waives bare PODS, and they cover deliberately different rule sets:
+#
+#                              drop-all  root-user/group  non-default-SA
+#   controllers (other file)      yes          yes             yes
+#   bare Pods (this file)         yes          yes             NO
+#
+# The ServiceAccount column is the reason these cannot be merged. Bare Pods in these
+# namespaces are still reported for using the default ServiceAccount; only their
+# controllers are waived. Merging the two exceptions, or dropping either kind guard,
+# erases that distinction silently — a CEL PolicyException has no ruleNames, so scope is
+# carried entirely by matchConditions.
+#
+# The legacy file listed both base and `autogen-` rule names, but its match block was
+# `kinds: [Pod]` only, so the autogen entries never applied to anything. The kind guard
+# below reproduces the effective scope, not the nominal one.
+#
+# Namespaces only, no name list: the legacy match had no `names`, so every Pod in these
+# namespaces is in scope. forgejo appears here as well as in the per-workload forgejo
+# exceptions; that overlap is in the legacy file too and exceptions are additive.
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-third-party-pods-base-advanced-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      Bare Pods of third-party applications whose upstream images run as root or add
+      their own capabilities. Waives capability and root-identity controls only — these
+      Pods are still reported for default-ServiceAccount use.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: workload-drop-all-capabilities-audit
+    - kind: ValidatingPolicy
+      name: workload-root-identity-audit
+  matchConditions:
+    - name: third-party-bare-pods-only
+      expression: >-
+        object.kind == 'Pod' &&
+        object.metadata.namespace in [
+          'drawio', 'excalidraw', 'forgejo', 'freshrss', 'invoiceninja', 'n8n',
+          'searxng', 'sparkyfitness']

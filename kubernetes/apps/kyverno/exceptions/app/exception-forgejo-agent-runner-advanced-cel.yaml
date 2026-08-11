@@ -1,0 +1,22 @@
+---
+# CEL-dialect twin of exception-forgejo-agent-runner (2026-08-11), replacing it
+# outright. Pods only, for the same reason as the runner exception: its Job match was
+# already inert. Waives the capability control alone — the narrowest of the forgejo set.
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-forgejo-agent-runner-advanced-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      forgejo-agent-runner runs the agent fleet's CI jobs from upstream tool images that do not drop capabilities.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: workload-drop-all-capabilities-audit
+  matchConditions:
+    - name: forgejo-agent-runner-pods
+      expression: >-
+        object.kind == 'Pod' && object.metadata.namespace == 'forgejo'

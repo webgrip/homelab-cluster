@@ -1,0 +1,32 @@
+---
+# CEL-dialect twin of exception-forgejo-runner (2026-08-11), replacing it outright.
+#
+# REDUCES TO PODS ONLY, and that is not a narrowing. The legacy match was `Job` plus
+# `Pod`; the Job half was already inert, because the policy's autogen-controllers
+# annotation covers DaemonSet, Deployment and StatefulSet — no Job rule was ever
+# generated for a Job exception to waive.
+#
+# The remaining Pod scope duplicates what the buildkitd and dind exceptions already
+# grant to all forgejo Pods. It is kept as its own object anyway: the rationale below
+# belongs to the runner, and if buildkitd's exception is ever narrowed this one must
+# still stand on its own.
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-forgejo-runner-advanced-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      forgejo-runner executes CI workflow steps in ephemeral Pods whose contents are the workflow's, not ours. Waives capability and volume controls.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: workload-drop-all-capabilities-audit
+    - kind: ValidatingPolicy
+      name: workload-risky-volumes-audit
+  matchConditions:
+    - name: forgejo-runner-pods
+      expression: >-
+        object.kind == 'Pod' && object.metadata.namespace == 'forgejo'

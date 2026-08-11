@@ -1,0 +1,28 @@
+---
+# CEL-dialect twin of exception-forgejo-dind (2026-08-11), replacing it outright.
+# Same shape as the buildkitd exception: a named DaemonSet plus all forgejo Pods, waived
+# at both base and autogen level in the legacy file. It does NOT waive the read-only
+# root filesystem control, which is why it is a separate object from buildkitd's.
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-forgejo-dind-advanced-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      forgejo-dind runs Docker-in-Docker for CI jobs: it mounts the host container runtime and needs privileged capabilities. Waives capability and volume controls only.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: workload-drop-all-capabilities-audit
+    - kind: ValidatingPolicy
+      name: workload-risky-volumes-audit
+  matchConditions:
+    - name: dind-daemonset-or-forgejo-pods
+      expression: >-
+        (object.kind == 'DaemonSet' &&
+         object.metadata.namespace == 'forgejo' &&
+         object.metadata.name == 'forgejo-dind') ||
+        (object.kind == 'Pod' && object.metadata.namespace == 'forgejo')

@@ -1,0 +1,184 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app
+  labels:
+    kubernetes.io/metadata.name: app
+---
+# Clean baseline: passes every one of the six policies. Without it, a policy that
+# rejected everything would look identical to one that works.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: compliant-pod
+  namespace: app
+spec:
+  serviceAccountName: app-sa
+  automountServiceAccountToken: false
+  containers:
+    - name: c
+      image: ghcr.io/example/app:1.0.0
+      securityContext:
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
+---
+# MUST FAIL workload-readonly-rootfs-audit. The legacy rule this replaces NEVER FIRED —
+# it passed exactly this shape, and reported zero violations across 408 live resources.
+# This fixture is the regression gate for that.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: no-readonly-rootfs
+  namespace: app
+spec:
+  serviceAccountName: app-sa
+  automountServiceAccountToken: false
+  containers:
+    - name: c
+      image: ghcr.io/example/app:1.0.0
+      securityContext:
+        capabilities:
+          drop:
+            - ALL
+---
+# MUST FAIL workload-advanced-baseline-audit on the ServiceAccount token control.
+# automountServiceAccountToken is ABSENT, which is the case the legacy rule missed: it
+# fired only on an explicit `true`. This is the Kubescape C-0053 gap in one fixture.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: automount-absent
+  namespace: app
+spec:
+  serviceAccountName: app-sa
+  containers:
+    - name: c
+      image: ghcr.io/example/app:1.0.0
+      securityContext:
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
+---
+# MUST FAIL workload-advanced-baseline-audit on the capability allowlist (SYS_ADMIN is
+# not a Baseline capability).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: non-baseline-capability
+  namespace: app
+spec:
+  serviceAccountName: app-sa
+  automountServiceAccountToken: false
+  containers:
+    - name: c
+      image: ghcr.io/example/app:1.0.0
+      securityContext:
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
+          add:
+            - SYS_ADMIN
+---
+# MUST FAIL workload-drop-all-capabilities-audit.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: no-drop-all
+  namespace: app
+spec:
+  serviceAccountName: app-sa
+  automountServiceAccountToken: false
+  containers:
+    - name: c
+      image: ghcr.io/example/app:1.0.0
+      securityContext:
+        readOnlyRootFilesystem: true
+---
+# MUST FAIL workload-risky-volumes-audit (hostPath is one of the twenty banned sources).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hostpath-volume
+  namespace: app
+spec:
+  serviceAccountName: app-sa
+  automountServiceAccountToken: false
+  volumes:
+    - name: host
+      hostPath:
+        path: /var/run
+  containers:
+    - name: c
+      image: ghcr.io/example/app:1.0.0
+      securityContext:
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
+---
+# MUST FAIL workload-default-serviceaccount-audit.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: default-serviceaccount
+  namespace: app
+spec:
+  automountServiceAccountToken: false
+  containers:
+    - name: c
+      image: ghcr.io/example/app:1.0.0
+      securityContext:
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
+---
+# MUST FAIL workload-root-identity-audit (explicit UID 0 at the pod level).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: explicit-root
+  namespace: app
+spec:
+  serviceAccountName: app-sa
+  automountServiceAccountToken: false
+  securityContext:
+    runAsUser: 0
+  containers:
+    - name: c
+      image: ghcr.io/example/app:1.0.0
+      securityContext:
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
+---
+# A Deployment, not a Pod. ValidatingPolicy autogen is BROKEN — it emits nothing — so
+# controller kinds are listed explicitly in matchConstraints. This fixture is what
+# proves that: drop it and a Pod-only policy still passes every other assertion here.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-no-drop-all
+  namespace: app
+spec:
+  selector:
+    matchLabels:
+      app: x
+  template:
+    metadata:
+      labels:
+        app: x
+    spec:
+      serviceAccountName: app-sa
+      automountServiceAccountToken: false
+      containers:
+        - name: c
+          image: ghcr.io/example/app:1.0.0
+          securityContext:
+            readOnlyRootFilesystem: true

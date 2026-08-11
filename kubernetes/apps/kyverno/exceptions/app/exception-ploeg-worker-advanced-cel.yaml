@@ -1,0 +1,25 @@
+---
+# CEL-dialect twin of exception-ploeg-worker (2026-08-11), replacing it outright.
+# Pods only — its three Job match blocks were already inert (no autogen Job rule exists).
+#
+# The legacy file records an inspection-based cleanup that denied every DinD team; the
+# lesson kept there is that waivers like this get removed by mutation test, not by
+# reading. That still applies to this one.
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-ploeg-worker-advanced-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      ploeg worker Pods run customer build workloads from images we do not control.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: workload-drop-all-capabilities-audit
+  matchConditions:
+    - name: ploeg-worker-pods
+      expression: >-
+        object.kind == 'Pod' && object.metadata.namespace == 'ploeg'

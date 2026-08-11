@@ -1,0 +1,80 @@
+---
+# CEL-dialect twin of the workload-advanced-hardening half of
+# exception-third-party-workloads (2026-08-11).
+#
+# THE LEGACY FILE IS NOT DELETED — it also waives require-pod-probes-audit, which is
+# still a legacy ClusterPolicy. It is trimmed to that policy alone; this file takes over
+# the workload-advanced-hardening rules.
+#
+# AUTOGEN-ONLY WAIVER. Every rule name in the legacy file was prefixed `autogen-`:
+#
+#   autogen-require-drop-all-capabilities      -> workload-drop-all-capabilities-audit
+#   autogen-disallow-explicit-root-user        -> workload-root-identity-audit
+#   autogen-disallow-explicit-root-group       -> workload-root-identity-audit
+#   autogen-require-non-default-serviceaccount -> workload-default-serviceaccount-audit
+#
+# In the legacy dialect that prefix is the whole mechanism: it exempts the generated
+# CONTROLLER rules and leaves the base Pod rule enforcing. A CEL policy matches Pods and
+# controllers under one matchConstraints and a CEL PolicyException has no ruleNames, so
+# without the kind guard below this waiver would silently widen to bare Pods in all ten
+# namespaces — for four rules at once, including the ServiceAccount-token controls that
+# nothing else waives for Pods.
+#
+# Pods in eight of these namespaces ARE waived, but only for two of the four rules, and
+# by a separate exception with its own reasoning (exception-third-party-pods-base-cel).
+# Keeping the two files apart is what keeps that difference visible.
+#
+# The kind guard lists Deployment and StatefulSet only. The legacy match blocks also
+# named CronJob and Job, but those entries were ALREADY INERT: the policy's
+# `pod-policies.kyverno.io/autogen-controllers` annotation lists DaemonSet, Deployment
+# and StatefulSet, so no autogen rule for Job or CronJob ever existed to waive. They are
+# dropped rather than carried, because a waiver that matches a kind the policy cannot
+# see is indistinguishable from one that works.
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-third-party-workloads-advanced-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      Third-party application workloads whose upstream images run as root, mount their
+      own capabilities, or use the default ServiceAccount, and which we do not rebuild.
+      Waived at the controller level only — bare Pods in these namespaces are covered
+      separately and more narrowly.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: workload-drop-all-capabilities-audit
+    - kind: ValidatingPolicy
+      name: workload-root-identity-audit
+    - kind: ValidatingPolicy
+      name: workload-default-serviceaccount-audit
+  matchConditions:
+    - name: third-party-controllers-only
+      expression: >-
+        object.kind in ['Deployment', 'StatefulSet'] &&
+        (object.metadata.namespace + '/' + object.metadata.name) in [
+          'backstage/backstage',
+          'backstage/cnpg-disaster-recovery-check',
+          'backstage/cnpg-restore-test',
+          'drawio/drawio',
+          'drawio/drawio-plantuml-server',
+          'excalidraw/excalidraw',
+          'freshrss/freshrss',
+          'freshrss/cnpg-disaster-recovery-check',
+          'freshrss/cnpg-restore-test',
+          'invoiceninja/invoiceninja',
+          'invoiceninja/invoiceninja-mariadb',
+          'minecraft/minecraft',
+          'n8n/n8n',
+          'n8n/cnpg-restore-test',
+          'searxng/searxng',
+          'searxng/searxng-valkey',
+          'sparkyfitness/sparkyfitness-frontend',
+          'sparkyfitness/sparkyfitness-server',
+          'sparkyfitness/sparkyfitness-db-pgstatstatements-perms',
+          'sparkyfitness/cnpg-disaster-recovery-check',
+          'sparkyfitness/cnpg-restore-test',
+          'default/echo']

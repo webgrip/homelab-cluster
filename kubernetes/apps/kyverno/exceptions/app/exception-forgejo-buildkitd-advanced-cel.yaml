@@ -1,0 +1,33 @@
+---
+# CEL-dialect twin of exception-forgejo-buildkitd (2026-08-11), replacing it outright.
+#
+# Waived at BOTH levels: the legacy file listed each rule twice, once bare and once
+# `autogen-`, so unlike the third-party pair there is no base/autogen asymmetry to
+# preserve here. The kind guard still has to exist, because the legacy match named a
+# specific DaemonSet but ALL Pods in the forgejo namespace — a single ns/name list
+# would have silently narrowed the Pod half.
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-forgejo-buildkitd-advanced-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      forgejo-buildkitd builds container images: it needs a writable root filesystem, host mounts for the build cache, and capabilities that a builder cannot drop. Waives capability, volume and read-only-root controls for it.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: workload-drop-all-capabilities-audit
+    - kind: ValidatingPolicy
+      name: workload-readonly-rootfs-audit
+    - kind: ValidatingPolicy
+      name: workload-risky-volumes-audit
+  matchConditions:
+    - name: buildkitd-daemonset-or-forgejo-pods
+      expression: >-
+        (object.kind == 'DaemonSet' &&
+         object.metadata.namespace == 'forgejo' &&
+         object.metadata.name == 'forgejo-buildkitd') ||
+        (object.kind == 'Pod' && object.metadata.namespace == 'forgejo')
