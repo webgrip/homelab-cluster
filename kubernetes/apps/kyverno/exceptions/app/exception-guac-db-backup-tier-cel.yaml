@@ -1,0 +1,47 @@
+---
+# CEL-dialect twin of exception-guac-db-backup-tier (2026-08-11), for the CEL half of
+# the storage-cnpg-governance split.
+#
+# THE LEGACY EXCEPTION IS NOT DELETED, and this is not the usual replace-outright case.
+# It waived TWO rules, and the split sent them to different dialects:
+#
+#   audit-cnpg-backup-plugin    -> ValidatingPolicy cnpg-backup-plugin-audit   (here)
+#   audit-cnpg-scheduledbackup  -> still a legacy rule, pending the Phase 1F apiCall
+#                                  work                                       (there)
+#
+# So the legacy exception is trimmed to the rule it still covers rather than removed,
+# and the two live side by side until audit-cnpg-scheduledbackup migrates. Deleting it
+# now would silently un-waive guac-db from the ScheduledBackup audit — which reports as
+# `error`, never as `fail`, so nothing would have shown that it had happened.
+#
+# guac-db is a DELIBERATE Tier-4 database: no barman WAL archiving, nightly pg_dump
+# instead. A recorded design decision, not a gap — see
+# docs/techdocs/docs/general/database-backup-tiers.md and the header of
+# kubernetes/apps/security/guac/app/database/cluster.yaml.
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-guac-db-backup-tier-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      guac-db intentionally runs without the barman-cloud WAL archive plugin. WAL
+      archiving was dropped because the SBOM ingest pipeline generated roughly 4 GiB of
+      WAL per day for a graph that is fully rebuildable by re-ingesting the SBOMs it was
+      built from — the cost was real and the recovery value was not. Its off-box backup
+      path is the nightly guac-db-backup CronJob (pg_dump -> gzip -> Garage S3 under
+      _db-backups/), which is the Tier-4 pattern in database-backup-tiers.md. Remove
+      this exception if guac-db is ever promoted to a WAL-archiving tier.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: cnpg-backup-plugin-audit
+  matchConditions:
+    # The referenced policy matches CNPG Clusters and nothing else, so namespace/name
+    # alone cannot widen beyond the single intended object.
+    - name: guac-db-tier-four
+      expression: >-
+        object.metadata.namespace == 'security' &&
+        object.metadata.name == 'guac-db'

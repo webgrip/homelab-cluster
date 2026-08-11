@@ -178,3 +178,89 @@ spec:
     - name: barman-cloud.cloudnative-pg.io
       parameters:
         barmanObjectName: app-db-store
+---
+# ADDED 2026-08-11 with the CEL split. Four of the nine rules had NO fixture at all
+# before this — require-cnpg-longhorn-storage, require-scheduledbackup-owner,
+# audit-pvc-size-cap and audit-cnpg-walstorage were entirely untested, and the
+# file-level coverage gate could not see that because the file was "covered".
+#
+# MUST FAIL the size cap. approved-single sits at exactly 100Gi and must keep
+# passing — the legacy operator was GreaterThan, not GreaterThanOrEqual, and CEL's
+# quantity comparison has to reproduce the boundary rather than approximate it.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: oversized-pvc
+  namespace: app
+spec:
+  storageClassName: longhorn
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 200Gi
+---
+# MUST FAIL audit-cnpg-walstorage — compliant in every other respect, so a failure
+# here can only come from the missing walStorage volume.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: no-walstorage
+  namespace: app
+spec:
+  instances: 1
+  storage:
+    size: 5Gi
+    storageClass: longhorn
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      parameters:
+        barmanObjectName: app-db-store
+---
+# MUST FAIL require-cnpg-longhorn-storage.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: wrong-storageclass-cluster
+  namespace: app
+spec:
+  instances: 1
+  storage:
+    size: 5Gi
+    storageClass: local-path
+  walStorage:
+    size: 2Gi
+    storageClass: longhorn
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      parameters:
+        barmanObjectName: app-db-store
+---
+# MUST PASS require-scheduledbackup-owner — the shape every ScheduledBackup in this
+# cluster actually uses.
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: good-scheduledbackup
+  namespace: app
+spec:
+  schedule: "0 0 2 * * *"
+  backupOwnerReference: cluster
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
+  cluster:
+    name: app-db
+---
+# MUST FAIL require-scheduledbackup-owner — no backupOwnerReference and the
+# volumeSnapshot method rather than plugin.
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: bad-scheduledbackup
+  namespace: app
+spec:
+  schedule: "0 0 2 * * *"
+  method: volumeSnapshot
+  cluster:
+    name: app-db

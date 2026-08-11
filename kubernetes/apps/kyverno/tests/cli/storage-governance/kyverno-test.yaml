@@ -1,83 +1,152 @@
 ---
-# Coverage for storage-cnpg-governance (Enforce). Added alongside the
-# `longhorn-single` allowlist widening on 2026-07-31 — the policy previously had
-# no CLI test at all, so the allowlist could have been widened to anything
-# without CI noticing.
+# Coverage for the CEL split of storage-cnpg-governance (2026-08-11). The original
+# test was added alongside the `longhorn-single` allowlist widening on 2026-07-31 —
+# the policy previously had no CLI test at all, so the allowlist could have been
+# widened to anything without CI noticing.
 #
-# Deliberately asserts BOTH directions: the three approved classes pass, and an
-# unapproved-but-plausible class (longhorn-cold) still fails. A failure-only test
-# cannot tell a working allowlist from a policy that rejects everything.
+# Restructured because CEL policies have no named rules: each former `rule:` assertion
+# becomes a `policy:` assertion, and a leftover `rule:` would score Pass/Excluded —
+# green while asserting nothing. One verdict is now reported per resource PER POLICY,
+# covering all of that policy's validations at once, so a fixture asserted `pass` must
+# satisfy every check in the policy rather than just the rule it was written for.
+#
+# COVERAGE GREW HERE. Four of the nine rules had no fixture at all before this commit
+# (require-cnpg-longhorn-storage, require-scheduledbackup-owner, audit-pvc-size-cap,
+# audit-cnpg-walstorage) and the file-level gate could not tell, because the file was
+# "covered". Five fixtures were added to close that.
+#
+# Still asserts BOTH directions throughout: a failure-only test cannot distinguish a
+# working allowlist from a policy that rejects everything.
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: storage-governance
 policies:
+  - ../../policies/storage-cnpg-governance-cel.yaml
+  # LOADED BUT NOT ASSERTED, and that is a gap rather than an oversight — read on
+  # before deleting this line, because removing it turns the coverage gate red.
+  #
+  # storage-cnpg-governance.yaml still holds two policies: the leftover
+  # audit-cnpg-scheduledbackup rule (Audit, and untestable offline — its context
+  # apiCall reports `error`, never pass or fail) and stateful-delete-protection-enforce,
+  # which ENFORCES. The gate is file-level, so that file needs some CLI test naming it.
+  #
+  # What this reference does NOT do is test either policy. Nothing here asserts against
+  # them. That was already true before the CEL split — the file's gate compliance came
+  # entirely from the storage rules that have now moved to the CEL file, so
+  # stateful-delete-protection-enforce has never actually been covered by anything, and
+  # nothing in tests/chainsaw covers it either. It is the guard against accidental PVC
+  # and CNPG Cluster deletion, so that is worth more than a footnote.
+  #
+  # It cannot be covered here: the policy matches DELETE with background: false, and
+  # the CLI evaluates CREATE-shaped input, so a fail case is not expressible. Real
+  # coverage means chainsaw, against an API server that can actually issue a DELETE.
+  # That belongs with Phase 1E, which turns this policy into a DeletingPolicy.
+  #
+  # Keeping the reference preserves the status quo rather than introducing a new blind
+  # spot; the honest accounting lives in this comment until 1E closes it.
   - ../../policies/storage-cnpg-governance.yaml
 resources:
   - resources.yaml
 results:
+  # === storage-cnpg-invariants (Enforce) ==========================================
   # --- approved classes admit ---
-  - policy: storage-cnpg-governance
-    rule: require-approved-pvc-storageclass
+  - policy: storage-cnpg-invariants
     resources:
       - app/approved-general
       - app/approved-single
       - app/approved-longhorn
+      - app/oversized-pvc
     kind: PersistentVolumeClaim
     result: pass
-  # --- everything else is still rejected ---
-  - policy: storage-cnpg-governance
-    rule: require-approved-pvc-storageclass
+  # --- everything else is still rejected; RWX stays denied regardless of class ---
+  - policy: storage-cnpg-invariants
     resources:
       - app/unapproved-cold
       - app/unapproved-hostpath
-    kind: PersistentVolumeClaim
-    result: fail
-  # --- RWX stays denied regardless of class ---
-  - policy: storage-cnpg-governance
-    rule: disallow-rwx-pvcs
-    resources:
       - app/rwx-denied
     kind: PersistentVolumeClaim
     result: fail
-  # --- CNPG backup plugin: primaries are checked, replicas are not ---
-  # The replica case is the point. A designated replica must NOT carry
-  # spec.plugins barman-cloud (it would archive into the source's backup path),
-  # so the rule has to skip it rather than report it forever.
-  - policy: storage-cnpg-governance
-    rule: audit-cnpg-backup-plugin
+  # --- CNPG storage class ---
+  - policy: storage-cnpg-invariants
+    resources:
+      - app/primary-compliant
+      - app/primary-no-backup
+      - app/replica-dr
+      - app/duplicate-podmonitor
+      - app/no-walstorage
+    kind: Cluster
+    result: pass
+  - policy: storage-cnpg-invariants
+    resources:
+      - app/wrong-storageclass-cluster
+    kind: Cluster
+    result: fail
+  # --- ScheduledBackup ownership ---
+  - policy: storage-cnpg-invariants
+    resources:
+      - app/good-scheduledbackup
+    kind: ScheduledBackup
+    result: pass
+  - policy: storage-cnpg-invariants
+    resources:
+      - app/bad-scheduledbackup
+    kind: ScheduledBackup
+    result: fail
+
+  # === storage-cnpg-hygiene-audit (Audit) =========================================
+  # approved-single is exactly 100Gi and must PASS: the legacy operator was
+  # GreaterThan, not GreaterThanOrEqual. This is the boundary assertion.
+  - policy: storage-cnpg-hygiene-audit
+    resources:
+      - app/approved-general
+      - app/approved-single
+      - app/approved-longhorn
+      - app/rwx-denied
+    kind: PersistentVolumeClaim
+    result: pass
+  - policy: storage-cnpg-hygiene-audit
+    resources:
+      - app/oversized-pvc
+    kind: PersistentVolumeClaim
+    result: fail
+  - policy: storage-cnpg-hygiene-audit
+    resources:
+      - app/primary-compliant
+      - app/primary-no-backup
+      - app/replica-dr
+    kind: Cluster
+    result: pass
+  # duplicate-podmonitor for the redundant PodMonitor, no-walstorage for the missing
+  # WAL volume — the two remaining checks in this policy.
+  - policy: storage-cnpg-hygiene-audit
+    resources:
+      - app/duplicate-podmonitor
+      - app/no-walstorage
+    kind: Cluster
+    result: fail
+
+  # === cnpg-backup-plugin-audit (Audit, waived for guac-db) =======================
+  # A primary with no WAL archiving at all is the case this policy exists for.
+  - policy: cnpg-backup-plugin-audit
     resources:
       - app/primary-no-backup
     kind: Cluster
     result: fail
-  - policy: storage-cnpg-governance
-    rule: audit-cnpg-backup-plugin
+  - policy: cnpg-backup-plugin-audit
     resources:
       - app/primary-compliant
+      - app/duplicate-podmonitor
     kind: Cluster
     result: pass
-  # `skip`, not `pass` — deliberately. The replica must be excluded by the
-  # PRECONDITION, not merely happen to satisfy the check. Asserting `skip` fails
-  # if someone removes the precondition and the rule starts evaluating replicas
-  # again, which `pass` would not catch.
-  - policy: storage-cnpg-governance
-    rule: audit-cnpg-backup-plugin
+  # `skip`, not `pass` — deliberately, and it is why the replica exclusion is a
+  # matchCondition rather than part of the validation expression. A designated replica
+  # must be excluded from the policy, not merely happen to satisfy it. Asserting `skip`
+  # fails if someone folds the exclusion into the expression and replicas start being
+  # evaluated again; `pass` would not catch that, and neither would the migration
+  # differential, which collapses everything to fail/not-fail.
+  - policy: cnpg-backup-plugin-audit
     resources:
       - app/replica-dr
     kind: Cluster
     result: skip
-  # --- redundant per-cluster PodMonitor is rejected, absence is fine ---
-  - policy: storage-cnpg-governance
-    rule: audit-cnpg-redundant-podmonitor
-    resources:
-      - app/duplicate-podmonitor
-    kind: Cluster
-    result: fail
-  - policy: storage-cnpg-governance
-    rule: audit-cnpg-redundant-podmonitor
-    resources:
-      - app/primary-compliant
-      - app/replica-dr
-      - app/primary-no-backup
-    kind: Cluster
-    result: pass

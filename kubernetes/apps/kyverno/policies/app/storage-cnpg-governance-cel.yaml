@@ -1,0 +1,233 @@
+---
+# CEL SPLIT of storage-cnpg-governance (rfc-kyverno-cel-migration.md).
+#
+# EIGHT of the legacy policy's NINE rules move here. audit-cnpg-scheduledbackup stays
+# behind in the legacy ClusterPolicy because it resolves a `context.apiCall`, which has
+# no CEL equivalent yet — that is Phase 1F, and it is the reason storage-cnpg-governance
+# is not deleted in this commit the way flux-governance-enforce was.
+#
+#   rule                              action   kind             waived by      -> policy
+#   require-approved-pvc-storageclass Enforce  PVC              -              invariants
+#   disallow-rwx-pvcs                 Enforce  PVC              -              invariants
+#   require-cnpg-longhorn-storage     Enforce  Cluster          -              invariants
+#   require-scheduledbackup-owner     Enforce  ScheduledBackup  -              invariants
+#   audit-pvc-size-cap                Audit    PVC              -              hygiene
+#   audit-cnpg-walstorage             Audit    Cluster          -              hygiene
+#   audit-cnpg-redundant-podmonitor   Audit    Cluster          -              hygiene
+#   audit-cnpg-backup-plugin          Audit    Cluster          guac-db        backup-plugin
+#   audit-cnpg-scheduledbackup        Audit    Cluster          guac-db        STAYS LEGACY
+#
+# Three groupings, from the usual two drivers: action, then waiver. The Enforce four
+# span three kinds and two API groups, so each validation carries an object.kind guard.
+#
+# NAMES DELIBERATELY DIFFER from the legacy policy's. flux-governance-enforce was
+# migrated under its original name and produced a ClusterPolicy and a ValidatingPolicy
+# sharing one name — legal, but PolicyReport results key on the name alone, so the two
+# dialects became distinguishable only by whether a `rule` field was present. Here the
+# legacy policy survives this commit, so the collision would be worse than cosmetic.
+#
+# Unlike the Flux migration, kyverno-cli CAN map GVK to GVR for postgresql.cnpg.io
+# (probed per kind before starting — clusters and scheduledbackups both resolve), so
+# the offline differential and the CLI tests are both available and were both run.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: storage-cnpg-invariants
+  annotations:
+    policies.kyverno.io/title: Storage and CNPG Invariants (Enforced)
+    policies.kyverno.io/category: Storage, Database, Disaster Recovery
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: PersistentVolumeClaim,Cluster,ScheduledBackup
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      PVCs must use an approved Longhorn StorageClass and must not be ReadWriteMany,
+      CNPG clusters must store on longhorn, and ScheduledBackups must be owned by
+      their source cluster.
+spec:
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "persistentvolumeclaims"
+      - apiGroups:
+          - "postgresql.cnpg.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "clusters"
+          - "scheduledbackups"
+  validations:
+    # `longhorn-single` (1 replica) added 2026-07-31 for the in-cluster Garage backing
+    # Harbor's registry blobs. It is deliberately NOT a general-purpose class — see the
+    # header of storageclass/single.yaml for when it is and is not appropriate.
+    # `longhorn-cold` and `longhorn-snapshot` stay off this list on purpose (inert
+    # diskSelector / volsync staging respectively). The legacy `"a | b | c"` is an
+    # OR-pattern over exact values, so membership is the faithful translation; an absent
+    # storageClassName failed the legacy pattern and fails this too.
+    - expression: >-
+        object.kind != 'PersistentVolumeClaim' ||
+        object.spec.?storageClassName.orValue('') in
+          ['longhorn', 'longhorn-general', 'longhorn-single']
+      message: >-
+        PVCs must use an approved Longhorn StorageClass (longhorn, longhorn-general,
+        longhorn-single).
+    - expression: >-
+        object.kind != 'PersistentVolumeClaim' ||
+        !('ReadWriteMany' in object.spec.?accessModes.orValue([]))
+      message: >-
+        ReadWriteMany PVCs are not allowed unless this policy is adjusted with an
+        explicit allowlist.
+    - expression: >-
+        object.kind != 'Cluster' ||
+        object.spec.?storage.orValue({}).?storageClass.orValue('') == 'longhorn'
+      message: "CNPG clusters must use the longhorn StorageClass."
+    # `name: "?*"` is present AND non-empty; the other two are exact values.
+    - expression: >-
+        object.kind != 'ScheduledBackup' || (
+          object.spec.?backupOwnerReference.orValue('') == 'cluster' &&
+          object.spec.?cluster.orValue({}).?name.orValue('') != '' &&
+          object.spec.?method.orValue('') == 'plugin')
+      message: "CNPG ScheduledBackups must be owned by their source cluster."
+---
+# The three Audit rules that carry no waiver. Separated from the four above on action
+# alone: validationActions is policy-level, so an Audit rule merged into the enforcing
+# policy would start denying — which is exactly the regression that reached the cluster
+# for ten minutes during the flux-governance flip.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: storage-cnpg-hygiene-audit
+  annotations:
+    policies.kyverno.io/title: Storage and CNPG Hygiene (Audit)
+    policies.kyverno.io/category: Storage, Database, Disaster Recovery
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: PersistentVolumeClaim,Cluster
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Flags oversized PVCs, CNPG clusters without a dedicated walStorage volume, and
+      CNPG clusters declaring their own PodMonitor.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "persistentvolumeclaims"
+      - apiGroups:
+          - "postgresql.cnpg.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "clusters"
+  validations:
+    # Legacy used Kyverno's GreaterThan operator, which parses both sides as k8s
+    # quantities — so "1Ti" > "100Gi" rather than a string or byte-count comparison.
+    # CEL's quantity library is the equivalent; plain arithmetic would be wrong.
+    # A PVC with no storage request defaults to 0 so it passes, matching the legacy
+    # behaviour of a deny-condition whose key resolves to nothing.
+    - expression: >-
+        object.kind != 'PersistentVolumeClaim' ||
+        !quantity(string(object.spec.?resources.orValue({}).?requests.orValue({})
+          .?storage.orValue('0'))).isGreaterThan(quantity('100Gi'))
+      message: "PVCs larger than 100Gi should be reviewed before admission."
+    - expression: >-
+        object.kind != 'Cluster' ||
+        string(object.spec.?walStorage.orValue({}).?size.orValue('')) != ''
+      message: >-
+        CNPG clusters should use a dedicated walStorage volume so pg_wal pressure (e.g.
+        when WAL archiving to Garage S3 stalls) cannot fill the data volume.
+    # Encodes the real invariant: the platform owns CNPG scraping via the
+    # cnpg-monitoring component's cluster-wide PodMonitor, so a Cluster must not declare
+    # its own — setting enablePodMonitor makes the operator create a SECOND PodMonitor
+    # and duplicate every series. Replaced the old audit-cnpg-monitoring rule on
+    # 2026-08-04, which measured nothing and pushed toward that exact wrong fix.
+    - expression: >-
+        object.kind != 'Cluster' ||
+        object.spec.?monitoring.orValue({}).?enablePodMonitor.orValue(false) != true
+      message: >-
+        CNPG clusters must not set spec.monitoring.enablePodMonitor — the cnpg-monitoring
+        component already scrapes every CNPG pod cluster-wide, and a per-cluster
+        PodMonitor duplicates every series.
+---
+# Alone because it is the only migrated rule carrying a waiver (guac-db, Tier 4). A CEL
+# PolicyException has no ruleNames, so merged into the hygiene policy above this waiver
+# would also exempt guac-db from the walStorage and PodMonitor checks.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: cnpg-backup-plugin-audit
+  annotations:
+    policies.kyverno.io/title: CNPG barman-cloud WAL Archive Plugin (Audit)
+    policies.kyverno.io/category: Storage, Database, Disaster Recovery
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Cluster
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      CNPG clusters should configure the barman-cloud WAL archive plugin. Designated
+      replicas are out of scope.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - "postgresql.cnpg.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "clusters"
+  matchConditions:
+    # Designated-replica clusters are EXCLUDED (2026-08-04). A replica does not generate
+    # its own WAL — it replays the source's — so it must not carry spec.plugins
+    # barman-cloud: archiving from a replica would write into the source's backup path.
+    # The five cnpg-disaster-recovery clusters reference barman-cloud under
+    # spec.externalClusters[].plugin instead, which is the correct shape and which this
+    # rule never looked at. Without this the rule reported all five as violations
+    # forever, and "fixing" them would have corrupted the very backups the DR drill
+    # exists to verify.
+    #
+    # Kept as a matchCondition rather than folded into the expression below so it still
+    # reports SKIP for replicas. Folded in, the five replicas would report `pass` —
+    # indistinguishable from a cluster that genuinely archives, and invisible to the
+    # migration differential, which collapses everything to fail/not-fail.
+    - name: exclude-designated-replicas
+      expression: >-
+        !object.spec.?replica.orValue({}).?enabled.orValue(false)
+  validations:
+    - expression: >-
+        'barman-cloud.cloudnative-pg.io' in
+          object.spec.?plugins.orValue([]).map(p, p.?name.orValue(''))
+      message: "CNPG clusters should configure the barman-cloud WAL archive plugin."

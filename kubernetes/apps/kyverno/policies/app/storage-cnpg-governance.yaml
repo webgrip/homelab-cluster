@@ -1,132 +1,58 @@
 ---
+# REMNANT OF THE CEL SPLIT (2026-08-11). Eight of this policy's nine rules moved to
+# storage-cnpg-governance-cel.yaml as three ValidatingPolicies. ONE rule stays here.
+#
+# audit-cnpg-scheduledbackup resolves a `context.apiCall` to count ScheduledBackups
+# belonging to each Cluster, and CEL has no equivalent yet — that translation is the
+# Phase 1F spike (rfc-kyverno-cel-migration.md), which covers the four apiCall rules
+# across three policies together rather than inventing a one-off here.
+#
+# This file therefore still carries a `kyverno.io/v1` ClusterPolicy, which the v1.20
+# removal will delete. It must not be forgotten because it looks migrated: the policy
+# name is unchanged and most of its content is gone.
+#
+# The second document below, stateful-delete-protection-enforce, is untouched — it is
+# DELETE-triggered and becomes a DeletingPolicy in Phase 1E.
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
   name: storage-cnpg-governance
   annotations:
-    policies.kyverno.io/title: Storage and CNPG Governance
+    policies.kyverno.io/title: CNPG ScheduledBackup Presence (Audit)
     policies.kyverno.io/category: Storage, Database, Disaster Recovery
     policies.kyverno.io/severity: high
-    policies.kyverno.io/subject: PersistentVolumeClaim,Cluster,ScheduledBackup
+    policies.kyverno.io/subject: Cluster
     kyverno.io/kyverno-version: 1.18.1
     policies.kyverno.io/description: >-
-      Enforce Longhorn storage invariants and audit CNPG backup and monitoring
-      posture for application databases.
+      Audit that each CNPG cluster has at least one ScheduledBackup. Sole surviving
+      rule of the original policy; the rest migrated to CEL.
 spec:
-  validationFailureAction: Enforce
+  # AUDIT AT SPEC LEVEL NOW, changed with the split. It read `Enforce` while every one
+  # of the nine rules that needed enforcement carried it, and the sole survivor sets
+  # `failureAction: Audit` on itself — rule-level wins, so the effective action never
+  # changed here. What changed is that the declaration is no longer misleading, and a
+  # rule added later without an explicit failureAction will now inherit Audit rather
+  # than silently start denying CNPG Clusters.
+  #
+  # It also stops the coverage gate demanding a CLI test for an enforcing policy that
+  # cannot have a meaningful one: this rule resolves a context apiCall, which errors
+  # offline and reports `error` rather than `pass` or `fail`. A test would be green
+  # while asserting nothing.
+  validationFailureAction: Audit
   background: true
   rules:
-    - name: require-approved-pvc-storageclass
-      match:
-        any:
-          - resources:
-              kinds:
-                - PersistentVolumeClaim
-      validate:
-        # `longhorn-single` (1 replica) added 2026-07-31 for the in-cluster Garage
-        # backing Harbor's registry blobs. It is deliberately NOT a general-purpose
-        # class — see the header of storageclass/single.yaml for when it is and is
-        # not appropriate. `longhorn-cold` and `longhorn-snapshot` stay off this
-        # list on purpose (inert diskSelector / volsync staging respectively).
-        message: "PVCs must use an approved Longhorn StorageClass (longhorn, longhorn-general, longhorn-single)."
-        pattern:
-          spec:
-            storageClassName: "longhorn | longhorn-general | longhorn-single"
-    - name: disallow-rwx-pvcs
-      match:
-        any:
-          - resources:
-              kinds:
-                - PersistentVolumeClaim
-      validate:
-        message: "ReadWriteMany PVCs are not allowed unless this policy is adjusted with an explicit allowlist."
-        deny:
-          conditions:
-            any:
-              - key: "{{ request.object.spec.accessModes[] || `[]` }}"
-                operator: AnyIn
-                value:
-                  - ReadWriteMany
-    - name: require-cnpg-longhorn-storage
-      match:
-        any:
-          - resources:
-              kinds:
-                - Cluster
-      validate:
-        message: "CNPG clusters must use the longhorn StorageClass."
-        pattern:
-          spec:
-            storage:
-              storageClass: longhorn
-    - name: audit-pvc-size-cap
-      match:
-        any:
-          - resources:
-              kinds:
-                - PersistentVolumeClaim
-      validate:
-        failureAction: Audit
-        message: "PVCs larger than 100Gi should be reviewed before admission."
-        deny:
-          conditions:
-            any:
-              - key: "{{ request.object.spec.resources.requests.storage }}"
-                operator: GreaterThan
-                value: 100Gi
-    - name: audit-cnpg-backup-plugin
-      match:
-        any:
-          - resources:
-              kinds:
-                - Cluster
-      # Designated-replica clusters are EXCLUDED (added 2026-08-04). A replica does not
-      # generate its own WAL — it replays the source's — so it must not carry
-      # `spec.plugins` barman-cloud: archiving from a replica would write into the
-      # source's backup path. The five `cnpg-disaster-recovery` clusters reference
-      # barman-cloud under `spec.externalClusters[].plugin` instead, which is the correct
-      # shape and which this rule never looked at. Without this precondition the rule
-      # reported all five as violations forever, and "fixing" them would have corrupted
-      # the very backups the DR drill exists to verify.
-      preconditions:
-        all:
-          - key: "{{ request.object.spec.replica.enabled || `false` }}"
-            operator: Equals
-            value: false
-      validate:
-        failureAction: Audit
-        message: "CNPG clusters should configure the barman-cloud WAL archive plugin."
-        deny:
-          conditions:
-            any:
-              - key: barman-cloud.cloudnative-pg.io
-                operator: AnyNotIn
-                value: "{{ request.object.spec.plugins[].name || `[]` }}"
-    - name: audit-cnpg-walstorage
-      match:
-        any:
-          - resources:
-              kinds:
-                - Cluster
-      validate:
-        failureAction: Audit
-        message: "CNPG clusters should use a dedicated walStorage volume so pg_wal pressure (e.g. when WAL archiving to Garage S3 stalls) cannot fill the data volume."
-        pattern:
-          spec:
-            walStorage:
-              size: "?*"
     - name: audit-cnpg-scheduledbackup
       match:
         any:
           - resources:
               kinds:
                 - Cluster
-      # Replicas excluded for the same reason as audit-cnpg-backup-plugin (2026-08-04):
-      # a designated replica has nothing of its own to back up. This rule uses an apiCall
-      # context, so it surfaces as `error` in an offline sweep and never as `fail` — which
-      # is exactly how it hid the same five false positives that the backup-plugin rule
-      # reported openly. Verified by direct query: the only clusters without a
-      # ScheduledBackup are the five replicas and guac-db (Tier 4, waived).
+      # Replicas excluded (2026-08-04): a designated replica has nothing of its own to
+      # back up. This rule uses an apiCall context, so it surfaces as `error` in an
+      # offline sweep and never as `fail` — which is exactly how it hid five false
+      # positives that the backup-plugin rule reported openly. Verified by direct
+      # query: the only clusters without a ScheduledBackup are the five replicas and
+      # guac-db (Tier 4, waived).
       preconditions:
         all:
           - key: "{{ request.object.spec.replica.enabled || `false` }}"
@@ -146,50 +72,6 @@ spec:
               - key: "{{ scheduledbackups }}"
                 operator: Equals
                 value: 0
-    # REPLACED audit-cnpg-monitoring on 2026-08-04. The old rule required either
-    # `spec.monitoring.enablePodMonitor: true` or a `monitoring.webgrip.io/enabled` label,
-    # and measured neither. CNPG scraping in this cluster is delivered by the
-    # `cnpg-monitoring` component's PodMonitor, which selects `cnpg.io/cluster` with
-    # `namespaceSelector.any: true` — one copy covers every CNPG pod in every namespace,
-    # regardless of any per-Cluster field or label. Verified live: all 16 CNPG pods report
-    # `cnpg_collector_up` while 13 of 19 Clusters "failed" the old rule, and the label it
-    # accepted is consumed by nothing.
-    #
-    # So the old rule was not just noise — it pushed toward the WRONG fix. Setting
-    # `enablePodMonitor: true` makes the CNPG operator create a SECOND PodMonitor for that
-    # cluster on top of the cluster-wide one, i.e. duplicate scrapes. This rule encodes the
-    # real invariant instead: the platform owns CNPG scraping, so a Cluster must not
-    # declare its own. (Four copies of the component were installed at the time of writing,
-    # which is why every pod was being scraped 4x — see the component kustomizations.)
-    - name: audit-cnpg-redundant-podmonitor
-      match:
-        any:
-          - resources:
-              kinds:
-                - Cluster
-      validate:
-        failureAction: Audit
-        message: "CNPG clusters must not set spec.monitoring.enablePodMonitor — the cnpg-monitoring component already scrapes every CNPG pod cluster-wide, and a per-cluster PodMonitor duplicates every series."
-        deny:
-          conditions:
-            any:
-              - key: "{{ request.object.spec.monitoring.enablePodMonitor || `false` }}"
-                operator: Equals
-                value: true
-    - name: require-scheduledbackup-owner
-      match:
-        any:
-          - resources:
-              kinds:
-                - ScheduledBackup
-      validate:
-        message: "CNPG ScheduledBackups must be owned by their source cluster."
-        pattern:
-          spec:
-            backupOwnerReference: cluster
-            cluster:
-              name: "?*"
-            method: plugin
 ---
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
