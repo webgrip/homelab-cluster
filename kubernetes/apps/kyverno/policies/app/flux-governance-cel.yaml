@@ -224,8 +224,16 @@ metadata:
       Flags any HelmRepository source in favour of a digest-pinned OCIRepository. CEL
       split of flux-governance-enforce/audit-helmrepository-use.
 spec:
+  # AUDIT, NOT DENY, AND IT MUST STAY THAT WAY. This policy fails every HelmRepository
+  # it sees by design, so Deny here hard-blocks the four unwaived repositories
+  # (openbao, guacsec, aqua-security, dependency-track) that the legacy rule merely
+  # reported on — which is exactly what happened for ten minutes on 2026-08-11, when
+  # the stage-3 flip was applied with a blanket search-and-replace across all three
+  # policies in this file. The action difference is one of the two reasons this policy
+  # is a separate object at all; a regex that rewrites every validationActions block
+  # flattens the split it was created to preserve.
   validationActions:
-    - Deny
+    - Audit
   evaluation:
     background:
       enabled: true
