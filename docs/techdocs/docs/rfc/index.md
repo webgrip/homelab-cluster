@@ -20,7 +20,9 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
 - **Proposed / open** — [dynamic database credentials](rfc-dynamic-database-credentials.md)
   (pilot rolled back),
   [Backstage TechDocs](rfc-backstage-techdocs.md) (+ [implementation
-  plan](plan-backstage-techdocs.md)), [docs platform 2026](rfc-docs-platform-2026.md) (2026-08-09
+  plan](plan-backstage-techdocs.md)), [docs estate rollout plan](plan-docs-estate-rollout.md)
+  (2026-08-11: every repo's docs onto docs.\${SECRET_DOMAIN} path-per-repo — inventory, security
+  posture, Zensical adoption), [docs platform 2026](rfc-docs-platform-2026.md) (2026-08-09
   landscape survey: Material-for-MkDocs EOL 2026-11-05, Zensical succession via Backstage RFC
   #33990, agent-era llms.txt affordances — verdict: keep ADR-0039, build it now), [layered hardware
   architecture](rfc-layered-hardware-architecture.md) (program doc),
