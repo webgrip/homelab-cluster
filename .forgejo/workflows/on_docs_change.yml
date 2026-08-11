@@ -32,13 +32,13 @@ on:
 jobs:
   generate-documentation:
     name: 'Generate'
-    uses: webgrip/workflows/.forgejo/workflows/techdocs-generate.yml@62c5c36223a1185b9c347c90117533cd26fcddf8 # main
+    uses: webgrip/workflows/.forgejo/workflows/techdocs-generate.yml@c7a05bc236ae28bf582537a218c04f25e8ef5457 # main
     with:
       source-dir: ${{ github.event.inputs.source-dir || 'docs/techdocs' }}
 
   deploy-backstage:
     name: 'Deploy (Backstage / Garage S3)'
-    uses: webgrip/workflows/.forgejo/workflows/techdocs-deploy-backstage-s3.yml@62c5c36223a1185b9c347c90117533cd26fcddf8 # main
+    uses: webgrip/workflows/.forgejo/workflows/techdocs-deploy-backstage-s3.yml@c7a05bc236ae28bf582537a218c04f25e8ef5457 # main
     needs: generate-documentation
     if: github.ref == 'refs/heads/main'
     with:
@@ -52,9 +52,13 @@ jobs:
 
   deploy-docs-site:
     name: 'Deploy (docs site / Garage web)'
-    uses: webgrip/workflows/.forgejo/workflows/techdocs-deploy-docs-site.yml@5a7edb1f58e93828eac978995c6dd58bf1fc0bfe # main
+    uses: webgrip/workflows/.forgejo/workflows/techdocs-deploy-docs-site.yml@c7a05bc236ae28bf582537a218c04f25e8ef5457 # main
     needs: generate-documentation
     if: github.ref == 'refs/heads/main'
+    with:
+      # Broken links fail the build (flagship runs strict; onboarding repos
+      # start strict:false until their links are clean).
+      strict: 'true'
     secrets:
       TECHDOCS_S3_ACCESS_KEY_ID: ${{ secrets.TECHDOCS_S3_ACCESS_KEY_ID }}
       TECHDOCS_S3_SECRET_ACCESS_KEY: ${{ secrets.TECHDOCS_S3_SECRET_ACCESS_KEY }}

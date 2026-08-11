@@ -6,11 +6,24 @@ use_directory_urls: true
 docs_dir: docs
 theme:
   name: material
+  # Zensical-only: modern is its default; explicit so a future default flip
+  # cannot restyle us silently. Material ignores the key (verified, even
+  # --strict). Engine-shared config rules: see plan-docs-estate-rollout.
+  variant: modern
   language: en
   palette:
     - scheme: default
       primary: blue
       accent: light blue
+  features:
+    # Safe in BOTH engines: feature strings are free-form; each engine ignores
+    # what it doesn't implement (verified 2026-08-11).
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.instant.preview
+    - navigation.path
+    - navigation.prune
+    - search.highlight
 plugins:
   - redirects:
       redirect_maps:
@@ -124,9 +137,21 @@ plugins:
       description: "GitOps homelab cluster docs — Talos + Flux + Kubernetes; ADRs, RFCs, runbooks, incidents."
 markdown_extensions:
   - admonition
+  - attr_list
   - toc:
       permalink: true
   - tables
+  # Hover previews of cross-references (ADRs/runbooks/RFCs) in BOTH engines:
+  # Material 9.6+ ships this extension natively, and Zensical remaps
+  # material.extensions.* to its own implementation. NEVER spell it
+  # zensical.extensions.* — that crashes the Material lane at render.
+  - material.extensions.preview:
+      configurations:
+        - targets:
+            include:
+              - adr/*
+              - runbooks/*
+              - rfc/*
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid

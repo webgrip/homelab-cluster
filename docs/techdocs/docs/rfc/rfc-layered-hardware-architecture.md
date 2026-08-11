@@ -193,7 +193,7 @@ customs, which erases the saving. Germany next door has the deepest used-enterpr
 EU-friendly route is an **Asrock Rack** board with a **Ryzen** CPU (Ryzen supports ECC) or a used
 **Supermicro Xeon-D** — both readily sourced via Azerty/Alternate or Kleinanzeigen.
 
-## Storage & network relayering
+## Storage & network relayering {#storage--network-relayering}
 
 New hardware is only half the win; it **unlocks a software re-layering** the current
 single-disk/flat-network topology can't support. These are the changes that actually retire the

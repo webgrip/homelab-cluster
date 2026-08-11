@@ -1,5 +1,5 @@
 ---
-status: "{proposed | rejected | accepted | deprecated | superseded by [ADR-0123](adr-0123-example.md)}"
+status: "{proposed | rejected | accepted | deprecated | superseded by ADR-0123 (markdown-link the superseding record)}"
 date: "{YYYY-MM-DD when the decision was last updated}"
 ---
 

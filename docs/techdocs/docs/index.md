@@ -111,6 +111,23 @@ serve public DNS. On-prem clients stay on-LAN without hairpinning through Cloudf
 - [ADRs](adr/index.md) · [RFCs](rfc/index.md) — decisions and designs
 - [Incidents](incidents/index.md) · [Blogs](blogs/index.md)
 
+## Estate docs
+
+Other webgrip repos publish their docs on this domain, one path prefix per repo
+([plan](rfc/plan-docs-estate-rollout.md), [ADR-0052](adr/adr-0052-zensical-docs-site-garage-web.md)).
+Rolling out — links go live per repo as they onboard:
+
+- [infrastructure](/infrastructure/) — CI toolchain images, release tooling
+- [workflows](/workflows/) — the reusable Forgejo/GitHub workflow library
+- [telemetry-service](/telemetry-service/) · [ledgerflow](/ledgerflow/) ·
+  [monitoring-platform](/monitoring-platform/) · [searxng-application](/searxng-application/) ·
+  [freshrss-application](/freshrss-application/) · [invoiceninja-application](/invoiceninja-application/) ·
+  [action-typescript-template](/action-typescript-template/) · [application-template](/application-template/) ·
+  [backstage-application](/backstage-application/)
+
+Each prefix also serves its own `llms.txt`, `llms-full.txt`, and every page as raw
+markdown at its source path — agents can read `/<repo>/llms.txt` first.
+
 ## Maintenance
 
 Update these docs in the same commit as the manifest change. For live snapshots use the
