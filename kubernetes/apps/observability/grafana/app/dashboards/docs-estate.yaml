@@ -1,0 +1,91 @@
+---
+# docs.webgrip.dev observability (estate item #9) — built entirely from the
+# Envoy access logs already shipped to VictoriaLogs; zero new services.
+# NOTE: the docs HTTPRoute rewrites Host to the bucket alias BEFORE access
+# logging, so docs traffic is identified by :authority="docs-site" (verified
+# live 2026-08-11), not by the public hostname.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: docs-estate
+  namespace: observability
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: engineering-experience
+  json: |-
+    {
+      "uid": "docs-estate",
+      "title": "Docs estate — docs.webgrip.dev",
+      "tags": ["docs", "estate"],
+      "timezone": "browser",
+      "time": {"from": "now-7d", "to": "now"},
+      "refresh": "5m",
+      "schemaVersion": 39,
+      "panels": [
+        {
+          "id": 1, "type": "stat", "title": "Page views (range)",
+          "description": "HTML page requests (paths ending /) against the docs domain.",
+          "gridPos": {"h": 5, "w": 6, "x": 0, "y": 0},
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "palette-classic"}}, "overrides": []},
+          "targets": [{"refId": "A", "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+            "expr": "{job=\"network/envoy\"} \":authority\":=\"docs-site\" \"x-envoy-origin-path\":~\"/$$\" response_code:=200 | stats count() views",
+            "queryType": "stats"}]
+        },
+        {
+          "id": 2, "type": "stat", "title": "404s (range)",
+          "description": "Broken links or stale agent memories hitting the docs domain.",
+          "gridPos": {"h": 5, "w": 6, "x": 6, "y": 0},
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "fixed", "fixedColor": "orange"}}, "overrides": []},
+          "targets": [{"refId": "A", "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+            "expr": "{job=\"network/envoy\"} \":authority\":=\"docs-site\" response_code:=404 | stats count() misses",
+            "queryType": "stats"}]
+        },
+        {
+          "id": 3, "type": "timeseries", "title": "Docs traffic over time",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "bars", "fillOpacity": 60}}, "overrides": []},
+          "targets": [{"refId": "A", "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+            "expr": "{job=\"network/envoy\"} \":authority\":=\"docs-site\" \"x-envoy-origin-path\":~\"/$$\" | stats by (_time:1h) count() views",
+            "queryType": "statsRange"}]
+        },
+        {
+          "id": 4, "type": "table", "title": "Top pages",
+          "gridPos": {"h": 9, "w": 8, "x": 0, "y": 5},
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+            "expr": "{job=\"network/envoy\"} \":authority\":=\"docs-site\" \"x-envoy-origin-path\":~\"/$$\" response_code:=200 | stats by (\"x-envoy-origin-path\") count() hits | sort by (hits desc) | limit 20",
+            "queryType": "stats"}]
+        },
+        {
+          "id": 5, "type": "table", "title": "Repeat 404 paths (fix these links)",
+          "description": "Every row is a link somebody or some agent keeps following into nothing.",
+          "gridPos": {"h": 9, "w": 8, "x": 8, "y": 5},
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+            "expr": "{job=\"network/envoy\"} \":authority\":=\"docs-site\" response_code:=404 | stats by (\"x-envoy-origin-path\") count() hits | sort by (hits desc) | limit 20",
+            "queryType": "stats"}]
+        },
+        {
+          "id": 6, "type": "table", "title": "Readers (user agents)",
+          "description": "Agent-vs-human split: Claude/curl/python readers vs browsers.",
+          "gridPos": {"h": 9, "w": 8, "x": 16, "y": 8},
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+            "expr": "{job=\"network/envoy\"} \":authority\":=\"docs-site\" | stats by (\"user-agent\") count() hits | sort by (hits desc) | limit 15",
+            "queryType": "stats"}]
+        },
+        {
+          "id": 7, "type": "table", "title": "Traffic by top-level section / repo prefix",
+          "gridPos": {"h": 9, "w": 8, "x": 0, "y": 14},
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+          "targets": [{"refId": "A", "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+            "expr": "{job=\"network/envoy\"} \":authority\":=\"docs-site\" \"x-envoy-origin-path\":~\"/$$\" | extract_regexp \"^/(?P<section>[^/]+)/\" from \"x-envoy-origin-path\" | stats by (section) count() hits | sort by (hits desc) | limit 20",
+            "queryType": "stats"}]
+        }
+      ]
+    }
