@@ -1,0 +1,42 @@
+---
+# Kyverno has NO RBAC for cert-manager.io out of the box, so it cannot read
+# ClusterIssuers for background reporting.
+#
+# FOURTH INSTANCE OF THIS BUG CLASS. See also kyverno:rbac-kinds-read (RBAC kinds),
+# kyverno:monitor-kinds-read (monitoring.coreos.com) and kyverno:gateway-kinds-read
+# (HTTPRoutes). The shape is identical every time: Kyverno's default ClusterRoles
+# cover core and apps kinds, so ANY policy matching a CRD or a non-core API group
+# enforces correctly at admission while reporting nothing — and silence is
+# indistinguishable from clean.
+#
+# Surfaced 2026-08-11 by the CEL migration of cert-manager-governance:
+# cert-manager-clusterissuer-zone came up RBACPermissionsGranted: False naming the
+# exact missing verbs. The legacy ClusterPolicy had matched ClusterIssuer since it
+# was written and never said a word.
+#
+# THE STANDING LESSON, now with four data points: a policy that matches a CRD needs
+# an explicit read grant, and only the CEL dialect will tell you it is missing.
+# Every remaining legacy policy matching a non-core kind should be assumed
+# reporting-blind until migrated — that currently includes the CNPG, Longhorn and
+# Flux governance policies.
+#
+# Only clusterissuers is granted. Certificates already resolve (both Certificate
+# policies report ready), so Kyverno picks that kind up elsewhere; adding it here
+# would be an unneeded widening.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno:cert-manager-kinds-read
+  labels:
+    rbac.kyverno.io/aggregate-to-admission-controller: "true"
+    rbac.kyverno.io/aggregate-to-background-controller: "true"
+    rbac.kyverno.io/aggregate-to-reports-controller: "true"
+rules:
+  - apiGroups:
+      - cert-manager.io
+    resources:
+      - clusterissuers
+    verbs:
+      - get
+      - list
+      - watch
