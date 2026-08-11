@@ -120,6 +120,61 @@ spec:
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-nodes/talos-nodes"
 
+        # The attribution signal that was missing on 2026-08-04 AND 2026-08-11: memory
+        # held by cgroups OUTSIDE /kubepods (dind-spawned CI containers escaped to the
+        # host root) is invisible to kubelet eviction and to Talos's OOMController,
+        # which then SIGKILLs innocent kubepods cgroups in a loop ("victim processes:
+        # []") until the kubelet starves and the node goes NotReady. Both incidents
+        # ratcheted for DAYS while NodeMemoryHigh stayed quiet or unattributed.
+        # cAdvisor's root (id="/") minus kubepods (id="/kubepods") measures exactly the
+        # invisible slice, same instance label so no cross-job join.
+        # Verified against live data 2026-08-11: healthy baselines are 1.7-2.6Gi
+        # (control planes) and 1.0-3.3Gi (workers, system slice + containerd);
+        # fringe-workstation carried 7.5-11.2Gi for the 5 days of the leak, so 5Gi
+        # must-fires across the whole incident window and days before node pressure.
+        # Also fires if the dind containment wrapper (forgejo-runner dind-daemonset)
+        # ever fails open and CI containers escape again — that is its real job.
+        - alert: NodeMemoryOutsideKubepods
+          expr: |
+            container_memory_rss{id="/"}
+            - on (instance) container_memory_rss{id="/kubepods"}
+            > 5368709120
+          for: 1h
+          labels:
+            severity: critical
+            owner: platform
+            service: nodes
+          annotations:
+            summary: "Memory outside kubepods above 5Gi ({{ $labels.instance }})"
+            description: |
+              What's happening:
+              - Node {{ $labels.instance }} holds {{ $value | humanize1024 }} of memory
+                in cgroups outside /kubepods for 1h. Healthy nodes sit at 1-3.5Gi
+                (Talos system slice + containerd). Kubernetes CANNOT reclaim this
+                memory: kubelet eviction and the Talos OOMController only act on
+                kubepods, so left alone this ends with the OOMController kill-looping
+                innocent pods (cilium) and the kubelet starving into NotReady.
+
+              Likely causes:
+              - CI containers escaped the forgejo-dind cgroup containment (wrapper in
+                dind-daemonset.yaml logs "containment failed" on startup) — orphaned
+                KinD clusters, compose stacks or job containers accumulating at the
+                host root. This is the 2026-08-04 and 2026-08-11 incident class.
+              - A genuine Talos system-slice leak (much rarer — compare other nodes).
+
+              First actions:
+              - Enumerate the daemon: `docker -H tcp://<node-ip>:2375 ps` — anything
+                older than the longest legitimate CI job is an orphan; the prune
+                sidecar's generic reaper should be removing >12h containers, check its
+                logs (`kubectl -n forgejo logs ds/forgejo-dind -c prune`).
+              - Check containment: `kubectl -n forgejo logs ds/forgejo-dind -c dind
+                | head` for the UNCONTAINED warning.
+              - If the daemon no longer answers, the node needs a reboot
+                (`talosctl -n <node-ip> reboot`) — pod restarts do NOT free host-root
+                cgroups.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-nodes/talos-nodes"
+
     - name: platform.scheduling
       rules:
         # ⚠️ LABEL TRAP, verified in vmui 2026-08-02: kube-state-metrics series in
