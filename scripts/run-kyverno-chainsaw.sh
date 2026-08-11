@@ -129,7 +129,20 @@ curl -fsSL "${KYVERNO_INSTALL_URL}" -o "${workspace}/kyverno-install.yaml"
 # Route the ghcr.io/kyverno/* controller images inside install.yaml through the Harbor proxy too
 # (same cold-pull tax as the node image). No-op when KYVERNO_IMAGE_PROXY is empty.
 if [[ -n "${KYVERNO_IMAGE_PROXY}" ]]; then
-    sed -i "s#ghcr.io/kyverno/#${KYVERNO_IMAGE_PROXY}kyverno/#g" "${workspace}/kyverno-install.yaml"
+    # NOT `sed -i` — GNU takes the suffix as an optional attached argument, BSD/macOS sed
+    # requires it as a separate one, so `sed -i "s#...#"` there consumes the EXPRESSION as
+    # the backup suffix and then reads the file as the script ("invalid command code f").
+    # Substituting into a temp file and moving it back behaves identically on both.
+    #
+    # The same trap is documented at scripts/lib/kyverno-tests.sh:65 and was fixed there;
+    # this call site was missed, which meant the whole chainsaw suite could not run on a
+    # Mac at all — it died immediately after "Installing Kyverno into KinD" and the error
+    # surfaced as `namespaces "kyverno" not found`, which reads like a broken install
+    # rather than a portability bug two steps earlier. Found 2026-08-11 trying to run the
+    # suite locally to verify a chainsaw change.
+    sed "s#ghcr.io/kyverno/#${KYVERNO_IMAGE_PROXY}kyverno/#g" \
+        "${workspace}/kyverno-install.yaml" >"${workspace}/kyverno-install.yaml.tmp" &&
+        mv -- "${workspace}/kyverno-install.yaml.tmp" "${workspace}/kyverno-install.yaml"
 fi
 # Applied from inside the node (kind_kubectl) — see scripts/lib/kyverno-tests.sh for why the
 # client-side kubeconfig is unusable on the CI runner.
