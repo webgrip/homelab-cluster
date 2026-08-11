@@ -155,3 +155,40 @@ TechDocs rather than competing with it. Re-open this fork only on the triggers b
   redirects + llms.txt grafted in CI from the mkdocs artifact). The TechDocs artifact pipeline
   (ADR-0039, recommendation 1) is unchanged and remains the Backstage on-ramp; recommendation 4's
   "wait for the flip triggers" is thereby overtaken for the site, still standing for the artifact.
+
+## Estate patterns + frontier survey (2026-08-11, post-rollout)
+
+Three research streams after the estate wipe incident prompted "should we do this differently".
+
+**Verdict: keep the architecture.** The CI-build-per-repo → bucket-prefix pattern is exactly
+Backstage TechDocs' own storage model ("TechDocs without Backstage"); no standalone OSS estate-hub
+tool exists to adopt instead, and the orgs with resources (HashiCorp `web-unified-docs`,
+Cloudflare) are retreating INTO content monorepos rather than federating — a non-option here
+because docs-beside-code is what the agent fleet reads. Two structural hardenings adopted onto
+the watchlist instead of any redesign:
+
+1. **Per-prefix scoped Garage keys + `rclone --backup-dir`** — deletion isolation by credential
+   construction (the wipe becomes impossible, not merely guarded) with deletes moved to a trash
+   prefix. Supersedes trust in the dynamic-exclude guard alone.
+2. **Pagefind multisite** — the missing cross-estate search: each repo's CI adds a
+   `pagefind --site site/` pass; the landing page merges every `/{prefix}/pagefind` bundle
+   browser-side (same-domain, no CORS, no server). This is the standard answer to "one search
+   box over N static sub-sites".
+
+**Ranked "next wave" menu** (full sourcing in the session research; effort ≈ half-day each unless
+noted): own-docs **MCP server** (arabold/docs-mcp-server, Ollama/keyword, beside the existing
+grafana/victorialogs MCPs — agents are the majority reader); **docs dashboards from Envoy access
+logs already in VictoriaLogs** (pageviews, 404-repeat alerts, agent-vs-human split — zero new
+services); **nightly drift agent** (manifest commits vs docs pages, one rolling PR);
+**build-time cluster inventory pages** (mkdocs-macros over `kubernetes/apps/**` — macros is
+native in both engines); **site-wide glossary tooltips** (`abbr` + snippets `auto_append` +
+`content.tooltips` — the mkdocs-material docs' own no-plugin trick, pairs with the
+domain-language work); **lychee external-link CI** (closes what `--strict` internal-only leaves);
+**Vale prose lint** (added-lines-only via reviewdog); **freshness footers**
+(git-revision-date-localized; Zensical Tier 2); **social cards** (Material built-in; Zensical
+Tier 2); **Kroki self-hosted** (D2/C4/Structurizr fences — renders backstage-application's
+`workspace.dsl`; structurizr-site-generatr, 1–2 d, is the drill-down C4 endgame); **Runme
+executable runbooks** (1 d); **deepwiki-open** over the estate as a labeled generated overview.
+Already at parity, no action: llms.txt/llms-full/raw-md, hover previews, instant nav, redirects
+(Pydantic ships the identical set; FastAPI + SQLModel already build with Zensical in production).
+
