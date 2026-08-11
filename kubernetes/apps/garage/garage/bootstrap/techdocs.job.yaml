@@ -58,6 +58,8 @@ spec:
               value: techdocs
             - name: DOCS_BUCKET
               value: docs-site
+            - name: TRASH_BUCKET
+              value: docs-site-trash
             - name: KEY_SECRET
               value: garage-techdocs-keys
             - name: ADMIN_TOKEN
@@ -113,6 +115,10 @@ spec:
               echo "== 1. buckets"
               bucket_id="$(ensure_bucket "${BUCKET}")"
               docs_bucket_id="$(ensure_bucket "${DOCS_BUCKET}")"
+              # Deletion trash-net (estate item #1): rclone --backup-dir target.
+              # A separate bucket because backup-dir may not overlap the sync
+              # destination, and the root sync's destination IS docs-site's root.
+              trash_bucket_id="$(ensure_bucket "${TRASH_BUCKET}")"
 
               echo "== 2. website access on ${DOCS_BUCKET}"
               # Idempotent: UpdateBucket converges the flag on every re-run. The
@@ -162,7 +168,9 @@ spec:
               grant "${read_id}" "${bucket_id}"      true false
               grant "${pub_id}"  "${docs_bucket_id}" true true
               grant "${read_id}" "${docs_bucket_id}" true false
-              echo "  publish=rw read=ro on ${BUCKET} + ${DOCS_BUCKET}"
+              grant "${pub_id}"  "${trash_bucket_id}" true true
+              grant "${read_id}" "${trash_bucket_id}" true false
+              echo "  publish=rw read=ro on ${BUCKET} + ${DOCS_BUCKET} + ${TRASH_BUCKET}"
 
               echo "== done"
           resources:
