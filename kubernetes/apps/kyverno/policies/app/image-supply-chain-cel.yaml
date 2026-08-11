@@ -1,17 +1,20 @@
 ---
-# CEL SPLIT of image-supply-chain-enforce, STAGE 1 OF 2
+# CEL SPLIT of image-supply-chain-enforce — COMPLETE
 # (rfc-kyverno-cel-migration.md).
 #
-# STAGE 1 (this commit): the three policies below run at AUDIT, alongside the
-# legacy ClusterPolicy which keeps ENFORCING unchanged. Admission behaviour is
-# identical before and after. STAGE 2: delete the legacy policy, flip these to
-# Deny, and trim the legacy exception entries — one commit, because a waiver
-# cannot cross dialects.
+# Landed in two commits because this one ENFORCES. Everything else migrated in
+# Phase 1B was Audit, where a mistake produces wrong reports; here a mistake
+# denies workloads across 17 namespaces. Stage 1 ran these at Audit beside the
+# still-enforcing legacy policy so the waivers could be proven while a mistake
+# was harmless; stage 2 deleted the legacy policy, flipped these to Deny and
+# removed the legacy exceptions in one commit, because a waiver cannot cross
+# dialects and would otherwise vanish mid-flight.
 #
-# Staged rather than atomic because this one ENFORCES. Everything else migrated
-# in Phase 1B was Audit, where a mistake produces wrong reports; here a mistake
-# denies workloads. The Audit window is what makes the waivers provable before
-# they matter.
+# The pre-flip evidence, over 561 live resources: policies alone agreed with
+# legacy on all 119 in-scope resources (14 fails each, zero disagreements), and
+# with waivers applied both dialects dropped to zero fails with zero
+# disagreements. The 14 were 12 CNPG instance Pods plus excalidraw's Deployment
+# and Pod.
 #
 # WHY THREE. A CEL PolicyException waives a WHOLE POLICY, and the three rules
 # carry three distinct waiver sets:
@@ -51,7 +54,7 @@ metadata:
       image-supply-chain-enforce/require-image-digest.
 spec:
   validationActions:
-    - Audit
+    - Deny
   evaluation:
     background:
       enabled: true
@@ -127,7 +130,7 @@ metadata:
       of image-supply-chain-enforce/disallow-latest-tag-even-with-digest.
 spec:
   validationActions:
-    - Audit
+    - Deny
   evaluation:
     background:
       enabled: true
@@ -208,7 +211,7 @@ metadata:
       image-supply-chain-enforce/require-fully-qualified-images.
 spec:
   validationActions:
-    - Audit
+    - Deny
   evaluation:
     background:
       enabled: true

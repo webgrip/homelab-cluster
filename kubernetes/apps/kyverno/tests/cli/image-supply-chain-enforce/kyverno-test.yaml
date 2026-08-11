@@ -1,57 +1,63 @@
 ---
+# Restructured for the CEL split (stage 2). The legacy policy's three RULES are now three
+# ValidatingPolicies, so each former `rule:` assertion becomes a `policy:` assertion.
+# CEL policies have no named rules — a leftover `rule:` scores Pass/Excluded, green while
+# asserting nothing.
+#
+# Unlike namespace-tenancy or rbac-least-privilege, NOTHING COLLAPSES here: the split is
+# one policy per rule, so the assertion set maps across one-for-one and the count is
+# unchanged. A resource that failed one rule and passed another still records both, now
+# under two policy names instead of two rule names.
+#
+# All three are enforcing, so every one keeps BOTH directions. The coverage gate only
+# requires a fail case; a policy that rejected everything would satisfy it while being
+# catastrophically wrong, and these three sit in front of every image pull in 17
+# namespaces.
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: image-supply-chain-enforce
 policies:
-  - ../../policies/image-supply-chain-enforce.yaml
+  - ../../policies/image-supply-chain-cel.yaml
 resources:
   - resources.yaml
 results:
-  # --- fail cases: the policy must CATCH each violation shape -------------------
-  - policy: image-supply-chain-enforce
-    rule: disallow-latest-tag-even-with-digest
+  # --- no-latest ------------------------------------------------------------------
+  - policy: image-supply-chain-no-latest
     resources:
       - app/latest-digest
     kind: Pod
     result: fail
-  - policy: image-supply-chain-enforce
-    rule: require-fully-qualified-images
+  - policy: image-supply-chain-no-latest
+    resources:
+      - app/fully-qualified-versioned
+      - app/localhost-registry-with-port
+      - app/implicit-dockerhub-namespace
+      - app/bare-library-image
+    kind: Pod
+    result: pass
+  # --- fully-qualified ------------------------------------------------------------
+  - policy: image-supply-chain-fully-qualified
     resources:
       - app/implicit-dockerhub-namespace
       - app/bare-library-image
       - app/unqualified-init-container
     kind: Pod
     result: fail
-  # --- pass cases: the policy must ADMIT compliant resources --------------------
-  # A failure-only suite cannot distinguish a working policy from one that denies
-  # everything, so an enforcing policy is only proven by both directions.
-  - policy: image-supply-chain-enforce
-    rule: disallow-latest-tag-even-with-digest
-    resources:
-      - app/fully-qualified-versioned
-      - app/localhost-registry-with-port
-      - app/implicit-dockerhub-namespace
-      - app/bare-library-image
-    kind: Pod
-    result: pass
-  - policy: image-supply-chain-enforce
-    rule: require-fully-qualified-images
+  - policy: image-supply-chain-fully-qualified
     resources:
       - app/fully-qualified-versioned
       - app/localhost-registry-with-port
       - app/latest-digest
     kind: Pod
     result: pass
-  # --- wave 11: require-image-digest -----------------------------------------
-  - policy: image-supply-chain-enforce
-    rule: require-image-digest
+  # --- digest-pinned --------------------------------------------------------------
+  - policy: image-supply-chain-digest-pinned
     resources:
       - app/tag-without-digest
     kind: Pod
     result: fail
-  - policy: image-supply-chain-enforce
-    rule: require-image-digest
+  - policy: image-supply-chain-digest-pinned
     resources:
       - app/fully-qualified-versioned
       - app/localhost-registry-with-port
