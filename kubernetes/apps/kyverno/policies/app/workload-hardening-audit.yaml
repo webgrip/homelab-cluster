@@ -1,180 +1,236 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# MIGRATED to the CEL policy family 2026-08-11 (rfc-kyverno-cel-migration.md), and SPLIT
+# from one 4-rule ClusterPolicy into two ValidatingPolicies.
+#
+# WHY TWO. A CEL PolicyException carries `policyRefs` and NO `ruleNames`, so it waives a
+# WHOLE POLICY. The seven live exceptions fall into exactly two waiver sets:
+#
+#   privilege-escalation + run-as-non-root + check-seccomp-strict   (3 rules, one set)
+#     forgejo-agent-runner, forgejo-buildkitd, forgejo-dind, forgejo-runner,
+#     ploeg-worker, third-party-pods-base, third-party-pod-security
+#   validate-resources                                              (its own set)
+#     cnpg-pods, third-party-pod-security
+#
+# The three hardening rules are waived as an identical set by every one of their seven
+# exceptions — never individually — so grouping them in one policy is lossless.
+# validate-resources has a different set, so it must stand alone or cnpg-pods would
+# silently gain a privilege-escalation waiver it has never had.
+#
+# NO ACTION SPLIT NEEDED: all four rules are Audit (spec-level, no rule-level override),
+# so both policies stay Audit. Nothing here can deny a workload — a mistake in this
+# migration produces wrong REPORTS, not rejected pods.
+#
+# EXPLICIT CONTROLLER KINDS, NOT AUTOGEN. ValidatingPolicy autogen emits nothing (probed
+# 2026-08-05/06; see image-hygiene-audit). The legacy policy matched only Pod and carried
+# no autogen-controllers annotation, so Kyverno generated the default set — which is why
+# the exceptions name autogen-privilege-escalation and friends. ReplicaSet and
+# ReplicationController are deliberately NOT listed: they are controller-derived, their
+# pod templates are copies of the Deployment/ReplicationController that IS matched here,
+# and including them would double every finding.
+#
+# SCOPE UNCHANGED: the same two-namespace exclusion, which was already widened on
+# 2026-08-06 to "only structurally-empty system namespaces".
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: workload-hardening-audit
   annotations:
-    policies.kyverno.io/title: Workload Hardening Audit
-    policies.kyverno.io/category: Pod Security Standards (Restricted), Best Practices
+    policies.kyverno.io/title: Workload Hardening (Audit)
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod
     kyverno.io/kyverno-version: 1.18.1
     policies.kyverno.io/description: >-
-      Audit stronger workload hardening requirements across application namespaces
-      to surface remediation work before moving to stricter enforcement.
+      Privilege escalation, root execution and custom seccomp profiles are surfaced for
+      application workloads. Audit only. Name retained from the legacy ClusterPolicy so
+      existing report queries keep resolving.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-    - name: privilege-escalation
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-              namespaceSelector:
-                matchExpressions: &applicationNamespaces
-                  # WIDENED 2026-08-06. This was a 17-namespace exclusion, and it
-                  # was the single largest blind spot in the estate: our own
-                  # reporting found 17 service-account-token violations where
-                  # Kubescape found 289, because we graded the application tier
-                  # and scored the platform tier not at all — and the platform
-                  # tier is where the privileged workloads live.
-                  #
-                  # Safe to widen because EVERY rule in this policy is Audit:
-                  # nothing is denied, only reported. Expect the counts to jump.
-                  # That is the blind spot becoming visible, not a regression.
-                  #
-                  # Only structurally-empty system namespaces remain excluded.
-                  # Note kube-system is now IN scope: its Talos static pods
-                  # (apiserver, scheduler, controller-manager) will report and are
-                  # NOT remediable via GitOps — read them as known, not as debt.
-                  - key: kubernetes.io/metadata.name
-                    operator: NotIn
-                    values:
-                      - kube-node-lease
-                      - kube-public
-      validate:
-        message: >-
-          Privilege escalation is disallowed. The fields
-          spec.containers[*].securityContext.allowPrivilegeEscalation,
-          spec.initContainers[*].securityContext.allowPrivilegeEscalation,
-          and spec.ephemeralContainers[*].securityContext.allowPrivilegeEscalation
-          must be set to `false`.
-        pattern:
-          spec:
-            =(ephemeralContainers):
-              - securityContext:
-                  allowPrivilegeEscalation: "false"
-            =(initContainers):
-              - securityContext:
-                  allowPrivilegeEscalation: "false"
-            containers:
-              - securityContext:
-                  allowPrivilegeEscalation: "false"
-    - name: run-as-non-root
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-              namespaceSelector:
-                matchExpressions: *applicationNamespaces
-      validate:
-        message: >-
-          Running as root is not allowed. Either the field spec.securityContext.runAsNonRoot
-          must be set to `true`, or the fields spec.containers[*].securityContext.runAsNonRoot,
-          spec.initContainers[*].securityContext.runAsNonRoot, and
-          spec.ephemeralContainers[*].securityContext.runAsNonRoot must be set to `true`.
-        anyPattern:
-          - spec:
-              securityContext:
-                runAsNonRoot: "true"
-              =(ephemeralContainers):
-                - =(securityContext):
-                    =(runAsNonRoot): "true"
-              =(initContainers):
-                - =(securityContext):
-                    =(runAsNonRoot): "true"
-              containers:
-                - =(securityContext):
-                    =(runAsNonRoot): "true"
-          - spec:
-              =(ephemeralContainers):
-                - securityContext:
-                    runAsNonRoot: "true"
-              =(initContainers):
-                - securityContext:
-                    runAsNonRoot: "true"
-              containers:
-                - securityContext:
-                    runAsNonRoot: "true"
-    - name: check-seccomp-strict
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-              namespaceSelector:
-                matchExpressions: *applicationNamespaces
-      validate:
-        message: >-
-          Use of custom Seccomp profiles is disallowed. The fields
-          spec.securityContext.seccompProfile.type,
-          spec.containers[*].securityContext.seccompProfile.type,
-          spec.initContainers[*].securityContext.seccompProfile.type, and
-          spec.ephemeralContainers[*].securityContext.seccompProfile.type
-          must be set to `RuntimeDefault` or `Localhost`.
-        anyPattern:
-          - spec:
-              securityContext:
-                seccompProfile:
-                  type: "RuntimeDefault | Localhost"
-              =(ephemeralContainers):
-                - =(securityContext):
-                    =(seccompProfile):
-                      =(type): "RuntimeDefault | Localhost"
-              =(initContainers):
-                - =(securityContext):
-                    =(seccompProfile):
-                      =(type): "RuntimeDefault | Localhost"
-              containers:
-                - =(securityContext):
-                    =(seccompProfile):
-                      =(type): "RuntimeDefault | Localhost"
-          - spec:
-              =(ephemeralContainers):
-                - securityContext:
-                    seccompProfile:
-                      type: "RuntimeDefault | Localhost"
-              =(initContainers):
-                - securityContext:
-                    seccompProfile:
-                      type: "RuntimeDefault | Localhost"
-              containers:
-                - securityContext:
-                    seccompProfile:
-                      type: "RuntimeDefault | Localhost"
-    - name: validate-resources
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-              namespaceSelector:
-                matchExpressions: *applicationNamespaces
-      validate:
-        message: "CPU and memory resource requests and memory limits are required for containers."
-        pattern:
-          spec:
-            containers:
-              - resources:
-                  requests:
-                    memory: "?*"
-                    cpu: "?*"
-                  limits:
-                    memory: "?*"
-            =(initContainers):
-              - resources:
-                  requests:
-                    memory: "?*"
-                    cpu: "?*"
-                  limits:
-                    memory: "?*"
-            =(ephemeralContainers):
-              - resources:
-                  requests:
-                    memory: "?*"
-                    cpu: "?*"
-                  limits:
-                    memory: "?*"
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-node-lease
+            - kube-public
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "deployments"
+          - "statefulsets"
+          - "daemonsets"
+      - apiGroups:
+          - "batch"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "jobs"
+          - "cronjobs"
+  variables:
+    - name: podSpec
+      expression: >-
+        object.kind == 'Pod' ? object.spec : (object.kind == 'CronJob' ?
+        object.spec.jobTemplate.spec.template.spec : object.spec.template.spec)
+    - name: allContainers
+      expression: >-
+        variables.podSpec.?containers.orValue([]) +
+        variables.podSpec.?initContainers.orValue([]) +
+        variables.podSpec.?ephemeralContainers.orValue([])
+  validations:
+    # Legacy required securityContext.allowPrivilegeEscalation: false on every container
+    # (no `=()` on the inner keys), so ABSENT must fail. orValue(true) encodes that: a
+    # container with no securityContext at all defaults to true and therefore fails,
+    # exactly as the pattern did.
+    - expression: >-
+        variables.allContainers.all(c,
+          c.?securityContext.orValue({}).?allowPrivilegeEscalation.orValue(true) == false)
+      message: >-
+        Privilege escalation is disallowed. The fields
+        spec.containers[*].securityContext.allowPrivilegeEscalation,
+        spec.initContainers[*].securityContext.allowPrivilegeEscalation,
+        and spec.ephemeralContainers[*].securityContext.allowPrivilegeEscalation
+        must be set to `false`.
+    # anyPattern: two alternatives, either satisfies. Alternative 1 sets it POD-wide and
+    # only constrains containers that override it (`=()` on the inner keys, so absent is
+    # fine — orValue(true)). Alternative 2 requires it on every container individually
+    # (no `=()`, so absent fails — orValue(false)). The differing defaults are the whole
+    # distinction between the two patterns; collapsing them to one would change behaviour.
+    - expression: >-
+        (variables.podSpec.?securityContext.orValue({}).?runAsNonRoot.orValue(false) == true &&
+         variables.allContainers.all(c,
+           c.?securityContext.orValue({}).?runAsNonRoot.orValue(true) == true))
+        ||
+        variables.allContainers.all(c,
+          c.?securityContext.orValue({}).?runAsNonRoot.orValue(false) == true)
+      message: >-
+        Running as root is not allowed. Either the field spec.securityContext.runAsNonRoot
+        must be set to `true`, or the fields spec.containers[*].securityContext.runAsNonRoot,
+        spec.initContainers[*].securityContext.runAsNonRoot, and
+        spec.ephemeralContainers[*].securityContext.runAsNonRoot must be set to `true`.
+    # Same anyPattern shape. The legacy value "RuntimeDefault | Localhost" is Kyverno's
+    # OR-pattern syntax, not a literal string — it becomes list membership here.
+    - expression: >-
+        (variables.podSpec.?securityContext.orValue({}).?seccompProfile.orValue({})
+           .?type.orValue('') in ['RuntimeDefault', 'Localhost'] &&
+         variables.allContainers.all(c,
+           c.?securityContext.orValue({}).?seccompProfile.orValue({})
+             .?type.orValue('RuntimeDefault') in ['RuntimeDefault', 'Localhost']))
+        ||
+        variables.allContainers.all(c,
+          c.?securityContext.orValue({}).?seccompProfile.orValue({})
+            .?type.orValue('') in ['RuntimeDefault', 'Localhost'])
+      message: >-
+        Use of custom Seccomp profiles is disallowed. The fields
+        spec.securityContext.seccompProfile.type,
+        spec.containers[*].securityContext.seccompProfile.type,
+        spec.initContainers[*].securityContext.seccompProfile.type, and
+        spec.ephemeralContainers[*].securityContext.seccompProfile.type
+        must be set to `RuntimeDefault` or `Localhost`.
+---
+# Split out of workload-hardening-audit because its waiver set differs: only cnpg-pods
+# and third-party-pod-security waive it, and neither of those waives the three hardening
+# rules above. Folding them together would hand cnpg-pods a privilege-escalation waiver
+# it has never held.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: workload-resources-audit
+  annotations:
+    policies.kyverno.io/title: Workload Resource Requests and Limits (Audit)
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Containers must declare CPU and memory requests and a memory limit. CEL split of
+      workload-hardening-audit/validate-resources. Audit only.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-node-lease
+            - kube-public
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "deployments"
+          - "statefulsets"
+          - "daemonsets"
+      - apiGroups:
+          - "batch"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "jobs"
+          - "cronjobs"
+  variables:
+    - name: podSpec
+      expression: >-
+        object.kind == 'Pod' ? object.spec : (object.kind == 'CronJob' ?
+        object.spec.jobTemplate.spec.template.spec : object.spec.template.spec)
+    - name: allContainers
+      expression: >-
+        variables.podSpec.?containers.orValue([]) +
+        variables.podSpec.?initContainers.orValue([]) +
+        variables.podSpec.?ephemeralContainers.orValue([])
+  validations:
+    # `?*` means present AND non-empty — both halves matter, so this tests != '' rather
+    # than mere presence. CPU LIMITS are deliberately absent from the requirement: the
+    # repo's recorded position is that CPU limits cause throttling and are not required
+    # (upstream even ships a forbid-cpu-limits policy). Only memory is limited.
+    - expression: >-
+        variables.allContainers.all(c,
+          c.?resources.orValue({}).?requests.orValue({}).?memory.orValue('') != '' &&
+          c.?resources.orValue({}).?requests.orValue({}).?cpu.orValue('') != '' &&
+          c.?resources.orValue({}).?limits.orValue({}).?memory.orValue('') != '')
+      message: "CPU and memory resource requests and memory limits are required for containers."

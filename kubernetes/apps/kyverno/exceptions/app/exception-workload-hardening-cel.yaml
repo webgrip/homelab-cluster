@@ -1,0 +1,132 @@
+---
+# CEL-dialect waivers for the workload-hardening-audit / workload-resources-audit split
+# (2026-08-11). The five forgejo/ploeg workload waivers are NOT here — they were added as
+# extra policyRefs on their existing CEL twins in exception-pod-security-baseline-cel.yaml,
+# because a legacy PolicyException has ONE `match` shared by all its `exceptions[]`
+# entries, so the twin's matchConditions already describe exactly the same workloads.
+#
+# THE base/autogen ASYMMETRY IS PRESERVED BY THE KIND LISTS, NOT BY A SEPARATE GUARD.
+# The legacy exceptions expressed it through their match blocks rather than only through
+# ruleNames:
+#   exception-cnpg-pods              matches Pod        -> waived validate-resources
+#   exception-third-party-pods-base  matches Pod        -> waived the 3 hardening rules
+#   exception-third-party-pod-security matches controllers -> waived autogen-* only
+# Reproducing those match blocks therefore reproduces the scope. A CEL policy covers Pods
+# and controllers under one matchConstraints, so dropping the `object.kind` test in any of
+# these would silently WIDEN the waiver to the other half — the exact failure the RFC
+# warns about.
+---
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-cnpg-pods-resources-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      CNPG database Pods do not declare resource requests/limits the way the operator
+      renders them. Waives workload-resources-audit for the primary instance Pod of each
+      managed cluster. Deliberately does NOT waive workload-hardening-audit — these Pods
+      are still held to privilege-escalation, run-as-non-root and seccomp.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: workload-resources-audit
+  matchConditions:
+    # Pod only: the legacy exception matched kind Pod, so the controller half was never
+    # waived. Namespace+name pairs are exact, mirroring the legacy per-namespace `names:`.
+    # vikunja and ploeg run TWO instances each, so they list -db-1 AND -db-2. Getting
+    # this wrong is not hypothetical: the first draft of this expression captured only
+    # the first name per namespace, and the migration differential caught exactly two
+    # divergences — ploeg-db-2 and vikunja-db-2 passing under legacy, failing under CEL.
+    # Replicas get added over time; re-derive this list from the source rather than
+    # assuming one instance per cluster.
+    - name: cnpg-instance-pods
+      expression: >-
+        object.kind == 'Pod' &&
+        (object.metadata.namespace + '/' + object.metadata.name) in [
+          'freshrss/freshrss-db-1', 'n8n/n8n-db-1', 'sparkyfitness/sparkyfitness-db-1',
+          'backstage/backstage-db-1', 'authentik/authentik-db-1', 'forgejo/forgejo-db-1',
+          'harbor/harbor-db-1', 'ai/litellm-db-1',
+          'vikunja/vikunja-db-1', 'vikunja/vikunja-db-2',
+          'ploeg/ploeg-db-1', 'ploeg/ploeg-db-2']
+---
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-third-party-pods-base-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      Third-party images that hard-code their runtime user or cannot drop privilege
+      escalation. Waives workload-hardening-audit for the POD half only, matching the
+      legacy exception's kind Pod scope.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: workload-hardening-audit
+  matchConditions:
+    # Two label KEYS are in play: most apps carry app.kubernetes.io/name, but the
+    # invoiceninja chart uses a bare `app`. Both are guarded with `in` before indexing —
+    # a missing key raises, and a raise inside a PolicyException is not a graceful
+    # non-match.
+    - name: third-party-pods
+      expression: >-
+        object.kind == 'Pod' && (
+          ('app.kubernetes.io/name' in object.metadata.?labels.orValue({}) &&
+           (object.metadata.namespace + '/' +
+            object.metadata.labels['app.kubernetes.io/name']) in [
+             'excalidraw/excalidraw', 'freshrss/freshrss', 'n8n/n8n',
+             'searxng/searxng', 'searxng/searxng-valkey',
+             'sparkyfitness/sparkyfitness', 'drawio/drawio',
+             'drawio/plantuml-server', 'forgejo/gitea-mirror'])
+          ||
+          ('app' in object.metadata.?labels.orValue({}) &&
+           (object.metadata.namespace + '/' + object.metadata.labels['app']) in [
+             'invoiceninja/invoiceninja', 'invoiceninja/invoiceninja-mariadb'])
+        )
+---
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-third-party-pod-security-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      The CONTROLLER half of the third-party waiver — the legacy entry waived autogen-*
+      rules only. Waives both workload-hardening-audit and workload-resources-audit for
+      the named Deployments/StatefulSets/CronJobs/Jobs, and nothing at Pod level.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: workload-hardening-audit
+    - kind: ValidatingPolicy
+      name: workload-resources-audit
+  matchConditions:
+    # The kind list IS the autogen-only guard. Legacy waived `autogen-check-seccomp-strict`
+    # etc. and matched only these four controller kinds; without this test the CEL waiver
+    # would also cover their Pods, which the legacy one never did.
+    - name: third-party-controllers
+      expression: >-
+        object.kind in ['Deployment', 'StatefulSet', 'CronJob', 'Job'] &&
+        (object.metadata.namespace + '/' + object.metadata.name) in [
+          'backstage/backstage', 'backstage/cnpg-disaster-recovery-check',
+          'backstage/cnpg-restore-test',
+          'drawio/drawio', 'drawio/drawio-plantuml-server',
+          'excalidraw/excalidraw',
+          'freshrss/freshrss', 'freshrss/cnpg-disaster-recovery-check',
+          'freshrss/cnpg-restore-test',
+          'invoiceninja/invoiceninja', 'invoiceninja/invoiceninja-mariadb',
+          'minecraft/minecraft',
+          'n8n/n8n', 'n8n/cnpg-restore-test',
+          'searxng/searxng', 'searxng/searxng-valkey',
+          'sparkyfitness/sparkyfitness-frontend', 'sparkyfitness/sparkyfitness-server',
+          'sparkyfitness/sparkyfitness-db-pgstatstatements-perms',
+          'sparkyfitness/cnpg-disaster-recovery-check',
+          'sparkyfitness/cnpg-restore-test',
+          'default/echo']
