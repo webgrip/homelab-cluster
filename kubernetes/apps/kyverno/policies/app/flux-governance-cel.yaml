@@ -1,10 +1,26 @@
 ---
-# CEL SPLIT of flux-governance-enforce, STAGE 1 OF 2
+# CEL SPLIT of flux-governance-enforce, STAGE 2b OF 3
 # (rfc-kyverno-cel-migration.md).
 #
-# STAGE 1 (this commit): the three policies below run at AUDIT beside the legacy
-# ClusterPolicy, which keeps ENFORCING unchanged. STAGE 2: delete the legacy
-# policy, flip these to Deny, port the two waivers — one commit.
+#   stage 1   these three policies run at AUDIT beside the still-enforcing legacy
+#             ClusterPolicy, so the two dialects can be compared in-cluster
+#   stage 2a  port the two waivers to CEL (exception-flux-bootstrap-cel.yaml,
+#             exception-helmrepositories-cel.yaml) — before the flip, never with it
+#   stage 2b  THIS CHANGE: add Warn, purely to make the waivers testable
+#   stage 3   delete the legacy policy, flip to Deny, delete the legacy waivers
+#
+# WHY WARN IS HERE AND WHY IT LEAVES AGAIN. The waivers had no observable effect to
+# check. Kyverno's background scan interval is 24h, so the PolicyReports that showed
+# the pre-waiver state will not refresh on their own for a day; and an Audit-action
+# policy emits NOTHING at admission, so `kubectl apply --dry-run=server` returns the
+# same empty result for a waived resource, an unwaived one, and a policy that is
+# simply broken. That test was run first and was vacuous in both directions.
+#
+# Warn is the smallest change that produces a signal: it is non-blocking, so it can
+# be wrong without consequence, and it makes admission return a named warning — which
+# turns the waiver into something that can be checked in both directions against real
+# objects (a waived HelmRepository must be silent, an unwaived one must warn). Stage 3
+# removes it in the same edit that adds Deny.
 #
 # STAGED BECAUSE THE OFFLINE DIFFERENTIAL IS UNAVAILABLE HERE, which is the first
 # time that has happened in this migration. `kyverno apply` cannot map GVK to GVR
@@ -59,6 +75,7 @@ metadata:
 spec:
   validationActions:
     - Audit
+    - Warn
   evaluation:
     background:
       enabled: true
@@ -163,6 +180,7 @@ metadata:
 spec:
   validationActions:
     - Audit
+    - Warn
   evaluation:
     background:
       enabled: true
@@ -205,6 +223,7 @@ metadata:
 spec:
   validationActions:
     - Audit
+    - Warn
   evaluation:
     background:
       enabled: true
