@@ -275,11 +275,19 @@ spec:
               # image, freshly grown by gitleaks + zensical, in-process). Structural note: since
               # promote-by-digest (infrastructure ADR-0009) removed the release rebuild, the
               # sign job's scan IS the heaviest process in a release — this limit now sizes the
-              # release path, not an edge case. Requests unchanged — the burst is short-lived
-              # and Burstable-class.
+              # release path, not an edge case.
+              #
+              # REQUEST raised 512Mi -> 2Gi (2026-08-11, second finding from the same incident):
+              # the 6Gi limit did not save run 359 because the kill was NODE-level, not cgroup —
+              # worker-1 carried every runner pod (512Mi requests bin-pack densely), sat at 75%
+              # requested / 332% limit-overcommitted, took a pressure taint (TaintManagerEviction
+              # events 09:4xZ), and the kernel reaped the fattest processes: syft, then grype.
+              # There are THREE worker-pool nodes (~55Gi allocatable between them); an honest 2Gi
+              # request makes the scheduler spread scan-heavy jobs instead of stacking them onto
+              # whichever node bin-packs tightest.
               requests:
                 cpu: 250m
-                memory: 512Mi
+                memory: 2Gi
               limits:
                 memory: 6Gi
         volumes:
