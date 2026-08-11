@@ -38,6 +38,13 @@ spec:
             - "0.0.0.0"
             - "--port"
             - "6280"
+          env:
+            # The scraper's SSRF guard rejects hosts resolving to private IPs;
+            # an allowlisted hostname is authoritative (its DNS answers are
+            # trusted even when private) — required because docs.<domain> IS a
+            # LAN address by design. Blocked every seed job until set (2026-08-11).
+            - name: DOCS_MCP_SCRAPER_SECURITY_NETWORK_ALLOWED_HOSTS
+              value: docs.${SECRET_DOMAIN}
           ports:
             - name: http
               containerPort: 6280
