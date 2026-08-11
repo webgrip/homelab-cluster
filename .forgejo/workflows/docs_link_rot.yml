@@ -21,6 +21,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check external links
         run: |-
+          # External links ONLY (--scheme): internal integrity is zensical
+          # --strict's job at build. --root-dir lets root-relative estate links
+          # parse (they then resolve to file:// and fall out of scope).
+          # .lycheeignore is auto-discovered from the CWD — there is no
+          # --ignore-file flag (the first dispatch proof failed on it).
           lychee --no-progress --cache --max-cache-age 7d \
-            --ignore-file .lycheeignore \
+            --scheme https --scheme http --root-dir "$(pwd)" \
             'docs/techdocs/docs/**/*.md' 'README.md'
