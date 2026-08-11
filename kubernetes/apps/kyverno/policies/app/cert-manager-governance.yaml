@@ -1,119 +1,191 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# MIGRATED to the CEL policy family 2026-08-11 (rfc-kyverno-cel-migration.md), and
+# SPLIT from one 6-rule ClusterPolicy into three ValidatingPolicies.
+#
+# THREE SPLIT DRIVERS APPLY AT ONCE HERE — this is the first policy where the action
+# split matters as much as the waiver split:
+#
+#   rule                             action   waived by system-certificates?
+#   restrict-certificate-issuer      Enforce  yes
+#   restrict-certificate-dnsnames    Enforce  yes
+#   restrict-certificate-commonname  Enforce  yes
+#   restrict-clusterissuer-acme-zone Enforce  NO
+#   audit-certificate-duration       Audit    yes
+#   audit-certificate-private-key    Audit    yes
+#
+# CEL `validationActions` is POLICY-level, so the two Audit rules cannot share a policy
+# with the four Enforce ones — merging them would silently promote both to Deny.
+# restrict-clusterissuer-acme-zone is unwaived AND matches a different kind, so it
+# separates on both counts. That yields exactly three groupings.
+#
+# The name `cert-manager-governance` is retained for the three enforcing Certificate
+# rules — the bulk of the policy — so existing report queries keep resolving.
+#
+# ${SECRET_DOMAIN} IS A FLUX postBuild SUBSTITUTION, not a CEL variable. It survives
+# into the expressions as literal text and is substituted at apply time, exactly as it
+# was in the legacy JMESPath. The kyverno-test harness substitutes example.com
+# (KYVERNO_TEST_SECRET_DOMAIN), which is why test fixtures must use the templated form
+# rather than a hardcoded domain.
+#
+# NO YAML ANCHORS — they do not cross document boundaries and kubeconform rejects the
+# file outright.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: cert-manager-governance
   annotations:
-    policies.kyverno.io/title: Cert Manager Governance
-    policies.kyverno.io/category: Cert-Manager, TLS
+    policies.kyverno.io/title: Certificate Issuance Governance (Enforced)
+    policies.kyverno.io/category: Certificate Management
     policies.kyverno.io/severity: high
-    policies.kyverno.io/subject: Certificate,Issuer,ClusterIssuer
+    policies.kyverno.io/subject: Certificate
     kyverno.io/kyverno-version: 1.18.1
     policies.kyverno.io/description: >-
-      Restrict certificate issuance to the approved production ClusterIssuer and
-      the cluster domain while auditing certificate lifecycle settings.
+      Certificates must be issued by the letsencrypt-production ClusterIssuer and
+      scoped to the cluster domain. CEL migration of cert-manager-governance; the
+      ClusterIssuer and hygiene rules are separate policies.
 spec:
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: restrict-certificate-issuer
-      match:
-        any:
-          - resources:
-              kinds:
-                - Certificate
-      validate:
-        message: "Certificates must use the letsencrypt-production ClusterIssuer."
-        pattern:
-          spec:
-            issuerRef:
-              name: letsencrypt-production
-              kind: ClusterIssuer
-    - name: restrict-certificate-dnsnames
-      match:
-        any:
-          - resources:
-              kinds:
-                - Certificate
-      validate:
-        message: "Certificate DNS names must be ${SECRET_DOMAIN} or a subdomain of it."
-        foreach:
-          - list: request.object.spec.dnsNames[]
-            deny:
-              conditions:
-                any:
-                  - key: "{{ regex_match('^(\\*\\.)?([A-Za-z0-9-]+\\.)*${SECRET_DOMAIN}$', element) }}"
-                    operator: Equals
-                    value: false
-    - name: restrict-certificate-commonname
-      match:
-        any:
-          - resources:
-              kinds:
-                - Certificate
-      validate:
-        message: "Certificate commonName must be ${SECRET_DOMAIN} or a subdomain of it."
-        deny:
-          conditions:
-            any:
-              - key: "{{ regex_match('^(\\*\\.)?([A-Za-z0-9-]+\\.)*${SECRET_DOMAIN}$', request.object.spec.commonName || '${SECRET_DOMAIN}') }}"
-                operator: Equals
-                value: false
-    - name: restrict-clusterissuer-acme-zone
-      match:
-        any:
-          - resources:
-              kinds:
-                - ClusterIssuer
-      # ACME issuers only (added 2026-08-05). The pattern below asserts a dnsZone under
-      # spec.acme.solvers, which a `selfSigned` or `ca` ClusterIssuer structurally cannot
-      # have — there is no acme block to scope. Without this precondition the rule was an
-      # ENFORCING deny on every non-ACME issuer: `kyverno-selfsigned-issuer` and
-      # `kyverno-cleanup-selfsigned-issuer` are not misconfigured, the rule just did not
-      # understand their shape. allowExistingViolations protected the two that exist, but
-      # a NEW selfSigned/CA issuer was denied at CREATE — including on a Kyverno chart
-      # reinstall, which creates its own issuers.
-      preconditions:
-        all:
-          - key: "{{ request.object.spec | keys(@) }}"
-            operator: AnyIn
-            value:
-              - acme
-      validate:
-        message: "ClusterIssuers must be scoped to ${SECRET_DOMAIN}."
-        pattern:
-          spec:
-            acme:
-              solvers:
-                - selector:
-                    dnsZones:
-                      - "${SECRET_DOMAIN}"
-    - name: audit-certificate-duration
-      match:
-        any:
-          - resources:
-              kinds:
-                - Certificate
-      validate:
-        failureAction: Audit
-        message: "Certificates should declare duration and renewBefore for predictable rotation."
-        pattern:
-          spec:
-            duration: "?*"
-            renewBefore: "?*"
-    - name: audit-certificate-private-key
-      match:
-        any:
-          - resources:
-              kinds:
-                - Certificate
-      validate:
-        failureAction: Audit
-        message: "Certificates should declare private key algorithm, size, encoding, and rotation policy."
-        pattern:
-          spec:
-            privateKey:
-              algorithm: "ECDSA | RSA"
-              size: ">=256"
-              encoding: "PKCS1 | PKCS8"
-              rotationPolicy: Always
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - "cert-manager.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "certificates"
+  validations:
+    # Legacy pattern required BOTH keys, with no `=()`, so absent fails.
+    - expression: >-
+        object.spec.?issuerRef.orValue({}).?name.orValue('') == 'letsencrypt-production' &&
+        object.spec.?issuerRef.orValue({}).?kind.orValue('') == 'ClusterIssuer'
+      message: "Certificates must use the letsencrypt-production ClusterIssuer."
+    # matches() is RE2 and replaces JMESPath regex_match(). The pattern is byte-for-byte
+    # the legacy one: an optional leading wildcard label, any number of subdomain labels,
+    # then the cluster domain. Note the domain's own dots are NOT escaped — that is the
+    # legacy behaviour and is slightly loose; tightening it is a behaviour change, not a
+    # dialect migration.
+    - expression: >-
+        object.spec.?dnsNames.orValue([]).all(d,
+          d.matches('^(\\*\\.)?([A-Za-z0-9-]+\\.)*${SECRET_DOMAIN}$'))
+      message: "Certificate DNS names must be ${SECRET_DOMAIN} or a subdomain of it."
+    # Legacy defaulted a MISSING commonName to ${SECRET_DOMAIN} itself, so absent passes.
+    # orValue reproduces that exactly rather than guarding with has().
+    - expression: >-
+        object.spec.?commonName.orValue('${SECRET_DOMAIN}')
+          .matches('^(\\*\\.)?([A-Za-z0-9-]+\\.)*${SECRET_DOMAIN}$')
+      message: "Certificate commonName must be ${SECRET_DOMAIN} or a subdomain of it."
+---
+# Split out because it is the only rule in the policy NOT waived by
+# exception-system-certificates, and it matches a different kind. Merging it with the
+# Certificate rules above would hand the system-certs waiver a ClusterIssuer exemption
+# it has never had.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: cert-manager-clusterissuer-zone
+  annotations:
+    policies.kyverno.io/title: ClusterIssuer ACME Zone Scope (Enforced)
+    policies.kyverno.io/category: Certificate Management
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: ClusterIssuer
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      ACME ClusterIssuers must solve only for the cluster domain. CEL split of
+      cert-manager-governance/restrict-clusterissuer-acme-zone.
+spec:
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - "cert-manager.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "clusterissuers"
+  matchConditions:
+    # The ACME gate is a matchCondition, NOT folded into the expression, and that is a
+    # deliberate reversal of what the other migrations did.
+    #
+    # Elsewhere (workload-topology-spread) a legacy `precondition` was folded into the
+    # validation so a non-matching resource reports a PASS, keeping one row per resource.
+    # Here that would be wrong: the CLI test asserts `result: skip` for a self-signed
+    # issuer and says so explicitly — "Asserting `skip` fails if someone removes the
+    # precondition; `pass` would not catch it." Folding the gate in would turn that skip
+    # into a pass and silently retire the assertion that protects it.
+    #
+    # Note the migration differential cannot catch this either: aggregating fail-vs-
+    # not-fail per resource treats skip and pass as the same thing.
+    - name: acme-issuers-only
+      expression: "has(object.spec.acme)"
+  validations:
+    # A single-element list pattern in Kyverno applies to EVERY element, so every solver
+    # must carry the zone — not merely one of them.
+    - expression: >-
+        object.spec.acme.?solvers.orValue([]).all(s,
+          '${SECRET_DOMAIN}' in s.?selector.orValue({}).?dnsZones.orValue([]))
+      message: "ClusterIssuers must be scoped to ${SECRET_DOMAIN}."
+---
+# The two AUDIT rules. They cannot live with the enforcing ones above because
+# validationActions is policy-level — merged, these would start denying Certificates
+# for missing rotation metadata, which has never been a blocking condition.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: cert-manager-certificate-hygiene-audit
+  annotations:
+    policies.kyverno.io/title: Certificate Rotation Hygiene (Audit)
+    policies.kyverno.io/category: Certificate Management
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Certificate
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Certificates should declare rotation timing and private key parameters. CEL split
+      of cert-manager-governance's two Audit rules.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - "cert-manager.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "certificates"
+  validations:
+    - expression: >-
+        object.spec.?duration.orValue('') != '' &&
+        object.spec.?renewBefore.orValue('') != ''
+      message: "Certificates should declare duration and renewBefore for predictable rotation."
+    # `algorithm: "ECDSA | RSA"` and `encoding: "PKCS1 | PKCS8"` are Kyverno OR-patterns,
+    # not literal strings — they become list membership. `size: ">=256"` is its numeric
+    # operator syntax. privateKey itself carried no `=()`, so an absent block fails.
+    - expression: >-
+        has(object.spec.privateKey) &&
+        object.spec.privateKey.?algorithm.orValue('') in ['ECDSA', 'RSA'] &&
+        object.spec.privateKey.?size.orValue(0) >= 256 &&
+        object.spec.privateKey.?encoding.orValue('') in ['PKCS1', 'PKCS8'] &&
+        object.spec.privateKey.?rotationPolicy.orValue('') == 'Always'
+      message: >-
+        Certificates should declare private key algorithm, size, encoding, and rotation
+        policy.

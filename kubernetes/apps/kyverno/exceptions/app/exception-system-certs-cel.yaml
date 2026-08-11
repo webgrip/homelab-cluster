@@ -1,0 +1,45 @@
+---
+# CEL-dialect twin of exception-system-certs (2026-08-11), replacing it outright — that
+# exception waived cert-manager-governance and nothing else, so nothing is left behind.
+#
+# It waived FIVE of the six rules, which the split has distributed across TWO policies:
+#   cert-manager-governance                 issuer, dnsnames, commonName   (Enforce)
+#   cert-manager-certificate-hygiene-audit  duration, privateKey           (Audit)
+# Both are referenced. The third policy, cert-manager-clusterissuer-zone, is NOT — that
+# rule was the one the legacy exception deliberately left unwaived, and it is precisely
+# why the split had to separate it.
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-system-certs-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      Infrastructure certificates issued by controllers rather than by our ACME
+      ClusterIssuer — CNPG's barman-cloud mTLS pair and Kyverno's and trust-manager's
+      self-signed webhook certs. They legitimately use a different issuer, carry
+      in-cluster service DNS names rather than the public domain, and set their own
+      rotation. Waives the Certificate issuance and hygiene policies for them, and
+      nothing else.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: cert-manager-governance
+    - kind: ValidatingPolicy
+      name: cert-manager-certificate-hygiene-audit
+  matchConditions:
+    # Exact namespace/name pairs, mirroring the legacy per-namespace `names:` lists.
+    # Both legacy entries were kind Certificate, so no kind guard is needed beyond that
+    # — the referenced policies match only certificates in the first place.
+    - name: system-issued-certificates
+      expression: >-
+        (object.metadata.namespace + '/' + object.metadata.name) in [
+          'cnpg-system/barman-cloud-client',
+          'cnpg-system/barman-cloud-server',
+          'security/kyverno-admission-controller-ca',
+          'security/kyverno-admission-controller-tls',
+          'security/kyverno-cleanup-controller-ca',
+          'security/kyverno-cleanup-controller-tls',
+          'security/trust-manager']

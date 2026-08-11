@@ -1,4 +1,8 @@
 ---
+# Restructured for the CEL split (2026-08-11). One 6-rule ClusterPolicy became three
+# ValidatingPolicies — split by ACTION (two rules were Audit) as well as by waiver — so
+# each former `rule:` assertion becomes a `policy:` assertion. CEL policies have no named
+# rules; a leftover `rule:` scores Pass/Excluded, green while asserting nothing.
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -8,42 +12,34 @@ policies:
 resources:
   - resources.yaml
 results:
+  # --- issuance (Enforce) ----------------------------------------------------------
+  # All three former rules are one policy now, so these three fixtures collapse onto it.
   - policy: cert-manager-governance
-    rule: restrict-certificate-issuer
     resources:
       - app/wrong-issuer-cert
-    kind: Certificate
-    result: fail
-  - policy: cert-manager-governance
-    rule: restrict-certificate-dnsnames
-    resources:
       - app/wrong-dns-cert
-    kind: Certificate
-    result: fail
-  - policy: cert-manager-governance
-    rule: restrict-certificate-commonname
-    resources:
       - app/wrong-commonname-cert
     kind: Certificate
     result: fail
-  - policy: cert-manager-governance
-    rule: restrict-clusterissuer-acme-zone
+  # --- ClusterIssuer ACME zone (Enforce, its own policy) ---------------------------
+  - policy: cert-manager-clusterissuer-zone
     resources:
       - wrong-zone
     kind: ClusterIssuer
     result: fail
-  # PASS case — proves the rule admits a correctly-scoped ACME issuer rather than
+  # PASS — proves the policy admits a correctly-scoped ACME issuer rather than
   # rejecting every ClusterIssuer it sees.
-  - policy: cert-manager-governance
-    rule: restrict-clusterissuer-acme-zone
+  - policy: cert-manager-clusterissuer-zone
     resources:
       - correct-zone
     kind: ClusterIssuer
     result: pass
-  # SKIP, not pass — the precondition must exclude non-ACME issuers. Asserting `skip`
-  # fails if someone removes the precondition; `pass` would not catch it.
-  - policy: cert-manager-governance
-    rule: restrict-clusterissuer-acme-zone
+  # SKIP, not pass — a non-ACME issuer must fall outside the policy entirely. This is
+  # why the ACME gate is a `matchCondition` rather than being folded into the validation
+  # expression: folding it in would report `pass` here, and this assertion would stop
+  # protecting anything. The migration differential cannot catch that either, because
+  # aggregating fail-vs-not-fail treats skip and pass alike.
+  - policy: cert-manager-clusterissuer-zone
     resources:
       - selfsigned-issuer
     kind: ClusterIssuer
