@@ -434,6 +434,35 @@
       //
       // REMOVE THIS RULE once `kubectl get clusterpolicy` returns zero
       // (rfc-kyverno-cel-migration.md).
+      // The `bao` CLI is pinned to the CLUSTER'S SERVER version on purpose (.mise.toml:
+      // chart 0.28.3 / appVersion v2.5.4) so client and KV-v2 behaviour match. Renovate
+      // cannot know that, so an automatic bump is always wrong here — the correct trigger
+      // is upgrading the OpenBao chart, not a new CLI release.
+      //
+      // It is also the dependency that proved how expensive getting this wrong is. The
+      // 2026-08-10 bump to 2.6.1 broke the entire macOS arm64 toolchain: upstream renamed
+      // their release assets (bao_* -> openbao_*), the aqua package still expects the old
+      // name, and `mise install` is all-or-nothing — so one unresolvable tool took kubectl,
+      // flux, helm and the pre-commit hooks down with it. The guard-secrets hook then
+      // reported a phantom "plaintext secret" because its gitleaks fallback runs through
+      // `mise exec`, which was itself broken.
+      //
+      // dependencyDashboardApproval rather than a hard ignore: still surface new releases
+      // so the pin can be moved deliberately when the server is upgraded.
+      description: "Never bump the OpenBao CLI unattended — it is pinned to the cluster's server version, and 2.6.1 broke the whole macOS toolchain via an upstream asset rename",
+      matchManagers: [
+        "mise"
+      ],
+      matchDepNames: [
+        "aqua:openbao/openbao/bao"
+      ],
+      matchPackageNames: [
+        "openbao/openbao"
+      ],
+      dependencyDashboardApproval: true,
+      automerge: false,
+    },
+    {
       description: "Hold the Kyverno chart below 3.10 until the CEL migration completes — 3.10 ships Kyverno 1.20, which removes the legacy kyverno.io/v1 ClusterPolicy API that 22 live policies still use",
       matchDatasources: [
         "docker"

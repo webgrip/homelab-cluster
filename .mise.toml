@@ -27,7 +27,15 @@ JUST_UNSTABLE = "1"
 # OpenBao CLI (`bao`) — pinned to the cluster's server version (chart 0.28.3 / appVersion
 # v2.5.4) so client/KV-v2 behaviour matches. Address derived from the live HTTPRoute via
 # `just bao-login`; auth is Authentik OIDC (no static token, no root).
-"aqua:openbao/openbao/bao" = "2.6.1"
+#
+# DO NOT let Renovate move this on its own — see the packageRule in .renovaterc.json5.
+# Bumped to 2.6.1 on 2026-08-10 and it broke the ENTIRE toolchain on macOS arm64:
+# upstream renamed their release assets between 2.5.5 and 2.6.1
+# (bao_<ver>_darwin_arm64.tar.gz -> openbao_<ver>_darwin_arm64.tar.gz) and the aqua
+# package still expects the old name, so mise fails with
+# "no asset found: bao_2.6.1_Darwin_arm64.tar.gz". mise install is all-or-nothing, so one
+# unresolvable tool takes kubectl, flux, helm and the pre-commit hooks with it.
+"aqua:openbao/openbao/bao" = "2.5.5"
 "aqua:helm/helm" = "4.2.3"
 "aqua:helmfile/helmfile" = "1.7.3"
 "aqua:jqlang/jq" = "1.8.1"
