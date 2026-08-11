@@ -450,14 +450,16 @@
       // dependencyDashboardApproval rather than a hard ignore: still surface new releases
       // so the pin can be moved deliberately when the server is upgraded.
       description: "Never bump the OpenBao CLI unattended — it is pinned to the cluster's server version, and 2.6.1 broke the whole macOS toolchain via an upstream asset rename",
+      // matchDepNames ONLY. Renovate ANDs the match* fields, and the first version of
+      // this rule also carried matchPackageNames: ["openbao/openbao"] — which is not the
+      // package name Renovate resolves for this dep, so the whole rule never matched and
+      // ca86264a re-bumped it to the broken 2.6.1 the very next run. Do not add
+      // matchPackageNames back without confirming the resolved name in a Renovate log.
       matchManagers: [
         "mise"
       ],
       matchDepNames: [
         "aqua:openbao/openbao/bao"
-      ],
-      matchPackageNames: [
-        "openbao/openbao"
       ],
       dependencyDashboardApproval: true,
       automerge: false,
