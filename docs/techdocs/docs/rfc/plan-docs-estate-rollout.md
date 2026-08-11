@@ -1,6 +1,6 @@
 # Plan: docs.webgrip.dev estate rollout — every repo's docs, one domain
 
-> Status: **Planned** (research-refined 2026-08-11; awaiting go) · Date: 2026-08-11 · For
+> Status: **Executed** (2026-08-11 — all phases landed; see ADR-0052 history) · Date: 2026-08-11 · For
 > [ADR-0052](../adr/adr-0052-zensical-docs-site-garage-web.md) /
 > [RFC: Docs platform 2026](rfc-docs-platform-2026.md). Option A (path-per-repo) chosen by the
 > owner; Backstage TechDocs (ADR-0039) remains the later cross-repo-search lane and consumes the
@@ -70,34 +70,34 @@ Zensical — acceptable.
 
 ## Phase 0 — plumbing (one commit each in infrastructure + workflows)
 
-- [ ] **techdocs-builder v1.5.0**: gitleaks binary (`COPY --from` the ghcr proxy, digest-pinned)
+- [x] **techdocs-builder v1.5.0**: gitleaks binary (`COPY --from` the ghcr proxy, digest-pinned)
       + estate config baked at `/etc/gitleaks/docs.toml` (`[extend] useDefault`, runbook-path +
       explicit-marker allowlists) + `requirements-zensical.in` gains
       `markdown-inline-mermaid==1.0.4` and `markdown-graphviz-inline==1.1.3` (recompiled,
       hash-locked) so Zensical can build the 9 inline-extension repos.
-- [ ] **`techdocs-deploy-docs-site.yml`**: `dest-prefix` input (prefix-scoped `rclone sync` —
+- [x] **`techdocs-deploy-docs-site.yml`**: `dest-prefix` input (prefix-scoped `rclone sync` —
       repos cannot clobber each other); `strict` input (default false; runs
       `zensical build --clean --strict`); **gitleaks gate** before every sync
       (`gitleaks dir site/ --config /etc/gitleaks/docs.toml --no-banner --redact` — findings
       fail the leg, nothing publishes); bump container to 1.5.0.
-- [ ] Mutation-test the gate exactly once: plant a fake AWS key in a scratch page → leg must
+- [x] Mutation-test the gate exactly once: plant a fake AWS key in a scratch page → leg must
       fail; marked example line → must pass (the alerting-rules lesson: test both directions).
 
 ## Phase 1 — flagship adoption (homelab-cluster)
 
-- [ ] Fix the 3 link defects Zensical's validator found (2 anchors in
+- [x] Fix the 3 link defects Zensical's validator found (2 anchors in
       rfc-layered-hardware-architecture, 1 template link) and flip `strict: true`.
-- [ ] Shared-safe feature block in `mkdocs.yml`: `navigation.instant`,
+- [x] Shared-safe feature block in `mkdocs.yml`: `navigation.instant`,
       `navigation.instant.progress`, `navigation.instant.preview`, `navigation.path`,
       `navigation.prune`, `search.highlight`, plus `material.extensions.preview` targeting
       `adr/*`, `runbooks/*`, `rfc/*` (hover previews of cross-references in both engines) and
       `theme.variant: modern` (explicit). Verify BOTH lanes locally in the 1.5.0 image before
       pushing.
-- [ ] Estate landing: "Estate docs" section on the root index linking each prefix.
+- [x] Estate landing: "Estate docs" section on the root index linking each prefix.
 
 ## Phase 2 — the four clean drop-ins
 
-- [ ] infrastructure (flip the Codeberg leg; delete its stale `site_url`), then
+- [x] infrastructure (flip the Codeberg leg; delete its stale `site_url`), then
       telemetry-service, ledgerflow, monitoring-platform, searxng-application (replace/add
       callers; `strict: false` until each repo's links are cleaned). Verify
       `docs.${SECRET_DOMAIN}/<repo>/` + `/llms.txt` per repo before moving on; check
@@ -105,7 +105,7 @@ Zensical — acceptable.
 
 ## Phase 3 — the template family
 
-- [ ] Vet `overrides/` partials under Zensical on ONE repo (workflows); drop the feedback
+- [x] Vet `overrides/` partials under Zensical on ONE repo (workflows); drop the feedback
       partials if MiniJinja rejects them. Then flip/add callers: workflows,
       action-typescript-template, application-template, freshrss-application (also remove the
       `G-FAKE` gtag), invoiceninja-application. Template repos get the caller so every future
@@ -113,10 +113,10 @@ Zensical — acceptable.
 
 ## Phase 4 — stragglers + polish
 
-- [ ] backstage-application: write a real mkdocs.yml (ADRs + structurizr exports), add caller.
-- [ ] Retire the GitHub-side `.github/workflows/on_docs_change.yml` copies in repos that gained
+- [x] backstage-application: write a real mkdocs.yml (ADRs + structurizr exports), add caller.
+- [x] Retire the GitHub-side `.github/workflows/on_docs_change.yml` copies in repos that gained
       Forgejo callers (one system of record).
-- [ ] Watchlist ([RFC](rfc-docs-platform-2026.md)): glightbox + TOML-only features when the
+- [x] Watchlist ([RFC](rfc-docs-platform-2026.md)): glightbox + TOML-only features when the
       techdocs-core lane retires; Zensical subprojects (their roadmap's hierarchical
       multi-project model may replace path-prefixes wholesale); Disco vector search; ZAP-009
       agentic topic model.

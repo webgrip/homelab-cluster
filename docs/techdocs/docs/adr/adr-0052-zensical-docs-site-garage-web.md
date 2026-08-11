@@ -125,3 +125,15 @@ for the triggering commit.
 * 2026-08-09 — accepted; Garage web endpoint + `docs-site` bucket + HTTPRoute landed
   (homelab-cluster e9cd2ae1), deploy reusable landed (webgrip/workflows 5a7edb1),
   zensical+rclone baked into techdocs-builder (webgrip/infrastructure f8f5b6d).
+* 2026-08-11 — **estate rollout executed** ([plan](../rfc/plan-docs-estate-rollout.md), all
+  phases): 11 more repos publish under path prefixes — infrastructure, telemetry-service,
+  ledgerflow, monitoring-platform (default branch `master`), searxng-application, workflows,
+  action-typescript-template, application-template, freshrss-application,
+  invoiceninja-application, backstage-application (bootstrapped from a 0-byte mkdocs.yml).
+  Pipeline hardening landed en route: gitleaks publish gate (techdocs-builder 1.5.0,
+  mutation-tested), `--strict` link validation on the flagship, prefix-scoped sync, and two
+  reusable fixes found by per-repo verification (tag-tolerant YAML in the redirect-stub graft;
+  stubs escaping their prefix to the domain root). GitHub-side docs workflows retired in six
+  repos. Excluded with reason: twente.dev (empty repo on Forgejo), ploeg (no docs tree),
+  erfbeeld (not on this Forgejo).
+
