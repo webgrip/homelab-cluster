@@ -1,0 +1,51 @@
+---
+# CEL-dialect twin of exception-helmrepositories-http (2026-08-11). Lands ahead of the
+# Deny flip for the ordering reason documented in exception-flux-bootstrap-cel.yaml;
+# the legacy exception stays until the legacy policy is deleted.
+#
+# The name list is ported VERBATIM, including two entries with no live resource today
+# (observability/grafana-charts and observability/grafana-charts-k6-operator — the
+# cluster currently has 14 HelmRepositories and the legacy exception skips 10 of them).
+# Dropping them here would be a silent scope change smuggled into a dialect migration:
+# a waiver that stops covering a name is indistinguishable from one that never did,
+# and these charts can come back. If they are genuinely gone for good, remove them in
+# their own commit where the reasoning is visible.
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-helmrepositories-http-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      Auditing, not blocking. Several upstream Helm chart publishers (Grafana,
+      Prometheus Community, Longhorn, CNPG, Sloth, Policy Reporter, Authentik, Harbor,
+      KEDA) do not publish OCI chart repositories (verified 2026-06-13:
+      goauthentik/goharbor ship only HTTP; the kedacore OCI path is not resolvable).
+      These HelmRepository resources are the only available source for their charts.
+      Exempt from flux-helmrepository-audit until OCI alternatives exist.
+      grafana-operator was migrated to OCIRepository.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: flux-helmrepository-audit
+  matchConditions:
+    # The legacy exception's four `match.any` blocks were per-namespace name lists;
+    # namespace/name pairs express the same set without the grouping. The referenced
+    # policy matches helmrepositories only, so no kind guard is required.
+    - name: http-only-chart-publishers
+      expression: >-
+        (object.metadata.namespace + '/' + object.metadata.name) in [
+          'cnpg-system/cloudnative-pg',
+          'longhorn-system/longhorn',
+          'observability/grafana-charts',
+          'observability/grafana-charts-alloy',
+          'observability/grafana-charts-alloy-gateway',
+          'observability/grafana-charts-k6-operator',
+          'observability/prometheus-community',
+          'observability/slok-sloth',
+          'security/policy-reporter',
+          'authentik/authentik',
+          'harbor/harbor',
+          'keda/keda']
