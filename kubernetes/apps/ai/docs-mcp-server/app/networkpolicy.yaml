@@ -1,0 +1,49 @@
+---
+# docs-mcp-server, scoped to its own pods (the ai namespace hosts litellm too).
+# Ingress: gateway (agents + web UI via docs-mcp.<domain>) and intra-ns.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: docs-mcp-server-ingress
+  namespace: ai
+  labels:
+    app.kubernetes.io/part-of: docs-mcp-server
+spec:
+  podSelector:
+    matchLabels:
+      app: docs-mcp-server
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ai
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: network
+      ports:
+        - protocol: TCP
+          port: 6280
+---
+# Egress: the indexer scrapes docs.<domain>, which resolves to envoy-internal —
+# identity-based gateway egress comes from components/gateway-egress; DNS from
+# the generated allow-dns. Nothing else: keyword mode calls no external APIs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: docs-mcp-server-egress
+  namespace: ai
+  labels:
+    app.kubernetes.io/part-of: docs-mcp-server
+spec:
+  podSelector:
+    matchLabels:
+      app: docs-mcp-server
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ai

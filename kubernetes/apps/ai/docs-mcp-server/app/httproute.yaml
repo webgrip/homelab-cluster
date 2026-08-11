@@ -1,0 +1,26 @@
+---
+# LAN-only (envoy-internal + split DNS): the agent fleet and the web UI reach it
+# at docs-mcp.<domain>; MCP clients use /sse (see .mcp.json).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: docs-mcp-server
+  namespace: ai
+  annotations:
+    external-dns.alpha.kubernetes.io/exclude: "true"
+spec:
+  hostnames:
+    - docs-mcp.${SECRET_DOMAIN}
+  parentRefs:
+    - name: envoy-internal
+      namespace: network
+      sectionName: https
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: docs-mcp-server
+          namespace: ai
+          port: 6280

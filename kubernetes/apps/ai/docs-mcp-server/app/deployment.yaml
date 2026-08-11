@@ -1,0 +1,66 @@
+---
+# Keyword-only search over the indexed docs estate (no embedding provider env =
+# no external calls). Index sources are registered once via the web UI / MCP
+# scrape_docs tool and persist in /data (Longhorn).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docs-mcp-server
+  namespace: ai
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # RWO volume
+  selector:
+    matchLabels:
+      app: docs-mcp-server
+  template:
+    metadata:
+      labels:
+        app: docs-mcp-server
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: docs-mcp-server
+          # renovate: datasource=docker depName=ghcr.io/arabold/docs-mcp-server
+          image: harbor.webgrip.dev/ghcr/arabold/docs-mcp-server:3.0.0@sha256:ea5fbb27d24dabcaa6c5968937dcc499851de05f2713e57628504537a7bd0e66
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--protocol"
+            - "http"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "6280"
+          ports:
+            - name: http
+              containerPort: 6280
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - "ALL"
+          readinessProbe:
+            httpGet: {path: /, port: 6280}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /, port: 6280}
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests: {cpu: 50m, memory: 256Mi}
+            limits: {memory: 1Gi}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: docs-mcp-server-data

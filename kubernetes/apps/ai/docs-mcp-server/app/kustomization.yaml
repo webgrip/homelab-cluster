@@ -1,0 +1,16 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./pvc.yaml
+  - ./deployment.yaml
+  - ./service.yaml
+  - ./httproute.yaml
+  - ./networkpolicy.yaml
+components:
+  # Scrapes docs.<domain> through envoy-internal — identity-based egress to the
+  # gateways under default-deny (same reasoning as server-side OIDC discovery).
+  - ../../../../components/gateway-egress
+  # Stateful index on a Longhorn RWO volume -> worker pool (ADR-0002).
+  - ../../../../components/placement/worker-pool

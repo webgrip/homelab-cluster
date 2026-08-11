@@ -1,0 +1,25 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# docs-mcp-server (estate item #7): one MCP search tool over the whole docs
+# estate for the agent fleet — the Prefect single-search-tool pattern,
+# self-hosted (rfc-docs-platform-2026 §frontier survey). Keyword-only mode (no
+# embedding env) to start; the embeddings follow-up points OPENAI_* at litellm
+# (ADR-0044) rather than any external provider.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: docs-mcp-server
+spec:
+  interval: 1h
+  path: ./kubernetes/apps/ai/docs-mcp-server/app
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-secrets
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: ai
+  wait: false
