@@ -1,7 +1,15 @@
+---
 machine:
   kubelet:
     extraConfig:
       serializeImagePulls: false
+      # 2026-08-11 (rfc-ci-isolation-talos): with the forgejo-dind cgroup
+      # containment wrapper, nested CI containers finally live inside their
+      # pod's cgroup — so the pids controller can now actually bound them.
+      # Caps a CI fork bomb at the pod, not the node PID space. 4096 is far
+      # above any legit pod here (a full KinD control plane runs a few
+      # hundred processes).
+      podPidsLimit: 4096
     nodeIP:
       validSubnets:
         - 10.0.0.0/24

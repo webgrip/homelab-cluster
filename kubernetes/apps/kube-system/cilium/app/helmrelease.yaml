@@ -16,6 +16,36 @@ spec:
     remediation:
       retries: 3
       remediateLastFailure: true
+  # mount-cgroup is the ONE agent init container chart 1.18.6 gives no resources
+  # knob for (initResources covers the others, cni.resources covers
+  # install-cni-binaries). Without it the pod-level memory.max stays unset and
+  # the whole OOMController exemption (see initResources note in values) is
+  # void — kubelet only sets the pod cap when every container is limited.
+  # Drop this when the chart grows a knob (check on chart bumps).
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: DaemonSet
+              name: cilium
+            # Strategic merge keyed on the container NAME — survives init
+            # container reordering across chart versions.
+            patch: |
+              apiVersion: apps/v1
+              kind: DaemonSet
+              metadata:
+                name: cilium
+              spec:
+                template:
+                  spec:
+                    initContainers:
+                      - name: mount-cgroup
+                        resources:
+                          requests:
+                            cpu: 10m
+                            memory: 32Mi
+                          limits:
+                            memory: 128Mi
   values:
     tolerations:
       - operator: Exists
@@ -27,6 +57,15 @@ spec:
     cni:
       # Required for pairing with Multus CNI
       exclusive: false
+      # Part of the pod-level memory.max campaign (see initResources below):
+      # the chart hardcodes requests-only for install-cni-binaries; add the
+      # missing limit so this container stops blocking the pod-level cap.
+      resources:
+        requests:
+          cpu: 100m
+          memory: 10Mi
+        limits:
+          memory: 128Mi
     cgroup:
       automount:
         enabled: false
@@ -139,6 +178,22 @@ spec:
         memory: 1Gi
       limits:
         memory: 1Gi
+    # 2026-08-11 (rfc-ci-isolation-talos): the agent limit above is NOT enough to
+    # protect cilium from the OOMController — the ranker scores the POD-level
+    # cgroup, and kubelet only sets pod-level memory.max when EVERY container
+    # (init included) carries a memory limit. Five of six init containers ship
+    # limitless, so the pod ranked on memory_current and was kill-looped in both
+    # incidents (2026-08-04: 346 kills; 2026-08-11: 464). With limits on all
+    # containers the pod cgroup gets memory.max ⇒ default ranking scores it 0.0
+    # ⇒ never selected (zero-rank skip, talos#13437, in v1.13.4+). Init
+    # containers run once, sequentially, before the agent: 128Mi covers the
+    # heaviest (clean-cilium-state) with margin.
+    initResources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        memory: 128Mi
     rollOutCiliumPods: true
     routingMode: native
     securityContext:
