@@ -26,21 +26,25 @@ spec:
         app.kubernetes.io/name: forgejo-cache-server
         app.kubernetes.io/part-of: forgejo
     spec:
-      # TEMPORARY (2026-08-12, remove when resolved): Longhorn v1 engines crash
-      # with io errors (EFAULT) when they run ON fringe-workstation after its
-      # Talos v1.13.8 upgrade — this volume faulted in a loop the moment the pod
-      # landed there, while every worker-hosted engine is healthy. Keep the pod
-      # (and therefore its engine) off fringe until the engine-on-v1.13.8
-      # question is settled. Also the discriminating test for that hypothesis.
+      # Pin to the Longhorn storage nodes (ADR-0008 direction: storage-backed
+      # workloads live where the replicas live). History (2026-08-12): the
+      # scheduler's free choice put this pod on fringe (engines broken there
+      # under Talos v1.13.8 — see talenv.yaml), then on soyo-2/soyo-1 where its
+      # engine repeatedly blocked control-plane drains via the instance-manager
+      # PDB. On the workers its engine, replicas and data locality all coincide
+      # and node maintenance stops chasing it around.
+      # Hostname pin, not the storage.webgrip.io/longhorn label: fringe carries
+      # that label too (future cold tier) but must not host this engine.
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
               - matchExpressions:
                   - key: kubernetes.io/hostname
-                    operator: NotIn
+                    operator: In
                     values:
-                      - "fringe-workstation"
+                      - "worker-1"
+                      - "worker-2"
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
