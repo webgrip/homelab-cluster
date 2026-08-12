@@ -287,7 +287,12 @@ spec:
               # whichever node bin-packs tightest.
               requests:
                 cpu: 250m
-                memory: 2Gi
+                # 2Gi -> 3Gi (2026-08-12): a pressure taint still fired during a busy burst
+                # (infrastructure run 401 lost its sign scan to it — the third scan killed by
+                # node pressure). 2Gi spread the pods; 3Gi gives the scan-heavy sign jobs the
+                # headroom their 4-6Gi syft/grype spikes actually use. ~5 concurrent runners x
+                # 3Gi across three worker nodes (~55Gi allocatable) still schedules freely.
+                memory: 3Gi
               limits:
                 memory: 6Gi
         volumes:
