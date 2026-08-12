@@ -65,3 +65,15 @@ results:
       - flux-system/good-kustomization
     kind: Kustomization
     result: pass
+  # `skip`, not `pass` — the bootstrap root must be EXCLUDED by the matchCondition, not
+  # merely satisfy the check. It does not satisfy it: its sourceRef omits the namespace,
+  # so if the exclusion is ever removed this fixture fails rather than quietly passing.
+  #
+  # This exclusion used to be a PolicyException. It moved into the policy on 2026-08-12
+  # after a reload window let a `flux reconcile ks flux-system` be denied on the GitOps
+  # root itself — policy and exception ship in different Kustomizations.
+  - policy: flux-kustomization-source
+    resources:
+      - flux-system/flux-system
+    kind: Kustomization
+    result: skip

@@ -49,8 +49,12 @@
 #   require-kustomization-prune              Enforce  -
 #   require-helmrelease-remediation          Enforce  -
 #   require-helmrelease-approved-source-kind Enforce  -
-#   require-kustomization-flux-source        Enforce  flux-bootstrap-kustomization
+#   require-kustomization-flux-source        Enforce  bootstrap root (see below)
 #   audit-helmrepository-use                 Audit    helmrepositories-http
+#
+# The bootstrap waiver became a matchCondition on 2026-08-12 rather than a
+# PolicyException — a separately-delivered waiver left a reload window in which the
+# GitOps root could not be updated. The reasoning is on the rule itself.
 #
 # Three groupings: the five unwaived Enforce rules stay together under the original
 # name; require-kustomization-flux-source separates because it carries a waiver the
@@ -198,6 +202,35 @@ spec:
           - "UPDATE"
         resources:
           - "kustomizations"
+  matchConditions:
+    # THE BOOTSTRAP EXCLUSION LIVES IN THE POLICY, NOT IN A PolicyException (moved
+    # 2026-08-12). It was exception-flux-bootstrap-kustomization-cel, which worked — until
+    # a `flux reconcile ks flux-system` came back
+    #
+    #   admission webhook "vpol.validate.kyverno.svc-fail" denied the request:
+    #   Policy flux-kustomization-source failed: Flux Kustomizations must reconcile
+    #   from the approved flux-system GitRepository.
+    #
+    # on the very object that exception waives. Intermittent: 1 denial in 3 attempts, then
+    # 0 in 12 once Kyverno settled. The policy and the exception arrive via DIFFERENT
+    # Kustomizations (kyverno-policies then kyverno-exceptions), so during a reload there
+    # is a window where the policy is live and the waiver is not — and in that window the
+    # GitOps root cannot be updated.
+    #
+    # Flux retried and the root stayed Ready, so nothing broke. But kyverno/exceptions/ks.yaml
+    # records what this class of failure costs on the control plane, and a guard whose
+    # safety depends on two caches converging is not one to keep there. As a matchCondition
+    # the exclusion ships in the same object as the rule it modifies, so no window exists.
+    #
+    # The flux-system/flux-system Kustomization is created by `flux bootstrap` and is not
+    # part of the in-repo app tree, so its sourceRef omits the explicit namespace this
+    # policy expects. It already reconciles from the flux-system GitRepository in the
+    # flux-system namespace (the implicit default) — the legitimately-special bootstrap
+    # root, not a tenant Kustomization.
+    - name: exclude-bootstrap-root
+      expression: >-
+        !(object.metadata.namespace == 'flux-system' &&
+          object.metadata.name == 'flux-system')
   validations:
     - expression: >-
         object.spec.?sourceRef.orValue({}).?kind.orValue('') == 'GitRepository' &&
