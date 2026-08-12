@@ -22,6 +22,12 @@
 # Every step is guarded on current state: buckets/website/grants converge on every
 # re-run; the key pair is minted exactly once (a re-mint would orphan the keys
 # CI/Backstage already hold).
+#
+# Estate item #2 layers per-repo isolation on top (step 5): every docs repo gets
+# `docs-<repo>` + `docs-<repo>-trash` and its own key with rw on exactly that
+# pair, converged into `garage-docs-repo-keys` → OpenBao garage/docs-repo-keys →
+# the forgejo-actions-secrets CronJob publishes them as REPO-level TECHDOCS_S3_*
+# (repo-level shadows org-level, so callers change nothing but their bucket).
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -62,6 +68,20 @@ spec:
               value: docs-site-trash
             - name: KEY_SECRET
               value: garage-techdocs-keys
+            # Estate item #2 — bucket-per-repo isolation. One bucket pair +
+            # one Garage key per docs repo; the key can touch NOTHING else, so
+            # no repo's publish can ever delete another repo's docs (the
+            # 2026-08-11 estate wipe becomes structurally impossible, not just
+            # excluded-by-flag). homelab-cluster itself stays on docs-site via
+            # the org-level key.
+            - name: REPOS
+              value: >-
+                infrastructure workflows telemetry-service ledgerflow
+                monitoring-platform searxng-application freshrss-application
+                invoiceninja-application action-typescript-template
+                application-template backstage-application
+            - name: REPO_KEY_SECRET
+              value: garage-docs-repo-keys
             - name: ADMIN_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -171,6 +191,44 @@ spec:
               grant "${pub_id}"  "${trash_bucket_id}" true true
               grant "${read_id}" "${trash_bucket_id}" true false
               echo "  publish=rw read=ro on ${BUCKET} + ${DOCS_BUCKET} + ${TRASH_BUCKET}"
+
+              echo "== 5. per-repo buckets + keys (estate item #2)"
+              # Unlike the mint-once pair above, this section is fully
+              # convergent: GetKeyInfo?showSecretKey=true re-reads existing
+              # secrets from Garage (the authority), so the Secret is rebuilt
+              # from scratch every run and adding a repo to REPOS later is a
+              # one-line change.
+              keys_json="$(api "${ADMIN}/v2/ListKeys")"
+              set --
+              for repo in ${REPOS}; do
+                rb_id="$(ensure_bucket "docs-${repo}")"
+                rt_id="$(ensure_bucket "docs-${repo}-trash")"
+                api -X POST "${ADMIN}/v2/UpdateBucket?id=${rb_id}" \
+                  -d '{"websiteAccess":{"enabled":true,"indexDocument":"index.html","errorDocument":"404.html"}}' >/dev/null
+                kname="docs-publish-${repo}"
+                kid="$(echo "${keys_json}" | jq -r --arg n "${kname}" '.[] | select(.name==$n) | .id')"
+                if [ -z "${kid}" ]; then
+                  _created="$(api -X POST "${ADMIN}/v2/CreateKey" -d "{\"name\":\"${kname}\"}")"
+                  kid="$(echo "${_created}" | jq -r '.accessKeyId // empty')"
+                  ksecret="$(echo "${_created}" | jq -r '.secretAccessKey // empty')"
+                  echo "  minted ${kname} (${kid})"
+                else
+                  ksecret="$(api "${ADMIN}/v2/GetKeyInfo?id=${kid}&showSecretKey=true" | jq -r '.secretAccessKey // empty')"
+                  echo "  ${kname} exists (${kid})"
+                fi
+                [ -n "${kid}" ] && [ -n "${ksecret}" ] || { echo "key material for ${repo} incomplete" >&2; exit 1; }
+                # The repo key owns exactly its bucket pair; the shared publish
+                # key gets READ on the site bucket (offline bundle + checks).
+                grant "${kid}" "${rb_id}" true true
+                grant "${kid}" "${rt_id}" true true
+                grant "${pub_id}" "${rb_id}" true false
+                set -- "$@" \
+                  --from-literal="${repo}_access_key_id=${kid}" \
+                  --from-literal="${repo}_secret_access_key=${ksecret}"
+              done
+              kubectl -n "${NAMESPACE}" create secret generic "${REPO_KEY_SECRET}" "$@" \
+                --dry-run=client -o yaml | kubectl apply -f -
+              echo "  converged ${REPO_KEY_SECRET} ($(( $# / 2 )) repo key pairs)"
 
               echo "== done"
           resources:
