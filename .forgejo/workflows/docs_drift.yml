@@ -15,8 +15,10 @@ on:
 jobs:
   drift-report:
     name: 'drift report'
+    # Bare runner image, NOT techdocs-builder: the report is pure git+bash+curl
+    # arithmetic, and techdocs-builder ships neither bash nor curl (the first
+    # dispatch proved it). Same shape as scheduled-maintenance.yml.
     runs-on: docker
-    container: harbor.webgrip.dev/webgrip/techdocs-builder:1.7.0
     steps:
       # fetch-depth 0: the whole report is git-history arithmetic.
       - uses: actions/checkout@v4
@@ -24,23 +26,26 @@ jobs:
           fetch-depth: 0
 
       - name: Generate report
+        shell: bash
         run: |
           bash scripts/docs-drift-report.sh > /tmp/report.md
           echo "---- report preview ----"
           head -40 /tmp/report.md
 
       - name: Upsert rolling issue
+        shell: bash
         env:
           TOKEN: ${{ secrets.WEBGRIP_CI_TOKEN }}
         run: |-
-          set -eu
+          set -euo pipefail
+          command -v jq >/dev/null || { echo "FATAL: jq missing on runner image"; exit 1; }
+          [ -n "${TOKEN:-}" ] || { echo "FATAL: WEBGRIP_CI_TOKEN not available"; exit 1; }
           api="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
           auth="Authorization: token ${TOKEN}"
-          title="Docs drift report"
           # Find the existing rolling issue (open, exact title).
-          num=$(curl -fsS -H "$auth" "${api}/issues?state=open&type=issues&q=$(python3 -c 'import urllib.parse;print(urllib.parse.quote("Docs drift report"))')" \
-            | python3 -c "import json,sys; xs=[i for i in json.load(sys.stdin) if i.get('title')=='Docs drift report']; print(xs[0]['number'] if xs else '')")
-          body=$(python3 -c "import json,sys; print(json.dumps({'title':'Docs drift report','body':open('/tmp/report.md').read()}))")
+          num=$(curl -fsS -H "$auth" "${api}/issues?state=open&type=issues&limit=50" \
+            | jq -r '[.[] | select(.title == "Docs drift report")][0].number // empty')
+          body=$(jq -n --rawfile report /tmp/report.md '{title: "Docs drift report", body: $report}')
           if [ -n "$num" ]; then
             curl -fsS -X PATCH -H "$auth" -H 'Content-Type: application/json' -d "$body" "${api}/issues/${num}" >/dev/null
             echo "updated issue #${num}"
