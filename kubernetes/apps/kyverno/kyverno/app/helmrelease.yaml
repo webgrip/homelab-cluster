@@ -213,7 +213,9 @@ spec:
         port: 4317
 
     backgroundController:
-      replicas: 1
+      # 2, not 1 — same drain-blocker as cleanupController below: chart PDB pins
+      # minAvailable 1, so a lone replica is unevictable (stalled soyo-3, 2026-08-12).
+      replicas: 2
       resources:
         requests:
           cpu: 50m
@@ -316,7 +318,9 @@ spec:
         port: 4317
 
     reportsController:
-      replicas: 1
+      # 2, not 1 — same drain-blocker as cleanupController: chart PDB pins
+      # minAvailable 1, so a lone replica is unevictable (stalled soyo-3, 2026-08-12).
+      replicas: 2
       apiPriorityAndFairness: true
       resources:
         requests:
