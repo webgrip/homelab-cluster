@@ -131,12 +131,16 @@ research notes; the warm per-node image store is the daemon's raison d'être
 Steps 1-5 executed. What the rollout itself taught:
 
 - **v1.13.8 is Longhorn-hostile — the fleet target became v1.13.7** (see
-  `talos/talenv.yaml` for the gate). v1.13.8's open-iscsi writes
-  `node.session.conn_reopen_log_freq` into `/var/lib/iscsi` records; Longhorn
-  v1.11.2's bundled iscsiadm rejects the whole DB ("config file invalid",
-  exit 7) and every engine on the node fault-loops. Reproduced on fringe AND
-  soyo-1; v1.13.7 (worker-2, 10 days) is proven fine. v1.13.7 carries both
-  OOMController fixes this RFC wanted, so nothing was lost.
+  `talos/talenv.yaml` for the gate). Root cause (research-corrected):
+  open-iscsi 2.1.12 (v1.13.8's iscsi-tools) renamed the persisted node-DB key
+  `conn_reopen_log_freq`→`sess_reopen_log_freq` with no compat alias, so each
+  version rejects records the other wrote ("config file invalid", exit 7) and
+  every engine op fault-loops; `/var/lib/iscsi` persists across up- and
+  downgrades, so affected nodes also need a DB purge. Longhorn bundles no
+  open-iscsi — no Longhorn version differs. Upstream
+  [extensions#1182](https://github.com/siderolabs/extensions/issues/1182);
+  compat patch merged 2026-08-11, unreleased. Reproduced on fringe AND soyo-1;
+  v1.13.7 carries both OOMController fixes this RFC wanted, so nothing lost.
 - **Every kyverno controller was a drain-blocker**: chart PDBs pin
   `minAvailable: 1` while cleanup/background/reports controllers shipped 1
   replica — unevictable forever. All bumped to 2 (`e536a84d`, `3ba5c868`).

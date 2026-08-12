@@ -1,15 +1,18 @@
 ---
 # renovate: datasource=docker depName=ghcr.io/siderolabs/installer
-# v1.13.7, NOT v1.13.8 (2026-08-12): v1.13.8's open-iscsi writes node-DB records
-# with `node.session.conn_reopen_log_freq`, which Longhorn v1.11.2's bundled
-# iscsiadm can't parse — every engine op on the node then fails ("config file
-# invalid", exit 7) and volumes fault-loop. Proven on fringe AND soyo-1; worker-2
-# ran v1.13.7 for 10d with healthy engines. v1.13.7 already carries everything
-# the upgrade was for: OOMController QoS-trigger cooldown (talos#13675, ≥1.13.6)
-# + podruntime min/max protection (1.13.7) — see rfc-ci-isolation-talos.md.
-# UNBLOCK v1.13.8+ only when the deployed Longhorn engine bundles an iscsiadm
-# that knows that parameter (check longhorn-engine open-iscsi version in release
-# notes before bumping).
+# v1.13.7, NOT v1.13.8 (2026-08-12, corrected after research): v1.13.8's
+# iscsi-tools bumps open-iscsi 2.1.11→2.1.12, which RENAMED the persisted
+# node-DB key conn_reopen_log_freq→sess_reopen_log_freq with no compat alias —
+# each version hard-fails (exit 7) parsing records the other wrote, and
+# /var/lib/iscsi survives upgrades AND downgrades, so every Longhorn engine op
+# on the node fault-loops (Longhorn bundles NO open-iscsi; it drives the host's
+# iscsiadm, so no Longhorn version helps). Upstream: siderolabs/extensions#1182,
+# compat patch merged 2026-08-11 (extensions commit 12c4033796) but in NO tagged
+# release yet. Proven here on fringe AND soyo-1; both downgraded + /var/lib/iscsi
+# purged. v1.13.7 already carries everything the upgrade was for: OOMController
+# QoS-trigger cooldown (talos#13675, ≥1.13.6) + podruntime protection (1.13.7).
+# UNBLOCK v1.13.8+ only when the release's iscsi-tools contains the
+# node-reopen-log-freq-compat patch (check siderolabs/extensions release notes).
 talosVersion: v1.13.7
 # renovate: datasource=docker depName=ghcr.io/siderolabs/kubelet
 kubernetesVersion: v1.36.1

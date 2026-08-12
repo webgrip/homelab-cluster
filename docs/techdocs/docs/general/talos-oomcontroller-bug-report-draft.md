@@ -1,18 +1,21 @@
 # Draft upstream issues — siderolabs/talos + longhorn/longhorn
 
-> **SECOND ISSUE TO FILE (2026-08-12), target: longhorn/longhorn** (and
-> cross-reference to siderolabs/extensions): *open-iscsi version skew between
-> host iscsid and Longhorn's bundled iscsiadm corrupts all volume attaches on
-> the node.* Talos v1.13.8's iscsi-tools writes
-> `node.session.conn_reopen_log_freq` into `/var/lib/iscsi` node records;
-> Longhorn v1.11.2's engine-bundled iscsiadm (older libopeniscsiusr) then
-> fails EVERY node-DB operation with `iSCSI ERROR: Unknown parameter name
-> node.session.conn_reopen_log_freq` + `config file ... invalid` (exit 7) —
-> engines fault-loop, volumes never attach. One new-format record poisons the
-> shared DB. Reproduced on two Talos v1.13.8 nodes; v1.13.7 and older fine.
-> Workaround: stay on Talos ≤v1.13.7 until the Longhorn engine ships a
-> current open-iscsi userspace; purge `/var/lib/iscsi/{nodes,send_targets}`
-> after downgrading an affected node.
+> **SECOND FINDING (2026-08-12) — RESOLVED UPSTREAM, do NOT file; track the
+> release instead.** The Longhorn-breaking behavior on Talos v1.13.8 is
+> open-iscsi 2.1.12 (extensions bump c8d5b9d2da) **renaming** the persisted
+> node-DB key `node.session.conn_reopen_log_freq` (written by 2.1.11 =
+> v1.13.7) → `sess_reopen_log_freq` with no compat alias — each version
+> rejects the other's `/var/lib/iscsi` records (`Unknown parameter name` +
+> `config file ... invalid`, exit 7), which persist across up- AND
+> downgrades. Longhorn bundles no open-iscsi (it drives the host's iscsiadm),
+> so no Longhorn version is affected differently. Already reported as
+> [siderolabs/extensions#1182](https://github.com/siderolabs/extensions/issues/1182)
+> and [open-iscsi#540](https://github.com/open-iscsi/open-iscsi/issues/540);
+> compat patch merged 2026-08-11
+> ([extensions 12c4033796](https://github.com/siderolabs/extensions/commit/12c403379657fa4a4bcd101e6e7478737501e242)),
+> unreleased as of 2026-08-12. Local remediation applied: fleet pinned
+> v1.13.7 (talenv gate) + `/var/lib/iscsi/{nodes,send_targets}` purged on the
+> two ex-v1.13.8 nodes.
 
 ## Draft upstream issue — siderolabs/talos
 
