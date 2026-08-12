@@ -30,6 +30,16 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: network
+        # The dark factory: ploegd mints/revokes per-run keys and sweeps orphans;
+        # OpenHands workers call the proxy for every model turn. Forgotten in the
+        # 2026-08-05 zero-trust pass — the factory's last run predated it, so a
+        # week of orphan-sweep timeouts was the only symptom until the first
+        # ploeg-bench Mode A trial hit it live (vik-667, 2026-08-12). The LAN
+        # ipBlocks below never admit pod traffic: Cilium matches in-cluster
+        # sources by identity only, so this selector is the grant.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ploeg
         # LAN consumers call the proxy directly — this is the reason the namespace
         # deferred zero-trust in the first place, so it is preserved explicitly.
         - ipBlock:
