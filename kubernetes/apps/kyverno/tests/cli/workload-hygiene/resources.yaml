@@ -86,3 +86,49 @@ spec:
   containers:
     - name: app
       image: harbor.${SECRET_DOMAIN}/ghcr/nginxinc/nginx-unprivileged:1.29.2@sha256:1111111111111111111111111111111111111111111111111111111111111111
+---
+# CONTROLLER FIXTURES, added 2026-08-12 after image-supply-chain-audit was found to
+# cover Pods only. It carried `spec.autogen.podControllers`, which Kyverno 1.18.1
+# accepts and ignores — live PolicyReports showed 81 Pod results and ZERO for any
+# controller. Every fixture in this file was a bare Pod, so nothing noticed.
+#
+# MUST FAIL: a Deployment pulling from an unapproved registry. Before the fix this
+# resource was not evaluated at all — no result row, which reads as "no violation".
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: unapproved-registry-deployment
+  namespace: app
+spec:
+  selector:
+    matchLabels:
+      app: unapproved
+  template:
+    metadata:
+      labels:
+        app: unapproved
+    spec:
+      containers:
+        - name: app
+          image: docker.io/library/nginx:1.27@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+---
+# MUST PASS: a StatefulSet on a Harbor image. Without it, a policy that rejected every
+# controller would satisfy the fail case above and look correct.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: harbor-approved-statefulset
+  namespace: app
+spec:
+  serviceName: harbor-approved
+  selector:
+    matchLabels:
+      app: harbor-approved
+  template:
+    metadata:
+      labels:
+        app: harbor-approved
+    spec:
+      containers:
+        - name: app
+          image: harbor.${SECRET_DOMAIN}/library/nginx:1.27@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb

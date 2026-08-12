@@ -33,6 +33,21 @@ results:
       - app/harbor-approved
     kind: Pod
     result: pass
+  # CONTROLLER COVERAGE, asserted because it was silently lost once. The policy declared
+  # `spec.autogen.podControllers`, Kyverno ignored it, and this file's all-Pod fixtures
+  # could not tell: the Deployment below produced no result row at all, which is
+  # indistinguishable from a clean pass. Controller kinds are now listed explicitly in
+  # matchConstraints, and these two assertions are what keep them there.
+  - policy: image-supply-chain-audit
+    resources:
+      - app/unapproved-registry-deployment
+    kind: Deployment
+    result: fail
+  - policy: image-supply-chain-audit
+    resources:
+      - app/harbor-approved-statefulset
+    kind: StatefulSet
+    result: pass
   - policy: require-pod-probes-audit
     rule: validate-probes
     resources:

@@ -47,15 +47,19 @@ spec:
   evaluation:
     background:
       enabled: true
-  # Replaces the legacy `pod-policies.kyverno.io/autogen-controllers` annotation. Note this
-  # list still omits CronJob and Job by design: their pod templates get no autogen rule, so
-  # the base rule first bites at pod creation.
-  autogen:
-    podControllers:
-      controllers:
-        - DaemonSet
-        - Deployment
-        - StatefulSet
+  # `spec.autogen.podControllers` USED TO BE HERE AND DID NOTHING. Kyverno 1.18.1 accepts
+  # the field, stores it, and generates no controller rules from it: `status.autogen` stays
+  # empty, and the live PolicyReports proved the consequence — this policy had 81 Pod
+  # results and ZERO for Deployment, StatefulSet or DaemonSet, while every sibling policy
+  # that lists controller kinds explicitly reports on all four.
+  #
+  # So the migration that introduced it silently dropped controller coverage for the one
+  # rule that decides whether an image may come from outside Harbor. A declared-but-ignored
+  # field is worse than an absent one: it reads as coverage in review.
+  #
+  # Controllers are listed explicitly below instead, matching every other migrated policy.
+  # CronJob and Job stay out by design, as the legacy autogen-controllers annotation had
+  # them out: their pod templates get no rule, so the base Pod rule bites at pod creation.
   matchConstraints:
     # Harbor is the ONLY approved OCI host. Every other registry (docker.io, ghcr.io,
     # quay.io, registry.k8s.io, gcr.io, public.ecr.aws, mcr...) must be mirrored/proxied
@@ -93,12 +97,27 @@ spec:
           - "UPDATE"
         resources:
           - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "deployments"
+          - "statefulsets"
+          - "daemonsets"
+  variables:
+    - name: podSpec
+      expression: >-
+        object.kind == 'Pod' ? object.spec : object.spec.template.spec
   validations:
     # The has() guards are required: initContainers and ephemeralContainers are optional,
     # and CEL errors on an absent field rather than treating it as empty. The legacy
     # JMESPath foreach over a flattened list handled that implicitly.
     - expression: >-
-        (!has(object.spec.containers) || object.spec.containers.all(c, c.image.startsWith('harbor.${SECRET_DOMAIN}/'))) &&
-        (!has(object.spec.initContainers) || object.spec.initContainers.all(c, c.image.startsWith('harbor.${SECRET_DOMAIN}/'))) &&
-        (!has(object.spec.ephemeralContainers) || object.spec.ephemeralContainers.all(c, c.image.startsWith('harbor.${SECRET_DOMAIN}/')))
+        (!has(variables.podSpec.containers) || variables.podSpec.containers.all(c, c.image.startsWith('harbor.${SECRET_DOMAIN}/'))) &&
+        (!has(variables.podSpec.initContainers) || variables.podSpec.initContainers.all(c, c.image.startsWith('harbor.${SECRET_DOMAIN}/'))) &&
+        (!has(variables.podSpec.ephemeralContainers) || variables.podSpec.ephemeralContainers.all(c, c.image.startsWith('harbor.${SECRET_DOMAIN}/')))
       message: "Images must come from the in-cluster Harbor registry (harbor.${SECRET_DOMAIN}); no other OCI hosts are approved."
