@@ -1,0 +1,50 @@
+---
+name: '[Workflow] Docs drift report'
+
+# Weekly deterministic drift report (estate item #8, v1 — pure git, no LLM):
+# manifests that changed without docs changes + pages gone stale. Upserts ONE
+# rolling issue ("Docs drift report") via the Forgejo API so there is a single
+# place to look, never a pile. The agent-driven version (diff → proposed docs
+# PR) layers on top of this later; this ships the metric first.
+
+on:
+  schedule:
+    - cron: '30 6 * * 1' # Mondays 06:30 UTC, after the link-rot run
+  workflow_dispatch: {}
+
+jobs:
+  drift-report:
+    name: 'drift report'
+    runs-on: docker
+    container: harbor.webgrip.dev/webgrip/techdocs-builder:1.7.0
+    steps:
+      # fetch-depth 0: the whole report is git-history arithmetic.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate report
+        run: |
+          bash scripts/docs-drift-report.sh > /tmp/report.md
+          echo "---- report preview ----"
+          head -40 /tmp/report.md
+
+      - name: Upsert rolling issue
+        env:
+          TOKEN: ${{ secrets.WEBGRIP_CI_TOKEN }}
+        run: |-
+          set -eu
+          api="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
+          auth="Authorization: token ${TOKEN}"
+          title="Docs drift report"
+          # Find the existing rolling issue (open, exact title).
+          num=$(curl -fsS -H "$auth" "${api}/issues?state=open&type=issues&q=$(python3 -c 'import urllib.parse;print(urllib.parse.quote("Docs drift report"))')" \
+            | python3 -c "import json,sys; xs=[i for i in json.load(sys.stdin) if i.get('title')=='Docs drift report']; print(xs[0]['number'] if xs else '')")
+          body=$(python3 -c "import json,sys; print(json.dumps({'title':'Docs drift report','body':open('/tmp/report.md').read()}))")
+          if [ -n "$num" ]; then
+            curl -fsS -X PATCH -H "$auth" -H 'Content-Type: application/json' -d "$body" "${api}/issues/${num}" >/dev/null
+            echo "updated issue #${num}"
+          else
+            curl -fsS -X POST -H "$auth" -H 'Content-Type: application/json' -d "$body" "${api}/issues" >/dev/null
+            echo "created rolling issue"
+          fi
