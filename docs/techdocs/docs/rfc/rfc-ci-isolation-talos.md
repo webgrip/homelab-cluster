@@ -156,11 +156,11 @@ Steps 1-5 executed. What the rollout itself taught:
   dind containment proven on-host (`/kubepods/.../docker/buildkit`, no
   host-root `/docker`), fringe `oomactions` ledger empty, outside-kubepods
   memory back to baseline.
-- Residual cleanups parked: pyroscope's suspended June-era volume (sole
-  replica on a control plane) — delete or migrate; stale iSCSI DBs purged on
-  fringe (soyo-1 purge pending); worker IP renumber still half-done
-  (.30/.31/.32 present as secondaries, kubelet still registers DHCP addrs —
-  complete or abandon decision pending).
+- Cleanups completed same day: pyroscope removed outright (owner decision;
+  its volume was the drain-blocker); both ex-v1.13.8 nodes' iSCSI DBs purged;
+  **worker IP renumber finished live** — the old addresses were META-partition
+  install-time snapshots (key 0x0a), not DHCP; `talosctl meta delete 0x0a`
+  per worker flipped kubelet to .30/.31/.32 with zero reboots.
 
 ## Re-evaluation triggers
 
