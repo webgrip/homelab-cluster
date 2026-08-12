@@ -1,0 +1,27 @@
+---
+# Kata Containers runtime class (rfc-ci-isolation-talos step 7). Pods declaring
+# `runtimeClassName: kata` run inside a lightweight VM (Cloud Hypervisor guest
+# kernel via the siderolabs/kata-containers system extension, worker schematic
+# d1200926df53...). The VM boundary is the point: a privileged/nested-container
+# CI workload inside the guest can escape the *guest* cgroup tree at worst —
+# the host kubepods accounting, kubelet eviction, and the Talos OOMController
+# all see the whole VM as one ordinary bounded process.
+#
+# `overhead` is added by the scheduler on top of the pod's own requests (VMM +
+# virtiofsd + shim, measured ~130-160Mi for Cloud Hypervisor).
+#
+# scheduling.nodeSelector: the handler exists only where the extension is
+# installed — the worker pool. Pods with this class are unschedulable on the
+# control planes by construction.
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: kata
+handler: kata
+overhead:
+  podFixed:
+    memory: 160Mi
+    cpu: 250m
+scheduling:
+  nodeSelector:
+    node.webgrip.io/pool: worker

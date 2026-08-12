@@ -1,0 +1,36 @@
+---
+# Standing smoke test for the kata RuntimeClass: proves the class schedules AND
+# that the workload really runs inside a guest VM — `uname -r` inside kata must
+# differ from the Talos host kernel. A crashing/unschedulable kata stack shows
+# up here as a failed Job, which Flux surfaces (prune+recreate on spec change).
+# The kernel strings land in the pod log for eyeball verification:
+#   kubectl -n kube-system logs job/kata-smoke
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kata-smoke
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kata-smoke
+    spec:
+      runtimeClassName: kata
+      restartPolicy: Never
+      containers:
+        - name: probe
+          image: harbor.webgrip.dev/dockerhub/library/alpine:latest
+          command:
+            - sh
+            - -ec
+            - |
+              echo "guest kernel: $(uname -r)"
+              echo "nproc: $(nproc), mem: $(grep MemTotal /proc/meminfo)"
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 64Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
