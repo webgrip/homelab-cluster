@@ -1,4 +1,20 @@
-# Draft upstream issue — siderolabs/talos
+# Draft upstream issues — siderolabs/talos + longhorn/longhorn
+
+> **SECOND ISSUE TO FILE (2026-08-12), target: longhorn/longhorn** (and
+> cross-reference to siderolabs/extensions): *open-iscsi version skew between
+> host iscsid and Longhorn's bundled iscsiadm corrupts all volume attaches on
+> the node.* Talos v1.13.8's iscsi-tools writes
+> `node.session.conn_reopen_log_freq` into `/var/lib/iscsi` node records;
+> Longhorn v1.11.2's engine-bundled iscsiadm (older libopeniscsiusr) then
+> fails EVERY node-DB operation with `iSCSI ERROR: Unknown parameter name
+> node.session.conn_reopen_log_freq` + `config file ... invalid` (exit 7) —
+> engines fault-loop, volumes never attach. One new-format record poisons the
+> shared DB. Reproduced on two Talos v1.13.8 nodes; v1.13.7 and older fine.
+> Workaround: stay on Talos ≤v1.13.7 until the Longhorn engine ships a
+> current open-iscsi userspace; purge `/var/lib/iscsi/{nodes,send_targets}`
+> after downgrading an affected node.
+
+## Draft upstream issue — siderolabs/talos
 
 > Status: DRAFT, not yet filed. File at <https://github.com/siderolabs/talos/issues/new>
 > after the 2026-08-11 fringe-workstation incident review.

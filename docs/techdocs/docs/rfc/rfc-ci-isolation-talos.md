@@ -126,6 +126,38 @@ research notes; the warm per-node image store is the daemon's raison d'être
    Draft: `general/talos-oomcontroller-bug-report-draft.md` (update it to
    acknowledge v1.13.6 before filing).
 
+## Execution log — 2026-08-12 (wave 1 + Talos rollout)
+
+Steps 1-5 executed. What the rollout itself taught:
+
+- **v1.13.8 is Longhorn-hostile — the fleet target became v1.13.7** (see
+  `talos/talenv.yaml` for the gate). v1.13.8's open-iscsi writes
+  `node.session.conn_reopen_log_freq` into `/var/lib/iscsi` records; Longhorn
+  v1.11.2's bundled iscsiadm rejects the whole DB ("config file invalid",
+  exit 7) and every engine on the node fault-loops. Reproduced on fringe AND
+  soyo-1; v1.13.7 (worker-2, 10 days) is proven fine. v1.13.7 carries both
+  OOMController fixes this RFC wanted, so nothing was lost.
+- **Every kyverno controller was a drain-blocker**: chart PDBs pin
+  `minAvailable: 1` while cleanup/background/reports controllers shipped 1
+  replica — unevictable forever. All bumped to 2 (`e536a84d`, `3ba5c868`).
+- **Single-replica volumes made worker-1 undrainable**: Garage's
+  `longhorn-single` volumes under the default `block-if-contains-last-replica`
+  policy block even on stopped replicas. `nodeDrainPolicy:
+  allow-if-replica-is-stopped` (`41e5f503`) keeps in-use protection but lets
+  quiescent data release the node.
+- **cache-server pinned to the storage workers** (`67df77c6`) — its RWO engine
+  had blocked three consecutive control-plane drains via instance-manager PDBs.
+- Verified end-state: all 6 nodes v1.13.7, `podPidsLimit: 4096` live
+  everywhere, cilium pod-level `memory.max` = 1Gi (OOMController rank 0),
+  dind containment proven on-host (`/kubepods/.../docker/buildkit`, no
+  host-root `/docker`), fringe `oomactions` ledger empty, outside-kubepods
+  memory back to baseline.
+- Residual cleanups parked: pyroscope's suspended June-era volume (sole
+  replica on a control plane) — delete or migrate; stale iSCSI DBs purged on
+  fringe (soyo-1 purge pending); worker IP renumber still half-done
+  (.30/.31/.32 present as secondaries, kubelet still registers DHCP addrs —
+  complete or abandon decision pending).
+
 ## Re-evaluation triggers
 
 - [moby#52268](https://github.com/moby/moby/issues/52268) closes **and** kind
