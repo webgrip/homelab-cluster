@@ -24,6 +24,16 @@ spec:
   values:
     defaultSettings:
       defaultDataPath: "/var/lib/longhorn"
+      # allow-if-replica-is-stopped, not the block-if-contains-last-replica
+      # default (2026-08-12): the single-replica Garage volumes (longhorn-single,
+      # by design — Garage is its own integrity layer) live on worker-1, and the
+      # default policy blocks that node's drain FOREVER on their last replica —
+      # even when the volume is detached and the replica stopped. This setting
+      # still blocks while the last replica is in USE; it only permits eviction
+      # once the workload is off and the data is quiescent on disk. Cost: the
+      # volume is unavailable while its node reboots, which is already true for
+      # any single-replica volume.
+      nodeDrainPolicy: allow-if-replica-is-stopped
       # NOTE: the backup target is set via the `default` BackupTarget CR
       # (backuptarget.yaml), NOT here — Longhorn 1.11 ignores the deprecated
       # defaultSettings.backupTarget. Creds: backup-s3.externalsecret.yaml.
