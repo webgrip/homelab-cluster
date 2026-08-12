@@ -135,6 +135,9 @@ markdown at its source path — agents: fetch `/<repo>/llms.txt` first
 [backstage-application](/backstage-application/llms.txt)). Cross-estate human search:
 [Estate search](estate-search.md).
 
+Working offline? A weekly snapshot of the whole estate lives at
+[/offline/](/offline/) — one tarball, extract and browse from `file://`.
+
 ## Maintenance
 
 Update these docs in the same commit as the manifest change. For live snapshots use the

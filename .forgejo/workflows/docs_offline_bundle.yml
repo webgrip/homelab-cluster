@@ -1,0 +1,56 @@
+---
+name: '[Workflow] Docs offline bundle'
+
+# Weekly offline snapshot of the WHOLE docs estate (estate item #18): pull
+# every prefix from the docs-site bucket, tar it, and publish the archive back
+# under the reserved /offline/ prefix — downloadable at
+# docs.webgrip.dev/offline/docs-estate-latest.tar.gz. Zensical output is 100%
+# relative URLs (verified for ADR-0052), so the extracted tree browses fine
+# straight from file:// with no server. The /offline/ prefix survives every
+# repo deploy by construction: root syncs exclude source-absent top-level dirs
+# (workflows@fd6771a), and prefixed syncs never leave their prefix.
+
+on:
+  schedule:
+    - cron: '0 7 * * 1' # Mondays 07:00 UTC, after link-rot (06:00) and drift (06:30)
+  workflow_dispatch: {}
+
+jobs:
+  bundle:
+    name: 'offline bundle'
+    runs-on: docker
+    # techdocs-builder for rclone; everything else is busybox sh + tar. No
+    # checkout — the bucket, not the repo, is the source of truth here.
+    container: harbor.webgrip.dev/webgrip/techdocs-builder:1.7.0
+    steps:
+      - name: Pull estate, tar, publish
+        env:
+          RCLONE_CONFIG_GARAGE_TYPE: s3
+          RCLONE_CONFIG_GARAGE_PROVIDER: Other
+          RCLONE_CONFIG_GARAGE_ENDPOINT: ${{ vars.TECHDOCS_S3_ENDPOINT }}
+          RCLONE_CONFIG_GARAGE_REGION: ${{ vars.TECHDOCS_S3_REGION }}
+          RCLONE_CONFIG_GARAGE_ACCESS_KEY_ID: ${{ secrets.TECHDOCS_S3_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_GARAGE_SECRET_ACCESS_KEY: ${{ secrets.TECHDOCS_S3_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_GARAGE_FORCE_PATH_STYLE: 'true'
+        run: |-
+          set -eu
+          stamp="$(date -u +%Y-%m-%d)"
+          # /offline/** stays out: the archive must not swallow its own
+          # previous editions.
+          rclone sync garage:docs-site ./estate \
+            --exclude '/offline/**' --fast-list --transfers 8 --stats-one-line
+          files=$(find ./estate -type f | wc -l)
+          [ "$files" -gt 100 ] || { echo "FATAL: only $files files pulled — refusing to publish a hollow bundle"; exit 1; }
+          printf 'WebGrip docs estate — offline snapshot %s\nExtract and open index.html in a browser; all links are relative.\nLive site: docs.webgrip.dev (LAN/VPN only).\n' "$stamp" > ./estate/OFFLINE-README.txt
+          tar -czf docs-estate.tar.gz -C ./estate .
+          size=$(du -h docs-estate.tar.gz | cut -f1)
+          rclone copyto docs-estate.tar.gz garage:docs-site/offline/docs-estate-latest.tar.gz
+          cat > offline-index.html <<HTML
+          <!doctype html><meta charset="utf-8"><title>Offline docs bundle</title>
+          <h1>Offline docs bundle</h1>
+          <p><a href="docs-estate-latest.tar.gz">docs-estate-latest.tar.gz</a>
+          (${size}, ${files} files, generated ${stamp}, refreshed weekly).</p>
+          <p>Extract and open <code>index.html</code> — the whole estate browses offline.</p>
+          HTML
+          rclone copyto offline-index.html garage:docs-site/offline/index.html
+          echo "published ${size} bundle (${files} files) at /offline/"
