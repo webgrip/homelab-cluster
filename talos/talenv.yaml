@@ -1,8 +1,16 @@
 ---
 # renovate: datasource=docker depName=ghcr.io/siderolabs/installer
-# v1.13.8: carries the OOMController QoS-trigger cooldown (talos#13675, ≥1.13.6)
-# and podruntime min/max protection (1.13.7) — see rfc-ci-isolation-talos.md.
-talosVersion: v1.13.8
+# v1.13.7, NOT v1.13.8 (2026-08-12): v1.13.8's open-iscsi writes node-DB records
+# with `node.session.conn_reopen_log_freq`, which Longhorn v1.11.2's bundled
+# iscsiadm can't parse — every engine op on the node then fails ("config file
+# invalid", exit 7) and volumes fault-loop. Proven on fringe AND soyo-1; worker-2
+# ran v1.13.7 for 10d with healthy engines. v1.13.7 already carries everything
+# the upgrade was for: OOMController QoS-trigger cooldown (talos#13675, ≥1.13.6)
+# + podruntime min/max protection (1.13.7) — see rfc-ci-isolation-talos.md.
+# UNBLOCK v1.13.8+ only when the deployed Longhorn engine bundles an iscsiadm
+# that knows that parameter (check longhorn-engine open-iscsi version in release
+# notes before bumping).
+talosVersion: v1.13.7
 # renovate: datasource=docker depName=ghcr.io/siderolabs/kubelet
 kubernetesVersion: v1.36.1
 # Cluster domain; templated into machine-registries.yaml for the Harbor pull-through mirror
