@@ -251,7 +251,12 @@ spec:
         port: 4317
 
     cleanupController:
-      replicas: 1
+      # 2, not 1: the chart ships a PDB with minAvailable: 1, so a single
+      # replica means ALLOWED DISRUPTIONS 0 — a permanent drain-blocker that
+      # stalled the soyo-2 Talos upgrade on 2026-08-12 (every eviction of the
+      # lone pod is refused until the drain times out). Two replicas make the
+      # PDB satisfiable during node maintenance. ~64Mi extra request.
+      replicas: 2
       resources:
         requests:
           cpu: 20m
