@@ -1,0 +1,115 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kroki
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: kroki
+  interval: 1h
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  values:
+    controllers:
+      kroki:
+        pod:
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          tolerations:
+            - key: dedicated
+              operator: Equal
+              value: fringe
+              effect: NoSchedule
+        containers:
+          app:
+            image:
+              # renovate: datasource=docker depName=yuzutech/kroki versioning=docker
+              repository: yuzutech/kroki
+              tag: 0.32.1@sha256:6980bfb218b48b74ea14b888d9c7e8c032d1cb6325f3292277abdf62483abd9d
+            env:
+              # PlantUML/Graphviz/ditaa/blockdiag render in-process; Mermaid
+              # needs its companion (below). SECURE blocks file/network
+              # includes inside diagram sources — this endpoint renders
+              # arbitrary LAN input.
+              KROKI_SAFE_MODE: SECURE
+              KROKI_MERMAID_HOST: kroki-mermaid
+              KROKI_MERMAID_PORT: "8002"
+            ports:
+              - name: http
+                containerPort: &krokiPort 8000
+            probes:
+              liveness: &probe
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /health
+                    port: http
+                  initialDelaySeconds: 15
+                  periodSeconds: 20
+                  timeoutSeconds: 3
+                  failureThreshold: 3
+              readiness: *probe
+            resources:
+              requests:
+                cpu: 100m
+                memory: 512Mi
+              limits:
+                memory: 1Gi
+      kroki-mermaid:
+        pod:
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          tolerations:
+            - key: dedicated
+              operator: Equal
+              value: fringe
+              effect: NoSchedule
+        containers:
+          app:
+            image:
+              # renovate: datasource=docker depName=yuzutech/kroki-mermaid versioning=docker
+              repository: yuzutech/kroki-mermaid
+              tag: 0.32.1@sha256:ad6721646aabfb8b5f5005db2daa6e37189c25e18aab19a8ef8590b6171cd192
+            ports:
+              - name: http
+                containerPort: &mermaidPort 8002
+            probes:
+              # The companion exposes no HTTP health path — a 404 would fail an
+              # httpGet probe — so probe the socket.
+              liveness: &mermaidProbe
+                enabled: true
+                custom: true
+                spec:
+                  tcpSocket:
+                    port: http
+                  initialDelaySeconds: 15
+                  periodSeconds: 30
+                  timeoutSeconds: 3
+                  failureThreshold: 3
+              readiness: *mermaidProbe
+            resources:
+              requests:
+                cpu: 50m
+                memory: 256Mi
+              limits:
+                memory: 1Gi
+    service:
+      kroki:
+        controller: kroki
+        ports:
+          http:
+            port: *krokiPort
+      kroki-mermaid:
+        controller: kroki-mermaid
+        ports:
+          http:
+            port: *mermaidPort
