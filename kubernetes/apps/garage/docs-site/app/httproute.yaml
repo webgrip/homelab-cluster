@@ -4,6 +4,13 @@
 # Host header to a bucket's global alias, so the URLRewrite filter swaps the
 # public hostname for the bare `docs-site` alias — the SOPS-guarded domain
 # literal never reaches Garage's config or the bucket taxonomy.
+#
+# Estate item #2: each repo prefix routes to its OWN bucket (docs-<repo>) —
+# hostname rewrite picks the bucket, ReplacePrefixMatch strips the prefix so
+# the bucket holds the site at its root. Gateway API precedence gives the
+# longest prefix the win, so the root `/` rule stays the catch-all for
+# homelab-cluster's own docs + /offline. Zensical emits only relative URLs,
+# so pages need no base-path awareness (verified for ADR-0052).
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -19,6 +26,171 @@ spec:
       namespace: network
       sectionName: https
   rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /infrastructure
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            hostname: docs-infrastructure
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: garage-s3
+          namespace: garage
+          port: 3902
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /workflows
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            hostname: docs-workflows
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: garage-s3
+          namespace: garage
+          port: 3902
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /telemetry-service
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            hostname: docs-telemetry-service
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: garage-s3
+          namespace: garage
+          port: 3902
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /ledgerflow
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            hostname: docs-ledgerflow
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: garage-s3
+          namespace: garage
+          port: 3902
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /monitoring-platform
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            hostname: docs-monitoring-platform
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: garage-s3
+          namespace: garage
+          port: 3902
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /searxng-application
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            hostname: docs-searxng-application
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: garage-s3
+          namespace: garage
+          port: 3902
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /freshrss-application
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            hostname: docs-freshrss-application
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: garage-s3
+          namespace: garage
+          port: 3902
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /invoiceninja-application
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            hostname: docs-invoiceninja-application
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: garage-s3
+          namespace: garage
+          port: 3902
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /action-typescript-template
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            hostname: docs-action-typescript-template
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: garage-s3
+          namespace: garage
+          port: 3902
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /application-template
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            hostname: docs-application-template
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: garage-s3
+          namespace: garage
+          port: 3902
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /backstage-application
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            hostname: docs-backstage-application
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: garage-s3
+          namespace: garage
+          port: 3902
     - matches:
         - path:
             type: PathPrefix

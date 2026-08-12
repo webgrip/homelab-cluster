@@ -148,3 +148,12 @@ for the triggering commit.
   run; all 11 prefixes re-published. Trade-off accepted: a top-level dir REMOVED from homelab's
   docs stays in the bucket until cleaned manually (stale beats wiped).
 
+* 2026-08-12 — **bucket-per-repo isolation** (estate item #2): every docs repo now publishes
+  with its own Garage key into its own `docs-<repo>` + `docs-<repo>-trash` bucket pair — the
+  key has rw on exactly that pair, so the estate-wipe class is structurally impossible, not
+  just excluded-by-flag. Keys flow bootstrap Job → OpenBao → repo-level `TECHDOCS_S3_*`
+  Actions secrets (shadowing the org pair; a precedence regression 403s loudly because the org
+  key is read-only on repo buckets). The docs HTTPRoute maps each `/<repo>` prefix to its
+  bucket via hostname rewrite + prefix strip; the root rule stays homelab's `docs-site`
+  (which also carries `/offline`). The old prefix copies inside `docs-site` are dead weight —
+  unreachable and excluded from the offline bundle — and can be purged at leisure.

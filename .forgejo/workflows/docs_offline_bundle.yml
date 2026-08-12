@@ -35,10 +35,21 @@ jobs:
         run: |-
           set -eu
           stamp="$(date -u +%Y-%m-%d)"
+          repos="infrastructure workflows telemetry-service ledgerflow monitoring-platform searxng-application freshrss-application invoiceninja-application action-typescript-template application-template backstage-application"
           # /offline/** stays out: the archive must not swallow its own
-          # previous editions.
+          # previous editions. Repo prefixes are excluded from the root pull
+          # and pulled from their own buckets instead (estate item #2) — the
+          # docs-site copies are pre-cutover leftovers, not the live sites.
+          # This job runs with the org-level key, which has read on every
+          # docs-<repo> bucket by bootstrap grant.
+          root_excludes="--exclude /offline/**"
+          for r in $repos; do root_excludes="$root_excludes --exclude /$r/**"; done
           rclone sync garage:docs-site ./estate \
-            --exclude '/offline/**' --fast-list --transfers 8 --stats-one-line
+            $root_excludes --fast-list --transfers 8 --stats-one-line
+          for r in $repos; do
+            rclone sync "garage:docs-$r" "./estate/$r" \
+              --fast-list --transfers 8 --stats-one-line
+          done
           files=$(find ./estate -type f | wc -l)
           [ "$files" -gt 100 ] || { echo "FATAL: only $files files pulled — refusing to publish a hollow bundle"; exit 1; }
           printf 'WebGrip docs estate — offline snapshot %s\nExtract and open index.html in a browser; all links are relative.\nLive site: docs.webgrip.dev (LAN/VPN only).\n' "$stamp" > ./estate/OFFLINE-README.txt
