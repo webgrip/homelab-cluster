@@ -162,6 +162,38 @@ Steps 1-5 executed. What the rollout itself taught:
   install-time snapshots (key 0x0a), not DHCP; `talosctl meta delete 0x0a`
   per worker flipped kubelet to .30/.31/.32 with zero reboots.
 
+## Execution log — 2026-08-13 (kata substrate + the actual leak source)
+
+- **Kata landed and is proven.** `siderolabs/kata-containers` via worker schematic
+  `d1200926df53...`; RuntimeClass `kata` + a standing smoke Job. The Job is the
+  proof: guest kernel **6.18.35** inside the VM vs host **6.18.39-talos** — a real
+  guest kernel, its own memory space, so a runaway nested-container workload is
+  bounded by the VM, which the host accounts for as one ordinary process.
+- **worker-2 cannot take the extension by re-running the upgrade** — a
+  same-version install (v1.13.7 base → v1.13.7 kata) writes a new UKI but leaves
+  sd-boot's `LoaderEntryDefault` on the previous one, so it reverts on every
+  reboot. Three "successful" upgrades, three reverts. It gets kata on its next
+  version bump; the RuntimeClass therefore selects on the capability label
+  `runtime.webgrip.io/kata`, not `pool=worker` (see `talos/patches/worker/*`).
+- **The leaked builder is identified and fixed at source.** The container that
+  killed the node was `buildx_buildkit_builder-<uuid>` running
+  `moby/buildkit:buildx-stable-1` — the DEFAULT image of
+  `docker/setup-buildx-action`, which the build composites never use (they pin a
+  Harbor-proxied image). The only callers of the default were two workflows that
+  create a builder and explicitly never use one: `forgejo-distribute.yml` and
+  `docker-mirror.yml` (both commented *"no builder is used"* — while the action
+  built one anyway). Fixed in webgrip/workflows by asserting the buildx CLI
+  plugin instead (the ci-runner image ships it): branch
+  `fix/drop-unused-buildx-builders`.
+- **Full buildx migration is NOT recommended** (cross-repo inventory): the
+  docker-container fallback is load-bearing by design (ADR-0007 — forgejo-buildkitd
+  is deliberately not a hard dependency of the runner pool), it is the only
+  multi-arch path (buildkitd carries no emulation; the Docker Hub composite
+  hardcodes arm64), and four composites have no remote path at all. Also
+  corrected: ADR-0027's premise that the docker-container driver is required for
+  `cache-to type=registry` is false — the fast composite already exports registry
+  cache through the remote driver in production.
+
 ## Re-evaluation triggers
 
 - [moby#52268](https://github.com/moby/moby/issues/52268) closes **and** kind

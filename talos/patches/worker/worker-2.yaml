@@ -26,20 +26,41 @@ machine:
     # replica scheduling success"). A second storage node lets replicas schedule
     # and both of those resolve on their own.
     storage.webgrip.io/longhorn: "true"
-    # NO runtime.webgrip.io/kata label here — DELIBERATE, not an oversight.
-    # talconfig.yaml assigns this node the extended schematic d1200926df53...
-    # (with siderolabs/kata-containers), but the node has never been upgraded to
-    # it and still runs the base schematic 1da3394e6229.... Verified live
-    # 2026-08-13:
+    # The containerd `kata` runtime handler exists here as of 2026-08-13 — the
+    # node now runs the extended schematic d1200926df53... The kata RuntimeClass
+    # selects on this label rather than pool=worker, so only labelled nodes can
+    # receive kata pods. Verified live after the upgrade:
     #   talosctl -n 10.0.0.32 get extensions
-    #     -> binfmt-misc, iscsi-tools, util-linux-tools, schematic 1da3394e6229
-    #   (fringe .30 and worker-1 .31 both report kata-containers 3.32.0)
-    # A kata pod scheduled here fails sandbox creation forever:
-    #   FailedCreatePodSandBox: no runtime for "kata" is configured
-    # ADD this label in the SAME change that upgrades the node:
-    #   just talos-upgrade-node worker-2      # reboots the node
-    #   talosctl -n 10.0.0.32 get extensions  # confirm kata-containers present
-    # Draining this node is NOT a plain `kubectl drain`: openbao (1 replica, PDB
-    # maxUnavailable 0), devex-db (1 CNPG instance, PDB minAvailable 1) and
-    # worker-2's own Longhorn instance-manager all report disruptionsAllowed=0
-    # and will block eviction indefinitely.
+    #     -> kata-containers 3.32.0, schematic d1200926df53...
+    #   talosctl -n 10.0.0.32 ls /usr/local/bin -> containerd-shim-kata-v2
+    #   /proc/uptime 123s, i.e. it really rebooted into the new image
+    #
+    # SAME-VERSION UPGRADES ARE A KNOWN TRAP — read before touching this node.
+    # Earlier attempts at this exact upgrade (v1.13.7 base -> v1.13.7 kata)
+    # reported `installation complete`, exit 0, and the node still booted the
+    # OLD schematic. This is a same-version install, so sd-boot suffixes the new
+    # UKI instead of replacing it and the default entry can stay put:
+    #   sd-boot: found existing UKI files: [Talos-v1.13.7.efi Talos-v1.13.7~2.efi]
+    #   sd-boot: LoaderEntryDefault: Talos-v1.13.7~2.efi   <- stayed here
+    #   copying ... to Talos-v1.13.7~3.efi                 <- new image, unused
+    # fringe and worker-1 never hit it because their kata installs followed a
+    # version CHANGE (v1.13.8->v1.13.7, v1.13.4->v1.13.7), giving the new UKI a
+    # distinct name.
+    #
+    # WHAT MADE IT TAKE: applying this node's machine config FIRST. Its live
+    # install.image was still the base schematic 1da3394e6229... (it never got
+    # the config that fringe/worker-1 received), so the installer and the boot
+    # entry disagreed about the target. After
+    #   talosctl apply-config --nodes 10.0.0.32 --file ... --mode no-reboot
+    # the very next `just talos-upgrade-node worker-2` pulled the image and the
+    # reboot landed on it. Correlation from a single run, not a controlled
+    # experiment — but if this recurs on another node, apply the machine config
+    # before concluding the upgrade cannot work.
+    #
+    # Also note `talos-upgrade-node` exits 1 on success here:
+    #   error creating Kubernetes client for drain: kubeconfig is only available
+    #   on control plane nodes
+    # That is talosctl's own post-upgrade drain helper, which only works on
+    # control planes. The upgrade itself already printed `upgrade completed`.
+    # Judge the outcome by `get extensions`, never by the exit code.
+    runtime.webgrip.io/kata: "true"
