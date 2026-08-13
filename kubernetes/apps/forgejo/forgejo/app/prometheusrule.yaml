@@ -41,7 +41,7 @@ spec:
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/forgejo/forgejo"
 
         - alert: ForgejoDeploymentUnavailable
-          expr: kube_deployment_status_replicas_available{namespace="forgejo", deployment="forgejo"} < 1
+          expr: kube_deployment_status_replicas_available{exported_namespace="forgejo", deployment="forgejo"} < 1
           for: 10m
           labels:
             severity: critical
@@ -69,7 +69,7 @@ spec:
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/forgejo/forgejo"
 
         - alert: ForgejoPodRestarting
-          expr: increase(kube_pod_container_status_restarts_total{namespace="forgejo", container="forgejo"}[1h]) > 3
+          expr: increase(kube_pod_container_status_restarts_total{exported_namespace="forgejo", exported_container="forgejo"}[1h]) > 3
           for: 15m
           labels:
             severity: warning
@@ -102,7 +102,7 @@ spec:
           # 22:29 kill lost the erfbeeld v1.0.0 image builds), so the 2Gi limit was raised to 4Gi in
           # helmrelease.yaml. Steady state is ~170-260Mi — these are transient burst spikes. If this
           # still fires after 4Gi, watch MemoryNearLimit for a real trend (erfbeeld CI ops runbook).
-          expr: kube_pod_container_status_last_terminated_reason{namespace="forgejo", container="forgejo", reason="OOMKilled"} == 1
+          expr: kube_pod_container_status_last_terminated_reason{exported_namespace="forgejo", exported_container="forgejo", reason="OOMKilled"} == 1
           for: 2m
           labels:
             severity: critical
@@ -134,7 +134,7 @@ spec:
           # the 2Gi limit needs raising (verify-then-maybe-bump), not a single kill.
           expr: |
             max(container_memory_working_set_bytes{namespace="forgejo", container="forgejo"})
-            / max(kube_pod_container_resource_limits{namespace="forgejo", container="forgejo", resource="memory"})
+            / max(kube_pod_container_resource_limits{exported_namespace="forgejo", exported_container="forgejo", resource="memory"})
             > 0.9
           for: 10m
           labels:

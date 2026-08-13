@@ -14,11 +14,11 @@ spec:
         - alert: ObservabilityPodsNotReady
           expr: |
             sum(
-              kube_pod_status_ready{namespace="observability", condition="true"}
+              kube_pod_status_ready{exported_namespace="observability", condition="true"}
             )
             <
             sum(
-              kube_pod_status_ready{namespace="observability", condition="false"}
+              kube_pod_status_ready{exported_namespace="observability", condition="false"}
             )
           for: 10m
           labels:
@@ -48,7 +48,7 @@ spec:
 
         - alert: ObservabilityHighRestartRate
           expr: |
-            sum(increase(kube_pod_container_status_restarts_total{namespace="observability"}[15m])) > 10
+            sum(increase(kube_pod_container_status_restarts_total{exported_namespace="observability"}[15m])) > 10
           for: 10m
           labels:
             severity: warning
@@ -78,9 +78,9 @@ spec:
         - alert: ObservabilityOOMKills
           expr: |
             sum(
-              increase(kube_pod_container_status_restarts_total{namespace="observability"}[10m])
+              increase(kube_pod_container_status_restarts_total{exported_namespace="observability"}[10m])
               and on (namespace, pod, container)
-              (kube_pod_container_status_last_terminated_reason{namespace="observability", reason="OOMKilled"} == 1)
+              (kube_pod_container_status_last_terminated_reason{exported_namespace="observability", reason="OOMKilled"} == 1)
             ) > 0
           for: 5m
           labels:

@@ -13,7 +13,7 @@ spec:
       interval: 5m
       rules:
         - alert: AuthentikDeploymentUnavailable
-          expr: kube_deployment_status_replicas_available{namespace="authentik", deployment=~"authentik-(server|worker)"} < 1
+          expr: kube_deployment_status_replicas_available{exported_namespace="authentik", deployment=~"authentik-(server|worker)"} < 1
           for: 10m
           labels:
             severity: critical
@@ -33,16 +33,19 @@ spec:
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/security-authentik/authentik-identity-provider"
 
         - alert: AuthentikContainerRestarting
-          expr: increase(kube_pod_container_status_restarts_total{namespace="authentik", pod=~"authentik-(server|worker)-.*", container=~"server|worker"}[15m]) > 2
+          # KSM identity labels arrive as exported_* here (honorLabels deferred): the bare
+          # `namespace`/`pod`/`container` are kube-state-metrics's OWN pod. With the bare
+          # names this expr matched zero series and the alert was permanently dark.
+          expr: increase(kube_pod_container_status_restarts_total{exported_namespace="authentik", exported_pod=~"authentik-(server|worker)-.*", exported_container=~"server|worker"}[15m]) > 2
           for: 5m
           labels:
             severity: warning
             team: security
           annotations:
-            summary: "Authentik container restarting (authentik/{{ $labels.pod }})"
+            summary: "Authentik container restarting (authentik/{{ $labels.exported_pod }})"
             description: |
               What's happening:
-                The {{ $labels.container }} container in {{ $labels.pod }} restarted more than twice in 15 minutes.
+                The {{ $labels.exported_container }} container in {{ $labels.exported_pod }} restarted more than twice in 15 minutes.
               Impact/risk:
                 Login, provider, outpost reconciliation, or background task processing may be intermittent.
               Likely causes:

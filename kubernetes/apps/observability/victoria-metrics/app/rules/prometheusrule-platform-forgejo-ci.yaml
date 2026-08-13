@@ -14,7 +14,10 @@ spec:
       # CI-health alerting for the Forgejo Actions runner fleet. The infra-forgejo-ci Grafana
       # dashboard already visualises these series; nothing paged on them until now. Selectors mirror
       # that dashboard: keda_scaler_*{scaledObject="forgejo-runner"} and the KSM pod-phase series
-      # keyed by `exported_namespace` (NOT `namespace` — KSM series are relabelled that way here).
+      # keyed by `exported_namespace` AND `exported_pod` — EVERY KSM identity label is
+      # relabelled that way here, not just namespace. Both pod-phase rules below shipped
+      # with a bare `pod=~` and were dark from the day they merged (fixed 2026-08-13,
+      # after a 13h CI stall that only ForgejoCIQueueBacklog caught).
       # CONFIRM each expr in vmui/Grafana Explore before merge; a wrong label yields a silent
       # never-firing alert.
       rules:
@@ -78,7 +81,7 @@ spec:
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo-ci"
 
         - alert: ForgejoCIRunnerPodsPending
-          expr: sum(kube_pod_status_phase{exported_namespace="forgejo", pod=~"forgejo-runner-.*", phase="Pending"}) > 0
+          expr: sum(kube_pod_status_phase{exported_namespace="forgejo", exported_pod=~"forgejo-runner-.*", phase="Pending"}) > 0
           for: 10m
           labels:
             severity: warning
@@ -107,7 +110,7 @@ spec:
           # Optional / lower-priority: the warm floor (minReplicaCount 4) is not being met while
           # there is demand. The `> 0` demand guard and the 15m window keep normal rollover quiet.
           expr: |
-            sum(kube_pod_status_phase{exported_namespace="forgejo", pod=~"forgejo-runner-.*", phase="Running"}) < 4
+            sum(kube_pod_status_phase{exported_namespace="forgejo", exported_pod=~"forgejo-runner-.*", phase="Running"}) < 4
             and max(keda_scaler_metrics_value{scaledObject="forgejo-runner"}) > 0
           for: 15m
           labels:
