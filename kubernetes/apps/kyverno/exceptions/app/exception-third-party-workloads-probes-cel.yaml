@@ -1,0 +1,59 @@
+---
+# CEL-dialect twin of the require-pod-probes-audit half of
+# exception-third-party-workloads (2026-08-13). With this and
+# exception-third-party-workloads-advanced-cel in place, the legacy file has nothing
+# left to waive and is deleted in the same commit.
+#
+# AUTOGEN-ONLY, like its sibling. The legacy rule name was `autogen-validate-probes`,
+# which in the legacy dialect exempts the generated CONTROLLER rules and leaves the base
+# Pod rule enforcing. Since require-pod-probes-audit ENFORCES (wave 1 of ADR-0032), a
+# naive port that dropped the kind guard would stop denying probe-less bare Pods in ten
+# namespaces — turning an enforcing control off without changing its action.
+#
+# Deployment and StatefulSet only. The legacy match blocks also named Job and CronJob,
+# but those were already inert: the policy's autogen-controllers annotation covered
+# DaemonSet, Deployment and StatefulSet, so no Job or CronJob rule ever existed to waive.
+# Job-owned pods are out of scope anyway, via the policy's own matchCondition.
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-third-party-workloads-probes-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      Third-party application workloads whose upstream images ship without health
+      probes and which we do not rebuild. Waived at the controller level only — bare
+      Pods in these namespaces are still required to declare probes.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: require-pod-probes-audit
+  matchConditions:
+    - name: third-party-controllers-only
+      expression: >-
+        object.kind in ['Deployment', 'StatefulSet'] &&
+        (object.metadata.namespace + '/' + object.metadata.name) in [
+          'backstage/backstage',
+          'backstage/cnpg-disaster-recovery-check',
+          'backstage/cnpg-restore-test',
+          'drawio/drawio',
+          'drawio/drawio-plantuml-server',
+          'excalidraw/excalidraw',
+          'freshrss/freshrss',
+          'freshrss/cnpg-disaster-recovery-check',
+          'freshrss/cnpg-restore-test',
+          'invoiceninja/invoiceninja',
+          'invoiceninja/invoiceninja-mariadb',
+          'minecraft/minecraft',
+          'n8n/n8n',
+          'n8n/cnpg-restore-test',
+          'searxng/searxng',
+          'searxng/searxng-valkey',
+          'sparkyfitness/sparkyfitness-frontend',
+          'sparkyfitness/sparkyfitness-server',
+          'sparkyfitness/sparkyfitness-db-pgstatstatements-perms',
+          'sparkyfitness/cnpg-disaster-recovery-check',
+          'sparkyfitness/cnpg-restore-test',
+          'default/echo']

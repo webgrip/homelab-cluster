@@ -1,0 +1,117 @@
+---
+# CEL MIGRATION of require-pod-probes-audit (rfc-kyverno-cel-migration.md). One rule,
+# one policy — no split: a single validate rule with a single waiver set.
+#
+# THE NAME KEEPS ITS `-audit` SUFFIX AND THE POLICY ENFORCES. That is deliberate and
+# predates this migration: it is wave 1 of the audit->enforce campaign (ADR-0032,
+# promoted 2026-08-04), and the resource name is historical. Renaming risks the silent
+# breakage that repointing rbac-least-privilege cost in wave 10 (nine dashboard panels)
+# and that PolicyExceptions keyed by policyName cost in waves 4 and 11.
+#
+# Promotion evidence, carried over: 101 in-scope pods and pod templates, 0 failures, 58
+# correctly skipped as Job-owned. The RFC estimated ~18 failures; the real number was 6,
+# from exactly two workloads — forgejo-dind's prune sidecar and preview-host's git-sync
+# sidecar. An earlier sweep reported 65 and was wrong: it stripped ownerReferences when
+# synthesizing pods, and this rule deliberately skips Job-owned pods. Any re-sweep must
+# preserve ownerReferences or it will invent failures.
+#
+# CONTROLLER KINDS ARE EXPLICIT because Kyverno 1.18.1 accepts `spec.autogen.podControllers`
+# and generates nothing from it — measured on image-supply-chain-audit, which covered 81
+# Pods and zero controllers while declaring autogen. The legacy annotation here listed
+# DaemonSet, Deployment and StatefulSet, so those three are matched and Job/CronJob are
+# not, exactly as before.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: require-pod-probes-audit
+  annotations:
+    policies.kyverno.io/title: Require Pod Probes (Enforced)
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      Application workloads must declare a liveness, readiness or startup probe on every
+      container. Job-owned pods are out of scope — probes are meaningless on a pod that
+      runs to completion.
+spec:
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - arc-systems
+            - cert-manager
+            - cilium-secrets
+            - cnpg-system
+            - default
+            - external-secrets
+            - flux-system
+            - keda
+            - kube-node-lease
+            - kube-public
+            - kube-system
+            - kyverno
+            - longhorn-system
+            - network
+            - observability
+            - renovate
+            - security
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "deployments"
+          - "statefulsets"
+          - "daemonsets"
+  matchConditions:
+    # Job-owned pods (direct Jobs and CronJob-spawned Jobs alike — a CronJob's pods are
+    # always owned by the intermediate Job, never the CronJob itself) run to completion,
+    # so liveness/readiness/startup probes do not apply. This is a scope correction on
+    # the rule, not a waiver, which is why it lives here and not in a PolicyException.
+    #
+    # Guarded on kind: only a Pod carries a Job ownerReference. Without the guard the
+    # expression still evaluates for Deployments — harmlessly, since they never match —
+    # but stating the intent keeps the next reader from assuming controllers can be
+    # Job-owned.
+    #
+    # Kept as a matchCondition rather than folded into the validation so Job-owned pods
+    # report SKIP. Folded in they would report `pass`, indistinguishable from a pod that
+    # genuinely declares probes, and the 58 skips in the promotion evidence would silently
+    # become 58 passes.
+    - name: exclude-job-owned-pods
+      expression: >-
+        object.kind != 'Pod' ||
+        !object.metadata.?ownerReferences.orValue([]).exists(o, o.kind == 'Job')
+  variables:
+    - name: podSpec
+      expression: >-
+        object.kind == 'Pod' ? object.spec : object.spec.template.spec
+  validations:
+    # Legacy iterated `spec.containers[]` ONLY — not initContainers, not
+    # ephemeralContainers — and denied when a container had none of the three probe
+    # keys. Both halves preserved: an init container without probes is still fine.
+    - expression: >-
+        variables.podSpec.?containers.orValue([]).all(c,
+          has(c.livenessProbe) || has(c.startupProbe) || has(c.readinessProbe))
+      message: "Liveness, readiness, or startup probes are required for all containers."
