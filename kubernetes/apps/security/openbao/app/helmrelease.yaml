@@ -46,6 +46,41 @@ spec:
       ha:
         enabled: true
         replicas: 1 # single-node raft for the homelab (scale to 3 later)
+        # NO PodDisruptionBudget while replicas is 1. The chart's PDB is
+        # UNSATISFIABLE at this size, not merely strict — templates/_helpers.tpl
+        # hardcodes it:
+        #
+        #   {{- define "openbao.pdb.maxUnavailable" -}}
+        #   {{- if eq (int .Values.server.ha.replicas) 1 -}}
+        #   {{ 0 }}
+        #   {{- else if .Values.server.ha.disruptionBudget.maxUnavailable -}}
+        #
+        # so at one replica maxUnavailable is unconditionally 0 and the
+        # disruptionBudget.maxUnavailable override is never even consulted (it
+        # sits in the else-if). Verified by rendering the chart: setting the
+        # override at replicas=1 still emits maxUnavailable: 0.
+        #
+        # The effect is a PDB that can never allow an eviction, so whichever
+        # node openbao lands on can never be gracefully drained and every Talos
+        # upgrade or node maintenance there blocks forever. Found 2026-08-13
+        # trying to drain worker-2 for the kata schematic upgrade.
+        #
+        # A PDB over a single replica protects nothing — there is no availability
+        # to preserve, so its only behaviour is to block drains. Node maintenance
+        # already implies an openbao outage; the PDB was preventing the DRAIN,
+        # never the DOWNTIME. Recovery is already automatic and exercised on
+        # every node reboot: the raft PVC re-attaches and openbao-unsealer
+        # re-unseals within ~15s.
+        #
+        # WHEN SCALING TO 3 (the "scale to 3 later" above): re-enable this and
+        # set maxUnavailable: 1 — at replicas != 1 the override IS honoured
+        # (verified: renders maxUnavailable: 1) and it correctly protects raft
+        # quorum by allowing only one peer down at a time. Note that scaling
+        # also needs retry_join stanzas in the raft config below (there are
+        # none, so extra peers would not form a cluster) and a rework of
+        # openbao-unsealer, which targets openbao-0 by hardcoded address.
+        disruptionBudget:
+          enabled: false
         raft:
           enabled: true
           setNodeId: true
