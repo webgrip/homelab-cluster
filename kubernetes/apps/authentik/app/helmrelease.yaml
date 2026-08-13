@@ -120,14 +120,24 @@ spec:
                           matchLabels:
                             app.kubernetes.io/instance: authentik
                     affinity:
+                      # REQUIRED, not preferred — and anchored on the server,
+                      # not on `instance: authentik`. A required podAffinity
+                      # whose selector also matches the pod's own Deployment
+                      # deadlocks on a cold start (replica 1 has no peer to
+                      # attract it, so nothing ever schedules). Anchoring on
+                      # component=server is deadlock-free: the server carries
+                      # no podAffinity of its own and always schedules first,
+                      # then the worker is filtered onto whichever node the
+                      # server picked — the node that necessarily holds /data.
+                      # A hard filter also beats any surviving preferred
+                      # anti-affinity outright, instead of tying with it.
                       podAffinity:
-                        preferredDuringSchedulingIgnoredDuringExecution:
-                          - weight: 100
-                            podAffinityTerm:
-                              topologyKey: kubernetes.io/hostname
-                              labelSelector:
-                                matchLabels:
-                                  app.kubernetes.io/instance: authentik
+                        requiredDuringSchedulingIgnoredDuringExecution:
+                          - topologyKey: kubernetes.io/hostname
+                            labelSelector:
+                              matchLabels:
+                                app.kubernetes.io/instance: authentik
+                                app.kubernetes.io/component: server
   install:
     timeout: 15m
     remediation:
@@ -171,8 +181,25 @@ spec:
       # two and authentik may legitimately land on either. The redundant
       # nodeSelector was dropped 2026-08-02; the hard nodeAffinity below already
       # expresses exactly the same constraint.
+      #
+      # That widening is what makes the pod-level co-location rules load-bearing
+      # rather than decorative: nodeAffinity narrows the candidates to a SET of
+      # two, and only podAntiAffinity=none (below) plus the postRenderer patches
+      # decide that all three pods pick the SAME member of that set. Adding a
+      # third cpu=high node changes nothing; removing those rules breaks it.
       affinity:
-        podAntiAffinity: soft
+        # `none`, NOT `soft`. The chart's soft podAntiAffinity renders a
+        # preferred term at weight 100 that pushes the server replicas onto
+        # DIFFERENT nodes — the exact opposite of what a shared RWO /data
+        # needs. The 2026-08-03 fix added a preferred podAffinity (also
+        # weight 100) to pull them back together, but two opposing preferred
+        # terms of equal weight cancel in the scheduler's score: co-location
+        # was then decided by unrelated node scoring, and on 2026-08-12 it
+        # split again (server on worker-2 holding /data, server+worker wedged
+        # on fringe in ContainerCreating for 14h — the worker component was
+        # fully down, so blueprints stopped applying).
+        # Removing the repulsion leaves the attraction unopposed.
+        podAntiAffinity: none
         nodeAffinity:
           type: hard
           matchExpressions:
@@ -253,11 +280,12 @@ spec:
 
     server:
       # 2 replicas → no SSO/OIDC blip on rollouts/reloads and survives a single
-      # server-pod crash. NOTE: authentik is pinned to the single `fringe` node
-      # (global nodeAffinity) with an RWO file-backed media PVC, so both pods
-      # share one node — this is pod-level HA + zero-downtime rollout, NOT
-      # node-level HA. Node-level HA needs media on Garage S3 first, then
-      # unpinning from fringe (tracked as a follow-up).
+      # server-pod crash. NOTE: authentik lands on ONE cpu=high node (fringe or
+      # worker-2 — no longer "pinned to fringe"; worker-2 joined that set on
+      # 2026-08-02) with an RWO file-backed media PVC, so both pods share one
+      # node — this is pod-level HA + zero-downtime rollout, NOT node-level HA.
+      # Node-level HA needs media on Garage S3 first, after which /data stops
+      # being shared and ordinary spreading becomes correct (follow-up).
       replicas: 2
       # NOTE: serviceAccount.create below only creates a SA for the "managed outposts"
       # (remote-cluster) subchart feature -- server/worker never consume it unless
