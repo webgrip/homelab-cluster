@@ -1,0 +1,90 @@
+---
+# Does the shared Vikunja API token still work?
+#
+# One OpenBao entry (secret/vikunja/mcp api_token) authenticates BOTH the MCP
+# bridge and ploegd's tracker write-backs, so its expiry is a single point of
+# failure for the board and for the dark factory at once. It expired silently on
+# 2026-08-11: the MCP 401'd, ploegd crash-looped at boot (routing-as-a-file
+# resolves project NAMES through this token, so an invalid one is fatal, not
+# cosmetic), and the only trace was in pod logs nobody was tailing. It was found
+# hours later, by hand, mid-benchmark.
+#
+# This checks the credential the way the consumers use it and fails the Job when
+# it stops working, so the estate's existing KubeJobFailed alert is the pager —
+# no new alerting plumbing, and it cannot itself rot silently.
+#
+# NOT an expiry countdown, though three weeks' warning is what you actually
+# want: Vikunja's API tokens are barred from the token-management routes (the
+# /api/v1/tokens listing answers "invalid token" to an API token, measured
+# 2026-08-13), so a token cannot read its own expiry. Only a human session can.
+# Mitigate by minting with a long expiry and noting the date; revisit if Vikunja
+# ever exposes expiry to the bearer.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vikunja-token-watchdog
+  namespace: vikunja
+  labels:
+    app.kubernetes.io/name: vikunja-token-watchdog
+    app.kubernetes.io/part-of: mcp-vikunja
+spec:
+  schedule: "17 6 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  # Keep the failures: the whole point is that the evidence outlives the run.
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: vikunja-token-watchdog
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: check
+              image: docker.io/alpine:3.23@sha256:fd791d74b68913cbb027c6546007b3f0d3bc45125f797758156952bc2d6daf40
+              command:
+                - "/bin/sh"
+                - "-ec"
+              args:
+                - |
+                  # In-cluster service, never the public hostname: a pod reaching
+                  # its own cluster's ingress VIP is DNAT'd before NetworkPolicy
+                  # is evaluated, so the egress rule never matches. Same reason
+                  # ploegd addresses the tracker this way.
+                  code=$(wget -q -S -O /dev/null --timeout=15 \
+                    --header="Authorization: Bearer ${VIKUNJA_API_TOKEN}" \
+                    "${VIKUNJA_URL}/user" 2>&1 | awk '/HTTP\//{print $2; exit}')
+                  if [ "$code" = "200" ]; then
+                    echo "vikunja token: OK (HTTP 200 on /user)"
+                    exit 0
+                  fi
+                  echo "vikunja token: BROKEN (HTTP ${code:-no-response} on /user)" >&2
+                  echo "The board and the dark factory share this credential (OpenBao secret/vikunja/mcp)." >&2
+                  echo "Rotate: docs/techdocs/docs/runbooks/mcp-vikunja.md — mint, bao kv put, force-sync both ExternalSecrets." >&2
+                  exit 1
+              env:
+                - name: VIKUNJA_URL
+                  value: http://vikunja.vikunja.svc.cluster.local:3456/api/v1
+                - name: VIKUNJA_API_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: mcp-vikunja-token
+                      key: VIKUNJA_API_TOKEN
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              resources:
+                requests: {cpu: 10m, memory: 16Mi}
+                limits: {cpu: 100m, memory: 32Mi}
