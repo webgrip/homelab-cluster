@@ -169,12 +169,20 @@ Steps 1-5 executed. What the rollout itself taught:
   proof: guest kernel **6.18.35** inside the VM vs host **6.18.39-talos** — a real
   guest kernel, its own memory space, so a runaway nested-container workload is
   bounded by the VM, which the host accounts for as one ordinary process.
-- **worker-2 cannot take the extension by re-running the upgrade** — a
-  same-version install (v1.13.7 base → v1.13.7 kata) writes a new UKI but leaves
-  sd-boot's `LoaderEntryDefault` on the previous one, so it reverts on every
-  reboot. Three "successful" upgrades, three reverts. It gets kata on its next
-  version bump; the RuntimeClass therefore selects on the capability label
-  `runtime.webgrip.io/kata`, not `pool=worker` (see `talos/patches/worker/*`).
+- **All three workers now carry kata.** worker-2 took four attempts: a
+  same-version install (v1.13.7 base → v1.13.7 kata) makes sd-boot suffix the new
+  UKI (`Talos-v1.13.7~3.efi`) while `LoaderEntryDefault` stays on `~2`, so three
+  "successful" upgrades (exit 0, *installation complete*) each reverted on
+  reboot. What made it take was **applying the node's machine config first** —
+  its live `install.image` was still the base schematic, so installer and boot
+  entry disagreed about the target. Full field notes, including the
+  `talos-upgrade-node` exit-1-on-success trap, live in
+  `talos/patches/worker/worker-2.yaml` — read them before upgrading any node
+  to a same-version image.
+- The RuntimeClass selects on the capability label `runtime.webgrip.io/kata`,
+  not `pool=worker`: pool membership never implied the handler while the pool
+  was mixed, and a kata pod on a node without it fails sandbox creation forever
+  (the smoke Job proved this by sitting in ContainerCreating for 12h).
 - **The leaked builder is identified and fixed at source.** The container that
   killed the node was `buildx_buildkit_builder-<uuid>` running
   `moby/buildkit:buildx-stable-1` — the DEFAULT image of
