@@ -11,8 +11,22 @@
 # virtiofsd + shim, measured ~130-160Mi for Cloud Hypervisor).
 #
 # scheduling.nodeSelector: the handler exists only where the extension is
-# installed — the worker pool. Pods with this class are unschedulable on the
-# control planes by construction.
+# installed. That is NOT the same as "the worker pool" — the pool is not
+# uniform. talconfig.yaml assigns all three workers the extended schematic, but
+# worker-2 was never upgraded to it and still runs the base schematic
+# (verified 2026-08-13: `talosctl -n 10.0.0.32 get extensions` reports
+# schematic 1da3394e6229... and no kata-containers, while .30 and .31 report
+# kata-containers 3.32.0). Selecting on pool=worker therefore promised a
+# runtime that one third of the pool does not have, and the smoke Job below
+# duly landed on worker-2 and sat in ContainerCreating for 12h with
+# `FailedCreatePodSandBox: no runtime for "kata" is configured`.
+#
+# runtime.webgrip.io/kata is a capability label (same shape as
+# storage.webgrip.io/longhorn) set per-node in talos/patches/worker/*.yaml, and
+# it is added to a node only after the extension is confirmed installed there.
+# Control planes never carry it, so kata pods remain unschedulable there by
+# construction. When worker-2 is upgraded and labelled, the pool becomes
+# uniform again and this selector simply stops being load-bearing.
 apiVersion: node.k8s.io/v1
 kind: RuntimeClass
 metadata:
@@ -24,4 +38,4 @@ overhead:
     cpu: 250m
 scheduling:
   nodeSelector:
-    node.webgrip.io/pool: worker
+    runtime.webgrip.io/kata: "true"

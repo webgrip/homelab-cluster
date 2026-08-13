@@ -10,3 +10,12 @@ machine:
     node.webgrip.io/cpu: standard
     node.webgrip.io/ram: high
     storage.webgrip.io/longhorn: "true"
+    # Runs the EXTENDED schematic (d1200926df53...), so the containerd `kata`
+    # runtime handler exists here. Verified live:
+    #   talosctl -n 10.0.0.31 get extensions | grep kata  -> kata-containers 3.32.0
+    # The kata RuntimeClass selects on this label, NOT on pool=worker: the pool
+    # is NOT uniform (worker-2 is still on the base schematic 1da3394e6229...,
+    # which carries no kata), and a kata pod landing there fails sandbox
+    # creation with `no runtime for "kata" is configured`. Add this label to a
+    # node only AFTER confirming the extension is installed on it.
+    runtime.webgrip.io/kata: "true"

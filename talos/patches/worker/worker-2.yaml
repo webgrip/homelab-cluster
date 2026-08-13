@@ -26,3 +26,20 @@ machine:
     # replica scheduling success"). A second storage node lets replicas schedule
     # and both of those resolve on their own.
     storage.webgrip.io/longhorn: "true"
+    # NO runtime.webgrip.io/kata label here — DELIBERATE, not an oversight.
+    # talconfig.yaml assigns this node the extended schematic d1200926df53...
+    # (with siderolabs/kata-containers), but the node has never been upgraded to
+    # it and still runs the base schematic 1da3394e6229.... Verified live
+    # 2026-08-13:
+    #   talosctl -n 10.0.0.32 get extensions
+    #     -> binfmt-misc, iscsi-tools, util-linux-tools, schematic 1da3394e6229
+    #   (fringe .30 and worker-1 .31 both report kata-containers 3.32.0)
+    # A kata pod scheduled here fails sandbox creation forever:
+    #   FailedCreatePodSandBox: no runtime for "kata" is configured
+    # ADD this label in the SAME change that upgrades the node:
+    #   just talos-upgrade-node worker-2      # reboots the node
+    #   talosctl -n 10.0.0.32 get extensions  # confirm kata-containers present
+    # Draining this node is NOT a plain `kubectl drain`: openbao (1 replica, PDB
+    # maxUnavailable 0), devex-db (1 CNPG instance, PDB minAvailable 1) and
+    # worker-2's own Longhorn instance-manager all report disruptionsAllowed=0
+    # and will block eviction indefinitely.

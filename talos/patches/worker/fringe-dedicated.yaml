@@ -7,6 +7,12 @@ machine:
     node.webgrip.io/cpu: high
     node.webgrip.io/ram: standard
     storage.webgrip.io/longhorn: "true"
+    # Runs the EXTENDED schematic (d1200926df53...), so the containerd `kata`
+    # runtime handler exists here. Verified live:
+    #   talosctl -n 10.0.0.30 get extensions | grep kata  -> kata-containers 3.32.0
+    # See worker-1.yaml for why the kata RuntimeClass selects on this label
+    # rather than on pool=worker.
+    runtime.webgrip.io/kata: "true"
     # The legacy `nodegroup` label was retired 2026-06-21 — all apps moved to the
     # capability scheme (authentik pins to node.webgrip.io/cpu=high, which is fringe;
     # envoy + the rest to pool=worker; cilium's zomboid L2 policy to pool=worker).
