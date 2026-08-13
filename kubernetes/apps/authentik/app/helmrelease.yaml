@@ -279,14 +279,34 @@ spec:
         - authentik-blueprints
 
     server:
-      # 2 replicas → no SSO/OIDC blip on rollouts/reloads and survives a single
-      # server-pod crash. NOTE: authentik lands on ONE cpu=high node (fringe or
-      # worker-2 — no longer "pinned to fringe"; worker-2 joined that set on
-      # 2026-08-02) with an RWO file-backed media PVC, so both pods share one
-      # node — this is pod-level HA + zero-downtime rollout, NOT node-level HA.
-      # Node-level HA needs media on Garage S3 first, after which /data stops
-      # being shared and ordinary spreading becomes correct (follow-up).
-      replicas: 2
+      # ONE replica, deliberately — a second one cannot be made safe here, and
+      # the two reasons it was originally set to 2 have both since evaporated:
+      #
+      #  - "no SSO/OIDC blip on rollouts" is void. `strategy: Recreate` (added
+      #    2026-08-03, and mandatory for a shared RWO /data) scales the old
+      #    ReplicaSet to ZERO before creating the new one. Every rollout is a
+      #    full stop regardless of replica count.
+      #  - "survives a single server-pod crash" is thin: both replicas are
+      #    pinned to the same node by the RWO volume, so anything that takes the
+      #    node takes both.
+      #
+      # Against that, a second replica has now wedged the app twice. It can only
+      # ever land in one of two states: on the SAME node (co-located, fine) or
+      # on the other cpu=high node, where it hits "Multi-Attach error" and stays
+      # in ContainerCreating forever. Co-location cannot be guaranteed, because
+      # scheduling FILTERS run before affinity SCORING — on 2026-08-13 the live
+      # event was:
+      #   0/6 nodes are available: 2 Insufficient memory,
+      #   4 node(s) didn't match Pod's node affinity/selector
+      # worker-2 was filtered out on memory, so the podAffinity never got a
+      # vote and fringe was the only node left. Making that podAffinity
+      # `required` would not fix it either — it would just convert a wedged
+      # pod into a permanently Pending one.
+      #
+      # So: 1 replica is the only setting that cannot wedge. Restoring 2 (and
+      # real node-level HA) is unblocked by moving media to Garage S3, after
+      # which /data stops being shared and ordinary spreading becomes correct.
+      replicas: 1
       # NOTE: serviceAccount.create below only creates a SA for the "managed outposts"
       # (remote-cluster) subchart feature -- server/worker never consume it unless
       # this field is set explicitly (verified live: pods ran under `default` despite
