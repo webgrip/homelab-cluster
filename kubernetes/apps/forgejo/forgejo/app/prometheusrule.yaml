@@ -159,3 +159,51 @@ spec:
                 kubernetes/apps/forgejo/forgejo/app/helmrelease.yaml (worker-1 is the high-RAM node)
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo"
+        - alert: ForgejoActionsSecretsReconcileStale
+          # The hourly forgejo-actions-secrets CronJob publishes the webgrip org Actions
+          # secrets and, since 2026-08-25, VALIDATES the GitHub PAT it publishes — it exits
+          # non-zero when api.github.com rejects the token or when it is within 14 days of
+          # expiry. A stale last-success is therefore the alertable signal for a credential
+          # that is about to break the release fan-out, rather than discovering it from a
+          # failed release weeks later (ploeg, 2026-08-25). Same shape as
+          # HarborProxyReconcileStale (ADR-0046). >2h spans two hourly cycles, so a single
+          # transient blip self-clears.
+          expr: |
+            time() - kube_cronjob_status_last_successful_time{exported_namespace="forgejo", cronjob="forgejo-actions-secrets"} > 7800
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: forgejo
+          annotations:
+            summary: "Forgejo org secrets reconcile stale >2h — CI credential likely expired (forgejo)"
+            description: |
+              What's happening:
+              - The hourly forgejo-actions-secrets CronJob has not completed successfully for >2h.
+                The job fails when the GitHub PAT it publishes is rejected by api.github.com or
+                is within 14 days of expiring, so this most often means an EXPIRED, EXPIRING or
+                REVOKED credential — not a crashed job. Check the pod log for the exact reason.
+
+              Impact/risk:
+              - The org Actions secrets stop converging: GHCR_USERNAME / GHCR_TOKEN /
+                GH_RELEASE_TOKEN, HARBOR_ROBOT_*, WEBGRIP_CI_TOKEN, DT_API_KEY, TECHDOCS_S3_*.
+              - With a dead GitHub PAT the release fan-out loses GHCR pushes, the github.com
+                ref mirror and GitHub Releases — silently, until the next release runs.
+
+              Likely causes:
+              - The GitHub PAT at OpenBao secret/github/ci-pat expired or was revoked.
+              - A provider token in another block (Harbor robot, Codeberg, S3) stopped working.
+              - CronJob not scheduling (suspended, or nodes unschedulable).
+
+              First actions:
+              - kubectl -n forgejo logs job/$(kubectl -n forgejo get job -o name \
+                  -l job-name --sort-by=.metadata.creationTimestamp | tail -1 | cut -d/ -f2)
+              - Rotate at the provider, then write to OpenBao and force-sync:
+                  bao kv patch secret/github/ci-pat token=-        # value on stdin
+                  kubectl -n forgejo annotate externalsecret forgejo-github-pat \
+                    force-sync="$$(date +%s)" --overwrite
+              - Re-run the reconciler AFTER ExternalSecret shows SecretSynced, or the job
+                republishes the old value:
+                  kubectl -n forgejo create job --from=cronjob/forgejo-actions-secrets ghcr-token-refresh
+              - Never edit these in the Forgejo UI; this job overwrites them hourly.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/secret-break-glass"
