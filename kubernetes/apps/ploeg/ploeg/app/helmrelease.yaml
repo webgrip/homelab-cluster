@@ -28,6 +28,18 @@ spec:
     # runnerImage below already uses; the digest is the multi-arch index, so
     # both amd64 and arm64 nodes still resolve their own manifest.
     image:
+      # Without this annotation Renovate cannot see the SECOND knob the comment
+      # above describes. It bumps the OCIRepository (a Flux datasource it knows)
+      # and leaves this line behind — which is exactly what rc.27 did on
+      # 2026-08-26: the chart moved, the binary stayed on rc.17, the Helm
+      # upgrade reported success and the pod never rolled. Automating the chart
+      # bump without this would have made that split the DEFAULT outcome rather
+      # than a one-off mistake. Same shape kepler uses for its own two knobs
+      # (kepler/app/helmrelease.yaml). depName points at Harbor, not the
+      # upstream, so the timestamp-optional stability rule in .renovaterc.json5
+      # applies — see the kepler note for why a non-Harbor depName wedges
+      # stability-days forever.
+      # renovate: datasource=docker depName=harbor.webgrip.dev/webgrip/ploegd
       tag: "0.2.0-rc.28@sha256:c1adedd8279f9e91c909b727502b651618aeec03d1309ed9c52d9f66a029f7dd"
     # Routing and roster as a FILE (mounted at /etc/ploeg/ploeg.yaml), not the
     # PLOEG_TARGET_MAP / PLOEG_TEAM_MAP / PLOEG_TEAM_PLANS env-var DSLs.
