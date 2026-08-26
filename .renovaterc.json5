@@ -680,6 +680,38 @@
       ],
     },
     {
+      // Ploeg is the one app here that has never cut a stable release: it ships
+      // 0.2.0-rc.N only. The env-promotion rules above buy prerelease tracking
+      // with a PATH (kubernetes/apps/*/dev|staging/**), and ploeg does not use
+      // that tree, so it fell through to the default stability filter — which
+      // declines to offer an -rc version and says nothing about it. The chart
+      // was detected the whole time; its dependency-dashboard entry simply
+      // carried no "Updates" annotation, unlike every stable-versioned chart
+      // beside it. The pin therefore sat on rc.17 while rc.18-rc.27 published
+      // green, and only a hand-written bump ever moved it.
+      //
+      // Verified NOT to be the cause before landing this, since each looked
+      // likelier: Renovate does bump OCIRepository charts here (three Renovate
+      // Bot commits), it does hold Harbor robot credentials for the PRIVATE
+      // webgrip project (RENOVATE_HOST_RULES + HARBOR_ROBOT_*), and it does
+      // track another chart from that same project (charts/erfbeeld). The one
+      // property ploeg does not share with any of them is the prerelease
+      // version, and no prerelease dep anywhere in this repo is offered an
+      // update.
+      //
+      // No automerge rule pairs with this one, deliberately. The pin's own
+      // comment records that tag and values move together, and every bump so
+      // far has reasoned about values compatibility by hand; a PR keeps that
+      // gate, where automerging a first-party chart would remove it. (Renovate
+      // forbids combining matchUpdateTypes with ignoreUnstable anyway, so an
+      // automerge policy would have to be a second rule — there is none.)
+      description: "Ploeg's first-party chart tracks the prerelease channel — it has no stable to track",
+      matchFileNames: [
+        "kubernetes/apps/ploeg/**/ocirepository.yaml"
+      ],
+      ignoreUnstable: false,
+    },
+    {
       description: "Group Grafana.com dashboard revision updates into one reviewable PR",
       matchDatasources: [
         "custom.grafana-dashboards"

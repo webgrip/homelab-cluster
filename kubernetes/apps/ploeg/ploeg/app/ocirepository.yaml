@@ -15,28 +15,41 @@ spec:
   secretRef:
     name: harbor-pull
   ref:
-    # rc.17 closes the loop reviews were falling out of. Everything that
-    # matters here landed in rc.15 and rc.16; rc.17 adds only a CI pin change,
-    # and is taken because it is the tip, not for anything it carries. Three
-    # fixes since rc.14, all found by running it here:
-    #   - rc.15 settles spend. Without it `spent` stays 0 forever, and
-    #     ClaimRole authorizes `budget − spent − reserved` — so the only thing
-    #     holding a team to its pool was whatever happened to be running
-    #     concurrently. This is the one with a live blast radius.
-    #   - a reading Run's review now survives every harness (the drop box,
-    #     ADR-0018): the outcome used to depend on which harness ran.
-    #   - a failed writing Run re-opens its Round instead of stranding it.
+    # rc.27 ends a ten-release drift, and is taken for being current rather
+    # than for anything it carries. The pin sat on rc.17 from 2026-08-12 to
+    # 2026-08-26 while rc.18-rc.27 published green, because Renovate never
+    # offered them: ploeg has only ever cut prereleases (0.2.0-rc.N, no stable
+    # exists), and the repo's ignoreUnstable:false rules are scoped to the
+    # dev/staging tree this app does not use. The chart WAS detected the whole
+    # time — it sits in the dependency dashboard with no "Updates" annotation,
+    # which is a silence nobody can notice. The packageRule added alongside
+    # this commit opts the path into the prerelease channel so the next ten do
+    # not repeat it.
     #
-    # Tag and values move together, and this bump needs no values change: the
-    # only schema movement since rc.14 is an additive optional
-    # teams[].perRunBudget, and no migration file was added (0011 is still the
-    # head), so the values below validate unchanged on rc.17.
-    tag: 0.2.0-rc.17
-    # Read straight off the Harbor registry (HEAD /v2/…/manifests/0.2.0-rc.17)
-    # after the Publish Helm chart (Harbor) job went green. Not the Forgejo
-    # mirror's digest — that registry re-runs `helm package`, which is not
-    # byte-reproducible, so it publishes the same chart under a different
-    # digest (rc.10: 2f28764a there vs 754ce7a0 here). Kyverno's
-    # require-ocirepository-digest makes this line mandatory, so it must move
-    # with every tag bump.
-    digest: sha256:147fd681b5889395ddf7a699f76ff425730f823ac30253f1d6480f2dc12969b6
+    # The CHART barely moved. rc.17 -> rc.27 touches Chart.yaml only: the
+    # version/appVersion bump, plus `home`/`sources` so GHCR can link the
+    # package to a repository (ploeg ADR-0020). No template, no values.yaml,
+    # no values.schema.json change, and the migration head is still 0011 — so
+    # the values below validate unchanged and no database work is implied.
+    #
+    # The IMAGE is where the ten releases went:
+    #   - rc.25/rc.26 add a GitLab forge and a ClickUp tracker provider. Both
+    #     are inert here: nothing in the values names either one, and the
+    #     tracker stays Vikunja, the forge Forgejo.
+    #   - rc.22 clears the nine CVEs Harbor flagged on the ploegd base image.
+    #   - everything else in the range is CI: the release train repairing its
+    #     own Docker Hub proxy and GHCR publication.
+    #
+    # WHAT THIS DOES NOT FIX: the 2026-08-13 failure that parked work item 98
+    # at needs_human. A killed worker still reports no outcome, still strands
+    # its Lease for the full 15m TTL, and infrastructure kills still spend the
+    # Round's three agent attempts. That fix is not released yet; it needs a
+    # further bump once it is.
+    tag: 0.2.0-rc.27
+    # Read off Harbor directly (HEAD /v2/webgrip/charts/ploeg/manifests/
+    # 0.2.0-rc.27 -> docker-content-digest), NOT the Forgejo mirror: that
+    # registry re-runs `helm package`, which is not byte-reproducible, so it
+    # publishes the same chart under a different digest. Kyverno's
+    # require-ocirepository-digest makes this line mandatory, so it moves with
+    # every tag bump.
+    digest: sha256:c30c070316b10a13ae753efe3cbbf74e62c7cfbcef5a5ae15eab201292958d26
