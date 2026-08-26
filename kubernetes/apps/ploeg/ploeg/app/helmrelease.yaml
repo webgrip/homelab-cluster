@@ -240,6 +240,17 @@ spec:
         # The KEDA operator resolves this hostname from the keda namespace,
         # so the chart's short in-namespace default never resolves there.
         host: ploeg-db-rw.ploeg.svc.cluster.local
+      # Chart default is 30s, which measured as the single largest slice of a
+      # cold dispatch: on the 2026-08-26 silver smoke run, `work item queued`
+      # 04:17:23 -> pod created 04:17:45 was 21s of pure poll latency, out of
+      # 70s total to `ploeg-worker starting` (the other two slices being the
+      # worker-bin init + dind sidecar, ~29s, and the OpenHands Python cold
+      # import, ~19s — the latter already bought down from 2m20s by giving the
+      # worker a full core, see workerResources above).
+      # The trigger query is a COUNT(*) over agent_runs' partial index
+      # `agent_runs_claimable` (state='pending'), so polling 6x more often is
+      # free. Caps the poll slice at 5s instead of 30s.
+      pollingInterval: 5
       teams:
         # bronze: cheapest model. `budget` is the SHIFT POOL, not a per-run
         # figure — the comment here used to say "$2/run budget", which was a
