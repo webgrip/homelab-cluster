@@ -712,6 +712,36 @@
       ignoreUnstable: false,
     },
     {
+      // The SECOND knob, and the reason the rule above is not enough on its own.
+      // ploeg pins its chart in ocirepository.yaml and its image in
+      // helmrelease.yaml, and the two must move together or the Helm upgrade
+      // reports success against a binary that never changed. The rule above
+      // covers only the chart file, so the image fell through to the default
+      // stability filter — which declines to offer an -rc version and says
+      // nothing about it. Left as it was, the next Renovate run would bump the
+      // chart to the newest rc and strand the image, which is precisely the
+      // rc.27 split that motivated annotating this line in the first place
+      // (2026-08-26: chart moved, binary stayed on rc.17, pod never rolled).
+      // The pin sat on rc.28 while rc.29-rc.31 published green.
+      //
+      // Scoped by depName, NOT by widening the rule above to the whole file:
+      // helmrelease.yaml also pins agent-runner and docker-dind, and those track
+      // stable channels. A file-level ignoreUnstable would start offering THEM
+      // prereleases — a docker:*-rc on the dind sidecar of every agent run.
+      //
+      // No automerge here either, for the same reason recorded above: tag and
+      // values move together and every bump so far has reasoned about values
+      // compatibility by hand. A PR keeps that gate.
+      description: "Ploeg's image knob tracks the same prerelease channel as its chart",
+      matchFileNames: [
+        "kubernetes/apps/ploeg/**/helmrelease.yaml"
+      ],
+      matchDepNames: [
+        "harbor.webgrip.dev/webgrip/ploegd"
+      ],
+      ignoreUnstable: false,
+    },
+    {
       description: "Group Grafana.com dashboard revision updates into one reviewable PR",
       matchDatasources: [
         "custom.grafana-dashboards"
