@@ -89,10 +89,20 @@ spec:
       condition: threshold
       data:
         - refId: query
-          relativeTimeRange: {from: 7200, to: 0}
+          relativeTimeRange: {from: 21600, to: 0}
           datasourceUid: prometheus
           model:
-            expr: "sum(increase(kube_job_status_failed{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}[2h])) or vector(0)"
+            # Matcher was `ploeg-worker-bronze-[a-z0-9]{5}`, which matched NOTHING:
+            # PromQL regexes are fully anchored and real Jobs carry a role segment
+            # (`ploeg-worker-bronze-builder-cbwfg`), plus silver/copper were out of
+            # scope entirely. Replayed at 2026-08-13T18:00Z — minutes after three
+            # builder Jobs failed — the old expression returned 0. Two independent
+            # defects made it dark: even with the matcher fixed, the 2h window
+            # returned 1 against a `gt 5` threshold.
+            # Sized from the data (2026-08-26): fixed matcher over 6h peaks at 5
+            # during the 2026-08-13 incident and is 0 across the last 7 quiet days,
+            # so `gt 2` fires on a wedged shift and tolerates 1-2 transient failures.
+            expr: "sum(increase(kube_job_status_failed{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-.*\"}[6h])) or vector(0)"
             instant: true
             refId: query
             datasource: {uid: prometheus, type: prometheus}
@@ -106,7 +116,7 @@ spec:
             datasource: {uid: "-100", type: __expr__}
             conditions:
               - type: query
-                evaluator: {type: gt, params: [5]}
+                evaluator: {type: gt, params: [2]}
                 operator: {type: and}
                 query: {params: [query]}
                 reducer: {type: last}
@@ -114,8 +124,8 @@ spec:
       execErrState: Error
       for: 5m
       annotations:
-        summary: "{{ $value | humanize }} ploeg worker-job failures in 2h"
-        description: "Agent runs retry on transient errors (e.g. git timeouts), but > 5 worker-job failures in 2h suggests a systematic problem — the agent-runner image, DinD, LiteLLM egress, or the target repo. Check the Dispatch Plane dashboard run logs."
+        summary: "{{ $value | humanize }} ploeg worker-job failures in 6h"
+        description: "Agent runs retry on transient errors (e.g. git timeouts), but > 2 worker-job failures in 6h suggests a systematic problem — the agent-runner image, DinD, LiteLLM egress, or the target repo. Check the Dispatch Plane dashboard run logs."
       labels: {severity: warning, slo: dark-factory, team: platform}
 
     - uid: slo-ploeg-run-budget-blocked
