@@ -85,13 +85,34 @@ propagates (≤ `refreshInterval`). Highest-value first:
 ```bash
 mise exec -- just bao-login
 # Regenerate at the provider (GitHub / Cloudflare / Garage S3 / Authentik) THEN:
-bao kv put secret/github/ci-pat        token=<new>
+# NB: `put` REPLACES the whole secret. secret/github/ci-pat also carries `username`,
+# and dropping it makes GHCR_USERNAME silently fall back to "webgrip" — use patch:
+printf '%s' "$TOKEN" | bao kv patch secret/github/ci-pat token=-   # value via stdin
 bao kv put secret/cloudflare/tunnel    TUNNEL_TOKEN=<new>
 bao kv put secret/cloudflare/dns       api-token=<new>
 bao kv put secret/s3/cnpg-backup       S3_ACCESS_KEY_ID=<new> S3_SECRET_ACCESS_KEY=<new>
 # force fast propagation instead of waiting for refreshInterval:
 kubectl -n <ns> annotate externalsecret <name> force-sync="$(date +%s)" --overwrite
 ```
+
+!!! warning "Forgejo org Actions secrets are reconciled — never edit them in the UI"
+    `GHCR_USERNAME` / `GHCR_TOKEN` / `GH_RELEASE_TOKEN`, `HARBOR_ROBOT_*`,
+    `WEBGRIP_CI_TOKEN`, `DT_API_KEY` and `TECHDOCS_S3_*` are published onto the `webgrip`
+    org by the hourly `forgejo-actions-secrets` CronJob (`23 * * * *`) from OpenBao via
+    ESO. A value typed into the Forgejo UI works until the next tick and is then silently
+    overwritten — on 2026-08-25 that cost most of a day, because CI kept passing for four
+    runs and then reverted to the dead token.
+
+    Rotate in OpenBao, then **wait for `SecretSynced` before re-running the job** — a Job
+    created seconds after the annotation mounts the *old* Secret and republishes it:
+
+    ```bash
+    kubectl -n forgejo get externalsecret forgejo-github-pat   # wait for SecretSynced
+    kubectl -n forgejo create job --from=cronjob/forgejo-actions-secrets ghcr-token-refresh
+    ```
+
+    Since 2026-08-25 that CronJob also validates the GitHub PAT and fails when it is
+    rejected or within 14 days of expiry, which raises `ForgejoActionsSecretsReconcileStale`.
 
 OIDC client secrets (grafana/backstage/forgejo/harbor `*/oauth`, `*/oidc`) are Authentik-issued —
 rotate in Authentik, then `bao kv put`.
