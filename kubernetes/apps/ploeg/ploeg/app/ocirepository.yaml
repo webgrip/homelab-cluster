@@ -15,30 +15,22 @@ spec:
   secretRef:
     name: harbor-pull
   ref:
-    # rc.28 is the one that carries the lease fix (ploeg#39). rc.27 was the
-    # catch-up bump and left the deployed BINARY on rc.17, because the chart
-    # pin and the image pin are two separate lines and only one of them moved
-    # — the Helm upgrade succeeded, the pod never rolled. Both move here.
+    # rc.31 is a catch-up to tip before an end-to-end factory test, taken so
+    # the run exercises what the next release would ship. Everything
+    # rc.28 -> rc.31 carries is release-pipeline work — cosign-signing the
+    # Forgejo mirror, mirroring the signature/attestation accessories and OCI
+    # index annotations to GHCR, rejecting zero-time release timestamps —
+    # none of it reaches ploegd, the worker, or the chart templates.
     #
-    # What rc.28 changes, all of it about a pod that dies mid-run:
-    #   - ploeg-worker installs a SIGTERM handler. It had none, so a killed
-    #     worker reported nothing: no outcome, no revoked credential, and the
-    #     Lease left to the sweeper a full 15m later attributed to nothing.
-    #   - a terminated run reports failed/infra_node, and the Shift path now
-    #     counts infrastructure failures against MaxInfraFailures instead of
-    #     spending the Round's three agent attempts on them. Three evictions
-    #     used to park a healthy ticket at needs_human (shift 73, 2026-08-13).
-    #   - a Shift closing on infrastructure says `writing_run_killed_repeatedly`,
-    #     which points at the cluster rather than at the ticket.
-    #   - settleSpend runs detached, so a cancelled run's cost still settles;
-    #     shift 73 read spent=0.0000 against real gateway spend.
-    #
-    # Chart movement rc.27 -> rc.28 is terminationGracePeriodSeconds (new, 90)
-    # on the worker pod: the 30s default SIGKILLed the pod mid-report and left
-    # the new handler inert. Values below need no change — it has a default.
-    # Migration head is still 0011.
-    tag: 0.2.0-rc.28
-    # Harbor's own digest (HEAD /v2/webgrip/charts/ploeg/manifests/0.2.0-rc.28),
-    # never the Forgejo mirror's: that registry re-runs `helm package`, which is
-    # not byte-reproducible, so the same chart lands under a different digest.
-    digest: sha256:80abf5276caeffef48b3bc24b028fd647f68a5aab7fd7c35779c3be81879fc5c
+    # Verified as a pure pin move before bumping: both charts rendered against
+    # this HelmRelease's extracted .spec.values diff only in the
+    # app.kubernetes.io/version and helm.sh/chart labels (60 lines, all
+    # version strings), and the migration head is still 0011. The image pin in
+    # helmrelease.yaml moves in the same commit — the rc.27 lesson: the chart
+    # pin and the image pin are two separate lines, and moving only one leaves
+    # the deployed binary behind while the Helm upgrade reports success.
+    tag: 0.2.0-rc.31
+    # Harbor's own digest (helm pull prints it), never the Forgejo mirror's:
+    # that registry re-runs `helm package`, which is not byte-reproducible, so
+    # the same chart lands under a different digest.
+    digest: sha256:53bcfe54d4f1dd0e801b35f131cf31859548cd0a29729fb32a8776fa2401dd09
