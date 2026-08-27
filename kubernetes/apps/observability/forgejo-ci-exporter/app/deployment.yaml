@@ -128,12 +128,17 @@ spec:
           # parse-time pruning in the script; interpreter baseline is ~22MiB.
           # 320Mi is that peak plus room for the org to grow, since the driver is
           # the LARGEST single repo's history, not the repo count.
+          #
+          # 2026-08-27: OOMKilled at 320Mi (12 restarts) during a burst of eight
+          # trunk pushes — each push adds an e2e run to homelab-cluster's 30-run
+          # window, and heavy runs mean heavier event_payloads to decode. The
+          # driver is spiky, not steady: give it 2x the measured-era ceiling.
           resources:
             requests:
               cpu: 10m
               memory: 96Mi
             limits:
-              memory: 320Mi
+              memory: 640Mi
       volumes:
         - name: script
           configMap:
