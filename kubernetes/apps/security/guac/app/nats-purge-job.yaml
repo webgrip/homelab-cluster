@@ -29,6 +29,9 @@ spec:
       containers:
         - name: purge
           image: docker.io/natsio/nats-box:0.18.0@sha256:abdc9f9f0120bb8adfbf674eb037d1551db55356eb198b7bd4ffed377f6950a6
+          # The image's WORKDIR is /root, unreadable as uid 1000 — the nats CLI
+          # dies on `stat .` without a readable cwd.
+          workingDir: /tmp
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -45,6 +48,10 @@ spec:
             - -ec
             - |
               bytes=$(nats stream info DOCUMENTS --json | sed -n 's/.*"bytes": *\([0-9]*\).*/\1/p' | head -1)
+              if [ -z "$bytes" ]; then
+                echo "could not read DOCUMENTS stream state — refusing to guess" >&2
+                exit 1
+              fi
               echo "DOCUMENTS stream holds $bytes bytes"
               if [ "$bytes" -gt 7516192768 ]; then
                 nats stream purge DOCUMENTS --force
