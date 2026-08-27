@@ -137,13 +137,18 @@ spec:
       # If exit-137s recur, raise the limit rather than reverting — 512Mi is the
       # figure this repo had already chosen, now merely made effective, and it
       # has not yet been observed under a sustained policy-churn spike.
+      #
+      # They recurred: exit-137s on 2026-08-26 10:51 and 2026-08-27 18:29 (the
+      # latter timed out the webhook mid-HelmRelease-apply and failed the guac
+      # upgrade). Steady state is now ~280Mi with the CEL policy set, so 512Mi
+      # left <2x headroom for reload/apply spikes → 1Gi.
       container:
         resources:
           requests:
             cpu: 100m
             memory: 256Mi
           limits:
-            memory: 512Mi
+            memory: 1Gi
       rbac:
         serviceAccount:
           automountServiceAccountToken: false
