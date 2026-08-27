@@ -343,3 +343,62 @@ spec:
                           limits:
                             cpu: 50m
                             memory: 128Mi
+          # JetStream was allowed to fill its own volume, so a full disk killed
+          # the server instead of applying backpressure.
+          #
+          # The nats subchart (0.19.17) hardwires `max_file` to
+          # `fileStorage.size` — the PVC request — in templates/configmap.yaml,
+          # with no values key to set them independently. On a 10Gi Longhorn
+          # volume that leaves ~9.7GiB usable after filesystem overhead while
+          # JetStream believed it could write 10GiB (10,737,418,240 B), so it
+          # never reached its own limit: the filesystem hit ENOSPC first, at
+          # 10,395,918,609 B of stream data, and nats crash-looped on
+          # "JetStream failed to store a msg ... no space left on device"
+          # (1243 restarts, disk pinned at 99.84% from 2026-08-17).
+          #
+          # Capping max_file BELOW the usable filesystem restores graceful
+          # degradation: JetStream refuses publishes with "resource limit
+          # exceeded", producers get a clean error, and the server stays up —
+          # which also keeps the ingestor able to connect and drain the queue.
+          # Patched onto the rendered ConfigMap because the chart offers no
+          # values path; the config-reloader sidecar picks the change up.
+          # Revisit if the nats subchart gains a real max_file key.
+          - target:
+              version: v1
+              kind: ConfigMap
+              name: guac-nats-config
+            patch: |-
+              apiVersion: v1
+              kind: ConfigMap
+              metadata:
+                name: guac-nats-config
+              data:
+                nats.conf: |
+                  # NATS Clients Port
+                  port: 4222
+
+                  # PID file shared with configuration reloader.
+                  pid_file: "/var/run/nats/nats.pid"
+
+                  ###############
+                  #             #
+                  # Monitoring  #
+                  #             #
+                  ###############
+                  http: 8222
+                  server_name: $$POD_NAME
+                  ###################################
+                  #                                 #
+                  # NATS JetStream                  #
+                  #                                 #
+                  ###################################
+                  jetstream {
+                    max_mem: 1Gi
+                    store_dir: /data
+
+                    # 8Gi on a 10Gi PVC (~9.7GiB usable) — see comment above.
+                    max_file: 8Gi
+                  }
+                  max_payload: 64MB
+                  lame_duck_grace_period: 10s
+                  lame_duck_duration: 30s
