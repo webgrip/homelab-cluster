@@ -54,11 +54,13 @@ spec:
               fi
               echo "DOCUMENTS stream holds $bytes bytes"
               if [ "$bytes" -gt 7516192768 ]; then
-                nats stream purge DOCUMENTS --force
-                # The ingestor's durable consumer carries a corrupt metafile from the
-                # ENOSPC crashes; drop it so the ingestor recreates it clean.
-                nats consumer rm DOCUMENTS processor --force || true
-                echo "purged wedged stream"
+                # rm, not purge: purge writes a fresh block file, which a 100%-full
+                # volume cannot host (proven 2026-08-27: "Error creating msg block
+                # file"). Deletion only frees. GUAC components recreate the stream
+                # and their consumers idempotently at startup — that is how the
+                # stream came to exist on the originally empty volume.
+                nats stream rm DOCUMENTS --force
+                echo "removed wedged stream"
               else
                 echo "stream healthy, nothing to do"
               fi
