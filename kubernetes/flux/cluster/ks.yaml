@@ -65,6 +65,14 @@ spec:
                   # tuned out with spec.driftDetection.ignore.
                   driftDetection:
                     mode: warn
+                    # seccomp-default-mutate (Kyverno, autogen) adds seccompProfile to
+                    # workload templates at admission — including the drift dry-run — so
+                    # every HR whose chart omits it warned DriftDetected hourly (~29 HRs
+                    # since 2026-08-06). The field is Kyverno's by design; mask it here.
+                    ignore:
+                      - paths:
+                          - /spec/template/spec/securityContext/seccompProfile
+                          - /spec/jobTemplate/spec/template/spec/securityContext/seccompProfile
                   install:
                     crds: CreateReplace
                     strategy:
