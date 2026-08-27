@@ -55,6 +55,12 @@ spec:
           - resources:
               kinds:
                 - Pod
+              # CREATE only. Pod spec is immutable, so mutating an UPDATE of a
+              # pre-policy pod makes the API server reject the whole request —
+              # even a metadata-only change (a finalizer removal was bounced
+              # this way on 2026-08-27).
+              operations:
+                - CREATE
       exclude:
         any:
           - resources:
