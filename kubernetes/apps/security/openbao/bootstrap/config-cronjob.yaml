@@ -7,12 +7,19 @@ metadata:
   name: openbao-config
 spec:
   schedule: "2-59/5 * * * *"
+  # Bound the miss-count window: without it, >100 missed starts (e.g. behind a wedged Forbid job) halt scheduling forever.
+  startingDeadlineSeconds: 300
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
       backoffLimit: 1
+      # Typical run is ~2m30s; a job that outlives this is wedged and would block Forbid
+      # scheduling indefinitely (happened 2026-08-06→27: one dead job froze the schedule 21d).
+      activeDeadlineSeconds: 600
+      # GC finished Jobs so a terminal-but-unGC'd failure can't linger as "active".
+      ttlSecondsAfterFinished: 21600
       template:
         spec:
           serviceAccountName: openbao-config

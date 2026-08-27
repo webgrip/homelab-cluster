@@ -12,9 +12,14 @@ metadata:
   name: renovate-job-cleanup
   namespace: renovate
 rules:
-  - apiGroups: ["batch"]
-    resources: ["jobs"]
-    verbs: ["get", "list", "delete"]
+  - apiGroups:
+      - "batch"
+    resources:
+      - "jobs"
+    verbs:
+      - "get"
+      - "list"
+      - "delete"
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -39,6 +44,8 @@ metadata:
   namespace: renovate
 spec:
   schedule: "*/30 * * * *"
+  # Bound the miss-count window: without it, >100 missed starts (e.g. behind a wedged Forbid job) halt scheduling forever.
+  startingDeadlineSeconds: 300
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 1
@@ -83,7 +90,8 @@ spec:
                 runAsNonRoot: true
                 readOnlyRootFilesystem: true
                 capabilities:
-                  drop: ["ALL"]
+                  drop:
+                    - "ALL"
               resources:
                 requests:
                   cpu: 10m
