@@ -96,6 +96,12 @@ spec:
                       # QUIC one), so masking loses nothing.
                       - paths:
                           - /spec/template/spec/containers/0/ports
+                          # GOMEMLIMIT's resourceFieldRef.divisor: the chart says
+                          # integer 1, the API stores quantity "1", and the drift
+                          # diff treats the type change as a change forever. Env
+                          # index 0 is chart-order-dependent; re-check on a spegel
+                          # chart bump if spegel starts warning again.
+                          - /spec/template/spec/containers/0/env/0/valueFrom/resourceFieldRef/divisor
                         target:
                           kind: DaemonSet
                           name: spegel
