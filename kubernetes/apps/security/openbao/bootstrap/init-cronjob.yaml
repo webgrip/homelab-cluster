@@ -49,6 +49,11 @@ spec:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
                 capabilities: {drop: ["ALL"]}
+              # Idempotent no-op on an initialised instance finishes in seconds;
+              # a real (re)init is API calls, not compute.
+              resources:
+                requests: {cpu: 50m, memory: 64Mi}
+                limits: {memory: 256Mi}
           containers:
             - name: store
               # alpine/k8s has kubectl AND a shell (registry.k8s.io/kubectl is distroless).
@@ -67,6 +72,10 @@ spec:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
                 capabilities: {drop: ["ALL"]}
+              # kubectl apply of one small Secret.
+              resources:
+                requests: {cpu: 50m, memory: 64Mi}
+                limits: {memory: 256Mi}
           volumes:
             - name: scripts
               configMap: {name: openbao-bootstrap}
