@@ -102,6 +102,13 @@ spec:
                           # index 0 is chart-order-dependent; re-check on a spegel
                           # chart bump if spegel starts warning again.
                           - /spec/template/spec/containers/0/env/0/valueFrom/resourceFieldRef/divisor
+                          # Side effect of the ports item above: the drift dry-run
+                          # DOES add the UDP port (SSA merges on port+protocol),
+                          # which makes the server bump this managed annotation in
+                          # the dry-run result while live keeps the old value — a
+                          # change the ports mask cannot cover. Verified via
+                          # `kubectl diff --server-side --field-manager=helm-controller`.
+                          - /metadata/annotations/deprecated.daemonset.template.generation
                         target:
                           kind: DaemonSet
                           name: spegel
