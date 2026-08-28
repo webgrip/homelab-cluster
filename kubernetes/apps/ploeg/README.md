@@ -30,8 +30,10 @@ kept in lockstep by the release train).
 
 Per-team KEDA ScaledJobs run OpenHands (agent-runner image) against LiteLLM with a per-run
 budgeted key; work lands as `agent/vik-<id>` branches + PRs by the `agent-builder` bot.
-Requires in this namespace: `agent-litellm-master` + `agent-builder-token` ExternalSecrets,
-the `exception-ploeg-worker-privileged` Kyverno exception (privileged DinD sidecar), and
-egress to `ai:4000` + `forgejo:3000`.
+Requires in this namespace: `agent-litellm-master` + `agent-builder-token` ExternalSecrets and
+egress to `ai:4000` + `forgejo:3000`. The plane is daemonless (ADR-0053): every team runs
+`dind: false` via the executor-level harness default, no pod is privileged, and the old
+`exception-ploeg-worker-privileged` Kyverno waiver + PSA carve-out are gone — gates that need
+containers run in CI, in CI's own images.
 
 Failure-mode drills and the full e2e runbook live in the executor PR description.

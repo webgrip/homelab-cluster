@@ -201,6 +201,17 @@ spec:
       # webhook-carrying board unless a copper no-op is what you want.
     executor:
       enabled: true
+      # ADR-0053: the agent plane is daemonless — dind:false is the ESTATE
+      # default here, overriding the chart's own dind:true. This line is
+      # load-bearing: bronze's builder role and silver carry no harness block
+      # of their own, so before it existed they inherited the chart default
+      # and ran privileged DinD sidecars nobody had written down in this
+      # file (they were the two names in the now-deleted
+      # exception-ploeg-worker-privileged-cel waiver). Gates that need
+      # containers run in CI, in CI's own images.
+      harness:
+        name: openhands
+        dind: false
       # Workers run under their own identity, ploeg-worker, created by the
       # chart (>= rc.13). Naming none left them on `default`, which trips
       # Kyverno's require-non-default-serviceaccount and makes every workload
@@ -219,35 +230,26 @@ spec:
       # entrypoint no longer cold-imports the CLI tree (2m20s at 500m) just to
       # log it, and silences dependency DeprecationWarnings in run logs.
       runnerImage: harbor.webgrip.dev/webgrip/agent-runner:1.1.0@sha256:94e0569b534a275868ac9fcfb57cf409222f089684854445ec2421852ea0f1a0
-      # The chart's dindImage default is tag-only, so every worker pod failed
-      # Kyverno's require-image-digest (Audit, so nothing was blocked — the
-      # finding just sat in the PolicyReport). Pinned here rather than waiting
-      # on a chart bump. Same digest the forgejo runners already use, so the
-      # node has the layers cached.
+      # No dindImage / dindResources: the agent plane is daemonless
+      # (ADR-0053). Every team runs dind:false, the ploeg namespace is back at
+      # PSA baseline and the privileged Kyverno waiver is deleted — so
+      # re-enabling a DinD sidecar is deliberately an MR that has to bring all
+      # three back, not a values flip. Gates that need containers run in CI,
+      # in CI's own images.
+      # (runnerImage above is NOT Renovate-maintained: the custom managers in
+      # the shared webgrip/renovate-config preset have no matcher for it, so
+      # it is a manual bump today.)
       #
-      # NOT Renovate-maintained. The custom managers live in the shared
-      # webgrip/renovate-config preset, and neither this line nor runnerImage
-      # above has a matcher there — both are manual bumps today. A marker
-      # comment alone would not help: without a separate (?<currentDigest>…)
-      # capture group Renovate treats the whole string as an opaque version
-      # and never refreshes the digest.
-      dindImage: harbor.webgrip.dev/dockerhub/library/docker:29.7.1-dind@sha256:e8faad5a8dc5279dff929afc5449f2791736912fff9f99351d742db2fad01b4c
       # Guaranteed QoS stays (requests==limits — ADR-0049 P1), sized down from
       # the chart defaults so a run fits the rebalanced fringe node: worker
-      # peak measured 438Mi (run 8), dind must still hold a go build +
-      # embedded-postgres for the gates. A build exceeding dind's limit fails
-      # THAT build visibly, never the pod.
+      # peak measured 438Mi (run 8).
       # Worker CPU is 1 full core, not 500m: the OpenHands CLI's
       # single-threaded Python cold import took 2m20s at 500m before the
-      # agent did anything (silver run 2026-07-27); docker/dind was a red
-      # herring — its daemon was up in 13s. Both teams at this sizing fit
-      # fringe (2×1.5 CPU of 7.95 allocatable).
+      # agent did anything (silver run 2026-07-27). Both teams at this sizing
+      # fit fringe (2×1.5 CPU of 7.95 allocatable).
       workerResources:
         requests: {cpu: "1", memory: 768Mi}
         limits: {cpu: "1", memory: 768Mi}
-      dindResources:
-        requests: {cpu: 500m, memory: 1Gi}
-        limits: {cpu: 500m, memory: 1Gi}
       scaler:
         # The KEDA operator resolves this hostname from the keda namespace,
         # so the chart's short in-namespace default never resolves there.
@@ -344,10 +346,9 @@ spec:
                 - name: reviewer
                   writes: false
                   cap: "0.40"
-                  # dind:false is load-bearing twice over: it skips the docker
-                  # wait, and it drops the privileged-dind hazard label, so a
-                  # reader is held to the full Kyverno baseline instead of
-                  # being waived for a privilege it never takes.
+                  # Redundant with the executor-level default since ADR-0053,
+                  # kept deliberately: a reader role must never regain a
+                  # docker daemon by someone editing the global default.
                   harness: {name: openhands, dind: false}
                   workerResources:
                     requests: {cpu: 500m, memory: 384Mi}
@@ -392,9 +393,9 @@ spec:
         # taskspec.json inside the same agent-runner image and exits 0, so a
         # run proves per-team harness selection, taskspec/task.md composition,
         # per-run key mint/revoke, and the no_change_needed outcome path —
-        # without spending a single LLM token. dind: false also exercises the
-        # sidecar-less pod shape (no privileged container, so this team is
-        # outside the DinD PolicyException entirely).
+        # without spending a single LLM token. dind: false predates ADR-0053
+        # here and is now the estate default; copper proved the sidecar-less
+        # pod shape the rest of the plane later standardized on.
         # copper has no `plan:` either, so `budget` is its per-run ceiling and
         # not a pool, same as silver above.
         - name: copper

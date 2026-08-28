@@ -1,6 +1,6 @@
 ---
 status: proposed
-date: 2026-07-18
+date: 2026-08-28
 ---
 
 # Dark-factory agents run on a dedicated Forgejo Actions pool, poll-dispatched, as two role bots
@@ -165,3 +165,7 @@ Load-bearing specifics:
   they are deliberately kept free, and a privileged DinD beside etcd is the exact shape of the
   documented fsync-starvation failure. Corrected to `pool: worker`. No agent pod ever ran on a soyo
   (the pool is scale-from-zero and had not been dispatched to).
+* 2026-08-28 — the privileged-DinD plane this record reused is retired by
+  [ADR-0053](adr-0053-daemonless-agent-plane.md): the agent plane is daemonless, `dind: false`
+  estate-wide, gates run in CI. The execution-layer decision itself (dedicated pool, role bots,
+  dispatch shape) is unaffected.
