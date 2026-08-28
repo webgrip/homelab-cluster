@@ -77,6 +77,28 @@ spec:
                           # annotation at admission, and its pass/fail value flips with
                           # signature lookups (erfbeeld/ploeg warned every reconcile).
                           - /metadata/annotations/kyverno.io~1verify-images
+                      # Same class again: sa-token-optout-mutate sets this on its
+                      # enumerated no-RBAC ServiceAccounts at admission — the drift
+                      # dry-run included — so every HR shipping one of those SAs
+                      # (longhorn hourly since 2026-08; the victoria stack is next as
+                      # those SAs get touched) warns forever. The field is Kyverno's
+                      # by design across ALL ServiceAccounts; mask it estate-wide.
+                      - paths:
+                          - /automountServiceAccountToken
+                        target:
+                          kind: ServiceAccount
+                      # NOT a Kyverno mutation: spegel's chart declares router-tcp
+                      # (TCP/5001) AND router-quic (UDP/5001), but the containerPort
+                      # strategic-merge key is the port number alone, so the apply
+                      # collapses the pair and the UDP entry never lands — desired
+                      # state that can never converge (kubernetes#113482 class).
+                      # containerPort entries are informational (no hostPort on the
+                      # QUIC one), so masking loses nothing.
+                      - paths:
+                          - /spec/template/spec/containers/0/ports
+                        target:
+                          kind: DaemonSet
+                          name: spegel
                   install:
                     crds: CreateReplace
                     strategy:
