@@ -1,10 +1,11 @@
 ---
 # Vikunja MCP for Claude Code: supergateway bridges the stdio-only
 # @aimbitgmbh/vikunja-mcp npm server to streamable HTTP at /mcp (the npm
-# ecosystem has no native-HTTP Vikunja MCP). npx fetches the pinned package at
-# session spawn — hence the internet-egress NetworkPolicy carve-out; the npm
-# cache lives in the /tmp emptyDir so respawns within a pod's lifetime are
-# offline. WRITE-CAPABLE: acts as the token owner's Vikunja user.
+# ecosystem has no native-HTTP Vikunja MCP). An initContainer npm-installs the
+# pinned package (with the MCP SDK pinned via overrides — see below) into the
+# /tmp emptyDir at pod start — hence the internet-egress NetworkPolicy
+# carve-out; runtime child spawns run offline from that install.
+# WRITE-CAPABLE: acts as the token owner's Vikunja user.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -43,12 +44,59 @@ spec:
         runAsUser: 1000
         runAsGroup: 1000
         fsGroup: 1000
+      initContainers:
+        # Install the child ONCE per pod with @modelcontextprotocol/sdk pinned via
+        # npm overrides. `npx -y` re-resolved vikunja-mcp's `^1.25.1` SDK range on
+        # every pod start; SDK 1.30.0 (2026-07-27) made the child answer initialize
+        # with protocolVersion 2025-11-25 instead of echoing the client's requested
+        # version, which Claude Code rejects ("Unsupported protocol version", max
+        # 2025-06-18) — the aborted connection then crashed supergateway's stateless
+        # bridge ("No connection established for request ID"), 39 restarts in 16d.
+        # 1.29.0 is the newest SDK that predates the regression and satisfies
+        # ^1.25.1 (zod v4 support landed in 1.25.x, so no API skew). Installing in
+        # an initContainer also removes the per-request npx race of stateless mode.
+        - name: prepare-vikunja-mcp
+          image: docker.io/supercorp/supergateway:3.4.3@sha256:095acf4471e142553c1a5514aa5e480abbc5885d00549d4a3481cc70eac53889
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              mkdir -p /tmp/app
+              cd /tmp/app
+              npm init -y >/dev/null
+              npm pkg set 'overrides.@modelcontextprotocol/sdk=1.29.0'
+              npm install --no-audit --no-fund --loglevel=error @aimbitgmbh/vikunja-mcp@0.1.0
+          env:
+            - name: HOME
+              value: /tmp
+            - name: npm_config_cache
+              value: /tmp/npm-cache
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
       containers:
         - name: mcp-vikunja
           image: docker.io/supercorp/supergateway:3.4.3@sha256:095acf4471e142553c1a5514aa5e480abbc5885d00549d4a3481cc70eac53889
           args:
             - --stdio
-            - npx -y @aimbitgmbh/vikunja-mcp@0.1.0
+            # The initContainer above installed this with the SDK override; running
+            # node directly (no npx) makes stateless per-request child spawns fast
+            # and deterministic.
+            - node /tmp/app/node_modules/@aimbitgmbh/vikunja-mcp/dist/index.js
             - --outputTransport
             - streamableHttp
             - --port
