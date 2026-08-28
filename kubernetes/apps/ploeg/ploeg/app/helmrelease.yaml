@@ -238,10 +238,15 @@ spec:
       # wants a create/name split; ticket on the board.
       # Chart default lags a release behind; pin the runner here. 1.0.2 killed
       # ~5 min of startup dead time per run (no public-skills git sync, local
-      # LiteLLM cost map — VIK-590); 1.0.3 bakes the version banner so the
-      # entrypoint no longer cold-imports the CLI tree (2m20s at 500m) just to
-      # log it, and silences dependency DeprecationWarnings in run logs.
-      runnerImage: harbor.webgrip.dev/webgrip/agent-runner:1.1.0@sha256:94e0569b534a275868ac9fcfb57cf409222f089684854445ec2421852ea0f1a0
+      # LiteLLM cost map — VIK-590); 1.0.3 bakes the version banner; 1.2.0 is
+      # the FIRST DAEMONLESS image (ADR-0053: no docker CLI, no daemon wait —
+      # runs 426-439 tell the release saga in its Dockerfile header), on the
+      # DHI musl base (43/107 -> 6/53 CVEs), with the shared litellm-key
+      # helper (env-only key passing, run-attributed admin calls), TERM
+      # forwarding + EXIT-trap revoke, and `product-owner` replacing the
+      # consolidated `vikunja-product-owner` in the baked skills. ploeg-worker
+      # is statically linked, so the musl move cannot break the init copy.
+      runnerImage: harbor.webgrip.dev/webgrip/agent-runner:1.2.0@sha256:2fb6d30db188dbd70ac64404658fbaa9a53c289f1f7d60d01f1fc27b39ebc6a3
       # No dindImage / dindResources: the agent plane is daemonless
       # (ADR-0053). Every team runs dind:false, the ploeg namespace is back at
       # PSA baseline and the privileged Kyverno waiver is deleted — so
