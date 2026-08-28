@@ -1,0 +1,67 @@
+---
+# Sets shareProcessNamespace on trivy-operator vulnerability-scan pods so that
+# concurrent trivy processes stop destroying each other's temp directories.
+#
+# THE BUG (upstream, open: aquasecurity/trivy-operator#2859). A scan Job for a
+# multi-container workload runs one trivy container per scanned image, and the
+# operator mounts ONE shared `tmp` emptyDir at /tmp in all of them. Trivy names
+# its post-analysis temp directory by its own PID (/tmp/trivy-{PID}); every
+# container has an identical PID layout, so every trivy in the pod uses the SAME
+# path (observed here: /tmp/trivy-7) and the first scan to finish deletes the
+# directory out from under its siblings:
+#   `unable to create temporary directory: stat /tmp/trivy-7: no such file or
+#    directory` → job hits backoffLimit → no VulnerabilityReport.
+# Bit hardest on ploeg worker jobs (agent-runner + ploegd: two multi-GB images,
+# long analysis windows, near-certain overlap) — 2026-08-28, two consecutive
+# scan jobs of ploeg-worker-bronze-reviewer failed this way.
+#
+# THE FIX. shareProcessNamespace merges the pod's containers into one PID
+# namespace, so each trivy gets a unique PID and therefore a unique temp dir.
+# The operator's pod template cannot express this (no per-container tmp volumes
+# either), so it is mutated in at admission — the same pattern as
+# seccomp-default-mutate. Risk is nil for this pod shape: the containers are
+# sibling instances of the same scanner image with no secrets asymmetry, and the
+# pause container becomes PID 1 (zombie reaping included).
+#
+# LEGACY DIALECT DELIBERATELY: mutate on the CEL path (MutatingPolicy) is
+# unverified in this cluster (see seccomp-default-mutate's rationale).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: trivy-scanjob-pid-mutate
+  annotations:
+    policies.kyverno.io/title: Unique Trivy Temp Dirs via Shared PID Namespace
+    policies.kyverno.io/category: Platform Reliability
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      trivy-operator scan pods share one /tmp emptyDir across their per-image
+      trivy containers while trivy names its temp dir by PID, so multi-container
+      scans race and fail (trivy-operator#2859). Sharing the process namespace
+      gives each trivy a unique PID and a unique temp dir.
+spec:
+  background: false
+  rules:
+    - name: share-pid-namespace
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              # scanJobsInSameNamespace is false, so all scan jobs run in the
+              # operator's namespace.
+              namespaces:
+                - security
+              # Pod spec is immutable after admission — CREATE only, same as
+              # seccomp-default-mutate.
+              operations:
+                - CREATE
+              selector:
+                matchLabels:
+                  app.kubernetes.io/managed-by: trivy-operator
+                  vulnerabilityReport.scanner: Trivy
+      mutate:
+        patchStrategicMerge:
+          spec:
+            shareProcessNamespace: true

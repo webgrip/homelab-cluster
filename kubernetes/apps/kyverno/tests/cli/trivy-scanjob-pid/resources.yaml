@@ -1,0 +1,40 @@
+---
+# A trivy-operator vulnerability-scan pod as the operator generates it: two
+# scanned-image containers sharing one tmp emptyDir. MUST be mutated.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: scan-vulnerabilityreport-abc123-xyz
+  namespace: security
+  labels:
+    app.kubernetes.io/managed-by: trivy-operator
+    vulnerabilityReport.scanner: Trivy
+spec:
+  containers:
+    - name: worker
+      image: mirror.gcr.io/aquasec/trivy:0.69.3
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+    - name: worker-bin
+      image: mirror.gcr.io/aquasec/trivy:0.69.3
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir: {}
+---
+# A pod in the same namespace WITHOUT the trivy-operator labels. Must NOT be
+# mutated — proves the label selector actually gates the rule.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unrelated-pod
+  namespace: security
+  labels:
+    app.kubernetes.io/name: unrelated
+spec:
+  containers:
+    - name: app
+      image: mirror.gcr.io/library/busybox:1.36

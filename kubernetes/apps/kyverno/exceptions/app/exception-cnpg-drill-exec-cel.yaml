@@ -1,0 +1,36 @@
+---
+# The CNPG restore-test and disaster-recovery-check drills (components/
+# cnpg-restore-test, components/cnpg-disaster-recovery) verify backups by
+# running psql INSIDE the database pod — pods/exec is the mechanism of the
+# drill, not an accident: CNPG has no API-level "run a query against this
+# recovered cluster" primitive, and a drill that doesn't query the restored
+# data verifies nothing (see runbooks/cnpg-backups.md). The Roles are
+# component-templated into every CNPG app namespace, each bound only to the
+# drill's own ServiceAccount, and grant exec alongside read-only cluster/pod
+# access — no attach, no portforward.
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-cnpg-drill-exec-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      The CNPG restore/DR drill Roles need pods/exec to psql the restored
+      database from inside its pod — that exec IS the drill's verification.
+      Waives restrict-pod-exec-verbs for exactly the two component-defined Role
+      names, in whatever namespace the components are instantiated.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: restrict-pod-exec-verbs
+  matchConditions:
+    # Namespaced Roles only (never ClusterRoles), exact component names. The
+    # components stamp these into each CNPG app namespace, so the namespace is
+    # deliberately not pinned — pinning it would silently re-flag the next app
+    # that adopts the drill components.
+    - name: cnpg-drill-roles
+      expression: >-
+        object.kind == 'Role' &&
+        object.metadata.name in ['cnpg-restore-test', 'cnpg-disaster-recovery-check']

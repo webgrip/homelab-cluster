@@ -1,0 +1,25 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: scan-vulnerabilityreport-abc123-xyz
+  namespace: security
+  labels:
+    app.kubernetes.io/managed-by: trivy-operator
+    vulnerabilityReport.scanner: Trivy
+spec:
+  shareProcessNamespace: true
+  containers:
+    - name: worker
+      image: mirror.gcr.io/aquasec/trivy:0.69.3
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+    - name: worker-bin
+      image: mirror.gcr.io/aquasec/trivy:0.69.3
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir: {}

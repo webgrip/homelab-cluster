@@ -1,0 +1,27 @@
+---
+# Mutation test for trivy-scanjob-pid-mutate, both directions: a labeled scan
+# pod is patched with shareProcessNamespace (compared against patched.yaml), and
+# an unlabeled pod in the same namespace is skipped — a rule that mutated
+# everything in `security` would fail the second expectation.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: trivy-scanjob-pid
+policies:
+  - ../../policies/trivy-scanjob-pid-mutate.yaml
+resources:
+  - resources.yaml
+results:
+  - policy: trivy-scanjob-pid-mutate
+    rule: share-pid-namespace
+    resources:
+      - security/scan-vulnerabilityreport-abc123-xyz
+    kind: Pod
+    patchedResources: patched.yaml
+    result: pass
+  - policy: trivy-scanjob-pid-mutate
+    rule: share-pid-namespace
+    resources:
+      - security/unrelated-pod
+    kind: Pod
+    result: skip
