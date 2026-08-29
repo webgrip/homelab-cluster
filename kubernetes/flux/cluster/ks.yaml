@@ -58,13 +58,19 @@ spec:
                 metadata:
                   name: _
                 spec:
-                  # Detect (don't auto-correct) live drift from reconciled state.
-                  # 'warn' surfaces drift via events + the gotk DriftDetected metric
-                  # (FluxResourceDriftDetected alert) without fighting Kyverno mutate
-                  # webhooks. Promote to 'enabled' per-HR once benign-drift paths are
-                  # tuned out with spec.driftDetection.ignore.
+                  # Correct live drift back to reconciled state. Ran as 'warn' until
+                  # 2026-08-29: the benign-drift classes below (Kyverno-owned fields,
+                  # spegel's unmergeable port) had ~30 HRs warning hourly, which under
+                  # 'enabled' would have been hourly correction fights. With every
+                  # known class masked, estate-wide drift went to ZERO (verified in
+                  # VictoriaLogs: helm-controller msg:"detected changes in cluster
+                  # state" — the only drift telemetry left; the DriftDetected metric
+                  # and its alert died 2026-08-05, and Events age out in ~1h, so THAT
+                  # query is the check to re-run before touching this). If an HR
+                  # starts fighting a mutator, mask the field here or revert this
+                  # line — one word, instant.
                   driftDetection:
-                    mode: warn
+                    mode: enabled
                     # seccomp-default-mutate (Kyverno, autogen) adds seccompProfile to
                     # workload templates at admission — including the drift dry-run — so
                     # every HR whose chart omits it warned DriftDetected hourly (~29 HRs
