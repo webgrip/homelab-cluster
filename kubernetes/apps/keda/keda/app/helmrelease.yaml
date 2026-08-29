@@ -43,16 +43,21 @@ spec:
     # (repo:tag@digest) -- same pattern as gitea-mirror. Digests verified live
     # (running pod imageIDs) and via `docker manifest inspect` against Harbor
     # before landing. VIK-241/242.
+    # KEEP THESE IN LOCKSTEP WITH THE CHART VERSION: the chart's operator flags
+    # track the app (chart 2.20.2 passes --http-max-idle-conns, which image
+    # 2.20.0 rejects with "unknown flag" + usage dump → crashloop → upgrade
+    # timeout → rollback; exactly this wedged the forgejo-runner dependency
+    # chain on 2026-08-29 when Renovate automerged the chart bump alone).
     image:
       keda:
         registry: harbor.webgrip.dev/ghcr
-        tag: "2.20.0@sha256:f9b156ce154d2557a284c4a11c258ccf8a4a02d7cfde339592b09267131c7df1"
+        tag: "2.20.2@sha256:fe74c7b8849586a67ad2201bcb89e7f5ac221ff90399ecaa8fd28427f1ef11e6"
       metricsApiServer:
         registry: harbor.webgrip.dev/ghcr
-        tag: "2.20.0@sha256:adbcb6f77a8e2a63f80723fe4cf9031dd204498f0d985d8856aaed15be03b0e6"
+        tag: "2.20.2@sha256:27286536a8a775aeeee37a7e343f8ecebb27ebf680ee1181a4f99e82eefb253b"
       webhooks:
         registry: harbor.webgrip.dev/ghcr
-        tag: "2.20.0@sha256:acb89f0fa76adf6cd2fb6f88c395619bd21b225ab0ef1bf4b9d2d50d537372a5"
+        tag: "2.20.2@sha256:41f74102aba7959c6e8d08b433ab8a5fd6cae7c5646c78f7fe3de40a52df3439"
     operator:
       replicaCount: 1
     metricsServer:
