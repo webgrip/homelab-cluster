@@ -138,6 +138,18 @@
     ],
     executionMode: "branch",
   },
+  // The Flux manager's DEFAULT pattern only matches `flux-system/<file>.yaml` (one path
+  // segment), which in this tree matches nearly nothing — so every classic (non-OCI)
+  // HelmRepository chart (trivy-operator, longhorn, harbor, authentik, keda, falco, the
+  // observability stack, … ~17 apps) never got a version PR at all. Found 2026-08-29:
+  // trivy-operator sat at chart 0.32.1 with 0.36.0 four weeks released and no branch.
+  // Widening is safe for the OCI estate: OCIRepository files are owned by custom.regex +
+  // update-oci-digests.sh, and the flux manager is disabled on them by packageRule below.
+  flux: {
+    managerFilePatterns: [
+      "/(^|/)kubernetes/apps/.+\\.ya?ml$/",
+    ],
+  },
   // PR body columns (Released / "Age (d)", self-hosted from releaseTimestamp /
   // newVersionAgeInDays) moved to the shared preset in v1.6.0 — they apply org-wide, not just
   // here. The preset also carries the generic notes (major/security/grouped/soak explainer), so
@@ -241,15 +253,41 @@
       prPriority: 10,
     },
     {
-      description: "Group Flux controller updates and keep Renovate's Flux manager away from digest-pinned OCIRepository files. OCIRepository tags are updated by custom.regex and scripts/update-oci-digests.sh refreshes spec.ref.digest from the registry manifest digest.",
+      description: "Group Flux controller updates and keep Renovate's Flux manager away from digest-pinned OCIRepository files. OCIRepository tags are updated by custom.regex and scripts/update-oci-digests.sh refreshes spec.ref.digest from the registry manifest digest. Scoped to flux-system since the manager pattern widening (2026-08-29) — classic app charts must NOT collapse into this group.",
       matchManagers: [
         "flux"
+      ],
+      matchFileNames: [
+        "kubernetes/apps/flux-system/**"
       ],
       groupName: "Flux controllers",
       pinDigests: false,
       separateMinorPatch: true,
       separateMultipleMajor: true,
       commitBodyTable: true,
+    },
+    {
+      description: "The widened Flux manager must not double-manage OCIRepository files: custom.regex owns their tag bumps and update-oci-digests.sh their spec.ref.digest — a second manager on the same field races the digest refresh.",
+      matchManagers: [
+        "flux"
+      ],
+      matchFileNames: [
+        "kubernetes/apps/**/ocirepository.yaml"
+      ],
+      enabled: false,
+    },
+    {
+      description: "Platform-critical classic Helm charts (storage, registry, database operators, the secrets backend) never automerge — same policy as the OCI platform group, for the charts that only exist as classic HelmRepository.",
+      matchManagers: [
+        "flux"
+      ],
+      matchFileNames: [
+        "kubernetes/apps/longhorn-system/**",
+        "kubernetes/apps/harbor/**",
+        "kubernetes/apps/cnpg-system/**",
+        "kubernetes/apps/security/openbao/**"
+      ],
+      automerge: false,
     },
     {
       description: "Automerge Flux OCI Helm chart patch updates; digest pins are refreshed by post-upgrade tasks",
