@@ -77,7 +77,7 @@ What the cluster runs on, and the cross-cutting patterns everything above assume
 | [0004](adr-0004-cilium-wireguard-encryption.md) | Transparent pod-to-pod encryption via Cilium WireGuard | accepted | 2026-06-12 |
 | [0005](adr-0005-cilium-gateway-egress-for-oidc.md) | Identity-based egress to the gateway for server-side OIDC | accepted (superseded in scope by 0006) | 2026-07-02 |
 | [0006](adr-0006-default-deny-network-policies.md) | Opt-in per-namespace default-deny NetworkPolicies | accepted | 2026-07-02 |
-| [0054](adr-0054-forgejo-ssh-off-lan-cloudflare-tunnel.md) | Off-LAN git-SSH rides the Cloudflare Tunnel, on SSH key auth alone | proposed | 2026-08-31 |
+| [0054](adr-0054-forgejo-ssh-off-lan-cloudflare-tunnel.md) | Off-LAN git-SSH rides the Cloudflare Tunnel, on SSH key auth alone | accepted | 2026-08-31 |
 
 ### 3. Storage
 

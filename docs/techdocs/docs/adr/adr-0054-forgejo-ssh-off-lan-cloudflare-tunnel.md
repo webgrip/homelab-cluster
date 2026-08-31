@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-08-31
 ---
 
@@ -182,3 +182,25 @@ rendered, not that a byte of SSH crossed the tunnel. All four must hold:
 ## More Information
 
 * 2026-08-31 — proposed; tunnel ingress rule + public CNAME committed.
+* 2026-08-31 — **accepted**; all four Confirmation checks passed against live state.
+  `@1.1.1.1` answers the tunnel CNAME while `@10.0.0.26` still answers `10.0.0.11`;
+  `ssh -T` through the tunnel returned Forgejo's greeting for `ryangr0`; the LAN path takes
+  no `ProxyCommand`; and this very commit was pushed over the tunnel path.
+
+  Worth writing down, because it will bite the next person who tries to test this from home:
+  **the tunnel path is not directly testable from the LAN.** `cloudflared access ssh` resolves
+  the hostname with the system resolver, which on the LAN is k8s-gateway — so it dials
+  `10.0.0.11:443` (the LoadBalancer, which does not serve TLS) and fails with `network is
+  unreachable`. That failure is split-horizon working correctly, not a broken tunnel. To
+  exercise the real path from inside the house, give cloudflared a public resolver:
+
+  ```bash
+  docker run -d --rm --name cf-ssh-test --dns 1.1.1.1 -p 12222:2222 \
+    docker.io/cloudflare/cloudflared:2026.7.3 \
+    access tcp --hostname forgejo-ssh.${SECRET_DOMAIN} --url 0.0.0.0:2222
+  ssh -T -p 12222 -o HostKeyAlias=forgejo-ssh.${SECRET_DOMAIN} git@127.0.0.1
+  ```
+
+  `HostKeyAlias` is the part that makes this a real test rather than a reachable-port check:
+  it validates the far end against the existing `known_hosts` entry, so a pass proves it is
+  the same sshd with the same host key, reached over the tunnel.
