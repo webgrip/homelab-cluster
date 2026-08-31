@@ -91,6 +91,31 @@ spec:
         data:
           config.yaml: |-
             ingress:
+              # Git-over-SSH from outside the LAN, without dialling the WireGuard VPN.
+              # cloudflared proxies the raw TCP stream to the SAME forgejo-ssh Service the
+              # LAN LoadBalancer (10.0.0.11) fronts, so there is one SSH endpoint, one host
+              # key, and one set of git remotes -- clients off-LAN just reach it with
+              # `ProxyCommand cloudflared access ssh --hostname %h`.
+              #
+              # MUST stay above the wildcard rule below: cloudflared matches ingress rules in
+              # order, and "*.${SECRET_DOMAIN}" would otherwise swallow this hostname and hand
+              # an SSH byte stream to Envoy as if it were HTTPS.
+              #
+              # This is the first non-HTTP service the tunnel carries, and it puts a git SSH
+              # daemon on the public internet. The gate is Forgejo's own sshd (publickey only,
+              # one forced-command `git` user) and deliberately nothing else: a Cloudflare
+              # Access application was designed and declined, because an expiring browser
+              # session plus a service token to rotate is a worse failure mode here than the
+              # exposure it removes -- same posture every public forge runs. ADR-0054 records
+              # that trade-off; the practical follow-through is key hygiene, since every key on
+              # a Forgejo account now works from anywhere.
+              #
+              # LAN clients are untouched: k8s-gateway is authoritative for the zone on the
+              # LAN and keeps answering 10.0.0.11, so only off-LAN resolvers ever see the
+              # tunnel path. No NetworkPolicy change was needed -- forgejo-allow-ingress
+              # already admits the `network` namespace on all ports.
+              - hostname: "forgejo-ssh.${SECRET_DOMAIN}"
+                service: ssh://forgejo-ssh.forgejo.svc.cluster.local:22
               - hostname: "*.${SECRET_DOMAIN}"
                 originRequest:
                   http2Origin: true

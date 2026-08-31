@@ -51,12 +51,12 @@ Hostnames follow `<app>.${SECRET_DOMAIN}` (`cluster-secrets`, SOPS-encrypted). G
 
 | Service | Namespace | IP | Ports |
 | --- | --- | --- | --- |
+| minecraft | `minecraft` | `10.0.0.10` | game TCP/UDP |
+| forgejo-ssh | `forgejo` | `10.0.0.11` | 22 (git SSH; also reachable off-LAN through the Cloudflare Tunnel, [ADR-0054](../adr/adr-0054-forgejo-ssh-off-lan-cloudflare-tunnel.md)) |
 | `k8s-gateway` (split DNS) | `network` | `10.0.0.26` | 53/udp |
 | `envoy-internal` | `network` | `10.0.0.27` | 443 |
 | `envoy-external` | `network` | `10.0.0.28` | 443 |
 | zomboid (**disabled**) | `zomboid` | `10.0.0.29` | UDP 16261-2, 8766-7; TCP 27015 |
-| minecraft | `minecraft` | `10.0.0.30` | game TCP/UDP |
-| forgejo-ssh | `forgejo` | `10.0.0.31` | 22 (git SSH) |
 
 Object storage is split as of 2026-08-02: Harbor registry blobs on the **in-cluster** Garage (`http://garage-s3.garage.svc.cluster.local:3900`), and all backups (CNPG, Longhorn, OpenBao snapshots, Forgejo, guac) on the **off-site** Garage (`https://s3-offsite.webgrip.dev`, Hetzner FSN1).
 

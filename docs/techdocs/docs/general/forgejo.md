@@ -6,7 +6,9 @@ official Forgejo Helm chart and reconciled by Flux.
 - **Manifests:** `kubernetes/apps/forgejo/`
 - **Chart:** `oci://code.forgejo.org/forgejo-helm/forgejo` (pinned tag + digest in `app/ocirepository.yaml`)
 - **Web (public):** `https://forgejo.${SECRET_DOMAIN}` via `envoy-external` (10.0.0.28, Cloudflare Tunnel)
-- **Git SSH (LAN):** `forgejo-ssh.${SECRET_DOMAIN}` → Cilium LoadBalancer `10.0.0.31`, port 22
+- **Git SSH:** `forgejo-ssh.${SECRET_DOMAIN}` → Cilium LoadBalancer `10.0.0.11`, port 22 on the
+  LAN; the same name reaches the same daemon off-LAN through the Cloudflare Tunnel
+  ([ADR-0054](../adr/adr-0054-forgejo-ssh-off-lan-cloudflare-tunnel.md))
 - **Database:** CloudNativePG cluster `forgejo-db` (Postgres), backed up to Garage S3
 - **SSO:** Authentik OIDC (auto-provisions users; local `gitea_admin` is break-glass)
 
@@ -15,7 +17,8 @@ official Forgejo Helm chart and reconciled by Flux.
 | Concern | Choice |
 | --- | --- |
 | Web ingress | `HTTPRoute` → `envoy-external` `https` listener (public via Cloudflare Tunnel) |
-| Git SSH | Chart `service.ssh` as `LoadBalancer` on `10.0.0.31` (rootless sshd on 2222, exposed as 22) |
+| Git SSH (LAN) | Chart `service.ssh` as `LoadBalancer` on `10.0.0.11` (rootless sshd on 2222, exposed as 22) |
+| Git SSH (off-LAN) | Same Service via a `ssh://` rule on the Cloudflare Tunnel, gated by Cloudflare Access |
 | Database | CNPG `forgejo-db`; credentials injected from the operator-managed `forgejo-db-app` Secret |
 | Sessions | Stored in Postgres (`session.PROVIDER=db`) — survive pod restarts, no Redis needed |
 | Cache / queue | In-process `memory` + `level` (on the data PVC) — fine for a single replica |
@@ -48,10 +51,70 @@ signup form is hidden (`ALLOW_ONLY_EXTERNAL_REGISTRATION=true`).
 
 ## Git over SSH
 
-Clone URLs render as `git@forgejo-ssh.${SECRET_DOMAIN}:owner/repo.git`. The hostname
-resolves to `10.0.0.31` (Cilium L2-announced LoadBalancer) for LAN clients using the
-cluster DNS (`10.0.0.26`). The `forgejo` namespace is explicitly allow-listed for
-LoadBalancer Services in the kyverno `network-exposure-enforce` policy.
+Clone URLs render as `git@forgejo-ssh.${SECRET_DOMAIN}:owner/repo.git`. There is **one**
+SSH endpoint, one host key and one set of remotes; only the transport differs by where you
+are sitting.
+
+| Where you are | How the name resolves | Path to the daemon |
+| --- | --- | --- |
+| On the LAN, or on the WireGuard VPN | k8s-gateway (`10.0.0.26`) is authoritative for the zone and answers the Service's LoadBalancer IP | Direct TCP to `10.0.0.11:22` |
+| Anywhere else | Public Cloudflare DNS answers a proxied CNAME to the tunnel | `cloudflared` → Cloudflare edge → tunnel → `forgejo-ssh.forgejo.svc:22` |
+
+The `forgejo` namespace is explicitly allow-listed for LoadBalancer Services in the kyverno
+`network-exposure-enforce` policy. The off-LAN path needed no NetworkPolicy change:
+`forgejo-allow-ingress` already admits the `network` namespace (where cloudflared runs) on all
+ports.
+
+### Pushing from off the LAN, without the VPN
+
+Rationale and trade-offs: [ADR-0054](../adr/adr-0054-forgejo-ssh-off-lan-cloudflare-tunnel.md).
+Each off-LAN machine needs two things — `cloudflared`, and an SSH config block.
+
+!!! warning "Your SSH key is the only gate"
+    `forgejo-ssh.${SECRET_DOMAIN}` is reachable from the public internet. Forgejo's sshd accepts
+    **publickey auth only**, for one forced-command `git` user, which is the same posture GitHub
+    and Codeberg run — but it does mean every key on a Forgejo account now works from anywhere,
+    not just from the LAN. Remove keys you stop using, and treat a lost laptop as urgent.
+
+```bash
+brew install cloudflared        # or: https://github.com/cloudflare/cloudflared/releases
+```
+
+```ssh-config
+# ~/.ssh/config
+#
+# On the LAN (or the VPN) 10.0.0.11:22 answers, so take the direct path: `ProxyCommand none`
+# wins because ssh keeps the FIRST value it obtains for a keyword. Off-LAN the probe fails,
+# this block does not apply, and the tunnel block below takes over.
+Match host forgejo-ssh.<your-domain> exec "nc -z -G1 -w1 10.0.0.11 22 2>/dev/null"
+  ProxyCommand none
+
+Host forgejo-ssh.<your-domain>
+  User git
+  ProxyCommand cloudflared access ssh --hostname %h
+```
+
+Remotes stay exactly as they are (`ssh://git@forgejo-ssh.<your-domain>/owner/repo.git`), and so
+does your `known_hosts` entry — it is the same sshd either way.
+
+There is no login flow and no token: `cloudflared` here is a plain TCP proxy over Cloudflare's
+edge, and authentication is the SSH key exchange at the far end, exactly as on the LAN. That also
+makes the off-LAN path safe for headless use (CI outside the cluster, an agent runner on a
+laptop) with no extra credential.
+
+In-cluster consumers are untouched by all of this — Flux reconciles over
+`forgejo-http.forgejo.svc.cluster.local:3000`, and the runners clone over the same in-cluster
+HTTP.
+
+### Symptom → cause
+
+| Symptom | Cause |
+| --- | --- |
+| `ssh: connect to host ... port 22: Operation timed out` off-LAN | No `ProxyCommand` — the ssh config block is missing on this machine |
+| `ProxyCommand ... cloudflared: command not found` | `cloudflared` not installed on this machine |
+| `websocket: bad handshake`, or the proxy exits immediately | The public CNAME is missing or unproxied — a `cfargotunnel.com` target only resolves through Cloudflare's edge |
+| Off-LAN works but LAN pushes got slow | The `Match ... exec` probe is failing — check `nc -z -G1 -w1 10.0.0.11 22` by hand (drop the `2>/dev/null` to see why); LAN traffic is hairpinning through Cloudflare |
+| `kex_exchange_identification: ... connection reset` | The tunnel's wildcard rule is matching first — the `ssh://` rule must stay **above** `*.${SECRET_DOMAIN}` in `cloudflare-tunnel/app/helmrelease.yaml` |
 
 ## Observability
 

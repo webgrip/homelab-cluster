@@ -7,4 +7,22 @@ spec:
   endpoints:
     - dnsName: "external.${SECRET_DOMAIN}"
       recordType: CNAME
-      targets: ["acf0226d-acaa-4446-98fb-9eeb1620a7a0.cfargotunnel.com"]
+      targets:
+        - "acf0226d-acaa-4446-98fb-9eeb1620a7a0.cfargotunnel.com"
+    # Public name for git-over-SSH, pairing with the `ssh://` ingress rule in the tunnel's
+    # config.yaml (ADR-0054). Both records live here, next to the tunnel they point at, so
+    # the tunnel UUID is written down exactly once.
+    #
+    # Only off-LAN resolvers ever see this. k8s-gateway is authoritative for the whole zone
+    # on the LAN (and CoreDNS forwards the zone to it in-cluster), and it answers from the
+    # forgejo-ssh Service's LoadBalancer IP -- so LAN and VPN pushes keep taking the direct
+    # 10.0.0.11 path at full speed and never touch Cloudflare.
+    #
+    # Cloudflare proxying is REQUIRED, not cosmetic: a cfargotunnel.com CNAME only resolves
+    # through Cloudflare's edge. external-dns runs with a global --cloudflare-proxied, so
+    # this inherits it -- do not add an `external-dns.alpha.kubernetes.io/cloudflare-proxied:
+    # "false"` override here or the name stops resolving entirely.
+    - dnsName: "forgejo-ssh.${SECRET_DOMAIN}"
+      recordType: CNAME
+      targets:
+        - "acf0226d-acaa-4446-98fb-9eeb1620a7a0.cfargotunnel.com"
