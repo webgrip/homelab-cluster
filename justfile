@@ -333,6 +333,33 @@ harbor-s3-cred:
         REGISTRY_STORAGE_S3_SECRETKEY="${secret}"
     echo "wrote secret/harbor/s3 — ESO syncs the harbor-s3 Secret within ~1m"
 
+# One-time seeding of the Cloudflare deploy + manager tokens into OpenBao
+# (secret/cloudflare/deploy + secret/cloudflare/token-manager). From there the
+# forgejo-actions-secrets publisher pushes CLOUDFLARE_* to the webgrip org and
+# cloudflare-token-roller rolls the deploy token monthly — nothing here is
+# ever typed again. Prompts via gum so no value lands in shell history.
+[doc('Seed the Cloudflare deploy + manager tokens into OpenBao (secret/cloudflare/*)')]
+[group('secrets')]
+cloudflare-deploy-cred:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _need bao gum kubectl
+    BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
+    bao token lookup >/dev/null 2>&1 || bao login -method=oidc
+    account_id="$(gum input --placeholder 'Cloudflare Account ID (zone Overview, rechtsonder)')"
+    deploy_token="$(gum input --password --placeholder 'Deploy-token VALUE (Workers Scripts:Edit + Account Settings:Read + Workers Routes:Edit)')"
+    deploy_token_id="$(gum input --placeholder 'Deploy-token ID (uit de API Tokens-lijst, niet de waarde)')"
+    manager_token="$(gum input --password --placeholder 'Manager-token VALUE (alleen Account API Tokens:Edit)')"
+    bao kv put secret/cloudflare/deploy \
+        CLOUDFLARE_API_TOKEN="${deploy_token}" \
+        CLOUDFLARE_ACCOUNT_ID="${account_id}" \
+        CLOUDFLARE_DEPLOY_TOKEN_ID="${deploy_token_id}"
+    bao kv put secret/cloudflare/token-manager \
+        CLOUDFLARE_MANAGER_TOKEN="${manager_token}"
+    echo "wrote secret/cloudflare/deploy + secret/cloudflare/token-manager"
+    echo "ESO syncs within ~1h (or: kubectl -n forgejo annotate externalsecret forgejo-cloudflare-deploy force-sync=$(date +%s) --overwrite)"
+    echo "the forgejo-actions-secrets CronJob publishes CLOUDFLARE_* to the webgrip org on its next hourly tick (:23)"
+
 # One-time seeding of ntfy's declarative auth into OpenBao (secret/ntfy/auth):
 # users (bcrypt), tokens, and the bare alertmanager_token that the Alertmanager
 # routing config templates in as the Bearer credential. Only the "phone" password

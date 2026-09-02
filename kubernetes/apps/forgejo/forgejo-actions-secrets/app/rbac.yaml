@@ -58,3 +58,51 @@ metadata:
   name: forgejo-actions-secrets
   namespace: forgejo
 automountServiceAccountToken: false
+---
+# Identity for the cloudflare-token-roller CronJob. Same shape as
+# forgejo-ci-provisioner above: get/update/patch on the ONE Secret it owns
+# (cloudflare-deploy-rolled, watched by the PushSecret), plus first-run create
+# — RBAC cannot scope `create` by resourceName, so that grant is
+# namespace-wide on the type, the narrowest the API allows.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cloudflare-token-roller
+  namespace: forgejo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cloudflare-token-roller
+  namespace: forgejo
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    resourceNames:
+      - "cloudflare-deploy-rolled"
+    verbs:
+      - "get"
+      - "update"
+      - "patch"
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    verbs:
+      - "create"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cloudflare-token-roller
+  namespace: forgejo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cloudflare-token-roller
+subjects:
+  - kind: ServiceAccount
+    name: cloudflare-token-roller
+    namespace: forgejo

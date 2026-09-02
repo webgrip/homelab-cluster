@@ -1,0 +1,131 @@
+---
+# Rolls the Cloudflare deploy token's VALUE monthly (the id and its scoped
+# policies stay), so the wrangler credential in Forgejo is never older than a
+# month with no human in the loop:
+#
+#   roll (manager token, PUT .../tokens/{id}/value)
+#     -> verify the new value against Cloudflare
+#     -> kubectl apply Secret cloudflare-deploy-rolled
+#     -> PushSecret syncs it into OpenBao secret/cloudflare/deploy
+#     -> forgejo-cloudflare-deploy ExternalSecret refreshes (≤1h)
+#     -> forgejo-actions-secrets publisher PUTs it to Forgejo (≤1h)
+#
+# Tokens are ACCOUNT-owned (Manage Account → API Tokens), so the account
+# endpoints are tried first; the /user fallbacks keep a user-owned bootstrap
+# token working too. The manager token (Account API Tokens:Edit only) is the
+# rotation anchor and is deliberately not auto-rolled — see
+# cloudflare-manager.externalsecret.yaml.
+#
+# Fail-soft like its sibling publisher: missing inputs exit 0 and wait for
+# bootstrap; an API failure exits 1 (alertable) WITHOUT having touched the
+# existing token — the roll is the last step before the single write. Values
+# are never logged.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cloudflare-token-roller
+  namespace: forgejo
+spec:
+  schedule: "41 4 1 * *" # monthly, 1st 04:41 — off every deploy window
+  startingDeadlineSeconds: 3600
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 604800 # monthly job: keep a week of history
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: cloudflare-token-roller
+          # Needs the k8s API for exactly one Secret (see rbac.yaml).
+          automountServiceAccountToken: true
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: roll
+              # alpine/k8s ships curl + jq + kubectl (same image as the publisher).
+              image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.36.2@sha256:44ef4942e171939b9c665a4a84beb80e2dcdb9a24330d4651cfdfd2e9deecc47
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: HOME
+                  value: /tmp
+                - name: CLOUDFLARE_MANAGER_TOKEN
+                  valueFrom:
+                    secretKeyRef: {name: forgejo-cloudflare-manager, key: CLOUDFLARE_MANAGER_TOKEN, optional: true}
+                - name: CLOUDFLARE_ACCOUNT_ID
+                  valueFrom:
+                    secretKeyRef: {name: forgejo-cloudflare-deploy, key: CLOUDFLARE_ACCOUNT_ID, optional: true}
+                - name: CLOUDFLARE_DEPLOY_TOKEN_ID
+                  valueFrom:
+                    secretKeyRef: {name: forgejo-cloudflare-deploy, key: CLOUDFLARE_DEPLOY_TOKEN_ID, optional: true}
+              command:
+                - /bin/sh
+                - -ceu
+                - |
+                  api="https://api.cloudflare.com/client/v4"
+
+                  # Fail-soft until bootstrap has seeded OpenBao.
+                  if [ -z "${CLOUDFLARE_MANAGER_TOKEN:-}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ] || [ -z "${CLOUDFLARE_DEPLOY_TOKEN_ID:-}" ]; then
+                    echo "[cloudflare-token-roller] manager token / account id / token id not present yet; exiting 0 (will retry next month)"; exit 0
+                  fi
+
+                  # Roll: account-owned endpoint first, /user fallback. The result is
+                  # the new value (a string on /user; {value} observed on account
+                  # tokens) — both shapes handled, never printed.
+                  roll() {
+                    _url="$1"
+                    _resp="$(curl -sS -X PUT -H "Authorization: Bearer ${CLOUDFLARE_MANAGER_TOKEN}" \
+                      -H 'Content-Type: application/json' "${_url}")" || return 1
+                    [ "$(echo "$_resp" | jq -r '.success')" = "true" ] || return 1
+                    echo "$_resp" | jq -r 'if (.result|type)=="string" then .result else (.result.value // empty) end'
+                  }
+                  new_token="$(roll "${api}/accounts/${CLOUDFLARE_ACCOUNT_ID}/tokens/${CLOUDFLARE_DEPLOY_TOKEN_ID}/value" || true)"
+                  if [ -z "${new_token}" ]; then
+                    echo "[cloudflare-token-roller] account-owned roll failed; trying /user endpoint (user-owned bootstrap token?)"
+                    new_token="$(roll "${api}/user/tokens/${CLOUDFLARE_DEPLOY_TOKEN_ID}/value" || true)"
+                  fi
+                  if [ -z "${new_token}" ]; then
+                    echo "[cloudflare-token-roller] ERROR: roll failed on both endpoints — check the manager token (Account API Tokens:Edit) and CLOUDFLARE_DEPLOY_TOKEN_ID in OpenBao secret/cloudflare/deploy"
+                    exit 1
+                  fi
+                  echo "[cloudflare-token-roller] rolled deploy token (id ${CLOUDFLARE_DEPLOY_TOKEN_ID})"
+
+                  # Verify the NEW value before persisting it (account, then /user).
+                  vcode="$(curl -sS -o /dev/null -w '%{http_code}' \
+                    -H "Authorization: Bearer ${new_token}" "${api}/accounts/${CLOUDFLARE_ACCOUNT_ID}/tokens/verify")" || vcode=000
+                  if [ "$vcode" != "200" ]; then
+                    vcode="$(curl -sS -o /dev/null -w '%{http_code}' \
+                      -H "Authorization: Bearer ${new_token}" "${api}/user/tokens/verify")" || vcode=000
+                  fi
+                  if [ "$vcode" != "200" ]; then
+                    # The old value is already invalid at this point — persist the new
+                    # one anyway (it is the only working credential) but fail loud.
+                    echo "[cloudflare-token-roller] ERROR: new token value failed verify (HTTP ${vcode}) — persisting it regardless, investigate"
+                  fi
+
+                  # The single write: the rolled value into the Secret the PushSecret watches.
+                  kubectl -n forgejo create secret generic cloudflare-deploy-rolled \
+                    --from-literal=CLOUDFLARE_API_TOKEN="${new_token}" \
+                    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+                  echo "[cloudflare-token-roller] wrote cloudflare-deploy-rolled; OpenBao + Forgejo converge on the hourly ticks"
+
+                  [ "$vcode" = "200" ] && exit 0 || exit 1
+              resources:
+                requests: {cpu: 25m, memory: 64Mi}
+                limits: {cpu: 200m, memory: 128Mi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: tmp
+              emptyDir: {}

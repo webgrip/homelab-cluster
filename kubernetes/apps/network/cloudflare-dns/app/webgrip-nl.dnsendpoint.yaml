@@ -1,0 +1,31 @@
+---
+# webgrip.nl — the anchor records for the Cloudflare Workers route that serves
+# the static site (webgrip/webgrip.nl, wrangler-deployed; see that repo's
+# wrangler.toml and docs/runbooks/go-live.md).
+#
+# A Workers route only intercepts PROXIED traffic, and external-dns runs with
+# a global --cloudflare-proxied, so these inherit proxied — which is the whole
+# point: the target is TEST-NET-1 dead space that no request ever reaches,
+# because the route answers at the edge first. www exists only to carry the
+# zone-level 301 redirect rule to the apex.
+#
+# Activation needs two one-time hand steps (in the go-live runbook):
+#   1. widen the cloudflare/dns token (OpenBao) with Zone:DNS:Edit on the
+#      webgrip.nl zone — until then external-dns logs "no zones found" for
+#      this filter and skips it;
+#   2. delete the stale unowned A-record (old WordPress host) — external-dns
+#      never adopts records it does not own via its k8s.* TXT registry.
+apiVersion: externaldns.k8s.io/v1alpha1
+kind: DNSEndpoint
+metadata:
+  name: webgrip-nl
+spec:
+  endpoints:
+    - dnsName: "webgrip.nl"
+      recordType: A
+      targets:
+        - "192.0.2.1"
+    - dnsName: "www.webgrip.nl"
+      recordType: A
+      targets:
+        - "192.0.2.1"
