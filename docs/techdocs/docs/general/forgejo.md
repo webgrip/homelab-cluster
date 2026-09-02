@@ -83,19 +83,36 @@ brew install cloudflared        # or: https://github.com/cloudflare/cloudflared/
 ```ssh-config
 # ~/.ssh/config
 #
-# On the LAN (or the VPN) 10.0.0.11:22 answers, so take the direct path: `ProxyCommand none`
-# wins because ssh keeps the FIRST value it obtains for a keyword. Off-LAN the probe fails,
-# this block does not apply, and the tunnel block below takes over.
-Match host forgejo-ssh.<your-domain> exec "nc -z -G1 -w1 10.0.0.11 22 2>/dev/null"
+# The switch tests DNS RESOLUTION, not IP reachability -- see the warning below.
+# The direct path is correct exactly when the name resolves to the LoadBalancer:
+# k8s-gateway answers 10.0.0.11 on the LAN and on the VPN, public DNS answers the
+# tunnel CNAME everywhere else. ssh keeps the FIRST value it obtains for a keyword,
+# so this block must stay ABOVE the Host block.
+Match host forgejo-ssh.<your-domain> exec "dig +short +time=1 +tries=1 %h | grep -qx 10.0.0.11"
   ProxyCommand none
 
 Host forgejo-ssh.<your-domain>
   User git
   ProxyCommand cloudflared access ssh --hostname %h
+  ConnectTimeout 15
 ```
 
 Remotes stay exactly as they are (`ssh://git@forgejo-ssh.<your-domain>/owner/repo.git`), and so
 does your `known_hosts` entry — it is the same sshd either way.
+
+!!! danger "Do not switch on reachability — 10.0.0.0/24 is not yours alone"
+    The first version of this snippet probed `nc -z 10.0.0.11 22` and took the direct path
+    when it answered. That breaks on **any other network using the same RFC1918 range**: on a
+    foreign `10.0.0.0/24`, some unrelated host answers on `10.0.0.11:22`, the probe concludes
+    "on LAN", `ProxyCommand none` is pinned, and ssh then dials the *public* name on port 22 —
+    where Cloudflare serves no SSH — and hangs until it times out. Observed 2026-09-02:
+    `ssh: connect to host forgejo-ssh.<your-domain> port 22: Operation timed out` after 75s,
+    on a network that happened to hand out `10.0.0.188`.
+
+    Nothing was exposed by this — `ProxyCommand none` does not redirect to `10.0.0.11`, so the
+    foreign host only ever received a bare TCP connect from `nc`, never a key. But the lesson
+    generalises: *"can I reach that address"* is never the same question as *"is that address
+    the host I mean"*. Resolution is immune, because the collision does not change DNS.
 
 There is no login flow and no token: `cloudflared` here is a plain TCP proxy over Cloudflare's
 edge, and authentication is the SSH key exchange at the far end, exactly as on the LAN. That also
@@ -110,10 +127,11 @@ HTTP.
 
 | Symptom | Cause |
 | --- | --- |
-| `ssh: connect to host ... port 22: Operation timed out` off-LAN | No `ProxyCommand` — the ssh config block is missing on this machine |
+| `ssh: connect to host ... port 22: Operation timed out` off-LAN | No `ProxyCommand` was applied — either the config block is missing on this machine, or the `Match` probe wrongly matched. Check with `ssh -G forgejo-ssh.<your-domain> \| grep proxycommand` |
+| Same timeout, and you are on a foreign `10.0.0.0/24` | The old reachability probe matching a stranger's host — see the danger note above; use the `dig`-based probe |
 | `ProxyCommand ... cloudflared: command not found` | `cloudflared` not installed on this machine |
 | `websocket: bad handshake`, or the proxy exits immediately | The public CNAME is missing or unproxied — a `cfargotunnel.com` target only resolves through Cloudflare's edge |
-| Off-LAN works but LAN pushes got slow | The `Match ... exec` probe is failing — check `nc -z -G1 -w1 10.0.0.11 22` by hand (drop the `2>/dev/null` to see why); LAN traffic is hairpinning through Cloudflare |
+| Off-LAN works but LAN pushes got slow | The `Match ... exec` probe is failing — run `dig +short forgejo-ssh.<your-domain>` on the LAN; it must return exactly `10.0.0.11`. If it returns the tunnel CNAME, your resolver is not k8s-gateway and LAN traffic is hairpinning through Cloudflare |
 | `kex_exchange_identification: ... connection reset` | The tunnel's wildcard rule is matching first — the `ssh://` rule must stay **above** `*.${SECRET_DOMAIN}` in `cloudflare-tunnel/app/helmrelease.yaml` |
 
 ## Observability

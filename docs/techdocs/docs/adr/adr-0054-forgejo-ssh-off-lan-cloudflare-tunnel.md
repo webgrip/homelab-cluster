@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-08-31
+date: 2026-09-02
 ---
 
 # Off-LAN git-SSH rides the Cloudflare Tunnel, on SSH key auth alone
@@ -70,8 +70,10 @@ Concretely:
 * `dnsendpoint.yaml` gains a proxied CNAME for the same name to the tunnel, alongside the
   `external.${SECRET_DOMAIN}` record, so the tunnel UUID stays written down once.
 * Clients off-LAN set `ProxyCommand cloudflared access ssh --hostname %h`, and a preceding
-  `Match … exec` clause pins `ProxyCommand none` when `10.0.0.11:22` answers — so on the LAN
-  and on the VPN nothing changes at all.
+  `Match … exec` clause pins `ProxyCommand none` when the name **resolves to** `10.0.0.11` —
+  so on the LAN and on the VPN nothing changes at all. The condition is resolution, not
+  reachability; see the 2026-09-02 entry under More Information for why that distinction is
+  load-bearing rather than pedantic.
 
 Split-horizon does the rest for free: k8s-gateway stays authoritative for the zone on the LAN
 and keeps answering `10.0.0.11`, so only off-LAN resolvers ever see the tunnel record.
@@ -175,7 +177,8 @@ rendered, not that a byte of SSH crossed the tunnel. All four must hold:
    returns Forgejo's greeting. Forcing the `ProxyCommand` exercises the tunnel path even from the
    LAN, so this is testable without leaving the house.
 3. The LAN path is still direct: with the `Match … exec` clause in place, `ssh -v` on the LAN
-   shows no `cloudflared` invocation.
+   shows no `cloudflared` invocation. Check the *off*-LAN direction too, and specifically from a
+   network in `10.0.0.0/24` — `ssh -G … | grep proxycommand` must show `cloudflared` there.
 4. A real `git push` over the tunnel path succeeds — the greeting proves auth, not that git's
    pack protocol survives the proxy.
 
@@ -204,3 +207,22 @@ rendered, not that a byte of SSH crossed the tunnel. All four must hold:
   `HostKeyAlias` is the part that makes this a real test rather than a reachable-port check:
   it validates the far end against the existing `known_hosts` entry, so a pass proves it is
   the same sshd with the same host key, reached over the tunnel.
+
+* 2026-09-02 — **amended**: the client-side switch was wrong, and the tunnel itself was fine.
+  A `git clone` from a café network failed with `ssh: connect to host forgejo-ssh.<domain> port
+  22: Operation timed out` after 75s. Cause: the original `Match … exec` probed *reachability*
+  (`nc -z 10.0.0.11 22`), and that network was itself a `10.0.0.0/24` — an unrelated host
+  answered on `10.0.0.11:22`, the probe concluded "on LAN", `ProxyCommand none` was pinned, and
+  ssh dialled the public name on port 22, where Cloudflare serves no SSH.
+
+  The probe now tests **resolution** instead: `dig +short %h | grep -qx 10.0.0.11`. The direct
+  path is correct exactly when the name resolves to the LoadBalancer, and an RFC1918 collision
+  cannot change DNS. A `ConnectTimeout 15` was added so a future wrong decision fails in seconds
+  rather than 75. Verified from the colliding network: `ssh -G` selects `cloudflared`, `ssh -T`
+  returns Forgejo's greeting, and `git clone` of an empty repo completes in 0.83s.
+
+  Nothing was exposed by the bug: `ProxyCommand none` does not rewrite `HostName`, so the
+  foreign host received only a bare TCP connect from `nc` and was never offered a key. The
+  generalisable lesson, and the reason this is recorded rather than quietly fixed: *"can I reach
+  that address"* is not the same question as *"is that address the host I mean"*, and a probe
+  that conflates them fails **open**, in the one situation it exists to handle.
