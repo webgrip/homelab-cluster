@@ -347,9 +347,9 @@ cloudflare-deploy-cred:
     BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
     bao token lookup >/dev/null 2>&1 || bao login -method=oidc
     account_id="$(gum input --placeholder 'Cloudflare Account ID (zone Overview, rechtsonder)')"
-    deploy_token="$(gum input --password --placeholder 'Deploy-token VALUE (Workers Scripts:Edit + Account Settings:Read + Workers Routes:Edit)')"
-    deploy_token_id="$(gum input --placeholder 'Deploy-token ID (uit de API Tokens-lijst, niet de waarde)')"
-    manager_token="$(gum input --password --placeholder 'Manager-token VALUE (alleen Account API Tokens:Edit)')"
+    deploy_token="$(gum input --password --placeholder 'forgejo-ci-wrangler token VALUE (Workers Scripts:Edit + Account Settings:Read + Workers Routes:Edit op twente.dev + webgrip.nl)')"
+    deploy_token_id="$(gum input --placeholder 'forgejo-ci-wrangler token ID (uit de API Tokens-lijst, niet de waarde)')"
+    manager_token="$(gum input --password --placeholder 'homelab-token-roller token VALUE (alleen Account API Tokens:Edit)')"
     bao kv put secret/cloudflare/deploy \
         CLOUDFLARE_API_TOKEN="${deploy_token}" \
         CLOUDFLARE_ACCOUNT_ID="${account_id}" \
