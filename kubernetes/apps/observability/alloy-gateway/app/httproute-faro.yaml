@@ -1,0 +1,29 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/gateway.networking.k8s.io/httproute_v1.json
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: alloy-gateway-faro
+  labels:
+    monitoring.webgrip.io/synthetic-check: "true"
+spec:
+  # Public endpoint for the Grafana Faro Web SDK on webgrip.nl and twente.dev.
+  # DNS + tunnel routing are automatic: external-dns (gateway-httproute source)
+  # creates the proxied CNAME, and the *.webgrip.dev tunnel wildcard forwards to
+  # envoy-external. Access is gated by CORS on the faro.receiver (helmrelease.yaml),
+  # not here.
+  hostnames:
+    - telemetry.${SECRET_DOMAIN}
+  parentRefs:
+    - name: envoy-external
+      namespace: network
+      sectionName: https
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: alloy-gateway
+          namespace: observability
+          port: 12347
