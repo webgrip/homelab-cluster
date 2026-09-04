@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var WG_VERSION = '3.5.1';
+  var WG_VERSION = '3.5.2';
   try { window.__wgPipeline = { version: WG_VERSION }; } catch (e) { }
 
   var RANK = { failure: 7, unknown: 7, cancelled: 6, running: 5, blocked: 4, waiting: 4, success: 3, skipped: 2 };
@@ -24,6 +24,10 @@
     ['octicon-blocked', 'blocked'],
     ['octicon-meter', 'running'],
   ];
+
+  function depthOf(job, idx) {
+    return (job.depthByIndex && job.depthByIndex[idx]) || 0;
+  }
 
   function stripQ(s) {
     var m = s.match(/^"(.*)"$/) || s.match(/^'(.*)'$/);
@@ -315,7 +319,7 @@
     yjobs.forEach(function (j) { j.label = labelOf(j); });
     var runNames = run.jobs.map(function (j) { return j.name; });
     assignIndices(yjobs, runNames).forEach(function (o) {
-      yjobs.push({ id: ' run' + o.idx, label: o.name, needs: [], uses: null, indices: [o.idx], orphan: true });
+      yjobs.push({ id: ' run' + o.idx, label: o.name, needs: [], uses: null, indices: [o.idx], depthByIndex: Object.create(null), orphan: true });
     });
 
     var byId = computeDepth(yjobs);
@@ -479,11 +483,11 @@
           /* ordered by nesting depth so it reads as the real call chain:
              caller → its reusable → that reusable's reusable → … */
           var ordered = j.indices.slice().sort(function (a, b) {
-            return (j.depthByIndex[a] || 0) - (j.depthByIndex[b] || 0);
+            return depthOf(j, a) - depthOf(j, b);
           });
           tip += '\nreusable-workflow chain:\n' + ordered.map(function (idx) {
             var nm = run.jobs[idx] ? run.jobs[idx].name : railNameAt(idx);
-            var d = j.depthByIndex[idx] || 0;
+            var d = depthOf(j, idx);
             var indent = new Array(d + 1).join('  ');
             var dur = durations[idx] ? ' ' + durations[idx] : '';
             return indent + (d ? '└ ' : '') + nm + ' [' + (statuses[idx] || '?') + dur + ']';
@@ -571,11 +575,11 @@
              order, each indented by its true reusable-call depth so the chain
              reads Distribute > (Harbor,fast) > (Registry,fast), not siblings. */
           var ordered = j.indices.slice().sort(function (a, b) {
-            return (j.depthByIndex[a] || 0) - (j.depthByIndex[b] || 0);
+            return depthOf(j, a) - depthOf(j, b);
           });
           seq += 100;
           ordered.forEach(function (idx, k) {
-            plan[idx] = { order: seq + k, depth: j.depthByIndex[idx] || 0 };
+            plan[idx] = { order: seq + k, depth: depthOf(j, idx) };
           });
         });
       });
