@@ -1,11 +1,20 @@
 ---
-# The openbao-init bootstrap CronJob's entire purpose is a Kubernetes API write:
-# it initialises a fresh/wiped OpenBao and stores the unseal key by
-# kubectl-applying the openbao-keys Secret under the openbao-bootstrap
-# ServiceAccount (kubernetes/apps/security/openbao/bootstrap/init-cronjob.yaml).
+# Both bootstrap CronJobs in kubernetes/apps/security/openbao/bootstrap/
+# legitimately need their ServiceAccount token mounted:
+#
+#   openbao-init   — its entire purpose is a Kubernetes API write: it initialises
+#                    a fresh/wiped OpenBao and stores the unseal key by
+#                    kubectl-applying the openbao-keys Secret under the
+#                    openbao-bootstrap ServiceAccount.
+#   openbao-config — authenticates to OpenBao through the KUBERNETES AUTH method
+#                    as the scoped config-admin role, which works by presenting
+#                    this SA's JWT for OpenBao to validate via TokenReview.
+#                    Setting automountServiceAccountToken: false would break
+#                    every reconcile. Added 2026-09-04.
+#
 # workload-advanced-baseline-audit asks pods to set
 # automountServiceAccountToken: false "unless they call the Kubernetes API" —
-# this one does, so the flag every 5-minute run produced was pure event noise
+# these do, so the flag every 5-minute run produced was pure event noise
 # drowning real warnings.
 apiVersion: policies.kyverno.io/v1
 kind: PolicyException
@@ -16,18 +25,21 @@ metadata:
     owner: platform-team
   annotations:
     policies.kyverno.io/description: >-
-      openbao-init exists to write the openbao-keys Secret via the API, so its
-      pods legitimately mount the openbao-bootstrap ServiceAccount token.
-      Waives workload-advanced-baseline-audit for exactly that CronJob's
-      workload chain in the security namespace.
+      openbao-init writes the openbao-keys Secret via the API and openbao-config
+      presents its SA JWT to OpenBao's Kubernetes auth method, so both
+      legitimately mount a ServiceAccount token. Waives
+      workload-advanced-baseline-audit for exactly those two CronJobs' workload
+      chains in the security namespace.
 spec:
   policyRefs:
     - kind: ValidatingPolicy
       name: workload-advanced-baseline-audit
   matchConditions:
-    - name: openbao-init-workloads
+    - name: openbao-bootstrap-workloads
       expression: >-
         object.metadata.?namespace.orValue('') == 'security' &&
         object.kind in ['CronJob', 'Job', 'Pod'] &&
         (object.metadata.name == 'openbao-init' ||
-        object.metadata.name.startsWith('openbao-init-'))
+        object.metadata.name.startsWith('openbao-init-') ||
+        object.metadata.name == 'openbao-config' ||
+        object.metadata.name.startsWith('openbao-config-'))

@@ -51,6 +51,14 @@ spec:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
                 capabilities: {drop: ["ALL"]}
+              # Matches its sibling openbao-init exactly. Measured 2026-09-04 over
+              # 24h: peak 1.9Mi / 18m CPU, so this is deliberate headroom, not a
+              # sizing estimate. Absent values tripped workload-resources-audit on
+              # every 5-minute run — 2 warning events/run, the loudest source of
+              # event noise in the cluster.
+              resources:
+                requests: {cpu: 50m, memory: 64Mi}
+                limits: {memory: 256Mi}
           volumes:
             - name: scripts
               configMap: {name: openbao-bootstrap}
