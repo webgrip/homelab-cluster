@@ -183,6 +183,66 @@ so its in-cluster CI can cut releases — a read-only pull-mirror can't be pushe
 `semantic-release`. See [ADR-0013](../adr/adr-0013-forgejo-leading-application-repos.md) and the
 `forgejo-leading` skill for cutting over further repos.
 
+## Custom web UI (`/assets/wg/*`)
+
+A stable `<head>` stub (ConfigMap `forgejo-custom-header`, subPath mount, **restarts the pod when
+changed**) loads the real UI from ConfigMap `forgejo-custom-assets` (directory mount,
+`reloader.stakater.com/ignore`, **no restart** — kubelet syncs in ~1 min, browsers within
+`STATIC_CACHE_TIME=5m`). Two channels ship side by side:
+
+| Channel | File | Selected by |
+| --- | --- | --- |
+| stable | `wg-pipeline.js` | default |
+| canary | `wg-pipeline-canary.js` | `localStorage.setItem('wg-ui-canary','1')` in the browser console |
+
+Promotion is a file copy: `cp custom/wg-pipeline-canary.js custom/wg-pipeline.js`, then commit.
+Check which one you are on with `window.__wgPipeline.version`.
+
+### Run-view poll governor
+
+Stock Forgejo's run view polls **two** endpoints every second until the run finishes
+(`RepoActionView.vue`: `setInterval(this.loadJob, 1e3)` around
+`Promise.all([fetchJob(), fetchArtifacts()])`) — about **2 requests/second per open tab**, which is
+~2400 requests for a 20-minute run, including tabs sitting in the background. There is no server
+setting for the interval.
+
+`installPollGovernor()` in the custom asset wraps `window.fetch` and gates only those two URLs:
+
+| Situation | Job endpoint | Artifacts endpoint |
+| --- | --- | --- |
+| Tab hidden | skipped | skipped |
+| Visible, viewed job still running | every tick (unchanged) | at most 1× per 15 s |
+| Visible, viewed job finished | at most 1× per 5 s | at most 1× per 15 s |
+
+A skipped tick is rejected with a **`TypeError`** on purpose: upstream `loadJob` already catches
+exactly that (`if (l instanceof TypeError) return`) as its network-is-down path and returns without
+touching state, so a skipped tick cannot duplicate streamed log lines or corrupt the job rail. The
+artifacts response is *cached and replayed* instead of skipped, because the two calls share one
+`Promise.all` — rejecting artifacts would throw away the job update too. That payload is a full
+list, not a delta, so replaying it is idempotent; the cache is seeded from the page's own
+`data-initial-artifacts-response`.
+
+The gate reopens immediately on `visibilitychange` → visible and on any click inside
+`.action-view-body`, so expanding a step, re-running, or deleting an artifact still refreshes at
+once. If `window.fetch` or `Response` is missing the governor installs nothing and stock behaviour
+applies.
+
+**Verify it live** — open a run with a job in progress and run in the console:
+
+```js
+window.__wgPipeline.version   // which channel you are on
+window.__wgPipeline.poll      // {hiddenSkipped, finishedJobSkipped, artifactsFromCache, jobFetched, artifactsFetched}
+```
+
+Switch to another tab for a minute and come back: `hiddenSkipped` must climb while
+`jobFetched`/`artifactsFetched` stay put, and the log must resume streaming without repeated lines.
+
+**Verify the logic offline:** `node scripts/test-wg-pipeline-poll-governor.mjs
+kubernetes/apps/forgejo/forgejo/app/custom/wg-pipeline-canary.js` — nine cases, mutation-tested
+against seven deliberate breakages (including an over-aggressive governor that throttles a running
+job, and an over-broad one that governs unrelated URLs). It is **not** wired into CI: node is not a
+pinned `mise` tool in this repo, so it is a local check.
+
 ## Follow-ups (not yet deployed)
 
 - **Outgoing email** — `mailer` is disabled; wire SMTP to enable notifications.
