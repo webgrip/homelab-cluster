@@ -103,7 +103,10 @@ spec:
               #    repo.releases the bot could git-push (repo.code) while POST /releases
               #    403'd at reqRepoWriter (2026-07-12, webgrip-ai-skills run 15) — so the
               #    units are PATCHed on every run; a create-time list can't fix a live team.
-              units='["repo.code","repo.issues","repo.pulls","repo.releases"]'
+              #    Same shape again on 2026-09-04: the token carries write:package and the
+              #    read probe below passes, but without repo.packages the first upload of a
+              #    NEW package 403s (frontend-toolkit run 11, @webgrip/edge-analytics).
+              units='["repo.code","repo.issues","repo.pulls","repo.releases","repo.packages"]'
               tid="$(curl -fsS -u "$admin" "$api/orgs/${ORG}/teams" 2>/dev/null | jq -r '.[] | select(.name=="ci") | .id' | head -1)"
               if [ -z "$tid" ]; then
                 tid="$(curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST "$api/orgs/${ORG}/teams" \
