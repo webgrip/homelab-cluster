@@ -135,6 +135,63 @@ spec:
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/k8s-cluster-health/kubernetes-cluster-health"
 
+        # Counter-based companion to AppCrashLoopBackOff above. That rule keys on
+        # kube_pod_container_status_waiting_reason, which only samples INSTANTANEOUS
+        # state — a container that crashes, restarts and returns to Running is
+        # rarely in CrashLoopBackOff at scrape time, so the series can read empty
+        # through an entire incident. Verified 2026-09-04: over the 24h in which
+        # vikunja/mcp-vikunja was crashing on every client connection, the
+        # waiting_reason series for that namespace returned NO DATA AT ALL, and
+        # AppCrashLoopBackOff never fired.
+        #
+        # This is the same blind spot PlatformContainerCrashLooping
+        # (prometheusrule-platform-kubernetes.yaml) was added for after the
+        # 2026-07-29 cilium loop — but that rule EXCLUDES app namespaces, so app
+        # workloads had no counter-based coverage at all. This closes that half.
+        #
+        # Window/threshold are NOT copied from the platform rule (>=5 over [1h]):
+        # connection-triggered crashes are sparse, and mcp-vikunja peaked at only
+        # 2/hour while reaching 5 per 6h. Measured over 7d of real data, >=3 per
+        # [6h] selects exactly the same 3 containers as >=5 (mcp-vikunja,
+        # keda-operator, authentik/server) — nothing sits in the 3-4 band — so the
+        # lower threshold buys sensitivity to slower loops at no extra noise.
+        #
+        # exported_* labels: the KSM scrape does not set honorLabels, so
+        # `namespace` is the scrape ns (observability) and real labels are exported_*.
+        - alert: AppContainerCrashLooping
+          expr: |
+            increase(kube_pod_container_status_restarts_total{exported_namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}[6h]) >= 3
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: apps
+          annotations:
+            summary: "App container crash looping ({{ $labels.exported_namespace }}/{{ $labels.exported_pod }})"
+            description: |
+              What's happening:
+              - Container {{ $labels.exported_container }} in
+                {{ $labels.exported_namespace }}/{{ $labels.exported_pod }} restarted
+                >=3 times in the last 6h.
+
+              Impact/risk:
+              - The workload is losing in-flight requests and connection state on every
+                restart. It may still report Ready between crashes, so this can be
+                invisible to readiness-based alerting and to `kubectl get pods`.
+
+              Likely causes:
+              - An uncaught error on a specific request or client (the 2026-09-04
+                mcp-vikunja case: one unsupported protocol header killed the process)
+              - OOMKilled under a periodic spike; check last terminated reason
+              - A dependency that fails intermittently rather than continuously
+
+              First actions:
+              - kubectl -n {{ $labels.exported_namespace }} describe pod {{ $labels.exported_pod }}
+              - kubectl -n {{ $labels.exported_namespace }} logs {{ $labels.exported_pod }} --previous
+              - Correlate restart times with client/request activity before assuming resources
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/k8s-cluster-health/kubernetes-cluster-health"
+
         - alert: AppPersistentVolumeLowFree
           expr: |
             (
