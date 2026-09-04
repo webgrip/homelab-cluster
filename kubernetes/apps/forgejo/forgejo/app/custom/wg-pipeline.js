@@ -315,7 +315,11 @@
     yjobs.forEach(function (j) { j.label = labelOf(j); });
     var runNames = run.jobs.map(function (j) { return j.name; });
     assignIndices(yjobs, runNames).forEach(function (o) {
-      yjobs.push({ id: ' run' + o.idx, label: o.name, needs: [], uses: null, indices: [o.idx], orphan: true });
+      /* depthByIndex must exist on every descriptor decorateRail touches — a run that
+         calls the same reusable N times yields skipped "<name>-1/-2" duplicate jobs that
+         land here as orphans, and reading depthByIndex[idx] off undefined killed the
+         whole script on such runs (frontend-toolkit run 1, 2026-09-04). */
+      yjobs.push({ id: ' run' + o.idx, label: o.name, needs: [], uses: null, indices: [o.idx], depthByIndex: Object.create(null), orphan: true });
     });
 
     var byId = computeDepth(yjobs);
@@ -479,11 +483,11 @@
           /* ordered by nesting depth so it reads as the real call chain:
              caller → its reusable → that reusable's reusable → … */
           var ordered = j.indices.slice().sort(function (a, b) {
-            return (j.depthByIndex[a] || 0) - (j.depthByIndex[b] || 0);
+            return ((j.depthByIndex || {})[a] || 0) - ((j.depthByIndex || {})[b] || 0);
           });
           tip += '\nreusable-workflow chain:\n' + ordered.map(function (idx) {
             var nm = run.jobs[idx] ? run.jobs[idx].name : railNameAt(idx);
-            var d = j.depthByIndex[idx] || 0;
+            var d = (j.depthByIndex || {})[idx] || 0;
             var indent = new Array(d + 1).join('  ');
             var dur = durations[idx] ? ' ' + durations[idx] : '';
             return indent + (d ? '└ ' : '') + nm + ' [' + (statuses[idx] || '?') + dur + ']';
@@ -571,11 +575,11 @@
              order, each indented by its true reusable-call depth so the chain
              reads Distribute > (Harbor,fast) > (Registry,fast), not siblings. */
           var ordered = j.indices.slice().sort(function (a, b) {
-            return (j.depthByIndex[a] || 0) - (j.depthByIndex[b] || 0);
+            return ((j.depthByIndex || {})[a] || 0) - ((j.depthByIndex || {})[b] || 0);
           });
           seq += 100;
           ordered.forEach(function (idx, k) {
-            plan[idx] = { order: seq + k, depth: j.depthByIndex[idx] || 0 };
+            plan[idx] = { order: seq + k, depth: (j.depthByIndex || {})[idx] || 0 };
           });
         });
       });
