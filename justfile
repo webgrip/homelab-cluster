@@ -360,6 +360,30 @@ cloudflare-deploy-cred:
     echo "ESO syncs within ~1h (or: kubectl -n forgejo annotate externalsecret forgejo-cloudflare-deploy force-sync=$(date +%s) --overwrite)"
     echo "the forgejo-actions-secrets CronJob publishes CLOUDFLARE_* to the webgrip org on its next hourly tick (:23)"
 
+[doc('Seed the OpenTofu credential set for webgrip/cloudflare into OpenBao (secret/cloudflare/tofu)')]
+[group('secrets')]
+cloudflare-tofu-cred:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _need bao gum kubectl openssl
+    BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
+    bao token lookup >/dev/null 2>&1 || bao login -method=oidc
+    tofu_token="$(gum input --password --placeholder 'forgejo-ci-tofu token VALUE (Zone Read + DNS Write op twente.dev + webgrip.nl, Single Redirect Write op webgrip.nl, Workers R2 Storage Write)')"
+    tofu_token_id="$(gum input --placeholder 'forgejo-ci-tofu token ID (uit de API Tokens-lijst, niet de waarde)')"
+    state_key_id="$(gum input --placeholder 'R2 API token Access Key ID (Object Read & Write, alleen bucket tofu-state)')"
+    state_secret="$(gum input --password --placeholder 'R2 API token Secret Access Key')"
+    passphrase="$(gum input --password --placeholder 'State-passphrase, minimaal 16 tekens (leeg = genereren)')"
+    if [ -z "${passphrase}" ]; then passphrase="$(openssl rand -base64 48)"; fi
+    bao kv put secret/cloudflare/tofu \
+        CLOUDFLARE_TOFU_TOKEN="${tofu_token}" \
+        CLOUDFLARE_TOFU_TOKEN_ID="${tofu_token_id}" \
+        TOFU_STATE_ACCESS_KEY_ID="${state_key_id}" \
+        TOFU_STATE_SECRET_ACCESS_KEY="${state_secret}" \
+        TOFU_ENCRYPTION_PASSPHRASE="${passphrase}"
+    echo "wrote secret/cloudflare/tofu"
+    echo "ESO syncs within ~1h (or: kubectl -n forgejo annotate externalsecret forgejo-cloudflare-tofu force-sync=$(date +%s) --overwrite)"
+    echo "the forgejo-actions-secrets CronJob publishes the four secrets to the webgrip/cloudflare repo on its next hourly tick (:23)"
+
 # One-time seeding of ntfy's declarative auth into OpenBao (secret/ntfy/auth):
 # users (bcrypt), tokens, and the bare alertmanager_token that the Alertmanager
 # routing config templates in as the Bearer credential. Only the "phone" password
