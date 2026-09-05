@@ -110,7 +110,8 @@ The admin config is stored as JSON in a ConfigMap and mounted into the Renovate 
 
 Important behaviors in the current admin config:
 
-- Managers enabled are intentionally scoped to this GitOps estate: `flux`, `kustomize`, `kubernetes`, `helm-values`, `helmfile`, `custom.regex`, `github-actions`, `mise`, `dockerfile`, and `docker-compose`.
+- Managers enabled are intentionally scoped to this GitOps estate: `flux`, `kustomize`, `kubernetes`, `helm-values`, `helmfile`, `custom.regex`, `github-actions`, `mise`, `dockerfile`, and `docker-compose`. The Forgejo job additionally enables `npm`, because the Forgejo-authoritative application repos it covers (twente.dev, webgrip.nl, and the other Node repos on its list) manage their dependencies through package.json; without it their `Report outdated dependencies` CI step lists drift that no PR ever proposes.
+- A Forgejo-leading repo gets Renovate only once it is on the `discoveryFilters` list of `webgrip-forgejo.yaml` (`autodiscover: false`, no glob). Symptom of a missing entry: no `Renovate Dependency Dashboard` issue in the repo and no `renovate` PRs at all.
 - Post-upgrade commands are allow-listed here. Currently only `./scripts/update-oci-digests.sh` is allowed because the Renovate executor does not have a Docker daemon for tests such as Kyverno CLI.
 - GitHub and Docker Hub API throttling is configured here.
 - Queue limits are configured here. Repository package rules use `prPriority` to decide which updates consume the limited slots first.
