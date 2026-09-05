@@ -198,6 +198,18 @@ changed**) loads the real UI from ConfigMap `forgejo-custom-assets` (directory m
 Promotion is a file copy: `cp custom/wg-pipeline-canary.js custom/wg-pipeline.js`, then commit.
 Check which one you are on with `window.__wgPipeline.version`.
 
+### How a run job finds its caller node
+
+Forgejo flattens every reusable workflow into the caller's job list under the *called* job's
+`name:`, and de-duplicates identical names with a `-1`, `-2`, … suffix. The graph merges those
+children back into the caller node by resolving each `uses:` per caller: the called job's `name:`
+is interpolated from the caller's `with:` (falling back to the reusable's `inputs.<x>.default`),
+so `name: ${{ inputs.job-name }}` labels correctly, and a child whose name equals the caller's
+matches through the dedup suffix. A job that still matches nothing renders as an orphan in stage
+1 with no arrows. Offline check, fixtures plus optionally a real workflow:
+`node scripts/test-wg-pipeline-graph.mjs kubernetes/apps/forgejo/forgejo/app/custom/wg-pipeline.js
+[<caller.yml> <dir-with-reusables> <run-job-names.json>]`.
+
 ### Run-view poll governor
 
 Stock Forgejo's run view polls **two** endpoints every second until the run finishes

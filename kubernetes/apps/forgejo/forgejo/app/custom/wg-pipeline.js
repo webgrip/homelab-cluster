@@ -11,8 +11,13 @@
 (function () {
   'use strict';
 
-  var WG_VERSION = '3.5.2';
-  try { window.__wgPipeline = { version: WG_VERSION }; } catch (e) { }
+  var WG_VERSION = '3.5.3';
+  try {
+    window.__wgPipeline = {
+      version: WG_VERSION,
+      graph: { parseWorkflowJobs: parseWorkflowJobs, parseWorkflowCallInputDefaults: parseWorkflowCallInputDefaults, attachChildItems: attachChildItems, assignIndices: assignIndices },
+    };
+  } catch (e) { }
 
   var RANK = { failure: 7, unknown: 7, cancelled: 6, running: 5, blocked: 4, waiting: 4, success: 3, skipped: 2 };
   var ICON_STATUS = [
@@ -51,8 +56,8 @@
     var i = 0;
     while (i < lines.length && !/^jobs:\s*(#.*)?$/.test(lines[i])) i++;
     i++;
-    var jobIndent = -1, bodyIndent = -1, needsIndent = -1;
-    var cur = null, inNeeds = false;
+    var jobIndent = -1, bodyIndent = -1, needsIndent = -1, withIndent = -1;
+    var cur = null, inNeeds = false, inWith = false;
     for (; i < lines.length; i++) {
       var line = lines[i];
       if (/^\s*(#|$)/.test(line)) continue;
@@ -61,10 +66,11 @@
       if (jobIndent === -1) jobIndent = indent;
       var m;
       if (indent === jobIndent && (m = line.match(/^ *([A-Za-z0-9_.-]+):\s*(#.*)?$/))) {
-        cur = { id: m[1], name: null, needs: [], uses: null };
+        cur = { id: m[1], name: null, needs: [], uses: null, with: Object.create(null) };
         jobs.push(cur);
         bodyIndent = -1;
         inNeeds = false;
+        inWith = false;
         continue;
       }
       if (!cur) continue;
@@ -74,6 +80,14 @@
           continue;
         }
         inNeeds = false;
+      }
+      if (inWith) {
+        if (indent > withIndent && (m = line.match(/^ *([A-Za-z0-9_.-]+): *([^#].*?)\s*$/))) {
+          cur.with[m[1]] = stripQ(m[2]);
+          continue;
+        }
+        if (indent > withIndent) continue;
+        inWith = false;
       }
       if (bodyIndent === -1 && indent > jobIndent) bodyIndent = indent;
       if (indent !== bodyIndent) continue;
@@ -86,6 +100,9 @@
       } else if (/^ *needs:\s*(#.*)?$/.test(line)) {
         inNeeds = true;
         needsIndent = indent;
+      } else if (/^ *with:\s*(#.*)?$/.test(line)) {
+        inWith = true;
+        withIndent = indent;
       } else if ((m = line.match(/^ *needs: *([^#[]+?)\s*(#.*)?$/))) {
         cur.needs = [stripQ(m[1])];
       }
@@ -101,9 +118,70 @@
     return runName === label || runName.indexOf(label + ' (') === 0 || runName.indexOf(label + ' / ') === 0;
   }
 
+  function dedupSuffixMatches(runName, label) {
+    return runName.indexOf(label + '-') === 0 && /^-\d+$/.test(runName.slice(label.length));
+  }
+
+  var INPUT_EXPR = /[$][{][{]\s*inputs\.([A-Za-z0-9_-]+)\s*[}][}]/g;
+
+  function interpolateInputs(text, inputs) {
+    var unresolved = false;
+    var out = text.replace(INPUT_EXPR, function (_, key) {
+      if (inputs[key] === undefined) { unresolved = true; return ''; }
+      return inputs[key];
+    });
+    return unresolved || /[$][{]/.test(out) ? null : out;
+  }
+
+  function parseWorkflowCallInputDefaults(text) {
+    var lines = text.split(/\r?\n/);
+    var defaults = Object.create(null);
+    var i = 0;
+    while (i < lines.length && !/^jobs:\s*(#.*)?$/.test(lines[i]) && !/^\s*inputs:\s*(#.*)?$/.test(lines[i])) i++;
+    if (i >= lines.length || /^jobs:/.test(lines[i])) return defaults;
+    var inputsIndent = lines[i].match(/^ */)[0].length;
+    var keyIndent = -1, key = null;
+    for (i++; i < lines.length; i++) {
+      var line = lines[i];
+      if (/^\s*(#|$)/.test(line)) continue;
+      var indent = line.match(/^ */)[0].length;
+      if (indent <= inputsIndent) break;
+      if (keyIndent === -1) keyIndent = indent;
+      var m;
+      if (indent === keyIndent && (m = line.match(/^ *([A-Za-z0-9_-]+):\s*(#.*)?$/))) { key = m[1]; continue; }
+      if (key && indent > keyIndent && (m = line.match(/^ *default: *(.+?)\s*$/))) defaults[key] = stripQ(m[1]);
+    }
+    return defaults;
+  }
+
+  function calledJobLabel(job, inputs) {
+    if (!job.name) return job.id;
+    var resolved = interpolateInputs(job.name, inputs);
+    return resolved === null ? job.id : resolved;
+  }
+
+  function resolvedWith(withMap, inputs) {
+    var out = Object.create(null);
+    Object.keys(withMap || {}).forEach(function (k) {
+      var v = interpolateInputs(withMap[k], inputs);
+      if (v !== null) out[k] = v;
+    });
+    return out;
+  }
+
+  function attachChildItems(yjobs, selfRawBase) {
+    return Promise.all(yjobs.filter(function (j) { return j.uses; }).map(function (j) {
+      return resolveDescendants(j.uses, selfRawBase, 1, Object.create(null), j.with).then(function (items) {
+        j.childItems = items;
+      });
+    }));
+  }
+
   /* Fetch text with a sessionStorage cache so revisits render instantly.
      Commit-pinned raw URLs are immutable (cache forever); branch/tag refs
      get a 10-minute TTL. */
+  var inflightText = Object.create(null);
+
   function cachedText(url) {
     var key = 'wg-yml:' + url;
     var immutable = url.indexOf('/raw/commit/') !== -1;
@@ -114,13 +192,15 @@
         if (immutable || Date.now() - obj.t < 600000) return Promise.resolve(obj.x);
       }
     } catch (e) { }
-    return fetch(url, { credentials: 'same-origin' }).then(function (r) {
+    if (inflightText[key]) return inflightText[key];
+    inflightText[key] = fetch(url, { credentials: 'same-origin' }).then(function (r) {
       if (!r.ok) return null;
       return r.text().then(function (t) {
         try { sessionStorage.setItem(key, JSON.stringify({ t: Date.now(), x: t })); } catch (e) { }
         return t;
       });
-    });
+    }).then(function (t) { delete inflightText[key]; return t; }, function (e) { delete inflightText[key]; throw e; });
+    return inflightText[key];
   }
 
   /* Fetch text from the first URL that answers 200, returning {text, url} for
@@ -155,17 +235,19 @@
      so the rail can render the true call chain rather than flat siblings.
      `seen` guards cycles; MAX_REUSABLE_DEPTH bounds runaway. Fetches are cached
      (cachedText), so commit-pinned refs cost one request ever. */
-  function resolveDescendants(uses, baseForRel, depth, seen) {
+  function resolveDescendants(uses, baseForRel, depth, seen, callerWith) {
     if (!uses || depth > MAX_REUSABLE_DEPTH || seen[uses]) return Promise.resolve([]);
     seen[uses] = true;
     return fetchFirstOkWithUrl(reusableURLs(uses, baseForRel)).then(function (hit) {
       if (!hit.text) return [];
       var jobs = parseWorkflowJobs(hit.text);
+      var inputs = parseWorkflowCallInputDefaults(hit.text);
+      Object.keys(callerWith || {}).forEach(function (k) { inputs[k] = callerWith[k]; });
       var childBase = rawDirOf(hit.url);
       return Promise.all(jobs.map(function (jj) {
-        var self = [{ label: labelOf(jj), depth: depth }];
+        var self = [{ label: calledJobLabel(jj, inputs), depth: depth }];
         if (!jj.uses) return self;
-        return resolveDescendants(jj.uses, childBase, depth + 1, seen)
+        return resolveDescendants(jj.uses, childBase, depth + 1, seen, resolvedWith(jj.with, inputs))
           .then(function (more) { return self.concat(more); });
       })).then(function (arrs) {
         return arrs.reduce(function (a, b) { return a.concat(b); }, []);
@@ -217,14 +299,16 @@
            caller, so a child item claims only ONE. A PREFIXED match
            ("label (matrix)" / "label / sub") is a distinct instance of this one
            logical job, so claim all of them. */
-        var exact = [], prefixed = [];
+        var exact = [], suffixed = [], prefixed = [];
         names.forEach(function (nm, idx) {
           if (used[idx]) return;
           if (nm === ci.label) exact.push(idx);
+          else if (dedupSuffixMatches(nm, ci.label)) suffixed.push(idx);
           else if (nameMatches(nm, ci.label)) prefixed.push(idx);
         });
         var claim = prefixed;
         if (exact.length) claim = [exact[0]].concat(prefixed);
+        else if (suffixed.length) claim = [suffixed[0]].concat(prefixed);
         claim.forEach(function (idx) { yj.indices.push(idx); yj.depthByIndex[idx] = ci.depth; used[idx] = true; });
       });
     });
@@ -796,15 +880,8 @@
         var yaml = res[0], jobIndex = res[1];
         if (!yaml) return;
         var yjobs = parseWorkflowJobs(yaml);
-        var targets = Object.create(null);
-        yjobs.forEach(function (j) { if (j.uses) targets[j.uses] = null; });
         var selfRawBase = base + '/raw/commit/' + sha + '/.forgejo/workflows/';
-        return Promise.all(Object.keys(targets).map(function (u) {
-          return resolveDescendants(u, selfRawBase, 1, Object.create(null)).then(function (labels) {
-            targets[u] = labels;
-          });
-        })).then(function () {
-          yjobs.forEach(function (j) { if (j.uses) j.childItems = targets[j.uses] || []; });
+        return attachChildItems(yjobs, selfRawBase).then(function () {
           var host = panelHost();
           if (!host) return;
           var allDone = hit.rows.every(function (r) { return TERMINAL[r.status]; });
@@ -929,19 +1006,7 @@
         .then(function (yaml) {
           if (yaml === null) throw new Error('workflow fetch failed');
           var yjobs = parseWorkflowJobs(yaml);
-          var targets = Object.create(null);
-          yjobs.forEach(function (j) {
-            if (j.uses) targets[j.uses] = null;
-          });
-          var keys = Object.keys(targets);
-          return Promise.all(keys.map(function (u) {
-            return resolveDescendants(u, selfRawBase, 1, Object.create(null)).then(function (labels) {
-              targets[u] = labels;
-            });
-          })).then(function () {
-            yjobs.forEach(function (j) {
-              if (j.uses) j.childItems = targets[j.uses] || [];
-            });
+          return attachChildItems(yjobs, selfRawBase).then(function () {
             shell.remove();
             build(host, run, yjobs);
           });
