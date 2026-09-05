@@ -26,6 +26,12 @@ Links-only index. Each runbook is its own page; authoring recipes live in skills
 - [Rotate a secret in OpenBao (and how it reaches pods)](secret-rotation.md)
 - [OpenBao restore (unseal / raft snapshot)](openbao-restore.md)
 - [cosign Transit key rotation](cosign-transit-key-rotation.md)
+- [Level 0 — the floor: age key, talsecret, cluster-secrets, unseal key](secrets-level-0-floor.md)
+- [Level 1 — the vault: seed, name, back up, who may write](secrets-level-1-vault.md)
+- [Level 2 — the cluster: generator or ExternalSecret, and Reloader](secrets-level-2-cluster.md)
+- [Level 3 — bridges: a repo-scoped Forgejo Actions secret, end to end](secrets-level-3-bridge.md)
+- [Level 4 — short-lived: OIDC roles, dynamic credentials, per-run tokens](secrets-level-4-short-lived.md)
+- [Level 5 — a person: read the vault, cache by name, never an original](secrets-level-5-person.md)
 
 ## Databases (CNPG)
 

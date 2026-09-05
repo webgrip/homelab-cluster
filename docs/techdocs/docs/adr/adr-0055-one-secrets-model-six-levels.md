@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-09-05
 ---
 
@@ -249,6 +249,13 @@ original, two caches, no laptop copy that outlives the shell.
   (the un-shadowable `CI_TOKEN` contract is what repo-scoping relies on) and
   [ploeg ADR-0013](https://forgejo.webgrip.dev/webgrip/ploeg/src/branch/main/docs/adrs/0013-push-rights-are-minted-per-run.md)
   (per-run tokens are L4 applied to agents).
-* Runbooks, one per level, and the `secrets-levels` skill in `webgrip/ai-skills` are written
-  against this record once it is accepted; `org-guidelines.md` line 11 is rewritten to point
-  here.
+* 2026-09-05 — accepted by the owner on all four changes. Runbooks per level:
+  [L0](../runbooks/secrets-level-0-floor.md), [L1](../runbooks/secrets-level-1-vault.md),
+  [L2](../runbooks/secrets-level-2-cluster.md), [L3](../runbooks/secrets-level-3-bridge.md),
+  [L4](../runbooks/secrets-level-4-short-lived.md), [L5](../runbooks/secrets-level-5-person.md);
+  the `secrets-levels` skill in `webgrip/ai-skills`; `org-guidelines.md` line 11 rewritten to
+  point here. The first instance (`secret/brevo/twente-dev`) is wired as
+  `forgejo-brevo.externalsecret.yaml` plus a repo-scoped bridge block, fail-soft until seeded.
+* Still to execute from the accepted set, tracked separately: the bridge table refactor, the
+  five org-to-repo scope moves, the `openbao-push` policy narrowing, and the four floor
+  stragglers.

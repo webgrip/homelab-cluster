@@ -316,6 +316,16 @@ bao-login:
     bao login -method=oidc
     printf '\nFor further bao commands this shell:\n  export BAO_ADDR=%s\n' "${BAO_ADDR}"
 
+[doc('Print export lines for every key at secret/<path>; use as eval "$(just secret-env <path>)"')]
+[group('secrets')]
+secret-env path:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _need bao python3
+    BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
+    bao token lookup >/dev/null 2>&1 || bao login -method=oidc >&2
+    bao kv get -format=json "secret/{{ path }}" | python3 -c 'import json, shlex, sys; [print(f"export {k}={shlex.quote(str(v))}") for k, v in json.load(sys.stdin)["data"]["data"].items()]'
+
 # One-time entry of Harbor's Garage S3 registry key into OpenBao (secret/harbor/s3).
 # Prompts via gum so the secret never lands in shell history; logs in if needed.
 [doc('Seed Harbor’s Garage S3 registry key into OpenBao (secret/harbor/s3)')]
