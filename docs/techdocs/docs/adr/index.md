@@ -105,6 +105,7 @@ How change reaches the cluster — the forge, the Flux source, and the escape ha
 | --- | -------- | ------ | ------------ |
 | [0015](adr-0015-secret-rotation-model.md) | Secret rotation model — vault write + Reloader | accepted | 2026-07-01 |
 | [0016](adr-0016-openbao-dynamic-postgres-credentials.md) | OpenBao database engine for short-lived Postgres credentials | accepted | 2026-07-02 |
+| [0055](adr-0055-one-secrets-model-six-levels.md) | One secrets model: six levels, the vault as the only source, repo-scoped delivery by default | proposed | 2026-09-05 |
 
 ### 6. Registry & artifacts
 
