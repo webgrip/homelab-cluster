@@ -89,7 +89,7 @@ mise exec -- just bao-login
 # and dropping it makes GHCR_USERNAME silently fall back to "webgrip" — use patch:
 printf '%s' "$TOKEN" | bao kv patch secret/github/ci-pat token=-   # value via stdin
 bao kv put secret/cloudflare/tunnel    TUNNEL_TOKEN=<new>
-bao kv put secret/cloudflare/dns       api-token=<new>
+printf '%s' "$TOKEN" | bao kv patch secret/cloudflare/dns api-token=-   # patch, so a second key here is never wiped
 bao kv put secret/s3/cnpg-backup       S3_ACCESS_KEY_ID=<new> S3_SECRET_ACCESS_KEY=<new>
 # force fast propagation instead of waiting for refreshInterval:
 kubectl -n <ns> annotate externalsecret <name> force-sync="$(date +%s)" --overwrite
