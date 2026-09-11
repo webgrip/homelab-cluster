@@ -839,5 +839,16 @@
       semanticCommitScope: "mise",
       commitMessageTopic: "tool {{depName}}",
     },
+    {
+      description: "searxng: re-attach the shared calver+sha versioning to the Harbor-proxied path. The gitops preset carries home-operations' versioning/searxng rule, but it keys on packageName ghcr.io/searxng/searxng, and this image is declared at a helm-values site (HelmRelease values.…image.repository) which registryAliases does NOT rewrite — so after the image moved behind harbor.webgrip.dev/ghcr the preset stopped matching. With the default docker versioning unable to parse the '<calver>-<commit sha>' tag shape, Renovate offered nothing at all and the image silently froze on 2025.12.9 for nine months while upstream shipped the engine-scraper fixes that keep results working. Same BOTH-FORMS failure mode as the sparkyfitness rule above.",
+      matchDatasources: [
+        "docker"
+      ],
+      matchPackageNames: [
+        "ghcr.io/searxng/searxng",
+        "harbor.webgrip.dev/ghcr/searxng/searxng"
+      ],
+      versioning: "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-[a-f0-9]+$",
+    },
   ],
 }
