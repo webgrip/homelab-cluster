@@ -1,0 +1,128 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: de-vloer
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: de-vloer
+  interval: 10m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+  values:
+    mode: live
+    baseUrl: https://vloer.${SECRET_DOMAIN}
+    image:
+      repository: harbor.webgrip.dev/webgrip/de-vloer
+      tag: 0.3.0-rc.13
+      digest: sha256:556360b1a363cff9c6ddfc1bd64a519f97968c533539c63281c067ae05d41884
+    imagePullSecrets:
+      - name: harbor-pull
+    credentialsSecret: ploeg-workbench
+    storage:
+      className: longhorn
+      size: 4Gi
+    workspaceNamespace: de-vloer-workspaces
+    createWorkspaceNamespace: false
+    workspaceProvisioner: pod
+    workspaceTransport: pull
+    workspaceImage: harbor.webgrip.dev/webgrip/de-vloer-agent:0.3.0-rc.13@sha256:3333fc9bac6ef4a899d2ac0920ceac8b0931cfbda41946899a54fa9b305c04d5
+    workspaceStorageClass: longhorn
+    workspaceStorageSize: 8Gi
+    workspaceCpu: "1"
+    workspaceMemory: 2Gi
+    workspaceImagePullSecrets:
+      - harbor-pull
+    workspaceAgentSecrets: []
+    workspaceEgress:
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: ploeg
+            podSelector:
+              matchLabels:
+                app.kubernetes.io/name: de-vloer
+        ports:
+          - protocol: TCP
+            port: 4080
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: ai
+        ports:
+          - protocol: TCP
+            port: 4000
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: forgejo
+        ports:
+          - protocol: TCP
+            port: 3000
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: network
+    config:
+      maxConcurrentSessions: 1
+      maxBudgetUsd: 0.25
+      auth:
+        oidc:
+          issuer: https://authentik.${SECRET_DOMAIN}/application/o/vloer/
+          clientId: vloer
+          displayName: Homelab login
+          scopes:
+            - openid
+            - email
+            - profile
+            - groups
+          groupsClaim: groups
+          roles:
+            admin:
+              - homelab-admins
+            operator: []
+            viewer: []
+      ploeg:
+        url: http://ploeg.ploeg.svc.cluster.local:8080
+        tokenEnv: PLOEG_OPERATOR_VLOER_TOKEN
+        teams:
+          - bronze
+      execution:
+        team: bronze
+      litellm:
+        baseUrl: http://litellm.ai.svc.cluster.local:4000/v1
+        ttl: 10m
+        settlementDelayMs: 60000
+      models:
+        - id: deepseek-chat
+          name: DeepSeek
+          providerId: litellm
+          modelId: deepseek-chat
+      repositories:
+        - id: de-vloer
+          name: De Vloer
+          description: De Vloer development and cluster test work
+          url: https://forgejo.${SECRET_DOMAIN}/webgrip/de-vloer.git
+          baseBranch: development
+          executionOwner: ploeg
+          verify:
+            - node
+            - --test
+            - examples/order-service/test/order.test.js
+        - id: ploeg
+          name: Ploeg
+          description: Ploeg development
+          url: https://forgejo.${SECRET_DOMAIN}/webgrip/ploeg.git
+          baseBranch: development
+          executionOwner: ploeg
+          verify:
+            - git
+            - diff
+            - --check
+      taskSources: []

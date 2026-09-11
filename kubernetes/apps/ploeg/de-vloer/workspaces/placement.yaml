@@ -1,0 +1,19 @@
+---
+apiVersion: kyverno.io/v1
+kind: Policy
+metadata:
+  name: workspace-worker-placement
+spec:
+  background: false
+  rules:
+    - name: worker-placement
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      mutate:
+        patchStrategicMerge:
+          spec:
+            nodeSelector:
+              node.webgrip.io/pool: worker
