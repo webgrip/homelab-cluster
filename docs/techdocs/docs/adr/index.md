@@ -78,6 +78,7 @@ What the cluster runs on, and the cross-cutting patterns everything above assume
 | [0005](adr-0005-cilium-gateway-egress-for-oidc.md) | Identity-based egress to the gateway for server-side OIDC | accepted (superseded in scope by 0006) | 2026-07-02 |
 | [0006](adr-0006-default-deny-network-policies.md) | Opt-in per-namespace default-deny NetworkPolicies | accepted | 2026-07-02 |
 | [0054](adr-0054-forgejo-ssh-off-lan-cloudflare-tunnel.md) | Off-LAN git-SSH rides the Cloudflare Tunnel, on SSH key auth alone | accepted | 2026-09-02 |
+| [0056](adr-0056-searxng-public-behind-gateway-basic-auth.md) | SearXNG goes public behind gateway-level basic auth, not naked | accepted | 2026-09-11 |
 
 ### 3. Storage
 
