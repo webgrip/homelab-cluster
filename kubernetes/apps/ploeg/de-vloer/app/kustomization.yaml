@@ -9,3 +9,32 @@ resources:
   - helmrelease.yaml
   - httproute.yaml
   - networkpolicy.yaml
+patches:
+  - target:
+      kind: HelmRelease
+      name: de-vloer
+    patch: |-
+      - op: add
+        path: /spec/postRenderers/0/kustomize/patches/-
+        value:
+          target:
+            kind: Deployment
+            name: de-vloer
+          patch: |-
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: de-vloer
+            spec:
+              template:
+                spec:
+                  containers:
+                    - name: workbench
+                      env:
+                        - name: VLOER_DATA_DIR
+                          value: /data/workbench
+                        - name: VLOER_TASK_VIKUNJA_TOKEN
+                          valueFrom:
+                            secretKeyRef:
+                              name: agent-vikunja-token
+                              key: VIKUNJA_API_TOKEN
