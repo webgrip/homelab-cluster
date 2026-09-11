@@ -16,6 +16,21 @@ spec:
     remediation:
       retries: 3
       remediateLastFailure: true
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              group: keda.sh
+              version: v1alpha1
+              kind: ScaledJob
+              name: ploeg-worker-bronze-(builder|reviewer)
+            patch: |
+              apiVersion: keda.sh/v1alpha1
+              kind: ScaledJob
+              metadata:
+                name: unused
+                annotations:
+                  autoscaling.keda.sh/paused: "true"
   values:
     imagePullSecrets:
       - name: harbor-pull
@@ -180,15 +195,7 @@ spec:
     # request link (backlog #31). Without both, the provider keeps its logging
     # no-op — runs still finish, the board is simply not updated.
     tracker:
-      # In-cluster service, NOT https://vikunja.webgrip.dev — that hostname
-      # resolves to the shared 10.0.0.27 ingress VIP, and a pod reaching its own
-      # cluster's VIP is DNAT'd to the backend before NetworkPolicy is evaluated,
-      # so the egress rule never matches and the call hangs. Under
-      # routing-as-a-file that is fatal, not cosmetic: ploegd resolves the NAMED
-      # projects through this same base URL at boot and exits when it times out.
-      # Same shape as the forge and litellm URLs above. Safe for links — the
-      # provider only ever joins this to API paths, never shows it to a human.
-      url: http://vikunja.vikunja.svc.cluster.local:3456/api/v1
+      url: https://vikunja.${SECRET_DOMAIN}/api/v1
       tokenSecret:
         name: agent-vikunja-token
         key: VIKUNJA_API_TOKEN
@@ -201,20 +208,6 @@ spec:
       # when it ships — refusing to route beats routing somewhere harmless.
       PLOEG_DEFAULT_TEAM: copper
       PLOEG_LEASE_TTL: 15m
-      # Which forge instance a resolved Work Target belongs to. Unset looks
-      # harmless and is not: ploegd reads this variable TWICE with different
-      # defaults —
-      #   forgeID := envOr("PLOEG_TARGET_FORGE", "forgejo")   // registration
-      #   target.NewMapResolver(spec, os.Getenv("PLOEG_TARGET_FORGE"))
-      # — so with it unset the provider registers under "forgejo" while every
-      # Target carries forge="". The lookup in publishRound then misses and
-      # the round's findings are dropped with
-      #   WARN findings not published: no provider for forge forge=""
-      # which is exactly how VIK-628's reviewer produced a real review that
-      # never reached PR webgrip/erfbeeld#9 (2026-07-30). Setting it makes
-      # both reads agree. The two defaults should not be able to disagree at
-      # all — ticket on the board for ploegd.
-      PLOEG_TARGET_FORGE: forgejo
       # PLOEG_TEAM_MAP is gone: config.teams[].assignees above is the roster
       # now, and ploegd merges the two. Keeping both meant the same fact in
       # two syntaxes, and the env copy still carried jake/jane after the file
@@ -223,6 +216,9 @@ spec:
       # webhook-carrying board unless a copper no-op is what you want.
     executor:
       enabled: true
+      forge: forgejo
+      forgejo:
+        url: https://forgejo.${SECRET_DOMAIN}
       workerAuth:
         mode: managed
         signingKeySecret:
