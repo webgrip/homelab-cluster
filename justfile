@@ -408,6 +408,26 @@ cloudflare-dnscontrol-cred:
     echo "force the sync: kubectl -n forgejo annotate externalsecret forgejo-cloudflare-dns force-sync=$(date +%s) --overwrite"
     echo "wait for SecretSynced, THEN: kubectl -n forgejo create job --from=cronjob/forgejo-actions-secrets forgejo-actions-secrets-now"
 
+[doc('Seed the Open VSX publish token for webgrip/de-vloer into OpenBao (secret/openvsx/de-vloer)')]
+[group('secrets')]
+openvsx-cred:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _need bao gum kubectl curl
+    BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
+    bao token lookup >/dev/null 2>&1 || bao login -method=oidc
+    ovsx_token="$(gum input --password --placeholder 'open-vsx.org access token (avatar -> Settings -> Access Tokens, publisher agreement signed)')"
+    code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+        -d '{"name":"webgrip"}' "https://open-vsx.org/api/-/namespace/create?token=${ovsx_token}")"
+    if [ "$code" = "401" ] || [ "$code" = "000" ]; then
+        echo "Open VSX rejected that token (HTTP ${code}); nothing written." >&2
+        exit 1
+    fi
+    bao kv put secret/openvsx/de-vloer OVSX_PAT="${ovsx_token}"
+    echo "wrote secret/openvsx/de-vloer (verified against open-vsx.org first)"
+    echo "force the sync: kubectl -n forgejo annotate externalsecret forgejo-openvsx-publish force-sync=$(date +%s) --overwrite"
+    echo "wait for SecretSynced, THEN: kubectl -n forgejo create job --from=cronjob/forgejo-actions-secrets forgejo-actions-secrets-now"
+
 # One-time seeding of ntfy's declarative auth into OpenBao (secret/ntfy/auth):
 # users (bcrypt), tokens, and the bare alertmanager_token that the Alertmanager
 # routing config templates in as the Bearer credential. Only the "phone" password
