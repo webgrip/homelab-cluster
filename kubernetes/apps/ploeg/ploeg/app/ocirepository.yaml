@@ -1,7 +1,4 @@
 ---
-# Ploeg's first-party chart from the PRIVATE harbor.webgrip.dev/webgrip project.
-# Renovate maintains tag+digest (regex manager + update-oci-digests.sh); the
-# digest is added on the first Renovate pass after the initial publish.
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
@@ -15,22 +12,5 @@ spec:
   secretRef:
     name: harbor-pull
   ref:
-    # rc.31 is a catch-up to tip before an end-to-end factory test, taken so
-    # the run exercises what the next release would ship. Everything
-    # rc.28 -> rc.31 carries is release-pipeline work — cosign-signing the
-    # Forgejo mirror, mirroring the signature/attestation accessories and OCI
-    # index annotations to GHCR, rejecting zero-time release timestamps —
-    # none of it reaches ploegd, the worker, or the chart templates.
-    #
-    # Verified as a pure pin move before bumping: both charts rendered against
-    # this HelmRelease's extracted .spec.values diff only in the
-    # app.kubernetes.io/version and helm.sh/chart labels (60 lines, all
-    # version strings), and the migration head is still 0011. The image pin in
-    # helmrelease.yaml moves in the same commit — the rc.27 lesson: the chart
-    # pin and the image pin are two separate lines, and moving only one leaves
-    # the deployed binary behind while the Helm upgrade reports success.
-    tag: 0.2.0-rc.31
-    # Harbor's own digest (helm pull prints it), never the Forgejo mirror's:
-    # that registry re-runs `helm package`, which is not byte-reproducible, so
-    # the same chart lands under a different digest.
-    digest: sha256:53bcfe54d4f1dd0e801b35f131cf31859548cd0a29729fb32a8776fa2401dd09
+    tag: 0.3.0-rc.6
+    digest: sha256:348a07babca3f542277d66fe9096fb18990c59108d32a4c7980f40328e955fe2

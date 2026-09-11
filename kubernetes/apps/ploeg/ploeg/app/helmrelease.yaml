@@ -40,7 +40,17 @@ spec:
       # applies — see the kepler note for why a non-Harbor depName wedges
       # stability-days forever.
       # renovate: datasource=docker depName=harbor.webgrip.dev/webgrip/ploegd
-      tag: "0.2.0-rc.31@sha256:f2263e149b6b5b48bd78a781af9459c86f1d831d2e098c2ce16e7815e9443943"
+      tag: "0.3.0-rc.6@sha256:842613ab01655c89cbc6719eff8fddb329ddf486a2bda23bd8adce5b228efe23"
+    operator:
+      consumers:
+        - name: de-vloer
+          teams:
+            - bronze
+          execute: true
+          maxBudgetUsd: 0.25
+          tokenSecret:
+            name: ploeg-workbench
+            key: PLOEG_OPERATOR_VLOER_TOKEN
     # Routing and roster as a FILE (mounted at /etc/ploeg/ploeg.yaml), not the
     # PLOEG_TARGET_MAP / PLOEG_TEAM_MAP / PLOEG_TEAM_PLANS env-var DSLs.
     #
@@ -213,6 +223,21 @@ spec:
       # webhook-carrying board unless a copper no-op is what you want.
     executor:
       enabled: true
+      workerAuth:
+        mode: managed
+        signingKeySecret:
+          name: ploeg-worker-signing
+          key: key
+        bootstrapSecret:
+          name: ploeg-worker-bootstrap
+          registryKey: registry.json
+        additionalLLMPolicies:
+          - team: bronze
+            role: operator
+            budgetUsd: 0.25
+            models:
+              - deepseek-chat
+            ttl: 10m
       # ADR-0053: the agent plane is daemonless — dind:false is the ESTATE
       # default here, overriding the chart's own dind:true. This line is
       # load-bearing: bronze's builder role and silver carry no harness block
