@@ -83,6 +83,26 @@ data:
         litellm_params:
           model: deepseek/deepseek-v4-pro
           api_key: os.environ/DEEPSEEK_API_KEY
+      - model_name: fireworks-nemotron-lightning
+        litellm_params:
+          model: fireworks_ai/accounts/fireworks/models/nemotron-lightning-3p5-30b-a3b
+          api_key: os.environ/FIREWORKS_AI_API_KEY
+      - model_name: fireworks-gpt-oss-120b
+        litellm_params:
+          model: fireworks_ai/accounts/fireworks/models/gpt-oss-120b
+          api_key: os.environ/FIREWORKS_AI_API_KEY
+      - model_name: fireworks-minimax-m3
+        litellm_params:
+          model: fireworks_ai/accounts/fireworks/models/minimax-m3
+          api_key: os.environ/FIREWORKS_AI_API_KEY
+      - model_name: fireworks-qwen3-plus
+        litellm_params:
+          model: fireworks_ai/accounts/fireworks/models/qwen3p7-plus
+          api_key: os.environ/FIREWORKS_AI_API_KEY
+      - model_name: fireworks-kimi-code
+        litellm_params:
+          model: fireworks_ai/accounts/fireworks/models/kimi-k2p7-code
+          api_key: os.environ/FIREWORKS_AI_API_KEY
 
     general_settings:
       # Admin credential used to mint virtual keys (per-dev / per-agent / per-task)
@@ -241,8 +261,13 @@ data:
         - claude-sonnet-4-6: ["deepseek-chat"]
         - claude-sonnet-4-5: ["deepseek-chat"]
         - claude-haiku-4-5: ["deepseek-chat"]
-        - deepseek-chat: ["claude-haiku-4-5"]
+        - deepseek-chat: ["fireworks-gpt-oss-120b", "claude-haiku-4-5"]
         - deepseek-reasoner: ["claude-sonnet-5"]
+        - fireworks-nemotron-lightning: ["fireworks-gpt-oss-120b"]
+        - fireworks-minimax-m3: ["fireworks-gpt-oss-120b"]
+        - fireworks-qwen3-plus: ["fireworks-gpt-oss-120b"]
+        - fireworks-kimi-code: ["fireworks-gpt-oss-120b"]
+        - fireworks-gpt-oss-120b: ["claude-haiku-4-5"]
       default_fallbacks: ["deepseek-chat"]
       stream_timeout: 120
       disable_cooldowns: true
@@ -253,6 +278,9 @@ data:
           time_period: "1d"
         deepseek:
           budget_limit: 2
+          time_period: "1d"
+        fireworks_ai:
+          budget_limit: 5
           time_period: "1d"
       # --- VIK-278: legacy/hardcoded model names resolve to current
       # deployments instead of 404ing. ---
