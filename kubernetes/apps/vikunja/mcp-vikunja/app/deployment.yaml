@@ -67,8 +67,31 @@ spec:
         # froze 1.19.1 at build time. Installing supergateway locally under the
         # override is what actually lifts the ceiling. Verified against 3.4.3 +
         # sdk@1.30.0: header 2025-11-25 -> 200, 2025-06-18 -> 200 (no regression),
-        # a bogus 1999-01-01 -> 400 with the process SURVIVING (so validation is
-        # still enforced, and the fatal-throw path is gone too).
+        # a bogus 1999-01-01 -> 400 with the process surviving.
+        #
+        # 2026-09-11: THE PROTOCOL CEILING WAS ONLY HALF THE BUG, and the earlier
+        # note here wrongly called the fatal-throw path fixed. It was not: the
+        # 1999-01-01 case survives, but the crash has an independent trigger and
+        # kept firing (25 restarts in 6d). supergateway's stateless gateway does
+        #     try { transport.send(jsonMsg) } catch (e) { log(e) }
+        # but the SDK declares `async send()`, so that catch is a FALSE GUARD --
+        # it can only catch a synchronous throw. When a child answers a request
+        # whose HTTP connection is already gone (client hung up, timed out, or
+        # gave up mid-tool-call), send() REJECTS, the rejection is unhandled, and
+        # Node 20's default --unhandled-rejections=throw exits the process. Any
+        # client disconnect mid-flight takes down the bridge for everyone.
+        #
+        # The node -e step below attaches a .catch to that call. Reproduced and
+        # mutation-tested locally against a deliberately slow child: unpatched
+        # 3.4.3 + sdk 1.30.0 DIES on the first client hang-up with the exact
+        # production error ("No connection established for request ID: 1");
+        # patched, it survives 5 consecutive hang-ups, still answers a patient
+        # client 200, and logs each failure instead of dying.
+        #
+        # The patch asserts its target text and exits 1 if absent, so a
+        # supergateway bump that moves this line fails the pod loudly rather than
+        # silently restoring the crash. Upstream 3.4.3 is latest as of 2026-09-11
+        # (released 2025-10-09); drop this patch if upstream ever fixes the call.
         #
         # Installing in an initContainer also removes the per-request npx race of
         # stateless mode.
@@ -85,6 +108,15 @@ spec:
               npm pkg set 'overrides.@modelcontextprotocol/sdk=1.30.0'
               npm install --no-audit --no-fund --loglevel=error \
                 supergateway@3.4.3 @aimbitgmbh/vikunja-mcp@0.1.0
+              node -e '
+                const fs = require("fs");
+                const f = "node_modules/supergateway/dist/gateways/stdioToStatelessStreamableHttp.js";
+                const needle = "                            transport.send(jsonMsg);";
+                const src = fs.readFileSync(f, "utf8");
+                if (!src.includes(needle)) { console.error("supergateway send-patch target missing - refusing to start"); process.exit(1); }
+                fs.writeFileSync(f, src.replace(needle, "                            Promise.resolve(transport.send(jsonMsg)).catch((e) => logger.error(`Failed to send to StreamableHttp`, e));"));
+                console.log("patched supergateway stateless send");
+              '
           env:
             - name: HOME
               value: /tmp
