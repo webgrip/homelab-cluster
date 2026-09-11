@@ -29,6 +29,7 @@ Hostnames follow `<app>.${SECRET_DOMAIN}` (`cluster-secrets`, SOPS-encrypted). G
 | OpenCost MCP | `observability` | `opencost-mcp.${SECRET_DOMAIN}` | Cost-query MCP server |
 | VMSingle ("Prometheus") | `observability` | `prometheus.${SECRET_DOMAIN}` | VictoriaMetrics TSDB/query UI |
 | VMAlertmanager | `observability` | `alertmanager.${SECRET_DOMAIN}` | Alert routing UI |
+| SearXNG | `searxng` | `searxng.${SECRET_DOMAIN}` | Meta-search + Valkey cache; LAN, no auth |
 | Dependency-Track | `security` | `dependency-track.${SECRET_DOMAIN}` | SBOM/CVE portfolio; CNPG DB |
 | GUAC | `security` | `guac.${SECRET_DOMAIN}` | Supply-chain graph; CNPG DB |
 | OpenBao | `security` | `openbao.${SECRET_DOMAIN}` | Secrets backend (ESO source) |
@@ -44,7 +45,7 @@ Hostnames follow `<app>.${SECRET_DOMAIN}` (`cluster-secrets`, SOPS-encrypted). G
 | Forgejo | `forgejo` | `forgejo.${SECRET_DOMAIN}` | Self-hosted forge; CNPG DB |
 | Invoice Ninja | `invoiceninja` | `invoice.${SECRET_DOMAIN}` | Invoicing; MariaDB StatefulSet |
 | Renovate webhook | `renovate` | `renovate-webhook.${SECRET_DOMAIN}` | renovate-operator webhook |
-| SearXNG | `searxng` | `searxng.${SECRET_DOMAIN}` | Meta-search + Valkey cache; basic auth at the gateway ([ADR-0056](../adr/adr-0056-searxng-public-behind-gateway-basic-auth.md)) |
+| SearXNG (public) | `searxng` | `search.${SECRET_DOMAIN}` | Same backend as the internal name, gated by gateway basic auth ([ADR-0056](../adr/adr-0056-searxng-public-behind-gateway-basic-auth.md)) |
 | Twitch EventSub | `observability` | `twitch-eventsub.${SECRET_DOMAIN}` | twitch-exporter callback |
 
 ## Non-HTTP LoadBalancers (Cilium LB-IPAM)

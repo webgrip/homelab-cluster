@@ -42,8 +42,8 @@ to sit in front of it.
 * **Manifest-managed.** Dashboard-only configuration is outside review, diff and rollback, the same
   driver that shaped ADR-0054.
 * **Fail closed.** A misconfigured or missing credential must not silently publish an open instance.
-* **One hostname.** `base_url` is baked into the settings and used to build absolute links
-  (the image proxy among them), so a second public hostname would serve broken pages.
+* **The LAN path must not regress.** It worked before this request and nothing about being
+  reachable from outside should make being at home worse.
 * **Proportionate.** One user, one password. The gate should not cost more to operate than the
   thing it guards.
 
@@ -61,18 +61,24 @@ Chosen option: **Envoy Gateway `SecurityPolicy` with `basicAuth`**, because it i
 that authenticates off-LAN traffic without depending on a LAN-only component, lives entirely in
 manifests, and fails closed.
 
-The `HTTPRoute` now attaches to **both** gateways — `envoy-internal` and `envoy-external` — under
-the single hostname `searxng.${SECRET_DOMAIN}`, and a `SecurityPolicy` targets **the route**, not a
-gateway. Targeting the route is what makes the behaviour uniform: split-horizon DNS can hand a LAN
-client either gateway's address, and both paths land on the same authenticated route either way.
-The credential is an htpasswd entry read from OpenBao at `secret/searxng/basic-auth` by an
-`ExternalSecret`; the namespace's `webgrip.io/exposure` label moves from `internal` to `external`,
-and `searxng` joins the allowlist in `restrict-external-gateway-attachment`, the enforcing Kyverno
-policy that would otherwise deny the attachment.
+**Two routes, two hostnames, one backend.** `searxng.${SECRET_DOMAIN}` keeps its existing route on
+`envoy-internal`, unauthenticated and excluded from public DNS, exactly as before. A second route,
+`search.${SECRET_DOMAIN}`, attaches to `envoy-external`, and the `SecurityPolicy` targets **that
+route only**. The credential is an htpasswd entry read from OpenBao at `secret/searxng/basic-auth`
+by an `ExternalSecret`; the namespace's `webgrip.io/exposure` label moves from `internal` to
+`external`, and `searxng` joins the allowlist in `restrict-external-gateway-attachment`, the
+enforcing Kyverno policy that would otherwise deny the attachment.
+
+Splitting the hostname is what keeps the two paths independent, and it is only safe because
+searxng builds **relative** URLs: `image_proxify` calls `url_for('image_proxy')` with no
+`_external`, and the only `_external=True` in the templates is the OpenSearch descriptor, which
+affects "add to browser" and nothing else. A single hostname on both gateways was tried first and
+reverted the same day — see the history below.
 
 The Cloudflare Tunnel needs no change: its `*.${SECRET_DOMAIN}` rule already forwards any new
-public hostname to `envoy-external`, and external-dns publishes the record once the `exclude`
-annotation is gone.
+public hostname to `envoy-external`, and external-dns publishes `search.${SECRET_DOMAIN}` on its
+own because it watches that gateway. The internal route keeps its `external-dns` exclusion, so the
+old name stays off public DNS.
 
 ### Consequences
 
@@ -85,12 +91,17 @@ annotation is gone.
   the request-authorization RFC's rollout, without adopting an authorization server.
 * Good, because the engine-ban blast radius stays where it was — only the owner can drive outbound
   queries, which is what keeps the fix in the accompanying commit durable.
-* Bad, because the LAN path now asks for a password too. That is the price of one hostname and one
-  uniform rule; browsers remember it.
+* Good, because the LAN path is untouched: same hostname, same absence of a password, and it stays
+  up even while the public credential is missing.
 * Bad, because basic auth carries no MFA, no session expiry and no group policy, unlike every other
   authenticated surface in this estate. It is a shared static credential over TLS.
 * Bad, because the credential is a provided value: it must be written to OpenBao once by hand, and
-  the route answers 500 until it is. Rotation is one `bao kv put` plus the ESO refresh interval.
+  the **public** route answers 500 until it is. Rotation is one `bao kv put` plus the ESO refresh
+  interval. Generating it instead was attempted and abandoned — Envoy Gateway accepts only unsalted
+  `{SHA}` htpasswd entries, and this cluster's External Secrets build has no template function that
+  turns `sha1sum`'s hex output back into the raw bytes the base64 needs.
+* Bad, because the instance now answers to two names, and the OpenSearch "add to browser"
+  descriptor always advertises the internal one.
 * Bad, because one more name now resolves publicly, which is a standing invitation to credential
   stuffing. Cloudflare proxying keeps the origin address hidden, and the 401 is cheap to serve.
 
@@ -98,12 +109,13 @@ annotation is gone.
 
 Four checks, all against live state rather than manifests:
 
-1. `dig searxng.${SECRET_DOMAIN} @1.1.1.1 +short` returns Cloudflare edge addresses — the name is
-   published.
-2. An unauthenticated request to the public hostname returns **401** with a
-   `WWW-Authenticate: Basic` header; the same request with the credential returns **200**.
-3. `kubectl -n searxng get securitypolicy searxng-basic-auth` reports `Accepted=True`, and the
-   `HTTPRoute` reports `Accepted`/`ResolvedRefs` on **both** parents.
+1. `dig search.${SECRET_DOMAIN} @1.1.1.1 +short` returns Cloudflare edge addresses, and
+   `dig searxng.${SECRET_DOMAIN} @1.1.1.1 +short` returns nothing — only the gated name is public.
+2. An unauthenticated request to `search.${SECRET_DOMAIN}` returns **401** with a
+   `WWW-Authenticate: Basic` header; the same request with the credential returns **200**. A
+   request to `searxng.${SECRET_DOMAIN}` from the LAN returns **200** with no credential.
+3. `kubectl -n searxng get securitypolicy searxng-basic-auth` reports `Accepted=True`, and both
+   `HTTPRoute`s report `Accepted`/`ResolvedRefs`.
 4. The Kyverno gate still bites: `kyverno apply` on the enforcing policy admits
    `searxng/searxng` and rejects the identical route in an unlisted namespace. Run as a
    three-way mutation test on 2026-09-11 — the pre-change policy rejected both, the post-change
@@ -168,5 +180,16 @@ Four checks, all against live state rather than manifests:
   [RFC: Request authorization at the gateway](../rfc/rfc-request-authorization-envoy.md) ·
   [RFC: Ingress, DNS & edge](../rfc/rfc-ingress-dns-edge.md) (names "exposure is one YAML token
   away" as the risk this record deliberately accepts, once, with a gate).
-* 2026-09-11 — accepted; `SecurityPolicy`, `ExternalSecret`, dual-gateway `HTTPRoute` and the
-  Kyverno allowlist entry committed together.
+* 2026-09-11 — accepted; `SecurityPolicy`, `ExternalSecret`, the second `HTTPRoute` and the Kyverno
+  allowlist entry committed together.
+* 2026-09-11 — **shape corrected the same day, before the record described anything durable.** The
+  first implementation put one hostname on both gateways with the `SecurityPolicy` on that single
+  route. Measured against the live cluster, that was wrong in a way reasoning had not caught:
+  k8s-gateway answers LAN queries for the hostname with **both** gateway addresses (12 of 12
+  queries returned 10.0.0.27 and 10.0.0.28), so route-level auth was the only way to make LAN
+  behaviour deterministic — and it made LAN behaviour deterministically *authenticated*. Because
+  the credential is a provided value that nobody had written yet, both gateways served **500** and
+  LAN search went down. Fail-closed worked exactly as designed; the design was the problem. Two
+  hostnames decouple the paths, which is only viable because searxng's URLs are relative. Kept
+  from the first attempt: the fail-closed behaviour is now confirmed by observation, not by
+  reading the translator source — a missing secret really does yield 500 on the targeted route.
