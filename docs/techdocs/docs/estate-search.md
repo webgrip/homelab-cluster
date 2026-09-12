@@ -13,6 +13,7 @@ window.addEventListener('DOMContentLoaded', () => {
     element: "#estate-search",
     showSubResults: true,
     mergeIndex: [
+      { bundlePath: "/glide/pagefind", mergeFilter: { repo: "glide" } },
       { bundlePath: "/infrastructure/pagefind", mergeFilter: { repo: "infrastructure" } },
       { bundlePath: "/workflows/pagefind", mergeFilter: { repo: "workflows" } },
       { bundlePath: "/telemetry-service/pagefind", mergeFilter: { repo: "telemetry-service" } },
