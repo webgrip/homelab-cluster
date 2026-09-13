@@ -72,7 +72,7 @@ spec:
               gh -X PUT --data '{"enabled":false}' "$repo/actions/permissions" >/dev/null
               api="$FORGEJO_URL/api/v1/repos/webgrip/glide"
               mirrors="$(fj "$api/push_mirrors")"
-              mirror="$(printf '%s' "$mirrors" | jq -c '[.[] | select(.remote_address == "ssh://git@github.com/webgrip/glide.git")][0] // empty')"
+              mirror="$(printf '%s' "$mirrors" | jq -c '[.[] | select(.remote_address == "ssh://github.com/webgrip/glide.git")][0] // empty')"
               if [ -z "$mirror" ]; then
                 mirror="$(fj -X POST --data '{"remote_address":"ssh://git@github.com/webgrip/glide.git","use_ssh":true,"interval":"8h0m0s","sync_on_commit":true}' "$api/push_mirrors")"
               fi
@@ -95,6 +95,17 @@ spec:
                 sleep 5
               done
               echo 'Glide GitHub mirror provisioned; Actions disabled; trunk development'
+              for entry in de-vloer:52afa4a583fbf47d52081c9a2a95c4cb4c372100 ploeg:6f19c25fcc48f2335ad39237d06642adef1a5fcc; do
+                old_repo="$(printf '%s' "$entry" | cut -d: -f1)"
+                expected="$(printf '%s' "$entry" | cut -d: -f2)"
+                old_api="$FORGEJO_URL/api/v1/repos/webgrip/$old_repo"
+                current="$(fj "$old_api/branches/development" | jq -r '.commit.id')"
+                [ "$current" = "$expected" ] || { echo "$old_repo changed since cutover qualification; stop and reconcile source"; exit 1; }
+                fj "$old_api/actions/runs" | jq -e '[.workflow_runs[] | select(.status == "running" or .status == "waiting" or .status == "blocked")] | length == 0' >/dev/null
+                fj -X PATCH --data '{"has_actions":false}' "$old_api" >/dev/null
+                gh -X PUT --data '{"enabled":false}' "https://api.github.com/repos/webgrip/$old_repo/actions/permissions" >/dev/null
+                echo "$old_repo legacy Actions retired; source and existing releases retained"
+              done
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
