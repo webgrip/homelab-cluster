@@ -1,0 +1,99 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: glide-distribution-bootstrap
+  namespace: forgejo
+  labels:
+    cleanup.webgrip.io/retry-failed: 'true'
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: forgejo-actions-secrets
+      automountServiceAccountToken: false
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: provision
+          image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.0@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4
+          env:
+            - name: FORGEJO_URL
+              value: http://forgejo-http.forgejo.svc.cluster.local:3000
+            - name: ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: forgejo-admin-secret
+                  key: username
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: forgejo-admin-secret
+                  key: password
+            - name: GHCR_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: forgejo-github-pat
+                  key: GHCR_USERNAME
+            - name: GHCR_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: forgejo-github-pat
+                  key: GHCR_TOKEN
+            - name: OVSX_PAT
+              valueFrom:
+                secretKeyRef:
+                  name: forgejo-openvsx-publish
+                  key: OVSX_PAT
+          command:
+            - /bin/sh
+            - -ceu
+            - |
+              gh() {
+                curl -fsS --max-time 45 -H "Authorization: Bearer $GHCR_TOKEN" -H 'Accept: application/vnd.github+json' -H 'Content-Type: application/json' "$@"
+              }
+              fj() {
+                curl -fsS --max-time 45 -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" -H 'Content-Type: application/json' "$@"
+              }
+              repo=https://api.github.com/repos/webgrip/glide
+              status="$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $GHCR_TOKEN" "$repo")"
+              case "$status" in
+                404) gh -X POST --data '{"name":"glide","private":false,"auto_init":false,"description":"Vloer and Ploeg. Forgejo is the source of truth.","homepage":"https://docs.webgrip.dev/glide/"}' https://api.github.com/orgs/webgrip/repos >/dev/null; echo 'created GitHub webgrip/glide' ;;
+                200) echo 'GitHub webgrip/glide already exists' ;;
+                *) echo "GitHub repository lookup returned HTTP $status"; exit 1 ;;
+              esac
+              gh -X PUT --data '{"enabled":false}' "$repo/actions/permissions" >/dev/null
+              api="$FORGEJO_URL/api/v1/repos/webgrip/glide"
+              mirrors="$(fj "$api/push_mirrors")"
+              if ! printf '%s' "$mirrors" | jq -e 'any(.[]; .remote_address == "https://github.com/webgrip/glide.git")' >/dev/null; then
+                jq -nc --arg user "$GHCR_USERNAME" --arg token "$GHCR_TOKEN" '{remote_address:"https://github.com/webgrip/glide.git",remote_username:$user,remote_password:$token,interval:"8h0m0s",sync_on_commit:true}' | fj -X POST --data-binary @- "$api/push_mirrors" >/dev/null
+                echo 'configured Forgejo to GitHub mirror'
+              fi
+              fj -X POST "$api/push_mirrors-sync" >/dev/null
+              jq -nc --arg value "$OVSX_PAT" '{data:$value}' | fj -X PUT --data-binary @- "$api/actions/secrets/OVSX_PAT" >/dev/null
+              echo 'bridged Glide Open VSX credential'
+              i=0
+              until gh -X PATCH --data '{"default_branch":"development"}' "$repo" >/dev/null 2>&1; do
+                i=$((i+1)); [ "$i" -lt 30 ] || { echo 'GitHub mirror has not received development'; exit 1; }
+                sleep 5
+              done
+              echo 'Glide GitHub mirror provisioned; Actions disabled; trunk development'
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
