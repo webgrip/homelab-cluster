@@ -15,6 +15,16 @@ output "group_members" {
   value = local.group_members
 }
 
+output "application_gates" {
+  value = {
+    for app in distinct(flatten([for c in values(local.capabilities) : try(c.projects.authentik.applications, [])])) :
+    app => sort(distinct(flatten([
+      for c in values(local.capabilities) : try(c.projects.authentik.groups, [])
+      if contains(try(c.projects.authentik.applications, []), app)
+    ])))
+  }
+}
+
 output "cluster_bindings" {
   value = local.cluster_bindings
 }

@@ -1,37 +1,11 @@
 locals {
-  groups_claim_expression = <<-EOT
-    return {
-        "groups": [group.name for group in request.user.ak_groups.all()],
-    }
-  EOT
-
   scope_mappings = {
-    grafana-groups = {
+    groups = {
       scope_name  = "groups"
-      description = "Group names for Grafana role mapping."
-      expression  = local.groups_claim_expression
-    }
-    forgejo-groups = {
-      scope_name  = "groups"
-      description = "Group names for Forgejo team + admin mapping."
-      expression  = local.groups_claim_expression
-    }
-    openbao-groups = {
-      scope_name  = "groups"
-      description = "Group names for OpenBao policy mapping."
-      expression  = local.groups_claim_expression
-    }
-    harbor-groups = {
-      scope_name  = "groups"
-      description = ""
-      expression  = local.groups_claim_expression
-    }
-    vloer-groups = {
-      scope_name  = "groups"
-      description = ""
+      description = "Every group the user is in, for applications that map groups to roles."
       expression  = <<-EOT
         return {
-            "groups": [group.name for group in request.user.groups.filter(name="homelab-admins")],
+            "groups": [group.name for group in request.user.ak_groups.all()],
         }
       EOT
     }
@@ -49,7 +23,6 @@ locals {
   oauth_applications = {
     grafana = {
       provider_name = "grafana-oidc"
-      display_name  = "Grafana OIDC"
       app_name      = "Grafana"
       description   = "Grafana login via Authentik OIDC."
       launch_url    = "https://grafana.${var.SECRET_DOMAIN}"
@@ -59,12 +32,10 @@ locals {
       signing_key   = false
       grant_types   = ["authorization_code", "refresh_token"]
       redirects     = [{ matching_mode = "strict", url = "https://grafana.${var.SECRET_DOMAIN}/login/generic_oauth" }]
-      extra_scopes  = ["grafana-groups"]
-      gate          = "homelab-users-only"
+      extra_scopes  = ["groups"]
     }
     backstage = {
       provider_name = "backstage-oidc"
-      display_name  = "Backstage OIDC"
       app_name      = "Backstage"
       description   = "Backstage developer portal login via Authentik OIDC."
       launch_url    = "https://backstage.${var.SECRET_DOMAIN}"
@@ -75,11 +46,9 @@ locals {
       grant_types   = ["authorization_code", "refresh_token"]
       redirects     = [{ matching_mode = "strict", url = "https://backstage.${var.SECRET_DOMAIN}/api/auth/oidc/handler/frame" }]
       extra_scopes  = []
-      gate          = "homelab-users-only"
     }
     forgejo = {
       provider_name = "forgejo-oidc"
-      display_name  = "Forgejo OIDC"
       app_name      = "Forgejo"
       description   = "Forgejo git hosting login via Authentik OIDC."
       launch_url    = "https://forgejo.${var.SECRET_DOMAIN}"
@@ -89,12 +58,10 @@ locals {
       signing_key   = false
       grant_types   = ["authorization_code", "refresh_token"]
       redirects     = [{ matching_mode = "strict", url = "https://forgejo.${var.SECRET_DOMAIN}/user/oauth2/authentik/callback" }]
-      extra_scopes  = ["forgejo-groups"]
-      gate          = "homelab-users-only"
+      extra_scopes  = ["groups"]
     }
     openbao = {
       provider_name = "openbao-oidc"
-      display_name  = "OpenBao OIDC"
       app_name      = "OpenBao"
       description   = "OpenBao secrets manager login via Authentik OIDC."
       launch_url    = "https://openbao.${var.SECRET_DOMAIN}"
@@ -107,12 +74,10 @@ locals {
         { matching_mode = "strict", url = "https://openbao.${var.SECRET_DOMAIN}/ui/vault/auth/oidc/oidc/callback" },
         { matching_mode = "strict", url = "http://localhost:8250/oidc/callback" },
       ]
-      extra_scopes = ["openbao-groups"]
-      gate         = "homelab-users-only"
+      extra_scopes = ["groups"]
     }
     harbor = {
       provider_name = "harbor-oidc"
-      display_name  = "Harbor OIDC"
       app_name      = "Harbor"
       description   = "Harbor container registry login via Authentik OIDC."
       launch_url    = "https://harbor.${var.SECRET_DOMAIN}"
@@ -122,12 +87,10 @@ locals {
       signing_key   = true
       grant_types   = ["authorization_code", "refresh_token"]
       redirects     = [{ matching_mode = "strict", url = "https://harbor.${var.SECRET_DOMAIN}/c/oidc/callback" }]
-      extra_scopes  = ["harbor-groups"]
-      gate          = "homelab-users-only"
+      extra_scopes  = ["groups"]
     }
     vikunja = {
       provider_name = "vikunja-oidc"
-      display_name  = "Vikunja OIDC"
       app_name      = "Vikunja"
       description   = "Vikunja task management login via Authentik OIDC."
       launch_url    = "https://vikunja.${var.SECRET_DOMAIN}"
@@ -138,11 +101,9 @@ locals {
       grant_types   = ["authorization_code", "refresh_token"]
       redirects     = [{ matching_mode = "strict", url = "https://vikunja.${var.SECRET_DOMAIN}/auth/openid/authentik" }]
       extra_scopes  = []
-      gate          = "homelab-users-only"
     }
     litellm = {
       provider_name = "litellm-oidc"
-      display_name  = "LiteLLM OIDC"
       app_name      = "LiteLLM"
       description   = "LiteLLM proxy Admin UI login via Authentik OIDC."
       launch_url    = "https://litellm.${var.SECRET_DOMAIN}/ui"
@@ -153,11 +114,9 @@ locals {
       grant_types   = ["authorization_code", "refresh_token"]
       redirects     = [{ matching_mode = "strict", url = "https://litellm.${var.SECRET_DOMAIN}/sso/callback" }]
       extra_scopes  = ["litellm-role"]
-      gate          = "homelab-users-only"
     }
     cloudflare-access = {
       provider_name = "cloudflare-access-oidc"
-      display_name  = "Cloudflare Access OIDC"
       app_name      = "Cloudflare Access"
       description   = "Cloudflare Access login for the staging sites via Authentik OIDC."
       launch_url    = "https://staging.twente.dev"
@@ -168,11 +127,9 @@ locals {
       grant_types   = ["authorization_code", "refresh_token"]
       redirects     = [{ matching_mode = "strict", url = "https://webgrip.cloudflareaccess.com/cdn-cgi/access/callback" }]
       extra_scopes  = []
-      gate          = "homelab-users-only"
     }
     vloer = {
       provider_name = "vloer-oidc"
-      display_name  = "vloer-oidc"
       app_name      = "Vloer"
       description   = "Human workbench for Ploeg and remote agent workspaces."
       launch_url    = "https://vloer.${var.SECRET_DOMAIN}"
@@ -182,22 +139,17 @@ locals {
       signing_key   = true
       grant_types   = ["authorization_code"]
       redirects     = [{ matching_mode = "strict", url = "https://vloer.${var.SECRET_DOMAIN}/api/auth/oidc/callback" }]
-      extra_scopes  = ["vloer-groups"]
-      gate          = "homelab-admins-only"
+      extra_scopes  = ["groups"]
     }
   }
 
-  expression_policies = {
-    homelab-users-only   = "return request.user.is_authenticated and request.user.ak_groups.filter(name=\"homelab-users\").exists()\n"
-    homelab-admins-only  = "return request.user.is_authenticated and request.user.ak_groups.filter(name=\"homelab-admins\").exists()\n"
-    homelab-mfa-required = "return request.user.is_authenticated and request.user.ak_groups.filter(name=\"homelab-mfa\").exists()"
+  application_gates = {
+    for app, groups in module.model.application_gates : app => [
+      for index, group in groups : { key = "${app}/${group}", app = app, group = group, order = index }
+    ]
   }
-}
 
-resource "authentik_policy_expression" "gate" {
-  for_each   = local.expression_policies
-  name       = each.key
-  expression = each.value
+  gate_bindings = { for b in flatten(values(local.application_gates)) : b.key => b }
 }
 
 resource "authentik_property_mapping_provider_scope" "app" {
@@ -217,7 +169,7 @@ resource "authentik_provider_oauth2" "app" {
   client_type           = each.value.client_type
   grant_types           = each.value.grant_types
   access_token_validity = "hours=1"
-  authentication_flow   = data.authentik_flow.authentication.id
+  authentication_flow   = var.google_login ? authentik_flow.webgrip_authentication[0].uuid : data.authentik_flow.authentication.id
   authorization_flow    = data.authentik_flow.authorization_explicit_consent.id
   invalidation_flow     = data.authentik_flow.invalidation.id
   signing_key           = each.value.signing_key ? data.authentik_certificate_key_pair.self_signed.id : null
@@ -239,23 +191,14 @@ resource "authentik_application" "app" {
   meta_description   = each.value.description
   meta_launch_url    = each.value.launch_url
   open_in_new_tab    = true
-  policy_engine_mode = "all"
+  policy_engine_mode = "any"
 }
 
 resource "authentik_policy_binding" "gate" {
-  for_each = local.oauth_applications
+  for_each = local.gate_bindings
 
-  target  = authentik_application.app[each.key].uuid
-  policy  = authentik_policy_expression.gate[each.value.gate].id
-  order   = 0
-  enabled = true
-}
-
-resource "authentik_policy_binding" "mfa" {
-  for_each = local.oauth_applications
-
-  target  = authentik_application.app[each.key].uuid
-  policy  = authentik_policy_expression.gate["homelab-mfa-required"].id
-  order   = 10
+  target  = authentik_application.app[each.value.app].uuid
+  group   = authentik_group.group[each.value.group].id
+  order   = each.value.order
   enabled = true
 }

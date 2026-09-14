@@ -76,6 +76,8 @@ capabilities:
       authentik:
         groups:
           - homelab-admins
+        applications:
+          - openbao
       openbao:
         policy: admins
     escalates_to:
@@ -103,6 +105,8 @@ capabilities:
       authentik:
         groups:
           - harbor-admins
+        applications:
+          - harbor
       harbor:
         role: sysadmin
     escalates_to:
@@ -116,6 +120,8 @@ capabilities:
       authentik:
         groups:
           - homelab-users
+        applications:
+          - forgejo
       forgejo:
         team: Developers
   repo-admin:
@@ -128,6 +134,8 @@ capabilities:
       authentik:
         groups:
           - homelab-admins
+        applications:
+          - forgejo
       forgejo:
         team: Owners
         siteAdmin: true
@@ -142,6 +150,8 @@ capabilities:
       authentik:
         groups:
           - homelab-users
+        applications:
+          - grafana
       grafana:
         role: Editor
     escalates_to:
@@ -157,6 +167,8 @@ capabilities:
       authentik:
         groups:
           - homelab-admins
+        applications:
+          - grafana
       grafana:
         role: GrafanaAdmin
   litellm-admin:
@@ -167,8 +179,24 @@ capabilities:
       authentik:
         groups:
           - homelab-admins
+        applications:
+          - litellm
       litellm:
         role: proxy_admin
+    supersedes:
+      - llm-use
+  llm-use:
+    summary: Sign in to the LiteLLM gateway as an internal user with a capped budget
+    risk: medium
+    owner: ryan@webgrip.nl
+    projects:
+      authentik:
+        groups:
+          - homelab-users
+        applications:
+          - litellm
+      litellm:
+        role: internal_user
   vloer-admin:
     summary: De Vloer administration, every session and budget
     risk: high
@@ -177,6 +205,8 @@ capabilities:
       authentik:
         groups:
           - homelab-admins
+        applications:
+          - vloer
       vloer:
         role: admin
   tasks-use:
@@ -187,6 +217,8 @@ capabilities:
       authentik:
         groups:
           - homelab-users
+        applications:
+          - vikunja
   catalog-use:
     summary: Sign in to Backstage
     risk: low
@@ -195,6 +227,8 @@ capabilities:
       authentik:
         groups:
           - homelab-users
+        applications:
+          - backstage
   staging-sites-use:
     summary: Open the staging sites published through Cloudflare Access
     risk: low
@@ -203,6 +237,8 @@ capabilities:
       authentik:
         groups:
           - homelab-users
+        applications:
+          - cloudflare-access
   previews-use:
     summary: Open the preview environments of the granted projects
     risk: low

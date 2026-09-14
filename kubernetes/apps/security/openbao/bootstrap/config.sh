@@ -89,39 +89,6 @@ JSON
   fi
 fi
 
-echo "==> OIDC (client_secret read from Authentik; no SOPS)"
-SAT="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
-K8S_RESP="$(wget -qO- --no-check-certificate --header="Authorization: Bearer ${SAT}" \
-  https://kubernetes.default.svc/api/v1/namespaces/authentik/secrets/authentik-secret 2>/dev/null)"
-AK_TOKEN="$(printf '%s' "${K8S_RESP}" | grep -o '"AUTHENTIK_BOOTSTRAP_TOKEN": *"[^"]*"' | sed 's/.*: *"//; s/"$//' | base64 -d 2>/dev/null)"
-AK_RESP=""
-[ -n "${AK_TOKEN}" ] && AK_RESP="$(wget -qO- --header="Authorization: Bearer ${AK_TOKEN}" \
-  'http://authentik-server.authentik.svc.cluster.local/api/v3/providers/oauth2/?search=openbao' 2>/dev/null)"
-CS="$(printf '%s' "${AK_RESP}" | grep -o '"client_secret": *"[^"]*"' | head -1 | sed 's/.*: *"//; s/"$//')"
-if [ -n "${CS}" ] && [ -n "${SECRET_DOMAIN:-}" ]; then
-  bao write auth/oidc/config \
-    oidc_discovery_url="https://authentik.${SECRET_DOMAIN}/application/o/openbao/" \
-    oidc_client_id=openbao oidc_client_secret="${CS}" default_role=default >/dev/null
-  bao write auth/oidc/role/default \
-    user_claim=sub groups_claim=groups token_policies=default \
-    oidc_scopes="openid,profile,email,groups" \
-    allowed_redirect_uris="https://openbao.${SECRET_DOMAIN}/ui/vault/auth/oidc/oidc/callback,http://localhost:8250/oidc/callback" >/dev/null
-  echo "   oidc configured"
-else
-  echo "   oidc skipped (Authentik token/client_secret/domain unavailable, or oidc not enabled)"
-fi
-
-echo "==> identity: external 'openbao-admins' group (policy admins) <- Authentik 'homelab-admins'"
-bao write identity/group name=openbao-admins type=external policies=admins >/dev/null
-GID="$(bao read -field=id identity/group/name/openbao-admins)"
-ACC="$(bao auth list 2>/dev/null | awk '$1 == "oidc/" { print $3 }')"
-if [ -n "${ACC}" ]; then
-  bao write identity/group-alias name=homelab-admins mount_accessor="${ACC}" canonical_id="${GID}" 2>/dev/null \
-    && echo "   group-alias created" || echo "   group-alias already present"
-else
-  echo "   oidc not enabled yet; skipping group-alias"
-fi
-
 echo "==> database engine (dynamic Postgres creds — ADR-0016)"
 # Mount the database engine on the RUNNING cluster if init.sh (fresh-only) never did.
 # config-admin holds a narrow sys/mounts/database* grant (see config-admin.hcl).

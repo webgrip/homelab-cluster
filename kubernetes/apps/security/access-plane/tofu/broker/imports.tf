@@ -13,43 +13,9 @@ data "authentik_provider_oauth2_config" "adopt" {
   name     = each.value.provider_name
 }
 
-data "authentik_property_mapping_provider_scope" "adopt" {
-  for_each = var.adopt_existing ? local.scope_mappings : {}
-  name     = each.key
-}
-
-data "authentik_policy_expression" "adopt" {
-  for_each = var.adopt_existing ? local.expression_policies : {}
-  name     = each.key
-}
-
 data "vault_identity_group" "adopt" {
   count      = var.adopt_existing ? 1 : 0
   group_name = "openbao-admins"
-}
-
-data "authentik_policy_binding" "adopt_gate" {
-  for_each = var.adopt_existing ? local.oauth_applications : {}
-  target   = authentik_application.app[each.key].uuid
-  policy   = authentik_policy_expression.gate[each.value.gate].id
-}
-
-data "authentik_policy_binding" "adopt_mfa" {
-  for_each = var.adopt_existing ? local.oauth_applications : {}
-  target   = authentik_application.app[each.key].uuid
-  policy   = authentik_policy_expression.gate["homelab-mfa-required"].id
-}
-
-import {
-  for_each = data.authentik_policy_binding.adopt_gate
-  to       = authentik_policy_binding.gate[each.key]
-  id       = each.value.id
-}
-
-import {
-  for_each = data.authentik_policy_binding.adopt_mfa
-  to       = authentik_policy_binding.mfa[each.key]
-  id       = each.value.id
 }
 
 import {
@@ -74,18 +40,6 @@ import {
   for_each = var.adopt_existing ? local.oauth_applications : {}
   to       = authentik_application.app[each.key]
   id       = each.key
-}
-
-import {
-  for_each = data.authentik_property_mapping_provider_scope.adopt
-  to       = authentik_property_mapping_provider_scope.app[each.key]
-  id       = each.value.id
-}
-
-import {
-  for_each = data.authentik_policy_expression.adopt
-  to       = authentik_policy_expression.gate[each.key]
-  id       = each.value.id
 }
 
 import {
