@@ -1,0 +1,21 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: access-plane-allow-controller-to-runner
+  labels:
+    app.kubernetes.io/name: access-plane
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tf-runner
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: flux-system
+      ports:
+        - protocol: TCP
+          port: 30000

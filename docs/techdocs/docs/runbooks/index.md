@@ -35,6 +35,7 @@ Links-only index. Each runbook is its own page; authoring recipes live in skills
 
 ## Identity & access
 
+- [The access plane (tofu-controller, the two Terraform objects, plans, drift)](access-plane.md)
 - [Google OAuth clients for the access plane (one-time Google Cloud setup)](google-oauth-clients.md)
 
 ## Databases (CNPG)

@@ -1,0 +1,32 @@
+---
+apiVersion: infra.contrib.fluxcd.io/v1alpha2
+kind: Terraform
+metadata:
+  name: access-kubernetes
+  labels:
+    app.kubernetes.io/name: access-plane
+    app.kubernetes.io/component: kubernetes
+spec:
+  interval: 15m
+  retryInterval: 2m
+  path: ./kubernetes/apps/security/access-plane/tofu/kubernetes
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  serviceAccountName: access-plane-runner
+  storeReadablePlan: human
+  alwaysCleanupRunnerPod: true
+  runnerPodTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: access-plane
+    spec:
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          memory: 1Gi

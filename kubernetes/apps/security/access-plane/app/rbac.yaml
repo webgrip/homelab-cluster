@@ -1,0 +1,62 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: access-plane-bindings-writer
+  labels:
+    app.kubernetes.io/name: access-plane
+rules:
+  - apiGroups:
+      - "rbac.authorization.k8s.io"
+    resources:
+      - "clusterrolebindings"
+      - "rolebindings"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"
+      - "create"
+      - "update"
+      - "patch"
+      - "delete"
+  - apiGroups:
+      - "rbac.authorization.k8s.io"
+    resources:
+      - "clusterroles"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"
+  - apiGroups:
+      - "rbac.authorization.k8s.io"
+    resources:
+      - "clusterroles"
+    resourceNames:
+      - "human-reader"
+      - "human-operator"
+      - "cluster-admin"
+    verbs:
+      - "bind"
+  - apiGroups:
+      - ""
+    resources:
+      - "namespaces"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: access-plane-bindings-writer
+  labels:
+    app.kubernetes.io/name: access-plane
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: access-plane-bindings-writer
+subjects:
+  - kind: ServiceAccount
+    name: access-plane-runner
+    namespace: security
