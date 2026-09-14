@@ -7,6 +7,12 @@ path "sys/auth/oidc" {
 path "sys/auth/oidc/tune" {
   capabilities = ["read", "update"]
 }
+path "sys/mounts/auth/oidc" {
+  capabilities = ["read"]
+}
+path "sys/mounts/auth/oidc/tune" {
+  capabilities = ["read", "update"]
+}
 path "auth/oidc/config" {
   capabilities = ["create", "read", "update"]
 }
