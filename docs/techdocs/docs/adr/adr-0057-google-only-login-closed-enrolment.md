@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-09-14
 ---
 
@@ -126,4 +126,5 @@ and leaves the recovery path exactly where it already works.
   (why the API server trusts Google directly, not this broker)
 * Runbooks: [Google OAuth clients](../runbooks/google-oauth-clients.md) ·
   [Authentik OIDC login failures](../runbooks/authentik-oidc-login.md)
-* 2026-09-14 — proposed; lands in stage 3 of the RFC rollout.
+* 2026-09-14 — proposed.
+* 2026-09-14 — accepted: the brand on the Authentik host points at `webgrip-authentication`, the flow offers Google and no password field, the break-glass flow still answers, Forgejo and Grafana redirect to the broker. Confirmation 3 (a Workspace account outside the roster is refused) awaits a second account to try it with.

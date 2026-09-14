@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-09-14
 ---
 
@@ -149,4 +149,5 @@ plan-before-apply and native deletion, and no generated file in between.
 * [tofu-controller](https://github.com/flux-iac/tofu-controller) ·
   [goauthentik/authentik provider](https://registry.terraform.io/providers/goauthentik/authentik)
   · [hashicorp/vault provider](https://registry.terraform.io/providers/hashicorp/vault)
-* 2026-09-14 — proposed; lands across stages 1, 2 and 5 of the RFC rollout.
+* 2026-09-14 — proposed.
+* 2026-09-14 — accepted: both objects `Ready` with `approvePlan: auto`; the adoption plan imported 52 objects and changed nothing that mattered; deleting three retired objects from the module deleted them in Authentik; the validator and schema were made to fail and pass on purpose; `access-plane-model` is readable in-cluster. The one defect found: the Authentik provider must track the server minor, now held by Renovate.
