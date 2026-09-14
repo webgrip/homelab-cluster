@@ -1,6 +1,7 @@
 provider "vault" {
-  address = var.vault_address
-  token   = var.vault_token != "" ? var.vault_token : null
+  address          = var.vault_address
+  skip_child_token = true
+  token            = var.vault_token != "" ? var.vault_token : null
 
   dynamic "auth_login" {
     for_each = var.vault_token == "" ? [1] : []

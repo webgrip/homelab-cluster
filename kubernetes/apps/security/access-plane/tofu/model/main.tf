@@ -12,7 +12,7 @@ locals {
   live_grants = {
     for email, p in local.humans : email => [
       for g in p.grants : g
-      if g.until == "none" || timecmp("${g.until}T23:59:59Z", plantimestamp()) >= 0
+      if g.until == "none" || timecmp(timeadd(g.until, "24h"), plantimestamp()) >= 0
     ]
   }
 
