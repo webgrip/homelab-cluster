@@ -1,6 +1,6 @@
 # RFC: Identity & SSO architecture
 
-> Status: **Proposed** · Date: 2026-07-02 · Part of the [decision-landscape gap register](../adr/landscape.md)
+> Status: **Superseded** on 2026-09-14 by [RFC: The access plane](rfc-access-plane.md) · Date: 2026-07-02 · Part of the [decision-landscape gap register](../adr/landscape.md)
 
 > **TL;DR.** Authentik is the cluster's identity provider, configured entirely as code, with five
 > apps on OIDC — and none of that is a recorded decision. Worse, OIDC is the **only** integration
@@ -60,9 +60,9 @@ A single phished/compromised LAN device inherits all of it.
 
 | ADR | Status | Decision |
 | --- | --- | --- |
-| candidate | — | Adopt Authentik as the cluster IdP (retroactive) |
-| candidate | — | Blueprint-as-code config model + machine-identity-stays-local principle (retroactive) |
-| candidate | — | Forward-auth for non-OIDC apps via Authentik outpost + Envoy SecurityPolicy (new) |
+| [ADR-0057](../adr/adr-0057-google-only-login-closed-enrolment.md) | accepted | Authentik stays as the broker; Google Workspace is the only interactive login; enrolment is closed |
+| [ADR-0058](../adr/adr-0058-access-plane-one-module-one-model.md) | accepted | One OpenTofu module from a four-file model replaces blueprint-as-code; machines stay inventory (RFC D10) |
+| [ADR-0060](../adr/adr-0060-gateway-oidc-for-apps-without-a-login.md) | accepted | Envoy `SecurityPolicy` OIDC against a broker client, not an outpost |
 
 ## Out of scope
 
@@ -78,4 +78,4 @@ A single phished/compromised LAN device inherits all of it.
   the `authentik-oidc` skill
 - [ADR-0022](../adr/adr-0022-authentik-oidc-phased.md) ·
   [ADR-0030](../adr/adr-0030-forgejo-static-bot-pat.md) ·
-  [observability-auth runbook](../runbooks/observability-auth.md)
+  [ADR-0060](../adr/adr-0060-gateway-oidc-for-apps-without-a-login.md)

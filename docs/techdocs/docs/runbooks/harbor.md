@@ -27,7 +27,7 @@ kubectl -n harbor get secret harbor-admin -o jsonpath='{.data.HARBOR_ADMIN_PASSW
 
 ## Phase 2 — Authentik OIDC SSO
 
-1. The blueprint `kubernetes/apps/authentik/app/blueprints/36-oidc-harbor.yaml` provisions the
+1. The broker module (`kubernetes/apps/security/access-plane/tofu/broker/applications.tf`, entry `harbor`) provisions the
    `harbor` OIDC provider/application (redirect `https://harbor.${SECRET_DOMAIN}/c/oidc/callback`).
 2. Read the issued client id/secret from Authentik, then store the values fragment in OpenBao:
 

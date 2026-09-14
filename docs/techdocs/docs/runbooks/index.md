@@ -48,7 +48,6 @@ Links-only index. Each runbook is its own page; authoring recipes live in skills
 ## Observability
 
 - [VictoriaMetrics (metrics backend + namespace triage)](victoriametrics.md)
-- [Authenticating Prometheus & Alertmanager endpoints (Envoy OIDC, design)](observability-auth.md)
 - [Synthetic probes (blackbox, incl. Garage S3)](synthetic-probes-blackbox.md)
 - [k6 canaries](k6-canaries.md)
 

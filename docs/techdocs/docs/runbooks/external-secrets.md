@@ -32,7 +32,7 @@ accordingly: a broken app is almost never "OpenBao is down" unless you just chan
 | Stores | `ClusterSecretStore/openbao`, `ClusterSecretStore/openbao-db` (dynamic DB creds), `ClusterSecretStore/kube-store` |
 | Auto-unseal | `openbao-unsealer` Deployment (`app/unsealer.yaml`) reads Secret `openbao-keys`; `bootstrap/init-cronjob.yaml` initialises a fresh vault |
 | OpenBao config reconcile | `openbao-config` CronJob (`bootstrap/config-cronjob.yaml` + `config.sh`: auth, policies, engines) |
-| UI login | Authentik OIDC — blueprint `kubernetes/apps/authentik/app/blueprints/35-oidc-openbao.yaml`; `mise exec -- just bao-login` |
+| UI login | Authentik OIDC — the broker module entry `openbao` in `kubernetes/apps/security/access-plane/tofu/broker/applications.tf`; `mise exec -- just bao-login` |
 | SOPS floor (forever) | `bootstrap/{sops-age,github-deploy-key}.sops.yaml`, `kubernetes/components/sops/cluster-secrets.sops.yaml`, `talos/talsecret.sops.yaml` |
 
 OpenBao re-seals on every pod restart; the **`openbao-unsealer` handles it automatically**
@@ -135,7 +135,7 @@ kubectl annotate externalsecret NAME -n NS force-sync="$(date +%s)" --overwrite
   Certificate"`) on the Authentik OIDC provider, or Authentik falls back to **HS256** and OpenBao
   login fails. Applies to the `auth/oidc/config` role for the OpenBao UI.
 - **The local kubeconform PostToolUse hook false-positives** on (a) HTTPRoute `${SECRET_DOMAIN}`
-  hostnames and (b) Authentik blueprints (no `kind`, custom `!Find` / `!Format` tags) — both are
+  hostnames and (b) the one remaining Authentik blueprint, `20-flows-mfa-auth.yaml` (no `kind`, custom `!Find` / `!Format` tags) — both are
   correct manifests; do **not** "fix" them. Validate via the docker `flux-local build ks` path
   (`scripts/run-flux-local-test.sh`) instead.
 

@@ -1,6 +1,6 @@
 # RFC: The access plane — Google identity, one entitlement model, one reconciler
 
-> Status: **Proposed** · Date: 2026-09-14 · Supersedes the open items of
+> Status: **Accepted**, in rollout (stages 4 and 7 have a human step left) · Date: 2026-09-14 · Supersedes the open items of
 > [Identity & SSO](rfc-identity-sso.md) · Sibling of code14
 > [RFC-0018](https://gitlab.com/code14nl/internal/devops/staging-cluster/-/blob/main/docs/rfcs/rfc-0018-the-access-plane-is-a-provider-not-a-script.md)
 > (staging-cluster), which this deliberately builds past.
@@ -304,16 +304,16 @@ Every stage is one or more commits to `main`, validated with `flux-local` and th
 before push, reversible on its own, and verified against live state before the next begins.
 Human-only steps are handed over as a single paste-ready block.
 
-| Stage | Lands | Human step | Verified by |
-| --- | --- | --- | --- |
-| 0 | This RFC; ADRs for D2+D3, D4+D5, D7; the `google-oauth-clients` and `access-plane` runbooks | Create the GCP project, Internal consent screen, two OAuth clients; `bao kv put` both; confirm Workspace 2-step verification is enforced | the two OpenBao paths exist |
-| 1 | tofu-controller HelmRelease in `flux-system`; runner ServiceAccount; OpenBao role `tofu` and its policy in the bootstrap floor; egress NetworkPolicy; two `Terraform` objects on an empty module, plan-only | none | both objects `Ready`, plan `No changes` |
-| 2 | The model, its schema, the validator, the lint and pre-commit gates; the module imports the existing groups and the owner's user | approve the first plan by id | the plan adopts and changes nothing; a second plan is empty |
-| 3 | Google source, Google-only flow, brand repoint; blackbox canary on the login executor | approve the plan; sign in once through Google | brand API shows the new flow; `user_fields: []`; break-glass URL still signs in `akadmin` |
-| 4 | API-server flags in the Talos controller patch; the three ClusterRoles; bindings from the module; kubelogin in mise; `scripts/kube-oidc-setup.sh`; audit policy; Alloy pipeline; the break-glass alert; the Kyverno provenance rule in Audit | `just talos-apply-node` on each control plane, one at a time; run the setup script; move the admin credential out | `kubectl auth whoami` is `oidc:ryan@webgrip.nl`; a call with the admin cert fires the alert |
-| 5 | The twelve OIDC clients and OpenBao's OIDC mount, roles, identity groups and narrowed `admins` policy adopted into the module; blueprints, `homelab-mfa`, `svc-homelab` and the `config.sh` section deleted | approve the adoption plan | every app signs in; `check-oidc.sh` green; `bao token lookup` shows `admins` |
-| 6 | SecurityPolicies for Longhorn and the dashboards, one commit per audience | none | each route redirects to the broker; the wrong group is refused |
-| 7 | The access-matrix macro; runbooks for joiner/mover/leaver and Kubernetes login; `rfc-identity-sso.md` closed as superseded; Kyverno rule to Enforce | none | docs build renders the matrix; `flux-local` and lint green |
+| Stage | Lands | Human step | Verified by | Status |
+| --- | --- | --- | --- | --- |
+| 0 | This RFC; ADRs for D2+D3, D4+D5, D7; the `google-oauth-clients` and `access-plane` runbooks | Create the GCP project, Internal consent screen, two OAuth clients; `bao kv put` both; confirm Workspace 2-step verification is enforced | the two OpenBao paths exist | done 2026-09-14 |
+| 1 | tofu-controller HelmRelease in `flux-system`; runner ServiceAccount; OpenBao role `tofu` and its policy in the bootstrap floor; egress NetworkPolicy; two `Terraform` objects on an empty module, plan-only | none | both objects `Ready`, plan `No changes` | done 2026-09-14 |
+| 2 | The model, its schema, the validator, the lint and pre-commit gates; the module imports the existing groups and the owner's user | approve the first plan by id | the plan adopts and changes nothing; a second plan is empty | done 2026-09-14 |
+| 3 | Google source, Google-only flow, brand repoint; blackbox canary on the login executor | approve the plan; sign in once through Google | brand API shows the new flow; `user_fields: []`; break-glass URL still signs in `akadmin` | done 2026-09-14 |
+| 4 | API-server flags in the Talos controller patch; the three ClusterRoles; bindings from the module; kubelogin in mise; `scripts/kube-oidc-setup.sh`; audit policy; Alloy pipeline; the break-glass alert; the Kyverno provenance rule in Audit | `just talos-apply-node` on each control plane, one at a time; run the setup script; move the admin credential out | `kubectl auth whoami` is `oidc:ryan@webgrip.nl`; a call with the admin cert fires the alert | landed 2026-09-14; the Talos apply, the setup script and the credential move are the owner's, open |
+| 5 | The twelve OIDC clients and OpenBao's OIDC mount, roles, identity groups and narrowed `admins` policy adopted into the module; blueprints, `homelab-mfa`, `svc-homelab` and the `config.sh` section deleted | approve the adoption plan | every app signs in; `check-oidc.sh` green; `bao token lookup` shows `admins` | done 2026-09-14 |
+| 6 | SecurityPolicies for Longhorn and the dashboards, one commit per audience | none | each route redirects to the broker; the wrong group is refused | done 2026-09-14 (the refusal waits for a second human) |
+| 7 | The access-matrix macro; runbooks for joiner/mover/leaver and Kubernetes login; `rfc-identity-sso.md` closed as superseded; Kyverno rule to Enforce | none | docs build renders the matrix; `flux-local` and lint green | matrix, runbooks and the superseded RFC landed 2026-09-14; Kyverno to Enforce once the report is clean |
 
 The first plan in stages 2, 3 and 5 is approved by a person. After stage 5, both objects run
 `approvePlan: auto` and a merge to `main` is the change, as it is for everything else here.
@@ -359,7 +359,7 @@ The first plan in stages 2, 3 and 5 is approved by a person. After stage 5, both
 ## Appendix A: what exists today
 
 | Surface | Mechanism | Group → role | Secret |
-| --- | --- | --- | --- |
+| --- | --- | --- | --- | --- |
 | Grafana | native OIDC, auto-login | `homelab-admins` → GrafanaAdmin, `homelab-users` → Editor, else Viewer | `secret/grafana/oauth` |
 | Forgejo | chart `oauth[]` | `homelab-admins` → site admin + `Owners`; `homelab-users` → `Developers` | `secret/forgejo/oidc` |
 | Harbor | `configureUserSettings` | `oidc_admin_group: harbor-admins` (group does not exist) | `secret/harbor/oidc` |

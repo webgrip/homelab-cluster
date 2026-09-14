@@ -1,8 +1,8 @@
 # Runbook: Authentik OIDC login failures
 
 Use this when you see "Failed to get token from provider", "Login failed", or a generic
-OAuth/OIDC error logging into an app via Authentik. **Authoring** a new provider (blueprints,
-apply order, secret wiring) is the `authentik-oidc` skill — this page is triage only.
+OAuth/OIDC error logging into an app via Authentik. **Authoring** a new provider (the broker module, the model,
+secret wiring) is the `authentik-oidc` skill — this page is triage only.
 
 ## Dependency chain
 
@@ -73,8 +73,8 @@ in the admin UI; ESO owns the one and the module reverts the other.
 ### 5) Verify redirect URI
 
 The app's redirect URI must **exactly match** the Authentik provider (Admin → Applications →
-(app) → Provider → Redirect URIs). Canonical values live in the provider blueprints
-(`kubernetes/apps/authentik/app/blueprints/3x-oidc-<app>.yaml`); the two most-debugged:
+(app) → Provider → Redirect URIs). Canonical values live in the broker module
+(`kubernetes/apps/security/access-plane/tofu/broker/applications.tf`, `redirects` per entry); the two most-debugged:
 
 | App | Redirect URI in Authentik |
 | --- | --- |
@@ -94,8 +94,8 @@ kubectl logs -n authentik deployment/authentik-server --tail=100 | grep -i error
 | --- | --- |
 | DNS NXDOMAIN | Add the `${SECRET_DOMAIN}` zone forward to CoreDNS → [dns-split-dns](dns-split-dns.md) |
 | Wrong client_id/secret | Write the provider's value to the OpenBao path behind the app's ExternalSecret, force-sync → [secret-rotation](secret-rotation.md) |
-| Redirect URI mismatch | Fix the provider blueprint's `redirect_uris` (commit) — `authentik-oidc` skill |
-| Authentik not processing new blueprints | Restart worker (`kubectl rollout restart deployment/authentik-worker -n authentik` — human step, hook-blocked for agents), then check logs for `blueprints_discovery` / `apply_blueprint`. If tasks were enqueued but never started (Dramatiq queue stall), a second restart resolves it. |
+| Redirect URI mismatch | Fix the entry's `redirects` in the broker module (commit) — `authentik-oidc` skill |
+| The broker did not apply the change | `kubectl -n security get terraform access-broker` shows the Ready message; a plan or apply error names the resource. Runner output is in the `tf-runner` pods in `security` while they live, and in `kubectl -n flux-system logs deploy/tofu-controller` after. |
 | Token exchange fails after a DNS fix | Restart the app pod — it may cache the NXDOMAIN (`kubectl rollout restart deployment/<app> -n <ns>` — human step, hook-blocked for agents) |
 
 > n8n has **no** OIDC: native SSO is Enterprise-license-gated and the old

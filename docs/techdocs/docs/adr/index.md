@@ -82,7 +82,7 @@ What the cluster runs on, and the cross-cutting patterns everything above assume
 | [0057](adr-0057-google-only-login-closed-enrolment.md) | Google Workspace is the only interactive login; enrolment is closed; the password door stays, unlisted | accepted | 2026-09-14 |
 | [0058](adr-0058-access-plane-one-module-one-model.md) | The access plane is one OpenTofu module reconciled by tofu-controller, from a four-file model | accepted | 2026-09-14 |
 | [0059](adr-0059-per-user-kubernetes-identity-via-google.md) | Humans reach the Kubernetes API as themselves, via Google directly | proposed | 2026-09-14 |
-| [0060](adr-0060-gateway-oidc-for-apps-without-a-login.md) | Applications without a login of their own sit behind the broker at the gateway | proposed | 2026-09-14 |
+| [0060](adr-0060-gateway-oidc-for-apps-without-a-login.md) | Applications without a login of their own sit behind the broker at the gateway | accepted | 2026-09-14 |
 
 ### 3. Storage
 

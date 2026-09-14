@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-09-14
 ---
 
@@ -100,3 +100,4 @@ application's gate groups.
   · [ADR-0056](adr-0056-searxng-public-behind-gateway-basic-auth.md) ·
   [RFC: Request authorization at the gateway](../rfc/rfc-request-authorization-envoy.md)
 * 2026-09-14 — proposed; the clients land first, the policies once their Secrets are Ready.
+* 2026-09-14 — accepted. `kubectl get securitypolicy -A` shows all six policies `Accepted`; each host answers an unauthenticated request with a 302 to `https://authentik.${SECRET_DOMAIN}/application/o/authorize/` carrying its audience client; the access matrix lists the six routes as "broker, at the gateway". Confirmation 2 has no second human to try it with yet; the gate bindings exist and the applications run `policy_engine_mode: any`, so the refusal is structural until the roster grows.
