@@ -35,6 +35,7 @@ Links-only index. Each runbook is its own page; authoring recipes live in skills
 
 ## Identity & access
 
+- [The access model (joiner, mover, leaver, dated grants, recertification)](access-model.md)
 - [The access plane (tofu-controller, the two Terraform objects, plans, drift)](access-plane.md)
 - [Google OAuth clients for the access plane (one-time Google Cloud setup)](google-oauth-clients.md)
 - [Kubernetes login (OIDC as yourself, the three tiers, break-glass)](kubernetes-login.md)
