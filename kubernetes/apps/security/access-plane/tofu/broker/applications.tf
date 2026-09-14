@@ -210,7 +210,7 @@ resource "authentik_provider_oauth2" "app" {
   invalidation_flow     = data.authentik_flow.invalidation.id
   signing_key           = each.value.signing_key ? data.authentik_certificate_key_pair.self_signed.id : null
 
-  allowed_redirect_uris = each.value.redirects
+  allowed_redirect_uris = [for redirect in each.value.redirects : merge({ redirect_uri_type = "authorization" }, redirect)]
 
   property_mappings = concat(
     data.authentik_property_mapping_provider_scope.standard.ids,

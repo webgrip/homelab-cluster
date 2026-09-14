@@ -20,6 +20,10 @@ resource "authentik_source_oauth" "google" {
   user_matching_mode  = "email_link"
   additional_scopes   = "email profile"
   authentication_flow = data.authentik_flow.source_authentication.id
+
+  lifecycle {
+    ignore_changes = [access_token_url, authorization_url, oidc_jwks_url, profile_url]
+  }
 }
 
 resource "authentik_flow" "webgrip_authentication" {
@@ -56,4 +60,8 @@ resource "authentik_brand" "webgrip" {
   default             = false
   branding_title      = "WebGrip"
   flow_authentication = authentik_flow.webgrip_authentication[0].uuid
+
+  lifecycle {
+    ignore_changes = [branding_favicon, branding_logo]
+  }
 }
