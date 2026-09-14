@@ -77,11 +77,6 @@ secrets when prompted; nothing is echoed.
 ```sh
 cd ~/projects/webgrip/homelab-cluster
 just bao-login
-1098876080207-h56aopa0a0fc0i9ikh2p7cirodecouk0.apps.googleusercontent.com
-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
-
-1098876080207-661jim5cm3scgur68jq6iapteudcejgg.apps.googleusercontent.com
-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
 printf 'Broker client id: '; read -r BROKER_ID
 printf 'Broker client secret: '; read -r -s BROKER_SECRET; echo
 mise exec -- bao kv put secret/authentik/google-oauth \
