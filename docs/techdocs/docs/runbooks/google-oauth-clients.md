@@ -76,7 +76,8 @@ secrets when prompted; nothing is echoed.
 
 ```sh
 cd ~/projects/webgrip/homelab-cluster
-just bao-login
+export BAO_ADDR="$(mise exec -- just bao-addr)"
+mise exec -- bao login -method=oidc
 printf 'Broker client id: '; read -r BROKER_ID
 printf 'Broker client secret: '; read -r -s BROKER_SECRET; echo
 mise exec -- bao kv put secret/authentik/google-oauth \

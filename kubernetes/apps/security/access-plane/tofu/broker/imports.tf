@@ -28,6 +28,30 @@ data "vault_identity_group" "adopt" {
   group_name = "openbao-admins"
 }
 
+data "authentik_policy_binding" "adopt_gate" {
+  for_each = var.adopt_existing ? local.oauth_applications : {}
+  target   = authentik_application.app[each.key].uuid
+  policy   = authentik_policy_expression.gate[each.value.gate].id
+}
+
+data "authentik_policy_binding" "adopt_mfa" {
+  for_each = var.adopt_existing ? local.oauth_applications : {}
+  target   = authentik_application.app[each.key].uuid
+  policy   = authentik_policy_expression.gate["homelab-mfa-required"].id
+}
+
+import {
+  for_each = data.authentik_policy_binding.adopt_gate
+  to       = authentik_policy_binding.gate[each.key]
+  id       = each.value.id
+}
+
+import {
+  for_each = data.authentik_policy_binding.adopt_mfa
+  to       = authentik_policy_binding.mfa[each.key]
+  id       = each.value.id
+}
+
 import {
   for_each = { for email, found in data.authentik_users.adopt : email => found.users[0].pk if length(found.users) > 0 }
   to       = authentik_user.human[each.key]

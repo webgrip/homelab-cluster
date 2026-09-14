@@ -211,15 +211,16 @@ resource "authentik_property_mapping_provider_scope" "app" {
 resource "authentik_provider_oauth2" "app" {
   for_each = local.oauth_applications
 
-  name                = each.value.display_name
-  client_id           = each.value.client_id
-  client_secret       = each.value.client_secret
-  client_type         = each.value.client_type
-  grant_types         = each.value.grant_types
-  authentication_flow = data.authentik_flow.authentication.id
-  authorization_flow  = data.authentik_flow.authorization_explicit_consent.id
-  invalidation_flow   = data.authentik_flow.invalidation.id
-  signing_key         = each.value.signing_key ? data.authentik_certificate_key_pair.self_signed.id : null
+  name                  = each.value.provider_name
+  client_id             = each.value.client_id
+  client_secret         = each.value.client_secret
+  client_type           = each.value.client_type
+  grant_types           = each.value.grant_types
+  access_token_validity = "hours=1"
+  authentication_flow   = data.authentik_flow.authentication.id
+  authorization_flow    = data.authentik_flow.authorization_explicit_consent.id
+  invalidation_flow     = data.authentik_flow.invalidation.id
+  signing_key           = each.value.signing_key ? data.authentik_certificate_key_pair.self_signed.id : null
 
   allowed_redirect_uris = each.value.redirects
 
