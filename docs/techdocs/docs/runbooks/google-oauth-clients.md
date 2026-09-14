@@ -77,14 +77,18 @@ secrets when prompted; nothing is echoed.
 ```sh
 cd ~/projects/webgrip/homelab-cluster
 just bao-login
+1098876080207-h56aopa0a0fc0i9ikh2p7cirodecouk0.apps.googleusercontent.com
+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
 
-read -r -p 'Broker client id: ' BROKER_ID
-read -r -s -p 'Broker client secret: ' BROKER_SECRET; echo
+1098876080207-661jim5cm3scgur68jq6iapteudcejgg.apps.googleusercontent.com
+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
+printf 'Broker client id: '; read -r BROKER_ID
+printf 'Broker client secret: '; read -r -s BROKER_SECRET; echo
 mise exec -- bao kv put secret/authentik/google-oauth \
   client_id="$BROKER_ID" client_secret="$BROKER_SECRET"
 
-read -r -p 'Kubernetes API client id: ' KUBE_ID
-read -r -s -p 'Kubernetes API client secret: ' KUBE_SECRET; echo
+printf 'Kubernetes API client id: '; read -r KUBE_ID
+printf 'Kubernetes API client secret: '; read -r -s KUBE_SECRET; echo
 mise exec -- bao kv put secret/security/kubernetes-oidc \
   client_id="$KUBE_ID" client_secret="$KUBE_SECRET"
 
