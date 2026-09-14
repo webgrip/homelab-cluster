@@ -141,7 +141,43 @@ locals {
       redirects     = [{ matching_mode = "strict", url = "https://vloer.${var.SECRET_DOMAIN}/api/auth/oidc/callback" }]
       extra_scopes  = ["groups"]
     }
+    longhorn = {
+      provider_name = "longhorn-oidc"
+      app_name      = "Longhorn"
+      description   = "Block storage administration; deletes volumes and repoints backups."
+      launch_url    = "https://longhorn.${var.SECRET_DOMAIN}"
+      client_id     = "longhorn"
+      client_secret = data.vault_kv_secret_v2.oidc_client["longhorn"].data["client_secret"]
+      client_type   = "confidential"
+      signing_key   = true
+      grant_types   = ["authorization_code", "refresh_token"]
+      redirects     = [{ matching_mode = "strict", url = "https://longhorn.${var.SECRET_DOMAIN}/oauth2/callback" }]
+      extra_scopes  = []
+      adopt         = false
+    }
+    cluster-dashboards = {
+      provider_name = "cluster-dashboards-oidc"
+      app_name      = "Cluster dashboards"
+      description   = "Flux, VictoriaLogs, Prometheus, Alertmanager and Policy Reporter, read-only."
+      launch_url    = null
+      client_id     = "cluster-dashboards"
+      client_secret = data.vault_kv_secret_v2.oidc_client["cluster-dashboards"].data["client_secret"]
+      client_type   = "confidential"
+      signing_key   = true
+      grant_types   = ["authorization_code", "refresh_token"]
+      redirects = [
+        { matching_mode = "strict", url = "https://gitops.${var.SECRET_DOMAIN}/oauth2/callback" },
+        { matching_mode = "strict", url = "https://victorialogs.${var.SECRET_DOMAIN}/oauth2/callback" },
+        { matching_mode = "strict", url = "https://prometheus.${var.SECRET_DOMAIN}/oauth2/callback" },
+        { matching_mode = "strict", url = "https://alertmanager.${var.SECRET_DOMAIN}/oauth2/callback" },
+        { matching_mode = "strict", url = "https://policy-reporter.${var.SECRET_DOMAIN}/oauth2/callback" },
+      ]
+      extra_scopes = []
+      adopt        = false
+    }
   }
+
+  adopted_applications = { for k, app in local.oauth_applications : k => app if lookup(app, "adopt", true) }
 
   application_gates = {
     for app, groups in module.model.application_gates : app => [

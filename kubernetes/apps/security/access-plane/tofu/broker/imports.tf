@@ -9,7 +9,7 @@ data "authentik_groups" "adopt" {
 }
 
 data "authentik_provider_oauth2_config" "adopt" {
-  for_each = var.adopt_existing ? local.oauth_applications : {}
+  for_each = var.adopt_existing ? local.adopted_applications : {}
   name     = each.value.provider_name
 }
 
@@ -37,7 +37,7 @@ import {
 }
 
 import {
-  for_each = var.adopt_existing ? local.oauth_applications : {}
+  for_each = var.adopt_existing ? local.adopted_applications : {}
   to       = authentik_application.app[each.key]
   id       = each.key
 }

@@ -5,13 +5,15 @@ ephemeral "vault_kv_secret_v2" "authentik" {
 
 data "vault_kv_secret_v2" "oidc_client" {
   for_each = {
-    grafana           = "grafana/oauth"
-    backstage         = "backstage/oidc"
-    forgejo           = "forgejo/oidc"
-    harbor            = "harbor/oidc"
-    vikunja           = "vikunja/oidc"
-    litellm           = "litellm/oidc"
-    cloudflare-access = "cloudflare/access-oidc"
+    grafana            = "grafana/oauth"
+    backstage          = "backstage/oidc"
+    forgejo            = "forgejo/oidc"
+    harbor             = "harbor/oidc"
+    vikunja            = "vikunja/oidc"
+    litellm            = "litellm/oidc"
+    cloudflare-access  = "cloudflare/access-oidc"
+    longhorn           = "authentik/longhorn-oidc"
+    cluster-dashboards = "authentik/dashboards-oidc"
   }
   mount = "secret"
   name  = each.value
