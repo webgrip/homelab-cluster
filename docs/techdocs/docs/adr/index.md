@@ -79,6 +79,9 @@ What the cluster runs on, and the cross-cutting patterns everything above assume
 | [0006](adr-0006-default-deny-network-policies.md) | Opt-in per-namespace default-deny NetworkPolicies | accepted | 2026-07-02 |
 | [0054](adr-0054-forgejo-ssh-off-lan-cloudflare-tunnel.md) | Off-LAN git-SSH rides the Cloudflare Tunnel, on SSH key auth alone | accepted | 2026-09-02 |
 | [0056](adr-0056-searxng-public-behind-gateway-basic-auth.md) | SearXNG goes public behind gateway-level basic auth, not naked | accepted | 2026-09-11 |
+| [0057](adr-0057-google-only-login-closed-enrolment.md) | Google Workspace is the only interactive login; enrolment is closed; the password door stays, unlisted | proposed | 2026-09-14 |
+| [0058](adr-0058-access-plane-one-module-one-model.md) | The access plane is one OpenTofu module reconciled by tofu-controller, from a four-file model | proposed | 2026-09-14 |
+| [0059](adr-0059-per-user-kubernetes-identity-via-google.md) | Humans reach the Kubernetes API as themselves, via Google directly | proposed | 2026-09-14 |
 
 ### 3. Storage
 

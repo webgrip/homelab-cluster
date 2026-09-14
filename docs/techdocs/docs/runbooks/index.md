@@ -33,6 +33,10 @@ Links-only index. Each runbook is its own page; authoring recipes live in skills
 - [Level 4 — short-lived: OIDC roles, dynamic credentials, per-run tokens](secrets-level-4-short-lived.md)
 - [Level 5 — a person: read the vault, cache by name, never an original](secrets-level-5-person.md)
 
+## Identity & access
+
+- [Google OAuth clients for the access plane (one-time Google Cloud setup)](google-oauth-clients.md)
+
 ## Databases (CNPG)
 
 - [CloudNativePG & backups (ObjectStore, force-prune WAL, restore/DR drill)](cnpg-backups.md)

@@ -79,6 +79,9 @@ that had no decision record. All **Proposed**. Roughly by stakes:
   internal-by-default posture.
 - [Identity & SSO](rfc-identity-sso.md) — Authentik adoption record + the non-OIDC/forward-auth
   hole.
+- [The access plane](rfc-access-plane.md) — Google as the only identity, one four-file
+  entitlement model, one OpenTofu module reconciled by tofu-controller; supersedes the open
+  items above.
 - [Postgres data layer](rfc-postgres-data-layer.md) — CNPG-as-standard, the single-instance
   posture, pooling.
 - [Observability pipeline](rfc-observability-pipeline.md) — logs/traces/profiles composition,
