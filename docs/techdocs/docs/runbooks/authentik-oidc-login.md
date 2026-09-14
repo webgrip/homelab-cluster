@@ -63,10 +63,12 @@ kubectl exec -n authentik deployment/authentik-server -- curl -s -H "Authorizati
   'http://localhost:8000/api/v3/providers/oauth2/?name=<provider-name>' | jq '.results[0].client_id'
 ```
 
-These MUST match. If they don't: the client id/secret are **OpenBao-backed via ESO** (e.g.
-`grafana-oauth` ← OpenBao `grafana/oauth`). Fix by writing the correct value to the OpenBao path
-and force-syncing the ExternalSecret — the [secret-rotation runbook](secret-rotation.md) is the
-exact procedure. Do not hand-edit the Kubernetes Secret; ESO owns it.
+These MUST match. Both sides read the same vault path: the application through its
+ExternalSecret, Authentik through the access-plane module (`tofu/broker/applications.tf`). If
+they differ, the access plane has not reconciled since the vault changed; check
+`kubectl -n security get terraform access-broker` and the
+[access-plane runbook](access-plane.md). Never hand-edit the Kubernetes Secret or the provider
+in the admin UI; ESO owns the one and the module reverts the other.
 
 ### 5) Verify redirect URI
 
