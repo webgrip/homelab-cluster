@@ -1,0 +1,33 @@
+---
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: rbac-human-bindings
+policies:
+  - ../../policies/rbac-human-bindings-audit.yaml
+resources:
+  - resources.yaml
+results:
+  - policy: rbac-human-bindings-audit
+    resources:
+      - human-unmanaged
+      - group-unmanaged
+    kind: ClusterRoleBinding
+    result: fail
+  - policy: rbac-human-bindings-audit
+    resources:
+      - human-managed
+      - bootstrap-cluster-admin
+      - serviceaccount-view
+    kind: ClusterRoleBinding
+    result: pass
+  - policy: rbac-human-bindings-audit
+    resources:
+      - erfbeeld/human-unmanaged
+    kind: RoleBinding
+    result: fail
+  - policy: rbac-human-bindings-audit
+    resources:
+      - erfbeeld/human-managed
+    kind: RoleBinding
+    result: pass

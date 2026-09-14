@@ -1,0 +1,46 @@
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: rbac-human-bindings-audit
+  annotations:
+    policies.kyverno.io/title: Human RBAC Bindings Come From The Access Plane
+    policies.kyverno.io/category: Least Privilege, Access Governance
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: RoleBinding,ClusterRoleBinding
+    kyverno.io/kyverno-version: 1.18.1
+    policies.kyverno.io/description: >-
+      A RoleBinding or ClusterRoleBinding whose subjects include a User or a Group must be
+      reconciled by the access plane (ADR-0058, ADR-0059) and carry its provenance label.
+      GitOps cannot stop a hand-applied binding from cluster-admin; admission can. Audit
+      first; Enforce once the report is clean.
+spec:
+  validationActions:
+    - Audit
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - "rbac.authorization.k8s.io"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "rolebindings"
+          - "clusterrolebindings"
+  variables:
+    - name: humanSubjects
+      expression: "object.?subjects.orValue([]).filter(s, s.kind == 'User' || s.kind == 'Group')"
+    - name: managedByAccessPlane
+      expression: "object.metadata.?labels[?'access-plane.webgrip.io/managed'].orValue('') == 'true'"
+    - name: kubernetesBootstrap
+      expression: "object.metadata.?labels[?'kubernetes.io/bootstrapping'].orValue('') == 'rbac-defaults'"
+  validations:
+    - expression: "size(variables.humanSubjects) == 0 || variables.managedByAccessPlane || variables.kubernetesBootstrap"
+      message: >-
+        Bindings with User or Group subjects are rendered by the access plane; declare the
+        grant in kubernetes/apps/security/access-plane/model instead of applying a binding.

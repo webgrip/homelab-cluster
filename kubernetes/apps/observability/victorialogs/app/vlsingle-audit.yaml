@@ -1,0 +1,34 @@
+---
+apiVersion: operator.victoriametrics.com/v1
+kind: VLSingle
+metadata:
+  name: victorialogs-audit
+spec:
+  retentionPeriod: "365d"
+  replicaCount: 1
+  storage:
+    accessModes:
+      - ReadWriteOnce
+    storageClassName: longhorn
+    resources:
+      requests:
+        storage: 10Gi
+  extraArgs:
+    retention.maxDiskSpaceUsageBytes: "9GiB"
+  podMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
+  nodeSelector:
+    node.webgrip.io/pool: worker
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: fringe
+      effect: NoSchedule
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi

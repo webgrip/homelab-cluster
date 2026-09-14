@@ -1,0 +1,91 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: human-operator
+  labels:
+    app.kubernetes.io/name: access-plane
+aggregationRule:
+  clusterRoleSelectors:
+    - matchLabels:
+        rbac.authorization.k8s.io/aggregate-to-view: "true"
+    - matchLabels:
+        rbac.webgrip.io/aggregate-to-human-reader: "true"
+    - matchLabels:
+        rbac.webgrip.io/aggregate-to-human-operator: "true"
+rules: []
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: human-operator-actions
+  labels:
+    app.kubernetes.io/name: access-plane
+    rbac.webgrip.io/aggregate-to-human-operator: "true"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "pods"
+    verbs:
+      - "delete"
+  - apiGroups:
+      - "apps"
+    resources:
+      - "deployments"
+      - "statefulsets"
+      - "daemonsets"
+    verbs:
+      - "patch"
+      - "update"
+  - apiGroups:
+      - "apps"
+    resources:
+      - "deployments/scale"
+      - "statefulsets/scale"
+    verbs:
+      - "patch"
+      - "update"
+  - apiGroups:
+      - "batch"
+    resources:
+      - "jobs"
+    verbs:
+      - "create"
+      - "delete"
+  - apiGroups:
+      - "batch"
+    resources:
+      - "cronjobs"
+    verbs:
+      - "patch"
+      - "update"
+  - apiGroups:
+      - kustomize.toolkit.fluxcd.io
+      - helm.toolkit.fluxcd.io
+      - source.toolkit.fluxcd.io
+      - notification.toolkit.fluxcd.io
+    resources:
+      - "*"
+    verbs:
+      - "patch"
+      - "update"
+  - apiGroups:
+      - ""
+    resources:
+      - "pods/exec"
+      - "pods/portforward"
+    verbs:
+      - "create"
+  - apiGroups:
+      - ""
+    resources:
+      - "nodes"
+    verbs:
+      - "patch"
+  - apiGroups:
+      - ""
+    resources:
+      - "pods/eviction"
+    verbs:
+      - "create"

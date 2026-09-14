@@ -1,0 +1,145 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: human-reader
+  labels:
+    app.kubernetes.io/name: access-plane
+aggregationRule:
+  clusterRoleSelectors:
+    - matchLabels:
+        rbac.authorization.k8s.io/aggregate-to-view: "true"
+    - matchLabels:
+        rbac.webgrip.io/aggregate-to-human-reader: "true"
+rules: []
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: human-reader-cluster-scoped
+  labels:
+    app.kubernetes.io/name: access-plane
+    rbac.webgrip.io/aggregate-to-human-reader: "true"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "nodes"
+      - "persistentvolumes"
+      - "namespaces"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"
+  - apiGroups:
+      - "storage.k8s.io"
+    resources:
+      - "storageclasses"
+      - "volumeattachments"
+      - "csidrivers"
+      - "csinodes"
+      - "csistoragecapacities"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"
+  - apiGroups:
+      - "apiextensions.k8s.io"
+    resources:
+      - "customresourcedefinitions"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"
+  - apiGroups:
+      - "apiregistration.k8s.io"
+    resources:
+      - "apiservices"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"
+  - apiGroups:
+      - "scheduling.k8s.io"
+    resources:
+      - "priorityclasses"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"
+  - apiGroups:
+      - "node.k8s.io"
+    resources:
+      - "runtimeclasses"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"
+  - apiGroups:
+      - "admissionregistration.k8s.io"
+    resources:
+      - "validatingwebhookconfigurations"
+      - "mutatingwebhookconfigurations"
+      - "validatingadmissionpolicies"
+      - "validatingadmissionpolicybindings"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"
+  - apiGroups:
+      - "metrics.k8s.io"
+    resources:
+      - "nodes"
+      - "pods"
+    verbs:
+      - "get"
+      - "list"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: human-reader-custom-resources
+  labels:
+    app.kubernetes.io/name: access-plane
+    rbac.webgrip.io/aggregate-to-human-reader: "true"
+rules:
+  - apiGroups:
+      - acme.cert-manager.io
+      - actions.github.com
+      - aquasecurity.github.io
+      - barmancloud.cnpg.io
+      - cert-manager.io
+      - cilium.io
+      - eventing.keda.sh
+      - external-secrets.io
+      - externaldns.k8s.io
+      - fluxcd.controlplane.io
+      - gateway.envoyproxy.io
+      - gateway.networking.k8s.io
+      - gateway.networking.x-k8s.io
+      - grafana.integreatly.org
+      - helm.toolkit.fluxcd.io
+      - infra.contrib.fluxcd.io
+      - keda.sh
+      - kustomize.toolkit.fluxcd.io
+      - kyverno.io
+      - longhorn.io
+      - monitoring.coreos.com
+      - monitoring.grafana.com
+      - notification.toolkit.fluxcd.io
+      - operator.victoriametrics.com
+      - policies.kyverno.io
+      - postgresql.cnpg.io
+      - renovate-operator.mogenius.com
+      - reports.kyverno.io
+      - rollout-operator.grafana.com
+      - sloth.slok.dev
+      - source.toolkit.fluxcd.io
+      - trust.cert-manager.io
+      - wgpolicyk8s.io
+    resources:
+      - "*"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"

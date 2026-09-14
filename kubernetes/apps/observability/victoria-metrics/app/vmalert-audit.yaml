@@ -1,0 +1,40 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAlert
+metadata:
+  name: vmalert-audit
+spec:
+  replicaCount: 1
+  selectAllByDefault: false
+  ruleSelector:
+    matchLabels:
+      rules: audit
+  ruleNamespaceSelector: {}
+  evaluationInterval: 5m
+  datasource:
+    url: http://vlsingle-victorialogs-audit.observability.svc.cluster.local:9428
+  remoteRead:
+    url: http://vmsingle-vmsingle.observability.svc.cluster.local:8429
+  remoteWrite:
+    url: http://vmsingle-vmsingle.observability.svc.cluster.local:8429
+  notifiers:
+    - url: http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093
+  extraArgs:
+    rule.defaultRuleType: vlogs
+  podMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
+  nodeSelector:
+    node.webgrip.io/pool: worker
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: fringe
+      effect: NoSchedule
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi

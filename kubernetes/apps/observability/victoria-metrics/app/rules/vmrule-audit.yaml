@@ -1,0 +1,102 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: kubernetes-audit
+  labels:
+    rules: audit
+spec:
+  groups:
+    - name: kubernetes.audit
+      type: vlogs
+      interval: 5m
+      rules:
+        - alert: KubernetesBreakGlassCertificateUsed
+          expr: >-
+            _time:15m
+            | rename "user.username" as user
+            | filter NOT user:~"^(system:|oidc:)"
+            | stats by (user) count() as hits
+          for: 0m
+          labels:
+            severity: critical
+            owner: platform
+            service: kubernetes-api
+          annotations:
+            summary: "Break-glass certificate used on the Kubernetes API (user {{ $labels.user }})"
+            description: |
+              What's happening:
+              - {{ $labels.user }} authenticated to the API server with a client certificate ({{ $value }} calls in 15m).
+              - Every legitimate principal is `system:` or `oidc:`; anything else is the Talos admin certificate.
+
+              Impact/risk:
+              - That identity bypasses RBAC and is not attributable to a person.
+
+              Likely causes:
+              - A deliberate break-glass because OIDC login is broken.
+              - A workstation still using the old kubeconfig context.
+              - A kubeconfig that should not exist.
+
+              First actions:
+              - Ask whoever holds the certificate whether this was them, and why.
+              - Compare the timestamps against the OIDC outage, if there was one.
+              - If unexplained, rotate the cluster CA; nothing else revokes this credential.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/kubernetes-login/#break-glass"
+        - alert: KubernetesRBACChangedOutsideGitOps
+          expr: >-
+            _time:15m
+            | rename "user.username" as user, "objectRef.resource" as resource
+            | filter "objectRef.apiGroup":="rbac.authorization.k8s.io"
+            AND verb:~"^(create|update|patch|delete|deletecollection)$"
+            AND NOT user:~"^system:serviceaccount:(flux-system:(kustomize-controller|helm-controller|flux-operator)|security:access-plane-runner|cnpg-system:cloudnative-pg|kube-system:clusterrole-aggregation-controller)$"
+            | stats by (user, resource) count() as hits
+          for: 0m
+          labels:
+            severity: critical
+            owner: platform
+            service: kubernetes-api
+          annotations:
+            summary: "RBAC changed outside GitOps (user {{ $labels.user }}, {{ $labels.resource }})"
+            description: |
+              What's happening:
+              - {{ $labels.user }} changed {{ $labels.resource }} directly against the API ({{ $value }} in 15m).
+              - Only Flux, the access-plane runner, CNPG and the aggregation controller write RBAC here.
+
+              Impact/risk:
+              - A grant that exists in the cluster and not in Git; Flux reverts what it owns on the next reconcile, but not objects it never created.
+
+              Likely causes:
+              - A hand-applied binding during an incident.
+              - A new controller that writes RBAC and is not yet on the allow-list.
+
+              First actions:
+              - Read the audit event for the object name and the change.
+              - Delete the object if it is not in Git, or add the writer to the allow-list in this rule if it is legitimate.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/kubernetes-login/#rbac-changed-outside-gitops"
+        - alert: KubernetesAnonymousRequestAllowed
+          expr: >-
+            _time:15m
+            | rename "objectRef.resource" as resource
+            | filter "user.username":="system:anonymous"
+            AND "annotations.authorization.k8s.io/decision":="allow"
+            | stats by (resource) count() as hits
+          for: 0m
+          labels:
+            severity: critical
+            owner: platform
+            service: kubernetes-api
+          annotations:
+            summary: "Anonymous request allowed on the Kubernetes API (resource {{ $labels.resource }})"
+            description: |
+              What's happening:
+              - An unauthenticated request was allowed against {{ $labels.resource }} ({{ $value }} in 15m).
+
+              Impact/risk:
+              - Something grants system:anonymous or system:unauthenticated a right beyond the health endpoints.
+
+              Likely causes:
+              - A binding to system:unauthenticated added by a chart or by hand.
+
+              First actions:
+              - List bindings whose subjects include system:anonymous or system:unauthenticated and remove the grant.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/kubernetes-login/#anonymous-request-allowed"
