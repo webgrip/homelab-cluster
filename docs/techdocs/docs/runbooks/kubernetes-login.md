@@ -17,6 +17,7 @@ admin certificate is still for. Decision: [ADR-0059](../adr/adr-0059-per-user-ku
 ```sh
 cd ~/projects/webgrip/homelab-cluster
 mise install
+export BAO_ADDR="$(mise exec -- just bao-addr)"
 mise exec -- bao login -method=oidc
 KUBERNETES_OIDC_CLIENT_SECRET="$(mise exec -- bao kv get -field=client_secret secret/security/kubernetes-oidc)" \
   mise exec -- ./scripts/kube-oidc-setup.sh

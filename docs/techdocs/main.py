@@ -5,6 +5,7 @@ deterministic, works in flux-local CI and both engines (Zensical executes
 macros modules natively; verified 2026-08-11).
 """
 import pathlib
+import re
 
 import yaml
 
@@ -17,6 +18,8 @@ _TagTolerantLoader.add_multi_constructor("", lambda loader, tag, node: None)
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 APPS_ROOT = REPO_ROOT / "kubernetes" / "apps"
+BROKER_MODULE = APPS_ROOT / "security" / "access-plane" / "tofu" / "broker" / "applications.tf"
+LAUNCH_URL_HOST = re.compile(r'launch_url\s*=\s*"https://([^/"]+)')
 
 
 def _docs(path: pathlib.Path):
@@ -110,7 +113,12 @@ def _reachable(held: dict[str, str], capabilities: dict) -> dict[str, tuple[str,
     return reached
 
 
-def _route_authentication(app_dir: pathlib.Path, route_name: str) -> str:
+def _broker_hosts() -> set[str]:
+    hosts = LAUNCH_URL_HOST.findall(BROKER_MODULE.read_text())
+    return {host.replace("${var.SECRET_DOMAIN}", "${SECRET_DOMAIN}") for host in hosts}
+
+
+def _route_authentication(app_dir: pathlib.Path, route_name: str, hosts: set[str]) -> str:
     for sibling in app_dir.glob("*.yaml"):
         for other in _docs(sibling):
             if other.get("kind") != "SecurityPolicy":
@@ -124,7 +132,7 @@ def _route_authentication(app_dir: pathlib.Path, route_name: str) -> str:
             if "basicAuth" in spec:
                 return "basic auth, at the gateway"
             return "gateway policy"
-    if any("authentik" in p.read_text() for p in app_dir.glob("*.yaml")):
+    if hosts & _broker_hosts():
         return "broker, in the application"
     return "none"
 
@@ -137,9 +145,10 @@ def _routed_surfaces() -> list[str]:
             if doc.get("kind") != "HTTPRoute":
                 continue
             spec = doc.get("spec", {})
-            hosts = ", ".join(spec.get("hostnames", []) or [])
+            hostnames = set(spec.get("hostnames", []) or [])
+            hosts = ", ".join(sorted(hostnames))
             gateways = ", ".join(p.get("name", "?") for p in spec.get("parentRefs", []) or [])
-            authn = _route_authentication(app_dir, doc.get("metadata", {}).get("name", "?"))
+            authn = _route_authentication(app_dir, doc.get("metadata", {}).get("name", "?"), hostnames)
             rows.append(f"| `{app_dir.parent.parent.name}` | {hosts} | {gateways} | {authn} |")
     return rows
 
