@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webgrip.io/access-plane/people.schema.json",
+  "title": "PeopleRoster",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "people"],
+  "properties": {
+    "apiVersion": { "const": "access.webgrip.io/v1alpha1" },
+    "kind": { "const": "PeopleRoster" },
+    "people": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/principal" }
+    }
+  },
+  "$defs": {
+    "slug": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "email": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+\\.[a-z]{2,}$" },
+    "date": { "type": "string", "format": "date", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "grant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability", "until", "owner", "reason"],
+      "properties": {
+        "capability": { "$ref": "#/$defs/slug" },
+        "scope": { "enum": ["project", "cluster"] },
+        "project": { "$ref": "#/$defs/slug" },
+        "until": { "oneOf": [{ "$ref": "#/$defs/date" }, { "const": "none" }] },
+        "owner": { "$ref": "#/$defs/email" },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "principal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "status", "name", "role"],
+      "properties": {
+        "id": { "$ref": "#/$defs/slug" },
+        "kind": { "enum": ["staff", "external", "machine"] },
+        "status": { "enum": ["active", "suspended"] },
+        "name": { "type": "string", "minLength": 1 },
+        "email": { "$ref": "#/$defs/email" },
+        "username": { "type": "string", "pattern": "^[A-Za-z0-9._@+-]+$" },
+        "forge": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+        "role": { "$ref": "#/$defs/slug" },
+        "projects": { "type": "array", "items": { "$ref": "#/$defs/slug" }, "uniqueItems": true },
+        "reviewed": { "$ref": "#/$defs/date" },
+        "grants": { "type": "array", "items": { "$ref": "#/$defs/grant" } },
+        "delegates_to": { "type": "array", "items": { "$ref": "#/$defs/slug" }, "uniqueItems": true },
+        "owner": { "$ref": "#/$defs/email" },
+        "purpose": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "machine" } } },
+          "then": {
+            "required": ["owner", "purpose"],
+            "not": { "anyOf": [{ "required": ["username"] }, { "required": ["projects"] }, { "required": ["grants"] }, { "required": ["reviewed"] }] }
+          },
+          "else": {
+            "required": ["email", "username", "projects", "reviewed", "grants"],
+            "not": { "anyOf": [{ "required": ["owner"] }, { "required": ["purpose"] }] }
+          }
+        }
+      ]
+    }
+  }
+}

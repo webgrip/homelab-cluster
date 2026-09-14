@@ -107,6 +107,11 @@ jobs:
           docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
             sh -ec "pip install --quiet yamllint==1.38.0 && yamllint -d relaxed kubernetes"
 
+      - name: Validate the access model (schema + cross-file rules)
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE":/data:ro -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
+            sh -ec "pip install --quiet check-jsonschema==0.38.0 pyyaml==6.0.3 && ./scripts/validate-access-model.sh /data"
+
       - name: Check docs nav + links
         run: ./scripts/check-docs-links.sh "$GITHUB_WORKSPACE"
 

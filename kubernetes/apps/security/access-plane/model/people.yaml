@@ -1,0 +1,147 @@
+---
+# yaml-language-server: $schema=schema/people.schema.json
+apiVersion: access.webgrip.io/v1alpha1
+kind: PeopleRoster
+people:
+  - id: ryan
+    kind: staff
+    status: active
+    name: Ryan Grippeling
+    email: ryan@webgrip.nl
+    username: Ryangr0
+    forge: ryangr0
+    role: platform-engineer
+    projects:
+      - platform
+      - erfbeeld
+      - vloer
+      - glide
+      - tools
+    reviewed: 2026-09-14
+    delegates_to:
+      - claude-code
+    grants:
+      - capability: k8s-admin
+        scope: cluster
+        until: 2027-09-14
+        owner: ryan@webgrip.nl
+        reason: Operates the platform as an identity rather than with the shared certificate; the only holder
+      - capability: talos-admin
+        until: 2027-09-14
+        owner: ryan@webgrip.nl
+        reason: Applies machine configuration to the nodes; reaches k8s-admin by a path RBAC cannot see
+      - capability: break-glass-k8s
+        until: none
+        owner: ryan@webgrip.nl
+        reason: Custodian of the Talos-issued admin certificate
+      - capability: break-glass-authentik
+        until: none
+        owner: ryan@webgrip.nl
+        reason: Custodian of the akadmin credential in OpenBao
+      - capability: break-glass-openbao
+        until: none
+        owner: ryan@webgrip.nl
+        reason: Custodian of the openbao-0 exec path
+      - capability: break-glass-forgejo
+        until: none
+        owner: ryan@webgrip.nl
+        reason: Custodian of the gitea_admin credential in OpenBao
+      - capability: break-glass-harbor
+        until: none
+        owner: ryan@webgrip.nl
+        reason: Custodian of the Harbor admin credential in OpenBao
+      - capability: break-glass-grafana
+        until: none
+        owner: ryan@webgrip.nl
+        reason: Custodian of the Grafana admin credential in OpenBao
+  - id: claude-code
+    kind: machine
+    status: active
+    name: Claude Code on the owner's workstation
+    role: agent
+    owner: ryan@webgrip.nl
+    purpose: Runs under the owner's own credentials and is attributed to the owner on every call
+  - id: akadmin
+    kind: machine
+    status: active
+    name: Authentik bootstrap superuser
+    role: service
+    owner: ryan@webgrip.nl
+    purpose: The unlisted break-glass login for the broker
+  - id: gitea-admin
+    kind: machine
+    status: active
+    name: Forgejo local administrator
+    role: service
+    owner: ryan@webgrip.nl
+    purpose: The break-glass login for the forge
+  - id: harbor-admin
+    kind: machine
+    status: active
+    name: Harbor local administrator
+    role: service
+    owner: ryan@webgrip.nl
+    purpose: The break-glass login for the registry
+  - id: webgrip-ci
+    kind: machine
+    status: active
+    name: webgrip-ci
+    forge: webgrip-ci
+    email: webgrip-ci@webgrip.dev
+    role: service
+    owner: ryan@webgrip.nl
+    purpose: Semantic-release bot; pushes tags and version bumps to protected main
+  - id: renovate
+    kind: machine
+    status: active
+    name: Renovate
+    forge: renovate
+    role: service
+    owner: ryan@webgrip.nl
+    purpose: Dependency automation; opens and merges its own pull requests under the delivery contract
+  - id: agent-builder
+    kind: machine
+    status: active
+    name: agent-builder
+    forge: agent-builder
+    email: agent-builder@webgrip.dev
+    role: service
+    owner: ryan@webgrip.nl
+    purpose: Builds on every repository through the agents team; may neither push nor merge on main
+  - id: agent-reviewer
+    kind: machine
+    status: active
+    name: agent-reviewer
+    forge: agent-reviewer
+    email: agent-reviewer@webgrip.dev
+    role: service
+    owner: ryan@webgrip.nl
+    purpose: Comment-only reviewer through the agent-reviewers team
+  - id: flux
+    kind: machine
+    status: active
+    name: Flux controllers
+    role: service
+    owner: ryan@webgrip.nl
+    purpose: Reconciles this repository into the cluster; holds cluster-admin by construction
+  - id: external-secrets
+    kind: machine
+    status: active
+    name: External Secrets Operator
+    role: service
+    owner: ryan@webgrip.nl
+    purpose: Projects OpenBao secrets into Kubernetes Secrets; the shortest path from k8s-operate to every secret
+  - id: access-plane-runner
+    kind: machine
+    status: active
+    name: The access-plane runner
+    role: service
+    owner: ryan@webgrip.nl
+    purpose: Reconciles this model into Authentik, OpenBao and the Kubernetes API; can bind cluster-admin
+  - id: k8s-mcp
+    kind: machine
+    status: active
+    name: Kubernetes MCP server
+    role: service
+    owner: ryan@webgrip.nl
+    purpose: Read-only view of the cluster for agents; every call is attributed to the server, not the asker

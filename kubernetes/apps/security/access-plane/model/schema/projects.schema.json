@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webgrip.io/access-plane/projects.schema.json",
+  "title": "ProjectCatalogue",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "projects"],
+  "properties": {
+    "apiVersion": { "const": "access.webgrip.io/v1alpha1" },
+    "kind": { "const": "ProjectCatalogue" },
+    "projects": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "summary", "owner", "reviewed", "namespaces", "repos", "registry"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "summary": { "type": "string", "minLength": 1 },
+          "owner": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+\\.[a-z]{2,}$" },
+          "reviewed": { "type": "string", "format": "date", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+          "ends": { "type": "string", "format": "date", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+          "namespaces": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9-]+$" }, "uniqueItems": true },
+          "repos": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9-]+/[a-z0-9._-]+$" }, "uniqueItems": true },
+          "registry": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9-]+$" }, "uniqueItems": true }
+        }
+      }
+    }
+  }
+}

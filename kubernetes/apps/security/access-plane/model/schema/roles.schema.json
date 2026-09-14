@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webgrip.io/access-plane/roles.schema.json",
+  "title": "RoleCatalogue",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "roles"],
+  "properties": {
+    "apiVersion": { "const": "access.webgrip.io/v1alpha1" },
+    "kind": { "const": "RoleCatalogue" },
+    "roles": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["summary", "owner", "grants"],
+        "properties": {
+          "summary": { "type": "string", "minLength": 1 },
+          "owner": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+\\.[a-z]{2,}$" },
+          "human": { "type": "boolean" },
+          "grants": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["capability"],
+              "properties": {
+                "capability": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+                "scope": { "enum": ["project", "cluster"] }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,294 @@
+---
+# yaml-language-server: $schema=schema/capabilities.schema.json
+apiVersion: access.webgrip.io/v1alpha1
+kind: CapabilityCatalogue
+capabilities:
+  k8s-read:
+    summary: Read every resource except Secrets, in the granted scope
+    risk: low
+    owner: ryan@webgrip.nl
+    projects:
+      kubernetes:
+        clusterRole: human-reader
+        scopable: true
+  k8s-operate:
+    summary: Restart, scale, exec, port-forward, reconcile Flux and cordon, in the granted scope
+    risk: high
+    owner: ryan@webgrip.nl
+    supersedes:
+      - k8s-read
+    projects:
+      kubernetes:
+        clusterRole: human-operator
+        scopable: true
+    escalates_to:
+      - capability: secrets-read-all
+        via: pods/exec into any pod that mounts a Secret, or into external-secrets itself
+      - capability: db-admin
+        via: pods/exec into a CNPG primary as postgres
+      - capability: flux-suspend
+        via: patching a Kustomization's spec.suspend
+  k8s-admin:
+    summary: cluster-admin, everywhere, including the power to grant this
+    risk: critical
+    owner: ryan@webgrip.nl
+    supersedes:
+      - k8s-operate
+      - k8s-read
+    projects:
+      kubernetes:
+        clusterRole: cluster-admin
+        scopable: false
+    escalates_to:
+      - capability: secrets-read-all
+        via: direct read of every Secret object
+      - capability: storage-admin
+        via: longhorn.io custom resources
+      - capability: registry-admin
+        via: reading the Harbor admin credential from its Secret
+      - capability: secrets-admin
+        via: kubectl exec on openbao-0 as the openbao ServiceAccount
+  secrets-read-all:
+    summary: Read the contents of every Kubernetes Secret in the cluster
+    risk: critical
+    owner: ryan@webgrip.nl
+    derived: true
+  flux-suspend:
+    summary: Stop Flux reconciling a Kustomization or HelmRelease, which freezes revocation
+    risk: high
+    owner: ryan@webgrip.nl
+    derived: true
+  db-admin:
+    summary: Superuser on a CloudNativePG cluster
+    risk: high
+    owner: ryan@webgrip.nl
+    derived: true
+  supply-chain-write:
+    summary: Change the image contents this cluster will run
+    risk: critical
+    owner: ryan@webgrip.nl
+    derived: true
+  secrets-admin:
+    summary: Full lifecycle on every secret in OpenBao
+    risk: critical
+    owner: ryan@webgrip.nl
+    projects:
+      authentik:
+        groups:
+          - homelab-admins
+      openbao:
+        policy: admins
+    escalates_to:
+      - capability: registry-admin
+        via: reading the Harbor admin credential stored under secret/harbor
+      - capability: repo-admin
+        via: reading the Forgejo admin credential stored under secret/forgejo
+      - capability: supply-chain-write
+        via: signing with the cosign transit key, which the admins policy reaches
+  registry-push:
+    summary: Push and pull images in the registry projects the principal's projects own
+    risk: medium
+    owner: ryan@webgrip.nl
+    projects:
+      harbor:
+        role: developer
+        scopable: true
+  registry-admin:
+    summary: Harbor system administrator, every project, robot and setting
+    risk: critical
+    owner: ryan@webgrip.nl
+    supersedes:
+      - registry-push
+    projects:
+      authentik:
+        groups:
+          - harbor-admins
+      harbor:
+        role: sysadmin
+    escalates_to:
+      - capability: supply-chain-write
+        via: overwriting a tag Flux already resolved, or minting a robot account with push on any project
+  repo-contribute:
+    summary: Push branches and open pull requests in the webgrip Forgejo organisation
+    risk: medium
+    owner: ryan@webgrip.nl
+    projects:
+      authentik:
+        groups:
+          - homelab-users
+      forgejo:
+        team: Developers
+  repo-admin:
+    summary: Own the webgrip Forgejo organisation, its members, branch protection and site administration
+    risk: critical
+    owner: ryan@webgrip.nl
+    supersedes:
+      - repo-contribute
+    projects:
+      authentik:
+        groups:
+          - homelab-admins
+      forgejo:
+        team: Owners
+        siteAdmin: true
+    escalates_to:
+      - capability: k8s-admin
+        via: Flux applies what lands on main, and an Owner can push to it and edit the protection that says who may
+  grafana-edit:
+    summary: Edit dashboards and query every datasource in Grafana
+    risk: medium
+    owner: ryan@webgrip.nl
+    projects:
+      authentik:
+        groups:
+          - homelab-users
+      grafana:
+        role: Editor
+    escalates_to:
+      - capability: secrets-read-all
+        via: any credential that has ever been logged, since VictoriaLogs redacts nothing on ingest
+  grafana-admin:
+    summary: Grafana server administration
+    risk: medium
+    owner: ryan@webgrip.nl
+    supersedes:
+      - grafana-edit
+    projects:
+      authentik:
+        groups:
+          - homelab-admins
+      grafana:
+        role: GrafanaAdmin
+  litellm-admin:
+    summary: LiteLLM administration, virtual keys, budgets and all spend
+    risk: high
+    owner: ryan@webgrip.nl
+    projects:
+      authentik:
+        groups:
+          - homelab-admins
+      litellm:
+        role: proxy_admin
+  vloer-admin:
+    summary: De Vloer administration, every session and budget
+    risk: high
+    owner: ryan@webgrip.nl
+    projects:
+      authentik:
+        groups:
+          - homelab-admins
+      vloer:
+        role: admin
+  tasks-use:
+    summary: Sign in to Vikunja and work the boards
+    risk: low
+    owner: ryan@webgrip.nl
+    projects:
+      authentik:
+        groups:
+          - homelab-users
+  catalog-use:
+    summary: Sign in to Backstage
+    risk: low
+    owner: ryan@webgrip.nl
+    projects:
+      authentik:
+        groups:
+          - homelab-users
+  staging-sites-use:
+    summary: Open the staging sites published through Cloudflare Access
+    risk: low
+    owner: ryan@webgrip.nl
+    projects:
+      authentik:
+        groups:
+          - homelab-users
+  previews-use:
+    summary: Open the preview environments of the granted projects
+    risk: low
+    owner: ryan@webgrip.nl
+    projects:
+      envoy:
+        scopable: true
+  dashboards-view:
+    summary: Open the read-only cluster dashboards behind the gateway
+    risk: high
+    owner: ryan@webgrip.nl
+    projects: {}
+    escalates_to:
+      - capability: secrets-read-all
+        via: any credential that has ever been logged, since VictoriaLogs redacts nothing on ingest
+  storage-admin:
+    summary: Administer Longhorn, which deletes volumes and repoints the backup target
+    risk: critical
+    owner: ryan@webgrip.nl
+    projects: {}
+  talos-admin:
+    summary: Apply machine configuration to the nodes with the shared talosconfig
+    risk: critical
+    owner: ryan@webgrip.nl
+    projects:
+      talos:
+        role: os:admin
+    escalates_to:
+      - capability: k8s-admin
+        via: the node holds the cluster PKI and talosctl can mint any credential from it
+  act-as-human:
+    summary: Act on the Kubernetes API as a named human who consented, with exactly that human's rights
+    risk: high
+    owner: ryan@webgrip.nl
+    projects:
+      kubernetes:
+        clusterRole: agent-impersonator
+        scopable: false
+  break-glass-k8s:
+    summary: The Talos-issued admin kubeconfig, CN=admin in system:masters
+    risk: critical
+    owner: ryan@webgrip.nl
+    break_glass: true
+    alert: KubernetesBreakGlassCertificateUsed
+    escalates_to:
+      - capability: k8s-admin
+        via: system:masters short-circuits the authorizer before RBAC is consulted
+  break-glass-authentik:
+    summary: The akadmin account, through the unlisted password flow
+    risk: critical
+    owner: ryan@webgrip.nl
+    break_glass: true
+    escalates_to:
+      - capability: secrets-admin
+        via: adding oneself to homelab-admins
+      - capability: registry-admin
+        via: adding oneself to harbor-admins
+  break-glass-openbao:
+    summary: kubectl exec on openbao-0, gated on cluster access rather than on any login
+    risk: critical
+    owner: ryan@webgrip.nl
+    break_glass: true
+    escalates_to:
+      - capability: secrets-admin
+        via: it is secrets-admin, without SSO
+  break-glass-forgejo:
+    summary: The local gitea_admin account
+    risk: critical
+    owner: ryan@webgrip.nl
+    break_glass: true
+    escalates_to:
+      - capability: repo-admin
+        via: it is repo-admin, without SSO
+  break-glass-harbor:
+    summary: The local Harbor admin at /account/sign-in
+    risk: critical
+    owner: ryan@webgrip.nl
+    break_glass: true
+    escalates_to:
+      - capability: registry-admin
+        via: it is registry-admin, without SSO
+  break-glass-grafana:
+    summary: The local Grafana admin at /login?disableAutoLogin
+    risk: medium
+    owner: ryan@webgrip.nl
+    break_glass: true
+    escalates_to:
+      - capability: grafana-admin
+        via: it is grafana-admin, without SSO

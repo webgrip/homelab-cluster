@@ -38,6 +38,15 @@ run = "mise exec -- yamlfmt {staged_files}"
 glob = ["*.yml", "*.yaml"]
 stage_fixed = true
 
+[pre-commit.commands.validate-access-model]
+glob = ["kubernetes/apps/security/access-plane/model/**/*", "scripts/validate_access_model.py", "scripts/validate-access-model.sh"]
+run = "mise exec -- ./scripts/validate-access-model.sh"
+
+[pre-commit.commands.format-tofu]
+glob = ["*.tf"]
+run = "mise exec -- tofu fmt {staged_files}"
+stage_fixed = true
+
 # Keep every script runnable on a stock Mac (bash 3.2) AND Linux CI (bash 5):
 # 1) parse with the local bash — on macOS that catches 3.2 parser breakage
 #    (e.g. unbalanced ')' in case patterns inside $()) that CI's bash 5 accepts;

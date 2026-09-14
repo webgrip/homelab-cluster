@@ -39,6 +39,20 @@ jobs:
       - name: Run flux-local test (unscoped)
         run: ./scripts/run-flux-local-test.sh "$GITHUB_WORKSPACE"
 
+  # Review dates and grant expiries move without a commit; the model is re-checked every night.
+  access-model:
+    name: Access model (recertification and expiry)
+    runs-on: docker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate the access model
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE":/data:ro -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
+            sh -ec "pip install --quiet check-jsonschema==0.38.0 pyyaml==6.0.3 && ./scripts/validate-access-model.sh /data"
+
   # Same suite e2e.yml gates behind a path filter, here run unconditionally.
   chainsaw-full:
     name: Kyverno Chainsaw (KinD, unconditional)
