@@ -40,3 +40,30 @@ spec:
               - Check blackbox-exporter pods for restarts/resource pressure
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#synthetic-probes-blackbox"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/synthetic-blackbox/synthetic-blackbox"
+        - alert: AuthentikLoginFlowBroken
+          expr: |
+            probe_success{namespace="observability", endpoint="authentik-login"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            owner: platform
+            service: authentik
+          annotations:
+            summary: "Authentik login flow not answering (endpoint {{ $labels.endpoint }})"
+            description: |
+              What's happening:
+              - The blackbox probe of the login flow executor through envoy-internal has failed for 5m.
+
+              Impact/risk:
+              - Nobody can sign in to any application behind the broker; existing sessions keep working until they expire.
+
+              Likely causes:
+              - Authentik server or worker down, or its database unavailable
+              - The brand points at a flow that no longer exists (a bad access-plane apply)
+              - envoy-internal or the HTTPRoute for authentik broken
+
+              First actions:
+              - kubectl -n authentik get pods; check the authentik-db CNPG cluster
+              - kubectl -n security get terraform access-broker; read the last plan for flow or brand changes
+              - Open /if/flow/homelab-authentication/ directly; it is the break-glass flow and must still render
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/authentik-oidc-login/"

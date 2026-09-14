@@ -1,4 +1,13 @@
+variable "SECRET_DOMAIN" {
+  type = string
+}
+
 variable "adopt_existing" {
+  type    = bool
+  default = false
+}
+
+variable "google_login" {
   type    = bool
   default = false
 }

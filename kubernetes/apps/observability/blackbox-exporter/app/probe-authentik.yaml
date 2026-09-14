@@ -1,0 +1,19 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: blackbox-authentik-login
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  interval: 60s
+  module: http_authentik_login
+  prober:
+    url: blackbox-exporter.observability.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - https://envoy-internal.network.svc.cluster.local/api/v3/flows/executor/homelab-authentication/
+      labels:
+        endpoint: authentik-login
