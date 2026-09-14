@@ -37,7 +37,7 @@ resource "authentik_stage_identification" "webgrip" {
 
   name               = "webgrip-identification"
   user_fields        = []
-  sources            = [authentik_source_oauth.google[0].id]
+  sources            = [authentik_source_oauth.google[0].uuid]
   show_source_labels = true
 }
 
