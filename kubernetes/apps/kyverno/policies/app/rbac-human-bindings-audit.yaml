@@ -34,7 +34,7 @@ spec:
           - "clusterrolebindings"
   variables:
     - name: humanSubjects
-      expression: "object.?subjects.orValue([]).filter(s, s.kind == 'User' || s.kind == 'Group')"
+      expression: "object.?subjects.orValue([]).filter(s, (s.kind == 'User' || s.kind == 'Group') && !s.name.startsWith('system:'))"
     - name: managedByAccessPlane
       expression: "object.metadata.?labels[?'access-plane.webgrip.io/managed'].orValue('') == 'true'"
     - name: kubernetesBootstrap
