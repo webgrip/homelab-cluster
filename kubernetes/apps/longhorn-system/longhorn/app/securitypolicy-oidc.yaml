@@ -1,0 +1,27 @@
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: longhorn-dashboard-oidc
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: longhorn-dashboard
+  oidc:
+    provider:
+      issuer: https://authentik.${SECRET_DOMAIN}/application/o/longhorn/
+    clientIDRef:
+      name: authentik-longhorn-oidc
+    clientSecret:
+      name: authentik-longhorn-oidc
+    scopes:
+      - openid
+      - email
+      - profile
+    redirectURL: https://longhorn.${SECRET_DOMAIN}/oauth2/callback
+    logoutPath: /logout
+    defaultTokenTTL: 12h
+    defaultRefreshTokenTTL: 168h
+    cookieConfig:
+      sameSite: Lax
