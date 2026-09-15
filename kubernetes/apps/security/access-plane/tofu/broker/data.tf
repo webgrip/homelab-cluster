@@ -49,3 +49,8 @@ ephemeral "vault_kv_secret_v2" "harbor_admin" {
   mount = "secret"
   name  = "harbor/admin"
 }
+
+data "vault_kv_secret_v2" "ntfy" {
+  mount = "secret"
+  name  = "ntfy/auth"
+}

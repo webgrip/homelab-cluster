@@ -12,11 +12,18 @@ resource "authentik_group" "harbor" {
   users        = [for email in each.value.members : tonumber(authentik_user.human[email].id)]
 }
 
+resource "harbor_group" "membership" {
+  for_each = module.model.harbor_memberships
+
+  group_name = each.value.group
+  group_type = 3
+}
+
 resource "harbor_project_member_group" "membership" {
   for_each = module.model.harbor_memberships
 
   project_id = data.harbor_project.registry[each.value.project].id
-  group_name = each.value.group
+  group_name = harbor_group.membership[each.key].group_name
   type       = "oidc"
   role       = each.value.role
 }

@@ -102,3 +102,62 @@ spec:
               First actions:
               - List bindings whose subjects include system:anonymous or system:unauthenticated and remove the grant.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/kubernetes-login/#anonymous-request-allowed"
+        - alert: KubernetesSecretReadBurstByHuman
+          expr: >-
+            _time:15m
+            | rename "user.username" as user
+            | filter "objectRef.resource":="secrets" AND verb:~"^(get|list)$" AND NOT user:~"^system:"
+            | stats by (user) count() as hits
+            | filter hits:>20
+          for: 0m
+          labels:
+            severity: warning
+            owner: platform
+            service: kubernetes-api
+          annotations:
+            summary: "A person read many Secrets in a short time (user {{ $labels.user }})"
+            description: |
+              What's happening:
+              - {{ $labels.user }} read Secrets {{ $value }} times in fifteen minutes; a person browsing normally reads a handful.
+
+              Impact/risk:
+              - Bulk Secret reads are how credentials leave a cluster, whether by the person or by something running as them.
+
+              Likely causes:
+              - A deliberate sweep, such as a migration or an audit script run under a personal login.
+              - A tool or agent running with the person's kubeconfig.
+              - A compromised workstation.
+
+              First actions:
+              - Ask the person; a sweep they ran is the answer.
+              - If they did not, rotate the Secrets they read and revoke their sessions in Google Workspace and Authentik.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/kubernetes-login/#secret-read-burst"
+        - alert: KubernetesImpersonationUsed
+          expr: >-
+            _time:15m
+            | rename "user.username" as user, "impersonatedUser.username" as impersonated
+            | filter impersonated:*
+            | stats by (user, impersonated) count() as hits
+          for: 0m
+          labels:
+            severity: warning
+            owner: platform
+            service: kubernetes-api
+          annotations:
+            summary: "Impersonation used on the Kubernetes API ({{ $labels.user }} as {{ $labels.impersonated }})"
+            description: |
+              What's happening:
+              - {{ $labels.user }} made {{ $value }} calls impersonating {{ $labels.impersonated }} in fifteen minutes.
+              - Nothing in this cluster impersonates today; the access plane's agent capability is the only planned holder.
+
+              Impact/risk:
+              - Impersonation lets a principal act as another; if it is not the planned agent path, it is a privilege escalation.
+
+              Likely causes:
+              - The agent identity work (RFC D10) went live and this rule needs its allow-list.
+              - Someone with impersonate rights on the API is using them.
+
+              First actions:
+              - Read the audit events for the object and verb.
+              - If the impersonator is not on the allow-list in this rule, remove its impersonate binding.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/kubernetes-login/#impersonation"
