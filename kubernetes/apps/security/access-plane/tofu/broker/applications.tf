@@ -234,7 +234,7 @@ resource "authentik_policy_binding" "gate" {
   for_each = local.gate_bindings
 
   target  = authentik_application.app[each.value.app].uuid
-  group   = authentik_group.group[each.value.group].id
+  group   = local.group_ids[each.value.group]
   order   = each.value.order
   enabled = true
 }

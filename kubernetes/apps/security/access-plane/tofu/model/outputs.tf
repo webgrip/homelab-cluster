@@ -18,11 +18,22 @@ output "group_members" {
 output "application_gates" {
   value = {
     for app in distinct(flatten([for c in values(local.capabilities) : try(c.projects.authentik.applications, [])])) :
-    app => sort(distinct(flatten([
-      for c in values(local.capabilities) : try(c.projects.authentik.groups, [])
-      if contains(try(c.projects.authentik.applications, []), app)
-    ])))
+    app => sort(distinct(concat(
+      flatten([
+        for c in values(local.capabilities) : try(c.projects.authentik.groups, [])
+        if contains(try(c.projects.authentik.applications, []), app)
+      ]),
+      app == "harbor" ? local.harbor_gate_groups : [],
+    )))
   }
+}
+
+output "harbor_projects" {
+  value = local.harbor_projects
+}
+
+output "harbor_memberships" {
+  value = local.harbor_memberships
 }
 
 output "cluster_bindings" {

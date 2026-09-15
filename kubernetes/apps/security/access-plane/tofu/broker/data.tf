@@ -44,3 +44,8 @@ data "authentik_property_mapping_provider_scope" "standard" {
     "goauthentik.io/providers/oauth2/scope-email",
   ]
 }
+
+ephemeral "vault_kv_secret_v2" "harbor_admin" {
+  mount = "secret"
+  name  = "harbor/admin"
+}

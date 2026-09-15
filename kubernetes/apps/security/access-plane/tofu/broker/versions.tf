@@ -10,5 +10,9 @@ terraform {
       source  = "hashicorp/vault"
       version = "5.11.0"
     }
+    harbor = {
+      source  = "goharbor/harbor"
+      version = "3.12.5"
+    }
   }
 }

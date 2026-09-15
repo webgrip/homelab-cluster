@@ -97,4 +97,40 @@ locals {
       members   = sort(distinct([for g in local.namespace_grants : g.email if g.key == key]))
     }
   }
+
+  harbor_projects = distinct(flatten([for p in values(local.projects) : try(p.registry, [])]))
+
+  harbor_roles = distinct([
+    for c in values(local.capabilities) : c.projects.harbor.role
+    if can(c.projects.harbor.role) && try(c.projects.harbor.scopable, false)
+  ])
+
+  person_registries = {
+    for email, p in local.humans : email => distinct(flatten([
+      for project in p.projects : try(local.projects[project].registry, [])
+    ]))
+  }
+
+  harbor_grants = flatten([
+    for email, held in local.held : [
+      for h in held : [
+        for registry in(h.project != null ? try(local.projects[h.project].registry, []) : local.person_registries[email]) : {
+          key   = "${registry}/${local.capabilities[h.capability].projects.harbor.role}"
+          email = email
+        }
+      ]
+      if h.scope == "project" && can(local.capabilities[h.capability].projects.harbor.role) && try(local.capabilities[h.capability].projects.harbor.scopable, false)
+    ]
+  ])
+
+  harbor_memberships = {
+    for pair in setproduct(local.harbor_projects, local.harbor_roles) : "${pair[0]}/${pair[1]}" => {
+      project = pair[0]
+      role    = pair[1]
+      group   = "harbor-${pair[0]}-${pair[1]}"
+      members = sort(distinct([for g in local.harbor_grants : g.email if g.key == "${pair[0]}/${pair[1]}"]))
+    }
+  }
+
+  harbor_gate_groups = sort([for m in values(local.harbor_memberships) : m.group])
 }

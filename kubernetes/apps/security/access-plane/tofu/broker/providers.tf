@@ -19,3 +19,9 @@ provider "authentik" {
   url   = var.authentik_url
   token = ephemeral.vault_kv_secret_v2.authentik.data["AUTHENTIK_BOOTSTRAP_TOKEN"]
 }
+
+provider "harbor" {
+  url      = var.harbor_url
+  username = "admin"
+  password = ephemeral.vault_kv_secret_v2.harbor_admin.data["HARBOR_ADMIN_PASSWORD"]
+}
