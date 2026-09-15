@@ -120,10 +120,29 @@ entries:
       target: !KeyOf homelab-auth-flow
 
   - model: authentik_flows.flowstagebinding
+    id: homelab-login-binding
     identifiers:
       order: 100
       stage: !KeyOf homelab-login
       target: !KeyOf homelab-auth-flow
+
+  - model: authentik_policies_expression.expressionpolicy
+    id: homelab-break-glass-akadmin-only
+    identifiers:
+      name: homelab-break-glass-akadmin-only
+    attrs:
+      execution_logging: true
+      expression: |
+        pending = request.context.get("pending_user")
+        return pending is not None and pending.username == "akadmin"
+
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf homelab-login-binding
+      policy: !KeyOf homelab-break-glass-akadmin-only
+      order: 0
+    attrs:
+      enabled: true
 
   - model: authentik_flows.flowstagebinding
     identifiers:
