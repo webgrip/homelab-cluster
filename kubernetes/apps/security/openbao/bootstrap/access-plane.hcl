@@ -37,3 +37,6 @@ path "secret/data/grafana/oauth" {
 path "secret/data/cloudflare/access-oidc" {
   capabilities = ["read"]
 }
+path "secret/data/harbor/admin" {
+  capabilities = ["read"]
+}
