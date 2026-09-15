@@ -40,3 +40,6 @@ path "secret/data/cloudflare/access-oidc" {
 path "secret/data/harbor/admin" {
   capabilities = ["read"]
 }
+path "secret/data/ntfy/auth" {
+  capabilities = ["read"]
+}
