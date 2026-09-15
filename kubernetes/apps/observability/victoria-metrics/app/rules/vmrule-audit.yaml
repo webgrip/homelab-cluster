@@ -16,6 +16,7 @@ spec:
             _time:15m
             | rename "user.username" as user
             | filter NOT user:~"^(system:|oidc:)"
+            AND NOT (userAgent:~"^Go-http-client" AND sourceIPs:~"(::1|10\.0\.0\.2[012])")
             | stats by (user) count() as hits
           for: 0m
           labels:
@@ -36,6 +37,7 @@ spec:
               - A deliberate break-glass because OIDC login is broken.
               - A workstation still using the old kubeconfig context.
               - A kubeconfig that should not exist.
+              - Not a Talos apply: Talos updates nodes with this credential from the control planes and the rule excludes those by source and user agent.
 
               First actions:
               - Ask whoever holds the certificate whether this was them, and why.

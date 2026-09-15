@@ -216,15 +216,16 @@ spec:
             stage.json {
               expressions = {
                 verb        = "verb",
+                user        = "user.username",
                 resource    = "objectRef.resource",
                 subresource = "objectRef.subresource",
               }
             }
             stage.labels {
-              values = { verb = "", resource = "", subresource = "" }
+              values = { verb = "", resource = "", subresource = "", user = "" }
             }
             stage.match {
-              selector = "{verb=~\"get|list|watch\", resource!~\"secrets|serviceaccounts|.*roles|.*rolebindings|certificatesigningrequests\", subresource!~\"exec|attach|portforward\"}"
+              selector = "{user=~\"system:.*\", verb=~\"get|list|watch\", resource!~\"secrets|serviceaccounts|.*roles|.*rolebindings|certificatesigningrequests\", subresource!~\"exec|attach|portforward\"}"
               action   = "drop"
             }
             stage.match {
@@ -232,7 +233,7 @@ spec:
               action   = "drop"
             }
             stage.label_drop {
-              values = ["verb", "resource", "subresource"]
+              values = ["verb", "resource", "subresource", "user"]
             }
             forward_to = [loki.write.audit.receiver]
           }

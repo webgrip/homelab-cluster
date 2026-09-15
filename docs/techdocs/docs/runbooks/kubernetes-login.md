@@ -80,6 +80,9 @@ Every call lands the `KubernetesBreakGlassCertificateUsed` alert, which is the c
 it only with a dated Alertmanager silence, never by editing the rule. The API-server audit log
 is on the control planes at `/var/log/audit/kube/kube-apiserver.log`, shipped by Alloy into the
 `victorialogs-audit` instance with one year of retention.
+Reads by `system:` principals are dropped on the way in; every call by a person, `oidc:` or the
+admin certificate, is kept, reads included. Talos updates nodes with the admin credential from
+the control planes during an apply; the rule excludes those by source and user agent.
 
 ## RBAC changed outside GitOps
 

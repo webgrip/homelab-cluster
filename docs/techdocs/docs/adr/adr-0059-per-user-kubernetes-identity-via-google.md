@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-09-14
 ---
 
@@ -127,3 +127,4 @@ without a node reboot.
   [Kubeconfig setup](../general/kubeconfig-setup.md)
 * Sibling: code14 staging-cluster ADR-0025, ADR-0033 and `runbooks/kubernetes-login.md`.
 * 2026-09-14 — proposed; lands in stage 4 of the RFC rollout.
+* 2026-09-15 — accepted. All three API servers carry the flags; `kubectl auth whoami` from the working kubeconfig is `oidc:ryan@webgrip.nl`; the admin credential lives in `~/.kube/homelab-break-glass.yaml`; `KubernetesBreakGlassCertificateUsed` fired at 05:40Z on the drain calls made with that credential and reached Alertmanager. Two things surfaced: the Alloy pipeline dropped every read, so a break-glass `get nodes` left no trace, and Talos itself updates nodes with the admin credential during an apply. Reads by anyone outside `system:` are kept now, and the rule excludes the Talos calls by source and user agent. Confirmation 3 waits for the Kyverno rule in Enforce; confirmation 4 has no account outside `webgrip.nl` to try, and rests on the `hd` claim being required.
