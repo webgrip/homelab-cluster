@@ -57,9 +57,9 @@ After your OIDC context works, keep the break-glass credential in a file that ta
 
 ```sh
 cd ~/projects/webgrip/homelab-cluster
-mise exec -- kubectl config view --minify --flatten --context admin@kubernetes > ~/.kube/homelab-break-glass.yaml
+mise exec -- kubectl config view --minify --flatten --context homelab > ~/.kube/homelab-break-glass.yaml
 chmod 600 ~/.kube/homelab-break-glass.yaml
-mise exec -- kubectl config delete-context admin@kubernetes
+mise exec -- kubectl config delete-context homelab
 mise exec -- kubectl config delete-user admin@kubernetes
 mise exec -- kubectl config current-context
 ```
