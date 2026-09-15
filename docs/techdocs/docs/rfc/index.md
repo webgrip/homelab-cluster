@@ -79,6 +79,7 @@ that had no decision record. All **Proposed**. Roughly by stakes:
   internal-by-default posture.
 - [Identity & SSO](rfc-identity-sso.md) — Authentik adoption record + the non-OIDC/forward-auth
   hole.
+- [MCP endpoints carry the caller's identity](rfc-mcp-identity.md) — the six MCP routes behind the broker at the gateway and `k8s-mcp` calling the API as the person; Proposed 2026-09-15
 - [The access plane](rfc-access-plane.md) — Google as the only identity, one four-file
   entitlement model, one OpenTofu module reconciled by tofu-controller; supersedes the open
   items above.

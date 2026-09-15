@@ -27,6 +27,8 @@ that gate each application, and the scope mappings
 
 The blueprint is kept because that flow is the break-glass door: it is reachable at
 `/if/flow/homelab-authentication/` for `akadmin` and linked from nowhere.
+Since 2026-09-15 an expression policy on the flow's login stage admits `akadmin` and nobody else,
+so a rostered person's leftover local password opens nothing; the Google door is their only one.
 
 ## Two login pages, on purpose
 

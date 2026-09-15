@@ -107,3 +107,20 @@ health endpoints. List bindings whose subjects include `system:anonymous` or
 | `Forbidden` on everything | No tier granted | Add a grant in `people.yaml`; the access plane binds you on the next reconcile |
 | `kubectl auth whoami` shows `admin` | The current context is the break-glass one | `kubectl config use-context homelab-oidc` and move the credential out as above |
 | Browser reports nothing listening on the port | Something else (Docker Desktop) listens on `[::]:8000` and shadows the IPv4 callback | `lsof -nP -iTCP:8000 -sTCP:LISTEN`; stop it or let kubelogin use 18000 |
+
+## Secret read burst
+
+`KubernetesSecretReadBurstByHuman` fires when a person reads more than twenty Secrets in
+fifteen minutes. A person browsing reads a handful; a sweep reads hundreds. Ask the person
+first: a migration or an audit script run under a personal login is the usual answer. If they
+did not run it, treat the workstation as compromised: rotate every Secret named in the audit
+events, revoke the sessions in Google Workspace and in Authentik, and re-issue the kubelogin
+client secret.
+
+## Impersonation
+
+`KubernetesImpersonationUsed` fires on any call that carries an impersonated user. Nothing in
+this cluster impersonates today; the planned holder is the agent path in
+[RFC: MCP endpoints carry the caller's identity](../rfc/rfc-mcp-identity.md), which will add
+its allow-list to the rule when it lands. Until then every firing is a privilege escalation:
+read the audit events for the impersonator, and remove its `impersonate` binding.

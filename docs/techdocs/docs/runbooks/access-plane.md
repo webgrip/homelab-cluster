@@ -89,3 +89,22 @@ A local `plan` needs the live systems and the state Secret; the module is writte
 | Controller logs `connection refused` to the runner on port 30000 | Ingress policy missing in `security` | `access-plane-allow-controller-to-runner` NetworkPolicy must exist |
 | Plan pending for hours | The object has no `approvePlan` | That is the cutover posture; read the plan, approve it in Git |
 | `Drifted` condition | Someone changed a managed object by hand | Let the next reconcile revert it; find who in the Authentik or OpenBao audit log |
+
+## What else the broker reconciles
+
+| Thing | Where it comes from | What to look at |
+| --- | --- | --- |
+| Harbor project membership | every held grant whose capability projects into Harbor with a scope; one Authentik group and one Harbor OIDC group per registry project and role, `harbor-<project>-<role>`, added to the project with that role | Harbor, Administration, Groups; the project's Members tab; the group in Authentik |
+| Identity notifications | two notification rules on the broker's own events, delivered to ntfy over a webhook transport: a password login through the unlisted flow pages as critical, a user created outside the roster as a warning | Authentik, Events, Notification Rules; the phone |
+| The Harbor credential | pushed from the Secret Harbor generated into the vault at `harbor/admin`, read by the runner | `kubectl -n harbor get pushsecret harbor-admin` |
+
+Neither Harbor membership nor a notification rule has a hand-edit path: change the model or
+the module and let the plan land. A group with no members is normal; it exists so the
+membership is real the day a developer joins.
+
+## The audit dashboard
+
+Grafana, folder Security, "Access / Kubernetes API audit". It reads the audit store directly:
+who called the API, what people wrote, every admin-certificate call with its source and client,
+Secret reads, RBAC writes, impersonation, anonymous requests, and the service accounts. The
+same store feeds the audit alerts in `victoria-metrics/app/rules/vmrule-audit.yaml`.

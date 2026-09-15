@@ -240,6 +240,8 @@ so "what else can reach this?" has an answer. Staging's impersonation model for 
 built yet: Claude Code sessions on the owner's machine will use the owner's OIDC context after
 D7 and are already attributed to the owner. **Trigger** for building `act-as-human`: the first
 in-cluster agent that needs the Kubernetes API.
+The trigger fired on 2026-09-15 for the MCP servers; the design is
+[RFC: MCP endpoints carry the caller's identity](rfc-mcp-identity.md).
 
 ## The catalogue, sized for this estate
 
