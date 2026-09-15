@@ -84,7 +84,7 @@ without a node reboot.
 1. `kubectl auth whoami` from the working kubeconfig returns `oidc:ryan@webgrip.nl` with groups
    `[system:authenticated]`; `kubectl auth can-i --list` matches the model.
 2. One call with `--kubeconfig ~/.kube/homelab-break-glass.yaml` fires
-   `KubernetesBreakGlassCertificateUsed` within a minute, and the alert stays quiet over a day of
+   `KubernetesBreakGlassCertificateUsed` within ten minutes, the rule evaluating every five, and the alert stays quiet over a day of
    normal use.
 3. `kubectl get clusterrolebinding -l access-plane.webgrip.io/managed=true` lists exactly the
    bindings the model implies; the Kyverno rule denies a hand-applied binding with a `User`

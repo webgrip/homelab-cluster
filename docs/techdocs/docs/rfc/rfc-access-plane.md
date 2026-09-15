@@ -325,7 +325,7 @@ The first plan in stages 2, 3 and 5 is approved by a person. After stage 5, both
 - The login page at `authentik.<domain>` has one control; the break-glass flow URL still accepts
   `akadmin`; a Workspace account that is not in `people.yaml` is refused.
 - `kubectl auth whoami` from the working kubeconfig returns `oidc:ryan@webgrip.nl`; a call with
-  the admin certificate fires `KubernetesBreakGlassCertificateUsed` within a minute.
+  the admin certificate fires `KubernetesBreakGlassCertificateUsed` within ten minutes (the rule evaluates every five).
 - Deleting a dated grant from `people.yaml` removes the binding and the group membership on the
   next reconcile with no other edit; a grant whose `until` has passed is gone after the next
   interval with no edit at all.
