@@ -216,7 +216,7 @@ talos-apply-node-safe node at="" mode="auto" insecure="false":
         exit 1
     fi
     echo "==> draining ${host}"
-    kubectl drain "${host}" --ignore-daemonsets --delete-emptydir-data --timeout=120s
+    kubectl drain "${host}" --ignore-daemonsets --delete-emptydir-data --timeout=600s
     just talos-apply-node '{{ node }}' '{{ at }}' '{{ mode }}' '{{ insecure }}'
     echo "==> waiting for ${host} to report Ready again"
     kubectl wait "node/${host}" --for=condition=Ready --timeout=300s
