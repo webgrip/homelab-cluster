@@ -362,7 +362,7 @@ data:
         for record in detail:
             base = _labels([
                 ("task", record["task"]), ("repo", record["repo"]), ("workflow", record["workflow"]),
-                ("job", record["job"]), ("status", record["status"]), ("event", record["event"]),
+                ("ci_job", record["job"]), ("status", record["status"]), ("event", record["event"]),
                 ("ref", record["ref"]), ("run", record["run"]), ("url", record["url"]),
                 ("sha", record["sha"]),
             ])
@@ -390,7 +390,7 @@ data:
         out.append(f"forgejo_ci_repos_building {repos_building}")
 
         for (repo, workflow, job), window in _state.job_samples.items():
-            base = _labels([("repo", repo), ("workflow", workflow), ("job", job)])
+            base = _labels([("repo", repo), ("workflow", workflow), ("ci_job", job)])
             out.append(f"forgejo_ci_job_duration_p50_seconds{{{base}}} {_median(window):.1f}")
             out.append(f"forgejo_ci_job_duration_p95_seconds{{{base}}} {_percentile(window, 0.95):.1f}")
             out.append(f"forgejo_ci_job_duration_max_seconds{{{base}}} {max(window):.1f}")
@@ -401,7 +401,7 @@ data:
         _state.run_queue.render("forgejo_ci_run_queue_seconds", ("repo", "workflow"), out)
 
         for (repo, workflow, job, status), count in _state.jobs_total.items():
-            base = _labels([("repo", repo), ("workflow", workflow), ("job", job), ("status", status)])
+            base = _labels([("repo", repo), ("workflow", workflow), ("ci_job", job), ("status", status)])
             out.append(f"forgejo_ci_jobs_total{{{base}}} {count}")
         for (repo, workflow, event, status), count in _state.runs_total.items():
             base = _labels([("repo", repo), ("workflow", workflow), ("event", event), ("status", status)])

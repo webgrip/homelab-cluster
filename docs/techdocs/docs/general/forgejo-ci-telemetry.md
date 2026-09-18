@@ -155,10 +155,10 @@ everything currently live.
 | `forgejo_ci_job_duration_seconds` | histogram | `repo`, `workflow` |
 | `forgejo_ci_run_duration_seconds` | histogram | `repo`, `workflow` |
 | `forgejo_ci_run_queue_seconds` | histogram | `repo`, `workflow` |
-| `forgejo_ci_jobs_total` | counter | `repo`, `workflow`, `job`, `status` |
+| `forgejo_ci_jobs_total` | counter | `repo`, `workflow`, `ci_job`, `status` |
 | `forgejo_ci_runs_total` | counter | `repo`, `workflow`, `event`, `status` |
-| `forgejo_ci_job_duration_{p50,p95,max}_seconds` | gauge | `repo`, `workflow`, `job` |
-| `forgejo_ci_task_info` | gauge | `task`, `repo`, `workflow`, `job`, `status`, `event`, `ref`, `run`, `url`, `sha` |
+| `forgejo_ci_job_duration_{p50,p95,max}_seconds` | gauge | `repo`, `workflow`, `ci_job` |
+| `forgejo_ci_task_info` | gauge | `task`, `repo`, `workflow`, `ci_job`, `status`, `event`, `ref`, `run`, `url`, `sha` |
 | `forgejo_ci_task_{duration,running,waiting}_seconds` | gauge | `task` |
 | `forgejo_ci_tasks_active` | gauge | `status` |
 | `forgejo_ci_last_run_status`, `forgejo_ci_consecutive_failures` | gauge | `repo`, `workflow`, `event`, `ref` |
@@ -175,6 +175,17 @@ The consequence: **histogram-backed panels need jobs to finish after the exporte
 Per-job p50/p95/max gauges do not — they are seeded from history, because a gauge has no
 reset semantics to protect. A fresh exporter therefore shows a populated "typical vs worst"
 table and empty percentile panels, and the percentiles fill within a day.
+
+### The CI job name is `ci_job`, not `job`
+
+`job` is a reserved Prometheus label: vmagent stamps the *scrape job* onto every series it
+collects, so an exporter that publishes its own `job` label has it overwritten and finds the
+original moved to `exported_job`. This was shipped that way for one commit and caught live —
+`forgejo_ci_task_info` read `job="forgejo-ci-exporter"` for every CI job in the estate.
+
+The label is therefore `ci_job`. Same family of trap as the kube-state-metrics section above,
+and the same cure: check one live series' labels before trusting a query you wrote against a
+new exporter.
 
 ## The token
 
