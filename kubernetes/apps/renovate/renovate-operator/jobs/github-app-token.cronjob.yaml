@@ -77,6 +77,44 @@ spec:
                     exit 1
                   fi
 
+                  node - <<'PROBE'
+                  const user = process.env.RENOVATE_DOCKERHUB_USERNAME;
+                  const pass = process.env.RENOVATE_DOCKERHUB_TOKEN;
+
+                  if (!user || !pass) {
+                    console.log('docker hub: no credential configured, Renovate will use the anonymous path');
+                    process.exit(0);
+                  }
+
+                  const url =
+                    'https://auth.docker.io/token' +
+                    '?scope=repository:library/node:pull&service=registry.docker.io';
+                  const auth = Buffer.from(user + ':' + pass).toString('base64');
+
+                  fetch(url, { headers: { authorization: 'Basic ' + auth } })
+                    .then((res) => {
+                      if (res.status === 401) {
+                        console.error(
+                          'docker hub rejected the credential (401). A REJECTED credential is worse than' +
+                            ' none: Renovate stops falling back to the anonymous path and every docker.io' +
+                            ' lookup returns no-result, visible only as "No docker auth found - returning"' +
+                            ' on the dependency dashboard. Rotate RENOVATE_DOCKERHUB_TOKEN in OpenBao' +
+                            ' (renovate/operator).',
+                        );
+                        process.exit(1);
+                      }
+                      if (!res.ok) {
+                        console.error('docker hub auth probe returned ' + res.status);
+                        process.exit(1);
+                      }
+                      console.log('docker hub: credential accepted');
+                    })
+                    .catch((err) => {
+                      console.error('docker hub auth probe failed: ' + err.message);
+                      process.exit(1);
+                    });
+                  PROBE
+
                   node - <<'EOF'
                   const fs = require('node:fs');
 
