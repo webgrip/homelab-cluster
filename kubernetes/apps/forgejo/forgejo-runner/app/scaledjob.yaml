@@ -190,11 +190,28 @@ spec:
               - -ec
             args:
               - |
-                # Host mode runs steps in THIS toolchain container. JS actions need `node`, which the
-                # image bundles under externals/ but not on PATH — without this forgejo-runner dies
-                # "Cannot find: node in PATH". node20 (glibc, v20.x) matches actions/checkout@v4's
-                # declared runtime; node24 is also bundled at externals/node24/bin if needed.
-                export PATH="/home/runner/externals/node20/bin:$PATH"
+                # Host mode runs steps in THIS toolchain container, so `node` must be on PATH or
+                # forgejo-runner dies "Cannot find: node in PATH". The image installs node via
+                # nodesource at /usr/bin/node, which is already on PATH — measured v24.19.0 by the
+                # runner-node-canary workflow (run 1712).
+                #
+                # This used to prepend /home/runner/externals/node20/bin, which shadowed that with
+                # v20.19.5 AND pulled npm/npx from the node20 tree (npm 10.8.2), so a `run:` step got
+                # a node20 toolchain inside an image built around node 24. The prepend was believed to
+                # be load-bearing for action majors too; it is not. The runner picks the runtime an
+                # action declares in `using:` from externals/ itself, where a glibc node24 (v24.16.0)
+                # sits next to node20 — canary run 1710 has checkout v6/v7 and setup-node v5/v6/v7 all
+                # passing while this prepend was still in place.
+                #
+                # Asserted rather than assumed: if a future image drops the nodesource install, this
+                # fails immediately with a readable message instead of at the first JS action.
+                if ! command -v node >/dev/null; then
+                  echo "FATAL: no node on PATH. The ci-runner image is expected to ship one via" >&2
+                  echo "nodesource at /usr/bin/node; externals/ is the runner's own tree, not a" >&2
+                  echo "substitute. Check ops/docker/ci-runner/Dockerfile in webgrip/infrastructure." >&2
+                  exit 1
+                fi
+                echo "host-mode node: $(command -v node) $(node --version)"
                 # The shared per-node dind DaemonSet (dind-daemonset.yaml) is the docker daemon,
                 # reached via the forgejo-dind Service (internalTrafficPolicy: Local — always the
                 # daemon on THIS pod's node, preserving the same-node bind-mount contract).
