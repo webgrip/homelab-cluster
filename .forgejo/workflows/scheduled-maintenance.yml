@@ -9,6 +9,12 @@
 #   2. Deletes branches fully contained in main that have no open PR.
 #      Never touches main or renovate/* (Renovate manages its own branches).
 #
+# A second job compares the Renovate discovery list against the org's real repo set. That
+# list is explicit by design (a webgrip/* glob would spawn a Job per read-only pull-mirror),
+# and on 2026-09-18 it had rotted in both directions: three entries pointed at repos that no
+# longer exist, and six that do were missing — including frontend-toolkit, whose packages the
+# estate's frontend toolchain is built on. Nothing failed; Renovate simply never ran on them.
+#
 # Runs as the forgejo-ci bot (WEBGRIP_CI_TOKEN org secret), NOT agent-builder —
 # janitor ≠ builder, mirroring ADR-0048's builder ≠ judge split.
 # Manual runs default to dry-run; the weekly schedule runs live.
@@ -107,3 +113,17 @@ jobs:
           done
 
           echo "done: PRs closed=${closed}, branches pruned=${pruned} (dry-run=${DRY_RUN})"
+
+  renovate-discovery-drift:
+    name: 'Renovate discovery list vs the org'
+    runs-on: docker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compare discoveryFilters against the active source repos
+        shell: bash
+        env:
+          TOKEN: ${{ secrets.WEBGRIP_CI_TOKEN }}
+          FORGEJO_URL: ${{ github.server_url }}
+        run: ./scripts/renovate-discovery-drift.sh
