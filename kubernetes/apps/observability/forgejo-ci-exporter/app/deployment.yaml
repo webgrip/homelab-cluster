@@ -1,17 +1,4 @@
 ---
-# CI-OUTCOME metrics for the Forgejo Actions fleet. The platform-forgejo-ci alert
-# group watches runner SUPPLY — scaler errors, queue depth, pending pods, warm
-# floor — and none of it sees a job that fails instantly on a healthy fleet.
-# ploeg's release job failed that way seven times across nine days in 2026-08
-# (a composite action pinned at a SHA that was amended off its branch); every
-# `checks` job stayed green, no queue formed, and nothing alerted. It was found
-# by hand. This exporter is the missing half: outcomes, not capacity.
-#
-# Stock python + the logic in a ConfigMap, deliberately, rather than a
-# first-party image: the script is stdlib-only, so there is nothing to build,
-# publish, scan or renovate, and a read-only rootfs needs no package install.
-# The ploeg work-items exporter next door takes the same shape with a stock
-# postgres-exporter.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,7 +7,6 @@ metadata:
     app.kubernetes.io/name: forgejo-ci-exporter
     app.kubernetes.io/part-of: observability
   annotations:
-    # The script is read once at startup, so an edit needs a restart.
     reloader.stakater.com/auto: "true"
 spec:
   replicas: 1
@@ -33,7 +19,6 @@ spec:
         app.kubernetes.io/name: forgejo-ci-exporter
         app.kubernetes.io/part-of: observability
     spec:
-      # Off the soyo control planes, onto the worker pool (ADR-0002).
       nodeSelector:
         node.webgrip.io/pool: worker
       automountServiceAccountToken: false
@@ -43,26 +28,16 @@ spec:
           type: RuntimeDefault
       containers:
         - name: exporter
-          # Harbor pull-through proxy-cache (ADR-0025) rather than docker.io direct.
-          # The proxy is content-addressable, so the digest is Docker Hub's own.
           image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
           command:
             - "python3"
             - "-u"
             - "/opt/exporter/exporter.py"
           env:
-            # In-cluster service, NOT https://forgejo.webgrip.dev — that hostname
-            # resolves to the shared ingress VIP, and a pod reaching its own
-            # cluster's VIP is DNAT'd before NetworkPolicy is evaluated. Same
-            # reasoning as ploeg's tracker URL.
             - name: FORGEJO_BASE_URL
               value: http://forgejo-http.forgejo.svc.cluster.local:3000
             - name: FORGEJO_ORG
               value: webgrip
-            # Optional by design: absent, the exporter polls anonymously and sees
-            # public repos only. Provision the Secret (see the ExternalSecret
-            # note in the PR) and private repos start reporting with no manifest
-            # change. `optional: true` keeps the pod schedulable until then.
             - name: FORGEJO_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -71,18 +46,16 @@ spec:
                   optional: true
             - name: SCRAPE_INTERVAL_SECONDS
               value: "300"
-            # 26 repos x 1 call each; the whole refresh measured 7.6s against the
-            # live instance, so a 300s cycle is ~2.5% duty on one connection.
             - name: RUN_WINDOW
-              value: "30"
-            # Reusable (`workflow_call`-only) workflows in webgrip/workflows are
-            # scheduled by Forgejo on push and release events anyway and fail
-            # instantly — 74 permanently-red series from one repo, which would
-            # storm the alert below. Muted here, NOT globally: a global pattern
-            # would also hide a legitimately-named workflow in another repo. The
-            # count stays exported as forgejo_ci_pipelines_excluded so the muting
-            # is visible, and that repo's real on_*.yml pipelines still report.
-            # The underlying Forgejo behaviour is worth fixing at source.
+              value: "100"
+            - name: TASK_WINDOW
+              value: "100"
+            - name: TASK_DETAIL
+              value: "200"
+            - name: MAX_JOB_SECONDS
+              value: "21600"
+            - name: FRESH_WINDOW_SECONDS
+              value: "3600"
             - name: EXCLUDE_PIPELINES
               value: "workflows:^(?!on_)"
           ports:
@@ -92,11 +65,6 @@ spec:
             - name: script
               mountPath: /opt/exporter
               readOnly: true
-          # timeoutSeconds, because the default is 1s and that is not enough here.
-          # The refresh thread spends ~11s parsing tens of MiB of JSON and holds
-          # the GIL in bursts, so the handler thread can miss a 1s deadline on a
-          # perfectly healthy pod. Both probes reported "context deadline
-          # exceeded" on the first deploy for exactly that reason.
           livenessProbe:
             httpGet:
               path: /metrics
@@ -119,26 +87,12 @@ spec:
             capabilities:
               drop:
                 - "ALL"
-          # Sized from measurement, after 128Mi OOMKilled this pod on its first
-          # deploy (exit 137, six seconds in). The cost is not the exporter's own
-          # state — the payload it serves is 12KiB — it is decoding the API
-          # responses: 57MiB of JSON across the org, and one repo alone
-          # (homelab-cluster) returns ~20MiB for 30 runs because every run embeds
-          # its full event_payload. Measured peak RSS is ~136MiB after the
-          # parse-time pruning in the script; interpreter baseline is ~22MiB.
-          # 320Mi is that peak plus room for the org to grow, since the driver is
-          # the LARGEST single repo's history, not the repo count.
-          #
-          # 2026-08-27: OOMKilled at 320Mi (12 restarts) during a burst of eight
-          # trunk pushes — each push adds an e2e run to homelab-cluster's 30-run
-          # window, and heavy runs mean heavier event_payloads to decode. The
-          # driver is spiky, not steady: give it 2x the measured-era ceiling.
           resources:
             requests:
               cpu: 10m
-              memory: 96Mi
+              memory: 64Mi
             limits:
-              memory: 640Mi
+              memory: 256Mi
       volumes:
         - name: script
           configMap:

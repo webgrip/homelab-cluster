@@ -1,5 +1,4 @@
 ---
-# Generated from the tested exporter; see exporter.py in the PR description for provenance.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -7,20 +6,9 @@ metadata:
 data:
   exporter.py: |-
     #!/usr/bin/env python3
-    """Prometheus exporter for Forgejo Actions run OUTCOMES.
+    """Prometheus exporter for Forgejo Actions outcomes, job timing and the live queue."""
 
-    The forgejo-ci alert group watches runner SUPPLY — scaler errors, queue depth,
-    pending pods, warm floor. None of it sees a job that fails instantly on a
-    healthy fleet. ploeg's release job did exactly that seven times across nine
-    days in 2026-08 and nothing said so; it was found by hand. This closes that
-    gap: it polls the Actions API and reports, per trunk pipeline, whether the last
-    run passed and how many have failed in a row.
-
-    Stdlib only, so it runs on a stock python image with a read-only rootfs and no
-    package install. Polling happens on a background timer, not on scrape, so a
-    slow Forgejo cannot stall the scrape or amplify load with concurrent scrapers.
-    """
-
+    import calendar
     import gc
     import json
     import os
@@ -31,26 +19,35 @@ data:
     import urllib.error
     import urllib.parse
     import urllib.request
+    from collections import deque
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
     BASE_URL = os.environ.get("FORGEJO_BASE_URL", "http://forgejo-http.forgejo.svc.cluster.local:3000").rstrip("/")
     ORG = os.environ.get("FORGEJO_ORG", "webgrip")
-    # Optional. Absent -> anonymous, which sees public repos only. Never defaulted
-    # to a literal; provisioned as a Secret and referenced optionally.
     TOKEN = os.environ.get("FORGEJO_TOKEN", "")
     INTERVAL = int(os.environ.get("SCRAPE_INTERVAL_SECONDS", "300"))
-    # Deep enough to measure a streak: ploeg's outage was 7 consecutive failures.
     RUN_WINDOW = int(os.environ.get("RUN_WINDOW", "30"))
+    TASK_WINDOW = int(os.environ.get("TASK_WINDOW", "50"))
+    TASK_DETAIL = int(os.environ.get("TASK_DETAIL", "200"))
+    SEEN_MAX = int(os.environ.get("SEEN_MAX", "20000"))
+    MAX_JOB_SECONDS = int(os.environ.get("MAX_JOB_SECONDS", "21600"))
+    FRESH_WINDOW = int(os.environ.get("FRESH_WINDOW_SECONDS", "3600"))
     PORT = int(os.environ.get("LISTEN_PORT", "9800"))
     HTTP_TIMEOUT = int(os.environ.get("HTTP_TIMEOUT_SECONDS", "20"))
-    # Trunk only. A repo's default branch is always included; these are the other
-    # long-lived branches worth alerting on.
     EXTRA_BRANCHES = {b for b in os.environ.get("EXTRA_BRANCHES", "main,development").split(",") if b}
     EXCLUDE_REPOS = {r for r in os.environ.get("EXCLUDE_REPOS", "").split(",") if r}
 
+    DURATION_BUCKETS = (10, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200)
+    QUEUE_BUCKETS = (1, 5, 15, 30, 60, 120, 300, 600, 1800)
+
+    TRACKED_EVENTS = {"push", "release", "schedule", "cron", "workflow_dispatch"}
+    TERMINAL = {"success", "failure"}
+    TASK_TERMINAL = {"success", "failure", "cancelled", "skipped"}
+    TASK_PENDING = {"waiting", "blocked"}
+    STATUS_CODE = {"waiting": 0, "blocked": 1, "running": 2, "success": 3,
+                   "failure": 4, "cancelled": 5, "skipped": 6, "unknown": 7}
+
     def _parse_excludes(raw):
-        """`repo:workflow-regex` pairs, comma-separated. Repo-scoped on purpose: a
-        global workflow pattern would mute a legitimately-named workflow elsewhere."""
         out = []
         for item in (i.strip() for i in raw.split(",")):
             if not item or ":" not in item:
@@ -63,27 +60,13 @@ data:
         return out
 
     EXCLUDE_PIPELINES = _parse_excludes(os.environ.get("EXCLUDE_PIPELINES", ""))
-    _excluded_series = 0
-
-    def _is_excluded(repo, workflow):
-        return any(r == repo and pat.search(workflow) for r, pat in EXCLUDE_PIPELINES)
-
-    # pull_request runs are excluded by design: a red PR is already visible to the
-    # person who opened it. The silent class is everything that lands on trunk.
-    TRACKED_EVENTS = {"push", "release", "schedule", "cron", "workflow_dispatch"}
-    # A cancel is not a verdict, so it neither breaks nor extends a failure streak.
-    TERMINAL = {"success", "failure"}
 
     _lock = threading.Lock()
     _payload = "# exporter starting\n"
     _errors_total = 0
+    _excluded_series = 0
+    _runners_ok = 0
 
-    # Dropped at parse time, not after. A run carries `event_payload` (a push payload
-    # embeds the entire commit list) plus a full `repository` and `trigger_user` on
-    # EVERY entry: homelab-cluster returns ~20MiB for 30 runs and workflows ~17MiB,
-    # 57MiB across the org, which parsed to a ~186MiB peak and OOMKilled the pod at
-    # a 128Mi limit. Discarding these as each object is built keeps only one blob
-    # alive at a time instead of thirty.
     _DROP_KEYS = frozenset({"event_payload", "repository", "trigger_user", "title"})
 
     def _prune(pairs):
@@ -100,11 +83,10 @@ data:
             return json.load(resp, object_pairs_hook=_prune)
 
     def _ts(value):
-        """Forgejo timestamps are RFC3339 Zulu. Returns epoch seconds, 0 if unparseable."""
         if not value:
             return 0.0
         try:
-            return time.mktime(time.strptime(value, "%Y-%m-%dT%H:%M:%SZ")) - time.timezone
+            return float(calendar.timegm(time.strptime(value, "%Y-%m-%dT%H:%M:%SZ")))
         except (ValueError, TypeError):
             return 0.0
 
@@ -116,10 +98,231 @@ data:
     def _labels(pairs):
         return ",".join(f'{k}="{_esc(v)}"' for k, v in pairs)
 
+    class Histogram:
+        def __init__(self, buckets):
+            self.buckets = buckets
+            self.counts = {}
+            self.sums = {}
+
+        def observe(self, key, value):
+            counts = self.counts.get(key)
+            if counts is None:
+                counts = self.counts[key] = [0] * (len(self.buckets) + 1)
+                self.sums[key] = 0.0
+            for index, bound in enumerate(self.buckets):
+                if value <= bound:
+                    counts[index] += 1
+            counts[-1] += 1
+            self.sums[key] += value
+
+        def render(self, name, label_names, out):
+            for key, counts in self.counts.items():
+                base = _labels(list(zip(label_names, key)))
+                for index, bound in enumerate(self.buckets):
+                    out.append(f'{name}_bucket{{{base},le="{bound}"}} {counts[index]}')
+                out.append(f'{name}_bucket{{{base},le="+Inf"}} {counts[-1]}')
+                out.append(f"{name}_sum{{{base}}} {self.sums[key]:.3f}")
+                out.append(f"{name}_count{{{base}}} {counts[-1]}")
+
+    class Bounded:
+        def __init__(self, limit):
+            self.limit = limit
+            self.members = set()
+            self.order = deque()
+
+        def add(self, item):
+            if item in self.members:
+                return False
+            self.members.add(item)
+            self.order.append(item)
+            while len(self.order) > self.limit:
+                self.members.discard(self.order.popleft())
+            return True
+
+    class State:
+        def __init__(self):
+            self.seeded = False
+            self.tasks = Bounded(SEEN_MAX)
+            self.runs = Bounded(SEEN_MAX)
+            self.job_duration = Histogram(DURATION_BUCKETS)
+            self.run_duration = Histogram(DURATION_BUCKETS)
+            self.run_queue = Histogram(QUEUE_BUCKETS)
+            self.jobs_total = {}
+            self.runs_total = {}
+            self.job_samples = {}
+
+        def sample_job(self, key, duration):
+            window = self.job_samples.get(key)
+            if window is None:
+                window = self.job_samples[key] = deque(maxlen=50)
+            window.append(duration)
+
+    _state = State()
+
+    def _median(values):
+        ordered = sorted(values)
+        size = len(ordered)
+        if size == 0:
+            return 0.0
+        mid = size // 2
+        return ordered[mid] if size % 2 else (ordered[mid - 1] + ordered[mid]) / 2
+
+    def _percentile(values, fraction):
+        ordered = sorted(values)
+        if not ordered:
+            return 0.0
+        index = min(len(ordered) - 1, int(round(fraction * (len(ordered) - 1))))
+        return ordered[index]
+
+    def _list_repos():
+        repos, page = [], 1
+        while True:
+            batch = _api(f"/orgs/{ORG}/repos", {"page": page, "limit": 50})
+            if not batch:
+                break
+            repos.extend(batch)
+            if len(batch) < 50 or page >= 20:
+                break
+            page += 1
+        return repos
+
+    def _is_excluded(repo, workflow):
+        return any(r == repo and pat.search(workflow) for r, pat in EXCLUDE_PIPELINES)
+
+    def _outcome_lines(name, branches, runs, out):
+        global _excluded_series
+        groups = {}
+        for run in runs:
+            event = run.get("event") or "unknown"
+            if event not in TRACKED_EVENTS:
+                continue
+            ref = run.get("prettyref") or ""
+            if event == "push":
+                if ref not in branches:
+                    continue
+            else:
+                ref = ""
+            groups.setdefault((run.get("workflow_id") or "unknown", event, ref), []).append(run)
+
+        for (workflow, event, ref), group in groups.items():
+            if _is_excluded(name, workflow):
+                _excluded_series += 1
+                continue
+            verdicts = [r for r in group if (r.get("status") or "") in TERMINAL]
+            if not verdicts:
+                continue
+            last = verdicts[0]
+            streak = 0
+            for run in verdicts:
+                if run.get("status") != "failure":
+                    break
+                streak += 1
+            last_success = next((_ts(r.get("stopped") or r.get("updated")) for r in verdicts
+                                 if r.get("status") == "success"), 0.0)
+            base = _labels([("repo", name), ("workflow", workflow), ("event", event), ("ref", ref)])
+            out.append(f'forgejo_ci_last_run_status{{{base},status="{_esc(last.get("status"))}"}} 1')
+            out.append(f"forgejo_ci_consecutive_failures{{{base}}} {streak}")
+            out.append(f"forgejo_ci_last_run_timestamp_seconds{{{base}}} "
+                       f"{_ts(last.get('stopped') or last.get('updated')):.0f}")
+            out.append(f"forgejo_ci_last_success_timestamp_seconds{{{base}}} {last_success:.0f}")
+
+    def _run_timing(name, runs):
+        for run in runs:
+            run_id = run.get("id")
+            workflow = run.get("workflow_id") or "unknown"
+            if run_id is None or _is_excluded(name, workflow):
+                continue
+            status = run.get("status") or "unknown"
+            if status not in TERMINAL:
+                continue
+            if not _state.runs.add(run_id) or not _state.seeded:
+                continue
+            event = run.get("event") or "unknown"
+            created = _ts(run.get("created"))
+            started = _ts(run.get("started"))
+            stopped = _ts(run.get("stopped"))
+            nanos = run.get("duration") or 0
+            duration = nanos / 1e9 if nanos else (stopped - started if stopped > started > 0 else 0.0)
+            key = (name, workflow)
+            if duration > 0:
+                _state.run_duration.observe(key, duration)
+            if started >= created > 0:
+                _state.run_queue.observe(key, started - created)
+            counter = (name, workflow, event, status)
+            _state.runs_total[counter] = _state.runs_total.get(counter, 0) + 1
+
+    def _task_records(name, tasks, live, recent):
+        now = time.time()
+        for task in tasks:
+            task_id = task.get("id")
+            workflow = task.get("workflow_id") or "unknown"
+            if task_id is None or _is_excluded(name, workflow):
+                continue
+            status = task.get("status") or "unknown"
+            job = task.get("name") or "unknown"
+            created = _ts(task.get("created_at"))
+            started = _ts(task.get("run_started_at"))
+            updated = _ts(task.get("updated_at"))
+            elapsed = updated - started if (updated > started > 0) else 0.0
+            duration = elapsed if 0 < elapsed <= MAX_JOB_SECONDS else 0.0
+            record = {
+                "task": task_id, "repo": name, "workflow": workflow, "job": job,
+                "status": status, "event": task.get("event") or "unknown",
+                "ref": task.get("head_branch") or "", "run": task.get("run_number") or 0,
+                "url": task.get("url") or "", "sha": (task.get("head_sha") or "")[:8],
+                "created": created, "started": started, "updated": updated,
+                "duration": duration,
+            }
+            if status in TASK_TERMINAL:
+                recent.append(record)
+            else:
+                live.append(record)
+
+            if status not in TASK_TERMINAL or not _state.tasks.add(task_id):
+                continue
+            if duration > 0:
+                _state.sample_job((name, workflow, job), duration)
+            if not _state.seeded or updated < now - FRESH_WINDOW:
+                continue
+            if duration > 0:
+                _state.job_duration.observe((name, workflow), duration)
+            counter = (name, workflow, job, status)
+            _state.jobs_total[counter] = _state.jobs_total.get(counter, 0) + 1
+
+    def _runner_lines(out):
+        global _runners_ok
+        try:
+            payload = _api(f"/orgs/{ORG}/actions/runners")
+        except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as exc:
+            _runners_ok = 0
+            print(f"[info] runner inventory unavailable: {exc}", file=sys.stderr, flush=True)
+            return
+        runners = payload.get("runners", payload) if isinstance(payload, dict) else payload
+        if not isinstance(runners, list):
+            _runners_ok = 0
+            return
+        _runners_ok = 1
+        by_status = {}
+        for runner in runners:
+            status = runner.get("status") or "unknown"
+            by_status[status] = by_status.get(status, 0) + 1
+            base = _labels([
+                ("runner", runner.get("name") or "unknown"),
+                ("uuid", runner.get("uuid") or ""),
+                ("version", runner.get("version") or ""),
+                ("status", status),
+                ("ephemeral", str(bool(runner.get("ephemeral"))).lower()),
+                ("labels", ",".join(runner.get("labels") or [])),
+            ])
+            out.append(f"forgejo_ci_runner_info{{{base}}} 1")
+        for status, count in by_status.items():
+            out.append(f'forgejo_ci_runners{{status="{_esc(status)}"}} {count}')
+
     def collect():
         """Returns (metric_lines, repos_seen, repos_errored)."""
-        repos = _api(f"/orgs/{ORG}/repos", {"limit": 100})
-        lines, seen, errored = [], 0, 0
+        repos = _list_repos()
+        out, seen, errored = [], 0, 0
+        live, recent = [], []
 
         for repo in repos:
             name = repo.get("name", "")
@@ -127,65 +330,159 @@ data:
                 continue
             branches = {repo.get("default_branch") or "main"} | EXTRA_BRANCHES
             seen += 1
+
             try:
-                runs = _api(f"/repos/{ORG}/{name}/actions/runs", {"limit": RUN_WINDOW}).get("workflow_runs", [])
+                runs = _api(f"/repos/{ORG}/{name}/actions/runs",
+                            {"page": 1, "limit": RUN_WINDOW}).get("workflow_runs", [])
             except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as exc:
                 errored += 1
-                print(f"[warn] {name}: {exc}", file=sys.stderr, flush=True)
-                continue
+                print(f"[warn] {name} runs: {exc}", file=sys.stderr, flush=True)
+                runs = []
+            if runs:
+                _outcome_lines(name, branches, runs, out)
+                _run_timing(name, runs)
+            del runs
 
-            # Group newest-first. The ref label is only meaningful for a branch push;
-            # for release/schedule it is a tag or empty, which would be unbounded.
-            groups = {}
-            for run in runs:
-                event = run.get("event") or "unknown"
-                if event not in TRACKED_EVENTS:
-                    continue
-                ref = run.get("prettyref") or ""
-                if event == "push":
-                    if ref not in branches:
-                        continue
-                else:
-                    ref = ""
-                groups.setdefault((run.get("workflow_id") or "unknown", event, ref), []).append(run)
-
-            global _excluded_series
-            for (workflow, event, ref), group in groups.items():
-                if _is_excluded(name, workflow):
-                    _excluded_series += 1
-                    continue
-                lbl = [("repo", name), ("workflow", workflow), ("event", event), ("ref", ref)]
-                verdicts = [r for r in group if (r.get("status") or "") in TERMINAL]
-                if not verdicts:
-                    continue
-                last = verdicts[0]
-                status = last.get("status")
-
-                streak = 0
-                for run in verdicts:
-                    if run.get("status") != "failure":
-                        break
-                    streak += 1
-
-                last_success = next((_ts(r.get("stopped") or r.get("updated")) for r in verdicts
-                                     if r.get("status") == "success"), 0.0)
-
-                base = _labels(lbl)
-                lines.append(f'forgejo_ci_last_run_status{{{base},status="{_esc(status)}"}} 1')
-                lines.append(f"forgejo_ci_consecutive_failures{{{base}}} {streak}")
-                lines.append(f"forgejo_ci_last_run_timestamp_seconds{{{base}}} "
-                             f"{_ts(last.get('stopped') or last.get('updated')):.0f}")
-                lines.append(f"forgejo_ci_last_success_timestamp_seconds{{{base}}} {last_success:.0f}")
-
-            del runs, groups
+            try:
+                tasks = _api(f"/repos/{ORG}/{name}/actions/tasks",
+                             {"page": 1, "limit": TASK_WINDOW}).get("workflow_runs", [])
+            except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as exc:
+                errored += 1
+                print(f"[warn] {name} tasks: {exc}", file=sys.stderr, flush=True)
+                tasks = []
+            if tasks:
+                _task_records(name, tasks, live, recent)
+            del tasks
             gc.collect()
 
-        return lines, seen, errored
+        now = time.time()
+        recent.sort(key=lambda r: r["task"], reverse=True)
+        detail = live + recent[:TASK_DETAIL]
+
+        for record in detail:
+            base = _labels([
+                ("task", record["task"]), ("repo", record["repo"]), ("workflow", record["workflow"]),
+                ("job", record["job"]), ("status", record["status"]), ("event", record["event"]),
+                ("ref", record["ref"]), ("run", record["run"]), ("url", record["url"]),
+                ("sha", record["sha"]),
+            ])
+            out.append(f"forgejo_ci_task_info{{{base}}} 1")
+            key = _labels([("task", record["task"])])
+            out.append(f"forgejo_ci_task_status_code{{{key}}} {STATUS_CODE.get(record['status'], 7)}")
+            out.append(f"forgejo_ci_task_created_timestamp_seconds{{{key}}} {record['created']:.0f}")
+            if record["started"] > 0:
+                out.append(f"forgejo_ci_task_started_timestamp_seconds{{{key}}} {record['started']:.0f}")
+            if record["status"] in TASK_TERMINAL:
+                if record["duration"] > 0:
+                    out.append(f"forgejo_ci_task_duration_seconds{{{key}}} {record['duration']:.1f}")
+            elif record["status"] == "running" and record["started"] > 0:
+                out.append(f"forgejo_ci_task_running_seconds{{{key}}} {now - record['started']:.1f}")
+            else:
+                out.append(f"forgejo_ci_task_waiting_seconds{{{key}}} {max(0.0, now - record['created']):.1f}")
+
+        by_status = {}
+        for record in live:
+            by_status[record["status"]] = by_status.get(record["status"], 0) + 1
+        for status in ("waiting", "blocked", "running"):
+            out.append(f'forgejo_ci_tasks_active{{status="{status}"}} {by_status.get(status, 0)}')
+
+        repos_building = len({r["repo"] for r in live if r["status"] == "running"})
+        out.append(f"forgejo_ci_repos_building {repos_building}")
+
+        for (repo, workflow, job), window in _state.job_samples.items():
+            base = _labels([("repo", repo), ("workflow", workflow), ("job", job)])
+            out.append(f"forgejo_ci_job_duration_p50_seconds{{{base}}} {_median(window):.1f}")
+            out.append(f"forgejo_ci_job_duration_p95_seconds{{{base}}} {_percentile(window, 0.95):.1f}")
+            out.append(f"forgejo_ci_job_duration_max_seconds{{{base}}} {max(window):.1f}")
+            out.append(f"forgejo_ci_job_runs_sampled{{{base}}} {len(window)}")
+
+        _state.job_duration.render("forgejo_ci_job_duration_seconds", ("repo", "workflow"), out)
+        _state.run_duration.render("forgejo_ci_run_duration_seconds", ("repo", "workflow"), out)
+        _state.run_queue.render("forgejo_ci_run_queue_seconds", ("repo", "workflow"), out)
+
+        for (repo, workflow, job, status), count in _state.jobs_total.items():
+            base = _labels([("repo", repo), ("workflow", workflow), ("job", job), ("status", status)])
+            out.append(f"forgejo_ci_jobs_total{{{base}}} {count}")
+        for (repo, workflow, event, status), count in _state.runs_total.items():
+            base = _labels([("repo", repo), ("workflow", workflow), ("event", event), ("status", status)])
+            out.append(f"forgejo_ci_runs_total{{{base}}} {count}")
+
+        _runner_lines(out)
+        _state.seeded = True
+        return out, seen, errored
+
+    HELP = [
+        "# HELP forgejo_ci_last_run_status Most recent terminal run's status (1 on the current status label).",
+        "# TYPE forgejo_ci_last_run_status gauge",
+        "# HELP forgejo_ci_consecutive_failures Consecutive failing runs, newest-first, ignoring cancelled.",
+        "# TYPE forgejo_ci_consecutive_failures gauge",
+        "# HELP forgejo_ci_last_run_timestamp_seconds Unix time of the most recent terminal run.",
+        "# TYPE forgejo_ci_last_run_timestamp_seconds gauge",
+        "# HELP forgejo_ci_last_success_timestamp_seconds Unix time of the last success, 0 if none in the window.",
+        "# TYPE forgejo_ci_last_success_timestamp_seconds gauge",
+        "# HELP forgejo_ci_task_info One series per tracked Actions task, carrying its identity labels.",
+        "# TYPE forgejo_ci_task_info gauge",
+        "# HELP forgejo_ci_task_status_code Numeric task status for colour mapping.",
+        "# TYPE forgejo_ci_task_status_code gauge",
+        "# HELP forgejo_ci_task_created_timestamp_seconds Unix time the task was created (queued).",
+        "# TYPE forgejo_ci_task_created_timestamp_seconds gauge",
+        "# HELP forgejo_ci_task_started_timestamp_seconds Unix time a runner picked the task up.",
+        "# TYPE forgejo_ci_task_started_timestamp_seconds gauge",
+        "# HELP forgejo_ci_task_duration_seconds Wall time from pick-up to terminal state.",
+        "# TYPE forgejo_ci_task_duration_seconds gauge",
+        "# HELP forgejo_ci_task_running_seconds Age of a task that is still running.",
+        "# TYPE forgejo_ci_task_running_seconds gauge",
+        "# HELP forgejo_ci_task_waiting_seconds Age of a task that has not been picked up yet.",
+        "# TYPE forgejo_ci_task_waiting_seconds gauge",
+        "# HELP forgejo_ci_tasks_active Tasks not in a terminal state, by status.",
+        "# TYPE forgejo_ci_tasks_active gauge",
+        "# HELP forgejo_ci_repos_building Distinct repositories with a running task.",
+        "# TYPE forgejo_ci_repos_building gauge",
+        "# HELP forgejo_ci_job_duration_p50_seconds Median duration of the sampled window for this job.",
+        "# TYPE forgejo_ci_job_duration_p50_seconds gauge",
+        "# HELP forgejo_ci_job_duration_p95_seconds 95th percentile duration of the sampled window.",
+        "# TYPE forgejo_ci_job_duration_p95_seconds gauge",
+        "# HELP forgejo_ci_job_duration_max_seconds Slowest run in the sampled window.",
+        "# TYPE forgejo_ci_job_duration_max_seconds gauge",
+        "# HELP forgejo_ci_job_runs_sampled Size of the per-job duration sample window.",
+        "# TYPE forgejo_ci_job_runs_sampled gauge",
+        "# HELP forgejo_ci_job_duration_seconds Job wall time, observed once per newly-seen terminal task.",
+        "# TYPE forgejo_ci_job_duration_seconds histogram",
+        "# HELP forgejo_ci_run_duration_seconds Pipeline wall time, observed once per newly-seen terminal run.",
+        "# TYPE forgejo_ci_run_duration_seconds histogram",
+        "# HELP forgejo_ci_run_queue_seconds Pipeline queue wait, observed once per newly-seen terminal run.",
+        "# TYPE forgejo_ci_run_queue_seconds histogram",
+        "# HELP forgejo_ci_jobs_total Terminal jobs counted once each, by outcome.",
+        "# TYPE forgejo_ci_jobs_total counter",
+        "# HELP forgejo_ci_runs_total Terminal pipelines counted once each, by outcome.",
+        "# TYPE forgejo_ci_runs_total counter",
+        "# HELP forgejo_ci_runner_info One series per registered Actions runner.",
+        "# TYPE forgejo_ci_runner_info gauge",
+        "# HELP forgejo_ci_runners Registered runners by status.",
+        "# TYPE forgejo_ci_runners gauge",
+        "# HELP forgejo_ci_runner_inventory_up 1 when the runner inventory endpoint was readable.",
+        "# TYPE forgejo_ci_runner_inventory_up gauge",
+        "# HELP forgejo_ci_up 1 when the last refresh reached the Forgejo API.",
+        "# TYPE forgejo_ci_up gauge",
+        "# HELP forgejo_ci_repos_tracked Repositories with Actions enabled that were polled.",
+        "# TYPE forgejo_ci_repos_tracked gauge",
+        "# HELP forgejo_ci_refresh_duration_seconds Wall time of the last refresh.",
+        "# TYPE forgejo_ci_refresh_duration_seconds gauge",
+        "# HELP forgejo_ci_last_refresh_timestamp_seconds Unix time the last refresh completed.",
+        "# TYPE forgejo_ci_last_refresh_timestamp_seconds gauge",
+        "# HELP forgejo_ci_refresh_errors_total Cumulative refresh and per-repo errors.",
+        "# TYPE forgejo_ci_refresh_errors_total counter",
+        "# HELP forgejo_ci_pipelines_excluded Pipelines muted by EXCLUDE_PIPELINES. Muting stays visible.",
+        "# TYPE forgejo_ci_pipelines_excluded gauge",
+        "# HELP forgejo_ci_seeded 0 during the first refresh, when counters are primed but not incremented.",
+        "# TYPE forgejo_ci_seeded gauge",
+    ]
 
     def render():
         global _errors_total, _excluded_series
         started = time.time()
         _excluded_series = 0
+        seeded_before = _state.seeded
         try:
             lines, seen, errored = collect()
             up = 1
@@ -195,28 +492,7 @@ data:
             lines, seen, errored, up = [], 0, 0, 0
         _errors_total += errored
 
-        out = [
-            "# HELP forgejo_ci_last_run_status Most recent terminal run's status (1 on the current status label).",
-            "# TYPE forgejo_ci_last_run_status gauge",
-            "# HELP forgejo_ci_consecutive_failures Consecutive failing runs, newest-first, ignoring cancelled.",
-            "# TYPE forgejo_ci_consecutive_failures gauge",
-            "# HELP forgejo_ci_last_run_timestamp_seconds Unix time of the most recent terminal run.",
-            "# TYPE forgejo_ci_last_run_timestamp_seconds gauge",
-            "# HELP forgejo_ci_last_success_timestamp_seconds Unix time of the last success, 0 if none in the window.",
-            "# TYPE forgejo_ci_last_success_timestamp_seconds gauge",
-            "# HELP forgejo_ci_up 1 when the last refresh reached the Forgejo API.",
-            "# TYPE forgejo_ci_up gauge",
-            "# HELP forgejo_ci_repos_tracked Repositories with Actions enabled that were polled.",
-            "# TYPE forgejo_ci_repos_tracked gauge",
-            "# HELP forgejo_ci_refresh_duration_seconds Wall time of the last refresh.",
-            "# TYPE forgejo_ci_refresh_duration_seconds gauge",
-            "# HELP forgejo_ci_last_refresh_timestamp_seconds Unix time the last refresh completed.",
-            "# TYPE forgejo_ci_last_refresh_timestamp_seconds gauge",
-            "# HELP forgejo_ci_refresh_errors_total Cumulative refresh and per-repo errors.",
-            "# TYPE forgejo_ci_refresh_errors_total counter",
-            "# HELP forgejo_ci_pipelines_excluded Pipelines muted by EXCLUDE_PIPELINES. Muting stays visible.",
-            "# TYPE forgejo_ci_pipelines_excluded gauge",
-        ]
+        out = list(HELP)
         out += lines
         out.append(f"forgejo_ci_up {up}")
         out.append(f"forgejo_ci_repos_tracked {seen}")
@@ -224,6 +500,8 @@ data:
         out.append(f"forgejo_ci_last_refresh_timestamp_seconds {time.time():.0f}")
         out.append(f"forgejo_ci_refresh_errors_total {_errors_total}")
         out.append(f"forgejo_ci_pipelines_excluded {_excluded_series}")
+        out.append(f"forgejo_ci_runner_inventory_up {_runners_ok}")
+        out.append(f"forgejo_ci_seeded {1 if seeded_before else 0}")
         return "\n".join(out) + "\n"
 
     def refresh_loop():
@@ -249,7 +527,7 @@ data:
                 self.end_headers()
 
         def log_message(self, *args):
-            pass  # scrape logs are noise at a 60s interval
+            pass
 
     if __name__ == "__main__":
         threading.Thread(target=refresh_loop, daemon=True).start()
