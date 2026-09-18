@@ -7,50 +7,28 @@ kind: RenovateJob
 metadata:
   name: webgrip-forgejo
 spec:
+  # Scope, not selection. The glob bounds autodiscovery to the two orgs the bot should ever
+  # look at; discoverTopics below decides which repos inside them are actually processed. The
+  # two are ANDed, so a repo needs both.
   discoveryFilters:
-    # The Forgejo-authoritative (de-mirrored) webgrip repos, listed explicitly, + the bot's pilot.
-    # Why not a `webgrip/*` glob: most webgrip repos are still gitea-mirror pull-mirrors (read-only),
-    # so a glob spawns a serial executor Job per mirror every run — wasted churn + RenovateProjectRunFailed
-    # noise — for repos Renovate can't push to anyway. This list GROWS as each repo flips
-    # Forgejo-leading (mirror image: remove it from webgrip-gitops's explicit list), converging
-    # on `webgrip/*` once the fleet has moved. homelab-cluster (the Flux source) flipped
-    # 2026-07-13 (ADR-0011). Regenerate the non-mirror set with: scripts/forgejo-sync.sh --all.
-    - webgrip/homelab-cluster
-    - webgrip/infrastructure
-    - webgrip/workflows
-    - webgrip/renovate-config
-    - webgrip/claude-config
-    - webgrip/.profile
-    - webgrip/traefik-local-development
-    - webgrip/ledgerflow
-    - webgrip/monitoring-platform
-    - webgrip/invoiceninja-application
-    - webgrip/application-template
-    - webgrip/freshrss-application
-    - webgrip/whisperx-application
-    - webgrip/searxng-application
-    - webgrip/backstage-application
-    - webgrip/action-typescript-template
-    - webgrip/telemetry-service
-    - webgrip/common-charts
-    - webgrip/glide
-    - webgrip/cloudflare
-    - webgrip/twente.dev
-    - webgrip/webgrip.nl
-    # Publishes @webgrip/prettier-config, tsconfig, eslint-config-astro and astro-site-toolkit —
-    # the toolchain twente.dev and webgrip.nl both consume. It was never on either job's list, so
-    # Renovate had never run on it and its own renovate.json was inert: prettier-plugin-astro sat
-    # on 0.14.1 while 1.0.1 shipped. Found 2026-09-18 auditing all 25 Forgejo-authoritative repos.
-    - webgrip/frontend-toolkit
-    # Added 2026-09-18 with frontend-toolkit, from the same audit. All five carry real
-    # manifests and none had ever been scanned; semantic-release-config is the one that
-    # matters most, because the ci-runner image bakes its package in (ADR-0005).
-    - webgrip/semantic-release-config
-    - webgrip/ai-skills
-    - webgrip/counterscale
-    - webgrip/de-vloer
-    - webgrip/ploeg
+    - webgrip/*
     - renovate/forgejo-renovate-pilot
+  # The selector, and the reason this is no longer a hand-maintained list. A repo opts in by
+  # carrying the `renovate` topic, which a new repo gets once instead of someone remembering to
+  # edit this file. It also solves what the old list could not: read-only pull-mirrors are simply
+  # never tagged, so the glob no longer drags them in, and a renamed or deleted repo drops out by
+  # itself rather than costing an executor Job every run forever.
+  #
+  # The previous explicit list had rotted in both directions by 2026-09-18 — three entries pointed
+  # at repos that no longer existed, and six that did were missing, including frontend-toolkit
+  # (whose packages the estate's frontend toolchain is built on) and semantic-release-config
+  # (baked into the ci-runner image, ADR-0005). Nothing failed; Renovate simply never ran on them.
+  #
+  # scripts/renovate-discovery-drift.sh still runs weekly, now asserting that every active source
+  # repo carries the topic — the detective control survives the move to a preventive one.
+  discoverTopics:
+    - renovate
+  skipForks: true
   provider:
     name: forgejo
     # In-cluster endpoint (see configmap-forgejo.yaml for the why): the public Cloudflare-fronted host
