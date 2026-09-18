@@ -1,0 +1,105 @@
+---
+# Answers one question that has been asserted but never measured: WHY do actions/checkout
+# majors fail on the in-cluster Forgejo runner?
+#
+# The estate pins checkout@v5 and setup-node@v4 and disables their majors, on the stated
+# grounds that "v6 is stuk op niet-GitHub-runners" (org/forgejo-ci.md). Nobody recorded the
+# error. The leading hypothesis (VIK-1091) is that it is not the actions at all:
+#
+#   - host mode runs JS actions with whatever `node` PATH resolves first, NOT with the runtime
+#     the action declares in `using:`
+#   - the runner ScaledJob prepends /home/runner/externals/node20/bin, so that is node20
+#   - the ci-runner image already installs node 24 on PATH via nodesource; the prepend shadows it
+#   - checkout v6/v7 and setup-node v5/v6/v7 all declare `using: node24`
+#   - and checkout@v5.1.0 ALSO declares node24 and works today, which is why this needs measuring
+#     rather than assuming
+#
+# Dispatch-only and self-contained: no reusable workflows, no secrets, no deploys. Every step
+# is continue-on-error so one failure does not hide the others — read the summary, not the
+# red cross.
+name: '[Canary] Runner node runtime vs action majors'
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: runner-node-canary
+  cancel-in-progress: true
+
+jobs:
+  canary:
+    name: 'Which node runs a JS action here'
+    runs-on: docker
+    steps:
+      - name: What PATH resolves, and what else is on disk
+        shell: bash
+        run: |-
+          set -u
+          echo "PATH=${PATH}"
+          echo "which node : $(command -v node || echo none)"
+          echo "node version: $(node --version 2>/dev/null || echo none)"
+          echo
+          echo "externals bundled in the image:"
+          ls -1 /home/runner/externals/ 2>/dev/null || echo "  (no externals directory)"
+          for n in node20 node24 node24_alpine; do
+            p="/home/runner/externals/${n}/bin/node"
+            if [ -x "${p}" ]; then
+              echo "  ${n}: $(${p} --version 2>&1 || echo 'present but will not execute')"
+            else
+              echo "  ${n}: absent"
+            fi
+          done
+
+      - name: checkout v5.1.0 (the pinned baseline — declares node24, works today)
+        continue-on-error: true
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: checkout v6 (the one the estate says is broken)
+        continue-on-error: true
+        uses: actions/checkout@v6
+
+      - name: checkout v7
+        continue-on-error: true
+        uses: actions/checkout@v7
+
+      - name: setup-node v4.4.0 (the pinned baseline — node20)
+        continue-on-error: true
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+
+      - name: setup-node v5
+        continue-on-error: true
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: setup-node v7
+        continue-on-error: true
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: How to read this run
+        if: always()
+        shell: bash
+        run: |-
+          cat <<'TXT'
+          Read the step results above, in this order:
+
+          1. If v5.1.0 is green and v6/v7 are red, and the first step printed node20 —
+             the hypothesis holds. Fix is one line in the runner ScaledJob: stop prepending
+             /home/runner/externals/node20/bin so the image's system node 24 wins. Then
+             re-run this canary; v6/v7 should go green.
+
+          2. If the first step printed node24 already, the runtime is NOT the cause and
+             VIK-1091's premise is dead. Record the actual error from the v6 step and close
+             that ticket in favour of a new one.
+
+          3. If externals/node24 is reported absent, that confirms the stale comment in the
+             ScaledJob: the base image ships only node24_alpine (musl), which will not run in
+             this glibc toolchain container. The real node 24 is /usr/bin/node from nodesource.
+
+          Whatever happens, paste the v6 step's error into VIK-1091. "v6 is broken" has been
+          repeated for months without anyone writing down what breaks.
+          TXT
