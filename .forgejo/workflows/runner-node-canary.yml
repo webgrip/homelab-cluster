@@ -41,6 +41,18 @@ jobs:
           echo
           echo "externals bundled in the image:"
           ls -1 /home/runner/externals/ 2>/dev/null || echo "  (no externals directory)"
+          echo
+          echo "what the image itself installs (nodesource, per the ci-runner Dockerfile):"
+          for b in /usr/bin/node /usr/local/bin/node; do
+            if [ -x "${b}" ]; then echo "  ${b}: $(${b} --version 2>&1)"; else echo "  ${b}: absent"; fi
+          done
+          echo "  npm : $(command -v npm || echo none) $(npm --version 2>/dev/null || true)"
+          echo "  npx : $(command -v npx || echo none)"
+          echo
+          echo "PATH without the externals prepend would resolve:"
+          echo "  node -> $(PATH=$(echo "$PATH" | sed 's|/home/runner/externals/node20/bin:||') command -v node || echo none)"
+          echo "  version: $(PATH=$(echo "$PATH" | sed 's|/home/runner/externals/node20/bin:||') node --version 2>&1 || true)"
+
           for n in node20 node24 node24_alpine; do
             p="/home/runner/externals/${n}/bin/node"
             if [ -x "${p}" ]; then
