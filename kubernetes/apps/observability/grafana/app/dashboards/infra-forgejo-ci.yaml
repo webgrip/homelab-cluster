@@ -20,16 +20,28 @@ spec:
       "title": "Forgejo CI — Command Center",
       "uid": "infra-forgejo-ci",
       "timezone": "browser",
-      "tags": ["infrastructure", "forgejo", "ci", "actions", "keda"],
+      "tags": [
+        "infrastructure",
+        "forgejo",
+        "ci",
+        "actions",
+        "keda"
+      ],
       "editable": false,
       "graphTooltip": 1,
       "refresh": "30s",
-      "time": { "from": "now-3h", "to": "now" },
+      "time": {
+        "from": "now-3h",
+        "to": "now"
+      },
       "annotations": {
         "list": [
           {
             "builtIn": 1,
-            "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
             "enable": true,
             "hide": true,
             "iconColor": "rgba(0, 211, 255, 1)",
@@ -38,30 +50,57 @@ spec:
           }
         ]
       },
-      "templating": { "list": [] },
+      "templating": {
+        "list": []
+      },
       "panels": [
         {
           "id": 1,
           "type": "row",
           "title": "CI at a glance",
           "collapsed": false,
-          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          }
         },
         {
           "id": 2,
           "type": "stat",
           "title": "Pending CI jobs (queue)",
           "description": "KEDA forgejo-runner scaler metric: pending Actions jobs for the `docker` label, globally. This is the backlog driving runner scale-up.",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 1
+          },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
-              "thresholds": { "mode": "absolute", "steps": [
-                { "color": "green", "value": null },
-                { "color": "yellow", "value": 3 },
-                { "color": "red", "value": 6 }
-              ] }
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 3
+                  },
+                  {
+                    "color": "red",
+                    "value": 6
+                  }
+                ]
+              }
             },
             "overrides": []
           },
@@ -69,12 +108,24 @@ spec:
             "colorMode": "background",
             "graphMode": "area",
             "justifyMode": "auto",
-            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
             "textMode": "auto"
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-runner\"}) or vector(0)" }
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-runner\"}) or vector(0)"
+            }
           ]
         },
         {
@@ -82,16 +133,48 @@ spec:
           "type": "stat",
           "title": "KEDA scaling active",
           "description": "1 = the forgejo-runner scaler is actively requesting runners above the warm-pool floor.",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 1
+          },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
               "mappings": [
-                { "type": "value", "options": { "0": { "text": "Idle", "color": "green" } } },
-                { "type": "value", "options": { "1": { "text": "Scaling", "color": "blue" } } }
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "Idle",
+                      "color": "green"
+                    }
+                  }
+                },
+                {
+                  "type": "value",
+                  "options": {
+                    "1": {
+                      "text": "Scaling",
+                      "color": "blue"
+                    }
+                  }
+                }
               ],
-              "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
             },
             "overrides": []
           },
@@ -99,12 +182,24 @@ spec:
             "colorMode": "background",
             "graphMode": "none",
             "justifyMode": "auto",
-            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
             "textMode": "auto"
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "max(keda_scaler_active{scaledObject=\"forgejo-runner\"}) or vector(0)" }
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max(keda_scaler_active{scaledObject=\"forgejo-runner\"}) or vector(0)"
+            }
           ]
         },
         {
@@ -112,15 +207,32 @@ spec:
           "type": "stat",
           "title": "Runners running",
           "description": "Live forgejo-runner pods in Running phase. Warm-pool floor = 2 (min), burst ceiling = 6 (max). Above 6 is anomalous.",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 8,
+            "y": 1
+          },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
-              "thresholds": { "mode": "absolute", "steps": [
-                { "color": "green", "value": null },
-                { "color": "yellow", "value": 7 }
-              ] }
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 7
+                  }
+                ]
+              }
             },
             "overrides": []
           },
@@ -128,12 +240,24 @@ spec:
             "colorMode": "value",
             "graphMode": "area",
             "justifyMode": "auto",
-            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
             "textMode": "auto"
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "sum(kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"}) or vector(0)" }
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(label_replace(label_replace(label_replace(kube_pod_status_phase{exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\", phase=\"Running\"}, \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"namespace\", \"$$1\", \"exported_namespace\", \"(.+)\"), \"container\", \"$$1\", \"exported_container\", \"(.+)\")) or vector(0)"
+            }
           ]
         },
         {
@@ -141,12 +265,28 @@ spec:
           "type": "stat",
           "title": "Actively building",
           "description": "Runner pods burning CPU > 0.05 core (runner steps or DinD build). A proxy for runners actually executing a job, vs warm-idle ones blocked on `one-job --wait`.",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 12,
+            "y": 1
+          },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
-              "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] }
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
             },
             "overrides": []
           },
@@ -154,12 +294,24 @@ spec:
             "colorMode": "value",
             "graphMode": "area",
             "justifyMode": "auto",
-            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
             "textMode": "auto"
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "count(sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"}[$$__rate_interval])) > 0.05) or vector(0)" }
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "count(sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"}[$$__rate_interval])) > 0.05) or vector(0)"
+            }
           ]
         },
         {
@@ -167,12 +319,28 @@ spec:
           "type": "stat",
           "title": "Warm-idle runners",
           "description": "Running runners minus actively-building ones = warm pool blocked on `one-job --wait` (and race-losers that fetched no task). High idle under a non-empty queue hints at over-provisioning.",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 16,
+            "y": 1
+          },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
-              "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
             },
             "overrides": []
           },
@@ -180,12 +348,24 @@ spec:
             "colorMode": "value",
             "graphMode": "area",
             "justifyMode": "auto",
-            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
             "textMode": "auto"
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "(sum(kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"}) or vector(0)) - (count(sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"}[$$__rate_interval])) > 0.05) or vector(0))" }
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "(sum(label_replace(label_replace(label_replace(kube_pod_status_phase{exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\", phase=\"Running\"}, \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"namespace\", \"$$1\", \"exported_namespace\", \"(.+)\"), \"container\", \"$$1\", \"exported_container\", \"(.+)\")) or vector(0)) - (count(sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"}[$$__rate_interval])) > 0.05) or vector(0))"
+            }
           ]
         },
         {
@@ -193,15 +373,32 @@ spec:
           "type": "stat",
           "title": "Runners Pending / Failed",
           "description": "Runner pods stuck Pending (e.g. 'Insufficient memory' on the worker pool) or Failed. Should be 0.",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 20,
+            "y": 1
+          },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
-              "thresholds": { "mode": "absolute", "steps": [
-                { "color": "green", "value": null },
-                { "color": "red", "value": 1 }
-              ] }
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
             },
             "overrides": []
           },
@@ -209,12 +406,24 @@ spec:
             "colorMode": "background",
             "graphMode": "none",
             "justifyMode": "auto",
-            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
             "textMode": "auto"
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "sum(kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=~\"Pending|Failed|Unknown\"}) or vector(0)" }
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(label_replace(label_replace(label_replace(kube_pod_status_phase{exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\", phase=~\"Pending|Failed|Unknown\"}, \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"namespace\", \"$$1\", \"exported_namespace\", \"(.+)\"), \"container\", \"$$1\", \"exported_container\", \"(.+)\")) or vector(0)"
+            }
           ]
         },
         {
@@ -222,15 +431,28 @@ spec:
           "type": "row",
           "title": "Scaling & queue",
           "collapsed": false,
-          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 5
+          }
         },
         {
           "id": 9,
           "type": "timeseries",
           "title": "Queue vs runners vs active builds",
           "description": "The core view: pending jobs (queue) drive runner pods to spin up. 'Runners running' should track between the warm floor (2) and burst ceiling (6). Gap between 'running' and 'actively building' = warm/idle capacity.",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 9, "w": 24, "x": 0, "y": 6 },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 6
+          },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
@@ -243,38 +465,126 @@ spec:
               }
             },
             "overrides": [
-              { "matcher": { "id": "byName", "options": "warm floor (min=2)" },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "warm floor (min=2)"
+                },
                 "properties": [
-                  { "id": "custom.fillOpacity", "value": 0 },
-                  { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [8, 8] } },
-                  { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }
-                ] },
-              { "matcher": { "id": "byName", "options": "burst ceiling (max=6)" },
+                  {
+                    "id": "custom.fillOpacity",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.lineStyle",
+                    "value": {
+                      "fill": "dash",
+                      "dash": [
+                        8,
+                        8
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "green"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "burst ceiling (max=6)"
+                },
                 "properties": [
-                  { "id": "custom.fillOpacity", "value": 0 },
-                  { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [8, 8] } },
-                  { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
-                ] }
+                  {
+                    "id": "custom.fillOpacity",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.lineStyle",
+                    "value": {
+                      "fill": "dash",
+                      "dash": [
+                        8,
+                        8
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "red"
+                    }
+                  }
+                ]
+              }
             ]
           },
           "options": {
-            "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] },
-            "tooltip": { "mode": "multi", "sort": "desc" }
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
               "legendFormat": "pending jobs (queue)",
-              "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-runner\"}) or vector(0)" },
-            { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-runner\"}) or vector(0)"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
               "legendFormat": "runners running",
-              "expr": "sum(kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"}) or vector(0)" },
-            { "refId": "C", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(label_replace(label_replace(label_replace(kube_pod_status_phase{exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\", phase=\"Running\"}, \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"namespace\", \"$$1\", \"exported_namespace\", \"(.+)\"), \"container\", \"$$1\", \"exported_container\", \"(.+)\")) or vector(0)"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
               "legendFormat": "actively building",
-              "expr": "count(sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"}[$$__rate_interval])) > 0.05) or vector(0)" },
-            { "refId": "D", "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "legendFormat": "warm floor (min=2)", "expr": "vector(2)" },
-            { "refId": "E", "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "legendFormat": "burst ceiling (max=6)", "expr": "vector(6)" }
+              "expr": "count(sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"}[$$__rate_interval])) > 0.05) or vector(0)"
+            },
+            {
+              "refId": "D",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "warm floor (min=2)",
+              "expr": "vector(2)"
+            },
+            {
+              "refId": "E",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "burst ceiling (max=6)",
+              "expr": "vector(6)"
+            }
           ]
         },
         {
@@ -282,23 +592,55 @@ spec:
           "type": "timeseries",
           "title": "Running runners by node",
           "description": "Which node the runner pods land on (worker pool: worker-1 + fringe-workstation).",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 15
+          },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
-              "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 25, "stacking": { "mode": "normal" }, "showPoints": "never" }
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "stepAfter",
+                "fillOpacity": 25,
+                "stacking": {
+                  "mode": "normal"
+                },
+                "showPoints": "never"
+              }
             },
             "overrides": []
           },
           "options": {
-            "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] },
-            "tooltip": { "mode": "multi", "sort": "desc" }
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
               "legendFormat": "{{node}}",
-              "expr": "count by (node) (kube_pod_info{exported_namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"} and on (namespace, pod) (kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"} == 1))" }
+              "expr": "count by (node) (label_replace(label_replace(label_replace(kube_pod_info{exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"}, \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"namespace\", \"$$1\", \"exported_namespace\", \"(.+)\"), \"container\", \"$$1\", \"exported_container\", \"(.+)\") and on (namespace, pod) (label_replace(label_replace(label_replace(kube_pod_status_phase{exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\", phase=\"Running\"}, \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"namespace\", \"$$1\", \"exported_namespace\", \"(.+)\"), \"container\", \"$$1\", \"exported_container\", \"(.+)\") == 1))"
+            }
           ]
         },
         {
@@ -306,23 +648,55 @@ spec:
           "type": "timeseries",
           "title": "Runner pod phase over time",
           "description": "Pending spikes here = scheduling pressure (e.g. Insufficient memory). Failed = crashed runners.",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 15
+          },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
-              "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 25, "stacking": { "mode": "normal" }, "showPoints": "never" }
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "stepAfter",
+                "fillOpacity": 25,
+                "stacking": {
+                  "mode": "normal"
+                },
+                "showPoints": "never"
+              }
             },
             "overrides": []
           },
           "options": {
-            "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] },
-            "tooltip": { "mode": "multi", "sort": "desc" }
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
               "legendFormat": "{{phase}}",
-              "expr": "sum by (phase) (kube_pod_status_phase{exported_namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"})" }
+              "expr": "sum by (phase) (label_replace(label_replace(label_replace(kube_pod_status_phase{exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"}, \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"namespace\", \"$$1\", \"exported_namespace\", \"(.+)\"), \"container\", \"$$1\", \"exported_container\", \"(.+)\"))"
+            }
           ]
         },
         {
@@ -330,30 +704,58 @@ spec:
           "type": "row",
           "title": "Throughput & lifecycle",
           "collapsed": false,
-          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 }
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 23
+          }
         },
         {
           "id": 13,
           "type": "timeseries",
           "title": "Runner spawns (created in last 5m)",
           "description": "Count of runner pods whose creation timestamp falls within the trailing 5 minutes — the spin-up waves you see on the namespace dashboard. Includes warm-pool backfills.",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 24
+          },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
-              "custom": { "drawStyle": "bars", "fillOpacity": 60, "showPoints": "never" }
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 60,
+                "showPoints": "never"
+              }
             },
             "overrides": []
           },
           "options": {
-            "legend": { "displayMode": "list", "placement": "bottom" },
-            "tooltip": { "mode": "single" }
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "single"
+            }
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
               "legendFormat": "runner spawns",
-              "expr": "count(kube_pod_created{exported_namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"} > (time() - 300)) or vector(0)" }
+              "expr": "count(label_replace(label_replace(label_replace(kube_pod_created{exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"}, \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"namespace\", \"$$1\", \"exported_namespace\", \"(.+)\"), \"container\", \"$$1\", \"exported_container\", \"(.+)\") > (time() - 300)) or vector(0)"
+            }
           ]
         },
         {
@@ -361,26 +763,61 @@ spec:
           "type": "timeseries",
           "title": "Runner k8s Jobs (active vs succeeded)",
           "description": "Active = runner Jobs in-flight. Succeeded is GC-limited (successfulJobsHistoryLimit=3, failedJobsHistoryLimit=0) so it is NOT a reliable throughput counter — accurate run counts come from the run-mapping (Loki) panels once log shipping is fixed.",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 24
+          },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
-              "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 15, "showPoints": "never" }
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "stepAfter",
+                "fillOpacity": 15,
+                "showPoints": "never"
+              }
             },
             "overrides": []
           },
           "options": {
-            "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] },
-            "tooltip": { "mode": "multi", "sort": "desc" }
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
               "legendFormat": "active jobs",
-              "expr": "sum(kube_job_status_active{exported_namespace=\"forgejo\",job_name=~\"forgejo-runner-[a-z0-9]{5}\"}) or vector(0)" },
-            { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(label_replace(label_replace(label_replace(kube_job_status_active{exported_namespace=\"forgejo\", job_name=~\"forgejo-runner-[a-z0-9]{5}\"}, \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"namespace\", \"$$1\", \"exported_namespace\", \"(.+)\"), \"container\", \"$$1\", \"exported_container\", \"(.+)\")) or vector(0)"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
               "legendFormat": "succeeded (retained)",
-              "expr": "sum(kube_job_status_succeeded{exported_namespace=\"forgejo\",job_name=~\"forgejo-runner-[a-z0-9]{5}\"}) or vector(0)" }
+              "expr": "sum(label_replace(label_replace(label_replace(kube_job_status_succeeded{exported_namespace=\"forgejo\", job_name=~\"forgejo-runner-[a-z0-9]{5}\"}, \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"namespace\", \"$$1\", \"exported_namespace\", \"(.+)\"), \"container\", \"$$1\", \"exported_container\", \"(.+)\")) or vector(0)"
+            }
           ]
         },
         {
@@ -388,23 +825,69 @@ spec:
           "type": "table",
           "title": "Recent runner Job durations",
           "description": "Wall-clock duration of retained completed runner Jobs (completion − start). Only the last few survive GC; treat as a recent sample, not a full history.",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 7, "w": 24, "x": 0, "y": 32 },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 32
+          },
           "fieldConfig": {
-            "defaults": { "unit": "s", "custom": { "align": "auto", "filterable": true } },
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "align": "auto",
+                "filterable": true
+              }
+            },
             "overrides": []
           },
-          "options": { "showHeader": true, "sortBy": [ { "displayName": "Value", "desc": true } ] },
+          "options": {
+            "showHeader": true,
+            "sortBy": [
+              {
+                "displayName": "Value",
+                "desc": true
+              }
+            ]
+          },
           "targets": [
-            { "refId": "A", "format": "table", "instant": true,
-              "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "(kube_job_status_completion_time{exported_namespace=\"forgejo\",job_name=~\"forgejo-runner-[a-z0-9]{5}\"} - kube_job_status_start_time{exported_namespace=\"forgejo\",job_name=~\"forgejo-runner-[a-z0-9]{5}\"})" }
+            {
+              "refId": "A",
+              "format": "table",
+              "instant": true,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "(label_replace(label_replace(label_replace(kube_job_status_completion_time{exported_namespace=\"forgejo\", job_name=~\"forgejo-runner-[a-z0-9]{5}\"}, \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"namespace\", \"$$1\", \"exported_namespace\", \"(.+)\"), \"container\", \"$$1\", \"exported_container\", \"(.+)\") - label_replace(label_replace(label_replace(kube_job_status_start_time{exported_namespace=\"forgejo\", job_name=~\"forgejo-runner-[a-z0-9]{5}\"}, \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"namespace\", \"$$1\", \"exported_namespace\", \"(.+)\"), \"container\", \"$$1\", \"exported_container\", \"(.+)\"))"
+            }
           ],
           "transformations": [
-            { "id": "organize", "options": {
-              "excludeByName": { "Time": true, "__name__": true, "container": true, "endpoint": true, "instance": true, "job": true, "namespace": true, "service": true, "uid": true, "prometheus": true },
-              "renameByName": { "job_name": "Runner Job", "Value": "Duration" }
-            } }
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "__name__": true,
+                  "container": true,
+                  "endpoint": true,
+                  "instance": true,
+                  "job": true,
+                  "namespace": true,
+                  "service": true,
+                  "uid": true,
+                  "prometheus": true
+                },
+                "renameByName": {
+                  "job_name": "Runner Job",
+                  "Value": "Duration"
+                }
+              }
+            }
           ]
         },
         {
@@ -412,27 +895,63 @@ spec:
           "type": "row",
           "title": "Runner resources (DinD builds)",
           "collapsed": false,
-          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 }
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 39
+          }
         },
         {
           "id": 17,
           "type": "timeseries",
           "title": "CPU by runner pod",
           "description": "Per-pod CPU (runner steps + DinD sidecar). Runner pods have no CPU limit — they burst into idle node headroom.",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 40
+          },
           "fieldConfig": {
-            "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "never" } },
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              }
+            },
             "overrides": []
           },
           "options": {
-            "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] },
-            "tooltip": { "mode": "multi", "sort": "desc" }
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
               "legendFormat": "{{pod}}",
-              "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"}[$$__rate_interval]))" }
+              "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"}[$$__rate_interval]))"
+            }
           ]
         },
         {
@@ -440,20 +959,51 @@ spec:
           "type": "timeseries",
           "title": "Memory by runner pod",
           "description": "Working set per runner pod. DinD limit 1.5Gi, runner limit 1.25Gi.",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 40
+          },
           "fieldConfig": {
-            "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "never" } },
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              }
+            },
             "overrides": []
           },
           "options": {
-            "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] },
-            "tooltip": { "mode": "multi", "sort": "desc" }
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
               "legendFormat": "{{pod}}",
-              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"})" }
+              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"})"
+            }
           ]
         },
         {
@@ -461,25 +1011,72 @@ spec:
           "type": "timeseries",
           "title": "Memory % of limit (OOM risk)",
           "description": "Per-pod working set as a share of its memory limit. Approaching 100% risks an OOM kill mid-build.",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 48
+          },
           "fieldConfig": {
             "defaults": {
               "unit": "percent",
               "max": 100,
-              "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "never", "thresholdsStyle": { "mode": "line" } },
-              "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 80 }, { "color": "red", "value": 95 } ] }
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "thresholdsStyle": {
+                  "mode": "line"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 80
+                  },
+                  {
+                    "color": "red",
+                    "value": 95
+                  }
+                ]
+              }
             },
             "overrides": []
           },
           "options": {
-            "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] },
-            "tooltip": { "mode": "multi", "sort": "desc" }
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
               "legendFormat": "{{pod}}",
-              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"}) / sum by (pod) (kube_pod_container_resource_limits{exported_namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",resource=\"memory\"}) * 100" }
+              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\",image!=\"\"}) / sum by (pod) (label_replace(label_replace(label_replace(kube_pod_container_resource_limits{exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\", resource=\"memory\"}, \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"namespace\", \"$$1\", \"exported_namespace\", \"(.+)\"), \"container\", \"$$1\", \"exported_container\", \"(.+)\")) * 100"
+            }
           ]
         },
         {
@@ -487,23 +1084,51 @@ spec:
           "type": "timeseries",
           "title": "CPU throttling % by pod",
           "description": "Share of CFS periods throttled. Runner/DinD containers have no CPU limit, so sustained throttling points at node-level CPU pressure.",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 48 },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 48
+          },
           "fieldConfig": {
             "defaults": {
               "unit": "percent",
-              "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "never" }
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              }
             },
             "overrides": []
           },
           "options": {
-            "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] },
-            "tooltip": { "mode": "multi", "sort": "desc" }
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
               "legendFormat": "{{pod}}",
-              "expr": "sum by (pod) (rate(container_cpu_cfs_throttled_periods_total{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"}[$$__rate_interval])) / clamp_min(sum by (pod) (rate(container_cpu_cfs_periods_total{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"}[$$__rate_interval])), 1) * 100" }
+              "expr": "sum by (pod) (rate(container_cpu_cfs_throttled_periods_total{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"}[$$__rate_interval])) / clamp_min(sum by (pod) (rate(container_cpu_cfs_periods_total{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"}[$$__rate_interval])), 1) * 100"
+            }
           ]
         },
         {
@@ -511,20 +1136,51 @@ spec:
           "type": "timeseries",
           "title": "Runner network RX (image pulls)",
           "description": "Receive throughput across runner pods — dominated by DinD image pulls. Useful for sizing the Harbor pull-through mirror.",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 7, "w": 24, "x": 0, "y": 56 },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 56
+          },
           "fieldConfig": {
-            "defaults": { "unit": "binBps", "custom": { "drawStyle": "line", "fillOpacity": 15, "showPoints": "never" } },
+            "defaults": {
+              "unit": "binBps",
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "showPoints": "never"
+              }
+            },
             "overrides": []
           },
           "options": {
-            "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] },
-            "tooltip": { "mode": "multi", "sort": "desc" }
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
               "legendFormat": "{{pod}}",
-              "expr": "sum by (pod) (rate(container_network_receive_bytes_total{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"}[$$__rate_interval]))" }
+              "expr": "sum by (pod) (rate(container_network_receive_bytes_total{namespace=\"forgejo\",pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"}[$$__rate_interval]))"
+            }
           ]
         },
         {
@@ -532,19 +1188,44 @@ spec:
           "type": "row",
           "title": "KEDA scaler health",
           "collapsed": false,
-          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 63 }
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 63
+          }
         },
         {
           "id": 23,
           "type": "stat",
           "title": "Scaler errors (1h)",
           "description": "Errors from the forgejo-runner external scaler in the last hour. Sustained non-zero = KEDA can't read the Forgejo queue → scaling blind.",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 64 },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 64
+          },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
-              "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
             },
             "overrides": []
           },
@@ -552,12 +1233,24 @@ spec:
             "colorMode": "background",
             "graphMode": "area",
             "justifyMode": "auto",
-            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
             "textMode": "auto"
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "sum(increase(keda_scaler_detail_errors_total{scaledObject=\"forgejo-runner\"}[1h])) or vector(0)" }
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(increase(keda_scaler_detail_errors_total{scaledObject=\"forgejo-runner\"}[1h])) or vector(0)"
+            }
           ]
         },
         {
@@ -565,12 +1258,36 @@ spec:
           "type": "stat",
           "title": "Scaler metric latency",
           "description": "How long KEDA takes to fetch the pending-jobs metric from Forgejo.",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 64 },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 64
+          },
           "fieldConfig": {
             "defaults": {
               "unit": "s",
-              "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 } ] }
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 5
+                  }
+                ]
+              }
             },
             "overrides": []
           },
@@ -578,12 +1295,24 @@ spec:
             "colorMode": "value",
             "graphMode": "area",
             "justifyMode": "auto",
-            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
             "textMode": "auto"
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "max(keda_scaler_metrics_latency_seconds{scaledObject=\"forgejo-runner\"}) or vector(0)" }
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max(keda_scaler_metrics_latency_seconds{scaledObject=\"forgejo-runner\"}) or vector(0)"
+            }
           ]
         },
         {
@@ -591,23 +1320,61 @@ spec:
           "type": "timeseries",
           "title": "Scaler metric value & active",
           "description": "Raw KEDA scaler signal over time: the pending-jobs metric value and the active flag (0/1).",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 64 },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 64
+          },
           "fieldConfig": {
-            "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 12, "showPoints": "never" } },
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "stepAfter",
+                "fillOpacity": 12,
+                "showPoints": "never"
+              }
+            },
             "overrides": []
           },
           "options": {
-            "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] },
-            "tooltip": { "mode": "multi", "sort": "desc" }
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
               "legendFormat": "metric value",
-              "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-runner\"})" },
-            { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-runner\"})"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
               "legendFormat": "active",
-              "expr": "max(keda_scaler_active{scaledObject=\"forgejo-runner\"})" }
+              "expr": "max(keda_scaler_active{scaledObject=\"forgejo-runner\"})"
+            }
           ]
         },
         {
@@ -615,15 +1382,28 @@ spec:
           "type": "row",
           "title": "Run mapping (Loki) — pod → task → repo",
           "collapsed": false,
-          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 72 }
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 72
+          }
         },
         {
           "id": 27,
           "type": "logs",
           "title": "Live CI run feed (pod → task → repo)",
           "description": "Each runner pod logs `task <N> repo is <owner/repo>` when it picks up a job — this is the authoritative pod→run mapping. Expand a line to see its `pod` label. NOTE: populates only after the alloy-agent DNS fix reconciles (runner stdout → Loki) AND a new CI run lands; until then it reads 'No data'.",
-          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "gridPos": { "h": 9, "w": 24, "x": 0, "y": 73 },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 73
+          },
           "options": {
             "showTime": true,
             "showLabels": true,
@@ -635,8 +1415,15 @@ spec:
             "sortOrder": "Descending"
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" }, "queryType": "instant",
-              "expr": "{namespace=\"forgejo\", container=\"runner\"} ~\"repo is\"" }
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "queryType": "instant",
+              "expr": "{namespace=\"forgejo\", container=\"runner\"} ~\"repo is\""
+            }
           ]
         },
         {
@@ -644,20 +1431,47 @@ spec:
           "type": "timeseries",
           "title": "CI runs started over time",
           "description": "Accurate run-start throughput: counts the `task … repo is …` log lines per bucket (one per job a runner actually picked up). The reliable counterpart to the GC-limited k8s-Job metric above.",
-          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 82 },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 82
+          },
           "fieldConfig": {
-            "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60, "showPoints": "never" } },
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 60,
+                "showPoints": "never"
+              }
+            },
             "overrides": []
           },
           "options": {
-            "legend": { "displayMode": "list", "placement": "bottom" },
-            "tooltip": { "mode": "single" }
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "single"
+            }
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" }, "queryType": "statsRange",
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "queryType": "statsRange",
               "legendFormat": "runs started",
-              "expr": "{namespace=\"forgejo\", container=\"runner\"} ~\"repo is\" | stats count()" }
+              "expr": "{namespace=\"forgejo\", container=\"runner\"} ~\"repo is\" | stats count()"
+            }
           ]
         },
         {
@@ -665,22 +1479,54 @@ spec:
           "type": "bargauge",
           "title": "Runs by repo (dashboard range)",
           "description": "Which repos drove CI over the selected time range — parsed from the runner `repo is <owner/repo>` lines.",
-          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 82 },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 82
+          },
           "fieldConfig": {
-            "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] } },
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
             "overrides": []
           },
           "options": {
             "displayMode": "gradient",
             "orientation": "horizontal",
             "showUnfilled": true,
-            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            }
           },
           "targets": [
-            { "refId": "A", "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" }, "queryType": "stats",
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "queryType": "stats",
               "legendFormat": "{{repo}}",
-              "expr": "{namespace=\"forgejo\", container=\"runner\"} ~\"repo is\" | extract_regexp \"repo is (?P<repo>\\\\S+)\" | filter -repo:\"\" | stats by (repo) count()" }
+              "expr": "{namespace=\"forgejo\", container=\"runner\"} ~\"repo is\" | extract_regexp \"repo is (?P<repo>\\\\S+)\" | filter -repo:\"\" | stats by (repo) count()"
+            }
           ]
         }
       ]
