@@ -86,6 +86,17 @@ spec:
                     process.exit(0);
                   }
 
+                  // Record, never abort. This probe exists to make a dead credential visible, and on
+                  // 2026-09-18 it did the opposite: exiting non-zero here aborted the whole mint, so
+                  // the runtime Secret stopped being refreshed and the GitHub App token went stale
+                  // too ("github.com token 401 unauthorized" on every dashboard). A probe for one
+                  // credential must never take down the others. The marker is read after the Secret
+                  // is applied, so the Job still goes red and RenovateTokenMinterFailing still fires.
+                  const fail = (msg) => {
+                    console.error(msg);
+                    require('node:fs').writeFileSync('/work/credential-probe-failed', msg + '\n');
+                  };
+
                   const url =
                     'https://auth.docker.io/token' +
                     '?scope=repository:library/node:pull&service=registry.docker.io';
@@ -94,24 +105,23 @@ spec:
                   fetch(url, { headers: { authorization: 'Basic ' + auth } })
                     .then((res) => {
                       if (res.status === 401) {
-                        console.error(
+                        fail(
                           'docker hub rejected the credential (401). A REJECTED credential is worse than' +
                             ' none: Renovate stops falling back to the anonymous path and every docker.io' +
                             ' lookup returns no-result, visible only as "No docker auth found - returning"' +
                             ' on the dependency dashboard. Rotate RENOVATE_DOCKERHUB_TOKEN in OpenBao' +
                             ' (renovate/operator).',
                         );
-                        process.exit(1);
+                        return;
                       }
                       if (!res.ok) {
-                        console.error('docker hub auth probe returned ' + res.status);
-                        process.exit(1);
+                        fail('docker hub auth probe returned ' + res.status);
+                        return;
                       }
                       console.log('docker hub: credential accepted');
                     })
                     .catch((err) => {
-                      console.error('docker hub auth probe failed: ' + err.message);
-                      process.exit(1);
+                      fail('docker hub auth probe failed: ' + err.message);
                     });
                   PROBE
 
@@ -222,6 +232,12 @@ spec:
                     --dry-run=client \
                     -o yaml \
                     | kubectl apply -f -
+
+                  if [ -f /work/credential-probe-failed ]; then
+                    echo "the runtime secret was refreshed, but a credential probe failed:" >&2
+                    cat /work/credential-probe-failed >&2
+                    exit 1
+                  fi
 
               securityContext:
                 allowPrivilegeEscalation: false
