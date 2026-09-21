@@ -15,6 +15,13 @@ data:
   # result=repository-changed once renovate/* branches existed (forgejo issue#3). Hitting forgejo-http
   # directly preserves the encoded slash. Git clone uses this endpoint host too (in-cluster http,
   # bot-token auth) — fine cluster-internal. Keep in sync with provider.endpoint in webgrip-forgejo.yaml.
+  # onboardingConfig pins the preset reference. Without it Renovate onboards a repo with a
+  # BARE `local>webgrip/renovate-config`, and default.json carries two rules that only make
+  # sense against a pinned one: a soak exemption for preset updates (which requires a version
+  # for Renovate to bump) and a pinDigests: false whose own description says the reference
+  # "is already pinned to a protected semver release tag". Unpinned, a repo never sees the
+  # preset on its dashboard and takes preset changes unreviewed while every other repo
+  # reviews them. Bumping this pin is itself a Renovate PR against this file.
   # allowedUnsafeExecutions lets the mise manager run `mise lock`. Without it a repo that sets
   # lockfile = true gets its mise.toml rewritten by a uv/just/node bump while mise.lock stays put —
   # a lockfile that silently disagrees with its manifest. Self-hosted-only; ignored in repo config.
@@ -25,6 +32,10 @@ data:
       "endpoint": "http://forgejo-http.forgejo.svc.cluster.local:3000/api/v1",
       "autodiscover": false,
       "onboarding": true,
+      "onboardingConfig": {
+        "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+        "extends": ["local>webgrip/renovate-config#v1.9.0"]
+      },
       "requireConfig": "optional",
 
       "extends": ["local>webgrip/renovate-config:forgejo"],
