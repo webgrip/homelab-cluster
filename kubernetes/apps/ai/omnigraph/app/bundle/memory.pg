@@ -1,0 +1,25 @@
+node Agent @description("An agent or human that writes to the graph") {
+  name: String @key
+}
+
+node Topic @description("A subject that notes are filed under") {
+  slug: String @key
+  title: String
+}
+
+node Source @description("An external document a note is based on") {
+  url: String @key
+  title: String?
+}
+
+node Note @description("One durable piece of knowledge") @instruction("Write new notes on your own branch; main only changes through a reviewed merge") {
+  slug: String @key
+  title: String
+  body: String @index
+  created_at: DateTime?
+}
+
+edge Wrote: Agent -> Note
+edge About: Note -> Topic
+edge Cites: Note -> Source
+edge Relates: Note -> Note

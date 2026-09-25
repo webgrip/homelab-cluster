@@ -1,0 +1,59 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: omnigraph-maintenance-restart
+  namespace: ai
+spec:
+  schedule: "15 3 * * *"
+  timeZone: Europe/Amsterdam
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app: omnigraph-maintenance-restart
+        spec:
+          serviceAccountName: omnigraph-maintenance-restart
+          automountServiceAccountToken: true
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: restart
+              image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.0@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4
+              imagePullPolicy: IfNotPresent
+              command:
+                - kubectl
+                - --namespace=ai
+                - rollout
+                - restart
+                - deployment/omnigraph
+              env:
+                - name: HOME
+                  value: /tmp
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - "ALL"
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}

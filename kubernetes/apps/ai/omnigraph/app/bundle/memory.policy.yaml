@@ -1,0 +1,74 @@
+---
+version: 1
+protected_branches:
+  - main
+groups:
+  admins:
+    - act-admin
+  agents:
+    - act-agent
+  readers:
+    - act-reader
+rules:
+  - id: everyone-reads
+    allow:
+      actors: {group: readers}
+      actions:
+        - read
+        - export
+      branch_scope: any
+  - id: agents-read
+    allow:
+      actors: {group: agents}
+      actions:
+        - read
+      branch_scope: any
+  - id: everyone-invokes-queries
+    allow:
+      actors: {group: readers}
+      actions:
+        - invoke_query
+  - id: agents-invoke-queries
+    allow:
+      actors: {group: agents}
+      actions:
+        - invoke_query
+  - id: admins-invoke-queries
+    allow:
+      actors: {group: admins}
+      actions:
+        - invoke_query
+  - id: agents-write-own-branches
+    allow:
+      actors: {group: agents}
+      actions:
+        - change
+      branch_scope: unprotected
+  - id: agents-manage-own-branches
+    allow:
+      actors: {group: agents}
+      actions:
+        - branch_create
+        - branch_delete
+      target_branch_scope: unprotected
+  - id: admins-everything
+    allow:
+      actors: {group: admins}
+      actions:
+        - read
+        - export
+        - change
+      branch_scope: any
+  - id: admins-manage-branches
+    allow:
+      actors: {group: admins}
+      actions:
+        - branch_create
+        - branch_delete
+      target_branch_scope: any
+  - id: admins-merge-into-main
+    allow:
+      actors: {group: admins}
+      actions:
+        - branch_merge
+      target_branch_scope: any

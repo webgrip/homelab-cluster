@@ -1,0 +1,28 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./serviceaccount.yaml
+  - ./omnigraph-tokens.externalsecret.yaml
+  - ./pvc.yaml
+  - ./deployment.yaml
+  - ./service.yaml
+  - ./httproute.yaml
+  - ./networkpolicy.yaml
+  - ./maintenance-restart.rbac.yaml
+  - ./maintenance-restart.cronjob.yaml
+configMapGenerator:
+  - name: omnigraph-bundle
+    files:
+      - ./bundle/cluster.yaml
+      - ./bundle/memory.pg
+      - ./bundle/memory.gq
+      - ./bundle/memory.policy.yaml
+      - ./bundle/server.policy.yaml
+      - ./bundle/bootstrap.sh
+    options:
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled
+components:
+  - ../../../../components/placement/worker-pool
