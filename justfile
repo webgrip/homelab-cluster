@@ -299,6 +299,52 @@ bootstrap-apps:
     @just _file {{ root }}/.sops.yaml {{ root }}/scripts/bootstrap-apps.sh "${KUBECONFIG}" "${SOPS_AGE_KEY_FILE}"
     bash {{ root }}/scripts/bootstrap-apps.sh
 
+# --- omnigraph --------------------------------------------------------------
+
+[doc('Cache your Omnigraph token from secret/omnigraph/<actor> into ~/.omnigraph/credentials (0600) and write the homelab server entry if missing; the token is never printed')]
+[group('omnigraph')]
+omnigraph-login actor="ryan":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _need bao omnigraph kubectl
+    BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
+    bao token lookup >/dev/null 2>&1 || bao login -method=oidc >&2
+    config="${OMNIGRAPH_HOME:-$HOME/.omnigraph}/config.yaml"
+    if [ ! -f "$config" ]; then
+        mkdir -p "$(dirname "$config")"
+        url="https://$(kubectl get httproute omnigraph -n ai -o jsonpath='{.spec.hostnames[0]}')"
+        printf 'defaults:\n  server: homelab\n  default_graph: brain\nservers:\n  homelab:\n    url: %s\nprofiles:\n  brain: {server: homelab, default_graph: brain}\n  memory: {server: homelab, default_graph: memory}\n  webgrip: {server: homelab, default_graph: webgrip}\n' "$url" > "$config"
+        echo "wrote $config"
+    fi
+    bao kv get -field=token "secret/omnigraph/{{ actor }}" | omnigraph login homelab
+    if [ "{{ actor }}" = ryan ]; then
+        omnigraph graphs list --server homelab >/dev/null
+        echo "omnigraph: homelab credential for act-ryan works"
+    else
+        echo "omnigraph: stored the act-{{ actor }} credential for server homelab"
+    fi
+
+[doc('Convert one extracted meeting (see docs runbook) and load it onto a fresh review branch of <graph> as act-ingest; prints the review and merge commands')]
+[group('omnigraph')]
+omnigraph-ingest-meeting graph extraction raw source_kind="notes":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _need bao omnigraph python3 openssl
+    BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
+    bao token lookup >/dev/null 2>&1 || bao login -method=oidc >&2
+    work="$(mktemp -d)"
+    trap 'rm -rf "$work"' EXIT
+    umask 077
+    bao kv get -field=key "secret/omnigraph/{{ graph }}-hmac" > "$work/key"
+    python3 scripts/omnigraph_meeting_to_ndjson.py --extraction "{{ extraction }}" --raw "{{ raw }}" \
+        --client-key-file "$work/key" --source-kind "{{ source_kind }}" --extractor "claude-code/$(whoami)" > "$work/meeting.ndjson"
+    branch="ingest/$(openssl rand -hex 6)"
+    OMNIGRAPH_TOKEN_HOMELAB="$(bao kv get -field=token secret/omnigraph/ingest)" \
+        omnigraph load --server homelab --graph "{{ graph }}" --branch "$branch" --from main --mode merge --data "$work/meeting.ndjson"
+    printf '\nLoaded onto %s. Review, then merge as yourself:\n' "$branch"
+    printf '  omnigraph commit list --server homelab --graph %s --branch %s --json\n' "{{ graph }}" "$branch"
+    printf '  omnigraph branch merge %s --into main --server homelab --graph %s\n' "$branch" "{{ graph }}"
+
 # --- secrets ----------------------------------------------------------------
 
 # Print the OpenBao address, derived from the live HTTPRoute (no hardcoded domain)

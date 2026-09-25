@@ -42,6 +42,10 @@ stage_fixed = true
 glob = ["kubernetes/apps/security/access-plane/model/**/*", "scripts/validate_access_model.py", "scripts/validate-access-model.sh"]
 run = "mise exec -- ./scripts/validate-access-model.sh"
 
+[pre-commit.commands.validate-omnigraph-policies]
+glob = ["kubernetes/apps/ai/omnigraph/app/bundle/*", "scripts/validate_omnigraph_policies.py", "scripts/test-validate-omnigraph-policies.sh"]
+run = "mise exec -- bash -c 'python3 scripts/validate_omnigraph_policies.py kubernetes/apps/ai/omnigraph/app/bundle/cluster.yaml --cross-client-actor act-admin --cross-client-actor act-ryan --cross-client-actor act-ingest && bash scripts/test-validate-omnigraph-policies.sh >/dev/null'"
+
 [pre-commit.commands.format-tofu]
 glob = ["*.tf"]
 run = "mise exec -- tofu fmt {staged_files}"

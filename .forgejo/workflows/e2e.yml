@@ -116,6 +116,14 @@ jobs:
           docker run --rm -v "$ws":/data:ro -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
             sh -ec "pip install --quiet check-jsonschema==0.38.0 pyyaml==6.0.3 && ./scripts/validate-access-model.sh /data"
 
+      - name: Validate Omnigraph policy isolation
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE":/data:ro -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
+            sh -ec "pip install --quiet pyyaml==6.0.3 && \
+              python3 scripts/validate_omnigraph_policies.py kubernetes/apps/ai/omnigraph/app/bundle/cluster.yaml \
+                --cross-client-actor act-admin --cross-client-actor act-ryan --cross-client-actor act-ingest \
+              && bash scripts/test-validate-omnigraph-policies.sh"
+
       - name: Check docs nav + links
         run: ./scripts/check-docs-links.sh "$GITHUB_WORKSPACE"
 
