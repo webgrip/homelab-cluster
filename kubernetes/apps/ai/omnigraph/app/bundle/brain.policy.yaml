@@ -1,0 +1,50 @@
+---
+version: 1
+protected_branches:
+  - main
+groups:
+  owners:
+    - act-ryan
+  assistants:
+    - act-brain-agent
+rules:
+  - id: owners-read-and-write-everywhere
+    allow:
+      actors: {group: owners}
+      actions:
+        - read
+        - export
+        - change
+      branch_scope: any
+  - id: owners-manage-and-merge-branches
+    allow:
+      actors: {group: owners}
+      actions:
+        - branch_create
+        - branch_delete
+        - branch_merge
+      target_branch_scope: any
+  - id: owners-invoke-queries
+    allow:
+      actors: {group: owners}
+      actions:
+        - invoke_query
+  - id: assistants-read-and-write-proposal-branches
+    allow:
+      actors: {group: assistants}
+      actions:
+        - read
+        - change
+      branch_scope: unprotected
+  - id: assistants-manage-proposal-branches
+    allow:
+      actors: {group: assistants}
+      actions:
+        - branch_create
+        - branch_delete
+      target_branch_scope: unprotected
+  - id: assistants-invoke-queries
+    allow:
+      actors: {group: assistants}
+      actions:
+        - invoke_query

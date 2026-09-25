@@ -1,0 +1,44 @@
+---
+version: 1
+protected_branches:
+  - main
+groups:
+  admins:
+    - act-admin
+    - act-ryan
+  ingest:
+    - act-ingest
+rules:
+  - id: ingest-forks-review-branches
+    allow:
+      actors: {group: ingest}
+      actions:
+        - branch_create
+      target_branch_scope: unprotected
+  - id: ingest-writes-review-branches
+    allow:
+      actors: {group: ingest}
+      actions:
+        - change
+      branch_scope: unprotected
+  - id: admins-read-export-change
+    allow:
+      actors: {group: admins}
+      actions:
+        - read
+        - export
+        - change
+      branch_scope: any
+  - id: admins-invoke-queries
+    allow:
+      actors: {group: admins}
+      actions:
+        - invoke_query
+  - id: admins-manage-branches
+    allow:
+      actors: {group: admins}
+      actions:
+        - branch_create
+        - branch_delete
+        - branch_merge
+      target_branch_scope: any

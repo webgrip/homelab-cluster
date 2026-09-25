@@ -75,3 +75,4 @@ Links-only index. Each runbook is its own page; authoring recipes live in skills
 - [2026-06-18 — Longhorn rolling-IM detonation + guac-db faulted](../incidents/2026-06-18-longhorn-im-cpu-rolling-detonation.md)
 - [2026-06-19 — Node-taxonomy migration storage churn / rebuild wedge](../incidents/2026-06-19-node-taxonomy-migration-storage-churn.md)
 - [Test Ploeg and Vloer together](ploeg-vloer-test.md)
+- [Omnigraph (agent memory, second brain, company meetings)](omnigraph.md)

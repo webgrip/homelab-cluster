@@ -1,0 +1,100 @@
+node Person @description("A meeting participant; side separates Webgrip staff from client and third-party people") @instruction("slug is opaque (p- plus an HMAC of email or name under the client key) so no personal data lives in ids; side is internal for Webgrip staff, client for the graph's client, third_party for anyone else") {
+  slug: String @key
+  name: String @index
+  side: enum(internal, client, third_party) @index
+  email: String?
+  role: String?
+}
+
+node Topic @description("A subject that meetings and decisions are filed under") {
+  slug: String @key
+  name: String @index
+}
+
+node Meeting @description("One held meeting with this graph's client") @instruction("slug is m-<held_on>-<hash>; children use <meeting slug>/src, /cN, /dN, /aN; summary is the reviewed prose summary of the whole meeting") {
+  slug: String @key
+  title: String @index
+  held_on: Date @index
+  kind: enum(kickoff, status, review, workshop, sales, support, incident, other) @index
+  summary: String @index
+  source_app: String?
+  ingested_at: DateTime
+}
+
+node Source @description("The raw material a meeting record was extracted from: notes, transcript, email thread or document") @instruction("One Source per original file; raw holds the original bytes, sha256 its digest, extractor the model and prompt version that produced the rows") {
+  slug: String @key
+  meeting: String @index
+  kind: enum(notes, transcript, email, document, recording) @index
+  title: String?
+  uri: String?
+  sha256: String?
+  extractor: String?
+  captured_at: DateTime
+  raw: Blob?
+}
+
+node Chunk @description("A passage of a Source, the unit of full-text search") {
+  slug: String @key
+  meeting: String @index
+  seq: I32
+  text: String @index
+}
+
+node Decision @description("Something both sides agreed or Webgrip decided in a meeting") @instruction("quote is the verbatim sentence from the source that supports the decision; never paraphrase into quote") {
+  slug: String @key
+  meeting: String @index
+  statement: String @index
+  decided_on: Date @index
+  status: enum(agreed, proposed, superseded, reversed) @index
+  quote: String?
+}
+
+node ActionItem @description("A follow-up someone committed to in a meeting") @instruction("Every ActionItem has exactly one OwnedBy edge; use the person slug p-unassigned when the notes name no owner") {
+  slug: String @key
+  meeting: String @index
+  title: String @index
+  status: enum(open, in_progress, blocked, done, dropped) @index
+  due: Date? @index
+  quote: String?
+}
+
+edge Attended: Person -> Meeting {
+  role: enum(host, attendee, absent)?
+  @key(@src, @dst)
+}
+
+edge RecordedIn: Meeting -> Source {
+  @key(@src, @dst)
+}
+
+edge ChunkOf: Chunk -> Source {
+  @key(@src, @dst)
+}
+
+edge DecidedIn: Decision -> Meeting {
+  @key(@src, @dst)
+}
+
+edge AgreedWith: Decision -> Person {
+  @key(@src, @dst)
+}
+
+edge RaisedIn: ActionItem -> Meeting {
+  @key(@src, @dst)
+}
+
+edge OwnedBy: ActionItem -> Person {
+  @key(@src, @dst)
+}
+
+edge MeetingAbout: Meeting -> Topic {
+  @key(@src, @dst)
+}
+
+edge DecisionAbout: Decision -> Topic {
+  @key(@src, @dst)
+}
+
+edge Supersedes: Decision -> Decision {
+  @key(@src, @dst)
+}

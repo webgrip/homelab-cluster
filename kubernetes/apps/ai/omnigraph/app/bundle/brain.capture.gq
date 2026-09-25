@@ -1,0 +1,15 @@
+query capture_note($slug: String, $name: String, $kind: String, $content: String?, $when: Date?, $tags: [String]?) @description("Capture one atomic note with its body; createdAt and updatedAt are stamped by the server") {
+    insert Note { slug: $slug, name: $name, kind: $kind, content: $content, when: $when, tags: $tags, createdAt: now(), updatedAt: now() }
+}
+
+query capture_task($slug: String, $name: String, $status: String, $direction: String?, $due: DateTime?, $brief: String?) @description("Capture a task with an optional owe-direction, due date and brief") {
+    insert Task { slug: $slug, name: $name, status: $status, direction: $direction, due: $due, brief: $brief, createdAt: now(), updatedAt: now() }
+}
+
+query capture_person($slug: String, $name: String, $relation: String, $brief: String?, $cadence_days: I32?) @description("Capture a person with an optional brief and desired contact cadence in days") {
+    insert Person { slug: $slug, name: $name, relation: $relation, brief: $brief, cadence_days: $cadence_days, createdAt: now(), updatedAt: now() }
+}
+
+query set_task_status($slug: String, $status: String) @description("Move a task to another GTD status") {
+    update Task set { status: $status, updatedAt: now() } where slug = $slug
+}

@@ -1,0 +1,250 @@
+node Person {
+    slug: String @key
+    name: String @index
+    first_name: String?
+    last_name: String?
+    relation: enum(self, family, partner, close-friend, friend, colleague, mentor, mentee, acquaintance, professional) @index
+    email: String?
+    phone: String?
+    birthday: Date?
+    location: String?
+    current_role: String?
+    cadence_days: I32?
+    how_met: String?
+    brief: String?
+    tags: [String]?
+    createdAt: DateTime
+    updatedAt: DateTime
+}
+
+node Organization {
+    slug: String @key
+    name: String @index
+    kind: enum(company, school, club, community, nonprofit, government, team) @index
+    brief: String?
+    website: String?
+    createdAt: DateTime
+    updatedAt: DateTime
+}
+
+node Place {
+    slug: String @key
+    name: String @index
+    kind: enum(city, country, neighborhood, restaurant, cafe, office, home, venue, airport, park, gym, school, other) @index
+    address: String?
+    lat: F64?
+    lng: F64?
+    brief: String?
+    createdAt: DateTime
+    updatedAt: DateTime
+}
+
+node Event {
+    slug: String @key
+    name: String @index
+    kind: enum(meeting, call, dinner, party, trip, milestone, birthday, anniversary, life-event, workout, conference, date, hangout, deadline, other) @index
+    when: DateTime @index
+    end_at: DateTime?
+    mood: enum(great, good, neutral, mixed, hard)?
+    brief: String?
+    description: String?
+    tags: [String]?
+    createdAt: DateTime
+    updatedAt: DateTime
+}
+
+node Note {
+    slug: String @key
+    name: String @index
+    kind: enum(idea, journal, reflection, insight, principle, preference, quote, dream, question, decision) @index
+    content: String? @index
+    when: Date?
+    tags: [String]?
+    createdAt: DateTime
+    updatedAt: DateTime
+}
+
+node Task {
+    slug: String @key
+    name: String @index
+    status: enum(inbox, next, waiting, someday, done, cancelled) @index
+    kind: enum(action, research, decision, waiting, reminder, admin)?
+    context: enum(phone, computer, errand, home, office, anywhere)?
+    priority: enum(low, medium, high, critical)?
+    due: DateTime?
+    remind_at: DateTime?
+    direction: enum(i-owe, they-owe, mutual)?
+    brief: String?
+    tags: [String]?
+    createdAt: DateTime
+    updatedAt: DateTime
+}
+
+node Project {
+    slug: String @key
+    name: String @index
+    kind: enum(work, personal, hobby, side-project, learning, health, home, family) @index
+    status: enum(exploring, active, paused, completed, abandoned) @index
+    brief: String?
+    description: String?
+    due: Date?
+    tags: [String]?
+    createdAt: DateTime
+    updatedAt: DateTime
+}
+
+node Area {
+    slug: String @key
+    name: String @index
+    kind: enum(health, career, finance, relationships, learning, creativity, community, spirituality, home, family, other) @index
+    status: enum(active, archived) @index
+    brief: String?
+    createdAt: DateTime
+    updatedAt: DateTime
+}
+
+node Goal {
+    slug: String @key
+    name: String @index
+    status: enum(active, achieved, abandoned, paused) @index
+    timeframe: enum(quarterly, yearly, multi-year)?
+    target: String?
+    due: Date?
+    brief: String?
+    tags: [String]?
+    createdAt: DateTime
+    updatedAt: DateTime
+}
+
+node Habit {
+    slug: String @key
+    name: String @index
+    status: enum(active, paused, dropped) @index
+    frequency: enum(daily, weekly, monthly) @index
+    cue: String?
+    routine: String?
+    reward: String?
+    completions: [Date]?
+    streak_current: I32?
+    streak_best: I32?
+    brief: String?
+    tags: [String]?
+    createdAt: DateTime
+    updatedAt: DateTime
+}
+
+node Media {
+    slug: String @key
+    name: String @index
+    kind: enum(book, article, movie, show, podcast, episode, album, paper, video, game, blog, newsletter, website) @index
+    status: enum(want, consuming, finished, abandoned)?
+    rating: F32?
+    url: String?
+    published_date: Date?
+    brief: String?
+    tags: [String]?
+    createdAt: DateTime
+    updatedAt: DateTime
+}
+
+node Artifact {
+    slug: String @key
+    name: String @index
+    kind: enum(message, email, post, document, transcript, recording, meeting-note, photo, calendar-entry, voice-note, chat-export, web-clip) @index
+    source: enum(whatsapp, email, slack, telegram, imessage, sms, linkedin, instagram, x, calendar, web, manual, voice, notes-app, readwise, other) @index
+    source_ref: String?
+    thread_id: String? @index
+    url: String?
+    content: String? @index
+    blob: Blob?
+    content_sha256: String? @index
+    timestamp: DateTime @index
+    createdAt: DateTime
+    updatedAt: DateTime
+}
+
+node Chunk {
+    text: String
+    chunk_index: I32
+    embedding: Vector(3072) @embed("text") @index
+    createdAt: DateTime
+}
+
+edge Knows: Person -> Person {
+    context: String?
+    since: Date?
+}
+
+edge RelatedToPerson: Person -> Person {
+    relation: enum(spouse, partner, parent, child, sibling, grandparent, grandchild, in-law, ex)
+}
+
+edge LivesIn: Person -> Place {
+    primary: Bool?
+    since: Date?
+}
+
+edge WorksAt: Person -> Organization {
+    role: String?
+    since: Date?
+    until: Date?
+    current: Bool?
+}
+
+edge AttendedBy: Event -> Person
+edge HappenedAt: Event -> Place @card(0..1)
+edge EventForProject: Event -> Project
+edge EventForPerson: Event -> Person
+
+edge NoteAboutPerson: Note -> Person
+edge NoteAboutProject: Note -> Project
+edge NoteAboutArea: Note -> Area
+edge NoteAboutPlace: Note -> Place
+edge NoteAboutOrganization: Note -> Organization
+edge NoteAboutMedia: Note -> Media
+edge NoteFromArtifact: Note -> Artifact @card(0..1)
+edge NoteFromEvent: Note -> Event @card(0..1)
+edge RelatedNote: Note -> Note
+edge HabitFromPrinciple: Habit -> Note
+
+edge TaskForPerson: Task -> Person
+edge TaskForProject: Task -> Project
+edge TaskForArea: Task -> Area
+edge TaskForGoal: Task -> Goal
+edge TaskFromArtifact: Task -> Artifact @card(0..1)
+edge TaskFromEvent: Task -> Event @card(0..1)
+edge TaskDependsOnTask: Task -> Task {
+    kind: enum(blocked-by, prerequisite, sequence, waiting-on)?
+    reason: String?
+}
+
+edge ProjectInArea: Project -> Area
+edge ProjectForOrganization: Project -> Organization
+edge GoalForArea: Goal -> Area
+edge HabitForArea: Habit -> Area
+edge HabitForGoal: Habit -> Goal
+edge PersonInvolvedInProject: Person -> Project {
+    role: String?
+}
+
+edge MediaAuthoredBy: Media -> Person
+edge MediaRecommendedBy: Media -> Person
+edge MediaForProject: Media -> Project
+edge MediaForArea: Media -> Area
+edge MediaPartOf: Media -> Media @card(0..1)
+
+edge MentionsPerson: Artifact -> Person
+edge ArtifactFromPerson: Artifact -> Person @card(0..1)
+edge ArtifactForProject: Artifact -> Project
+edge RecordOf: Artifact -> Event @card(0..1)
+edge InReplyTo: Artifact -> Artifact @card(0..1)
+edge DerivedFromArtifact: Artifact -> Artifact {
+    activity: enum(transcribed, summarized, ocr, imported, clipped, corrected, translated, extracted)
+    agent: String?
+    model: String?
+    confidence: F32?
+    createdAt: DateTime
+}
+edge ChunkOf: Chunk -> Artifact @card(1..1) {
+    @unique(@src)
+}

@@ -1,0 +1,824 @@
+query get_artifact($slug: String) {
+    match {
+        $a: Artifact { slug: $slug }
+    }
+    return { $a.slug, $a.name, $a.kind, $a.source, $a.url, $a.thread_id, $a.timestamp }
+}
+
+query artifacts_recent() {
+    match {
+        $a: Artifact
+    }
+    return { $a.slug, $a.name, $a.kind, $a.source, $a.timestamp }
+    order { $a.timestamp desc }
+    limit 30
+}
+
+query artifacts_by_source($source: String) {
+    match {
+        $a: Artifact { source: $source }
+    }
+    return { $a.slug, $a.name, $a.kind, $a.timestamp }
+    order { $a.timestamp desc }
+}
+
+query artifacts_by_thread($thread_id: String) {
+    match {
+        $a: Artifact { thread_id: $thread_id }
+    }
+    return { $a.slug, $a.name, $a.kind, $a.source, $a.timestamp }
+    order { $a.timestamp }
+}
+
+query artifact_mentions($slug: String) {
+    match {
+        $a: Artifact { slug: $slug }
+        $a mentionsPerson $p
+    }
+    return { $p.slug, $p.name, $p.relation }
+}
+
+query artifact_derived_from($slug: String) {
+    match {
+        $a: Artifact { slug: $slug }
+        $a derivedFromArtifact $src
+    }
+    return { $src.slug, $src.name, $src.kind, $src.source }
+}
+
+query get_event($slug: String) {
+    match {
+        $e: Event { slug: $slug }
+    }
+    return { $e.slug, $e.name, $e.kind, $e.when, $e.end_at, $e.mood, $e.brief, $e.description }
+}
+
+query events_recent() {
+    match {
+        $e: Event
+    }
+    return { $e.slug, $e.name, $e.kind, $e.when, $e.mood, $e.brief }
+    order { $e.when desc }
+    limit 30
+}
+
+query events_chronological() {
+    match {
+        $e: Event
+    }
+    return { $e.slug, $e.name, $e.kind, $e.when, $e.brief }
+    order { $e.when }
+}
+
+query events_by_kind($kind: String) {
+    match {
+        $e: Event { kind: $kind }
+    }
+    return { $e.slug, $e.name, $e.when, $e.mood, $e.brief }
+    order { $e.when desc }
+}
+
+query event_attendees($slug: String) {
+    match {
+        $e: Event { slug: $slug }
+        $e attendedBy $p
+    }
+    return { $p.slug, $p.name, $p.relation }
+}
+
+query event_place($slug: String) {
+    match {
+        $e: Event { slug: $slug }
+        $e happenedAt $pl
+    }
+    return { $pl.slug, $pl.name, $pl.kind, $pl.address }
+}
+
+query event_project($slug: String) {
+    match {
+        $e: Event { slug: $slug }
+        $e eventForProject $proj
+    }
+    return { $proj.slug, $proj.name, $proj.kind, $proj.status }
+}
+
+query person_life_events($slug: String) {
+    match {
+        $p: Person { slug: $slug }
+        $e eventForPerson $p
+    }
+    return { $e.slug, $e.name, $e.kind, $e.when, $e.brief }
+    order { $e.when desc }
+}
+
+query get_media($slug: String) {
+    match {
+        $m: Media { slug: $slug }
+    }
+    return { $m.slug, $m.name, $m.kind, $m.status, $m.rating, $m.url, $m.published_date, $m.brief, $m.tags }
+}
+
+query reading_queue() {
+    match {
+        $m: Media { kind: "book", status: "want" }
+    }
+    return { $m.slug, $m.name, $m.brief, $m.tags }
+    order { $m.name }
+}
+
+query finished_books() {
+    match {
+        $m: Media { kind: "book", status: "finished" }
+    }
+    return { $m.slug, $m.name, $m.rating, $m.brief, $m.published_date }
+    order { $m.rating desc }
+}
+
+query media_by_kind($kind: String) {
+    match {
+        $m: Media { kind: $kind }
+    }
+    return { $m.slug, $m.name, $m.status, $m.rating, $m.brief }
+}
+
+query media_authored_by($slug: String) {
+    match {
+        $m: Media { slug: $slug }
+        $m mediaAuthoredBy $p
+    }
+    return { $p.slug, $p.name, $p.brief }
+}
+
+query media_recommended_by($slug: String) {
+    match {
+        $m: Media { slug: $slug }
+        $m mediaRecommendedBy $p
+    }
+    return { $p.slug, $p.name, $p.relation }
+}
+
+query add_person($slug: String, $name: String, $relation: String, $createdAt: DateTime, $updatedAt: DateTime) {
+    insert Person { slug: $slug, name: $name, relation: $relation, createdAt: $createdAt, updatedAt: $updatedAt }
+}
+
+query add_event($slug: String, $name: String, $kind: String, $when: DateTime, $createdAt: DateTime, $updatedAt: DateTime) {
+    insert Event { slug: $slug, name: $name, kind: $kind, when: $when, createdAt: $createdAt, updatedAt: $updatedAt }
+}
+
+query add_place($slug: String, $name: String, $kind: String, $createdAt: DateTime, $updatedAt: DateTime) {
+    insert Place { slug: $slug, name: $name, kind: $kind, createdAt: $createdAt, updatedAt: $updatedAt }
+}
+
+query add_organization($slug: String, $name: String, $kind: String, $createdAt: DateTime, $updatedAt: DateTime) {
+    insert Organization { slug: $slug, name: $name, kind: $kind, createdAt: $createdAt, updatedAt: $updatedAt }
+}
+
+query add_note($slug: String, $name: String, $kind: String, $createdAt: DateTime, $updatedAt: DateTime) {
+    insert Note { slug: $slug, name: $name, kind: $kind, createdAt: $createdAt, updatedAt: $updatedAt }
+}
+
+query add_task($slug: String, $name: String, $status: String, $createdAt: DateTime, $updatedAt: DateTime) {
+    insert Task { slug: $slug, name: $name, status: $status, createdAt: $createdAt, updatedAt: $updatedAt }
+}
+
+query add_project($slug: String, $name: String, $kind: String, $status: String, $createdAt: DateTime, $updatedAt: DateTime) {
+    insert Project { slug: $slug, name: $name, kind: $kind, status: $status, createdAt: $createdAt, updatedAt: $updatedAt }
+}
+
+query add_area($slug: String, $name: String, $kind: String, $status: String, $createdAt: DateTime, $updatedAt: DateTime) {
+    insert Area { slug: $slug, name: $name, kind: $kind, status: $status, createdAt: $createdAt, updatedAt: $updatedAt }
+}
+
+query add_goal($slug: String, $name: String, $status: String, $createdAt: DateTime, $updatedAt: DateTime) {
+    insert Goal { slug: $slug, name: $name, status: $status, createdAt: $createdAt, updatedAt: $updatedAt }
+}
+
+query add_habit($slug: String, $name: String, $status: String, $frequency: String, $createdAt: DateTime, $updatedAt: DateTime) {
+    insert Habit { slug: $slug, name: $name, status: $status, frequency: $frequency, createdAt: $createdAt, updatedAt: $updatedAt }
+}
+
+query add_media($slug: String, $name: String, $kind: String, $createdAt: DateTime, $updatedAt: DateTime) {
+    insert Media { slug: $slug, name: $name, kind: $kind, createdAt: $createdAt, updatedAt: $updatedAt }
+}
+
+query add_artifact($slug: String, $name: String, $kind: String, $source: String, $timestamp: DateTime, $createdAt: DateTime, $updatedAt: DateTime) {
+    insert Artifact { slug: $slug, name: $name, kind: $kind, source: $source, timestamp: $timestamp, createdAt: $createdAt, updatedAt: $updatedAt }
+}
+
+query link_knows($from: String, $to: String) {
+    insert Knows { from: $from, to: $to }
+}
+
+query link_related($from: String, $to: String, $relation: String) {
+    insert RelatedToPerson { from: $from, to: $to, relation: $relation }
+}
+
+query link_lives_in($from: String, $to: String) {
+    insert LivesIn { from: $from, to: $to }
+}
+
+query link_works_at($from: String, $to: String) {
+    insert WorksAt { from: $from, to: $to }
+}
+
+query link_attended_by($event: String, $person: String) {
+    insert AttendedBy { from: $event, to: $person }
+}
+
+query link_event_for_person($event: String, $person: String) {
+    insert EventForPerson { from: $event, to: $person }
+}
+
+query link_event_for_project($event: String, $project: String) {
+    insert EventForProject { from: $event, to: $project }
+}
+
+query link_happened_at($event: String, $place: String) {
+    insert HappenedAt { from: $event, to: $place }
+}
+
+query link_note_about_person($note: String, $person: String) {
+    insert NoteAboutPerson { from: $note, to: $person }
+}
+
+query link_note_about_project($note: String, $project: String) {
+    insert NoteAboutProject { from: $note, to: $project }
+}
+
+query link_note_about_area($note: String, $area: String) {
+    insert NoteAboutArea { from: $note, to: $area }
+}
+
+query link_note_about_place($note: String, $place: String) {
+    insert NoteAboutPlace { from: $note, to: $place }
+}
+
+query link_note_about_organization($note: String, $org: String) {
+    insert NoteAboutOrganization { from: $note, to: $org }
+}
+
+query link_note_about_media($note: String, $media: String) {
+    insert NoteAboutMedia { from: $note, to: $media }
+}
+
+query link_note_from_artifact($note: String, $artifact: String) {
+    insert NoteFromArtifact { from: $note, to: $artifact }
+}
+
+query link_note_from_event($note: String, $event: String) {
+    insert NoteFromEvent { from: $note, to: $event }
+}
+
+query link_related_note($from: String, $to: String) {
+    insert RelatedNote { from: $from, to: $to }
+}
+
+query link_task_for_person($task: String, $person: String) {
+    insert TaskForPerson { from: $task, to: $person }
+}
+
+query link_task_for_project($task: String, $project: String) {
+    insert TaskForProject { from: $task, to: $project }
+}
+
+query link_task_for_area($task: String, $area: String) {
+    insert TaskForArea { from: $task, to: $area }
+}
+
+query link_task_for_goal($task: String, $goal: String) {
+    insert TaskForGoal { from: $task, to: $goal }
+}
+
+query link_task_from_artifact($task: String, $artifact: String) {
+    insert TaskFromArtifact { from: $task, to: $artifact }
+}
+
+query link_task_from_event($task: String, $event: String) {
+    insert TaskFromEvent { from: $task, to: $event }
+}
+
+query link_task_depends_on($from: String, $to: String) {
+    insert TaskDependsOnTask { from: $from, to: $to }
+}
+
+query link_project_in_area($project: String, $area: String) {
+    insert ProjectInArea { from: $project, to: $area }
+}
+
+query link_project_for_organization($project: String, $org: String) {
+    insert ProjectForOrganization { from: $project, to: $org }
+}
+
+query link_goal_for_area($goal: String, $area: String) {
+    insert GoalForArea { from: $goal, to: $area }
+}
+
+query link_habit_for_area($habit: String, $area: String) {
+    insert HabitForArea { from: $habit, to: $area }
+}
+
+query link_habit_for_goal($habit: String, $goal: String) {
+    insert HabitForGoal { from: $habit, to: $goal }
+}
+
+query link_habit_from_principle($habit: String, $note: String) {
+    insert HabitFromPrinciple { from: $habit, to: $note }
+}
+
+query link_person_involved_in($person: String, $project: String) {
+    insert PersonInvolvedInProject { from: $person, to: $project }
+}
+
+query link_media_authored_by($media: String, $person: String) {
+    insert MediaAuthoredBy { from: $media, to: $person }
+}
+
+query link_media_recommended_by($media: String, $person: String) {
+    insert MediaRecommendedBy { from: $media, to: $person }
+}
+
+query link_media_for_project($media: String, $project: String) {
+    insert MediaForProject { from: $media, to: $project }
+}
+
+query link_media_for_area($media: String, $area: String) {
+    insert MediaForArea { from: $media, to: $area }
+}
+
+query link_media_part_of($from: String, $to: String) {
+    insert MediaPartOf { from: $from, to: $to }
+}
+
+query link_mentions_person($artifact: String, $person: String) {
+    insert MentionsPerson { from: $artifact, to: $person }
+}
+
+query link_artifact_from_person($artifact: String, $person: String) {
+    insert ArtifactFromPerson { from: $artifact, to: $person }
+}
+
+query link_artifact_for_project($artifact: String, $project: String) {
+    insert ArtifactForProject { from: $artifact, to: $project }
+}
+
+query link_record_of($artifact: String, $event: String) {
+    insert RecordOf { from: $artifact, to: $event }
+}
+
+query link_in_reply_to($from: String, $to: String) {
+    insert InReplyTo { from: $from, to: $to }
+}
+
+query link_derived_from($from: String, $to: String, $activity: String, $createdAt: DateTime) {
+    insert DerivedFromArtifact { from: $from, to: $to, activity: $activity, createdAt: $createdAt }
+}
+
+query get_note($slug: String) {
+    match {
+        $n: Note { slug: $slug }
+    }
+    return { $n.slug, $n.name, $n.kind, $n.content, $n.when, $n.tags }
+}
+
+query notes_recent() {
+    match {
+        $n: Note
+    }
+    return { $n.slug, $n.name, $n.kind, $n.when }
+    order { $n.when desc }
+    limit 30
+}
+
+query notes_by_kind($kind: String) {
+    match {
+        $n: Note { kind: $kind }
+    }
+    return { $n.slug, $n.name, $n.content, $n.when, $n.tags }
+    order { $n.when desc }
+}
+
+query note_related($slug: String) {
+    match {
+        $n: Note { slug: $slug }
+        $n relatedNote $other
+    }
+    return { $other.slug, $other.name, $other.kind }
+}
+
+query preferences_for_person($slug: String) {
+    match {
+        $p: Person { slug: $slug }
+        $n: Note { kind: "preference" }
+        $n noteAboutPerson $p
+    }
+    return { $n.slug, $n.name, $n.content, $n.tags }
+}
+
+query principles_all() {
+    match {
+        $n: Note { kind: "principle" }
+    }
+    return { $n.slug, $n.name, $n.content }
+    order { $n.name }
+}
+
+query open_questions() {
+    match {
+        $n: Note { kind: "question" }
+    }
+    return { $n.slug, $n.name, $n.content, $n.when }
+    order { $n.when desc }
+}
+
+query note_from_artifact($slug: String) {
+    match {
+        $a: Artifact { slug: $slug }
+        $n noteFromArtifact $a
+    }
+    return { $n.slug, $n.name, $n.kind, $n.content }
+}
+
+query get_person($slug: String) {
+    match {
+        $p: Person { slug: $slug }
+    }
+    return { $p.slug, $p.name, $p.relation, $p.location, $p.current_role, $p.birthday, $p.cadence_days, $p.brief }
+}
+
+query people_all() {
+    match {
+        $p: Person
+    }
+    return { $p.slug, $p.name, $p.relation, $p.location, $p.cadence_days }
+    order { $p.name }
+}
+
+query people_by_relation($relation: String) {
+    match {
+        $p: Person { relation: $relation }
+    }
+    return { $p.slug, $p.name, $p.location, $p.cadence_days, $p.birthday, $p.brief }
+    order { $p.name }
+}
+
+query close_friends() {
+    match {
+        $p: Person { relation: "close-friend" }
+    }
+    return { $p.slug, $p.name, $p.location, $p.cadence_days, $p.brief }
+    order { $p.cadence_days }
+}
+
+query family_members() {
+    match {
+        $p: Person { relation: "family" }
+    }
+    return { $p.slug, $p.name, $p.location, $p.cadence_days, $p.birthday }
+    order { $p.name }
+}
+
+query person_knows($slug: String) {
+    match {
+        $p: Person { slug: $slug }
+        $p knows $other
+    }
+    return { $other.slug, $other.name, $other.relation, $other.location }
+}
+
+query person_family($slug: String) {
+    match {
+        $p: Person { slug: $slug }
+        $p relatedToPerson $r
+    }
+    return { $r.slug, $r.name, $r.relation, $r.location }
+}
+
+query person_lives_in($slug: String) {
+    match {
+        $p: Person { slug: $slug }
+        $p livesIn $pl
+    }
+    return { $pl.slug, $pl.name, $pl.kind, $pl.address }
+}
+
+query person_works_at($slug: String) {
+    match {
+        $p: Person { slug: $slug }
+        $p worksAt $o
+    }
+    return { $o.slug, $o.name, $o.kind, $o.website }
+}
+
+query person_recent_events($slug: String) {
+    match {
+        $p: Person { slug: $slug }
+        $e attendedBy $p
+    }
+    return { $e.slug, $e.name, $e.kind, $e.when, $e.mood, $e.brief }
+    order { $e.when desc }
+    limit 20
+}
+
+query person_artifacts_mentioning($slug: String) {
+    match {
+        $p: Person { slug: $slug }
+        $a mentionsPerson $p
+    }
+    return { $a.slug, $a.name, $a.kind, $a.source, $a.timestamp }
+    order { $a.timestamp desc }
+    limit 20
+}
+
+query person_artifacts_from($slug: String) {
+    match {
+        $p: Person { slug: $slug }
+        $a artifactFromPerson $p
+    }
+    return { $a.slug, $a.name, $a.kind, $a.source, $a.timestamp }
+    order { $a.timestamp desc }
+    limit 20
+}
+
+query person_tasks_i_owe($slug: String) {
+    match {
+        $p: Person { slug: $slug }
+        $t: Task { direction: "i-owe" }
+        $t taskForPerson $p
+        $t.status != "done"
+        $t.status != "cancelled"
+    }
+    return { $t.slug, $t.name, $t.status, $t.priority, $t.due, $t.brief }
+    order { $t.due }
+}
+
+query person_tasks_they_owe($slug: String) {
+    match {
+        $p: Person { slug: $slug }
+        $t: Task { direction: "they-owe" }
+        $t taskForPerson $p
+        $t.status != "done"
+        $t.status != "cancelled"
+    }
+    return { $t.slug, $t.name, $t.status, $t.due, $t.brief }
+    order { $t.due }
+}
+
+query person_notes($slug: String) {
+    match {
+        $p: Person { slug: $slug }
+        $n noteAboutPerson $p
+    }
+    return { $n.slug, $n.name, $n.kind, $n.content, $n.when }
+    order { $n.kind }
+}
+
+query person_recommended_media($slug: String) {
+    match {
+        $p: Person { slug: $slug }
+        $m mediaRecommendedBy $p
+    }
+    return { $m.slug, $m.name, $m.kind, $m.status, $m.rating, $m.brief }
+}
+
+query get_project($slug: String) {
+    match {
+        $p: Project { slug: $slug }
+    }
+    return { $p.slug, $p.name, $p.kind, $p.status, $p.brief, $p.description, $p.due }
+}
+
+query projects_active() {
+    match {
+        $p: Project { status: "active" }
+    }
+    return { $p.slug, $p.name, $p.kind, $p.due, $p.brief }
+    order { $p.due }
+}
+
+query projects_exploring() {
+    match {
+        $p: Project { status: "exploring" }
+    }
+    return { $p.slug, $p.name, $p.kind, $p.brief }
+}
+
+query project_tasks($slug: String) {
+    match {
+        $p: Project { slug: $slug }
+        $t taskForProject $p
+    }
+    return { $t.slug, $t.name, $t.status, $t.priority, $t.due, $t.brief }
+    order { $t.status, $t.due }
+}
+
+query project_events($slug: String) {
+    match {
+        $p: Project { slug: $slug }
+        $e eventForProject $p
+    }
+    return { $e.slug, $e.name, $e.kind, $e.when, $e.brief }
+    order { $e.when desc }
+}
+
+query project_people($slug: String) {
+    match {
+        $p: Project { slug: $slug }
+        $person personInvolvedInProject $p
+    }
+    return { $person.slug, $person.name, $person.relation }
+}
+
+query project_notes($slug: String) {
+    match {
+        $p: Project { slug: $slug }
+        $n noteAboutProject $p
+    }
+    return { $n.slug, $n.name, $n.kind, $n.content, $n.when }
+    order { $n.when desc }
+}
+
+query get_area($slug: String) {
+    match {
+        $a: Area { slug: $slug }
+    }
+    return { $a.slug, $a.name, $a.kind, $a.status, $a.brief }
+}
+
+query areas_all() {
+    match {
+        $a: Area
+    }
+    return { $a.slug, $a.name, $a.kind, $a.status, $a.brief }
+    order { $a.name }
+}
+
+query areas_active() {
+    match {
+        $a: Area { status: "active" }
+    }
+    return { $a.slug, $a.name, $a.kind, $a.brief }
+    order { $a.name }
+}
+
+query area_projects($slug: String) {
+    match {
+        $a: Area { slug: $slug }
+        $p projectInArea $a
+    }
+    return { $p.slug, $p.name, $p.kind, $p.status, $p.brief }
+}
+
+query area_goals($slug: String) {
+    match {
+        $a: Area { slug: $slug }
+        $g goalForArea $a
+    }
+    return { $g.slug, $g.name, $g.status, $g.timeframe, $g.target, $g.due }
+}
+
+query area_habits($slug: String) {
+    match {
+        $a: Area { slug: $slug }
+        $h habitForArea $a
+    }
+    return { $h.slug, $h.name, $h.status, $h.frequency, $h.streak_current, $h.streak_best }
+}
+
+query area_tasks($slug: String) {
+    match {
+        $a: Area { slug: $slug }
+        $t taskForArea $a
+    }
+    return { $t.slug, $t.name, $t.status, $t.priority, $t.due }
+}
+
+query get_goal($slug: String) {
+    match {
+        $g: Goal { slug: $slug }
+    }
+    return { $g.slug, $g.name, $g.status, $g.timeframe, $g.target, $g.due, $g.brief }
+}
+
+query goals_active() {
+    match {
+        $g: Goal { status: "active" }
+    }
+    return { $g.slug, $g.name, $g.timeframe, $g.target, $g.due, $g.brief }
+    order { $g.due }
+}
+
+query goal_tasks($slug: String) {
+    match {
+        $g: Goal { slug: $slug }
+        $t taskForGoal $g
+    }
+    return { $t.slug, $t.name, $t.status, $t.priority, $t.due }
+}
+
+query habits_active() {
+    match {
+        $h: Habit { status: "active" }
+    }
+    return { $h.slug, $h.name, $h.frequency, $h.cue, $h.routine, $h.reward, $h.streak_current, $h.streak_best }
+    order { $h.name }
+}
+
+query habit_principle($slug: String) {
+    match {
+        $h: Habit { slug: $slug }
+        $h habitFromPrinciple $n
+    }
+    return { $n.slug, $n.name, $n.content }
+}
+
+query get_task($slug: String) {
+    match {
+        $t: Task { slug: $slug }
+    }
+    return { $t.slug, $t.name, $t.status, $t.kind, $t.context, $t.priority, $t.due, $t.direction, $t.brief }
+}
+
+query tasks_next() {
+    match {
+        $t: Task { status: "next" }
+    }
+    return { $t.slug, $t.name, $t.context, $t.priority, $t.due, $t.brief }
+    order { $t.due }
+}
+
+query tasks_inbox() {
+    match {
+        $t: Task { status: "inbox" }
+    }
+    return { $t.slug, $t.name, $t.brief, $t.tags, $t.createdAt }
+    order { $t.createdAt desc }
+}
+
+query tasks_waiting() {
+    match {
+        $t: Task { status: "waiting" }
+    }
+    return { $t.slug, $t.name, $t.due, $t.direction, $t.brief }
+    order { $t.due }
+}
+
+query tasks_waiting_on_person($slug: String) {
+    match {
+        $p: Person { slug: $slug }
+        $t: Task { status: "waiting" }
+        $t taskForPerson $p
+    }
+    return { $t.slug, $t.name, $t.due, $t.brief }
+    order { $t.due }
+}
+
+query tasks_someday() {
+    match {
+        $t: Task { status: "someday" }
+    }
+    return { $t.slug, $t.name, $t.brief, $t.tags }
+}
+
+query tasks_by_context($context: String) {
+    match {
+        $t: Task { context: $context, status: "next" }
+    }
+    return { $t.slug, $t.name, $t.priority, $t.due, $t.brief }
+    order { $t.due }
+}
+
+query tasks_i_owe() {
+    match {
+        $t: Task { direction: "i-owe" }
+        $t.status != "done"
+        $t.status != "cancelled"
+    }
+    return { $t.slug, $t.name, $t.status, $t.priority, $t.due, $t.brief }
+    order { $t.due }
+}
+
+query tasks_they_owe() {
+    match {
+        $t: Task { direction: "they-owe" }
+        $t.status != "done"
+        $t.status != "cancelled"
+    }
+    return { $t.slug, $t.name, $t.status, $t.due, $t.brief }
+    order { $t.due }
+}
+
+query task_person($slug: String) {
+    match {
+        $t: Task { slug: $slug }
+        $t taskForPerson $p
+    }
+    return { $p.slug, $p.name, $p.relation }
+}
+
+query task_dependencies($slug: String) {
+    match {
+        $t: Task { slug: $slug }
+        $t taskDependsOnTask $dep
+    }
+    return { $dep.slug, $dep.name, $dep.status, $dep.brief }
+}

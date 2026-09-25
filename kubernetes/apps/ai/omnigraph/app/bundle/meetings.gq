@@ -1,0 +1,171 @@
+query recent_meetings($since: Date) @description("Meetings held on or after a date, newest first") {
+  match {
+    $m: Meeting
+    $m.held_on >= $since
+  }
+  return { $m.slug, $m.held_on, $m.kind, $m.title, $m.summary }
+  order { $m.held_on desc }
+  limit 25
+}
+
+query meeting_attendees($meeting: String) @description("Who attended one meeting, by side") {
+  match {
+    $m: Meeting { slug: $meeting }
+    $p $a:attended $m
+  }
+  return { $p.slug, $p.name, $p.side, $p.role, $a.role as attendance }
+  order { $p.side asc, $p.name asc }
+  limit 100
+}
+
+query meeting_decisions($meeting: String) @description("Decisions recorded in one meeting") {
+  match {
+    $m: Meeting { slug: $meeting }
+    $d decidedIn $m
+  }
+  return { $d.slug, $d.statement, $d.status, $d.quote }
+  limit 100
+}
+
+query meeting_action_items($meeting: String) @description("Action items raised in one meeting with their owners") {
+  match {
+    $m: Meeting { slug: $meeting }
+    $a raisedIn $m
+    $a ownedBy $p
+  }
+  return { $a.slug, $a.title, $a.status, $a.due, $p.name as owner, $p.side as owner_side }
+  order { $a.due asc }
+  limit 100
+}
+
+query decisions_about($topic: String) @description("Decisions filed under a topic, newest first, with the meeting they came from") {
+  match {
+    $t: Topic { slug: $topic }
+    $d decisionAbout $t
+    $d decidedIn $m
+  }
+  return { $d.slug, $d.decided_on, $d.status, $d.statement, $d.quote, $m.slug as meeting, $m.title as meeting_title }
+  order { $d.decided_on desc }
+  limit 50
+}
+
+query search_decisions($q: String) @description("Full-text search over decision statements") @instruction("Use when the topic slug is unknown; prefer decisions_about when it is known") {
+  match {
+    $d: Decision
+    search($d.statement, $q)
+    $d decidedIn $m
+  }
+  return { $d.slug, $d.decided_on, $d.status, $d.statement, $m.slug as meeting, bm25($d.statement, $q) as score }
+  order { bm25($d.statement, $q) desc }
+  limit 20
+}
+
+query open_action_items() @description("Action items that are open, in progress or blocked, soonest due first") {
+  match {
+    $a: ActionItem
+    $a.status != "done"
+    $a.status != "dropped"
+    $a ownedBy $p
+    $a raisedIn $m
+  }
+  return { $a.slug, $a.title, $a.status, $a.due, $p.name as owner, $p.side as owner_side, $m.slug as meeting }
+  order { $a.due asc }
+  limit 100
+}
+
+query search_meetings($q: String) @description("Full-text search over reviewed meeting summaries") {
+  match {
+    $m: Meeting
+    search($m.summary, $q)
+  }
+  return { $m.slug, $m.held_on, $m.title, bm25($m.summary, $q) as score }
+  order { bm25($m.summary, $q) desc }
+  limit 20
+}
+
+query search_notes($q: String) @description("Full-text search over raw note and transcript passages, with the meeting each passage belongs to") @instruction("Passages are unreviewed source text; cite the meeting slug and prefer decisions and summaries for agreed facts") {
+  match {
+    $c: Chunk
+    search($c.text, $q)
+  }
+  return { $c.meeting, $c.seq, $c.text, bm25($c.text, $q) as score }
+  order { bm25($c.text, $q) desc }
+  limit 20
+}
+
+query find_person($q: String) @description("Find a person by name") {
+  match {
+    $p: Person
+    search($p.name, $q)
+  }
+  return { $p.slug, $p.name, $p.side, $p.role, bm25($p.name, $q) as score }
+  order { bm25($p.name, $q) desc }
+  limit 10
+}
+
+query agreed_with($person: String) @description("Decisions from every meeting a person attended, newest first") @instruction("Answers what did we agree with <person>; resolve the slug with find_person first") {
+  match {
+    $p: Person { slug: $person }
+    $p attended $m
+    $d decidedIn $m
+  }
+  return { $d.decided_on, $d.status, $d.statement, $d.quote, $m.slug as meeting, $m.title as meeting_title }
+  order { $d.decided_on desc }
+  limit 50
+}
+
+query record_meeting($slug: String, $title: String, $held_on: Date, $kind: String, $summary: String, $source: String, $source_kind: String, $source_uri: String?, $extractor: String) @description("Create or update a meeting and its source record") @instruction("Run on a branch; attendees, decisions and action items are separate calls on the same branch, then an admin merges") {
+  insert Meeting { slug: $slug, title: $title, held_on: $held_on, kind: $kind, summary: $summary, ingested_at: now() }
+  insert Source { slug: $source, meeting: $slug, kind: $source_kind, uri: $source_uri, extractor: $extractor, captured_at: now() }
+  insert RecordedIn { from: $slug, to: $source }
+}
+
+query add_attendee($meeting: String, $person: String, $name: String, $side: String, $role: String?) @description("Upsert a person and mark them as attending a meeting") {
+  insert Person { slug: $person, name: $name, side: $side, role: $role }
+  insert Attended { from: $person, to: $meeting, role: "attendee" }
+}
+
+query add_decision($meeting: String, $slug: String, $statement: String, $decided_on: Date, $status: String, $quote: String?, $topic: String, $topic_name: String) @description("Record one decision from a meeting under a topic") {
+  insert Topic { slug: $topic, name: $topic_name }
+  insert Decision { slug: $slug, meeting: $meeting, statement: $statement, decided_on: $decided_on, status: $status, quote: $quote }
+  insert DecidedIn { from: $slug, to: $meeting }
+  insert DecisionAbout { from: $slug, to: $topic }
+}
+
+query add_agreement_party($decision: String, $person: String) @description("Mark a person as a party to a decision") {
+  insert AgreedWith { from: $decision, to: $person }
+}
+
+query add_action_item($meeting: String, $slug: String, $title: String, $owner: String, $due: Date?, $quote: String?) @description("Record one open action item from a meeting") @instruction("The owner person must already exist on the branch; add them with add_attendee first") {
+  insert ActionItem { slug: $slug, meeting: $meeting, title: $title, status: "open", due: $due, quote: $quote }
+  insert RaisedIn { from: $slug, to: $meeting }
+  insert OwnedBy { from: $slug, to: $owner }
+}
+
+query set_action_status($slug: String, $status: String) @description("Move an action item to a new status") {
+  update ActionItem set { status: $status } where slug = $slug
+}
+
+query supersede_decision($old: String, $new: String) @description("Mark a decision as replaced by a newer one") {
+  update Decision set { status: "superseded" } where slug = $old
+  insert Supersedes { from: $new, to: $old }
+}
+
+query forget_meeting_children($meeting: String) @description("Delete every decision, action item, passage and source of one meeting") @instruction("Run before forget_meeting; incident edges cascade with their nodes") {
+  delete Decision where meeting = $meeting
+  delete ActionItem where meeting = $meeting
+  delete Chunk where meeting = $meeting
+  delete Source where meeting = $meeting
+}
+
+query forget_meeting($meeting: String) @description("Delete one meeting node after its children are gone") {
+  delete Meeting where slug = $meeting
+}
+
+query forget_person($person: String) @description("Delete one person and every edge touching them") {
+  delete Person where slug = $person
+}
+
+query reschedule_action($slug: String, $due: Date) @description("Change the due date of an action item") {
+  update ActionItem set { due: $due } where slug = $slug
+}
