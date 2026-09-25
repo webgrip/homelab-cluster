@@ -245,8 +245,10 @@ talos-upgrade-node node at="" insecure="false":
     version="$(yq -r '.talosVersion' talenv.yaml)"
     target="${at:-${configured_ip}}"
     insecure_flag=""
+    control_plane_endpoints_unless_insecure=""
     if [ "${insecure}" = "true" ]; then
         insecure_flag="--insecure"
+        control_plane_endpoints_unless_insecure="--endpoints=${target}"
         talosctl get disks --nodes "${target}" --endpoints "${target}" --insecure >/dev/null
     else
         talosctl config info >/dev/null
@@ -255,7 +257,7 @@ talos-upgrade-node node at="" insecure="false":
     echo "==> ${host} — upgrading to ${image}:${version} via ${target}"
     talosctl upgrade \
         --talosconfig=./clusterconfig/talosconfig \
-        --nodes="${target}" --endpoints="${target}" \
+        --nodes="${target}" ${control_plane_endpoints_unless_insecure} \
         --image="${image}:${version}" --timeout=10m ${insecure_flag}
 
 # Upgrade Kubernetes to the version pinned in talos/talenv.yaml

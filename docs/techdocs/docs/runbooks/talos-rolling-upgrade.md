@@ -83,6 +83,12 @@ At `talosVersion: v1.13.4` the bundled etcd is `v3.6.12`.
 
 ## Troubleshooting
 
+- `error creating Kubernetes client for drain: … kubeconfig is only available on control plane nodes`
+  means talosctl was pointed at a worker as its endpoint. It fetches the drain kubeconfig from the
+  endpoint, so the image installs, the drain fails, and the node never reboots. The recipe keeps the
+  control-plane endpoints from the talosconfig for every upgrade except `insecure`; re-running it
+  finishes a node left in that state.
+
 - If `etcd members` is flaky or gets canceled, always pin to a single endpoint/node:
   - `mise exec -- talosctl etcd members --endpoints <ip> --nodes <ip>`
 - Upgrading a maintenance-mode node (no machine config yet) needs the insecure variant. The
