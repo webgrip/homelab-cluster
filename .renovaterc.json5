@@ -635,6 +635,21 @@
       commitBodyTable: true,
     },
     {
+      description: "Group the KEDA suite (Helm chart + the three kedacore images digest-pinned in the HelmRelease) into one PR. The chart passes operator flags that only the matching image accepts: chart 2.21.0 against image 2.20.2 crashlooped on 'unknown flag: --service-account-token-mode' (2026-09-26), as chart 2.20.2 against image 2.20.0 did on --http-max-idle-conns (2026-08-29). Both times the chart merged alone, the upgrade timed out, rolled back, and stalled every forgejo runner Kustomization behind KEDA. Must stay AFTER the ungroup rule above so it wins.",
+      matchDatasources: [
+        "docker",
+        "helm"
+      ],
+      matchPackageNames: [
+        "/^ghcr\\.io\\/kedacore\\//",
+        "/^harbor\\.webgrip\\.dev\\/ghcr\\/kedacore\\//",
+        "keda",
+      ],
+      groupName: "keda suite",
+      additionalBranchPrefix: "keda-suite-",
+      commitBodyTable: true,
+    },
+    {
       description: "Group shared app-template updates into a dedicated PR (matches both the upstream ref and the Harbor pull-through proxy path).",
       matchDatasources: [
         "docker"
