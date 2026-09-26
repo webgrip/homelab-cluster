@@ -16,6 +16,7 @@ spec:
   chart:
     spec:
       chart: cloudnative-pg
+      version: 0.29.1
       sourceRef:
         kind: HelmRepository
         name: cloudnative-pg
@@ -26,6 +27,9 @@ spec:
     # Disable it (chart additionalArgs appends; last pflag value wins). Same fix as the plugin.
     additionalArgs:
       - --leader-elect=false
+    image:
+      repository: ghcr.io/cloudnative-pg/cloudnative-pg
+      tag: 1.30.1@sha256:923c267ec29636db3bee20f993d0ec4973fa22998e1adad37da79e4d32b5bc07
     # Burstable, not BestEffort: this operator being OOM-killed (exit 137) is
     # the proven cause of the June single-instance-DB recreation cascade, and
     # BestEffort pods are first-strike for the Talos PSI OOM controller.
@@ -38,6 +42,8 @@ spec:
         memory: 512Mi
     config:
       clusterWide: true
+      data:
+        POSTGRES_IMAGE_NAME: ghcr.io/cloudnative-pg/postgresql:18.3-system-trixie@sha256:0f29b435fb501ee534cd0c555d122a6b8e90de477de8e8381c82c5e10d9a9de4
     monitoring:
       podMonitorEnabled: true
       grafanaDashboard:

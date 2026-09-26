@@ -159,6 +159,19 @@
   prBodyNotes: [
     "Homelab soak tiers: patch 1d, minor 3d, digest/vulnerability 0 days; platform-critical minors 7d + dashboard approval; talos/** always manual. A green PR merges on the first hourly Renovate run after its soak expires.",
   ],
+  customManagers: [
+    {
+      customType: "regex",
+      description: "The CNPG operator's default Postgres image (every Cluster without imageName runs it) is a bare image string in the chart's config.data, which no built-in manager reads.",
+      managerFilePatterns: [
+        "/(^|/)kubernetes/apps/cnpg-system/cloudnative-pg/app/helmrelease\\.ya?ml$/",
+      ],
+      matchStrings: [
+        "POSTGRES_IMAGE_NAME:\\s*[\"']?(?<depName>[^:\"'\\s]+):(?<currentValue>[^@\"'\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})",
+      ],
+      datasourceTemplate: "docker",
+    },
+  ],
   packageRules: [
     {
       // Digest-only updates change WHICH bytes a tag resolves to, not the version;
@@ -892,6 +905,30 @@
       },
       commitBodyTable: true,
       minimumGroupSize: 1,
+    },
+    {
+      description: "CNPG operator: the chart (CRDs, RBAC) and the digest-pinned operator image, which also runs as every database pod's bootstrap-controller, are pinned separately but must move together — an image ahead of or behind the chart's CRDs is a broken operator.",
+      groupName: "cnpg-operator",
+      matchPackageNames: [
+        "cloudnative-pg",
+        "ghcr.io/cloudnative-pg/cloudnative-pg"
+      ],
+      group: {
+        commitMessageTopic: "{{{groupName}}} group",
+      },
+      commitBodyTable: true,
+      minimumGroupSize: 1,
+    },
+    {
+      description: "The operator's default Postgres image is every CNPG database at once: a major bump rolls all of them onto a new Postgres major. Offer it, never merge it without a human.",
+      matchPackageNames: [
+        "ghcr.io/cloudnative-pg/postgresql"
+      ],
+      matchUpdateTypes: [
+        "major"
+      ],
+      dependencyDashboardApproval: true,
+      automerge: false,
     },
   ],
 }
