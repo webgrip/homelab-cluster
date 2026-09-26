@@ -30,8 +30,6 @@ spec:
     # chart hardcodes --leader-elect; appending --leader-elect=false wins (pflag: last value).
     additionalArgs:
       - --leader-elect=false
-    commonAnnotations:
-      reloader.stakater.com/auto: "true"
     sidecarImage:
       registry: ghcr.io
       repository: cloudnative-pg/plugin-barman-cloud-sidecar
@@ -46,3 +44,18 @@ spec:
         memory: 64Mi
       limits:
         memory: 256Mi
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              group: apps
+              version: v1
+              kind: Deployment
+              name: plugin-barman-cloud
+            patch: |-
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: plugin-barman-cloud
+                annotations:
+                  reloader.stakater.com/auto: "true"
