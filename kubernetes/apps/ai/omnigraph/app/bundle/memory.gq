@@ -37,3 +37,12 @@ query add_note($agent: String, $slug: String, $title: String, $body: String, $to
 query add_topic($slug: String, $title: String) @description("Create or rename a topic") {
   insert Topic { slug: $slug, title: $title }
 }
+
+query recall_notes($q: String) @description("Notes ranked by meaning and keywords together, in Dutch or English") @instruction("Notes merged into main since the last nightly restart have no vector yet and rank on keywords only") {
+  match {
+    $n: Note
+  }
+  return { $n.slug, $n.title, $n.body }
+  order { rrf(nearest($n.embedding, $q), bm25($n.body, $q)) }
+  limit 10
+}

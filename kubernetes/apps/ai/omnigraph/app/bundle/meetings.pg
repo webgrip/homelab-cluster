@@ -38,12 +38,14 @@ node Chunk @description("A passage of a Source, the unit of full-text search") {
   meeting: String @index
   seq: I32
   text: String @index
+  embedding: Vector(384)? @embed("text", model="granite-embedding-97m-multilingual-r2")
 }
 
 node Decision @description("Something both sides agreed or Webgrip decided in a meeting") @instruction("quote is the verbatim sentence from the source that supports the decision; never paraphrase into quote") {
   slug: String @key
   meeting: String @index
   statement: String @index
+  embedding: Vector(384)? @embed("statement", model="granite-embedding-97m-multilingual-r2")
   decided_on: Date @index
   status: enum(agreed, proposed, superseded, reversed) @index
   quote: String?

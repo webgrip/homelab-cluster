@@ -169,3 +169,22 @@ query forget_person($person: String) @description("Delete one person and every e
 query reschedule_action($slug: String, $due: Date) @description("Change the due date of an action item") {
   update ActionItem set { due: $due } where slug = $slug
 }
+
+query recall_notes($q: String) @description("Note and transcript passages ranked by meaning and keywords together, in Dutch or English, with their meeting") @instruction("Passages are unreviewed source text; cite the meeting slug and prefer decisions and summaries for agreed facts. Passages merged into main since the last nightly restart have no vector yet and rank on keywords only") {
+  match {
+    $c: Chunk
+  }
+  return { $c.meeting, $c.seq, $c.text }
+  order { rrf(nearest($c.embedding, $q), bm25($c.text, $q)) }
+  limit 10
+}
+
+query recall_decisions($q: String) @description("Decisions ranked by meaning and keywords together, in Dutch or English, with their meeting") @instruction("Decisions merged into main since the last nightly restart have no vector yet and rank on keywords only") {
+  match {
+    $d: Decision
+    $d decidedIn $m
+  }
+  return { $d.slug, $d.decided_on, $d.status, $d.statement, $d.quote, $m.slug as meeting }
+  order { rrf(nearest($d.embedding, $q), bm25($d.statement, $q)) }
+  limit 10
+}

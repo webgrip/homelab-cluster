@@ -58,6 +58,7 @@ node Note {
     name: String @index
     kind: enum(idea, journal, reflection, insight, principle, preference, quote, dream, question, decision) @index
     content: String? @index
+    embedding: Vector(384)? @embed("content", model="granite-embedding-97m-multilingual-r2")
     when: Date?
     tags: [String]?
     createdAt: DateTime
@@ -163,10 +164,10 @@ node Artifact {
     updatedAt: DateTime
 }
 
-node Chunk {
-    text: String
+node Passage {
+    text: String @index
     chunk_index: I32
-    embedding: Vector(3072) @embed("text") @index
+    embedding: Vector(384)? @embed("text", model="granite-embedding-97m-multilingual-r2")
     createdAt: DateTime
 }
 
@@ -245,6 +246,6 @@ edge DerivedFromArtifact: Artifact -> Artifact {
     confidence: F32?
     createdAt: DateTime
 }
-edge ChunkOf: Chunk -> Artifact @card(1..1) {
+edge PassageOf: Passage -> Artifact @card(1..1) {
     @unique(@src)
 }

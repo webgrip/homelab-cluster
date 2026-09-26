@@ -822,3 +822,22 @@ query task_dependencies($slug: String) {
     }
     return { $dep.slug, $dep.name, $dep.status, $dep.brief }
 }
+
+query recall_notes($q: String) @description("Notes ranked by meaning and keywords together, in Dutch or English") @instruction("Notes merged into main since the last nightly restart have no vector yet and rank on keywords only") {
+  match {
+    $n: Note
+  }
+  return { $n.slug, $n.name, $n.kind, $n.content }
+  order { rrf(nearest($n.embedding, $q), bm25($n.content, $q)) }
+  limit 10
+}
+
+query recall_passages($q: String) @description("Artifact passages ranked by meaning and keywords together, in Dutch or English, with their artifact") @instruction("Passages merged into main since the last nightly restart have no vector yet and rank on keywords only") {
+  match {
+    $p: Passage
+    $p passageOf $a
+  }
+  return { $a.slug, $a.name, $p.chunk_index, $p.text }
+  order { rrf(nearest($p.embedding, $q), bm25($p.text, $q)) }
+  limit 10
+}

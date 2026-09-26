@@ -3,17 +3,27 @@ version: 1
 metadata:
   name: homelab-memory
 storage: file:///var/lib/omnigraph/state
+providers:
+  embedding:
+    litellm:
+      kind: openai-compatible
+      base_url: http://litellm.ai.svc.cluster.local:4000/v1
+      model: granite-embedding-97m-multilingual-r2
+      api_key: ${OMNIGRAPH_EMBED_API_KEY}
 graphs:
   memory:
+    embedding_provider: litellm
     schema: memory.pg
     queries:
       - memory.gq
   brain:
+    embedding_provider: litellm
     schema: brain.pg
     queries:
       - brain.gq
       - brain.capture.gq
   webgrip:
+    embedding_provider: litellm
     schema: meetings.pg
     queries:
       - meetings.gq
