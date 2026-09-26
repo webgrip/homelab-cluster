@@ -105,6 +105,7 @@ spec:
                   fetch(url, { headers: { authorization: 'Basic ' + auth } })
                     .then((res) => {
                       if (res.status === 401) {
+                        require('node:fs').writeFileSync('/work/dockerhub-credential-rejected', '');
                         fail(
                           'docker hub rejected the credential (401). A REJECTED credential is worse than' +
                             ' none: Renovate stops falling back to the anonymous path and every docker.io' +
@@ -146,7 +147,12 @@ spec:
                     },
                   ];
 
-                  if (dockerHubUsername && dockerHubToken) {
+                  const dockerHubRejected = fs.existsSync('/work/dockerhub-credential-rejected');
+                  if (dockerHubRejected) {
+                    console.error('docker hub: omitting the rejected credential so Renovate uses the anonymous path');
+                  }
+
+                  if (dockerHubUsername && dockerHubToken && !dockerHubRejected) {
                     hostRules.push({
                       matchHost: 'docker.io',
                       hostType: 'docker',

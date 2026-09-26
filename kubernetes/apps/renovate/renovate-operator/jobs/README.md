@@ -31,7 +31,7 @@ This Secret is created/updated automatically in-cluster (do not commit it to git
 - **Key:** `token` (the GitHub App installation token; expires hourly)
 - **Additional generated keys:**
   - `RENOVATE_TOKEN`
-  - `RENOVATE_HOST_RULES` (always includes GHCR auth, and includes Docker Hub auth when configured)
+  - `RENOVATE_HOST_RULES` (always includes GHCR auth; includes Docker Hub auth when configured AND accepted by Docker Hub — a credential the probe sees rejected (401) is left out so Renovate falls back to the anonymous path, while the Job still fails so `RenovateTokenMinterFailing` fires)
 
 Created/rotated by: CronJob `renovate-github-app-token`
 
