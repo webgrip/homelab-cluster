@@ -1,0 +1,136 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tei-embeddings
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: tei-embeddings
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tei-embeddings
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tei-embeddings
+    spec:
+      serviceAccountName: tei-embeddings
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - worker-2
+            - weight: 50
+              preference:
+                matchExpressions:
+                  - key: node.webgrip.io/cpu
+                    operator: In
+                    values:
+                      - high
+      initContainers:
+        - name: fetch-model
+          image: harbor.webgrip.dev/ghcr/huggingface/text-embeddings-inference:cpu-1.9.4@sha256:2538ea1c9640d3763b15af668039d24172d063b42337b0c27796fc2be180c78d
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - /etc/tei/fetch-model.sh
+          env:
+            - name: MODEL_REPO
+              value: ibm-granite/granite-embedding-97m-multilingual-r2
+            - name: MODEL_REVISION
+              value: 835ad14087e140460703cf0fae09f97d469d65c2
+            - name: MODEL_DIR
+              value: /models
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 256Mi}
+          volumeMounts:
+            - {name: model-manifest, mountPath: /etc/tei, readOnly: true}
+            - {name: models, mountPath: /models}
+            - {name: tmp, mountPath: /tmp}
+      containers:
+        - name: tei
+          image: harbor.webgrip.dev/ghcr/huggingface/text-embeddings-inference:cpu-1.9.4@sha256:2538ea1c9640d3763b15af668039d24172d063b42337b0c27796fc2be180c78d
+          imagePullPolicy: IfNotPresent
+          args:
+            - --model-id
+            - /models/$(MODEL_REVISION)
+            - --served-model-name
+            - granite-embedding-97m-multilingual-r2
+            - --port
+            - "8080"
+            - --max-batch-tokens
+            - "1024"
+            - --max-client-batch-size
+            - "64"
+            - --tokenization-workers
+            - "2"
+            - --json-output
+          env:
+            - name: MODEL_REVISION
+              value: 835ad14087e140460703cf0fae09f97d469d65c2
+            - name: HF_HUB_OFFLINE
+              value: "1"
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            requests: {cpu: 100m, memory: 768Mi}
+            limits: {memory: 1Gi}
+          volumeMounts:
+            - {name: models, mountPath: /models, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: model-manifest
+          configMap:
+            name: tei-embeddings-model
+        - name: models
+          persistentVolumeClaim:
+            claimName: tei-embeddings-models
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

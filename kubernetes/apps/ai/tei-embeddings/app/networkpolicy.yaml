@@ -1,0 +1,69 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tei-embeddings-ingress
+  namespace: ai
+  labels:
+    app.kubernetes.io/part-of: tei-embeddings
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tei-embeddings
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: litellm
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: tei-embeddings-litellm-only
+  namespace: ai
+  labels:
+    app.kubernetes.io/part-of: tei-embeddings
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: tei-embeddings
+  enableDefaultDeny:
+    ingress: false
+    egress: false
+  ingressDeny:
+    - fromEndpoints:
+        - matchExpressions:
+            - key: k8s:io.kubernetes.pod.namespace
+              operator: Exists
+            - key: k8s:io.kubernetes.pod.namespace
+              operator: NotIn
+              values:
+                - ai
+                - observability
+    - fromEndpoints:
+        - matchExpressions:
+            - key: k8s:io.kubernetes.pod.namespace
+              operator: In
+              values:
+                - ai
+            - key: k8s:app.kubernetes.io/name
+              operator: NotIn
+              values:
+                - litellm
+  egressDeny:
+    - toEndpoints:
+        - matchExpressions:
+            - key: k8s:io.kubernetes.pod.namespace
+              operator: Exists
+            - key: k8s:io.kubernetes.pod.namespace
+              operator: NotIn
+              values:
+                - kube-system

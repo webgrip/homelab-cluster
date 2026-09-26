@@ -1,0 +1,22 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./serviceaccount.yaml
+  - ./pvc.yaml
+  - ./deployment.yaml
+  - ./service.yaml
+  - ./networkpolicy.yaml
+  - ./vmservicescrape.yaml
+  - ./prometheusrule.yaml
+configMapGenerator:
+  - name: tei-embeddings-model
+    files:
+      - ./model/model.sha256
+      - ./model/fetch-model.sh
+    options:
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled
+components:
+  - ../../../../components/placement/worker-pool

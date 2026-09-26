@@ -1,0 +1,43 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: tei-embeddings
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: tei-embeddings
+spec:
+  groups:
+    - name: tei-embeddings.rules
+      rules:
+        - alert: TeiEmbeddingsDown
+          expr: |
+            max(up{namespace="ai", service="tei-embeddings"}) == 0
+            or
+            absent(up{namespace="ai", service="tei-embeddings"})
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: tei-embeddings
+          annotations:
+            summary: "Embedding server not answering (service tei-embeddings)"
+            description: |
+              What's happening:
+              - The tei-embeddings metrics endpoint has been down or missing for 15m.
+
+              Impact/risk:
+              - Omnigraph nearest() and recall queries fail on every graph, and the nightly vector backfill skips new rows.
+              - Keyword search and every other Omnigraph query keep working.
+
+              Likely causes:
+              - The fetch-model init container cannot reach huggingface.co or a pinned sha256 no longer matches.
+              - The pod is Pending: the tei-embeddings-models volume cannot attach or no worker has 768Mi of memory to request.
+              - The container is OOMKilled after a max-batch-tokens change.
+
+              First actions:
+              - kubectl -n ai logs deploy/tei-embeddings -c fetch-model
+              - kubectl -n ai get pods,pvc -l app.kubernetes.io/name=tei-embeddings
+              - kubectl -n ai describe pod -l app.kubernetes.io/name=tei-embeddings
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/"
