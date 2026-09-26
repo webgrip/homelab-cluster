@@ -68,6 +68,62 @@ spec:
               - kubectl -n ai get pods,pvc -l app=omnigraph
               - Read the omnigraph runbook upgrade and forget-a-client sections
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/"
+        - alert: OmnigraphExplorerBackendDown
+          expr: |
+            probe_success{namespace="observability", endpoint="omnigraph-explorer"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+            service: omnigraph-explorer
+          annotations:
+            summary: "Omnigraph explorer cannot read a graph through its proxy (endpoint {{ $labels.endpoint }})"
+            description: |
+              What's happening:
+              - The blackbox probe of /og/graphs/memory/branches on the omnigraph-explorer Service has failed for 10m.
+
+              Impact/risk:
+              - graph.<domain> loads, but every graph load fails; nobody can browse the graphs.
+
+              Likely causes:
+              - The explorer pod is not ready, or refused to start without its act-explorer token
+              - omnigraph itself is down (check OmnigraphUnreachable first)
+              - tokens.json no longer carries act-explorer, or its policy lost the explorers rule (403)
+              - The omnigraph-explorer NetworkPolicy or omnigraph-ingress changed
+
+              First actions:
+              - kubectl -n ai get pods -l app.kubernetes.io/name=omnigraph-explorer; kubectl -n ai logs deploy/omnigraph-explorer
+              - kubectl -n ai get externalsecret omnigraph-explorer-upstream omnigraph-tokens
+              - Read the Explorer section of the omnigraph runbook
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/"
+        - alert: OmnigraphExplorerGateOpen
+          expr: |
+            probe_success{namespace="observability", endpoint="omnigraph-explorer-gate"} == 0
+          for: 10m
+          labels:
+            severity: critical
+            owner: platform
+            service: omnigraph-explorer
+          annotations:
+            summary: "Omnigraph explorer route is not sending anonymous visitors to Authentik (endpoint {{ $labels.endpoint }})"
+            description: |
+              What's happening:
+              - An anonymous request to graph.<domain> through envoy-internal did not get a 302 to the Authentik authorize endpoint for 10m.
+
+              Impact/risk:
+              - If the route answers 200, the brain and client meeting graphs are readable by anyone on the LAN.
+              - If it answers 500 or nothing, nobody can open the explorer.
+
+              Likely causes:
+              - The omnigraph-explorer-oidc SecurityPolicy was deleted or is not Accepted
+              - The omnigraph-explorer-oidc Secret is missing (Envoy fails closed with 500)
+              - The HTTPRoute or envoy-internal is broken
+
+              First actions:
+              - kubectl -n ai get securitypolicy omnigraph-explorer-oidc -o yaml; check status.ancestors conditions
+              - kubectl -n ai get externalsecret omnigraph-explorer-oidc
+              - curl -sk -o /dev/null -w '%{http_code} %{redirect_url}' -H 'Host: graph.<domain>' https://10.0.0.27/
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/"
         - alert: AuthentikLoginFlowBroken
           expr: |
             probe_success{namespace="observability", endpoint="authentik-login"} == 0

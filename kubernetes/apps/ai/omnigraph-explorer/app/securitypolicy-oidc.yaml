@@ -1,0 +1,32 @@
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: omnigraph-explorer-oidc
+  namespace: ai
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: omnigraph-explorer
+  oidc:
+    provider:
+      issuer: https://authentik.${SECRET_DOMAIN}/application/o/omnigraph-explorer/
+    clientIDRef:
+      name: omnigraph-explorer-oidc
+    clientSecret:
+      name: omnigraph-explorer-oidc
+    scopes:
+      - openid
+      - email
+      - profile
+    redirectURL: https://graph.${SECRET_DOMAIN}/oauth2/callback
+    logoutPath: /logout
+    defaultTokenTTL: 12h
+    defaultRefreshTokenTTL: 168h
+    cookieConfig:
+      sameSite: Lax
+    denyRedirect:
+      headers:
+        - name: X-Requested-With
+          value: XMLHttpRequest

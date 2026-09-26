@@ -117,6 +117,36 @@ spec:
               insecure_skip_verify: true
             headers:
               Host: omnigraph.${SECRET_DOMAIN}
+        http_omnigraph_explorer_backend:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+            valid_status_codes:
+              - 200
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            fail_if_body_not_matches_regexp:
+              - '"branches"'
+        http_omnigraph_explorer_gate:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 302
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: graph.${SECRET_DOMAIN}
+            fail_if_header_not_matches:
+              - header: Location
+                regexp: '^https://authentik\..+/application/o/authorize/'
         http_garage_s3:
           prober: http
           timeout: 5s
