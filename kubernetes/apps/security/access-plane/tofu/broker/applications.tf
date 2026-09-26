@@ -175,6 +175,20 @@ locals {
       extra_scopes = []
       adopt        = false
     }
+    omnigraph-explorer = {
+      provider_name = "omnigraph-explorer-oidc"
+      app_name      = "Omnigraph Explorer"
+      description   = "Read-only visual explorer over the brain, memory and webgrip graphs."
+      launch_url    = "https://graph.${var.SECRET_DOMAIN}"
+      client_id     = "omnigraph-explorer"
+      client_secret = data.vault_kv_secret_v2.oidc_client["omnigraph-explorer"].data["client_secret"]
+      client_type   = "confidential"
+      signing_key   = true
+      grant_types   = ["authorization_code", "refresh_token"]
+      redirects     = [{ matching_mode = "strict", url = "https://graph.${var.SECRET_DOMAIN}/oauth2/callback" }]
+      extra_scopes  = []
+      adopt         = false
+    }
   }
 
   adopted_applications = { for k, app in local.oauth_applications : k => app if lookup(app, "adopt", true) }

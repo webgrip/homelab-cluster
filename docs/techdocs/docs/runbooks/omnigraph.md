@@ -25,12 +25,23 @@ Omnigraph v0.11 runs one server in namespace `ai` with three graphs: `memory` (s
 | `act-reader` | `memory`: read and run stored queries |
 | `act-brain-agent` | `brain`: read and write on proposal branches only; Ryan merges |
 | `act-ingest` | `webgrip` (and future client graphs): create unprotected branches and load onto them. It cannot read anything |
+| `act-explorer` | `brain`, `memory` and `webgrip`: read and export on any branch, nothing else. Only the explorer's proxy holds it |
 
 Each token is generated in-cluster by the `omnigraph-actor-tokens` ExternalSecret, pushed to OpenBao at `secret/omnigraph/<actor>` (field `token`), and assembled into the server's `tokens.json` by the `omnigraph-tokens` ExternalSecret.
 
 Add an actor by creating a new generator ExternalSecret and PushSecret pair, then adding one line to the aggregator. Do not add keys to `omnigraph-actor-tokens`. It is generate-once, so a new key only appears after its Secret is deleted, and deleting it rotates every existing token.
 
 Give an in-cluster consumer its token with an ExternalSecret against the `openbao` store at `omnigraph/<actor>`. Also allow its namespace in the `omnigraph-ingress` NetworkPolicy.
+
+## Explorer
+
+`https://graph.<domain>` is a read-only visual explorer ([webgrip/omnigraph-explorer](https://forgejo.webgrip.dev/webgrip/omnigraph-explorer), which documents the app itself). It runs as `omnigraph-explorer` in namespace `ai`.
+
+- **Who gets in.** The route sits behind the gateway's OIDC `SecurityPolicy` with its own Authentik client, `omnigraph-explorer` ([ADR-0060](../adr/adr-0060-gateway-oidc-for-apps-without-a-login.md)). Authentik only issues a token to members of `knowledge-graph-viewers`, the group of the `knowledge-graph-view` capability. That capability is granted to Ryan by name, not through a role, because the explorer shows the brain and client meetings.
+- **What it can do.** The pod serves the SPA and proxies `/og/*` to `omnigraph:8080`. The proxy adds `Authorization: Bearer <act-explorer>` itself, strips cookies, and forwards only `GET` on `healthz`, `branches`, `commits` and `schema`, plus `POST` on `export`. The browser never sees the token, and `act-explorer` is refused `change`, `branch_*` and `graph_list` by policy anyway.
+- **Token.** `omnigraph-explorer-token` generates it and pushes it to `secret/omnigraph/explorer`. The aggregator adds it to `tokens.json` and the explorer reads it back with `omnigraph-explorer-upstream`. Rotate it by deleting the `omnigraph-explorer-token` Secret; Reloader restarts both pods.
+- **Graphs in the picker.** `OMNIGRAPH_EXPLORER_GRAPHS` on the Deployment. A graph also needs an `explorers` group and `explorers-read-and-export` rule in its policy, or every request answers 403. `OMNIGRAPH_EXPLORER_HEAVY_TYPES` (default `Chunk`) lists node types the explorer skips unless asked, together with every edge that touches them.
+- **Monitoring.** `blackbox-omnigraph-explorer` reads `memory` branches through the pod (nginx, proxy, token and policy in one request). `blackbox-omnigraph-explorer-gate` checks that an anonymous request to the route is sent to Authentik. The alerts are `OmnigraphExplorerBackendDown` and `OmnigraphExplorerGateOpen`.
 
 ## Laptop setup
 
@@ -122,7 +133,7 @@ Search is case-sensitive until a graph's first nightly optimize after its first 
 In one commit:
 
 1. Add `client-<name>` to [cluster.yaml](../../../../kubernetes/apps/ai/omnigraph/app/bundle/cluster.yaml) with `meetings.pg` and `meetings.gq`.
-2. Add `client-<name>.policy.yaml`, copied from `webgrip.policy.yaml`. Add a `client` group for `act-client-<name>` with `read` on `branch_scope: protected` and `invoke_query`.
+2. Add `client-<name>.policy.yaml`, copied from `webgrip.policy.yaml`, and drop its `explorers` group and rule. `act-explorer` is one identity across graphs; keeping it on two client graphs fails the validator. Add a `client` group for `act-client-<name>` with `read` on `branch_scope: protected` and `invoke_query`.
 3. Add the new policy file to the ConfigMap generator.
 4. Create a new ExternalSecret and PushSecret pair for the client's token and its HMAC key, and add the token to the aggregator.
 

@@ -14,6 +14,7 @@ data "vault_kv_secret_v2" "oidc_client" {
     cloudflare-access  = "cloudflare/access-oidc"
     longhorn           = "authentik/longhorn-oidc"
     cluster-dashboards = "authentik/dashboards-oidc"
+    omnigraph-explorer = "authentik/omnigraph-explorer-oidc"
   }
   mount = "secret"
   name  = each.value

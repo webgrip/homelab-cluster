@@ -15,18 +15,24 @@ fresh() {
 }
 
 with_two_clients() {
-  local dir=$1
-  python3 - "$dir" <<'PY'
+  local dir=$1 keep_explorer=${2:-}
+  python3 - "$dir" "$keep_explorer" <<'PY'
 import sys
 from pathlib import Path
 import yaml
 bundle = Path(sys.argv[1])
+keep_explorer = sys.argv[2]
 cluster = yaml.safe_load((bundle / "cluster.yaml").read_text())
 template = (bundle / "webgrip.policy.yaml").read_text()
 for client in ("client-a", "client-b"):
     cluster["graphs"][client] = {"schema": "meetings.pg", "queries": ["meetings.gq"]}
     cluster["policies"][f"{client}-access"] = {"file": f"{client}.policy.yaml", "applies_to": [client]}
     policy = yaml.safe_load(template)
+    policy["groups"].pop("explorers", None)
+    policy["rules"] = [rule for rule in policy["rules"] if rule["allow"]["actors"]["group"] != "explorers"]
+    if keep_explorer == "keep-explorer":
+        policy["groups"]["explorers"] = ["act-explorer"]
+        policy["rules"].append({"id": "explorers-read-and-export", "allow": {"actors": {"group": "explorers"}, "actions": ["read", "export"], "branch_scope": "any"}})
     policy["groups"]["client"] = [f"act-{client}"]
     policy["rules"].append({"id": "client-reads-main", "allow": {"actors": {"group": "client"}, "actions": ["read"], "branch_scope": "protected"}})
     (bundle / f"{client}.policy.yaml").write_text(yaml.safe_dump(policy, sort_keys=False))
@@ -62,6 +68,10 @@ d=$(fresh spanning)
 with_two_clients "$d"
 sed -i 's/^  - act-client-b$/  - act-client-b\n  - act-client-a/' "$d/client-b.policy.yaml"
 expect fail "client actor granted on both client graphs" "$d" "${cross_client[@]}"
+
+d=$(fresh explorer-spanning)
+with_two_clients "$d" keep-explorer
+expect fail "explorer copied onto both client graphs" "$d" "${cross_client[@]}"
 
 d=$(fresh unprotected)
 with_two_clients "$d"
