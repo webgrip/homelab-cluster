@@ -20,7 +20,7 @@ spec:
             app: omnigraph-maintenance-restart
         spec:
           serviceAccountName: omnigraph-maintenance-restart
-          automountServiceAccountToken: true
+          automountServiceAccountToken: false
           restartPolicy: Never
           nodeSelector:
             node.webgrip.io/pool: worker
@@ -54,6 +54,25 @@ spec:
               volumeMounts:
                 - name: tmp
                   mountPath: /tmp
+                - name: kube-api-access
+                  mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+                  readOnly: true
           volumes:
             - name: tmp
               emptyDir: {}
+            - name: kube-api-access
+              projected:
+                sources:
+                  - serviceAccountToken:
+                      path: token
+                      expirationSeconds: 600
+                  - configMap:
+                      name: kube-root-ca.crt
+                      items:
+                        - key: ca.crt
+                          path: ca.crt
+                  - downwardAPI:
+                      items:
+                        - path: namespace
+                          fieldRef:
+                            fieldPath: metadata.namespace
