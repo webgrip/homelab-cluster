@@ -359,3 +359,43 @@ spec:
               - Verify repository connectivity and credentials
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/cnpg-backups"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"
+
+    - name: cnpg-service-endpoints.rules
+      rules:
+        - alert: CNPGPrimaryServiceNoReadyEndpoint
+          expr: |
+            max by (exported_namespace, exported_service) (
+              kube_service_info{exported_service=~".+-db-rw"}
+            )
+            unless on (exported_namespace, exported_service)
+            sum by (exported_namespace, exported_service) (
+              label_replace(
+                kube_endpointslice_endpoints{ready="true", endpointslice=~".+-db-rw-[a-z0-9]{5}"},
+                "exported_service", "$$1", "endpointslice", "(.+)-[a-z0-9]{5}"
+              )
+            )
+          for: 5m
+          labels:
+            severity: critical
+            owner: platform
+            service: cnpg
+          annotations:
+            summary: "CNPG primary service {{$labels.exported_namespace}}/{{$labels.exported_service}} has no ready endpoint"
+            description: |
+              What's happening:
+              - Service {{$labels.exported_service}} in {{$labels.exported_namespace}} has had zero ready endpoints for 5m.
+              - The pods can be Running and the CNPG Cluster can report healthy at the same time; this is the Service-level view.
+
+              Impact/risk:
+              - Every client of this database is down (2026-09-25: Forgejo and Harbor down, Flux deadlocked).
+
+              Likely causes:
+              - The operator could not set the primary role label on the pod (admission webhook denial)
+              - Primary pod not ready, or a failover stuck mid-switch
+
+              First actions:
+              - kubectl -n {{$labels.exported_namespace}} get endpointslices -l kubernetes.io/service-name={{$labels.exported_service}}
+              - kubectl -n {{$labels.exported_namespace}} get pods -l cnpg.io/instanceRole=primary
+              - kubectl -n cnpg-system logs deploy/cloudnative-pg --since=15m | grep "while patching instance metadata"
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/incidents/2026-09-25-cnpg-relabel-denied-gitops-deadlock"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"
