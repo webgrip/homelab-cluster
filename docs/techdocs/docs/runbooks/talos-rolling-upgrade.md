@@ -47,23 +47,47 @@ Then `mise install` and confirm: `mise exec -- talosctl version --client`
 
 ## Upgrade one node
 
-> **Force-drain single-replica-PDB workloads first.** The drain built into the
-> Talos node-upgrade flow stalls indefinitely on single-replica workloads
-> protected by a PodDisruptionBudget — it cannot evict them, so it hits the
-> internal drain timeout and the node never actually reboots onto the new image
-> (even though the task may print "upgrade completed"). This has bitten all 5
-> nodes. The two recurring offenders are the kyverno admission/background
-> controllers and the single-instance CNPG databases. Remedy: **before** running
-> the upgrade, drain the node yourself with eviction disabled (which bypasses
-> the PDB by deleting pods directly):
->
-> ```sh
-> mise exec -- kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data --disable-eviction
-> ```
->
-> Alternatively, temporarily scale down or relocate the single-replica
-> workloads. A stalled upgrade is safe to Ctrl+C; retry it after the node is
-> drained.
+The recipe drains through talosctl, which evicts and retries, reboots, and uncordons. That drain
+stalls on any pod whose PodDisruptionBudget allows zero disruptions, and the node then never
+reboots onto the new image. List them first:
+
+```sh
+mise exec -- kubectl get pdb -A -o json | jq -r '.items[] | select(.status.disruptionsAllowed==0) | "\(.metadata.namespace)/\(.metadata.name)"'
+```
+
+Longhorn `instance-manager` budgets are expected and release by themselves once the node's volumes
+detach. Single-instance CNPG primaries never release. On 2026-09-25/26 the control planes had none
+and ran the recipe alone; every worker had several and needed the pre-drain below.
+
+### Workers: pre-drain
+
+1. **Probe the CNPG relabel.** A recreated primary only gets its `-rw` endpoint once the operator's
+   label PATCH passes admission. On 2026-09-25 Kyverno denied it and took Forgejo, Harbor and Flux
+   down ([incident](../incidents/2026-09-25-cnpg-relabel-denied-gitops-deadlock.md)). For each CNPG pod on the node, the probe must be
+   admitted (a server dry run persists nothing):
+   `mise exec -- kubectl -n <ns> label pod <pod> probe.webgrip.io/admission-test=1 --dry-run=server`
+2. **Stop single-replica volumes whose only replica is on the node.** Garage (`longhorn-single`)
+   is the one today. Check where the replica lives, not where the pod runs, because the pod can
+   attach remotely:
+   `mise exec -- kubectl -n longhorn-system get replicas.longhorn.io -o json | jq -r '.items[] | select(.spec.volumeName=="<pv>") | .spec.nodeID'`.
+   If it is the node, run `kubectl -n garage scale statefulset garage --replicas=0` and let Flux
+   restore it afterwards (`flux reconcile ks garage -n garage`).
+3. **Drain everything except the instance-manager.** Eviction is disabled, so budgets are bypassed,
+   and the instance-manager leaves last through the recipe's own drain:
+
+   ```sh
+   mise exec -- kubectl drain <node> --ignore-daemonsets --delete-emptydir-data --disable-eviction \
+     --pod-selector='longhorn.io/component!=instance-manager' --timeout=300s
+   ```
+
+   It prints `node/<node> cordoned` first. If it does not, it never reached the cluster. A timeout
+   while Postgres finishes its clean shutdown is harmless. Wait until no workload pods remain on the
+   node and no Longhorn volume reports it as `currentNodeID`, then run the recipe.
+
+Expect with one worker out: the other two cannot hold its memory requests, so some pods, including
+CNPG primaries, stay `Pending` until it returns. Forgejo's `configure-gitea` init container syncs
+its Authentik OIDC provider and fails while Authentik is down, so an Authentik database stuck
+`Pending` also takes down Forgejo and, with it, Flux. Both recover on their own once the node is back.
 
 ```bash
 mise exec -- just talos-upgrade-node <node-ip>
@@ -79,7 +103,7 @@ Verify:
 - `mise exec -- talosctl version --nodes <node-ip>`
 - `mise exec -- kubectl get node <node-name> -o wide`
 
-At `talosVersion: v1.13.4` the bundled etcd is `v3.6.12`.
+At `talosVersion: v1.13.10` the bundled etcd is `v3.6.14` (read with `talosctl etcd status`).
 
 ## Troubleshooting
 
