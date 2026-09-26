@@ -74,7 +74,7 @@ if [ -n "${SECRET_DOMAIN:-}" ]; then
   "user_claim": "sub",
   "bound_audiences": ["openbao-cosign"],
   "bound_claims_type": "glob",
-  "bound_claims": {"repository": ["webgrip/infrastructure", "webgrip/ploeg", "webgrip/de-vloer", "webgrip/glide"], "event_name": ["release", "workflow_dispatch"], "ref": ["refs/tags/*", "refs/heads/*"]},
+  "bound_claims": {"repository": ["webgrip/infrastructure", "webgrip/ploeg", "webgrip/de-vloer", "webgrip/glide", "webgrip/omnigraph-explorer"], "event_name": ["release", "workflow_dispatch"], "ref": ["refs/tags/*", "refs/heads/*"]},
   "token_policies": ["cosign-signer"],
   "token_ttl": "10m"
 }
