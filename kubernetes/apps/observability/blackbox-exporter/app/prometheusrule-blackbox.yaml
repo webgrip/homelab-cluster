@@ -40,6 +40,34 @@ spec:
               - Check blackbox-exporter pods for restarts/resource pressure
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#synthetic-probes-blackbox"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/synthetic-blackbox/synthetic-blackbox"
+        - alert: OmnigraphUnreachable
+          expr: |
+            probe_success{namespace="observability", endpoint="omnigraph"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+            service: omnigraph
+          annotations:
+            summary: "Omnigraph health endpoint not answering (endpoint {{ $labels.endpoint }})"
+            description: |
+              What's happening:
+              - The blackbox probe of omnigraph /healthz through envoy-internal has failed for 10m.
+
+              Impact/risk:
+              - Agents, the brain CLI and meeting ingestion cannot read or write any graph.
+
+              Likely causes:
+              - The init container refused to start: an unapproved graph deletion or a bundle that fails cluster apply
+              - The pod is crash-looping after an image bump whose storage format needs omnigraph upgrade
+              - The omnigraph-state Longhorn volume is not attaching
+              - envoy-internal or the omnigraph HTTPRoute is broken
+
+              First actions:
+              - kubectl -n ai logs deploy/omnigraph -c apply-and-optimize
+              - kubectl -n ai get pods,pvc -l app=omnigraph
+              - Read the omnigraph runbook upgrade and forget-a-client sections
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/"
         - alert: AuthentikLoginFlowBroken
           expr: |
             probe_success{namespace="observability", endpoint="authentik-login"} == 0
