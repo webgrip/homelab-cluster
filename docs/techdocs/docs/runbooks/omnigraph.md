@@ -10,7 +10,8 @@ Omnigraph v0.11 runs one server in namespace `ai` with three graphs: `memory` (s
   2. Imports state on first boot.
   3. Refuses to start if the plan contains an unapproved deletion.
   4. Applies the bundle.
-  5. Optimizes every applied graph and rebuilds full-text indexes when optimize reports stale coverage.
+  5. Fills missing vectors on `main` of every graph (see [Embeddings and recall](#embeddings-and-recall)). A failure here is logged and skipped; it never stops the pod.
+  6. Optimizes every applied graph and rebuilds full-text indexes when optimize reports stale coverage.
 - The `omnigraph-maintenance-restart` CronJob restarts the pod at 03:15. In v0.11, `optimize` next to a live server blocks writes, so it only runs at startup.
 - The PVC is enrolled in the `gitops-backup` Longhorn job (daily, 7 kept, offsite).
 - Renovate never automerges Omnigraph (image or mise CLI). Minor releases change the storage format.
@@ -40,7 +41,7 @@ Give an in-cluster consumer its token with an ExternalSecret against the `openba
 - **Who gets in.** The route sits behind the gateway's OIDC `SecurityPolicy` with its own Authentik client, `omnigraph-explorer` ([ADR-0060](../adr/adr-0060-gateway-oidc-for-apps-without-a-login.md)). Authentik only issues a token to members of `knowledge-graph-viewers`, the group of the `knowledge-graph-view` capability. That capability is granted to Ryan by name, not through a role, because the explorer shows the brain and client meetings.
 - **What it can do.** The pod serves the SPA and proxies `/og/*` to `omnigraph:8080`. The proxy adds `Authorization: Bearer <act-explorer>` itself, strips cookies, and forwards only `GET` on `healthz`, `branches`, `commits` and `schema`, plus `POST` on `export`. The browser never sees the token, and `act-explorer` is refused `change`, `branch_*` and `graph_list` by policy anyway.
 - **Token.** `omnigraph-explorer-token` generates it and pushes it to `secret/omnigraph/explorer`. The aggregator adds it to `tokens.json` and the explorer reads it back with `omnigraph-explorer-upstream`. Rotate it by deleting the `omnigraph-explorer-token` Secret; Reloader restarts both pods.
-- **Graphs in the picker.** `OMNIGRAPH_EXPLORER_GRAPHS` on the Deployment. A graph also needs an `explorers` group and `explorers-read-and-export` rule in its policy, or every request answers 403. `OMNIGRAPH_EXPLORER_HEAVY_TYPES` (default `Chunk`) lists node types the explorer skips unless asked, together with every edge that touches them.
+- **Graphs in the picker.** `OMNIGRAPH_EXPLORER_GRAPHS` on the Deployment. A graph also needs an `explorers` group and `explorers-read-and-export` rule in its policy, or every request answers 403. `OMNIGRAPH_EXPLORER_HEAVY_TYPES` (default `Chunk`) lists node types the explorer skips unless asked, together with every edge that touches them. On `brain` the passage type is `Passage`, so add it to the list.
 - **Monitoring.** `blackbox-omnigraph-explorer` reads `memory` branches through the pod (nginx, proxy, token and policy in one request). `blackbox-omnigraph-explorer-gate` checks that an anonymous request to the route is sent to Authentik. The alerts are `OmnigraphExplorerBackendDown` and `OmnigraphExplorerGateOpen`.
 
 ## Laptop setup
@@ -57,6 +58,8 @@ For Claude Code, the stdio MCP bridge `@modernrelay/omnigraph-mcp@0.10.0` works 
 The bridge exposes inline `query`/`mutate`, `load` and branch tools. It does not expose stored queries. Policy is enforced by the server either way.
 
 The server's built-in `/mcp` endpoint does not exist in v0.11.
+
+In-cluster agents reach `memory` through the LiteLLM MCP gateway instead: server `omnigraph_memory`, access group `memory`, running as `act-agent` (read everything, write only on its own unprotected branches, never merge). A LiteLLM key only sees these tools when its `object_permission.mcp_access_groups` contains `memory`. The bridge is installed by the `install-omnigraph-mcp` init container of the LiteLLM pod with `npm ci` from the lockfile in [omnigraph-mcp](../../../../kubernetes/apps/ai/litellm/app/omnigraph-mcp/). LiteLLM refuses to start when `OMNIGRAPH_MEMORY_TOKEN` is missing from its environment, so the `litellm-omnigraph-memory` Secret has to exist before the pod restarts.
 
 ## Second brain (`brain`)
 
@@ -93,9 +96,9 @@ Conventions that used to live in the cookbook's comments:
 - `Person.cadence_days` is how often you want contact.
 - Habit streaks are derived from the `completions` dates and are kept in sync by hand.
 
-**Not yet usable**
+**Passages**
 
-- `Chunk.embedding` needs precomputed vectors and no embedding model is configured, so leave `Chunk` unused.
+- The cookbook's `Chunk` is `Passage` here, with a 384-dimension `embedding` and a `PassageOf` edge to its `Artifact`. `Passage` has no key: give each row an explicit `id` in the load file and point its `PassageOf` edge at that id.
 
 Agents holding `act-brain-agent` work on a branch, for example `agent/<task>` created from `main`. You review and merge. Branch scoping limits writes, not reads: an agent can read everything on `main` through a branch it creates. Keep it away from anything it should not see.
 
@@ -115,7 +118,7 @@ The cookbook's demo seed (fictional "Alex Chen") is not loaded. To explore it, l
 
 ### Ingest a meeting
 
-1. Have Claude read the raw notes and write an extraction JSON in this shape: `{"meeting":{"title","held_on","kind","summary"},"attendees":[{"name","side","role"?,"email"?,"absent"?}],"decisions":[{"statement","topic","quote","agreed_with":[names],"status"?}],"action_items":[{"title","owner"|null,"due"?,"quote"}]}`. Keep `quote` verbatim. `side` is `internal`, `client` or `third_party`.
+1. Extract the meeting with the LiteLLM model `meeting-extract` (Fireworks `gpt-oss-120b`, temperature 0). Send [omnigraph_meeting_extraction.prompt.txt](../../../../scripts/omnigraph_meeting_extraction.prompt.txt) as the system message, the raw notes as the user message, and [omnigraph_meeting_extraction.schema.json](../../../../scripts/omnigraph_meeting_extraction.schema.json) as `response_format` `{"type":"json_schema","json_schema":{"name":"meeting_extraction","strict":true,"schema":…}}`. Save the message content as `extraction.json`. A short meeting costs about USD 0.001. If Fireworks fails, LiteLLM's `default_fallbacks` sends the notes to `deepseek-chat`; pass `"disable_fallbacks": true` in the request body when a client's notes must not leave Fireworks.
 2. Run `just omnigraph-ingest-meeting webgrip extraction.json notes.txt`. The converter rejects:
    - quotes that are not verbatim in the notes;
    - owners who are not attendees;
@@ -126,7 +129,7 @@ The cookbook's demo seed (fictional "Alex Chen") is not loaded. To explore it, l
 
 A load to `main` is refused. A failed load can leave an empty branch behind: delete it with `omnigraph branch delete <branch> --yes`.
 
-Search is case-sensitive until a graph's first nightly optimize after its first ingest builds the full-text index.
+Search is case-sensitive until a graph's first nightly optimize after its first ingest builds the full-text index. Merged passages and decisions get their vectors at the same nightly restart; until then `recall_notes` and `recall_decisions` rank them on keywords only.
 
 ### Add a client
 
@@ -168,8 +171,19 @@ The bootstrap approves exactly that deletion, and apply removes the graph direct
 
 Remove the approval line in a later commit. Delete the OpenBao entries by hand. Backups expire after 7 days.
 
+## Embeddings and recall
+
+Every graph embeds text with `granite-embedding-97m-multilingual-r2` (384 dimensions, Dutch and English in one space). The chain is Omnigraph → LiteLLM (`granite-embedding-97m-multilingual-r2`) → `tei-embeddings` in namespace `ai`.
+
+- **Model server.** `tei-embeddings` runs Text Embeddings Inference `cpu-1.9.4` on the ONNX Runtime backend. The `fetch-model` init container downloads the pinned revision from Hugging Face into the `tei-embeddings-models` volume and checks every file against [model.sha256](../../../../kubernetes/apps/ai/tei-embeddings/app/model/model.sha256); a mismatch stops the pod. After the first start it only re-verifies. `--max-batch-tokens 1024` keeps it under 700Mi; longer inputs are truncated to their first 1024 tokens. Only LiteLLM pods may call it (`tei-embeddings-litellm-only`); the `observability` namespace may scrape `/metrics`. Alert: `TeiEmbeddingsDown`.
+- **Key.** Omnigraph authenticates to LiteLLM with the virtual key `omnigraph-embeddings`, generated in-cluster by the `omnigraph-embed-key` ExternalSecret and registered by the `omnigraph-embed-key-register` Job: embedding model only, USD 1 per 30 days, 3000 requests per minute. The Job is idempotent: it looks the key up with the key itself, updates it when it drifted, and when the Secret holds a key LiteLLM does not know it deletes whatever key still holds the `omnigraph-embeddings` alias before registering the new one. The server refuses to start without `OMNIGRAPH_EMBED_API_KEY`, so the Secret must exist before the pod restarts. Rotate by deleting the `omnigraph-embed-key` Secret and the `omnigraph-embed-key-register` Job: ESO generates a new key, Reloader restarts Omnigraph, and the recreated Job revokes the old key.
+- **Schema.** Each vector records its source and model, for example `embedding: Vector(384)? @embed("body", model="granite-embedding-97m-multilingual-r2")`. Queries fail fast when the provider serves another model. Changing the source or model is not an in-place migration: add a new property, backfill it, then drop the old one. The vectors are nullable and have no ANN `@index`: with an index, `optimize` fails (`KMeans cannot train 1 centroids with 0 vectors`) whenever a type's rows have lost all their vectors, which would stop the pod. `nearest()` scans every row instead, which is fast at this size.
+- **Vectors.** Loads and mutations do not embed. The init container fills the vectors that are missing on `main` at every start, so the 03:15 restart embeds what was merged that day. It exports each type named in an `@embed`, keeps the rows with source text and no vector, embeds them with `omnigraph embed` and loads them back with `--mode merge`. A merge load of a row without its vector clears the vector until the next start. If LiteLLM or `tei-embeddings` is down, the init container logs `vector backfill skipped` or `vector backfill for <graph> <type> failed` and starts anyway.
+- **Queries.** `recall_notes` on `memory` and `brain`, `recall_passages` on `brain`, and `recall_notes` and `recall_decisions` on `webgrip` rank by `rrf(nearest(...), bm25(...))`. Rows without a vector still rank on keywords.
+
 ## Known v0.11 limits
 
+- **Schema changes need a graph with only `main`.** A bundle change that alters a graph's schema cannot be applied while that graph has any other branch: `cluster apply` fails, the init container stops and every graph is down. Before pushing a schema change, merge or delete open branches (agent proposals, `ingest/*` review branches). `omnigraph cluster plan` reports `schema_preview_unavailable` for a graph in that state.
 - **One writer.** Maintenance commands must not run beside the server.
 - **Write limit.** At most 8,192 rows or 32 MiB per touched type per commit. Split larger loads.
 - **Policy CLI.** `omnigraph policy validate` and `policy explain` error with "matches 2 policy bundles" when a cluster-scope bundle exists. Test policy against the live server instead.
