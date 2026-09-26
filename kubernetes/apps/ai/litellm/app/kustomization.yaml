@@ -19,6 +19,15 @@ resources:
   - ./vmservicescrape.yaml
   - ./grafana-dashboard.yaml
   - ./grafana-dashboard-reliability.yaml
+configMapGenerator:
+  - name: litellm-omnigraph-mcp
+    files:
+      - ./omnigraph-mcp/package.json
+      - ./omnigraph-mcp/package-lock.json
+    options:
+      disableNameSuffixHash: true
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled
 components:
   # Server-side OIDC to authentik hairpins through the envoy-internal VIP, which under a
   # default-deny needs an IDENTITY allow (not a CIDR or port rule) — see the component

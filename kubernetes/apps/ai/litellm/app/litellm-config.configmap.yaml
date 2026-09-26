@@ -103,6 +103,20 @@ data:
         litellm_params:
           model: fireworks_ai/accounts/fireworks/models/kimi-k2p7-code
           api_key: os.environ/FIREWORKS_AI_API_KEY
+      - model_name: meeting-extract
+        litellm_params:
+          model: fireworks_ai/accounts/fireworks/models/gpt-oss-120b
+          api_key: os.environ/FIREWORKS_AI_API_KEY
+          temperature: 0
+      - model_name: granite-embedding-97m-multilingual-r2
+        litellm_params:
+          model: openai/granite-embedding-97m-multilingual-r2
+          api_base: http://tei-embeddings.ai.svc.cluster.local:8080/v1
+          api_key: unauthenticated
+        model_info:
+          mode: embedding
+          input_cost_per_token: 0
+          output_vector_size: 384
 
     general_settings:
       # Admin credential used to mint virtual keys (per-dev / per-agent / per-task)
@@ -332,3 +346,13 @@ data:
         url: "http://mcp-vikunja.vikunja.svc.cluster.local:8000/mcp"
         description: "Board task CRUD (WRITE-capable)"
         access_groups: ["board"]
+      omnigraph_memory:
+        transport: "stdio"
+        command: "node"
+        args: ["/opt/omnigraph-mcp/node_modules/@modernrelay/omnigraph-mcp/dist/bin.js"]
+        env:
+          OMNIGRAPH_BASE_URL: "http://omnigraph.ai.svc.cluster.local:8080"
+          OMNIGRAPH_GRAPH_ID: "memory"
+          OMNIGRAPH_TOKEN: "os.environ/OMNIGRAPH_MEMORY_TOKEN"
+        description: "Shared agent memory graph as act-agent: read everything, write only on its own unprotected branches, never merge"
+        access_groups: ["memory"]

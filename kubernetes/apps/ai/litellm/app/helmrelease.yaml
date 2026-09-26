@@ -53,6 +53,41 @@ spec:
           securityContext:
             seccompProfile:
               type: RuntimeDefault
+        initContainers:
+          install-omnigraph-mcp:
+            image:
+              repository: harbor.webgrip.dev/dockerhub/supercorp/supergateway
+              tag: 3.4.3@sha256:095acf4471e142553c1a5514aa5e480abbc5885d00549d4a3481cc70eac53889
+            command:
+              - sh
+              - -cu
+              - >-
+                if cp /etc/omnigraph-mcp/package.json /etc/omnigraph-mcp/package-lock.json /opt/omnigraph-mcp/
+                && cd /opt/omnigraph-mcp
+                && npm ci --omit=dev --ignore-scripts --no-audit --no-fund --loglevel=error
+                && test -f node_modules/@modernrelay/omnigraph-mcp/dist/bin.js;
+                then echo "installed @modernrelay/omnigraph-mcp from the lockfile";
+                else echo "omnigraph-mcp install failed; the omnigraph_memory MCP server lists no tools until the next LiteLLM restart" >&2;
+                fi
+            env:
+              HOME: /tmp
+              npm_config_cache: /tmp/npm-cache
+              npm_config_update_notifier: "false"
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 65534
+              runAsGroup: 65534
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop:
+                  - "ALL"
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+              limits:
+                memory: 512Mi
         containers:
           app:
             image:
@@ -120,6 +155,8 @@ spec:
                   name: litellm-secret
               - secretRef:
                   name: litellm-oidc
+              - secretRef:
+                  name: litellm-omnigraph-memory
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:
@@ -269,3 +306,26 @@ spec:
             exporter:
               - path: /etc/pg-exporter
                 readOnly: true
+      omnigraph-mcp:
+        type: emptyDir
+        advancedMounts:
+          litellm:
+            install-omnigraph-mcp:
+              - path: /opt/omnigraph-mcp
+            app:
+              - path: /opt/omnigraph-mcp
+                readOnly: true
+      omnigraph-mcp-lock:
+        type: configMap
+        name: litellm-omnigraph-mcp
+        advancedMounts:
+          litellm:
+            install-omnigraph-mcp:
+              - path: /etc/omnigraph-mcp
+                readOnly: true
+      omnigraph-mcp-tmp:
+        type: emptyDir
+        advancedMounts:
+          litellm:
+            install-omnigraph-mcp:
+              - path: /tmp

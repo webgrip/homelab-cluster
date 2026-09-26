@@ -1,0 +1,62 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["meeting", "attendees", "decisions", "action_items"],
+  "properties": {
+    "meeting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "held_on", "kind", "summary"],
+      "properties": {
+        "title": {"type": "string"},
+        "held_on": {"type": "string", "description": "ISO date YYYY-MM-DD"},
+        "kind": {"type": "string", "enum": ["kickoff", "status", "review", "workshop", "sales", "support", "incident", "other"]},
+        "summary": {"type": "string"}
+      }
+    },
+    "attendees": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "side", "role", "email", "absent"],
+        "properties": {
+          "name": {"type": "string"},
+          "side": {"type": "string", "enum": ["internal", "client", "third_party"]},
+          "role": {"type": ["string", "null"]},
+          "email": {"type": ["string", "null"]},
+          "absent": {"type": "boolean"}
+        }
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["statement", "topic", "quote", "agreed_with", "status"],
+        "properties": {
+          "statement": {"type": "string"},
+          "topic": {"type": "string"},
+          "quote": {"type": "string"},
+          "agreed_with": {"type": "array", "items": {"type": "string"}},
+          "status": {"type": "string", "enum": ["agreed", "proposed", "superseded", "reversed"]}
+        }
+      }
+    },
+    "action_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "owner", "due", "quote"],
+        "properties": {
+          "title": {"type": "string"},
+          "owner": {"type": ["string", "null"]},
+          "due": {"type": ["string", "null"], "description": "ISO date YYYY-MM-DD"},
+          "quote": {"type": "string"}
+        }
+      }
+    }
+  }
+}
