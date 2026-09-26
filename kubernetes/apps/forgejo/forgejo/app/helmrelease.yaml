@@ -20,6 +20,26 @@ spec:
     remediation:
       retries: 3
       strategy: uninstall
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: Deployment
+              name: forgejo
+            patch: |
+              - op: test
+                path: /spec/template/spec/initContainers/2/name
+                value: configure-gitea
+              - op: replace
+                path: /spec/template/spec/initContainers/2/command
+                value:
+                  - /bin/bash
+                  - -c
+                  - >-
+                    sed -E 's/^([[:space:]]*gitea admin auth (add|update)-oauth .*)/\1 || { echo "WARN: OAuth source sync deferred because the identity provider is unreachable; the stored source stays and Forgejo re-registers it on the next SSO login"; return 0; }/'
+                    /usr/sbin/configure_gitea.sh > /tmp/configure_gitea.sh
+                    && { grep -q 'OAuth source sync deferred' /tmp/configure_gitea.sh || echo "WARN: oauth tolerance patch matched nothing; configure_gitea.sh runs unmodified"; }
+                    && exec /bin/bash /tmp/configure_gitea.sh
   values:
     serviceAccount:
       create: true
