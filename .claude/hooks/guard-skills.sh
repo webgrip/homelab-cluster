@@ -38,7 +38,7 @@ has '^kind: GrafanaDatasource' && { has 'editable:[[:space:]]*true' || add "[gra
 has 'grafana_dashboard:[[:space:]]*"1"' && add "[grafana] dashboard ConfigMaps are dead (sidecar removed) — use a GrafanaDashboard CRD, not a ConfigMap."
 
 # ── cnpg-database: WAL volume + storage class ─────────────────────────────────
-if has 'apiVersion: postgresql\.cnpg\.io' && has '^kind: Cluster'; then
+if has 'apiVersion: postgresql\.cnpg\.io' && has '^kind: Cluster[[:space:]]*$'; then
   has 'walStorage:' || add "[cnpg] Cluster has no walStorage → pg_wal shares the data disk; if Garage S3 is unreachable WAL grows unbounded and the DB CrashLoops 'no free disk space for WALs' (took Grafana + Dependency-Track down). Add a dedicated walStorage volume."
   has 'storageClass:[[:space:]]*longhorn-(general|rwx)' && add "[cnpg] CNPG storage should use storageClass 'longhorn' (reserved for CNPG), not longhorn-general/longhorn-rwx."
 fi
