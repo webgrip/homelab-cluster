@@ -38,6 +38,18 @@ Detailed procedure for upgrading Talos across the cluster, one node at a time. N
 
 Then `mise install` and confirm: `mise exec -- talosctl version --client`
 
+`talosctl` is also the config generator ([ADR-0062](../adr/adr-0062-talos-configs-from-plain-talosctl.md)),
+so bump the tool pin **with or before** `talosVersion`; `just talos-generate-config` renders the
+installer tag from `talosVersion` for each node's `schematic` in `talos/nodes.yaml`. The machine
+config shape is pinned separately by `configContract` in `talenv.yaml` (currently `v1.13`). A
+Talos upgrade leaves it alone. Raising it to `v1.14` means moving our `cluster.apiServer` /
+`machine.*` patches onto the 1.14 `Kube*Config` documents, which is its own change with its own
+dry-run diff.
+
+Check a render before upgrading: `mise exec -- just talos-generate-config`, then
+`talosctl validate --mode metal --config talos/clusterconfig/kubernetes-<node>.yaml`, and a
+`talosctl apply-config --dry-run` against the node.
+
 ## Preflight checks
 
 - `mise exec -- kubectl get nodes -o wide`

@@ -161,7 +161,7 @@ The SOYO boards report no SMBIOS vendor/product strings (`Default string`); the 
 - **fringe-workstation** — a 256 GB Micron SSD (OS / install disk) plus a **dedicated 1 TB Seagate HDD** (rotational) and a DVD-RAM drive. That separate spindle is why this node absorbs bulk/write-heavy storage.
 - **worker-1** — a single **960 GB SATA SSD** (Netac), its OS + data disk (`installDisk: /dev/sda`). A 7.7 GB USB stick (`sdb`, the Talos installer) is still attached and can be pulled. Freshly joined, so no Longhorn replicas yet — but as a second independent worker it is the natural home for a second Longhorn replica, so data stops piling onto one node.
 
-Install disks are pinned in `talos/talconfig.yaml` (`installDisk:` — `/dev/sdb` on soyo, `/dev/sda` on fringe and worker-1). Because runtime letters are unstable, treat `installDisk` as an install-time selector only, not a way to identify a disk on a running node.
+Install disks are pinned in `talos/nodes.yaml` (`installDisk:` — `/dev/sdb` on soyo, `/dev/sda` on fringe and worker-1). Because runtime letters are unstable, treat `installDisk` as an install-time selector only, not a way to identify a disk on a running node.
 
 ### Workload placement consequence
 

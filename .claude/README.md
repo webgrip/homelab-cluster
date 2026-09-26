@@ -75,5 +75,5 @@ How it works: the servers run in-cluster (image digests pinned, RBAC/config in G
 
 ## Notes
 
-- Versions/nodes are in `talos/talenv.yaml`, `talos/talconfig.yaml`, `.mise.toml` — not in CLAUDE.md (which would go stale).
+- Versions/nodes are in `talos/talenv.yaml`, `talos/nodes.yaml`, `.mise.toml` — not in CLAUDE.md (which would go stale).
 - The CI counterpart (Claude review of PRs/Renovate) lives in `../.github/workflows/claude-review.yml`.

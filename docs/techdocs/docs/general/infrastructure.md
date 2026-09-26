@@ -108,7 +108,7 @@ graph TD
 | `10.0.0.50` – `.150` | **DHCP scope** |
 
 !!! warning "Worker renumbering is staged, not yet applied"
-    The `.30`–`.39` block above is what `talos/talconfig.yaml` now declares, and
+    The `.30`–`.39` block above is what `talos/nodes.yaml` now declares, and
     the LoadBalancer side is **done** — `.30`/`.31` are vacant. The nodes
     themselves still answer on their old addresses until the config is applied,
     one at a time, and the fleet table will be right the moment it is:
@@ -194,7 +194,7 @@ mise exec -- just --list      # every recipe, grouped
 | `secrets` | `bao-login` · `harbor-s3-cred` · `ntfy-auth-cred` — one-time OpenBao seeding via `gum` prompts |
 
 Talos recipe arguments are **positional**: `<node> [at] [mode] [insecure]`.
-`node` is a hostname *or* the address in `talconfig.yaml`; `at` is where the
+`node` is a hostname *or* the address in `talos/nodes.yaml`; `at` is where the
 machine answers **right now**, which differs from `node` in exactly two cases —
 a fresh node still on DHCP in maintenance mode, and any node mid-renumber.
 

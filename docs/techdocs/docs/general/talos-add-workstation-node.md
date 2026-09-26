@@ -11,8 +11,8 @@ It’s intentionally detailed and written as a “follow along” tutorial.
 You have a new machine on your LAN (example IP: `10.0.0.23`) booted into Talos maintenance mode. You want to:
 
 - Identify the correct install disk and NIC MAC address.
-- Add the node to `talos/talconfig.yaml`.
-- Regenerate Talos machine configs via `talhelper`.
+- Add the node to `talos/nodes.yaml` and give it a network file under `talos/nodes/`.
+- Regenerate Talos machine configs with `just talos-generate-config`.
 - Apply the config to the node using the **maintenance API** (`--insecure`).
 - Verify Talos + Kubernetes see the node as healthy.
 
@@ -110,45 +110,55 @@ Find the interface that is `up true` (example: `eno1`) and note its `HW ADDR`.
 
 ---
 
-## Step 2 — Add the node to `talos/talconfig.yaml`
+## Step 2 — Add the node to `talos/nodes.yaml`
 
-Edit:
+The generator is plain `talosctl gen config` driven by an inventory
+([ADR-0062](../adr/adr-0062-talos-configs-from-plain-talosctl.md)). A node is two edits:
 
-- `talos/talconfig.yaml`
+1. An entry under `nodes:` in `talos/nodes.yaml`:
 
-Add a new entry under `nodes:`.
+    ```yaml
+    - hostname: worker-3
+      address: 10.0.0.33
+      role: worker
+      installDisk: /dev/sda
+      schematic: d1200926df53a3d0c6a8bed8575e9eb212152a2decf792d9dfc7bea484f36be8
+      patches:
+        - nodes/worker-3.yaml
+    ```
 
-At minimum you need:
+    - `installDisk` comes from Step 1A.
+    - `schematic` is the Image Factory ID: kata (`d1200926…`) on workers, base (`1da3394e…`) on control planes.
+    - `patches` lists this node's own patches, applied after the global and role patches.
 
-- `hostname`
-- `ipAddress`
-- `installDisk` (from Step 1A)
-- `networkInterfaces[].deviceSelector.hardwareAddr` (from Step 1B)
+2. A network file, `talos/nodes/<hostname>.yaml`. Copy an existing node's file and change the
+   hostname, the MAC address (from Step 1B) and the IP address. A control plane also carries the
+   `Layer2VIPConfig` document for the API VIP `10.0.0.25`:
 
-This repo uses static addressing with routes; mirror the pattern from the existing nodes.
+    ```yaml
+    ---
+    apiVersion: v1alpha1
+    kind: HostnameConfig
+    auto: "off"
+    hostname: worker-3
+    ---
+    apiVersion: v1alpha1
+    kind: LinkAliasConfig
+    name: ethSel0
+    selector:
+      match: glob("aa:bb:cc:dd:ee:ff", mac(link.hardware_addr))
+    ---
+    apiVersion: v1alpha1
+    kind: LinkConfig
+    name: ethSel0
+    mtu: 1500
+    addresses:
+      - address: 10.0.0.33/24
+    routes:
+      - gateway: 10.0.0.1
+    ```
 
-### Example shape (do not copy blindly)
-
-```yaml
-- hostname: "fringe-workstation"
-  ipAddress: "10.0.0.23"
-  installDisk: "/dev/sda"
-  controlPlane: true
-  networkInterfaces:
-    - deviceSelector:
-        hardwareAddr: "f0:92:1c:e0:ec:3b"
-      dhcp: false
-      addresses:
-        - "10.0.0.23/24"
-      routes:
-        - network: "0.0.0.0/0"
-          gateway: "10.0.0.1"
-```
-
-Notes:
-
-- If this is truly a workstation (not intended to be a control-plane member), set `controlPlane: false` and ensure your cluster design supports it. In this repository, all nodes are often configured to run workloads and can be controllers.
-- `vip.ip` is only meaningful for control-plane nodes that participate in the API VIP configuration; follow existing patterns.
+Workers take addresses from the `.30`–`.39` block and control planes from `.20`–`.24`.
 
 ---
 
@@ -157,21 +167,22 @@ Notes:
 From the repo root:
 
 ```bash
-just talos-generate-config
+mise exec -- just talos-generate-config
 ```
 
-This runs `talhelper genconfig` and regenerates:
+This runs `scripts/talos-genconfig.sh`, which regenerates:
 
 - `talos/clusterconfig/kubernetes-<node>.yaml` machine config(s)
 - `talos/clusterconfig/talosconfig` (client config)
 
-If this step fails, fix the YAML errors in `talos/talconfig.yaml` first.
+If this step fails, fix the YAML in `talos/nodes.yaml` or in the node's patch file first.
 
 ---
 
 ## Step 4 — Apply config to the new node (maintenance API)
 
-This repo’s just recipe supports applying to a maintenance-mode node by passing `INSECURE=true`.
+The `talos-apply-node` recipe applies to a maintenance-mode node when you pass the address the
+node answers on right now, followed by `insecure=true`.
 
 Run:
 
@@ -181,8 +192,8 @@ mise exec -- just talos-apply-node <hostname> <maintenance-mode-ip> auto true
 
 What it does (high level):
 
-- Generates a `talosctl apply-config` command via `talhelper`.
-- Adds `--insecure` (maintenance service) and `--endpoints=10.0.0.23` (talk directly to the node).
+- Looks the node up in `talos/nodes.yaml` and picks `talos/clusterconfig/kubernetes-<hostname>.yaml`.
+- Applies it with `--insecure` (maintenance service), talking directly to the maintenance-mode address.
 
 ### Expected behavior
 
@@ -231,7 +242,7 @@ If it shows up but stays `NotReady`, check:
 
 ## Step 7 — Commit and push (GitOps)
 
-If `talos/talconfig.yaml` changed (and any related repo changes), commit it:
+If `talos/nodes.yaml` or `talos/nodes/` changed (and any related repo changes), commit them:
 
 ```bash
 git add -A

@@ -73,7 +73,7 @@ Expected result: DB size shrinks from ~430–450 MB to ~165 MB per member. Backe
 
 Changes to `talos/patches/` (such as the etcd heartbeat/election-timeout tuning) must be regenerated and applied node by node — the full staged procedure is in the **`talos` skill**; don't improvise it.
 
-> ⚠️ **`--mode=auto` almost always triggers a reboot on these nodes.** Even etcd-only config changes cause a reboot if the running config differs in feature flags or other fields from what talhelper generates. A reboot with Longhorn-mounted pods causes SIGKILL races that can leave orphaned application locks in databases (see *Known issues* below). Always use the safe task:
+> ⚠️ **`--mode=auto` almost always triggers a reboot on these nodes.** Even etcd-only config changes cause a reboot if the running config differs in feature flags or other fields from what `just talos-generate-config` renders. A reboot with Longhorn-mounted pods causes SIGKILL races that can leave orphaned application locks in databases (see *Known issues* below). Always use the safe task:
 
 ```bash
 # Drains workloads, applies config, waits for Ready, uncordons — one node at a time

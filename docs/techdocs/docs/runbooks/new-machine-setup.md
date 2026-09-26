@@ -4,7 +4,7 @@ How to get a working local environment against the **existing** cluster on a new
 machine. A `git clone` gives you the manifests and all tooling *config*, but is
 missing two things: the pinned binaries (mise solves this) and the gitignored
 local secret/state files. The single irreplaceable file is **`age.key`** — it
-gates all SOPS decryption, `talhelper genconfig`, and the safety hooks.
+gates all SOPS decryption, `just talos-generate-config`, and the safety hooks.
 
 > This is **dev-environment** setup against the live cluster — not a cluster
 > bootstrap. Do **not** run `just bootstrap-talos` / `just bootstrap-apps` /
@@ -17,7 +17,7 @@ gates all SOPS decryption, `talhelper genconfig`, and the safety hooks.
 | --- | --- | --- |
 | `age.key` | SOPS AGE private key (`SOPS_AGE_KEY_FILE`). Decrypts every `*.sops.yaml`, including `talos/talsecret.sops.yaml`. | **No — copy it.** Everything else depends on it. |
 | `talos/clusterconfig/` + `talos/talosconfig` | Generated Talos node configs + talosctl context (`TALOSCONFIG`). | Yes — `just talos-generate-config` (needs `age.key`). |
-| `kubeconfig` | Cluster API access (`KUBECONFIG`). | Yes — fetch via `talhelper gencommand kubeconfig`, or copy. |
+| `kubeconfig` | Cluster API access (`KUBECONFIG`). | Yes — fetch via `talosctl kubeconfig` (step 5), or copy. |
 | `.mise.local.toml` | Machine-local env: Grafana SA token + Discord webhook. | Copy, or recreate from the committed template. Optional. |
 | `.claude/settings.local.json` | Machine-local Claude permissions + enabled MCP servers. | Optional — re-enable MCP on first use. |
 | `cloudflare-tunnel.json`, `github-deploy.key{,.pub}`, `github-push-token.txt` | Bootstrap / Flux-push secrets at repo root. | Copy **only if** you'll bootstrap a cluster or push as Flux. Not needed for day-to-day manifest editing. |
@@ -61,8 +61,8 @@ mise trust && mise trust .mise.local.toml 2>/dev/null; mise install
 mise exec -- just talos-generate-config
 
 # ── 5. Fetch a fresh kubeconfig from a node (needs LAN/WireGuard) ───────
-mise exec -- bash -c 'cd talos && talhelper gencommand kubeconfig \
-  --extra-flags="$(git rev-parse --show-toplevel) --force" | bash'
+mise exec -- talosctl kubeconfig --nodes 10.0.0.20 --force-context-name homelab \
+  "$(git rev-parse --show-toplevel)" --force
 #     Can't reach the cluster? scp the kubeconfig over instead.
 
 # ── 6. Recreate machine-local env (optional) ───────────────────────────
@@ -95,7 +95,7 @@ in place and you've `cd`'d into the repo, the env (`KUBECONFIG`,
 - **Step 5 needs the cluster reachable** — `talosctl kubeconfig` contacts a node.
   Off-LAN, bring up WireGuard first or `scp` the `kubeconfig` over.
 - **mise does the heavy lifting** in step 3: installs sops, age, kubectl, flux,
-  talosctl, talhelper, helm, kustomize, kubeconform, gitleaks, yamllint, just,
+  talosctl, helm, kustomize, kubeconform, gitleaks, yamllint, just,
   task, bao — all version-pinned — plus creates `.venv` and runs
   `lefthook install` via the `postinstall` hook.
 

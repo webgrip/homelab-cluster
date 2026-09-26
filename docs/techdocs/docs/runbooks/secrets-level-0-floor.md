@@ -12,7 +12,7 @@
 | Item | Where it rests | Who reads it |
 | --- | --- | --- |
 | The age private key | On the operator's machine as `SOPS_AGE_KEY_FILE`; in-cluster as the Secret Flux decrypts with, seeded from `bootstrap/sops-age.sops.yaml` by `scripts/bootstrap-apps.sh` | `sops`, Flux's kustomize-controller |
-| `talos/talsecret.sops.yaml` | Git, encrypted | `talhelper` when generating machine configs |
+| `talos/talsecret.sops.yaml` | Git, encrypted | `scripts/talos-genconfig.sh` (via `just talos-generate-config`) when generating machine configs |
 | `kubernetes/components/sops/cluster-secrets.sops.yaml` | Git, encrypted | Flux `postBuild.substituteFrom` in every `ks.yaml` that renders `${SECRET_DOMAIN}` |
 | The OpenBao unseal key | The Secret `security/openbao-keys`, written once by the `openbao-init` CronJob; not in Git, not in S3 | The `openbao-unsealer` Deployment |
 

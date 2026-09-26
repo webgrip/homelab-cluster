@@ -124,27 +124,13 @@ update-oci-digests:
 
 # --- talos ------------------------------------------------------------------
 
-# Render talos/clusterconfig/ from talconfig.yaml
+[doc('Render talos/clusterconfig/ from talos/nodes.yaml, talenv.yaml and patches/ [out=dir]')]
 [group('talos')]
-talos-generate-config:
-    @just _need talhelper sops
-    @just _file {{ root }}/talos/talconfig.yaml {{ root }}/.sops.yaml "${SOPS_AGE_KEY_FILE}"
-    cd {{ root }}/talos && talhelper genconfig
+talos-generate-config out="":
+    @just _need talosctl sops yq
+    @just _file {{ root }}/talos/nodes.yaml {{ root }}/talos/talenv.yaml {{ root }}/.sops.yaml "${SOPS_AGE_KEY_FILE}"
+    {{ root }}/scripts/talos-genconfig.sh {{ if out == "" { root / "talos/clusterconfig" } else { out } }}
 
-# Apply a node's Talos config [node=hostname|ip, at=current addr, mode, insecure]
-#
-# `node` selects WHICH config to apply (hostname, or the ipAddress in
-# talconfig). `at` is WHERE the machine is reachable right now, defaulting to
-# the configured address.
-#
-# Identical in steady state; different in the two cases that matter — a new node
-# still on DHCP, and any node being renumbered. Passing the node straight to
-# `talhelper gencommand apply` always emits --nodes=<the address in talconfig>
-# with no way to override it, so both cases fell out of the tooling and got
-# driven by hand-written talosctl. --extra-flags cannot patch around it either:
-# talosctl's --nodes is a string slice, so a second one appends and you target
-# both addresses at once.
-#
 #   just talos-apply-node worker-1                      # steady state
 #   just talos-apply-node worker-2 10.0.0.29            # renumbering
 #   just talos-apply-node worker-3 10.0.0.70 auto true  # new node, maintenance mode
@@ -160,13 +146,13 @@ talos-apply-node node at="" mode="auto" insecure="false":
     # Match on hostname OR configured IP so either identifies the node. env()
     # keeps the value out of the yq expression, so no quoting games.
     host="$(NODE="${node}" yq -r \
-        '.nodes[] | select(.hostname == env(NODE) or .ipAddress == env(NODE)) | .hostname' talconfig.yaml)"
+        '.nodes[] | select(.hostname == env(NODE) or .address == env(NODE)) | .hostname' nodes.yaml)"
     configured_ip="$(NODE="${node}" yq -r \
-        '.nodes[] | select(.hostname == env(NODE) or .ipAddress == env(NODE)) | .ipAddress' talconfig.yaml)"
+        '.nodes[] | select(.hostname == env(NODE) or .address == env(NODE)) | .address' nodes.yaml)"
     # An empty host means `node` matched nothing; fail loudly rather than
     # building a talosctl command around an empty filename.
     if [ -z "${host}" ]; then
-        echo "node='${node}' matches no hostname or ipAddress in talos/talconfig.yaml" >&2
+        echo "node='${node}' matches no hostname or address in talos/nodes.yaml" >&2
         exit 1
     fi
     target="${at:-${configured_ip}}"
@@ -194,7 +180,7 @@ talos-apply-node node at="" mode="auto" insecure="false":
 # Drain, apply, wait Ready, uncordon [node=hostname|ip, at=current addr, mode, insecure]
 #
 # Same node/at contract as talos-apply-node — the hostname is the node's
-# identity in both talconfig and Kubernetes, so one argument serves the drain,
+# identity in both nodes.yaml and Kubernetes, so one argument serves the drain,
 # the apply and the uncordon. Delegates the apply itself rather than repeating
 # the talosctl invocation, so the DHCP/renumber handling cannot drift between
 # the two recipes.
@@ -210,9 +196,9 @@ talos-apply-node-safe node at="" mode="auto" insecure="false":
     just _file "${TALOSCONFIG}"
     cd {{ root }}/talos
     host="$(NODE='{{ node }}' yq -r \
-        '.nodes[] | select(.hostname == env(NODE) or .ipAddress == env(NODE)) | .hostname' talconfig.yaml)"
+        '.nodes[] | select(.hostname == env(NODE) or .address == env(NODE)) | .hostname' nodes.yaml)"
     if [ -z "${host}" ]; then
-        echo "node='{{ node }}' matches no hostname or ipAddress in talos/talconfig.yaml" >&2
+        echo "node='{{ node }}' matches no hostname or address in talos/nodes.yaml" >&2
         exit 1
     fi
     echo "==> draining ${host}"
@@ -235,13 +221,14 @@ talos-upgrade-node node at="" insecure="false":
     # piped into `read` — an empty match would make `read` hit EOF and, under
     # `set -e`, abort before the explanatory error below ever runs.
     match="$(NODE='{{ node }}' yq -r \
-        '.nodes[] | select(.hostname == env(NODE) or .ipAddress == env(NODE))
-         | [.hostname, .ipAddress, .talosImageURL] | join(" ")' talconfig.yaml)"
+        '.nodes[] | select(.hostname == env(NODE) or .address == env(NODE))
+         | [.hostname, .address, .schematic] | join(" ")' nodes.yaml)"
     if [ -z "${match}" ]; then
-        echo "node='{{ node }}' matches no hostname or ipAddress in talos/talconfig.yaml" >&2
+        echo "node='{{ node }}' matches no hostname or address in talos/nodes.yaml" >&2
         exit 1
     fi
-    read -r host configured_ip image <<< "${match}"
+    read -r host configured_ip schematic <<< "${match}"
+    image="$(yq -r .installerRegistry nodes.yaml)/${schematic}"
     version="$(yq -r '.talosVersion' talenv.yaml)"
     target="${at:-${configured_ip}}"
     insecure_flag=""
@@ -265,19 +252,27 @@ talos-upgrade-node node at="" insecure="false":
 talos-upgrade-k8s:
     #!/usr/bin/env bash
     set -euo pipefail
-    just _need talhelper talosctl yq
+    just _need talosctl yq
     just _file "${TALOSCONFIG}"
     cd {{ root }}/talos
     talosctl config info >/dev/null
     kubernetes_version="$(yq -r '.kubernetesVersion' talenv.yaml)"
-    talhelper gencommand upgrade-k8s --extra-flags "--to '${kubernetes_version}'" | bash
+    first_control_plane="$(yq -r '[.nodes[] | select(.role == "controlplane")][0].address' nodes.yaml)"
+    talosctl upgrade-k8s --talosconfig=./clusterconfig/talosconfig \
+        --nodes="${first_control_plane}" --to="${kubernetes_version}"
 
 # DESTRUCTIVE — reset every node back to maintenance mode
 [confirm('This destroys the cluster and resets every node to maintenance mode. Continue?')]
 [group('talos')]
 talos-reset:
-    @just _need talhelper
-    cd {{ root }}/talos && talhelper gencommand reset --extra-flags="--reboot --system-labels-to-wipe STATE --system-labels-to-wipe EPHEMERAL --graceful=false --wait=false" | bash
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _need talosctl yq
+    cd {{ root }}/talos
+    for address in $(yq -r '.nodes[].address' nodes.yaml); do
+        talosctl reset --talosconfig=./clusterconfig/talosconfig --nodes="${address}" \
+            --reboot --system-labels-to-wipe STATE --system-labels-to-wipe EPHEMERAL --graceful=false --wait=false
+    done
 
 # --- bootstrap --------------------------------------------------------------
 
@@ -286,14 +281,23 @@ talos-reset:
 bootstrap-talos:
     #!/usr/bin/env bash
     set -euo pipefail
-    just _need talhelper talosctl sops
-    just _file {{ root }}/.sops.yaml {{ root }}/talos/talconfig.yaml "${SOPS_AGE_KEY_FILE}"
+    just _need talosctl sops yq
+    just _file {{ root }}/.sops.yaml {{ root }}/talos/nodes.yaml "${SOPS_AGE_KEY_FILE}"
     cd {{ root }}/talos
-    [ -f talsecret.sops.yaml ] || talhelper gensecret | sops --filename-override talos/talsecret.sops.yaml --encrypt /dev/stdin > talsecret.sops.yaml
-    talhelper genconfig
-    talhelper gencommand apply --extra-flags="--insecure" | bash
-    until talhelper gencommand bootstrap | bash; do sleep 10; done
-    until talhelper gencommand kubeconfig --extra-flags="{{ root }} --force" | bash; do sleep 10; done
+    if [ ! -f talsecret.sops.yaml ]; then
+        bundle_dir="$(mktemp -d)"
+        trap 'rm -rf "${bundle_dir}"' EXIT
+        talosctl gen secrets --output-file "${bundle_dir}/secrets.yaml"
+        sops --filename-override talos/talsecret.sops.yaml --encrypt "${bundle_dir}/secrets.yaml" > talsecret.sops.yaml
+    fi
+    just talos-generate-config
+    while IFS=$'\t' read -r host address; do
+        talosctl apply-config --talosconfig=./clusterconfig/talosconfig --nodes="${address}" \
+            --file="./clusterconfig/kubernetes-${host}.yaml" --insecure
+    done < <(yq -r '.nodes[] | [.hostname, .address] | @tsv' nodes.yaml)
+    first_control_plane="$(yq -r '[.nodes[] | select(.role == "controlplane")][0].address' nodes.yaml)"
+    until talosctl bootstrap --talosconfig=./clusterconfig/talosconfig --nodes="${first_control_plane}"; do sleep 10; done
+    until talosctl kubeconfig --talosconfig=./clusterconfig/talosconfig --nodes="${first_control_plane}" {{ root }} --force; do sleep 10; done
 
 # Bootstrap the core apps into a freshly built cluster
 [group('bootstrap')]

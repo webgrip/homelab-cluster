@@ -1,0 +1,68 @@
+---
+clusterName: kubernetes
+endpoint: https://10.0.0.25:6443
+additionalSans:
+  - 127.0.0.1
+  - 10.0.0.25
+installerRegistry: factory.talos.dev/installer
+patches:
+  all:
+    - patches/global/cluster-network.yaml
+    - patches/global/machine-files.yaml
+    - patches/global/machine-kernel.yaml
+    - patches/global/machine-kubelet.yaml
+    - patches/global/machine-network.yaml
+    - patches/global/machine-sysctls.yaml
+    - patches/global/machine-time.yaml
+    - patches/global/machine-logging.yaml
+    - patches/global/machine-registries.yaml
+  controlplane:
+    - patches/controller/cluster.yaml
+    - patches/controller/nodegroup-soyo.yaml
+  worker: []
+nodes:
+  - hostname: soyo-1
+    address: 10.0.0.20
+    role: controlplane
+    installDisk: /dev/sdb
+    schematic: 1da3394e6229e507d4e3d166b718cacff86435a61c4765feedd66b43ac237558
+    patches:
+      - nodes/soyo-1.yaml
+  - hostname: soyo-2
+    address: 10.0.0.21
+    role: controlplane
+    installDisk: /dev/sdb
+    schematic: 1da3394e6229e507d4e3d166b718cacff86435a61c4765feedd66b43ac237558
+    patches:
+      - nodes/soyo-2.yaml
+  - hostname: soyo-3
+    address: 10.0.0.22
+    role: controlplane
+    installDisk: /dev/sdb
+    schematic: 1da3394e6229e507d4e3d166b718cacff86435a61c4765feedd66b43ac237558
+    patches:
+      - nodes/soyo-3.yaml
+  - hostname: fringe-workstation
+    address: 10.0.0.30
+    role: worker
+    installDisk: /dev/sda
+    schematic: d1200926df53a3d0c6a8bed8575e9eb212152a2decf792d9dfc7bea484f36be8
+    patches:
+      - patches/worker/fringe-dedicated.yaml
+      - nodes/fringe-workstation.yaml
+  - hostname: worker-1
+    address: 10.0.0.31
+    role: worker
+    installDisk: /dev/sda
+    schematic: d1200926df53a3d0c6a8bed8575e9eb212152a2decf792d9dfc7bea484f36be8
+    patches:
+      - patches/worker/worker-1.yaml
+      - nodes/worker-1.yaml
+  - hostname: worker-2
+    address: 10.0.0.32
+    role: worker
+    installDisk: /dev/nvme0n1
+    schematic: d1200926df53a3d0c6a8bed8575e9eb212152a2decf792d9dfc7bea484f36be8
+    patches:
+      - patches/worker/worker-2.yaml
+      - nodes/worker-2.yaml
