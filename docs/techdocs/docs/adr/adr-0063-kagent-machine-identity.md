@@ -155,7 +155,9 @@ that identity end to end.
   The kagent `SecurityPolicy` pairs `oidc` with a `jwt` provider on the same broker client. The
   `jwt` provider verifies the forwarded access token and `claimToHeaders` writes `email` into
   `X-User-Id`, overwriting anything the client sent. The route strips `X-Agent-Name`. A
-  NetworkPolicy admits the UI and controller ports from the Envoy gateway only. Whether the `jwt`
+  NetworkPolicy admits kagent's UI, controller and A2A ports from the Envoy gateway only. The
+  owner accepted piloting the alpha build, which authenticates no one, only behind these two
+  controls together (2026-09-27, round 3). Whether the `jwt`
   filter sees the token the OIDC filter just forwarded is unverified, and it is step 2 of the
   spike below.
 
@@ -175,9 +177,13 @@ that identity end to end.
 * The owner declined to pick a fallback for a failed pass-through. Identity is the component
   this pilot exists to get right, so the options were researched instead. They are compared in
   [Person-bound identity: the options](#person-bound-identity-the-options), which ends in a
-  recommendation and a spike. The recommendation changes two details of this section: the API
-  server maps the kagent audience to its own username prefix, `kagent:`, and a person's agent
-  bindings are rendered read-only.
+  recommendation and a spike. The owner adopted it on 2026-09-27 (round 3), which changes two
+  details of this section: the API server maps the kagent audience to its own username prefix,
+  `kagent:`, and a person's agent bindings are the read-only `human-reader` binding only. An
+  agent never carries the person's full rights, even for a person who can write.
+* The Authentik `kagent` provider's access tokens live 15 minutes. A run cannot outlive the
+  token it started with. The gateway requests `offline_access`, so Envoy refreshes the token
+  without a login page.
 * Controller: `rbac.namespaces: [kagent]`, so its write role and its Secret access become Roles
   in `kagent` only. `Harness`, `AgentTemplate`, `WorkerPool` and the key Secrets all live there.
 * Actors: no Kubernetes identity. The `WorkerPool` template sets
@@ -312,9 +318,9 @@ would have to be ported to a `Harness` × `AgentTemplate` pair.
 
 ### Consequences
 
-* Good, because an agent's Kubernetes reads appear in the audit log under the email of the
-  person who asked: `oidc:<email>`, or `kagent:<email>` with read-only bindings under the
-  recommended prefix. They never exceed that person's RBAC.
+* Good, because an agent's Kubernetes reads appear in the audit log as `kagent:<email>` of the
+  person who asked, holding only read-only bindings. They never exceed `human-reader`, whatever
+  that person's own RBAC.
 * Good, because no standing read identity exists on the Kubernetes path, the property
   rfc-mcp-identity removes from `k8s-mcp`.
 * Good, because each agent key is one revocation point, and the team budget at zero is the kill
@@ -335,9 +341,9 @@ would have to be ported to a `Harness` × `AgentTemplate` pair.
 
 ### Confirmation
 
-1. An agent call made by a person shows up in the API audit as `oidc:<their email>`, or
-   `kagent:<their email>` if the owner takes the recommended prefix, with the kagent-tools user
-   agent. `KubernetesImpersonationUsed` stays quiet.
+1. An agent call made by a person shows up in the API audit as `kagent:<their email>`, with the
+   kagent-tools user agent. `KubernetesImpersonationUsed` stays quiet.
+   `kubectl auth can-i create pods --as=kagent:<owner email>` is `no`.
 2. A call to `kagent-tools` without a bearer fails with `Bearer token required when
    TOKEN_PASSTHROUGH is true`.
 3. `kubectl auth can-i get secrets -n observability --as=system:serviceaccount:kagent:kagent-controller`
@@ -357,6 +363,10 @@ would have to be ported to a `Harness` × `AgentTemplate` pair.
     a test Pod in `kagent` with a hostPath is still denied.
 12. The API server's flags carry `certificates.k8s.io/v1beta1=true` only while a Substrate
     release that needs it is installed.
+13. A NetworkPolicy in `kagent` admits the UI, controller and A2A ports from the Envoy gateway
+    only: a test Pod in another namespace, and one in `kagent` itself, gets no connection to any
+    of them, while the UI works through the gateway.
+14. A token issued by the Authentik `kagent` provider has `exp - iat` of 900 seconds.
 
 ## Pros and Cons of the Options
 
@@ -626,19 +636,27 @@ Run it on the pilot with the `kagent-k8s` agent before anything else lands.
 5. Lifetime: set `kagent`'s access-token validity to five minutes for the spike, then start a
    run four minutes into a token. **Pass:** the run's later tool calls fail with 401, and the
    next message succeeds with a refreshed token and no login page. That measures the mid-run
-   limit and proves refresh. Restore one hour afterwards, or pick the value from the result.
+   limit and proves refresh. Set 15 minutes afterwards, the owner's choice.
 6. Revocation: delete the person's Authentik session. **Pass:** the next UI request redirects to
    login; tool calls stop within the token's remaining lifetime.
 
-### Questions for the owner
+### Questions for the owner, answered 2026-09-27
 
 1. Accept option 1b's read-only ceiling: an agent never writes, even for a person who can?
+   **Accepted.** Agents act as `kagent:<email>` with only the read-only `human-reader` binding,
+   never with the person's full rights.
 2. Accept that a run cannot outlive the token it started with, and choose the access-token
-   lifetime for the `kagent` provider (one hour today, shorter is safer)?
+   lifetime for the `kagent` provider (one hour today, shorter is safer)? **Accepted, 15
+   minutes.** Refresh goes through `offline_access`, without a login page.
 3. Upgrade Authentik to 2026.8 now, so option 2 can follow without waiting for the pilot?
-4. Carry the upstream kagent change (STS `client_id`) ourselves, or wait for upstream?
+   **Pulled forward:** right after the Kyverno work, once its restart cause is found, so RFC 8693
+   token exchange becomes available.
+4. Carry the upstream kagent change (STS `client_id`) ourselves, or wait for upstream? **Submit
+   an upstream PR and wait; no fork.** Option 1b runs until upstream ships it.
 5. Accept the pilot on a kagent 1.0 build that upstream calls "for isolated deployments" until
    Substrate issue #1660 lands, given that the gateway and NetworkPolicy are the only door?
+   **Accepted only behind both:** the gateway OIDC gate of (a) and a NetworkPolicy that admits
+   only the Envoy gateway to kagent's UI, controller and A2A ports (Confirmation 13).
 
 ## More Information
 
@@ -655,7 +673,9 @@ Run it on the pilot with the `kagent-k8s` agent before anything else lands.
     * whether the credential provider accepts a namespaced RoleBinding;
     * whether `WorkerPool.spec.template` takes `automountServiceAccountToken`;
     * whether the egress gateway injects on plain in-cluster HTTP to `litellm.ai.svc`.
-* Open for the owner: the five questions at the end of "Person-bound identity".
+* The five owner questions at the end of "Person-bound identity" are answered there.
+* Follow-up work under epic VIK-1223: VIK-1229 (pilot), VIK-1246 (upstream kagent PR adding
+  `client_id` to the token-exchange client) and VIK-1247 (the identity spike).
 * Exception ledger, tracked debt from this record (owner prefers none):
     * `pod-security-baseline-privileged` for DaemonSet `ate-system/atelet`. Retire when Substrate
       runs atelet unprivileged, or when the pilot ends.
@@ -690,3 +710,13 @@ Run it on the pilot with the `kagent-k8s` agent before anything else lands.
   against kagent `v1.0.0-alpha4`, kagent-tools `v0.3.0`, Substrate `v0.2.0-beta8`, Authentik
   `version/2026.8.3`, Envoy Gateway `v1.9.1`, Kubernetes `v1.37.1` and gVisor
   `release-20260921.0`. Status stays proposed.
+* 2026-09-27: owner decisions, round 3, answering the five questions of "Person-bound
+  identity". Option 1b adopted: agents act as `kagent:<email>` with only the read-only
+  `human-reader` binding, never the person's full rights, (b). The `kagent` provider's access
+  tokens live 15 minutes, a run cannot outlive its token, and refresh uses `offline_access`
+  without a login page. The Authentik 2026.8 upgrade is pulled forward to right after the Kyverno
+  work, once its restart cause is found, so token exchange (option 2) becomes available. The
+  missing `client_id` in kagent's token-exchange client goes upstream as a PR (VIK-1246); no
+  fork, and 1b runs until it ships. The spike is VIK-1247. Piloting the alpha build without in-app authentication is accepted only
+  behind the gateway OIDC gate plus a NetworkPolicy admitting only the Envoy gateway to kagent's
+  UI, controller and A2A ports, now Confirmation 13. Status stays proposed until the GA re-check.
