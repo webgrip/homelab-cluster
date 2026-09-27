@@ -1,0 +1,19 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./upstream/crds.yaml
+  - ./upstream/controller.yaml
+  - ./networkpolicy.yaml
+  - ./servicemonitor.yaml
+images:
+  - name: registry.k8s.io/agent-sandbox/agent-sandbox-controller
+    newName: harbor.webgrip.dev/k8s/agent-sandbox/agent-sandbox-controller
+    newTag: v1.0.4
+    digest: sha256:c241245d7ff0068784ec0423f35efeb77c70ab08592533ca5b0cd7c36f8b2020
+patches:
+  - path: ./deployment-hardening.yaml
+    target:
+      kind: Deployment
+      name: agent-sandbox-controller
