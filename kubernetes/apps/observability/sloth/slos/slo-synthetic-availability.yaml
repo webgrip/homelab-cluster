@@ -148,3 +148,51 @@ spec:
         ticketAlert:
           labels:
             severity: warning
+
+    - name: authentik-login-availability
+      objective: 99.5
+      description: "Availability SLO based on blackbox probe_success for the Authentik login flow executor."
+      sli:
+        events:
+          errorQuery: |
+            sum(
+              count_over_time(probe_success{endpoint="authentik-login", instance=~"https://envoy-internal[.].*"}[{{.window}}])
+              -
+              sum_over_time(probe_success{endpoint="authentik-login", instance=~"https://envoy-internal[.].*"}[{{.window}}])
+            )
+          totalQuery: |
+            sum(
+              count_over_time(probe_success{endpoint="authentik-login", instance=~"https://envoy-internal[.].*"}[{{.window}}])
+            )
+      alerting:
+        name: SyntheticAuthentikLoginAvailability
+        labels:
+          category: slo
+          service: authentik
+        annotations:
+          summary: "Synthetic availability SLO burn rate (authentik-login)"
+          description: |
+            What's happening:
+            - The Authentik login flow executor is failing synthetic probes through envoy-internal often enough to burn the SLO error budget.
+            - This catches intermittent failure that never stays down for the 5m AuthentikLoginFlowBroken needs.
+
+            Impact/risk:
+            - Sign-in to every application behind the broker fails or hangs for part of the requests; existing sessions keep working until they expire.
+
+            Likely causes:
+            - authentik-db (CNPG) switchover, CPU starvation or restarts
+            - Authentik server or worker pods restarting or slow
+            - envoy-internal or the authentik HTTPRoute degraded
+
+            First actions:
+            - Check blackbox probe success, status code and duration for authentik-login
+            - kubectl -n authentik get pods; kubectl -n authentik get cluster authentik-db
+            - Check recent access-plane applies for flow or brand changes
+          runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/authentik-oidc-login/"
+          dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/synthetic-blackbox/synthetic-blackbox"
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning
