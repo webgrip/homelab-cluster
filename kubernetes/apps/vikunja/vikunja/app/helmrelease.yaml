@@ -120,8 +120,36 @@ spec:
                 drop:
                   - "ALL"
             probes:
-              liveness: {enabled: true}
-              readiness: {enabled: true}
+              startup:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /health
+                    port: http
+                  periodSeconds: 10
+                  timeoutSeconds: 3
+                  failureThreshold: 30
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /health
+                    port: http
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 10
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /health
+                    port: http
+                  periodSeconds: 10
+                  timeoutSeconds: 3
+                  failureThreshold: 3
             resources:
               requests: {cpu: 10m, memory: 128Mi}
               limits: {memory: 512Mi}
