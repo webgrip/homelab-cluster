@@ -16,21 +16,6 @@ spec:
     remediation:
       retries: 3
       remediateLastFailure: true
-  postRenderers:
-    - kustomize:
-        patches:
-          - target:
-              group: keda.sh
-              version: v1alpha1
-              kind: ScaledJob
-              name: ploeg-worker-bronze-(builder|reviewer)
-            patch: |
-              apiVersion: keda.sh/v1alpha1
-              kind: ScaledJob
-              metadata:
-                name: unused
-                annotations:
-                  autoscaling.keda.sh/paused: "true"
   values:
     imagePullSecrets:
       - name: harbor-pull
@@ -60,7 +45,7 @@ spec:
       consumers:
         - name: de-vloer
           teams:
-            - bronze
+            - vloer
           execute: true
           maxBudgetUsd: 0.25
           tokenSecret:
@@ -117,6 +102,8 @@ spec:
           # that appears in no chart, no values file and no doc.
           projects:
             - name: "Ploeg Test"
+              id: "11"
+              team: vloer
               repo: webgrip/glide
               branch: development
               forge: forgejo
@@ -190,6 +177,8 @@ spec:
         copper:
           assignees:
             - copper
+        vloer:
+          assignees: []
     # Tracker write-backs: how a closed Shift reaches a person with the pull
     # request link (backlog #31). Without both, the provider keeps its logging
     # no-op — runs still finish, the board is simply not updated.
@@ -230,7 +219,7 @@ spec:
           name: ploeg-worker-bootstrap
           registryKey: registry.json
         additionalLLMPolicies:
-          - team: bronze
+          - team: vloer
             role: operator
             budgetUsd: 0.25
             models:

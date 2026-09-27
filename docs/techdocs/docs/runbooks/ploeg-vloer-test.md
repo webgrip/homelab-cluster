@@ -11,11 +11,11 @@ The [deployment settings](../../../../kubernetes/apps/ploeg/de-vloer/app/helmrel
 ## Start from a ticket
 
 1. Create a fresh ticket on the existing **Ploeg Test** board in Vikunja. Describe one small, verifiable change to the Ploeg repository.
-2. Assign it to **bronze**. The board determines the repository: `webgrip/ploeg`, branch `development`.
+2. Assign it to any team user, for example **bronze**. The board determines the repository: `webgrip/glide`, branch `development`, and it pins the work to the `vloer` team whatever the assignee.
 3. In Vloer, select the **Ploeg Test** ticket source, preview the ticket, and import it.
 4. Choose the model and budget, then start the work. Follow its activity and inspect the resulting changes and checks.
 
-For this test, bronze's unattended workers are paused in the [Ploeg settings](../../../../kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml), so a worker cannot grab the ticket before Vloer imports it. Silver and copper keep their unattended behavior. Previously executed tickets cannot be imported as fresh work. Create a new ticket for another trial.
+The [Ploeg settings](../../../../kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml) pin the Ploeg Test board to the `vloer` team, and Vloer's operator consumer is scoped to that team alone. `vloer` is in the roster but not under `executor.teams`, so the chart renders no ScaledJob for it and no unattended worker can claim a Ploeg Test ticket before Vloer imports it. Bronze, silver and copper keep their unattended behavior on every other routed board. Previously executed tickets cannot be imported as fresh work. Create a new ticket for another trial.
 
 ## Exercise the controls
 
