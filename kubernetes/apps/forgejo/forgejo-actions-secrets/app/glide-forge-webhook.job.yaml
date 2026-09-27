@@ -1,0 +1,83 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: glide-forge-webhook
+  namespace: forgejo
+  labels:
+    cleanup.webgrip.io/retry-failed: 'true'
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: forgejo-actions-secrets
+      automountServiceAccountToken: false
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: register
+          image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.0@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4
+          env:
+            - name: FORGEJO_URL
+              value: http://forgejo-http.forgejo.svc.cluster.local:3000
+            - name: REPOSITORY
+              value: webgrip/glide
+            - name: TARGET_URL
+              value: http://ploeg.ploeg.svc.cluster.local:8080/webhooks/forge/forgejo
+            - name: EVENTS
+              value: '["pull_request","pull_request_review"]'
+            - name: ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: forgejo-admin-secret
+                  key: username
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: forgejo-admin-secret
+                  key: password
+            - name: WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-forge-webhook
+                  key: PLOEG_FORGEJO_SECRET
+          command:
+            - /bin/sh
+            - -ceu
+            - |
+              fj() {
+                curl -fsS --max-time 45 -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" -H 'Content-Type: application/json' "$@"
+              }
+              api="$FORGEJO_URL/api/v1/repos/$REPOSITORY/hooks"
+              hook="$(fj "$api?limit=50" | jq -r --arg u "$TARGET_URL" '[.[] | select(.config.url == $u) | .id][0] // empty')"
+              body="$(jq -nc --arg u "$TARGET_URL" --arg s "$WEBHOOK_SECRET" --argjson e "$EVENTS" \
+                '{type:"forgejo", active:true, branch_filter:"*", events:$e, config:{url:$u, content_type:"json", http_method:"post", secret:$s}}')"
+              if [ -z "$hook" ]; then
+                hook="$(printf '%s' "$body" | fj -X POST --data-binary @- "$api" | jq -r '.id')"
+                echo "created webhook $hook on $REPOSITORY"
+              else
+                printf '%s' "$body" | jq -c 'del(.type)' | fj -X PATCH --data-binary @- "$api/$hook" >/dev/null
+                echo "updated webhook $hook on $REPOSITORY"
+              fi
+              fj "$api/$hook" | jq -e '.active == true and (.events | index("pull_request")) != null and (.events | any(startswith("pull_request_review")))' >/dev/null \
+                || { echo "webhook $hook on $REPOSITORY does not carry the expected events"; exit 1; }
+              echo "webhook $hook on $REPOSITORY delivers $EVENTS to $TARGET_URL"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi

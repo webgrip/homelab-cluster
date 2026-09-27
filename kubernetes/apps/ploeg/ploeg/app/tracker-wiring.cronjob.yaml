@@ -63,12 +63,16 @@ spec:
                   auth="Authorization: Bearer $VIKUNJA_TOKEN"
                   json="Content-Type: application/json"
                   yq -o=json '.' "$CONFIG_FILE" > /tmp/config.json
-                  jq -r '.trackers.vikunja.projects[].name' /tmp/config.json > /tmp/boards
+                  jq -r '.trackers.vikunja.projects[] | "\(.name // "")|\(.id // "")"' /tmp/config.json > /tmp/boards
                   jq -r '[.teams[].assignees[]] | unique | .[]' /tmp/config.json > /tmp/users
                   curl -fsS -H "$auth" "$VIKUNJA_URL/projects?per_page=250" > /tmp/projects.json
                   failed=0
-                  while IFS= read -r board; do
-                    id="$(jq -r --arg t "$board" '[.[] | select(.title == $t) | .id] | if length == 1 then .[0] else empty end' /tmp/projects.json)"
+                  while IFS='|' read -r board pinned; do
+                    if [ -n "$pinned" ]; then
+                      id="$(jq -r --arg i "$pinned" '[.[] | select((.id | tostring) == $i) | .id][0] // empty' /tmp/projects.json)"
+                    else
+                      id="$(jq -r --arg t "$board" '[.[] | select(.title == $t) | .id] | if length == 1 then .[0] else empty end' /tmp/projects.json)"
+                    fi
                     if [ -z "$id" ]; then
                       log "board=\"$board\" does not resolve to exactly one project"
                       failed=1
