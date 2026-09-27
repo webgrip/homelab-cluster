@@ -79,6 +79,9 @@ that had no decision record. All **Proposed**. Roughly by stakes:
   internal-by-default posture.
 - [Identity & SSO](rfc-identity-sso.md) — Authentik adoption record + the non-OIDC/forward-auth
   hole.
+- [kagent or Glide for the in-cluster agent runtime](rfc-agent-runtime-kagent-vs-glide.md) —
+  five options against ADR-0063's kagent 1.0 pilot, including kagent embedded in Glide; verdict:
+  Glide on agent-sandbox with the existing `kata` RuntimeClass, no embedding; Draft 2026-09-27
 - [MCP endpoints carry the caller's identity](rfc-mcp-identity.md) — the six MCP routes behind the broker at the gateway and `k8s-mcp` calling the API as the person; Proposed 2026-09-15
 - [The access plane](rfc-access-plane.md) — Google as the only identity, one four-file
   entitlement model, one OpenTofu module reconciled by tofu-controller; supersedes the open
