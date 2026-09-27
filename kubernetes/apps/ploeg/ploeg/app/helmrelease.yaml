@@ -40,7 +40,7 @@ spec:
       # applies — see the kepler note for why a non-Harbor depName wedges
       # stability-days forever.
       # renovate: datasource=docker depName=harbor.webgrip.dev/webgrip/ploegd
-      tag: "0.4.0-rc.2@sha256:2e4243cfdcd367551508f41608bad228cbdaafff5f7a1821d7fd5a20852064ea"
+      tag: "0.4.0-rc.4@sha256:202253770a26d1c6d1bc4202973e23ef6732409704dd20f21889f2021f6c7d6e"
     operator:
       consumers:
         - name: de-vloer
@@ -205,6 +205,11 @@ spec:
     executor:
       enabled: true
       forge: forgejo
+      # A writer's forge token stays inside ploeg-worker; the harness gets a
+      # placeholder and reaches only the Run's own repository through a
+      # loopback proxy (Glide VIK-733). Every harness here runs with dind:false,
+      # so none pushes from a sidecar that cannot reach it.
+      forgeTokenIsolation: proxy
       forgejo:
         url: https://forgejo.${SECRET_DOMAIN}
         readTokenSecret:
@@ -236,6 +241,19 @@ spec:
       harness:
         name: openhands
         dind: false
+        # Glide ADR-0035: the kubelet mounts the toolchain read-only, so a Run
+        # can check its work without registry egress. Go matches Glide's mise
+        # pin. Module downloads stay blocked by the namespace's egress policy,
+        # so the check is gofmt-class only, and only where Glide's Ploeg module
+        # exists; ploeg-worker re-runs it after a writer opens a pull request.
+        toolchains:
+          - name: go
+            image: harbor.webgrip.dev/dockerhub/library/golang:1.25.0-alpine@sha256:f18a072054848d87a8077455f0ac8a25886f2397f88bfdd222d6fafbb5bba440
+            path:
+              - /usr/local/go/bin
+            env: {GOTOOLCHAIN: local}
+        verify:
+          - 'if [ -f apps/ploeg/go.mod ]; then test -z "$(gofmt -l apps/ploeg)"; fi'
       # Workers run under their own identity, ploeg-worker, created by the
       # chart (>= rc.13). Naming none left them on `default`, which trips
       # Kyverno's require-non-default-serviceaccount and makes every workload
