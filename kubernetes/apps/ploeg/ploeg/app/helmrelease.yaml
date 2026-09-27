@@ -248,6 +248,11 @@ spec:
       harness:
         name: openhands
         dind: false
+        # OpenHands prints nothing while it thinks and edits, and the idle watchdog
+        # counts only harness output: at the 15m default it killed bronze's #555
+        # builder (Run 134, 2026-09-27) mid-work after US$0.24 of model calls.
+        # The 100m harness timeout still bounds every Run.
+        idleTimeout: 45m
         # Glide ADR-0035: the kubelet mounts the toolchain read-only, so a Run
         # can check its work without registry egress. Go matches Glide's mise
         # pin. Module downloads stay blocked by the namespace's egress policy,
