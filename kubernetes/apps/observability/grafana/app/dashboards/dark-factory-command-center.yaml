@@ -614,7 +614,7 @@ spec:
           "id": 11,
           "type": "timeseries",
           "title": "Agent queue depth",
-          "description": "KEDA scaler value for the ploeg-worker-bronze ScaledObject (queued work items) next to pods actually Running (KSM, exported_namespace wrap); the bronze pool caps at 1 runner.",
+          "description": "KEDA scaler value summed over the ploeg-worker-* ScaledJobs (one per Team and Role: queued Runs) next to worker pods actually Running (KSM, exported_namespace wrap); each ScaledJob caps at 1 pod.",
           "gridPos": {
             "h": 8,
             "w": 7,
@@ -632,7 +632,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max(keda_scaler_metrics_value{scaledObject=\"ploeg-worker-bronze\"})",
+              "expr": "sum(keda_scaler_metrics_value{scaledObject=~\"ploeg-worker-.+\"})",
               "legendFormat": "queued work items"
             },
             {
@@ -641,7 +641,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum(kube_pod_status_phase{exported_namespace=\"ploeg\",pod=~\"ploeg-worker-bronze-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"})",
+              "expr": "sum(kube_pod_status_phase{exported_namespace=\"ploeg\",exported_pod=~\"ploeg-worker-[a-z0-9-]+-[a-z0-9]{5}-[a-z0-9]{5}\",phase=\"Running\"})",
               "legendFormat": "runners running"
             }
           ],

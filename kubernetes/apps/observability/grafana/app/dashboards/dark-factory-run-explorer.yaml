@@ -1,9 +1,9 @@
 ---
-# Dark Factory — Agent Run Explorer: drill into one agent run key (agent-vikNNN-runNNN):
+# Dark Factory — Agent Run Explorer: drill into one agent run key (ploeg-<run token prefix>):
 # budget burn, per-request SQL forensics from LiteLLM_SpendLogs, and the pod's logs/traces.
-# NOTE: pivoted to the ploeg substrate — the $run var lists ploeg-<hex> keys and the
-# $agent_pod var lists ploeg-worker-bronze pods. kube_* (kube-state-metrics) queries filter
-# on exported_namespace="ploeg" (KSM label wrap); cAdvisor container_* and worker/dind log
+# NOTE: pivoted to the ploeg substrate — the run var lists ploeg-<hex> keys and the
+# agent_pod var lists ploeg-worker-* pods. kube_* (kube-state-metrics) queries filter
+# on exported_namespace="ploeg" (KSM label wrap); cAdvisor container_* and worker log
 # streams use the real namespace="ploeg".
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
@@ -119,13 +119,13 @@ spec:
               "uid": "prometheus"
             },
             "query": {
-              "query": "label_values(container_cpu_usage_seconds_total{namespace=\"ploeg\",pod=~\"ploeg-worker-bronze-[a-z0-9]{5}-[a-z0-9]{5}\"}, pod)"
+              "query": "label_values(container_cpu_usage_seconds_total{namespace=\"ploeg\",pod=~\"ploeg-worker-[a-z0-9-]+-[a-z0-9]{5}-[a-z0-9]{5}\"}, pod)"
             },
             "refresh": 2,
             "sort": 2,
             "multi": false,
             "includeAll": true,
-            "allValue": "ploeg-worker-bronze-.*",
+            "allValue": "ploeg-worker-.*",
             "current": {
               "selected": false,
               "text": "All",
@@ -535,7 +535,7 @@ spec:
           "id": 9,
           "type": "stat",
           "title": "Ticket",
-          "description": "VIK ticket derived from the run key alias.",
+          "description": "The tracker ticket of the Work Item this Run worked on, looked up in the Ploeg database by the run key alias.",
           "gridPos": {
             "h": 4,
             "w": 4,
@@ -544,18 +544,18 @@ spec:
           },
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "litellm-db"
+            "uid": "ploeg-db"
           },
           "targets": [
             {
               "refId": "A",
               "datasource": {
                 "type": "grafana-postgresql-datasource",
-                "uid": "litellm-db"
+                "uid": "ploeg-db"
               },
               "format": "table",
               "rawQuery": true,
-              "rawSql": "SELECT regexp_replace('$$run', '^agent-(vik[0-9]+)-run.*', '\\1')"
+              "rawSql": "SELECT coalesce(w.provider || ' #' || w.external_id, 'unknown') AS ticket FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id WHERE 'ploeg-' || left(r.run_token, 12) = '$$run' LIMIT 1"
             }
           ],
           "options": {
@@ -1236,7 +1236,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (job_name) (last_over_time(kube_job_status_start_time{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}[$$__range]))",
+              "expr": "max by (job_name) (last_over_time(kube_job_status_start_time{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-[a-z0-9-]+-[a-z0-9]{5}\"}[$$__range]))",
               "instant": true,
               "format": "table"
             },
@@ -1246,7 +1246,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (job_name) (last_over_time(kube_job_status_completion_time{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}[$$__range]))",
+              "expr": "max by (job_name) (last_over_time(kube_job_status_completion_time{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-[a-z0-9-]+-[a-z0-9]{5}\"}[$$__range]))",
               "instant": true,
               "format": "table"
             },
@@ -1256,7 +1256,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "max by (job_name) (last_over_time(kube_job_status_completion_time{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}[$$__range]) - last_over_time(kube_job_status_start_time{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}[$$__range]))",
+              "expr": "max by (job_name) (last_over_time(kube_job_status_completion_time{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-[a-z0-9-]+-[a-z0-9]{5}\"}[$$__range]) - last_over_time(kube_job_status_start_time{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-[a-z0-9-]+-[a-z0-9]{5}\"}[$$__range]))",
               "instant": true,
               "format": "table"
             }
@@ -1402,8 +1402,8 @@ spec:
         {
           "id": 23,
           "type": "logs",
-          "title": "Docker builds (dind)",
-          "description": "DinD sidecar logs for the selected agent pod.",
+          "title": "Worker warnings and errors",
+          "description": "WARN and ERROR lines from the worker container of the selected agent pod. Workers run without a Docker sidecar (ADR-0053), so this replaces the old dind log.",
           "gridPos": {
             "h": 10,
             "w": 12,
@@ -1417,7 +1417,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "{namespace=\"ploeg\", container=\"dind\", pod=~\"$$agent_pod\"}",
+              "expr": "{namespace=\"ploeg\", container=\"worker\", pod=~\"$$agent_pod\"} ~\"level=(WARN|ERROR)\"",
               "queryType": "instant",
               "maxLines": 300
             }

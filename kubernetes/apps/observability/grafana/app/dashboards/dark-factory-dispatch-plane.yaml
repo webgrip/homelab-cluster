@@ -8,7 +8,7 @@
 # Label gotchas baked into the queries:
 #  - kube-state-metrics wraps the real namespace: kube_* uses exported_namespace="ploeg".
 #  - cnpg_* is scraped by 4 overlapping selectors -> aggregate (max by ...) to de-dup the job label.
-#  - KEDA scaler ns label is "keda"; filter by scaledObject="ploeg-worker-bronze".
+#  - KEDA scaler ns label is "keda"; filter by scaledObject=~"ploeg-worker-.+" (one ScaledJob per Team and Role).
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
@@ -73,13 +73,13 @@ spec:
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
             {"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(ploeg_work_items_count{state=\"queued\"}) or vector(0)", "legendFormat": "queued items"},
-            {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max(keda_scaler_metrics_value{scaledObject=\"ploeg-worker-bronze\"}) or vector(0)", "legendFormat": "KEDA pending"}]},
+            {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(keda_scaler_metrics_value{scaledObject=~\"ploeg-worker-.+\"}) or vector(0)", "legendFormat": "KEDA pending"}]},
         {"type": "timeseries", "title": "Worker jobs (active / succeeded / failed)", "id": 22, "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
-            {"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(kube_job_status_active{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}) or vector(0)", "legendFormat": "active"},
-            {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(kube_job_status_succeeded{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}) or vector(0)", "legendFormat": "succeeded"},
-            {"refId": "C", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(kube_job_status_failed{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-bronze-[a-z0-9]{5}\"}) or vector(0)", "legendFormat": "failed"}]},
+            {"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(kube_job_status_active{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-[a-z0-9-]+-[a-z0-9]{5}\"}) or vector(0)", "legendFormat": "active"},
+            {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(kube_job_status_succeeded{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-[a-z0-9-]+-[a-z0-9]{5}\"}) or vector(0)", "legendFormat": "succeeded"},
+            {"refId": "C", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(kube_job_status_failed{exported_namespace=\"ploeg\",job_name=~\"ploeg-worker-[a-z0-9-]+-[a-z0-9]{5}\"}) or vector(0)", "legendFormat": "failed"}]},
 
         {"type": "row", "title": "Lease health", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 22}, "id": 30},
         {"type": "timeseries", "title": "Active leases by team", "id": 31, "gridPos": {"h": 7, "w": 8, "x": 0, "y": 23},
