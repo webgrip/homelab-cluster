@@ -14,3 +14,16 @@ components:
   - ../../../../components/gateway-egress
   # Stateful index on a Longhorn RWO volume -> worker pool (ADR-0002).
   - ../../../../components/placement/worker-pool
+patches:
+  - target:
+      kind: NetworkPolicy
+      name: allow-gateway-egress
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: docs-mcp-server-allow-gateway-egress
+      - op: replace
+        path: /spec/podSelector
+        value:
+          matchLabels:
+            app: docs-mcp-server

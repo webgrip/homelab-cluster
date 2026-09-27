@@ -1,13 +1,4 @@
 ---
-# Zero-trust for the `ai` namespace, closing the deferral recorded in
-# kubernetes/apps/ai/namespace.yaml. These allow-rules ship FIRST, in their own commit:
-# they are harmless no-ops until the namespace opts into the Kyverno-generated
-# default-deny, and shipping them the other way round would black-hole LiteLLM in the
-# window between the two Kustomizations reconciling (the namespace is applied by
-# `cluster-apps`, these by `ai/litellm` — ordering between them is not guaranteed).
-#
-# Shape follows searxng, the closest analogue: an app that must reach the public internet
-# and is consumed from the LAN.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -26,25 +17,15 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: ai
-        # envoy-internal terminates litellm.${SECRET_DOMAIN}
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: network
-        # The dark factory: ploegd mints/revokes per-run keys and sweeps orphans;
-        # OpenHands workers call the proxy for every model turn. Forgotten in the
-        # 2026-08-05 zero-trust pass — the factory's last run predated it, so a
-        # week of orphan-sweep timeouts was the only symptom until the first
-        # ploeg-bench Mode A trial hit it live (vik-667, 2026-08-12). The LAN
-        # ipBlocks below never admit pod traffic: Cilium matches in-cluster
-        # sources by identity only, so this selector is the grant.
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: ploeg
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: de-vloer-workspaces
-        # LAN consumers call the proxy directly — this is the reason the namespace
-        # deferred zero-trust in the first place, so it is preserved explicitly.
         - ipBlock:
             cidr: 10.0.0.0/8
         - ipBlock:
@@ -61,9 +42,6 @@ spec:
         - protocol: TCP
           port: 4000
 ---
-# Intra-namespace (litellm -> valkey:6379, litellm -> litellm-db:5432) plus metrics
-# scraping of every pod from observability (VMAgent scrapes litellm :9187 via
-# vmservicescrape, and the CNPG pods via the cluster-wide cnpg-clusters PodMonitor).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -71,27 +49,20 @@ metadata:
   labels:
     app.kubernetes.io/part-of: litellm
 spec:
-  podSelector: {}
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: litellm
   policyTypes:
     - Ingress
   ingress:
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: ai
-    - from:
-        - namespaceSelector:
-            matchLabels:
               kubernetes.io/metadata.name: observability
+      ports:
+        - protocol: TCP
+          port: 9187
 ---
-# Egress: intra-namespace, plus the public internet for upstream provider APIs
-# (api.anthropic.com et al) — the other half of the recorded deferral. Cluster pod and
-# service CIDRs are excluded, so cross-namespace traffic stays denied and must be granted
-# by identity (namespaceSelector) instead; see components/gateway-egress for the OIDC
-# hairpin, which a CIDR rule cannot express.
-#
-# Garage S3 (10.0.0.110) is deliberately reachable here: it sits in the LAN range, not in
-# 10.42/10.43, so CNPG barman backups keep working under this rule.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -99,23 +70,37 @@ metadata:
   labels:
     app.kubernetes.io/part-of: litellm
 spec:
-  podSelector: {}
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: litellm
   policyTypes:
     - Egress
   egress:
     - to:
-        - namespaceSelector:
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: ai
-    # LiteLLM is not only a provider proxy — it is also the MCP gateway, and its config
-    # registers in-cluster MCP servers as backends:
-    #   observability: mcp-grafana, mcp-victorialogs, k8s-mcp-kubernetes-mcp-server, opencost
-    #   vikunja:       mcp-vikunja
-    # Those resolve to pod IPs in 10.42/16, which the `except` below explicitly denies, so
-    # the CIDR rule alone silently broke every MCP backend the moment default-deny landed
-    # (caught 2026-08-05: litellm log volume went 192 -> 458 lines/10min with
-    # "httpx.ConnectError: All connection attempts failed"). Cross-namespace reach must be
-    # granted by IDENTITY; the CIDR rule cannot express it.
+              app.kubernetes.io/name: litellm-valkey
+      ports:
+        - protocol: TCP
+          port: 6379
+    - to:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: litellm-db
+              cnpg.io/podRole: instance
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tei-embeddings
+        - podSelector:
+            matchLabels:
+              app: omnigraph
+      ports:
+        - protocol: TCP
+          port: 8080
     - to:
         - namespaceSelector:
             matchLabels:
@@ -127,8 +112,14 @@ spec:
         - ipBlock:
             cidr: 0.0.0.0/0
             except:
-              - 10.42.0.0/16
-              - 10.43.0.0/16
+              - 10.0.0.0/8
+              - 100.64.0.0/10
+              - 169.254.0.0/16
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
