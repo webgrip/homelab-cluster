@@ -162,7 +162,7 @@ directory; a free-text value is a false coverage claim.
   `https://envoy-internal.network.svc.cluster.local` (or `envoy-external` for public-only routes),
   so the probe walks gateway → HTTPRoute → backend like a browser. Probe an unauthenticated health
   path and match its body, because a SPA catch-all answers `200` for any path.
-- **OIDC-gated routes** (gateway `SecurityPolicy`: longhorn, weave-gitops, prometheus,
+- **OIDC-gated routes** (gateway `SecurityPolicy`: longhorn, flux-web, prometheus,
   alertmanager): an anonymous request can only see the `302` to Authentik, so the module accepts
   exactly that `302` with a `Location` on the authorize endpoint. That proves the gateway and the
   auth filter, not the backend.

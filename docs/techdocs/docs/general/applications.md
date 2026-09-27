@@ -15,7 +15,7 @@ Hostnames follow `<app>.${SECRET_DOMAIN}` (`cluster-secrets`, SOPS-encrypted). G
 | Authentik | `authentik` | `authentik.${SECRET_DOMAIN}` | Cluster IdP (SSO/OIDC); CNPG DB |
 | Backstage | `backstage` | `backstage.${SECRET_DOMAIN}` | Portal + TechDocs; CNPG DB |
 | Excalidraw | `excalidraw` | `excalidraw.${SECRET_DOMAIN}` | Whiteboard |
-| Weave GitOps UI | `flux-system` | `gitops.${SECRET_DOMAIN}` | Flux reconciliation/drift UI |
+| Flux Operator web UI | `flux-system` | `gitops.${SECRET_DOMAIN}` | Flux reconciliation/drift UI, read-only as `flux-web-viewer` |
 | gitea-mirror | `forgejo` | `gitea-mirror.${SECRET_DOMAIN}` | GitHub→Forgejo mirror manager |
 | FreshRSS | `freshrss` | `freshrss.${SECRET_DOMAIN}` | RSS reader; CNPG DB |
 | Harbor | `harbor` | `harbor.${SECRET_DOMAIN}` | Private OCI registry; CNPG DB |
