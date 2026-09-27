@@ -192,6 +192,47 @@ spec:
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/k8s-cluster-health/kubernetes-cluster-health"
 
+        - alert: AppContainerMemoryNearLimit
+          expr: |
+            max by (namespace, pod, container) (
+              container_memory_working_set_bytes{container!="", container!="POD", namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"}
+            )
+            / on (namespace, pod, container)
+            (
+              max by (namespace, pod, container) (
+                container_spec_memory_limit_bytes{container!="", container!="POD"}
+              ) > 0
+            )
+            > 0.85
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: apps
+          annotations:
+            summary: "App container memory > 85% of its limit ({{ $labels.namespace }}/{{ $labels.pod }})"
+            description: |
+              What's happening:
+              - Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }}
+                has held its working set above 85% of its memory limit for 15m.
+
+              Impact/risk:
+              - The next allocation spike OOMKills it (exit 137), dropping every in-flight
+                request. A restart resets the curve, so the restart-count alerts only see
+                this after the damage.
+
+              Likely causes:
+              - A leak: memory that steps up with traffic and never comes back down
+                (2026-09-27 mcp-vikunja: supergateway 3.4.3 kept one child per request)
+              - A limit set below the real working set
+
+              First actions:
+              - Plot container_memory_working_set_bytes for the container over 7d: steps
+                that plateau between bursts are a leak, spikes that fall back are load
+              - Find the owning app's runbook before raising the limit
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/k8s-workloads-capacity/kubernetes-workloads-capacity"
+
         - alert: AppPersistentVolumeLowFree
           expr: |
             (

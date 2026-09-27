@@ -14,13 +14,27 @@ external-dns-excluded, LAN-only, no client auth — same trust model as the othe
 
 - Talks to Vikunja in-cluster: `http://vikunja.vikunja.svc.cluster.local:3456/api/v1` (the
   `/api/v1` suffix is required by vikunja-mcp).
-- **STATELESS since 2026-07-18** (VIK-314/VIK-263): a fresh vikunja-mcp child per request
-  (~1-2s/call; the first call after a pod restart downloads the npm package via the
-  internet-egress carve-out in `app/networkpolicy.yaml`, later spawns hit the `/tmp` cache).
-  Stateful session mode was retired after it broke strict MCP SDK clients (the LiteLLM MCP
-  gateway got `Session termination failed: 400` → `BrokenResourceError` on list_tools) and after
-  the 2026-07-12 session-leak OOM (exit 137 at 512Mi; limit now 768Mi). Bulk board scripts are
-  slower per call but reliable; consumers needing speed batch their calls.
+- **STATELESS since 2026-07-18** (VIK-314/VIK-263): a fresh vikunja-mcp child per request.
+  An initContainer npm-installs `supergateway` and `@aimbitgmbh/vikunja-mcp` into the `/tmp`
+  emptyDir once per pod (hence the internet-egress carve-out in `app/networkpolicy.yaml`); the
+  main container runs that local install with `node`, never `npx`. Stateful session mode was
+  retired after it broke strict MCP SDK clients (LiteLLM: `Session termination failed: 400`) and
+  after the 2026-07-12 session-leak OOM.
+- **supergateway 4.0.0 since 2026-09-27** (VIK-440). 3.4.3 never released a stateless child: the
+  SDK transport only closes on `DELETE` (which the gateway answers 405), so the child spawned for
+  every POST lived until the pod died. Live evidence 2026-09-20..27: 1462 child spawns
+  (`Non-initialize message detected`) against 70 `Child exited` lines; the working set climbed in
+  steps with request bursts and plateaued between them (1.6-2.7 GiB) until the 3Gi limit
+  OOMKilled it. Reproduced locally: 5 POSTs to 3.4.3 left 5 `sh -c` wrappers + 5 node children
+  (~75 MiB each) alive; the same load on 4.0.0 leaves none (upstream fixes #158/#187, process-group
+  kill in `ownedChildProcesses`). 4.0.0 also pins SDK 1.30.0 itself (protocol 2025-11-25) and
+  survives client hang-ups mid-call, so the npm SDK override and the `transport.send` patch that
+  3.4.3 needed (2026-09-04/09-11) are gone.
+- Memory sizing: the gateway idles well under 128Mi; each in-flight call costs one child (~75 MiB,
+  ~130 MiB with a 2 MB payload). Six parallel 2 MB `task_get` calls peaked at 847 MiB total
+  locally, so the 1536Mi limit covers ~10 large calls at once. `NODE_OPTIONS=--max-old-space-size=384`
+  is inherited by every child: a runaway response fails that one call instead of OOM-killing the
+  pod for every session. `AppContainerMemoryNearLimit` warns before the kernel kills it.
 - Hard-delete opt-ins: `ENABLE_LABEL_DELETE=true` is set (label deletes only unlink metadata;
   needed for duplicate-label dedup — a delete **cascades**: the server removes the label from
   every task that carried it, so consolidate tasks onto the keeper id first). `ENABLE_{PROJECT,TASK}_DELETE` stay unset (soft mode:
@@ -57,10 +71,9 @@ Rotation = same steps; step 2's `bao kv put` overwrites version-safely.
 | task ops fail with 403 | token missing that route-group permission — recreate token with wider scope |
 | `/mcp` connect timeout | not on LAN, or pod not Ready (`kubectl -n vikunja get pods`) |
 | first tool call slow / npx errors in logs | npm download on session spawn — check egress netpol + npmjs reachability; pinned version yanked? |
-| pod OOMKilled (137) | child-process pile-up — confirm the deployment is still stateless (no `--stateful` arg) |
-| 503s + CrashLoopBackOff, exit **1**, log `No connection established for request ID` | **any client that disconnects before its response is ready crashes the whole gateway** — supergateway 3.4.3 stateless mode throws uncaught in `stdioToStatelessStreamableHttp.js:120` (reproduced 2026-07-18, evidence on VIK-314). Every in-flight request from every session dies with it. Recovery is automatic (restart backoff) once the aggressive client stops |
+| pod OOMKilled (137) / `AppContainerMemoryNearLimit` | child-process pile-up. Confirm supergateway is >= 4.0.0 (3.4.3 leaks one child per request) and still stateless; compare `Non-initialize message detected` with `Child exited` counts in VictoriaLogs, they should match |
+| log `Failed to send to StreamableHttp ... No connection established for request ID` | a client hung up before its response was ready. Harmless on 4.0.0 (logged, gateway survives); on 3.4.3 it exited the whole gateway (VIK-314) |
 
-**Client etiquette until VIK-314 lands**: one request at a time (no threaded sweeps), client
-timeouts ≥ 120 s (longer than the slowest expected response — the client must never hang up
-first), and re-`init()` on 404/410/503. A single 60 s-timeout bulk sweep took the bridge down
-for every concurrent agent session on 2026-07-18.
+**Client etiquette**: keep parallel calls to a handful (each one is a live child process; the
+limit covers ~10 large ones at once), and re-`init()` on 404/410/503. Client hang-ups no longer
+take the bridge down (supergateway 4.0.0).

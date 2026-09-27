@@ -1,11 +1,4 @@
 ---
-# Vikunja MCP for Claude Code: supergateway bridges the stdio-only
-# @aimbitgmbh/vikunja-mcp npm server to streamable HTTP at /mcp (the npm
-# ecosystem has no native-HTTP Vikunja MCP). An initContainer npm-installs the
-# pinned package (with the MCP SDK pinned via overrides — see below) into the
-# /tmp emptyDir at pod start — hence the internet-egress NetworkPolicy
-# carve-out; runtime child spawns run offline from that install.
-# WRITE-CAPABLE: acts as the token owner's Vikunja user.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -16,14 +9,11 @@ metadata:
     reloader.stakater.com/auto: "true"
 spec:
   replicas: 1
-  # Single replica pinned to worker-1: RollingUpdate would need BOTH pods on
-  # that node at once, which wedged Pending (Insufficient cpu) once VMSingle +
-  # litellm moved there. Recreate releases the request first; brief gap is fine.
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 0 # Recreate semantics without the strategy-flip apply
-      maxUnavailable: 1 # conflict: old pod frees worker-1 before the new one
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: mcp-vikunja
@@ -32,11 +22,6 @@ spec:
       labels:
         app.kubernetes.io/name: mcp-vikunja
     spec:
-      # Pinned to worker-1 — co-located with the vikunja API + DB primary
-      # (vikunja-db-1). The oversubscribed fringe-workstation node was
-      # CPU-throttling this bridge into ~17s responses and exit-1 crashes
-      # (9 restarts / 9h, 2026-07-18); worker-1 keeps the whole request path
-      # (mcp → API → primary) on one node.
       nodeSelector:
         kubernetes.io/hostname: worker-1
       securityContext:
@@ -45,58 +30,8 @@ spec:
         runAsGroup: 1000
         fsGroup: 1000
       initContainers:
-        # Install BOTH the gateway and the child ONCE per pod, sharing a single
-        # @modelcontextprotocol/sdk pinned via npm overrides.
-        #
-        # 2026-09-04: the SDK that matters is the GATEWAY's, not the child's. The
-        # supergateway:3.4.3 IMAGE bakes sdk@1.19.1, whose protocol ceiling is
-        # 2025-06-18. A current client negotiates 2025-11-25 (the child supports
-        # it, so initialize returns 200), then sends `MCP-Protocol-Version:
-        # 2025-11-25` on every later request per spec — and supergateway's own
-        # HTTP layer 400s that header ("Unsupported protocol version"). The child
-        # already spawned for that request then replies into a torn-down
-        # connection, throwing an UNCAUGHT "No connection established for request
-        # ID: 0" that exits the whole gateway. One bad handshake = pod death.
-        #
-        # An earlier fix (89803e11) pinned the CHILD's SDK to 1.29.0, blaming it
-        # for answering 2025-11-25 and reading the 2025-06-18 ceiling as Claude
-        # Code's. That is inverted — the ceiling is supergateway's — so the pin
-        # changed nothing and the crash loop continued. Do not reintroduce it.
-        #
-        # supergateway declares sdk@^1.18.2, so 1.30.0 is in range; the image just
-        # froze 1.19.1 at build time. Installing supergateway locally under the
-        # override is what actually lifts the ceiling. Verified against 3.4.3 +
-        # sdk@1.30.0: header 2025-11-25 -> 200, 2025-06-18 -> 200 (no regression),
-        # a bogus 1999-01-01 -> 400 with the process surviving.
-        #
-        # 2026-09-11: THE PROTOCOL CEILING WAS ONLY HALF THE BUG, and the earlier
-        # note here wrongly called the fatal-throw path fixed. It was not: the
-        # 1999-01-01 case survives, but the crash has an independent trigger and
-        # kept firing (25 restarts in 6d). supergateway's stateless gateway does
-        #     try { transport.send(jsonMsg) } catch (e) { log(e) }
-        # but the SDK declares `async send()`, so that catch is a FALSE GUARD --
-        # it can only catch a synchronous throw. When a child answers a request
-        # whose HTTP connection is already gone (client hung up, timed out, or
-        # gave up mid-tool-call), send() REJECTS, the rejection is unhandled, and
-        # Node 20's default --unhandled-rejections=throw exits the process. Any
-        # client disconnect mid-flight takes down the bridge for everyone.
-        #
-        # The node -e step below attaches a .catch to that call. Reproduced and
-        # mutation-tested locally against a deliberately slow child: unpatched
-        # 3.4.3 + sdk 1.30.0 DIES on the first client hang-up with the exact
-        # production error ("No connection established for request ID: 1");
-        # patched, it survives 5 consecutive hang-ups, still answers a patient
-        # client 200, and logs each failure instead of dying.
-        #
-        # The patch asserts its target text and exits 1 if absent, so a
-        # supergateway bump that moves this line fails the pod loudly rather than
-        # silently restoring the crash. Upstream 3.4.3 is latest as of 2026-09-11
-        # (released 2025-10-09); drop this patch if upstream ever fixes the call.
-        #
-        # Installing in an initContainer also removes the per-request npx race of
-        # stateless mode.
         - name: prepare-vikunja-mcp
-          image: docker.io/supercorp/supergateway:3.4.3@sha256:095acf4471e142553c1a5514aa5e480abbc5885d00549d4a3481cc70eac53889
+          image: docker.io/supercorp/supergateway:4.0.0@sha256:407344de762a449f129c576fa1e3934b63c43fef417322687972ffc43ec675df
           command:
             - /bin/sh
             - -c
@@ -105,18 +40,8 @@ spec:
               mkdir -p /tmp/app
               cd /tmp/app
               npm init -y >/dev/null
-              npm pkg set 'overrides.@modelcontextprotocol/sdk=1.30.0'
               npm install --no-audit --no-fund --loglevel=error \
-                supergateway@3.4.3 @aimbitgmbh/vikunja-mcp@0.1.0
-              node -e '
-                const fs = require("fs");
-                const f = "node_modules/supergateway/dist/gateways/stdioToStatelessStreamableHttp.js";
-                const needle = "                            transport.send(jsonMsg);";
-                const src = fs.readFileSync(f, "utf8");
-                if (!src.includes(needle)) { console.error("supergateway send-patch target missing - refusing to start"); process.exit(1); }
-                fs.writeFileSync(f, src.replace(needle, "                            Promise.resolve(transport.send(jsonMsg)).catch((e) => logger.error(`Failed to send to StreamableHttp`, e));"));
-                console.log("patched supergateway stateless send");
-              '
+                supergateway@4.0.0 @aimbitgmbh/vikunja-mcp@0.1.0
           env:
             - name: HOME
               value: /tmp
@@ -140,60 +65,37 @@ spec:
               memory: 512Mi
       containers:
         - name: mcp-vikunja
-          image: docker.io/supercorp/supergateway:3.4.3@sha256:095acf4471e142553c1a5514aa5e480abbc5885d00549d4a3481cc70eac53889
-          # Run the initContainer's supergateway (sdk 1.30.0), NOT the image's
-          # baked-in one (sdk 1.19.1, protocol ceiling 2025-06-18). The image is
-          # still the source of the node runtime + npm; only the entrypoint moves.
+          image: docker.io/supercorp/supergateway:4.0.0@sha256:407344de762a449f129c576fa1e3934b63c43fef417322687972ffc43ec675df
           command:
             - node
             - /tmp/app/node_modules/supergateway/dist/index.js
           args:
             - --stdio
-            # The initContainer installed this alongside the gateway under the
-            # SAME SDK override; running node directly (no npx) makes stateless
-            # per-request child spawns fast and deterministic.
             - node /tmp/app/node_modules/@aimbitgmbh/vikunja-mcp/dist/index.js
             - --outputTransport
             - streamableHttp
             - --port
             - "8000"
-            # STATELESS (2026-07-18, VIK-314/VIK-263): a fresh vikunja-mcp child
-            # per request, npx warm from the /tmp cache (~1-2s/call). Stateful
-            # session mode broke TWO consumer classes: strict MCP SDK clients
-            # (LiteLLM gateway: "Session termination failed: 400" →
-            # BrokenResourceError on list_tools) and the 2026-07-12 session-leak
-            # OOM. Stateless trades per-call latency for correctness — bulk
-            # board scripts get slower but reliable.
-            # Real health endpoint (supergateway returns "ok") so the probes can
-            # catch a functionally-dead gateway, not just an open TCP port.
             - --healthEndpoint
             - /healthz
           env:
-            # In-cluster direct to the app Service — no gateway hairpin.
-            # The trailing /api/v1 is required by vikunja-mcp.
             - name: VIKUNJA_URL
               value: "http://vikunja.vikunja.svc.cluster.local:3456/api/v1"
-            # Hard deletes for projects/tasks stay off (vikunja-mcp safe mode):
-            # project_delete archives, task_delete completes — Vikunja has no
-            # trash/undo. Label deletes ARE enabled: a label delete only unlinks
-            # metadata (tasks keep their other labels), and board hygiene needs
-            # it (duplicate-label dedup).
             - name: ENABLE_LABEL_DELETE
               value: "true"
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=384"
             - name: HOME
               value: /tmp
             - name: npm_config_cache
               value: /tmp/npm-cache
           envFrom:
             - secretRef:
-                name: mcp-vikunja-token # VIKUNJA_API_TOKEN
+                name: mcp-vikunja-token
           ports:
             - name: http
               containerPort: 8000
               protocol: TCP
-          # httpGet /healthz (supergateway --healthEndpoint): a tcpSocket probe
-          # only checks the port is open, so it reported Ready while the gateway
-          # was serving 17s responses and never restarted a wedged child.
           livenessProbe:
             httpGet:
               path: /healthz
@@ -208,28 +110,11 @@ spec:
             periodSeconds: 10
           resources:
             requests:
-              # 25m starved the bridge under node contention; give it a real
-              # CPU floor so it is not throttled to 17s latencies.
               cpu: 100m
-              # Steady state is ~27Mi; the request only needs to cover the idle
-              # bridge, so it stays small and does not hold worker-1 hostage.
-              memory: 128Mi
+              memory: 192Mi
             limits:
               cpu: 500m
-              # OOMKilled (exit 137) 6x on 2026-07-18 at the old 768Mi ceiling while
-              # idling at 27Mi -- a transient SPIKE, not a leak: supergateway relays each
-              # message several times over (Child → StreamableHttp, then → Child twice),
-              # so one large tool payload -- e.g. a long HTML task comment -- is buffered
-              # repeatedly and briefly dwarfs steady state. The kills land mid-handshake,
-              # which is what stops MCP clients from ever completing initialize.
-              #
-              # Then OOMKilled 4x more the same day AT 2Gi under CONCURRENT agent
-              # sessions (multiple Claude streams doing board CRUD with multi-KB HTML
-              # payloads simultaneously) -- the spike multiplies per active session.
-              # 3Gi covers the observed worst case; if it hits THIS ceiling, stop
-              # raising and profile supergateway's buffering instead (candidate: SSE
-              # replay/session history growing unbounded).
-              memory: 3Gi
+              memory: 1536Mi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
