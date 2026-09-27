@@ -12,6 +12,19 @@ FLUX_CLUSTER_PATH="${FLUX_CLUSTER_PATH:-/github/workspace/kubernetes/flux/cluste
 FLUX_CLUSTER_PULL_PATH="${FLUX_CLUSTER_PULL_PATH:-/github/workspace/pull/kubernetes/flux/cluster}"
 FLUX_CLUSTER_DEFAULT_PATH="${FLUX_CLUSTER_DEFAULT_PATH:-/github/workspace/default/kubernetes/flux/cluster}"
 
+function materialize_worktree_git_dir() {
+    local source_dir="$1"
+    local dest_dir="$2"
+    local clone_dir
+    clone_dir="$(mktemp -d)"
+    git clone -q --no-checkout "${source_dir}" "${clone_dir}"
+    rm -f "${dest_dir}/.git"
+    mv "${clone_dir}/.git" "${dest_dir}/.git"
+    rm -rf "${clone_dir}"
+    git -C "${dest_dir}" update-ref --no-deref HEAD "$(git -C "${source_dir}" rev-parse HEAD)"
+    git -C "${dest_dir}" reset -q
+}
+
 function prepare_flux_local_workspace() {
     local source_dir="$1"
     local dest_dir="$2"
@@ -20,6 +33,8 @@ function prepare_flux_local_workspace() {
     rsync -a --exclude '.git/' "${source_dir}/" "${dest_dir}/"
     if [[ -d "${source_dir}/.git" ]]; then
         cp -a "${source_dir}/.git" "${dest_dir}/.git"
+    elif [[ -f "${source_dir}/.git" ]]; then
+        materialize_worktree_git_dir "${source_dir}" "${dest_dir}"
     fi
     # a+rwX, not u+rwX: the flux-local container runs as a non-host UID and
     # must write *.original files into the mounted workspace.
