@@ -1,0 +1,120 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ploeg-tracker-wiring
+automountServiceAccountToken: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ploeg-tracker-wiring
+  labels:
+    app.kubernetes.io/name: ploeg-tracker-wiring
+    app.kubernetes.io/part-of: ploeg
+spec:
+  schedule: "*/15 * * * *"
+  startingDeadlineSeconds: 300
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: ploeg-tracker-wiring
+            app.kubernetes.io/part-of: ploeg
+        spec:
+          serviceAccountName: ploeg-tracker-wiring
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: wire
+              image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.0@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4
+              imagePullPolicy: IfNotPresent
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: VIKUNJA_URL, value: 'http://vikunja.vikunja.svc.cluster.local:3456/api/v1'}
+                - {name: TARGET_URL, value: 'http://ploeg.ploeg.svc.cluster.local:8080/webhooks/tracker/vikunja'}
+                - {name: EVENTS, value: '["task.assignee.created","task.assignee.deleted","task.updated"]'}
+                - {name: CONFIG_FILE, value: /etc/ploeg/ploeg.yaml}
+                - name: VIKUNJA_TOKEN
+                  valueFrom: {secretKeyRef: {name: agent-vikunja-token, key: VIKUNJA_API_TOKEN, optional: true}}
+                - name: WEBHOOK_SECRET
+                  valueFrom: {secretKeyRef: {name: ploeg-webhook-secret, key: PLOEG_VIKUNJA_SECRET, optional: true}}
+              command:
+                - /bin/sh
+                - -ceu
+                - |
+                  log() { echo "[ploeg-tracker-wiring] $*"; }
+                  [ -n "$VIKUNJA_TOKEN" ] || { log "Vikunja token not present yet; retry next tick"; exit 0; }
+                  [ -n "$WEBHOOK_SECRET" ] || { log "webhook secret not present yet; retry next tick"; exit 0; }
+                  [ -s "$CONFIG_FILE" ] || { log "ploeg config not mounted yet; retry next tick"; exit 0; }
+                  auth="Authorization: Bearer $VIKUNJA_TOKEN"
+                  json="Content-Type: application/json"
+                  yq -o=json '.' "$CONFIG_FILE" > /tmp/config.json
+                  jq -r '.trackers.vikunja.projects[].name' /tmp/config.json > /tmp/boards
+                  jq -r '[.teams[].assignees[]] | unique | .[]' /tmp/config.json > /tmp/users
+                  curl -fsS -H "$auth" "$VIKUNJA_URL/projects?per_page=250" > /tmp/projects.json
+                  failed=0
+                  while IFS= read -r board; do
+                    id="$(jq -r --arg t "$board" '[.[] | select(.title == $t) | .id] | if length == 1 then .[0] else empty end' /tmp/projects.json)"
+                    if [ -z "$id" ]; then
+                      log "board=\"$board\" does not resolve to exactly one project"
+                      failed=1
+                      continue
+                    fi
+                    curl -fsS -H "$auth" "$VIKUNJA_URL/projects/$id/webhooks" > /tmp/hooks.raw
+                    jq '. // []' /tmp/hooks.raw > /tmp/hooks.json
+                    hook="$(jq -r --arg u "$TARGET_URL" '[.[] | select(.target_url == $u)][0].id // empty' /tmp/hooks.json)"
+                    if [ -z "$hook" ]; then
+                      jq -nc --arg u "$TARGET_URL" --arg s "$WEBHOOK_SECRET" --argjson e "$EVENTS" '{target_url: $u, secret: $s, events: $e}' \
+                        | curl -fsS -X PUT -H "$auth" -H "$json" --data @- "$VIKUNJA_URL/projects/$id/webhooks" > /dev/null
+                      log "board=\"$board\" project=$id webhook created"
+                    elif jq -e --arg h "$hook" --argjson e "$EVENTS" '[.[] | select((.id | tostring) == $h)][0].events | sort == ($e | sort)' /tmp/hooks.json > /dev/null; then
+                      log "board=\"$board\" project=$id webhook=$hook present"
+                    else
+                      jq -nc --argjson e "$EVENTS" '{events: $e}' \
+                        | curl -fsS -X POST -H "$auth" -H "$json" --data @- "$VIKUNJA_URL/projects/$id/webhooks/$hook" > /dev/null
+                      log "board=\"$board\" project=$id webhook=$hook events converged"
+                    fi
+                    curl -fsS -H "$auth" "$VIKUNJA_URL/projects/$id/users?per_page=250" > /tmp/shared.raw
+                    jq '. // []' /tmp/shared.raw > /tmp/shared.json
+                    while IFS= read -r user; do
+                      if jq -e --arg n "$user" 'any(.[]; .username == $n)' /tmp/shared.json > /dev/null; then
+                        log "board=\"$board\" project=$id user=$user shared"
+                      else
+                        jq -nc --arg n "$user" '{username: $n, permission: 0}' \
+                          | curl -fsS -X PUT -H "$auth" -H "$json" --data @- "$VIKUNJA_URL/projects/$id/users" > /dev/null
+                        log "board=\"$board\" project=$id user=$user shared read-only"
+                      fi
+                    done < /tmp/users
+                  done < /tmp/boards
+                  exit "$failed"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 25m, memory: 64Mi}
+                limits: {cpu: 200m, memory: 128Mi}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+                - {name: config, mountPath: /etc/ploeg, readOnly: true}
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: config
+              configMap:
+                name: ploeg-config
+                optional: true
