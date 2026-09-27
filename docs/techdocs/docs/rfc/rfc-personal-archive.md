@@ -1,6 +1,6 @@
 # RFC: Personal archive — all mail, calls and chats, searchable from the chat
 
-> Status: **Proposed** · Date: 2026-09-27 · Epic: VIK-1259
+> Status: **Proposed, parked** (owner: Obsidian import first) · Date: 2026-09-27 · Epic: VIK-1259
 
 > **TL;DR.** The owner wants years of mail, call recordings and chat history usable from
 > Open WebUI and Claude Code. Omnigraph's `brain` graph is the wrong place to pour that in: it is
@@ -9,10 +9,10 @@
 > (originals in Garage, a search index in a CNPG Postgres with full-text and `pgvector`,
 > embeddings from the in-cluster TEI model), and is exposed as MCP search tools through LiteLLM.
 > Layer 2, the **brain**, holds people, organisations, projects, decisions and commitments
-> distilled from the *personal* part of the archive, each linked back to its source. Client
-> content is archived and searchable but **never leaves the cluster** until the owner has checked
-> the model providers' DPAs. Order: Gmail → calls (self-hosted transcription) → Discord export →
-> brain distillation → WhatsApp revisited.
+> distilled from the personal part of the archive, each linked back to its source; client items
+> distil into their client's graph. Client content may reach Anthropic and Fireworks under their
+> DPAs, never the DeepSeek fallback. Order: Gmail → Slack → calls → Discord export → brain
+> distillation → WhatsApp revisited. Parked until the Obsidian import runs.
 
 ## Why
 
@@ -34,11 +34,13 @@
 
 | # | Question | Decision |
 | --- | --- | --- |
-| D1 | Mail source | Google: Gmail and Google Workspace |
+| D1 | Mail source | Google: personal Gmail, the Workspace mailbox (webgrip.nl) and further Google accounts still to be named |
 | D2 | WhatsApp | Skipped for now |
 | D3 | Calls | A phone call-recorder app, audio files on disk or cloud, and recording going forward |
-| D4 | Client data and external models | **Personal only for now**: client content is archived and searchable with in-cluster embeddings, and never sent to Fireworks, Anthropic or DeepSeek until the DPAs are checked |
+| D4 | Client data and external models | **Revised the same day:** client and company content may go to Anthropic and Fireworks, relying on their data processing agreements, so the chat can use it. It must never reach the DeepSeek fallback, which the owner did not approve |
 | D5 | Discord | One-off import of the GDPR data package |
+| D6 | Slack | Several workspaces, some administered by others: one private read-only Slack app per workspace, installed with that workspace admin's approval. On Slack's free plan the API reaches 90 days of history |
+| D7 | Timing | Parked on 2026-09-27; the Obsidian vault import goes first |
 
 ## Design
 
@@ -84,19 +86,18 @@ English.
    to `client:<id>`; any match wins over the default.
 3. Anything the rules cannot place is `unknown`, which is treated as client.
 
-**Retrieval-time leak control.** A chat backed by an external model must not pull client text
-into its prompt. The MCP tool `archive_search` reads a per-key class allowlist from LiteLLM key
-metadata: the Open WebUI and Claude Code keys get `personal` only. Client items stay reachable
-through the explorer-style UI (search without a model), and later through a local-model path.
-There is no GPU in the cluster, so a local LLM over client data is slow; that is accepted, not
-hidden.
+**Model routing.** Under the revised D4, client items may reach Anthropic and Fireworks but never
+DeepSeek. LiteLLM's `default_fallbacks` sends failed requests to `deepseek-chat`, so any key that
+can call `archive_search` must run without the DeepSeek fallback: a per-key fallback override, or
+a separate model group for archive-enabled keys. The class tag stays on every item: it keeps
+client graphs apart at distillation and lets the answer cite which client a passage came from.
 
 ### Layer 2: the brain
 
-A distiller job reads new `personal` items and asks `meeting-extract` (Fireworks, via LiteLLM)
+A distiller job reads new items and asks `meeting-extract` (Fireworks, via LiteLLM)
 for people, organisations, projects, decisions, commitments and tasks, with the source item id
 on each. It loads them onto an `ingest/<date>` branch of `brain` as `act-ingest`, which needs a
-grant on `brain` (today it only has the company graphs). The owner merges through the review UX
+grant on `brain` (today it only has the company graphs). Client-classified items distil into that client's graph, never into `brain`. The owner merges through the review UX
 (VIK-1258). Typed captures from the chat are a separate, pending decision (below).
 
 ### Sources
@@ -121,9 +122,9 @@ grant on `brain` (today it only has the company graphs). The owner merges throug
 - *Drop path:* the phone's recorder folder syncs to `s3://archive/inbox/audio/` (FolderSync or
   a similar app with an S3 target, on Wi-Fi). Existing audio files are uploaded to the same
   prefix.
-- *Transcription is self-hosted.* A call cannot be classified before it is transcribed, so under
-  D4 no audio may go to an external model. Transcription uses faster-whisper (CTranslate2, int8)
-  as a batch Job on worker-2 (8 cores).
+- *Transcription:* the revised D4 allows Fireworks Whisper through LiteLLM. Self-hosted
+  faster-whisper (CTranslate2, int8, a batch Job on worker-2) stays the comparison point on
+  cost and power.
 - *Speed and power: estimates, to be measured on the first real hour of audio.*
   - `large-v3-turbo` int8 on 8 cores runs somewhere around 0.3–0.6× real time.
   - An hour of calls a day then costs about 20–40 minutes of CPU at roughly +50 W. That is
@@ -171,5 +172,5 @@ rather than a separate system.
 1. **Direct brain writes from the chat.** Does `act-brain-agent` get read everywhere and change on
    `main` for typed captures (recoverable through the commit history), or stay on review branches?
 2. **Open WebUI backup.** Enrol `ai/open-webui-data` in the Longhorn backup policy.
-3. **The DPA check** that would lift D4 for client content, and for which provider.
+3. **The Slack workspace admins' approval** for each read-only app, and which further Google accounts D1 covers.
 4. **The client list:** which domains, phone numbers and Discord servers count as client.
