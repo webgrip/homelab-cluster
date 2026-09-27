@@ -27,12 +27,13 @@ Omnigraph v0.11 runs one server in namespace `ai` with three graphs: `memory` (s
 | `act-brain-agent` | `brain`: read and write on proposal branches only; Ryan merges |
 | `act-ingest` | `webgrip` (and future client graphs): create unprotected branches and load onto them. It cannot read anything |
 | `act-explorer` | `brain`, `memory` and `webgrip`: read and export on any branch, nothing else. Only the explorer's proxy holds it |
+| `act-vault-import` | `brain`: read and write on any branch including `main`, and run stored queries. No export, no branch create, merge or delete. Only the [Obsidian vault](#obsidian-vault) importer holds it |
 
 Each token is generated in-cluster by the `omnigraph-actor-tokens` ExternalSecret, pushed to OpenBao at `secret/omnigraph/<actor>` (field `token`), and assembled into the server's `tokens.json` by the `omnigraph-tokens` ExternalSecret.
 
 Add an actor by creating a new generator ExternalSecret and PushSecret pair, then adding one line to the aggregator. Do not add keys to `omnigraph-actor-tokens`. It is generate-once, so a new key only appears after its Secret is deleted, and deleting it rotates every existing token.
 
-Give an in-cluster consumer its token with an ExternalSecret against the `openbao` store at `omnigraph/<actor>`. Then open the network path on both ends, because namespace `ai` is default-deny and every pod in it carries its own egress allow: add the consumer to `omnigraph-ingress` (a `namespaceSelector` for another namespace, a `podSelector` for a pod in `ai`), and give a pod in `ai` an egress rule to `app: omnigraph` on 8080. Today only LiteLLM (the `omnigraph_memory` and `omnigraph_brain` MCP bridges), the explorer and the gateway may connect. The full matrix is in [LiteLLM: network](../general/litellm.md#network-namespace-ai).
+Give an in-cluster consumer its token with an ExternalSecret against the `openbao` store at `omnigraph/<actor>`. Then open the network path on both ends, because namespace `ai` is default-deny and every pod in it carries its own egress allow: add the consumer to `omnigraph-ingress` (a `namespaceSelector` for another namespace, a `podSelector` for a pod in `ai`), and give a pod in `ai` an egress rule to `app: omnigraph` on 8080. Today only LiteLLM (the `omnigraph_memory` and `omnigraph_brain` MCP bridges), the explorer, the vault importer and the gateway may connect. The full matrix is in [LiteLLM: network](../general/litellm.md#network-namespace-ai).
 
 ## Explorer
 
@@ -107,6 +108,94 @@ Conventions that used to live in the cookbook's comments:
 Agents holding `act-brain-agent` work on a branch, for example `agent/<task>` created from `main`. You review and merge. Branch scoping limits writes, not reads: an agent can read everything on `main` through a branch it creates. Keep it away from anything it should not see.
 
 The cookbook's demo seed (fictional "Alex Chen") is not loaded. To explore it, load it onto a throwaway branch and delete the branch afterwards.
+
+## Obsidian vault
+
+Ryan's Obsidian vault is imported into `brain` every 15 minutes by the `omnigraph-vault-import` CronJob in namespace `ai` ([vault-import](../../../../kubernetes/apps/ai/omnigraph/vault-import/app/)). It writes straight to `main` as `act-vault-import`, without a review branch. Ryan chose that on 2026-09-27.
+
+### How it runs
+
+One pod runs four steps in order. Each step logs one line of counts or one error line, never note names, contents or client terms.
+
+1. `clone` shallow-clones `ryangr0/obsidian-vault` over SSH from `forgejo-ssh.forgejo.svc.cluster.local`. It uses the deploy key in the `omnigraph-vault-import-deploy-key` Secret and checks the host key against the pinned [known_hosts](../../../../kubernetes/apps/ai/omnigraph/vault-import/app/known_hosts).
+2. `snapshot` reads every `obsidian/` note on `brain/main`, with its outgoing `RelatedNote` edges, using the ad-hoc queries in [snapshot.gq](../../../../kubernetes/apps/ai/omnigraph/vault-import/app/snapshot.gq).
+3. `plan` runs [vault_import.py](../../../../kubernetes/apps/ai/omnigraph/vault-import/app/vault_import.py). It compares the vault with the snapshot and writes a delete mutation and merge-load files for the difference only.
+4. `apply` runs the delete mutation, then the loads, onto `main`.
+
+**Mapping.** Only `*.md` files are read. Hidden folders (`.obsidian`, `.trash`, `.git`), template folders and files over 1 MiB are skipped. A template folder is one named `templates`, or the folder set in `.obsidian/templates.json` or in the Templater plugin settings.
+
+| `Note` field | From |
+|---|---|
+| `slug` | `obsidian/` plus the path without `.md`, lowercased, each segment reduced to `a-z0-9-`. Two paths that reduce to the same slug each get a hash suffix |
+| `name` | Frontmatter `title`, else the file name |
+| `content` | The body without frontmatter |
+| `tags` | Frontmatter `tags` plus inline `#tags` outside code, lowercased and deduplicated |
+| `kind` | `journal` when the file name is a date (`YYYY-MM-DD`) or the file sits in a daily-notes folder (`Daily`, `Journal` and similar, or the folder in `.obsidian/daily-notes.json`). Otherwise frontmatter `kind` or `type` when it is a valid `Note.kind`, else `idea` |
+| `when` | Frontmatter `date`, else a date file name |
+| `createdAt` | Kept from the graph for an existing note. For a new note, frontmatter `created`, else the import time |
+| `updatedAt` | The import time of the run that changed the note |
+
+`[[target]]`, `[[target|alias]]`, `[[target#heading]]` and `![[target]]` become `RelatedNote` edges when the target is another imported note, matched by path or by file name.
+
+**Only changes are written.** The importer keeps no state of its own. Every run recomputes the difference between the vault and what `brain` holds under `obsidian/`, and writes only that difference. This is simpler than a stored commit marker, and a failed run repairs itself on the next one. It is also required: a merge load replaces the whole row and clears its vector, so reloading unchanged notes every 15 minutes would keep every vault note without an embedding.
+
+- A new or changed note is merge-loaded.
+- A note whose vault links changed has its outgoing `RelatedNote` edges deleted, then reloaded. A merge load does not deduplicate edges, so an edge is never loaded without that delete first. Edges from a vault note to a note outside `obsidian/` (added by an agent or by hand) are reloaded with it.
+- An `obsidian/` note that is no longer in the vault is deleted. Its edges go with it.
+
+The vault owns everything under `obsidian/`. An edit made to such a note in the graph is overwritten on the next run when the file differs. Capture your own notes under another prefix, such as `nt-`.
+
+A vault without importable notes never deletes anything: the plan step refuses and the run fails.
+
+**Embeddings.** Loads do not embed. A new or changed note ranks on keywords only until the 03:15 restart fills its vector (see [Embeddings and recall](#embeddings-and-recall)). An import right after 03:15 waits almost a day. The full-text index is rebuilt at the same restart.
+
+**Write limits.** Load files are split at 2,000 rows or 16 MiB, below the per-commit limit.
+
+### Client notes never enter the brain
+
+Client notes are mixed through the vault, and the brain is sent to Claude and Fireworks through the chat. The importer reads a list of client terms (names, company names, domains) from OpenBao `secret/omnigraph/vault-client-terms`, field `terms`, one term per line, through the `omnigraph-vault-client-terms` ExternalSecret.
+
+- A file whose path or text (frontmatter, tags and body) contains any term, case-insensitive and on word boundaries, is not imported. When it was imported before, it is deleted from `brain`. Wikilinks pointing at it are dropped.
+- **Fail closed.** When the Secret is missing or holds no terms, the plan step imports nothing, deletes nothing and exits with `no client terms`.
+- The counts line reports `withheld_client`. The terms themselves are never logged.
+- The filter is a text match. A client note that never names a listed term gets through. Add the client, its people and its domains.
+
+Deleting a note from `main` does not erase it from history. See [Forget a meeting](#forget-a-meeting) for destroying the data files.
+
+### Setup (Ryan)
+
+1. Create the private repo `ryangr0/obsidian-vault` on Forgejo and push the vault with the Obsidian Git plugin. Leave `.obsidian/` in or out, the importer skips it either way.
+2. Add the importer's public key as a **read-only** deploy key on that repo (Settings, Deploy keys, write access off). Print it with:
+
+   ```bash
+   export BAO_ADDR="$(just bao-addr)"
+   bao kv get -field=public_key secret/omnigraph/vault-import-deploy-key
+   ```
+
+3. Store the client terms without printing them. Paste one term per line, then press Ctrl-D:
+
+   ```bash
+   bao kv put secret/omnigraph/vault-client-terms terms=-
+   ```
+
+   To add a term later, run the same command with the full list. It replaces the field.
+
+The next run after both steps imports the vault. ESO refreshes the terms every 5 minutes.
+
+### Monitoring and failures
+
+The job fails, and does not retry, with one of these lines:
+
+- `vault repo not reachable`: the repo does not exist or the deploy key is not on it.
+- `no client terms`: the terms secret is missing or empty.
+- `omnigraph not reachable or act-vault-import refused`: Omnigraph is restarting, or `act-vault-import` is not in `tokens.json` yet.
+- `vault import failed`: the server refused the delete or a load batch.
+
+`OmnigraphVaultImportStale` fires when the CronJob has had no successful run for 2 hours, or has never succeeded since it was created. It reads `kube_cronjob_status_last_successful_time` from kube-state-metrics. It fires until the setup above is done.
+
+**Tests.** [test_omnigraph_vault_import.py](../../../../scripts/test_omnigraph_vault_import.py) covers the mapping, the client filter and the fail-closed paths with fixture vaults. It runs without network: `python3 scripts/test_omnigraph_vault_import.py`.
+
+**Rotation.** Deleting the `omnigraph-vault-import-deploy-key` Secret generates a new key pair and pushes the new public key. Replace the deploy key on the repo. Deleting `omnigraph-vault-import-token` rotates the actor token. The aggregator picks it up within 15 minutes and Reloader restarts Omnigraph.
 
 ## Company meetings (`webgrip` and client graphs)
 

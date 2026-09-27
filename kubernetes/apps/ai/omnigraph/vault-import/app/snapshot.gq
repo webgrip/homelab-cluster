@@ -1,0 +1,16 @@
+query vault_notes() {
+    match {
+        $n: Note
+        $n.slug starts_with "obsidian/"
+    }
+    return { $n.slug, $n.name, $n.kind, $n.content, $n.when, $n.tags, $n.createdAt }
+}
+
+query vault_links() {
+    match {
+        $a: Note
+        $a.slug starts_with "obsidian/"
+        $a relatedNote $b
+    }
+    return { $a.slug, $b.slug }
+}

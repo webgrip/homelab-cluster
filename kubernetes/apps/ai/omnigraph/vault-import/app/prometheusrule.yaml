@@ -1,0 +1,48 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: omnigraph-vault-import
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: omnigraph-vault-import
+spec:
+  groups:
+    - name: omnigraph-vault-import.rules
+      rules:
+        - alert: OmnigraphVaultImportStale
+          expr: |
+            time() - max(
+              (kube_cronjob_status_last_successful_time{exported_namespace="ai", cronjob="omnigraph-vault-import"} > 0)
+              or
+              kube_cronjob_created{exported_namespace="ai", cronjob="omnigraph-vault-import"}
+            ) > 7200
+            or
+            absent(kube_cronjob_created{exported_namespace="ai", cronjob="omnigraph-vault-import"})
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: omnigraph
+          annotations:
+            summary: "Obsidian vault has not reached the brain graph in over 2h (ai/omnigraph-vault-import)"
+            description: |
+              What's happening:
+              - The omnigraph-vault-import CronJob runs every 15 minutes and has not completed a run for more than 2h, or it has never succeeded since it was created, or it no longer exists.
+
+              Impact/risk:
+              - Notes written or edited in Obsidian are missing from the brain graph and from every chat that recalls it.
+              - Notes deleted in the vault, or newly matching a client term, stay in the brain and can still be sent to an external model.
+
+              Likely causes:
+              - The vault repo ryangr0/obsidian-vault does not exist yet, or the read-only deploy key from secret/omnigraph/vault-import-deploy-key is not on it (log: "vault repo not reachable").
+              - secret/omnigraph/vault-client-terms is missing or empty, so the importer fails closed (log: "no client terms").
+              - Omnigraph is down or restarting, or act-vault-import is missing from tokens.json (log: "omnigraph not reachable or act-vault-import refused").
+              - A load batch was refused, for example by the 8,192-row or 32 MiB per-commit write limit (log: "vault import failed").
+
+              First actions:
+              - kubectl -n ai get cronjob,jobs -l app.kubernetes.io/name=omnigraph-vault-import
+              - kubectl -n ai logs job/<latest job> --all-containers
+              - kubectl -n ai get externalsecret omnigraph-vault-client-terms omnigraph-vault-import-deploy-key omnigraph-tokens
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#obsidian-vault"

@@ -1,0 +1,24 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./serviceaccount.yaml
+  - ./deploy-key.externalsecret.yaml
+  - ./deploy-key.pushsecret.yaml
+  - ./client-terms.externalsecret.yaml
+  - ./cronjob.yaml
+  - ./networkpolicy.yaml
+  - ./prometheusrule.yaml
+configMapGenerator:
+  - name: omnigraph-vault-import
+    files:
+      - ./vault_import.py
+      - ./snapshot.gq
+      - ./clone.sh
+      - ./snapshot.sh
+      - ./apply.sh
+      - ./known_hosts
+    options:
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled

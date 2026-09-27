@@ -76,12 +76,13 @@ declares.
 | `litellm` | valkey :6379, `litellm-db` instances :5432, `tei-embeddings` and `omnigraph` :8080, namespaces `observability` and `vikunja` (MCP backends, OTLP to alloy-gateway), namespace `network` (gateway hairpin: Authentik OIDC, own hostname), internet TCP 443 outside RFC1918, CGNAT and link-local | :4000 from `ai`, `network`, `ploeg`, `de-vloer-workspaces`, LAN; :9187 from `observability` | `litellm-allow-egress`, `litellm-allow-gateway-egress`, `litellm-private-ingress`, `litellm-allow-internal` |
 | `litellm-valkey` | none | :6379 from `litellm` | `litellm-valkey-ingress` |
 | `litellm-db` (CNPG instances and jobs) | kube-apiserver, the off-site store `116.202.53.185/32` :443, other `litellm-db` instances :5432 | :5432 from `litellm`, `observability` (Grafana SQL datasource) and its own instances; :9187 from `observability`; :8000 and :5432 from `cnpg-system` | `litellm-db-ingress`, `litellm-db-replication-egress` (DB layer) plus `components/cnpg-netpol` |
-| `omnigraph` | `litellm` :4000 (embeddings, init and server) | :8080 from `litellm`, `omnigraph-explorer`, `network` | `omnigraph-egress`, `omnigraph-ingress` |
+| `omnigraph` | `litellm` :4000 (embeddings, init and server) | :8080 from `litellm`, `omnigraph-explorer`, `omnigraph-vault-import`, `network` | `omnigraph-egress`, `omnigraph-ingress` |
 | `omnigraph-explorer` | `omnigraph` :8080 | :8080 from `network` and the blackbox exporter | `omnigraph-explorer` |
 | `omnigraph-embed-key-register` Job | `litellm` :4000 | none | `omnigraph-embed-key-register-egress` |
 | `litellm-key-register-*` Jobs | `litellm` :4000 | none | `litellm-key-register-egress` |
 | `open-webui` | `litellm` :4000, namespace `network` (gateway hairpin: Authentik OIDC) | :8080 from `network` and the blackbox exporter | `open-webui`, `open-webui-allow-gateway-egress` |
 | `omnigraph-maintenance-restart` CronJob | kube-apiserver | none | `omnigraph-maintenance-restart-apiserver` |
+| `omnigraph-vault-import` CronJob | `omnigraph` :8080, Forgejo SSH :2222 (`forgejo` pods, admitted by `forgejo-allow-ingress`) | none | `omnigraph-vault-import-egress` |
 | `tei-embeddings` | HTTPS to `huggingface.co`, `*.huggingface.co` and up to three labels under `hf.co` (model download in `fetch-model`); every pod outside `kube-system` is denied | :8080 from `litellm`, `observability` | `tei-embeddings-model-fetch`, `tei-embeddings-litellm-only`, `tei-embeddings-ingress` |
 | `docs-mcp-server` | namespace `network` (it indexes `docs.<domain>` through envoy-internal) | :6280 from `ai`, `network` | `docs-mcp-server-allow-gateway-egress`, `docs-mcp-server-ingress` |
 
