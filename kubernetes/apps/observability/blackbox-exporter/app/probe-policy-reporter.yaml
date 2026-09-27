@@ -1,0 +1,22 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/probe_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: blackbox-policy-reporter
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  interval: 60s
+  module: http_policy_reporter_gate
+  prober:
+    url: blackbox-exporter.observability.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - https://envoy-internal.network.svc.cluster.local/
+      labels:
+        endpoint: policy-reporter
+        synthetic: route
+        gate: oidc

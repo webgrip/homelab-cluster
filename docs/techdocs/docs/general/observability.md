@@ -163,9 +163,15 @@ directory; a free-text value is a false coverage claim.
   so the probe walks gateway → HTTPRoute → backend like a browser. Probe an unauthenticated health
   path and match its body, because a SPA catch-all answers `200` for any path.
 - **OIDC-gated routes** (gateway `SecurityPolicy`: longhorn, flux-web, prometheus,
-  alertmanager): an anonymous request can only see the `302` to Authentik, so the module accepts
-  exactly that `302` with a `Location` on the authorize endpoint. That proves the gateway and the
-  auth filter, not the backend.
+  alertmanager, victorialogs, policy-reporter, omnigraph-explorer): an anonymous request can only
+  see the `302` to Authentik, so the module accepts exactly that `302` with a `Location` on the
+  authorize endpoint. That proves the gateway and the auth filter, not the backend.
+- **Basic-auth-gated routes** (`searxng-external`): the module accepts exactly the `401` with a
+  `WWW-Authenticate: Basic` challenge. An open gate turns the probe red through
+  `SyntheticRouteDown`; it carries no `gate` label, so `SyntheticOidcGateOpen` does not page on it.
+- **MCP servers without a health path** (k8s-mcp, opencost-mcp): a `GET` with
+  `Accept: text/event-stream` and no session answers `400 … Mcp-Session-Id`; the module pins that
+  `400` and its body, which only the MCP handler produces.
 - **Alerting by label**, not by listing endpoints: target label `synthetic: route` enrols a probe
   in `SyntheticRouteDown`; `gate: oidc` enrols it in `SyntheticOidcGateOpen` (a `2xx` to an
   anonymous request = auth bypass). Dedicated alerts (Authentik login, omnigraph, Garage) and the
