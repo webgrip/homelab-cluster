@@ -3,18 +3,24 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cilium
+  labels:
+    helm.webgrip.io/fix-forward: "true"
 spec:
   chartRef:
     kind: OCIRepository
     name: cilium
   interval: 1h
+  timeout: 15m
   install:
     remediation:
       retries: 3
   upgrade:
     cleanupOnFail: true
+    strategy:
+      name: RetryOnFailure
+      retryInterval: 10m
     remediation:
-      retries: 3
+      retries: 1
       remediateLastFailure: true
   # mount-cgroup is the ONE agent init container chart 1.18.6 gives no resources
   # knob for (initResources covers the others, cni.resources covers
