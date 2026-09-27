@@ -40,3 +40,47 @@ Interactive human use (Claude Code `.mcp.json`) deliberately stays **direct** to
 - Prompts are **not** stored in the spend ledger (recorded privacy posture); spend-log retention 90d.
 - Dashboards: Grafana → **AI** folder → *LiteLLM — Inference Spend & Budgets* and
   *LiteLLM — Latency & Reliability*. Traces: Explore → Jaeger datasource, service `litellm`.
+
+## Network (namespace `ai`)
+
+Namespace `ai` is zero-trust ([ADR-0006](../adr/adr-0006-default-deny-network-policies.md)): Kyverno
+generates `default-deny` and `allow-dns`, and every workload carries its own allows. No policy in the
+namespace selects every pod, so a new workload starts with DNS only and gets exactly the flows it
+declares.
+
+| Workload | Egress (beyond DNS) | Ingress | Policy objects |
+|---|---|---|---|
+| `litellm` | valkey :6379, `litellm-db` instances :5432, `tei-embeddings` and `omnigraph` :8080, namespaces `observability` and `vikunja` (MCP backends, OTLP to alloy-gateway), namespace `network` (gateway hairpin: Authentik OIDC, own hostname), internet TCP 443 outside RFC1918, CGNAT and link-local | :4000 from `ai`, `network`, `ploeg`, `de-vloer-workspaces`, LAN; :9187 from `observability` | `litellm-allow-egress`, `litellm-allow-gateway-egress`, `litellm-private-ingress`, `litellm-allow-internal` |
+| `litellm-valkey` | none | :6379 from `litellm` | `litellm-valkey-ingress` |
+| `litellm-db` (CNPG instances and jobs) | kube-apiserver, the off-site store `116.202.53.185/32` :443, other `litellm-db` instances :5432 | :5432 from `litellm`, `observability` (Grafana SQL datasource) and its own instances; :9187 from `observability`; :8000 and :5432 from `cnpg-system` | `litellm-db-ingress`, `litellm-db-replication-egress` (DB layer) plus `components/cnpg-netpol` |
+| `omnigraph` | `litellm` :4000 (embeddings, init and server) | :8080 from `litellm`, `omnigraph-explorer`, `network` | `omnigraph-egress`, `omnigraph-ingress` |
+| `omnigraph-explorer` | `omnigraph` :8080 | :8080 from `network` and the blackbox exporter | `omnigraph-explorer` |
+| `omnigraph-embed-key-register` Job | `litellm` :4000 | none | `omnigraph-embed-key-register-egress` |
+| `omnigraph-maintenance-restart` CronJob | kube-apiserver | none | `omnigraph-maintenance-restart-apiserver` |
+| `tei-embeddings` | HTTPS to `huggingface.co`, `*.huggingface.co` and up to three labels under `hf.co` (model download in `fetch-model`); every pod outside `kube-system` is denied | :8080 from `litellm`, `observability` | `tei-embeddings-model-fetch`, `tei-embeddings-litellm-only`, `tei-embeddings-ingress` |
+| `docs-mcp-server` | namespace `network` (it indexes `docs.<domain>` through envoy-internal) | :6280 from `ai`, `network` | `docs-mcp-server-allow-gateway-egress`, `docs-mcp-server-ingress` |
+
+Rules that shaped it:
+
+- **In-cluster peers are granted by identity.** Cilium enforces on the post-DNAT backend identity, so
+  Services, the gateway VIP and pods in other namespaces need a `podSelector` or `namespaceSelector`.
+  The LAN `ipBlock` sources on `litellm-private-ingress` admit laptops, never pods: a namespace such as
+  `ploeg` reaches the proxy only through its own `namespaceSelector`. Registering an MCP backend in a
+  new namespace therefore needs a `namespaceSelector` entry on `litellm-allow-egress`.
+- **The gateway allow is the shared component, scoped per app.** `components/gateway-egress` renders a
+  namespace-wide `allow-gateway-egress`; the litellm and docs-mcp-server kustomizations rename it and
+  narrow its `podSelector` with a JSON patch. Two Kustomizations used to render the same namespace-wide
+  object, which also handed the gateway to every other pod in `ai`.
+- **The internet is a port-443 allow for LiteLLM only.** Provider APIs, `registry.npmjs.org` (the
+  `install-omnigraph-mcp` init container) and the model price map are all HTTPS. Adding a provider on
+  another port, or on a LAN address, needs an edit to `litellm-allow-egress`.
+- **`tei-embeddings` uses `toFQDNs`.** Hugging Face redirects model files to CDN hosts that have
+  changed name over time (`cdn-lfs.huggingface.co`, `cas-bridge.xethub.hf.co`, `us.aws.cdn.hf.co`), so
+  the policy allows HF's own domains rather than one host. A Cilium `*` never crosses a dot, which is
+  why `*.hf.co`, `*.*.hf.co` and `*.*.*.hf.co` are listed separately. The policy also sends the pod's
+  DNS through the Cilium DNS proxy, which is how the allowed IPs are learned.
+- **docs-mcp-server runs with `DOCS_MCP_TELEMETRY=false`.** It sent PostHog events to
+  `app.posthog.com` until the namespace-wide internet allow was removed.
+
+Check a flow live with Hubble from the Cilium agent on the pod's node, for example
+`kubectl -n kube-system exec <cilium-pod> -c cilium-agent -- hubble observe --namespace ai --verdict DROPPED -f`.

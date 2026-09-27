@@ -7,16 +7,4 @@ metadata:
     webgrip.io/owner: platform
     webgrip.io/tier: app
     webgrip.io/exposure: internal
-    # Zero-trust ON as of 2026-08-05, closing the deferral this label used to carry.
-    # Kyverno generates `default-deny` (Ingress+Egress) and `allow-dns` from this label;
-    # the matching allow-rules shipped FIRST in a separate commit
-    # (litellm/app/networkpolicy.yaml + the gateway-egress and cnpg-netpol components),
-    # because the two Kustomizations reconcile independently and the reverse order would
-    # black-hole LiteLLM in between.
-    #
-    # The two concerns the deferral named are both preserved explicitly:
-    #   * upstream provider egress (api.anthropic.com …) -> litellm-allow-egress,
-    #     0.0.0.0/0 minus the cluster pod/service CIDRs
-    #   * LAN consumers calling the proxy directly       -> litellm-private-ingress,
-    #     :4000 from the RFC1918 ranges
     kyverno.io/default-network-policies: "true"
