@@ -57,7 +57,7 @@ Operator manifests:
 Notable HelmRelease settings:
 
 - Metrics enabled with a ServiceMonitor (`values.metrics.enabled: true` + `serviceMonitor.enabled: true`).
-- Webhook enabled with an external route host `renovate-webhook.${SECRET_DOMAIN}` via the Gateway API parent `envoy-external`.
+- Webhook enabled with a LAN-only route host `renovate-webhook.${SECRET_DOMAIN}` via the Gateway API parent `envoy-internal`. Forgejo, the only caller, posts to the in-cluster Service; nothing on the internet reaches the receiver. Authentication is enforced by the operator per RenovateJob (`spec.webhook.authentication`), and the blackbox alert `RenovateWebhookGateOpen` fires if an unauthenticated schedule request stops being refused.
 
 ### RenovateJob execution model — dual-run (GitHub + Forgejo)
 

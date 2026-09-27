@@ -42,7 +42,7 @@ If you want the runtime Secret created immediately (e.g. right after first insta
 
 - `kubectl -n renovate create job --from=cronjob/renovate-github-app-token renovate-github-app-token-bootstrap-$(date +%s)`
 
-### 3) Webhook auth (public endpoint)
+### 3) Webhook auth
 
 - **Secret name:** `renovate-webhook-auth`
 - **Namespace:** `renovate`
@@ -61,25 +61,29 @@ Template: `webhook-auth.secret.template.yaml`
 ## Notes
 
 - Renovate executor Jobs read the token from `renovate-runtime-token`.
-- The webhook bearer `token` is separate; it only protects the public webhook endpoint.
+- The webhook bearer `token` is separate; it only protects the webhook receiver.
 - The in-cluster token minter uses `ghcr.io/mshekow/github-app-installation-token` pinned by digest (see the CronJob manifest).
 - The token minter also builds `RENOVATE_HOST_RULES` for registry auth. Without Docker Hub credentials, Renovate talks to Docker Hub anonymously and can hit 429 rate limits.
 
-## Make Dependency Dashboard actions immediate (GitHub webhook)
+## Webhook exposure
 
-Renovate only processes Dependency Dashboard checkbox changes during a run.
-To avoid waiting for the next cron run, configure GitHub to call the operator webhook endpoint.
+The receiver is LAN-only: its route hangs off `envoy-internal`, so `renovate-webhook.${SECRET_DOMAIN}`
+has no public DNS record and nothing on the internet reaches it. Its only caller is Forgejo, which
+posts to the in-cluster Service (below). On 2026-09-27 no GitHub repo carried a hook to it and the
+operator had logged no accepted GitHub event in 30 days, so the `webgrip-gitops` job relies on its cron.
 
-### GitHub webhook setup
+The operator enforces authentication itself, per RenovateJob: a request is accepted only when a job
+that owns the project has `spec.webhook.authentication.enabled: true` and the request carries a token
+from the job's Secret (`Authorization: Bearer <token>`, `X-Gitlab-Token`, or an HMAC signature of the
+body). A job with `webhook.enabled` and no `authentication` block accepts unauthenticated requests for
+every project it owns, so never add one. The blackbox alert `RenovateWebhookGateOpen` fires when an
+unauthenticated schedule request for `webgrip/homelab-cluster` stops getting `401`.
 
-Create a GitHub webhook (repo-level or org-level) with:
-
-- **Payload URL:** `https://renovate-webhook.${SECRET_DOMAIN}/webhook/v1/github?namespace=renovate&job=webgrip-gitops`
-- **Content type:** `application/json`
-- **Secret:** the same bearer token stored in Secret `renovate-webhook-auth` key `token`
-- **Events:** enable **Issues** (Dependency Dashboard interactions) and **Pull requests** (PR checkbox interactions)
-
-This causes Renovate runs to be triggered immediately when you tick boxes or use Renovate checkboxes in PRs.
+Re-exposing it for a GitHub webhook takes a second hostname on its own `envoy-external` route, not
+an extra `parentRef` on this one: k8s-gateway would otherwise answer the one name with both gateway
+IPs. The GitHub payload URL is
+`https://<that host>/webhook/v1/github?namespace=renovate&job=webgrip-gitops`, content type
+`application/json`, secret = the token, events **Issues** and **Pull requests**.
 
 ## Make Dependency Dashboard actions immediate (Forgejo webhook)
 
@@ -99,8 +103,7 @@ scripts/forgejo-sync.sh --all --only webhook --apply                  # all de-m
 It registers a Forgejo repo webhook with:
 
 - **Payload URL:** `http://renovate-operator.renovate.svc.cluster.local:8082/webhook/v1/forgejo?namespace=renovate&job=webgrip-forgejo`
-  — Forgejo is **in-cluster**, so it hits the operator Service directly (unlike the external GitHub
-  webhook, which must use `renovate-webhook.${SECRET_DOMAIN}`). No envoy-external hairpin.
+  — Forgejo is **in-cluster**, so it hits the operator Service directly. No gateway hop.
 - **Content type:** `json`, **method:** `POST`
 - **Auth:** `Authorization: Bearer <token>` — set via the hook's **top-level** `authorization_header`
   field (NOT a `config` key — Forgejo silently drops unknown config keys, so nesting it sends no auth
