@@ -108,3 +108,89 @@ spec:
             apiTokenSecretRef:
               name: cloudflare-token
               key: token
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: compliant-public-cert
+  namespace: app
+spec:
+  secretName: compliant-public-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  commonName: __SECRET_DOMAIN__
+  dnsNames:
+    - __SECRET_DOMAIN__
+    - "*.__SECRET_DOMAIN__"
+  duration: 2160h
+  renewBefore: 360h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    encoding: PKCS8
+    rotationPolicy: Always
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: barman-cloud-client
+  namespace: cnpg-system
+spec:
+  secretName: barman-cloud-client-tls
+  issuerRef:
+    name: plugin-barman-cloud-selfsigned-issuer
+    kind: Issuer
+    group: cert-manager.io
+  commonName: barman-cloud-client
+  duration: 2160h
+  renewBefore: 360h
+  privateKey:
+    rotationPolicy: Always
+  usages:
+    - client auth
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: internal-ca-webhook-cert
+  namespace: security
+spec:
+  secretName: internal-ca-webhook-tls
+  issuerRef:
+    name: internal-ca-issuer
+    kind: Issuer
+  dnsNames:
+    - webhook-svc
+    - webhook-svc.security.svc
+    - webhook-svc.security.svc.cluster.local
+  duration: 8760h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: selfsigned-public-domain-cert
+  namespace: app
+spec:
+  secretName: selfsigned-public-domain-tls
+  issuerRef:
+    name: plugin-barman-cloud-selfsigned-issuer
+    kind: Issuer
+  dnsNames:
+    - foo.__SECRET_DOMAIN__
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: internal-ca-public-commonname-cert
+  namespace: app
+spec:
+  secretName: internal-ca-public-commonname-tls
+  issuerRef:
+    name: kyverno-selfsigned-issuer
+    kind: ClusterIssuer
+  commonName: foo.__SECRET_DOMAIN__

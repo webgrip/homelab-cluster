@@ -1,34 +1,4 @@
 ---
-# MIGRATED to the CEL policy family 2026-08-11 (rfc-kyverno-cel-migration.md), and
-# SPLIT from one 6-rule ClusterPolicy into three ValidatingPolicies.
-#
-# THREE SPLIT DRIVERS APPLY AT ONCE HERE — this is the first policy where the action
-# split matters as much as the waiver split:
-#
-#   rule                             action   waived by system-certificates?
-#   restrict-certificate-issuer      Enforce  yes
-#   restrict-certificate-dnsnames    Enforce  yes
-#   restrict-certificate-commonname  Enforce  yes
-#   restrict-clusterissuer-acme-zone Enforce  NO
-#   audit-certificate-duration       Audit    yes
-#   audit-certificate-private-key    Audit    yes
-#
-# CEL `validationActions` is POLICY-level, so the two Audit rules cannot share a policy
-# with the four Enforce ones — merging them would silently promote both to Deny.
-# restrict-clusterissuer-acme-zone is unwaived AND matches a different kind, so it
-# separates on both counts. That yields exactly three groupings.
-#
-# The name `cert-manager-governance` is retained for the three enforcing Certificate
-# rules — the bulk of the policy — so existing report queries keep resolving.
-#
-# ${SECRET_DOMAIN} IS A FLUX postBuild SUBSTITUTION, not a CEL variable. It survives
-# into the expressions as literal text and is substituted at apply time, exactly as it
-# was in the legacy JMESPath. The kyverno-test harness substitutes example.com
-# (KYVERNO_TEST_SECRET_DOMAIN), which is why test fixtures must use the templated form
-# rather than a hardcoded domain.
-#
-# NO YAML ANCHORS — they do not cross document boundaries and kubeconform rejects the
-# file outright.
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -40,9 +10,10 @@ metadata:
     policies.kyverno.io/subject: Certificate
     kyverno.io/kyverno-version: 1.18.1
     policies.kyverno.io/description: >-
-      Certificates must be issued by the letsencrypt-production ClusterIssuer and
-      scoped to the cluster domain. CEL migration of cert-manager-governance; the
-      ClusterIssuer and hygiene rules are separate policies.
+      Certificates for ${SECRET_DOMAIN} must be issued by the letsencrypt-production
+      ClusterIssuer, and Let's Encrypt Certificates must stay within ${SECRET_DOMAIN}.
+      Certificates from internal CA and self-signed issuers for in-cluster names are
+      out of scope.
 spec:
   validationActions:
     - Deny
@@ -60,32 +31,29 @@ spec:
           - "UPDATE"
         resources:
           - "certificates"
+  matchConditions:
+    - name: letsencrypt-issued-or-public-domain
+      expression: >-
+        (object.spec.?issuerRef.orValue({}).?kind.orValue('') == 'ClusterIssuer' &&
+          object.spec.?issuerRef.orValue({}).?name.orValue('').startsWith('letsencrypt')) ||
+        object.spec.?dnsNames.orValue([]).exists(d,
+          d.matches('^(\\*\\.)?([A-Za-z0-9-]+\\.)*${SECRET_DOMAIN}$')) ||
+        object.spec.?commonName.orValue('')
+          .matches('^(\\*\\.)?([A-Za-z0-9-]+\\.)*${SECRET_DOMAIN}$')
   validations:
-    # Legacy pattern required BOTH keys, with no `=()`, so absent fails.
     - expression: >-
         object.spec.?issuerRef.orValue({}).?name.orValue('') == 'letsencrypt-production' &&
         object.spec.?issuerRef.orValue({}).?kind.orValue('') == 'ClusterIssuer'
       message: "Certificates must use the letsencrypt-production ClusterIssuer."
-    # matches() is RE2 and replaces JMESPath regex_match(). The pattern is byte-for-byte
-    # the legacy one: an optional leading wildcard label, any number of subdomain labels,
-    # then the cluster domain. Note the domain's own dots are NOT escaped — that is the
-    # legacy behaviour and is slightly loose; tightening it is a behaviour change, not a
-    # dialect migration.
     - expression: >-
         object.spec.?dnsNames.orValue([]).all(d,
           d.matches('^(\\*\\.)?([A-Za-z0-9-]+\\.)*${SECRET_DOMAIN}$'))
       message: "Certificate DNS names must be ${SECRET_DOMAIN} or a subdomain of it."
-    # Legacy defaulted a MISSING commonName to ${SECRET_DOMAIN} itself, so absent passes.
-    # orValue reproduces that exactly rather than guarding with has().
     - expression: >-
         object.spec.?commonName.orValue('${SECRET_DOMAIN}')
           .matches('^(\\*\\.)?([A-Za-z0-9-]+\\.)*${SECRET_DOMAIN}$')
       message: "Certificate commonName must be ${SECRET_DOMAIN} or a subdomain of it."
 ---
-# Split out because it is the only rule in the policy NOT waived by
-# exception-system-certificates, and it matches a different kind. Merging it with the
-# Certificate rules above would hand the system-certs waiver a ClusterIssuer exemption
-# it has never had.
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -117,31 +85,14 @@ spec:
         resources:
           - "clusterissuers"
   matchConditions:
-    # The ACME gate is a matchCondition, NOT folded into the expression, and that is a
-    # deliberate reversal of what the other migrations did.
-    #
-    # Elsewhere (workload-topology-spread) a legacy `precondition` was folded into the
-    # validation so a non-matching resource reports a PASS, keeping one row per resource.
-    # Here that would be wrong: the CLI test asserts `result: skip` for a self-signed
-    # issuer and says so explicitly — "Asserting `skip` fails if someone removes the
-    # precondition; `pass` would not catch it." Folding the gate in would turn that skip
-    # into a pass and silently retire the assertion that protects it.
-    #
-    # Note the migration differential cannot catch this either: aggregating fail-vs-
-    # not-fail per resource treats skip and pass as the same thing.
     - name: acme-issuers-only
       expression: "has(object.spec.acme)"
   validations:
-    # A single-element list pattern in Kyverno applies to EVERY element, so every solver
-    # must carry the zone — not merely one of them.
     - expression: >-
         object.spec.acme.?solvers.orValue([]).all(s,
           '${SECRET_DOMAIN}' in s.?selector.orValue({}).?dnsZones.orValue([]))
       message: "ClusterIssuers must be scoped to ${SECRET_DOMAIN}."
 ---
-# The two AUDIT rules. They cannot live with the enforcing ones above because
-# validationActions is policy-level — merged, these would start denying Certificates
-# for missing rotation metadata, which has never been a blocking condition.
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -153,8 +104,8 @@ metadata:
     policies.kyverno.io/subject: Certificate
     kyverno.io/kyverno-version: 1.18.1
     policies.kyverno.io/description: >-
-      Certificates should declare rotation timing and private key parameters. CEL split
-      of cert-manager-governance's two Audit rules.
+      Let's Encrypt Certificates should declare rotation timing and private key
+      parameters. Chart-issued internal Certificates are out of scope.
 spec:
   validationActions:
     - Audit
@@ -172,14 +123,16 @@ spec:
           - "UPDATE"
         resources:
           - "certificates"
+  matchConditions:
+    - name: letsencrypt-issued
+      expression: >-
+        object.spec.?issuerRef.orValue({}).?kind.orValue('') == 'ClusterIssuer' &&
+        object.spec.?issuerRef.orValue({}).?name.orValue('').startsWith('letsencrypt')
   validations:
     - expression: >-
         object.spec.?duration.orValue('') != '' &&
         object.spec.?renewBefore.orValue('') != ''
       message: "Certificates should declare duration and renewBefore for predictable rotation."
-    # `algorithm: "ECDSA | RSA"` and `encoding: "PKCS1 | PKCS8"` are Kyverno OR-patterns,
-    # not literal strings — they become list membership. `size: ">=256"` is its numeric
-    # operator syntax. privateKey itself carried no `=()`, so an absent block fails.
     - expression: >-
         has(object.spec.privateKey) &&
         object.spec.privateKey.?algorithm.orValue('') in ['ECDSA', 'RSA'] &&
