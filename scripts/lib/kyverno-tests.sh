@@ -9,9 +9,9 @@ source "${SCRIPT_DIR}/common.sh"
 # (harbor.webgrip.dev/ghcr -> ghcr.io, ADR-0025), NOT ghcr.io directly: the CI runner's DinD
 # uses an emptyDir image store so every pull is cold — Harbor makes it a LAN-speed, rate-limit-
 # free pull that stays warm across runs. Same manifests, so the digest pins are unchanged.
-KYVERNO_CLI_IMAGE="${KYVERNO_CLI_IMAGE:-harbor.webgrip.dev/ghcr/kyverno/kyverno-cli:v1.18.1@sha256:b7e272572d244ddec0b83469f7200ba883555bf69de4b294cee52a197c8c6590}"
+KYVERNO_CLI_IMAGE="${KYVERNO_CLI_IMAGE:-harbor.webgrip.dev/ghcr/kyverno/kyverno-cli:v1.19.1@sha256:ced7b2be0b04250cabfe695f15307f69eb715fe23234816388af4f3812915b2a}"
 CHAINSAW_IMAGE="${CHAINSAW_IMAGE:-harbor.webgrip.dev/ghcr/kyverno/chainsaw:v0.2.15@sha256:527f3be2b9ec0580cb0bc84540a0fee99406b011c24ae3a30953e525af60809d}"
-KYVERNO_INSTALL_URL="${KYVERNO_INSTALL_URL:-https://github.com/kyverno/kyverno/releases/download/v1.18.1/install.yaml}"
+KYVERNO_INSTALL_URL="${KYVERNO_INSTALL_URL:-https://github.com/kyverno/kyverno/releases/download/v1.19.1/install.yaml}"
 # Prefix for the ghcr.io/kyverno/* images referenced INSIDE install.yaml + the KinD node image,
 # so the KinD node pulls them through Harbor too (same emptyDir cold-pull problem). Set empty to
 # pull direct from upstream.
