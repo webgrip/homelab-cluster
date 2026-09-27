@@ -87,7 +87,7 @@ wiring/troubleshooting → `authentik-oidc` skill + [Authentik OIDC login runboo
 | --- | --- | --- |
 | **Pyroscope** (profiles) | `suspend: true` in its ks.yaml | gate = owner-run etcd defrag, then flip per [ADR-0037](../adr/adr-0037-reenable-pyroscope-worker-pool.md) (re-enable on the worker pool) |
 | **Beyla** (eBPF auto-instrumentation) | `suspend: true` | disabled temporarily for stability |
-| **k6** (operator + canaries) | commented out 2026-06-19 | freed fringe resources; synthetic-check annotations on routes are no-ops until restored |
+| **k6** (operator + canaries) | commented out 2026-06-19 | freed fringe resources; route coverage moved to blackbox probes, see [Synthetic monitoring](#synthetic-monitoring-blackbox) |
 
 (Tempo was in this table from 2026-06-19 until 2026-07-11, when VictoriaTraces replaced it —
 [ADR-0042](../adr/adr-0042-victoriatraces-tracing-backend.md).)
@@ -154,12 +154,26 @@ Sloth generates recording + burn-rate rules from `PrometheusServiceLevel` CRs:
 ## Synthetic monitoring (blackbox)
 
 Blackbox exporter + `Probe` CRs for ingress-level uptime checks
-(`kubernetes/apps/observability/blackbox-exporter/app/`). Current probes:
+(`kubernetes/apps/observability/blackbox-exporter/app/`). Every HTTPRoute carries
+`monitoring.webgrip.io/synthetic-check: <Probe name>`, and that name must be a `Probe` in this
+directory; a free-text value is a false coverage claim.
 
-- `https://grafana.${SECRET_DOMAIN}`
-- `https://prometheus.${SECRET_DOMAIN}`
-- `https://alertmanager.${SECRET_DOMAIN}`
-- Garage S3 (`https://s3-offsite.webgrip.dev` — off-site, Hetzner FSN1; own PrometheusRule + SLO)
+- **Route probes** (`probe-<endpoint>.yaml`): the module sends the app's `Host` header to
+  `https://envoy-internal.network.svc.cluster.local` (or `envoy-external` for public-only routes),
+  so the probe walks gateway → HTTPRoute → backend like a browser. Probe an unauthenticated health
+  path and match its body, because a SPA catch-all answers `200` for any path.
+- **OIDC-gated routes** (gateway `SecurityPolicy`: longhorn, weave-gitops, prometheus,
+  alertmanager): an anonymous request can only see the `302` to Authentik, so the module accepts
+  exactly that `302` with a `Location` on the authorize endpoint. That proves the gateway and the
+  auth filter, not the backend.
+- **Alerting by label**, not by listing endpoints: target label `synthetic: route` enrols a probe
+  in `SyntheticRouteDown`; `gate: oidc` enrols it in `SyntheticOidcGateOpen` (a `2xx` to an
+  anonymous request = auth bypass). Dedicated alerts (Authentik login, omnigraph, Garage) and the
+  Sloth SLOs (grafana, prometheus, alertmanager, Garage) select on `endpoint`.
+- Probe series carry `job`, `instance` and the static `endpoint` label, and **no `namespace`
+  label**. A `{namespace="observability"}` matcher selects nothing; until 2026-09-27 every blackbox
+  alert and SLO carried one and could not fire.
+- Garage S3 (`https://s3-offsite.webgrip.dev`, endpoint `garage-offsite`; own PrometheusRule + SLO)
 
 ## Validation checklist
 

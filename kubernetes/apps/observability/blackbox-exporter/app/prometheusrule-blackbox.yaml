@@ -151,3 +151,62 @@ spec:
               - kubectl -n security get terraform access-broker; read the last plan for flow or brand changes
               - Open /if/flow/homelab-authentication/ directly; it is the break-glass flow and must still render
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/authentik-oidc-login/"
+        - alert: SyntheticRouteDown
+          expr: |
+            probe_success{synthetic="route"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+            service: synthetics
+          annotations:
+            summary: "Route probe failing through the gateway (endpoint {{ $labels.endpoint }})"
+            description: |
+              What's happening:
+              - The blackbox probe blackbox-{{ $labels.endpoint }} of {{ $labels.instance }} has failed for 10m.
+              - The probe sends the app's Host header to the envoy gateway Service, so it walks the same gateway, HTTPRoute and backend a browser does.
+
+              Impact/risk:
+              - Users of {{ $labels.endpoint }} get an error page or nothing; anything that calls it by hostname fails the same way.
+
+              Likely causes:
+              - The backend pods are not ready or are crash-looping (envoy answers 503)
+              - The app is up but its health endpoint reports a failed dependency such as its database (non-200, or a body that no longer matches)
+              - The HTTPRoute was renamed, removed or lost its parentRef (envoy answers 404)
+              - For a gate probe, the OIDC SecurityPolicy stopped redirecting to Authentik
+              - The envoy gateway itself is down; then every route probe fires together
+
+              First actions:
+              - kubectl -n observability get probe blackbox-{{ $labels.endpoint }} -o jsonpath='{.spec.module}'
+              - kubectl -n observability exec deploy/blackbox-exporter -- wget -qO- 'http://127.0.0.1:9115/probe?debug=true&module=<module>&target={{ $labels.instance }}'
+              - kubectl get httproute -A | grep {{ $labels.endpoint }}; then check the backend pods and events in that namespace
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/synthetic-probes-blackbox/#route-probes"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/synthetic-blackbox/synthetic-blackbox"
+        - alert: SyntheticOidcGateOpen
+          expr: |
+            (probe_http_status_code{gate="oidc"} >= 200 < 300) and on (job, instance) (probe_success{gate="oidc"} == 0)
+          for: 5m
+          labels:
+            severity: critical
+            owner: platform
+            service: synthetics
+          annotations:
+            summary: "OIDC-gated route answers anonymous requests (endpoint {{ $labels.endpoint }})"
+            description: |
+              What's happening:
+              - An anonymous request to {{ $labels.endpoint }} through the gateway got HTTP {{ $value }} instead of a 302 to Authentik for 5m.
+
+              Impact/risk:
+              - The app behind this route is readable, and possibly writable, by anyone who can reach the gateway, with no login.
+
+              Likely causes:
+              - The route's gateway OIDC SecurityPolicy was deleted, renamed or no longer targets this HTTPRoute
+              - The SecurityPolicy is not Accepted, so envoy serves the route without the filter
+              - The HTTPRoute was recreated under a new name the SecurityPolicy does not target
+
+              First actions:
+              - kubectl get securitypolicy -A; find the one whose targetRefs names this route and read status.ancestors
+              - curl -sk -o /dev/null -w '%{http_code} %{redirect_url}' -H 'Host: <hostname from the HTTPRoute>' https://10.0.0.27/
+              - Close the exposure first: drop the HTTPRoute from its kustomization in git and reconcile, then restore the SecurityPolicy
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/synthetic-probes-blackbox/#route-probes"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/synthetic-blackbox/synthetic-blackbox"

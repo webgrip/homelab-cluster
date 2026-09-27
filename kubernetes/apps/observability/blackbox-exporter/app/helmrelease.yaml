@@ -34,7 +34,6 @@ spec:
         cpu: 200m
         memory: 256Mi
 
-    # Keep default module, but make it explicit for readability.
     config:
       modules:
         http_2xx:
@@ -81,12 +80,17 @@ spec:
             valid_http_versions:
               - "HTTP/1.1"
               - "HTTP/2.0"
-            follow_redirects: true
+            valid_status_codes:
+              - 302
+            follow_redirects: false
             preferred_ip_protocol: "ip4"
             tls_config:
               insecure_skip_verify: true
             headers:
               Host: prometheus.${SECRET_DOMAIN}
+            fail_if_header_not_matches:
+              - header: Location
+                regexp: '^https://authentik\..+/application/o/authorize/'
         http_alertmanager_gateway:
           prober: http
           timeout: 5s
@@ -94,14 +98,17 @@ spec:
             valid_http_versions:
               - "HTTP/1.1"
               - "HTTP/2.0"
-            follow_redirects: true
+            valid_status_codes:
+              - 302
+            follow_redirects: false
             preferred_ip_protocol: "ip4"
             tls_config:
               insecure_skip_verify: true
             headers:
               Host: alertmanager.${SECRET_DOMAIN}
-        # Garage S3 (CNPG backup/WAL target). An unsigned GET / returns 403
-        # AccessDenied when Garage is healthy, so treat 200/403 as "up".
+            fail_if_header_not_matches:
+              - header: Location
+                regexp: '^https://authentik\..+/application/o/authorize/'
         http_omnigraph_gateway:
           prober: http
           timeout: 5s
@@ -159,8 +166,346 @@ spec:
               - 403
             follow_redirects: false
             preferred_ip_protocol: "ip4"
+        http_alloy_faro_gateway:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 405
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: telemetry.${SECRET_DOMAIN}
+        http_alloy_otlp_gateway:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 405
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: otlp.${SECRET_DOMAIN}
+            fail_if_body_not_matches_regexp:
+              - 'method not allowed'
+        http_backstage_gateway:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 200
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: backstage.${SECRET_DOMAIN}
+            fail_if_body_not_matches_regexp:
+              - '"status":"ok"'
+        http_de_vloer_gateway:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 200
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: vloer.${SECRET_DOMAIN}
+            fail_if_body_not_matches_regexp:
+              - '"status":"ok"'
+        http_flux_webhook_gateway:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 404
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: flux-webhook.${SECRET_DOMAIN}
+        http_forgejo_gateway:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 200
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: forgejo.${SECRET_DOMAIN}
+            fail_if_body_not_matches_regexp:
+              - '"status": "pass"'
+        http_freshrss_gateway:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 200
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: freshrss.${SECRET_DOMAIN}
+            fail_if_body_not_matches_regexp:
+              - 'FreshRSS'
+        http_gateway_https_redirect:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+            valid_status_codes:
+              - 301
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            fail_if_header_not_matches:
+              - header: Location
+                regexp: '^https://'
+        http_guac_gateway:
+          prober: http
+          timeout: 5s
+          http:
+            method: POST
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 200
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: guac.${SECRET_DOMAIN}
+              Content-Type: application/json
+            body: '{"query":"{__typename}"}'
+            fail_if_body_not_matches_regexp:
+              - '"__typename":"Query"'
+        http_harbor_gateway:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 200
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: harbor.${SECRET_DOMAIN}
+            fail_if_body_not_matches_regexp:
+              - '"status":"healthy"'
+            fail_if_body_matches_regexp:
+              - 'unhealthy'
+        http_invoiceninja_gateway:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 200
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: invoice.${SECRET_DOMAIN}
+            fail_if_body_not_matches_regexp:
+              - '^ok'
+        http_litellm_gateway:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 200
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: litellm.${SECRET_DOMAIN}
+            fail_if_body_not_matches_regexp:
+              - '"status": ?"healthy"'
+        http_longhorn_gate:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 302
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: longhorn.${SECRET_DOMAIN}
+            fail_if_header_not_matches:
+              - header: Location
+                regexp: '^https://authentik\..+/application/o/authorize/'
+        http_mcp_grafana_gateway:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 200
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: mcp-grafana.${SECRET_DOMAIN}
+            fail_if_body_not_matches_regexp:
+              - '^ok'
+        http_n8n_gateway:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 200
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: n8n.${SECRET_DOMAIN}
+            fail_if_body_not_matches_regexp:
+              - '"status":"ok"'
+        http_ntfy_gateway:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 200
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: ntfy.${SECRET_DOMAIN}
+            fail_if_body_not_matches_regexp:
+              - '"healthy":true'
+        http_searxng_gateway:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 200
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: searxng.${SECRET_DOMAIN}
+            fail_if_body_not_matches_regexp:
+              - '^OK'
+        http_sparkyfitness_gateway:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 200
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: sparkyfitness.${SECRET_DOMAIN}
+            fail_if_body_not_matches_regexp:
+              - '"status":"UP"'
+        http_vikunja_gateway:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 200
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: vikunja.${SECRET_DOMAIN}
+            fail_if_body_not_matches_regexp:
+              - '^OK'
+        http_weave_gitops_gate:
+          prober: http
+          timeout: 5s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 302
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: gitops.${SECRET_DOMAIN}
+            fail_if_header_not_matches:
+              - header: Location
+                regexp: '^https://authentik\..+/application/o/authorize/'
 
-    # We use Prometheus Operator Probes (Probe CRs) for targets.
     serviceMonitor:
       enabled: false
       selfMonitor:

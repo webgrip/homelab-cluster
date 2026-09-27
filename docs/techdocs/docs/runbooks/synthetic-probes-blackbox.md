@@ -48,6 +48,32 @@ From the same shell:
 - DNS outages (CoreDNS crashloop, upstream resolver changes).
 - App-level outage (Grafana/Prometheus down) misinterpreted as “probe failure”.
 
+## Route probes
+
+Fires as `SyntheticRouteDown` (warning, 10m) or `SyntheticOidcGateOpen` (critical, 5m). One
+`Probe` per route, named `blackbox-<endpoint>`; the route's
+`monitoring.webgrip.io/synthetic-check` annotation names it.
+
+1. Reproduce the probe with its own module (read-only):
+   - `kubectl -n observability get probe blackbox-<endpoint> -o jsonpath='{.spec.module}{" "}{.spec.targets.staticConfig.static}'`
+   - `kubectl -n observability exec deploy/blackbox-exporter -- wget -qO- 'http://127.0.0.1:9115/probe?debug=true&module=<module>&target=<target>'`
+   - The debug log shows the status code, the `Location` header and which regexp failed.
+2. Read the status code:
+   - `503` → envoy has no ready backend: check the app's pods and events.
+   - `404` from a route that normally answers `200` → the HTTPRoute is gone or no longer attached;
+     `kubectl get httproute -A` and its `status.parents` conditions.
+   - `200` with `probe_failed_due_to_regex 1` → the health endpoint answers but reports a failed
+     dependency (database, cache), or the path now falls through to a SPA.
+   - Gate probes: `2xx` = the OIDC `SecurityPolicy` no longer applies (the route is open to anyone);
+     `500` = the policy exists but its client Secret is missing (envoy fails closed).
+3. Every route probe failing at once → the envoy gateway itself; start with `kubectl -n network get pods`.
+
+Adding a probe for a new route: a module in `helmrelease.yaml` (`Host` header,
+`insecure_skip_verify`, `follow_redirects: false`, exact `valid_status_codes`, a body regexp), a
+`probe-<endpoint>.yaml` with labels `endpoint` + `synthetic: route` (+ `gate: oidc` for
+OIDC-gated routes), the file in `kustomization.yaml`, and the Probe name as the route's
+annotation value.
+
 ## Garage S3 (CNPG backup / WAL target) unavailable
 
 Fires as `GarageDown` / `GarageProbeSlow` / `GarageS3Availability` when the blackbox probe to `https://s3-offsite.webgrip.dev` (endpoint `garage-offsite`) fails.

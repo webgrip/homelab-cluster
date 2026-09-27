@@ -3,19 +3,19 @@
 apiVersion: monitoring.coreos.com/v1
 kind: Probe
 metadata:
-  name: blackbox-alertmanager
+  name: blackbox-forgejo
   namespace: observability
   labels:
     release: kube-prometheus-stack
 spec:
-  interval: 30s
-  module: http_alertmanager_gateway
+  interval: 60s
+  module: http_forgejo_gateway
   prober:
     url: blackbox-exporter.observability.svc.cluster.local:9115
   targets:
     staticConfig:
       static:
-        - https://envoy-internal.network.svc.cluster.local/-/ready
+        - https://envoy-external.network.svc.cluster.local/api/healthz
       labels:
-        endpoint: alertmanager
-        gate: oidc
+        endpoint: forgejo
+        synthetic: route

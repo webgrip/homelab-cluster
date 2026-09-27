@@ -171,7 +171,7 @@ metadata:
   namespace: <ns>
   annotations:
     external-dns.alpha.kubernetes.io/exclude: "true"
-    monitoring.webgrip.io/synthetic-check: k6-ingress-canary
+    monitoring.webgrip.io/synthetic-check: blackbox-<app>
 spec:
   hostnames:
     - <app>.${SECRET_DOMAIN}
@@ -189,6 +189,10 @@ spec:
           namespace: <ns>
           port: <port>
 ```
+
+`blackbox-<app>` must name a real `Probe`: add a module and `probe-<app>.yaml` under
+`kubernetes/apps/observability/blackbox-exporter/app/` (recipe: runbooks/synthetic-probes-blackbox.md
+"Route probes"). k6 is suspended, so `k6-ingress-canary` claims coverage that does not exist.
 
 Editing note: the Edit/Write validate hook false-positives on `${SECRET_DOMAIN}` in hostnames
 (kubeconform pre-substitution) — make hostname-bearing edits via Bash/sed;
