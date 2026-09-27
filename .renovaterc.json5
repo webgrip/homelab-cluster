@@ -171,6 +171,17 @@
       ],
       datasourceTemplate: "docker",
     },
+    {
+      customType: "regex",
+      description: "Vloer's image is pinned as repository + tag + digest, and the chart renders repository@digest whenever digest is set. helm-values and flux read only repository + tag, so their bump would move the tag and leave the digest, and the pod would keep running the old build. This manager reads all three so tag and digest move together.",
+      managerFilePatterns: [
+        "/(^|/)kubernetes/apps/ploeg/de-vloer/app/helmrelease\\.ya?ml$/",
+      ],
+      matchStrings: [
+        "repository:\\s*(?<depName>harbor\\.webgrip\\.dev/webgrip/de-vloer)\\s*\\n\\s*tag:\\s*[\"']?(?<currentValue>[^@\"'\\s]+)[\"']?\\s*\\n\\s*digest:\\s*[\"']?(?<currentDigest>sha256:[a-f0-9]{64})",
+      ],
+      datasourceTemplate: "docker",
+    },
   ],
   packageRules: [
     {
@@ -836,6 +847,57 @@
       allowedVersions: "/^0\\./",
       automerge: false,
       ignoreUnstable: false,
+    },
+    {
+      description: "Glide pins are read by exactly one manager each: the Vloer image by the repo-local repository/tag/digest manager, the workspace image by helm-values, ploegd by the annotation. The flux and helm-values readings that duplicate them are dropped, so a Glide release is exactly five upgrades in one branch and never a tag bump that leaves the digest behind.",
+      matchFileNames: [
+        "kubernetes/apps/ploeg/**/helmrelease.yaml"
+      ],
+      matchManagers: [
+        "flux"
+      ],
+      matchDepNames: [
+        "harbor.webgrip.dev/webgrip/ploegd",
+        "harbor.webgrip.dev/webgrip/de-vloer",
+        "harbor.webgrip.dev/webgrip/de-vloer-agent"
+      ],
+      enabled: false,
+    },
+    {
+      description: "The helm-values reading of the Vloer image ignores its digest field; the repo-local manager owns that pin.",
+      matchFileNames: [
+        "kubernetes/apps/ploeg/de-vloer/app/helmrelease.yaml"
+      ],
+      matchManagers: [
+        "helm-values"
+      ],
+      matchDepNames: [
+        "harbor.webgrip.dev/webgrip/de-vloer"
+      ],
+      enabled: false,
+    },
+    {
+      description: "One Glide release is one PR: Glide releases Vloer and Ploeg together as glide-v<version> (Glide ADR-0004), so both charts and all three images move in a single reviewed branch. Merge only when every row in the PR table shows the same version; a partial publication shows up as a shorter table.",
+      matchFileNames: [
+        "kubernetes/apps/ploeg/**"
+      ],
+      matchDepNames: [
+        "harbor.webgrip.dev/webgrip/charts/ploeg",
+        "harbor.webgrip.dev/webgrip/charts/de-vloer",
+        "harbor.webgrip.dev/webgrip/ploegd",
+        "harbor.webgrip.dev/webgrip/de-vloer",
+        "harbor.webgrip.dev/webgrip/de-vloer-agent"
+      ],
+      groupName: "Glide release",
+      groupSlug: "glide-release",
+      group: {
+        commitMessageTopic: "{{{groupName}}}",
+      },
+      separateMajorMinor: false,
+      separateMinorPatch: false,
+      separateMultipleMajor: false,
+      commitBodyTable: true,
+      automerge: false,
     },
     {
       description: "Group Grafana.com dashboard revision updates into one reviewable PR",
