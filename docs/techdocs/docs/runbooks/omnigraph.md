@@ -24,7 +24,7 @@ Omnigraph v0.11 runs one server in namespace `ai` with three graphs: `memory` (s
 | `act-admin` | Everything on `memory` and `webgrip` |
 | `act-agent` | `memory`: read, write on its own branches, never merge |
 | `act-reader` | `memory`: read and run stored queries |
-| `act-brain-agent` | `brain`: read and write on proposal branches only; Ryan merges |
+| `act-brain-agent` | `brain`: read and write on any branch including `main` (captures from the chat and Claude Code land directly; every write is a revertible commit); create and delete unprotected branches; no merge or export |
 | `act-ingest` | `webgrip` (and future client graphs): create unprotected branches and load onto them. It cannot read anything |
 | `act-explorer` | `brain`, `memory` and `webgrip`: read and export on any branch, nothing else. Only the explorer's proxy holds it |
 | `act-vault-import` | `brain`: read and write on any branch including `main`, and run stored queries. No export, no branch create, merge or delete. Only the [Obsidian vault](#obsidian-vault) importer holds it |
@@ -105,7 +105,7 @@ Conventions that used to live in the cookbook's comments:
 
 - The cookbook's `Chunk` is `Passage` here, with a 384-dimension `embedding` and a `PassageOf` edge to its `Artifact`. `Passage` has no key: give each row an explicit `id` in the load file and point its `PassageOf` edge at that id.
 
-Agents holding `act-brain-agent` work on a branch, for example `agent/<task>` created from `main`. You review and merge. Branch scoping limits writes, not reads: an agent can read everything on `main` through a branch it creates. Keep it away from anything it should not see.
+Agents holding `act-brain-agent` read and write `main` directly, because the only holders are Ryan's own chat and Claude Code, and a review step would stall every capture. A bad write is undone from the commit history. Proposals that deserve review still go on a branch such as `agent/<task>`, which Ryan merges.
 
 The cookbook's demo seed (fictional "Alex Chen") is not loaded. To explore it, load it onto a throwaway branch and delete the branch afterwards.
 

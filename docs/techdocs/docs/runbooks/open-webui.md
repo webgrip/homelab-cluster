@@ -27,7 +27,7 @@ Authentik only issues a token to members of `knowledge-graph-chatters`, the grou
 - **Tools.** One MCP tool server, id `omnigraph`, streamable HTTP at `http://litellm.ai.svc.cluster.local:4000/mcp/`, declared in `TOOL_SERVER_CONNECTIONS`. It shows 30 tools: `omnigraph_memory-*` and `omnigraph_brain-*`. Turn it on per chat with the tools button under the message box.
 - **Memory.** Open WebUI's own memory feature is off (`ENABLE_MEMORIES=false`). Omnigraph is the only memory.
 
-What the tools may do is decided by Omnigraph policy, not here: `omnigraph_memory` runs as `act-agent`, `omnigraph_brain` as `act-brain-agent` (see [Omnigraph: actors and tokens](omnigraph.md#actors-and-tokens)). Under the current `brain` policy `act-brain-agent` reads and writes only on branches it created; a query on `main` answers 403. Ask the model to create a branch such as `agent/<topic>` from `main` first, and merge or delete it afterwards: any open branch blocks the next `brain` schema change.
+What the tools may do is decided by Omnigraph policy, not here: `omnigraph_memory` runs as `act-agent`, `omnigraph_brain` as `act-brain-agent` (see [Omnigraph: actors and tokens](omnigraph.md#actors-and-tokens)). `act-brain-agent` reads and writes `main` directly (owner decision 2026-09-27): "remember …" lands in the brain at once, and every write is a commit that can be reverted. It cannot merge, export or delete branches.
 
 ## Network
 
