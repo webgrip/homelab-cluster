@@ -13,9 +13,9 @@ spec:
       rules:
         - alert: AppDeploymentReplicasMismatch
           expr: |
-            kube_deployment_spec_replicas{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}
+            kube_deployment_spec_replicas{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"}
             >
-            kube_deployment_status_replicas_available{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}
+            kube_deployment_status_replicas_available{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"}
           for: 10m
           labels:
             severity: warning
@@ -44,9 +44,9 @@ spec:
 
         - alert: AppDeploymentDown
           expr: |
-            kube_deployment_spec_replicas{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"} > 0
+            kube_deployment_spec_replicas{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"} > 0
             and
-            kube_deployment_status_replicas_available{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"} == 0
+            kube_deployment_status_replicas_available{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"} == 0
           for: 10m
           labels:
             severity: critical
@@ -75,9 +75,9 @@ spec:
 
         - alert: AppStatefulSetReplicasMismatch
           expr: |
-            kube_statefulset_status_replicas{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}
+            kube_statefulset_status_replicas{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"}
             >
-            kube_statefulset_status_replicas_ready{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}
+            kube_statefulset_status_replicas_ready{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"}
           for: 10m
           labels:
             severity: warning
@@ -107,7 +107,7 @@ spec:
         - alert: AppCrashLoopBackOff
           expr: |
             max by (namespace, pod, container) (
-              kube_pod_container_status_waiting_reason{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)", reason="CrashLoopBackOff"}
+              kube_pod_container_status_waiting_reason{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)", reason="CrashLoopBackOff"}
             ) > 0
           for: 15m
           labels:
@@ -160,7 +160,7 @@ spec:
         # `namespace` is the scrape ns (observability) and real labels are exported_*.
         - alert: AppContainerCrashLooping
           expr: |
-            increase(kube_pod_container_status_restarts_total{exported_namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}[6h]) >= 3
+            increase(kube_pod_container_status_restarts_total{exported_namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"}[6h]) >= 3
           for: 15m
           labels:
             severity: warning
@@ -195,12 +195,12 @@ spec:
         - alert: AppPersistentVolumeLowFree
           expr: |
             (
-              kubelet_volume_stats_available_bytes{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}
+              kubelet_volume_stats_available_bytes{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"}
               /
-              kubelet_volume_stats_capacity_bytes{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}
+              kubelet_volume_stats_capacity_bytes{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"}
             ) < 0.15
             and
-            kubelet_volume_stats_capacity_bytes{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"} > 0
+            kubelet_volume_stats_capacity_bytes{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"} > 0
           for: 30m
           labels:
             severity: warning
@@ -230,12 +230,12 @@ spec:
         - alert: AppPersistentVolumeCriticallyLowFree
           expr: |
             (
-              kubelet_volume_stats_available_bytes{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}
+              kubelet_volume_stats_available_bytes{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"}
               /
-              kubelet_volume_stats_capacity_bytes{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"}
+              kubelet_volume_stats_capacity_bytes{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"}
             ) < 0.05
             and
-            kubelet_volume_stats_capacity_bytes{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network|arc-systems)"} > 0
+            kubelet_volume_stats_capacity_bytes{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"} > 0
           for: 15m
           labels:
             severity: critical
@@ -261,36 +261,3 @@ spec:
               - Confirm the workload recovers once space is available
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-pvc-usage/storage-pvc-longhorn"
-
-    - name: apps.arc-systems
-      rules:
-        - alert: ArcSystemsControllerDown
-          expr: |
-            kube_deployment_spec_replicas{exported_namespace="arc-systems"} > 0
-            and
-            kube_deployment_status_replicas_available{exported_namespace="arc-systems"} == 0
-          for: 10m
-          labels:
-            severity: critical
-            owner: platform
-            service: arc-systems
-          annotations:
-            summary: "ARC deployment down (arc-systems/{{$labels.deployment}})"
-            description: |
-              What's happening:
-              - No available replicas for 10m in arc-systems for deployment {{$labels.deployment}}.
-
-              Impact/risk:
-              - Actions Runner Controller components may not function; runners may not reconcile.
-
-              Likely causes:
-              - Bad rollout/config causing pods to fail
-              - Scheduling/image pull issues
-              - Missing secrets/configmaps or dependency failures
-
-              First actions:
-              - Check Deployment status/events and failing pods in arc-systems
-              - Review recent changes and pod logs for the controller
-              - Roll back if the last change introduced the outage
-            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/k8s-workloads-capacity/kubernetes-workloads-capacity"

@@ -48,7 +48,6 @@ My cluster runs on three bare-metal Talos controllers (`soyo-1`..`3`) that also 
 
 ### Core Components
 
-- [actions-runner-controller](https://github.com/actions/actions-runner-controller): GitHub Actions scale sets for CI bursts.
 - [cert-manager](https://github.com/cert-manager/cert-manager): ACME certificates for both envoy gateways.
 - [cilium](https://github.com/cilium/cilium): eBPF networking, kube-proxy-free dataplane.
 - [cloudflared](https://github.com/cloudflare/cloudflared) + [Cloudflare DNS](https://github.com/kubernetes-sigs/external-dns): tunnel and DNS automation for `*.webgrip.dev`.
@@ -69,7 +68,6 @@ Flux watches the `kubernetes/apps` tree, reconciling each top-level `kustomizati
 | Platform control | `flux-system`, `kube-system` | Flux controllers, notification receiver, Weave GitOps UI, plus Cilium, CoreDNS, metrics-server, Spegel, and Reloader.
 | Networking & ingress | `network` | Envoy internal/external gateways, Cloudflare DNS + Tunnel, and `k8s-gateway` for split-horizon DNS.
 | PKI & security | `cert-manager`, `kyverno`, `components/sops` | ACME HTTP-01 + DNS-01 issuers for wildcard certs, Kyverno admission/reporting/generate policies, and shared secrets rendered into namespaces through the SOPS component.
-| CI infrastructure | `arc-systems` | Actions Runner Controller plus a Docker-in-Docker runner scale set so GitHub repos can burst jobs onto the homelab.
 | Applications | `default`, `freshrss`, `invoiceninja` | Echo sample service, FreshRSS HelmRelease with Bitnami bootstrap job, and Invoice Ninja 5.12.39 paired with an app-template-managed MariaDB 11.8.5 StatefulSet on Longhorn storage.
 
 TechDocs tracks all of these via Backstage catalog entries under `catalog/`, so you can pivot from docs to manifests without leaving the repo.
@@ -96,13 +94,10 @@ graph TD
   Net>Kustomization: network] --> |Publishes| Gateways[Envoy + Cloudflare Tunnel]
   Net --> DNS[k8s-gateway + ExternalDNS]
   Certs>Kustomization: cert-manager] --> |Issues| TLS[Wildcard Certificates]
-  Arc>Kustomization: arc-systems] --> |Deploys| Runners[ARC + gha-runner-scale-set]
   Apps>Kustomization: freshrss] --> |Consumes| Gateways
   Apps --> |Consumes| TLS
-  Runners --> |Serve| GitHub
   Flux --> |Reconciles| Net
   Flux --> |Reconciles| Certs
-  Flux --> |Reconciles| Arc
   Flux --> |Reconciles| Apps
 ```
 

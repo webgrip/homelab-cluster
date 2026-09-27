@@ -1,6 +1,6 @@
 # RFC: GitHub Actions runner infrastructure — retire it on purpose
 
-> Status: **Proposed** · Date: 2026-07-02 · Part of the [decision-landscape gap register](../adr/landscape.md)
+> Status: **Implemented** (Path A, 2026-09-27, VIK-1244) · Date: 2026-07-02 · Part of the [decision-landscape gap register](../adr/landscape.md)
 
 > **TL;DR.** The in-cluster GitHub Actions runners (ARC + two scale sets) have been throttled to
 > **`minRunners: 0, maxRunners: 0`** since the 2026-06-18 Longhorn incident, with a "TEMP" comment
@@ -66,6 +66,27 @@ OpenBao path, any org runner-group config) is the ADR's checklist so nothing orp
 | --- | --- | --- |
 | candidate | — | ARC end-state: retire now vs bridge-until-cutover, with teardown/sunset list (new) |
 
+## Outcome (2026-09-27)
+
+Path A. The owner decided retirement on 2026-09-27 after step 1 came back empty:
+
+- Both scale sets were live at `0/0` with org-level config `https://github.com/webgrip`; no
+  `EphemeralRunner` existed.
+- VictoriaMetrics, 30 days: `max_over_time` of `gha_assigned_jobs`, `gha_running_jobs`,
+  `gha_desired_runners`, `gha_registered_runners` and `gha_busy_runners` all `0`.
+- VictoriaLogs, 30 days: only controller and listener pods logged in `arc-systems`, with zero job
+  assignment events. No runner pod existed.
+- GitHub, 30 days, every `webgrip/*` repository: the only workflow runs were fork CI (`renovate`,
+  `awesome-copilot`) and Dependabot (`telemetry-service`) on GitHub-hosted runners, all completed.
+  None was queued waiting for `arc-runner-set*`. The `.github/workflows` that still name the label
+  (`workflows`, `opg-poc`, `application-template`, `code14-fullstack-assignment`, `.github`) have
+  not triggered a run in that window.
+
+`kubernetes/apps/arc-systems/`, its Kyverno exception, the `renovate-trigger` RoleBinding for the
+runner ServiceAccount, the ARC dashboards and alert, and the namespace carve-outs were deleted. The
+namespace, the `actions.github.com` CRDs and the OpenBao `arc/runners` entry were left for manual
+removal, because Flux never prunes them. Revoking the GitHub App installation on github.com is also manual.
+
 ## Out of scope
 
 - The Forgejo runner and its hardening — [ADR-0026](../adr/adr-0026-rootless-ci-image-builds.md).
@@ -74,7 +95,6 @@ OpenBao path, any org runner-group config) is the ADR's checklist so nothing orp
 
 ## References
 
-- [arc-runners doc](../general/arc-runners.md) ·
-  [Bringing the Forge Home](../blogs/2026-06-12-bringing-the-forge-home.md)
+- [Bringing the Forge Home](../blogs/2026-06-12-bringing-the-forge-home.md)
 - Incident: [2026-06-18 Longhorn IM-cpu detonation](../incidents/2026-06-18-longhorn-im-cpu-rolling-detonation.md)
   — the trigger of the current 0/0 state

@@ -16,7 +16,7 @@ TechDocs for the Flux-managed Talos homelab. Everything here mirrors the manifes
 | Databases | CloudNativePG Postgres per app namespace, barman-cloud backups to Garage |
 | Observability | VictoriaMetrics + Loki + Grafana (grafana-operator) — [Observability](general/observability.md) |
 | Security | Kyverno, Trivy Operator, cosign/OpenBao Transit signing, DT + GUAC — [Security platform](general/security-platform.md) |
-| CI | Forgejo Actions (in-cluster, release authority) + ARC GitHub runners — [Forgejo](general/forgejo.md), [ARC](general/arc-runners.md) |
+| CI | Forgejo Actions (in-cluster, release authority) — [Forgejo](general/forgejo.md) |
 | Identity | Authentik OIDC SSO — [Authentik](general/authentik.md) |
 
 **Workloads:** the full per-app inventory (hostnames, gateways, LoadBalancers, disabled apps)

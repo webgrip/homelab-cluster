@@ -65,7 +65,7 @@ Object storage is split as of 2026-08-02: Harbor registry blobs on the **in-clus
 
 - **Operators / controllers:** cert-manager, cloudnative-pg, external-secrets, trust-manager,
   kyverno engine, keda, kepler, vm-operator, grafana-operator, trivy-operator, renovate-operator,
-  arc-systems, sloth, alloy-agent, blackbox/node/kube-state exporters, loki, devex.
+  sloth, alloy-agent, blackbox/node/kube-state exporters, loki, devex.
 - **CNPG databases** (`*-db` Clusters in app namespaces) — reached via `*-rw` Services only.
 - **kube-system / network internals:** Cilium, CoreDNS, metrics-server, reloader, spegel,
   cloudflare-tunnel, cloudflare-dns.

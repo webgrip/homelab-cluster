@@ -84,29 +84,6 @@ spec:
           "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "custom": {"lineWidth": 2, "fillOpacity": 5, "showPoints": "never"}}, "overrides": [{"matcher": {"id": "byName", "options": "ready"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]}, {"matcher": {"id": "byName", "options": "managed"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "blue"}}]}]}
         },
 
-        {"id": 30, "type": "row", "title": "CI capacity — GitHub ARC fleet (scaled to zero; live CI path is Forgejo)", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 17}, "panels": []},
-        {
-          "id": 31, "type": "stat", "title": "Registered runners", "description": "GitHub Actions Runner Controller fleet size. This fleet is scale-to-zero — 0 when idle is expected.", "gridPos": {"h": 4, "w": 8, "x": 0, "y": 18},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "sum(gha_registered_runners{namespace=\"arc-systems\"}) or vector(0)", "instant": true}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "area"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
-        },
-        {
-          "id": 32, "type": "stat", "title": "Running jobs", "description": "Jobs currently executing on ARC runners.", "gridPos": {"h": 4, "w": 8, "x": 8, "y": 18},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "sum(gha_running_jobs{namespace=\"arc-systems\"}) or vector(0)", "instant": true}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "area"},
-          "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "purple"}}, "overrides": []}
-        },
-        {
-          "id": 33, "type": "stat", "title": "Runner utilization", "description": "Busy ÷ (busy + idle) runners. Guarded against divide-by-zero when the pool is empty.", "gridPos": {"h": 4, "w": 8, "x": 16, "y": 18},
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "100 * sum(gha_busy_runners{namespace=\"arc-systems\"}) / clamp_min(sum(gha_busy_runners{namespace=\"arc-systems\"}) + sum(gha_idle_runners{namespace=\"arc-systems\"}), 1)", "instant": true}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
-          "fieldConfig": {"defaults": {"unit": "percent", "decimals": 0, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 80}, {"color": "red", "value": 95}]}}, "overrides": []}
-        },
-
         {"id": 40, "type": "row", "title": "Dependency automation (Renovate)", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 22}, "panels": []},
         {
           "id": 41, "type": "stat", "title": "Project executions (window)", "description": "Renovate operator project executions over the window — dependency-scan throughput.", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 23},

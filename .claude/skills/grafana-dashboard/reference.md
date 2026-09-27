@@ -63,7 +63,7 @@ queries/layout identical; only the namespace + an app-specific section differ). 
 - **Network**: `rate(container_network_{receive,transmit}_{bytes,errors,packets_dropped}_total[…])`.
 - **Storage**: `kubelet_volume_stats_{used,capacity,available}_bytes`, inodes `kubelet_volume_stats_inodes{,_free}`.
 - **Database** (CNPG, per-namespace, present when the app has a `Cluster`): `cnpg_collector_up`, `cnpg_pg_database_size_bytes`, `cnpg_backends_total`/`_waiting_total`, `rate(cnpg_pg_stat_database_{xact_commit,xact_rollback,blks_hit,blks_read,tup_*})`, `cnpg_pg_stat_archiver_{archived,failed}_count`, `cnpg_pg_replication_lag`.
-- **App-specific** only where an exporter is scraped: `gitea_*` (Forgejo) + `go_*`/`process_*` on `job="forgejo-http"`, `harbor_*`/`harbor_statistics_*`, `gha_*` (ARC runners), `a2s_*` (Zomboid). No exporter (searxng, invoiceninja) → baseline only. Check `up{namespace=…}` and `kube_pod_container_info` first to see what's scraped / which DB engine (not every app is CNPG — invoiceninja=mariadb, searxng=valkey).
+- **App-specific** only where an exporter is scraped: `gitea_*` (Forgejo) + `go_*`/`process_*` on `job="forgejo-http"`, `harbor_*`/`harbor_statistics_*`, `a2s_*` (Zomboid). No exporter (searxng, invoiceninja) → baseline only. Check `up{namespace=…}` and `kube_pod_container_info` first to see what's scraped / which DB engine (not every app is CNPG — invoiceninja=mariadb, searxng=valkey).
 
 ## Claude Code metrics
 Prom counters → `increase()`/`rate()`:

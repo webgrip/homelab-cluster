@@ -95,7 +95,7 @@ Two ways to consume them:
 ### Publish & consume your own private images
 
 Harbor is **LAN-only** ([ADR-0021](../adr/adr-0021-lan-only-exposure.md)), so the push must come
-from a host that can reach `envoy-internal` — i.e. an **in-cluster runner** (`arc-systems` / `forgejo-runner`).
+from a host that can reach `envoy-internal` — i.e. an **in-cluster runner** (`forgejo-runner`).
 GitHub-hosted Actions cannot reach it. The build-and-push therefore lives in **`webgrip/workflows`**, not here.
 
 1. **One-time Harbor-side setup (GitOps, this repo):** a private project (default: `webgrip`) and a
