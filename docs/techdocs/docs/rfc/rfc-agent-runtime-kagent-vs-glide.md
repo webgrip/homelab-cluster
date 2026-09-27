@@ -1,14 +1,17 @@
 # RFC: kagent or Glide for the in-cluster agent runtime
 
-> Status: **Draft** · Date: 2026-09-27 · Question from the owner, before VIK-1229 is built ·
+> Status: **Draft** · Date: 2026-09-27 · Owner answers recorded 2026-09-27 (see
+> [Owner decisions](#owner-decisions-2026-09-27)) · Question from the owner, before VIK-1229 is built ·
 > Weighs [ADR-0063](../adr/adr-0063-kagent-machine-identity.md) against the alternatives,
 > including "kagent inside Glide as its sandbox".
 >
-> **TL;DR.** Do not build the kagent 1.0 pilot now, and do not embed kagent in Glide. Build
-> the read-only ops assistant as a Glide reader Role that runs in a Kata sandbox through
+> **TL;DR.** Do not build the kagent 1.0 pilot now, and do not embed kagent in Glide. When the
+> read-only ops assistant is picked up (after Kubernetes 1.37; VIK-1229 is paused), build it
+> as a Glide reader Role that runs in a Kata or gVisor sandbox through
 > kubernetes-sigs/agent-sandbox, and reach the cluster through the MCP gateway that already
 > exists. That path runs on today's Kubernetes 1.36, needs no privileged pod and no Kyverno
-> exception, and keeps spend on the per-Run LiteLLM keys Ploeg already mints. kagent 1.0 needs
+> exception, and keeps spend on the per-Run LiteLLM keys Ploeg already mints, with the
+> requesting person named on each key. kagent 1.0 needs
 > a five-step upgrade chain before it can install, then a privileged DaemonSet and two
 > exceptions, and it ships no authentication. Keep ADR-0063's identity work: the person-bound
 > Kubernetes read (`kagent:<email>` style prefix, read-only binding) is runtime-neutral and
@@ -206,12 +209,13 @@ credential model that fights Ploeg's. So: no.
 * **Isolation.** A hardware-virtualised guest kernel per Run through the existing `kata`
   RuntimeClass, proven by the smoke Job. That is a stronger kernel boundary than Substrate's
   gVisor-inside-a-root-pod, and the pod stays unprivileged. gVisor through the Talos
-  extension is an option for lighter reader Runs (a RuntimeClass handler `runsc`, no
-  privileged pod); it is not installed and would be one more schematic change per worker.
+  extension adds lighter reader Runs (a RuntimeClass handler `runsc`, no
+  privileged pod); it is not installed yet and needs a new worker schematic (VIK-1249).
   The Talos gVisor extension (`20260831.0`, handlers `runsc` and `runsc-kvm`) needs
   `user.max_user_namespaces: "11255"`, which its own README says "disables KSPP best
   practices" ([siderolabs/extensions gvisor](https://github.com/siderolabs/extensions/tree/main/container-runtime/gvisor)).
-  That is a node-hardening trade, so Kata stays the default.
+  The owner chose both runtimes on 2026-09-27; decision D3 records what that sysctl does and
+  that this cluster already sets it.
 * **Networking caveat.** Cilium's eBPF socket load balancing breaks ClusterIP access from Kata
   and gVisor guests unless `socketLB.hostNamespaceOnly` is set
   ([cilium#15626](https://github.com/cilium/cilium/issues/15626), open). This cluster already
@@ -242,6 +246,7 @@ credential model that fights Ploeg's. So: no.
 * **Spend.** Per-Run LiteLLM keys with authorize-then-settle budgets, per Team and Shift,
   already in production for code-writing Runs. The person is known to Vloer; whether Ploeg
   writes the person into the key's metadata so the LiteLLM ledger names them is unverified.
+  The owner requires it (D4).
 * **Weight.** One more controller Deployment at rest; sandboxes exist only while a Run
   lives. Kata adds 160Mi and 250m per running sandbox. No second Postgres, no DaemonSet, no CA.
 * **Maturity.** agent-sandbox is SIG Apps, `v1beta1` since 1.0 on 2026-08-28, and
@@ -294,15 +299,20 @@ credential model that fights Ploeg's. So: no.
 ADR-0063's identity design kept and made runtime-neutral.**
 
 1. Install agent-sandbox through Flux and qualify Ploeg's sandbox executor with
-   `runtimeClassName: kata`. This is Glide's own recorded plan (ADR-0032, Vloer ADR-0013) and it
-   costs no exception.
+   `runtimeClassName: kata`, then with a gVisor RuntimeClass once the worker schematic carries
+   the extension (D3, VIK-1249). This is Glide's own recorded plan (ADR-0032, Vloer ADR-0013)
+   and it costs no exception.
 2. Build the ops assistant as a Glide reader Role with an MCP-gateway grant limited to
-   grafana, victorialogs and a read-only Kubernetes server.
+   grafana, victorialogs and a read-only Kubernetes server. It waits until after Kubernetes
+   1.37 (D1).
 3. Put the person on the Kubernetes path with ADR-0063 option 1b's shape (broker audience,
    `<prefix>:<email>`, roster-rendered read-only binding), reached through a broker-verified
    direct MCP route rather than LiteLLM. Evaluate kagent-tools in read-only pass-through mode
    as that route's server beside `k8s-mcp`.
-4. Pause VIK-1229. Keep its research; it is the best-documented picture of kagent 1.0 we have.
+4. Pause VIK-1229 (paused 2026-09-27, D1). Keep its research; it is the best-documented
+   picture of kagent 1.0 we have.
+5. Name the requesting person on every Run's LiteLLM key, so the spend ledger attributes cost
+   to a person as well as to a Team and Shift (D4).
 
 **Should Glide embed kagent as its sandbox? No.** The only part of kagent that is a sandbox is
 Agent Substrate, and it arrives with a privileged node agent, root workers, a beta API and a
@@ -364,10 +374,57 @@ Listed only; this RFC does not edit Glide.
   intent, and add warm pools as the follow-up.
 * A Role or Team for read-only ops questions, and Vloer's repository-less session (PV-084), as
   the product work behind the ops assistant.
-* Record whether per-Run LiteLLM keys carry the requesting person in their metadata; that is
-  what would put the person on the spend ledger.
+* Put the requesting person on every per-Run LiteLLM key (D4): key metadata and LiteLLM user
+  attribution, taken from the Vloer session, so the spend ledger names them.
+
+## Owner decisions (2026-09-27)
+
+The owner answered four of the five open questions on 2026-09-27. Question 4 (kagent-tools as a
+standalone MCP server) is still open.
+
+* **D1. The ops assistant can wait until after Kubernetes 1.37.** It is not needed before the
+  cluster reaches 1.37 through the Talos 1.14 program. VIK-1229 (kagent pilot) is paused. When
+  it is picked up, the Glide reader Role path of option 4 is the preferred route; kagent is
+  weighed again then only if a re-evaluation trigger above has fired. Waiting removes option
+  1's upgrade-chain cost, not its privilege and authentication costs, so the recommendation
+  stands.
+* **D2. A Vloer session counts as "the person asking".** A person signed in to Vloer behind the
+  gateway OIDC login (ADR-0060) is the person for person-bound identity. A Run started from that
+  session carries that person, so option 4 meets ADR-0063's no-unattended rule without a
+  separate agent login.
+* **D3. Runtime: Kata and gVisor.** Kata stays through the existing `kata` RuntimeClass; gVisor
+  is added through the Talos `gvisor` system extension as a second RuntimeClass (handler
+  `runsc`, or `runsc-kvm` on bare metal). The owner accepts the sysctl the extension needs.
+  * *Which sysctl.* `user.max_user_namespaces: "11255"` under `machine.sysctls`. The extension
+    README says gVisor "requires unprivileged user namespace creation, so Talos default setting
+    should be overridden" and warns "This disables KSPP best practices setting"
+    ([siderolabs/extensions gvisor README](https://github.com/siderolabs/extensions/blob/main/container-runtime/gvisor/README.md)).
+  * *Its security effect.* KSPP recommends `user.max_user_namespaces = 0`: "Disable User
+    Namespaces, as it opens up a large attack surface to unprivileged users"
+    ([KSPP recommended settings](https://kspp.github.io/Recommended_Settings#sysctls)). A
+    non-zero value lets any unprivileged process on the node create user namespaces, inside
+    which it holds capabilities such as `CAP_SYS_ADMIN` and `CAP_NET_ADMIN` over namespaced
+    kernel objects. That makes kernel code reachable (netfilter, mount and filesystem paths)
+    that is otherwise root-only, which is the usual route of local privilege-escalation bugs.
+    It grants no privilege outside the namespace by itself.
+  * *Finding: this cluster already pays that cost.* `talos/patches/global/machine-sysctls.yaml`
+    sets `user.max_user_namespaces: "11255"` on every node since the initial commit
+    (`10bd396e`, 2025-12-08), applied through `talos/nodes.yaml`; reading
+    `/proc/sys/user/max_user_namespaces` on worker-1 (`10.0.0.31`) with talosctl returns
+    `11255` (2026-09-27). Adding gVisor changes no sysctl. The KSPP deviation already exists;
+    this decision makes it load-bearing, so reverting it later would break gVisor.
+  * *Schematic.* The workers run Image Factory schematic `d1200926df53…` (kata-containers
+    `3.32.0`). gVisor needs a new schematic with `siderolabs/gvisor` beside kata, a
+    node-by-node move of the three workers onto it, and a `RuntimeClass` that selects on a new
+    `runtime.webgrip.io/gvisor` label, as the `kata` one does. Ticket: VIK-1249.
+* **D4. The person appears on the LiteLLM spend ledger.** Per-Team and per-Shift attribution is
+  not enough. Each Run's LiteLLM key carries the requesting person (key metadata and LiteLLM
+  user attribution, from the Vloer session of D2), so spend reads per person as well as per
+  Team and Shift.
 
 ## Open questions for the owner
+
+Answered on 2026-09-27 except question 4; see [Owner decisions](#owner-decisions-2026-09-27).
 
 1. Is ops Q&A worth having before Kubernetes 1.37, or is it fine to wait months for it? If it
    can wait, option 1 loses its main cost, but the privilege and authentication problems stay.
@@ -395,7 +452,7 @@ Listed only; this RFC does not edit Glide.
   §10), `apps/ploeg/docs/research/2026-07-28-a2a-fit.md`, Ploeg ADRs 0005, 0007, 0009, 0032,
   0034, Vloer ADRs 0013 and 0016, `apps/vloer/src/runtime/sandbox.ts`,
   `apps/ploeg/pkg/sandboxlaunch/launcher.go`.
-* Vikunja: VIK-1229, VIK-1246, VIK-1247.
+* Vikunja: VIK-1229, VIK-1246, VIK-1247, VIK-1249.
 * Upstream, read 2026-09-27: [kagent releases](https://github.com/kagent-dev/kagent/releases)
   (`v1.0.0-alpha1`…`alpha4`, `v0.10.0`…`v0.10.2`), [kagent#2853](https://github.com/kagent-dev/kagent/issues/2853),
   [kagent#1270](https://github.com/kagent-dev/kagent/issues/1270),
