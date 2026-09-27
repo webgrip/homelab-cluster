@@ -1,0 +1,20 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./open-webui-key.externalsecret.yaml
+  - ./open-webui-key.pushsecret.yaml
+  - ./claude-code-key.externalsecret.yaml
+  - ./claude-code-key.pushsecret.yaml
+  - ./serviceaccount.yaml
+  - ./open-webui-key-register.job.yaml
+  - ./claude-code-key-register.job.yaml
+  - ./networkpolicy.yaml
+configMapGenerator:
+  - name: litellm-key-register
+    files:
+      - ./register-key.sh
+    options:
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled
