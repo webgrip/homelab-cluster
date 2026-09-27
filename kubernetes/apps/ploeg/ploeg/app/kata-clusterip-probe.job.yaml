@@ -1,0 +1,59 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kata-clusterip-probe
+  labels:
+    app.kubernetes.io/name: clusterip-probe
+    app.kubernetes.io/component: kata
+    app.kubernetes.io/part-of: ploeg
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: clusterip-probe
+        app.kubernetes.io/component: kata
+        app.kubernetes.io/part-of: ploeg
+    spec:
+      runtimeClassName: kata
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      nodeSelector:
+        runtime.webgrip.io/kata: "true"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: probe
+          image: harbor.webgrip.dev/dockerhub/curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: PROBE_RUNTIME, value: kata}
+            - name: NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+          command:
+            - /bin/sh
+            - -eu
+            - -c
+            - |
+              echo "runtime=$PROBE_RUNTIME node=$NODE_NAME kernel=$(uname -r)"
+              probe() {
+                code="$(curl -sS --max-time 10 --retry 3 --retry-connrefused --retry-delay 2 -o /dev/null -w '%{http_code}' "$1")"
+                echo "GET $1 -> $code"
+                case "$code" in 2??) ;; *) exit 1 ;; esac
+              }
+              probe http://ploeg.ploeg.svc.cluster.local:8080/healthz
+              probe http://litellm.ai.svc.cluster.local:4000/health/liveliness
+              echo "runtime=$PROBE_RUNTIME clusterip-probe passed"
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 64Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
