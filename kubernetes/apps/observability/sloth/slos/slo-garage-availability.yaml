@@ -18,13 +18,13 @@ spec:
         events:
           errorQuery: |
             sum(
-              count_over_time(probe_success{namespace="observability", endpoint="garage-offcluster"}[{{.window}}])
+              count_over_time(probe_success{endpoint="garage-offsite"}[{{.window}}])
               -
-              sum_over_time(probe_success{namespace="observability", endpoint="garage-offcluster"}[{{.window}}])
+              sum_over_time(probe_success{endpoint="garage-offsite"}[{{.window}}])
             )
           totalQuery: |
             sum(
-              count_over_time(probe_success{namespace="observability", endpoint="garage-offcluster"}[{{.window}}])
+              count_over_time(probe_success{endpoint="garage-offsite"}[{{.window}}])
             )
       alerting:
         name: GarageS3Availability
@@ -42,7 +42,7 @@ spec:
               persists. Restore/DR is blocked.
 
             Likely causes:
-            - Garage host/process down or unreachable at 10.0.0.110:3900
+            - Garage host, Caddy or the Garage process down at the off-site endpoint (probe blackbox-garage)
             - Network/firewall issue between the cluster and Garage
             - Garage out of disk / unhealthy
 

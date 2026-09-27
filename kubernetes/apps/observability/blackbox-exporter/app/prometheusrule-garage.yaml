@@ -14,14 +14,14 @@ spec:
       rules:
         - alert: GarageDown
           expr: |
-            probe_success{namespace="observability", endpoint="garage-offcluster"} == 0
+            probe_success{endpoint="garage-offsite"} == 0
           for: 5m
           labels:
             severity: critical
             owner: platform
             service: garage
           annotations:
-            summary: "Garage S3 unreachable (10.0.0.110:3900)"
+            summary: "Garage S3 unreachable ({{ $labels.instance }})"
             description: |
               What's happening:
               - Blackbox probe to the Garage S3 endpoint has failed for 5m.
@@ -32,27 +32,27 @@ spec:
                 with "no free disk space for WALs". Restore/DR is also blocked.
 
               Likely causes:
-              - Garage host/process down at 10.0.0.110:3900
+              - Garage host, Caddy or the Garage process down at {{ $labels.instance }}
               - Network/routing/firewall between the cluster and Garage
               - Garage out of disk or otherwise unhealthy
 
               First actions:
-              - Confirm the Garage host/service is running and listening on :3900
-              - From a pod: curl -sS -o /dev/null -w '%{http_code}' http://10.0.0.110:3900/ (403 = healthy)
+              - On the off-site host: systemctl status garage caddy (Garage binds 127.0.0.1; Caddy on 443 is the only public path)
+              - From a pod: curl -sS -o /dev/null -w '%{http_code}' {{ $labels.instance }} (403 = healthy)
               - Check CNPG WAL archiving: barman sidecar logs + the CNPGWALArchivingFailed alert
               - Watch CNPG PVC fullness; expand spec.storage.size for any DB nearing full
-            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#synthetic-probes-blackbox"
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/synthetic-probes-blackbox/#garage-s3-cnpg-backup-wal-target-unavailable"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/synthetic-blackbox/synthetic-blackbox"
         - alert: GarageProbeSlow
           expr: |
-            probe_duration_seconds{namespace="observability", endpoint="garage-offcluster"} > 2
+            probe_duration_seconds{endpoint="garage-offsite"} > 2
           for: 10m
           labels:
             severity: warning
             owner: platform
             service: garage
           annotations:
-            summary: "Garage S3 probe slow (10.0.0.110:3900)"
+            summary: "Garage S3 probe slow ({{ $labels.instance }})"
             description: |
               What's happening:
               - Blackbox probe to Garage S3 has taken >2s for 10m.
@@ -65,7 +65,7 @@ spec:
               - Network latency to the Garage host
 
               First actions:
-              - Check Garage host load/disk and network latency to 10.0.0.110
+              - Check Garage host load/disk and network latency to {{ $labels.instance }}
               - Check CNPG WAL archiving throughput in the barman sidecar logs
-            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#synthetic-probes-blackbox"
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/synthetic-probes-blackbox/#garage-s3-cnpg-backup-wal-target-unavailable"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/synthetic-blackbox/synthetic-blackbox"
