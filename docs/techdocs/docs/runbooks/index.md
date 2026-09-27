@@ -56,6 +56,7 @@ Links-only index. Each runbook is its own page; authoring recipes live in skills
 - [Apps baseline triage](apps-baseline.md)
 - [Harbor (container registry)](harbor.md)
 - [Authentik OIDC login failures](authentik-oidc-login.md)
+- [agent-sandbox and Ploeg's sandbox executor](agent-sandbox.md)
 
 ## Network / DNS / certs
 
