@@ -124,6 +124,36 @@ spec:
               - kubectl -n ai get externalsecret omnigraph-explorer-oidc
               - curl -sk -o /dev/null -w '%{http_code} %{redirect_url}' -H 'Host: graph.<domain>' https://10.0.0.27/
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/"
+        - alert: RenovateWebhookGateOpen
+          expr: |
+            probe_success{endpoint="renovate-operator-webhook"} == 0
+          for: 10m
+          labels:
+            severity: critical
+            owner: platform
+            service: renovate-operator
+          annotations:
+            summary: "Renovate webhook is not refusing an unauthenticated schedule request (endpoint {{ $labels.endpoint }})"
+            description: |
+              What's happening:
+              - An unauthenticated POST /webhook/v1/schedule for webgrip/homelab-cluster through envoy-external did not get 401 unauthorized for 10m.
+
+              Impact/risk:
+              - If it answers 200, anyone on the internet can schedule Renovate runs on any project of that RenovateJob.
+              - If it answers 404, the probe project left the webgrip-forgejo job, so the gate is no longer being checked.
+              - If it answers 5xx or nothing, Forgejo dashboard ticks no longer trigger immediate runs.
+
+              Likely causes:
+              - spec.webhook.authentication was removed or disabled on RenovateJob webgrip-forgejo
+              - The renovate-webhook-auth Secret is missing or empty (the operator answers 500)
+              - webgrip/homelab-cluster lost the renovate topic and dropped out of the job's projects
+              - The operator pod, its Service, or the HTTPRoute is down
+
+              First actions:
+              - kubectl -n renovate get renovatejob webgrip-forgejo -o jsonpath='{.spec.webhook}'
+              - kubectl -n renovate get externalsecret renovate-webhook-auth
+              - curl -sk -X POST -w ' %{http_code}' -H 'Host: renovate-webhook.<domain>' 'https://10.0.0.28/webhook/v1/schedule?namespace=renovate&job=webgrip-forgejo&project=webgrip/homelab-cluster'
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/renovate/"
         - alert: AuthentikLoginFlowBroken
           expr: |
             probe_success{endpoint="authentik-login"} == 0
