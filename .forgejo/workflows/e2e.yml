@@ -118,7 +118,11 @@ jobs:
 
       - name: Validate Omnigraph policy isolation
         run: |
-          docker run --rm -v "$GITHUB_WORKSPACE":/data:ro -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
+          ws="$(mktemp -d)"
+          mkdir -p "$ws/kubernetes/apps/ai/omnigraph/app"
+          rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/app/bundle" "$ws/kubernetes/apps/ai/omnigraph/app/"
+          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
             sh -ec "pip install --quiet pyyaml==6.0.3 && \
               python3 scripts/validate_omnigraph_policies.py kubernetes/apps/ai/omnigraph/app/bundle/cluster.yaml \
                 --cross-client-actor act-admin --cross-client-actor act-ryan --cross-client-actor act-ingest \
@@ -126,7 +130,10 @@ jobs:
 
       - name: Validate synthetic coverage of routes
         run: |
-          docker run --rm -v "$GITHUB_WORKSPACE":/data:ro -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
+          ws="$(mktemp -d)"
+          rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
+          rsync -a --exclude='.git' "$GITHUB_WORKSPACE/kubernetes" "$ws/"
+          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
             sh -ec "pip install --quiet pyyaml==6.0.3 && \
               python3 scripts/validate_synthetic_coverage.py /data && bash scripts/test-validate-synthetic-coverage.sh"
 
