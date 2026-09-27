@@ -1,0 +1,54 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: litellm-db-ingress
+  labels:
+    app.kubernetes.io/part-of: litellm
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: litellm-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: litellm
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: litellm-db
+      ports:
+        - protocol: TCP
+          port: 5432
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 9187
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: litellm-db-replication-egress
+  labels:
+    app.kubernetes.io/part-of: litellm
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: litellm-db
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: litellm-db
+      ports:
+        - protocol: TCP
+          port: 5432

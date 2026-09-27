@@ -34,3 +34,16 @@ components:
   # header and ADR-0005. litellm does OIDC (litellm-oidc.externalsecret), so this is
   # required the moment the namespace opts into default-deny.
   - ../../../../components/gateway-egress
+patches:
+  - target:
+      kind: NetworkPolicy
+      name: allow-gateway-egress
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: litellm-allow-gateway-egress
+      - op: replace
+        path: /spec/podSelector
+        value:
+          matchLabels:
+            app.kubernetes.io/name: litellm
