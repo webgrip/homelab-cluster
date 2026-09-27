@@ -83,9 +83,13 @@ ADR-0002 D2 + the `longhorn` skill.
   `kubectl describe node <n> | grep -A6 "Allocated resources"`. The pool has been saturated on
   *opposite* axes (fringe memory-request-full 94–98%, worker-1 CPU-request-full 89–98%): adding a
   100m CPU request to the CNPG DBs made them fit **neither** node → 7 DBs Pending (2026-07-11
-  incident). A memory request alone grants Burstable QoS (the Talos-OOM protection); CPU requests
-  only gate scheduling — omit them on this pool. Also sweep for **new** `Pending` pods after a
-  requests rollout: raising requests displaces other marginal schedulers (renovate jobs, 1Gi→512Mi).
+  incident). A memory request alone grants Burstable QoS (the Talos-OOM protection), but a CPU
+  request is **not** scheduling-only: it becomes the pod cgroup's `cpu.weight`, and a pod without
+  one gets weight 1 — last in line whenever the node saturates. That starved authentik-db behind
+  CI on worker-1 (2026-09-27, login probe timeouts). Latency-sensitive stateful pods need a CPU
+  request; fit it by checking the CPU axis first, not by omitting it. Also sweep for **new**
+  `Pending` pods after a requests rollout: raising requests displaces other marginal schedulers
+  (renovate jobs, 1Gi→512Mi).
 - **The worker-pool component injects *affinity*, not nodeSelector** — when auditing "is X pinned?",
   check `kubectl get deploy <d> -o jsonpath='{.spec.template.spec.affinity}'`, not just
   `.nodeSelector` (keda + GUAC were false-flagged as unpinned this way). A DB/sub-resource in its

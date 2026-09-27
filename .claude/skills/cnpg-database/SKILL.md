@@ -13,9 +13,14 @@ Operator in `cnpg-system`. One `Cluster` per app namespace; wire backups/monitor
    - **Always set `spec.resources` — memory-only.** CNPG defaults to no resources = BestEffort =
      first-strike for the Talos OOM controller, which killed the entire DB tier at once
      (2026-07-11 incident). House values: `requests: {memory: 384Mi}, limits: {memory: 768Mi}`
-     (heavier writers 512Mi/1Gi). **No CPU request/limit**: a memory request alone grants
-     Burstable QoS; a CPU request wedged 7 DBs Pending on the bi-saturated pool (fringe
-     memory-request-full, worker-1 CPU-request-full), and a CPU limit throttles checkpoints/vacuum.
+     (heavier writers 512Mi/1Gi). **CPU: a request, never a limit.** A CPU request is not
+     only a scheduling gate — the kubelet turns it into the pod's cgroup `cpu.weight`, the
+     DB's share of a contended node. No request = `cpu.weight` 1, the floor: authentik-db
+     measured 1 of 92 burstable weight on worker-1, and under CI load its query time went
+     5ms → 38ms and the login probe timed out (2026-09-27). Tier-1 DBs 250m, others 100m.
+     Before adding one, check the CPU-request axis on every worker (`kubectl describe node`
+     → Allocated resources): 100m on every DB wedged 7 Pending when worker-1 sat at 98%
+     (2026-07-11). A CPU limit throttles checkpoints/vacuum — never set one.
    - **Why walStorage + sizing:** WAL only recycles after archiving to Garage S3 — if archiving stalls, `pg_wal` fills its volume and the DB CrashLoops `no free disk space for WALs` (took Grafana + Dependency-Track down); a dedicated volume keeps that off the data disk, but an *undersized* one deadlocks the same way. 5Gi default, ~10Gi heavy writers (Grafana, Dependency-Track). Adding one to an *already-backlogged* writer: size it ≥ the **current** `pg_wal` backlog (measure via `kubelet_volume_stats_used_bytes`), not steady state — on first start CNPG *migrates* `pg_wal` into it, and a backlog > `walStorage.size` kills the instance-manager (`no space left on device`) **before Postgres starts**, so it can never archive out. Addable in-place (rolling restart), **never removable**. **Growing it later: a `walStorage.size` bump in git does NOT resize the live PVC** (CNPG never propagates it) — expand the PVC directly, then delete the pod (2026-07-17 forgejo outage).
    - Operator auto-creates `<app>-db-app` / `<app>-db-rw` / `<app>-db-ro` secrets — reference via `existingSecret`/`envFromSecret`, never inline.
 2. Add `database/` to the app `kustomization.yaml`; app `ks.yaml` `dependsOn` the DB.
