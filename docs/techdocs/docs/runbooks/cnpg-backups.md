@@ -204,7 +204,14 @@ name in ConfigMap `cnpg-restore-test-state` — one run per new backup, no-op ot
 
 Per-app knobs (`.../app/database/backup/restore-test/cronjob-patch.yaml`): `SOURCE_CLUSTER`,
 `RESTORE_CLUSTER`, `BARMAN_OBJECT_NAME` (defaults to `<source>-store`), `EXPECTED_DATABASE`,
-`EXPECTED_ROLE`. Some apps ship it `suspend: true` to limit storage pressure — flip in Git to enable.
+`EXPECTED_ROLE`. Most apps ship it `suspend: true` to limit storage pressure — flip in Git to enable.
+`freshrss`, `sparkyfitness` and `backstage` run it weekly (Monday 05:00, Wednesday 06:00 and Friday
+07:00 UTC, one app per day and clear of the 02:00–02:40 backups), so `CNPGRestoreTestStale` allows 8 days.
+
+The temporary cluster carries `policy.webgrip.io/allow-stateful-delete=true`, on itself and through
+`inheritedMetadata` on its PVCs, because the Kyverno stateful-delete policy otherwise denies the
+drill's own cleanup. From 2026-08-11 to 2026-09-27 it did not carry it, so every drill would have left
+its temporary cluster behind and failed its next run.
 
 ```bash
 # Run a drill now instead of waiting
