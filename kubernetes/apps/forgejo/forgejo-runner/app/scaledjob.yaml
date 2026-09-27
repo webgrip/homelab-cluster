@@ -60,7 +60,11 @@ spec:
   #
   # If KEDA's metric read breaks again, raise this — but fix the read first, and record which it
   # was. That is the mistake this comment exists to stop repeating.
-  minReplicaCount: 2
+  # 2 -> 1 (2026-09-27): each idle warm runner reserves 250m + 3Gi around the
+  # clock (the 3Gi request sizes the scan-heavy sign jobs, see below), and with
+  # two of them a Ploeg Run fitted on only one worker node. One warm runner still
+  # takes the next job instantly; a second concurrent job waits for a pod start.
+  minReplicaCount: 1
   maxReplicaCount: 6
   successfulJobsHistoryLimit: 3
   # 0: don't retain Failed runner Jobs. The warm-pool runner blocks on `one-job --wait`;

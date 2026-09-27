@@ -301,8 +301,11 @@ spec:
       # single-threaded Python cold import took 2m20s at 500m before the
       # agent did anything (silver run 2026-07-27). Both teams at this sizing
       # fit fringe (2×1.5 CPU of 7.95 allocatable).
+      # A Run mostly waits on the model: request 250m so it schedules beside
+      # CI on the worker pool (a full-CPU request fitted only fringe-workstation
+      # on 2026-09-27), and keep the 1-CPU limit for bursts.
       workerResources:
-        requests: {cpu: "1", memory: 768Mi}
+        requests: {cpu: 250m, memory: 768Mi}
         limits: {cpu: "1", memory: 768Mi}
       scaler:
         # The KEDA operator resolves this hostname from the keda namespace,
