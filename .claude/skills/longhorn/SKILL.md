@@ -59,6 +59,9 @@ via a postRenderer (don't let it go BestEffort → OOM).
   `force: true` so the immutable binding-mode change recreates the SC; bound PVs unaffected). New volumes
   attach anywhere; **existing** WFFC-era PVs keep their baked affinity until
   recreated. Check per volume: `kubectl get pv <pv> -o jsonpath='{.spec.nodeAffinity}'` (empty = free).
+- **A Longhorn upgrade never rolls back automatically.** Longhorn refuses downgrades, so Flux
+  remediation on the HelmRelease is off (`upgrade.remediation.retries: 0`): a failed upgrade stays
+  failed for a human to fix forward. Do not re-enable rollback remediation.
 - **Deleting a `nodes.longhorn.io` CR** is rejected while `allowScheduling=true` — patch it `false` first.
 - **`faulted` ≠ recoverable.** `auto-salvage` can log `no data exists` when no replica has valid data;
   recovery is then a *logical* restore (pg_dump/S3), not a block salvage. Check `replica.spec.healthyAt`.
