@@ -237,7 +237,7 @@ resource "authentik_provider_oauth2" "app" {
   grant_types           = each.value.grant_types
   access_token_validity = "hours=1"
   authentication_flow   = var.google_login ? authentik_flow.webgrip_authentication[0].uuid : data.authentik_flow.authentication.id
-  authorization_flow    = data.authentik_flow.authorization_explicit_consent.id
+  authorization_flow    = data.authentik_flow.authorization_implicit_consent.id
   invalidation_flow     = data.authentik_flow.invalidation.id
   signing_key           = each.value.signing_key ? data.authentik_certificate_key_pair.self_signed.id : null
 

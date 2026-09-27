@@ -25,8 +25,8 @@ data "authentik_flow" "authentication" {
   slug = "homelab-authentication"
 }
 
-data "authentik_flow" "authorization_explicit_consent" {
-  slug = "default-provider-authorization-explicit-consent"
+data "authentik_flow" "authorization_implicit_consent" {
+  slug = "default-provider-authorization-implicit-consent"
 }
 
 data "authentik_flow" "invalidation" {
