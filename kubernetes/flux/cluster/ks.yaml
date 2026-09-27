@@ -127,6 +127,16 @@ spec:
                   upgrade:
                     cleanupOnFail: true
                     crds: CreateReplace
+              target:
+                group: helm.toolkit.fluxcd.io
+                kind: HelmRelease
+            - patch: |-
+                apiVersion: helm.toolkit.fluxcd.io/v2
+                kind: HelmRelease
+                metadata:
+                  name: _
+                spec:
+                  upgrade:
                     strategy:
                       name: RemediateOnFailure
                     remediation:
@@ -135,6 +145,7 @@ spec:
               target:
                 group: helm.toolkit.fluxcd.io
                 kind: HelmRelease
+                labelSelector: "!helm.webgrip.io/fix-forward"
       target:
         group: kustomize.toolkit.fluxcd.io
         kind: Kustomization
