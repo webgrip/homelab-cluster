@@ -6,3 +6,4 @@
 - [2026-07-11 — Talos OOMController kills the CNPG DB tier; CPU-request fix wedges 7 DBs Pending](2026-07-11-talos-oom-db-tier.md)
 - [2026-07-17 — forgejo netpol identity trap → silent WAL death → GitOps deadlock](2026-07-17-forgejo-netpol-wal-gitops-deadlock.md)
 - [2026-09-25 — Kyverno denies the CNPG primary relabel → empty `-rw` services → GitOps deadlock](2026-09-25-cnpg-relabel-denied-gitops-deadlock.md)
+- [2026-09-27 — Longhorn 1.11.3 rotates its webhook CA mid-upgrade → every manager crash-loops](2026-09-27-longhorn-webhook-ca-deadlock.md)
