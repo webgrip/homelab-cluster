@@ -6,7 +6,9 @@ metadata:
   name: authentik-db
   namespace: authentik
 spec:
-  instances: 1
+  instances: 2
+  primaryUpdateStrategy: unsupervised
+  primaryUpdateMethod: switchover
   resources:
     requests:
       cpu: 250m
@@ -17,6 +19,8 @@ spec:
   affinity:
     nodeSelector:
       node.webgrip.io/pool: worker
+    enablePodAntiAffinity: true
+    podAntiAffinityType: required
   inheritedMetadata:
     annotations:
       reloader.stakater.com/auto: "true"
