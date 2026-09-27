@@ -189,6 +189,23 @@ locals {
       extra_scopes  = []
       adopt         = false
     }
+    open-webui = {
+      provider_name = "open-webui-oidc"
+      app_name      = "Open WebUI"
+      description   = "Chat over LiteLLM with the brain and memory graphs as tools."
+      launch_url    = "https://chat.${var.SECRET_DOMAIN}"
+      client_id     = "open-webui"
+      client_secret = data.vault_kv_secret_v2.oidc_client["open-webui"].data["client_secret"]
+      client_type   = "confidential"
+      signing_key   = true
+      grant_types   = ["authorization_code", "refresh_token"]
+      redirects = [
+        { matching_mode = "strict", url = "https://chat.${var.SECRET_DOMAIN}/oauth/oidc/callback" },
+        { matching_mode = "strict", url = "https://chat.${var.SECRET_DOMAIN}/oauth2/callback" },
+      ]
+      extra_scopes = ["groups"]
+      adopt        = false
+    }
   }
 
   adopted_applications = { for k, app in local.oauth_applications : k => app if lookup(app, "adopt", true) }
