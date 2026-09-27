@@ -1,0 +1,28 @@
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: open-webui-oidc
+  namespace: ai
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: open-webui
+  oidc:
+    provider:
+      issuer: https://authentik.${SECRET_DOMAIN}/application/o/open-webui/
+    clientIDRef:
+      name: open-webui-oidc
+    clientSecret:
+      name: open-webui-oidc
+    scopes:
+      - openid
+      - email
+      - profile
+    redirectURL: https://chat.${SECRET_DOMAIN}/oauth2/callback
+    logoutPath: /oauth2/logout
+    defaultTokenTTL: 12h
+    defaultRefreshTokenTTL: 168h
+    cookieConfig:
+      sameSite: Lax

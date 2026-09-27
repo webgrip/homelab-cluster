@@ -1,0 +1,176 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: open-webui
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: open-webui
+  interval: 30m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  values:
+    controllers:
+      open-webui:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        strategy: Recreate
+        pod:
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          enableServiceLinks: false
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+            fsGroupChangePolicy: OnRootMismatch
+            seccompProfile:
+              type: RuntimeDefault
+        initContainers:
+          seed-static:
+            image: &image
+              repository: harbor.webgrip.dev/ghcr/open-webui/open-webui
+              tag: v0.11.4-slim@sha256:0487ad4a5a4b986062dedace806c3ef1e88fec38c10d1e64d6a5501c66671e5e
+            command:
+              - sh
+              - -c
+              - cp -R /app/backend/open_webui/static/. /seed/
+            securityContext: &securityContext
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop:
+                  - "ALL"
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                memory: 128Mi
+        containers:
+          app:
+            image: *image
+            env:
+              HOME: /tmp
+              DATA_DIR: /app/backend/data
+              WEBUI_URL: https://chat.${SECRET_DOMAIN}
+              WEBUI_NAME: Chat
+              ENABLE_PERSISTENT_CONFIG: "false"
+              OFFLINE_MODE: "true"
+              ENABLE_VERSION_UPDATE_CHECK: "false"
+              WEBUI_AUTH: "true"
+              ENABLE_SIGNUP: "false"
+              ENABLE_LOGIN_FORM: "false"
+              ENABLE_API_KEYS: "false"
+              ENABLE_OAUTH_SIGNUP: "true"
+              OAUTH_MERGE_ACCOUNTS_BY_EMAIL: "true"
+              OAUTH_PROVIDER_NAME: Authentik
+              OAUTH_CLIENT_ID: open-webui
+              OAUTH_CLIENT_SECRET:
+                valueFrom:
+                  secretKeyRef:
+                    name: open-webui-oidc
+                    key: client-secret
+              OPENID_PROVIDER_URL: https://authentik.${SECRET_DOMAIN}/application/o/open-webui/.well-known/openid-configuration
+              OPENID_REDIRECT_URI: https://chat.${SECRET_DOMAIN}/oauth/oidc/callback
+              OAUTH_SCOPES: openid email profile groups
+              ENABLE_OAUTH_ROLE_MANAGEMENT: "true"
+              OAUTH_ROLES_CLAIM: groups
+              OAUTH_ALLOWED_ROLES: knowledge-graph-chatters
+              OAUTH_ADMIN_ROLES: knowledge-graph-chatters
+              DEFAULT_USER_ROLE: pending
+              ENABLE_OLLAMA_API: "false"
+              ENABLE_OPENAI_API: "true"
+              ENABLE_DIRECT_CONNECTIONS: "false"
+              OPENAI_API_BASE_URL: http://litellm.ai.svc.cluster.local:4000/v1
+              DEFAULT_MODELS: claude-sonnet-5
+              TASK_MODEL_EXTERNAL: claude-haiku-4-5
+              ENABLE_MEMORIES: "false"
+              ENABLE_MEMORY_SYSTEM_CONTEXT: "false"
+              RAG_EMBEDDING_ENGINE: openai
+              RAG_EMBEDDING_MODEL: granite-embedding-97m-multilingual-r2
+              RAG_OPENAI_API_BASE_URL: http://litellm.ai.svc.cluster.local:4000/v1
+              ENABLE_WEB_SEARCH: "false"
+              ENABLE_IMAGE_GENERATION: "false"
+              ENABLE_COMMUNITY_SHARING: "false"
+              ENABLE_EVALUATION_ARENA_MODELS: "false"
+            envFrom:
+              - secretRef:
+                  name: open-webui-secret
+              - secretRef:
+                  name: open-webui-litellm
+            securityContext: *securityContext
+            resources:
+              requests:
+                cpu: 50m
+                memory: 512Mi
+              limits:
+                memory: 2Gi
+            probes:
+              startup:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /health
+                    port: 8080
+                  periodSeconds: 5
+                  timeoutSeconds: 3
+                  failureThreshold: 60
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /health
+                    port: 8080
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /health
+                    port: 8080
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+    service:
+      app:
+        controller: open-webui
+        ports:
+          http:
+            port: 8080
+    persistence:
+      data:
+        existingClaim: open-webui-data
+        advancedMounts:
+          open-webui:
+            app:
+              - path: /app/backend/data
+      static:
+        type: emptyDir
+        advancedMounts:
+          open-webui:
+            seed-static:
+              - path: /seed
+            app:
+              - path: /app/backend/open_webui/static
+      tmp:
+        type: emptyDir
+        advancedMounts:
+          open-webui:
+            app:
+              - path: /tmp

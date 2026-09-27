@@ -96,6 +96,33 @@ spec:
               - kubectl -n ai get externalsecret omnigraph-explorer-upstream omnigraph-tokens
               - Read the Explorer section of the omnigraph runbook
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/"
+        - alert: OpenWebUIBackendDown
+          expr: |
+            probe_success{endpoint="open-webui-backend"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+            service: open-webui
+          annotations:
+            summary: "Open WebUI does not answer its health check (endpoint {{ $labels.endpoint }})"
+            description: |
+              What's happening:
+              - The blackbox probe of /health on the open-webui Service has failed for 10m.
+
+              Impact/risk:
+              - chat.<domain> is down; the brain and memory graphs are still reachable through Claude Code and the LiteLLM MCP gateway.
+
+              Likely causes:
+              - The pod is not ready: the open-webui-data Longhorn volume is not attaching, or a database migration failed after an image bump
+              - A Secret it reads (open-webui-secret, open-webui-oidc, open-webui-litellm) is missing, so the container cannot start
+              - The open-webui NetworkPolicy changed
+
+              First actions:
+              - kubectl -n ai get pods,pvc -l app.kubernetes.io/name=open-webui; kubectl -n ai logs deploy/open-webui
+              - kubectl -n ai get externalsecret open-webui-secret open-webui-oidc open-webui-litellm
+              - Read the open-webui runbook
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/open-webui/"
         - alert: OmnigraphExplorerGateOpen
           expr: |
             probe_success{endpoint="omnigraph-explorer-gate"} == 0
