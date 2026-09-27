@@ -23,6 +23,8 @@ Registered servers (`mcp_servers:` in the config) and their groups:
 |---|---|---|
 | `observability` | grafana, victorialogs, kubernetes, opencost | read-only |
 | `board` | vikunja | **write** (task CRUD) |
+| `memory` | omnigraph_memory (stdio bridge, `act-agent`) | read `memory`, write on its own branches |
+| `brain` | omnigraph_brain (stdio bridge, `act-brain-agent`) | read and write on its own proposal branches of `brain` |
 
 A key with no explicit MCP grant sees an **empty tool list** (deny-by-default,
 `require_key_mcp_access_defined`). Grant on mint via
@@ -30,6 +32,27 @@ A key with no explicit MCP grant sees an **empty tool list** (deny-by-default,
 
 Interactive human use (Claude Code `.mcp.json`) deliberately stays **direct** to the LAN
 `mcp-*.<domain>` hostnames — the gateway's per-key scoping and spend attribution is for agents.
+The Omnigraph graphs are the exception: they have no LAN MCP endpoint of their own, so Claude
+Code and Open WebUI reach `memory` and `brain` through the gateway with the keys below
+([runbooks/open-webui](../runbooks/open-webui.md#claude-code)).
+
+## Virtual keys from git
+
+`kubernetes/apps/ai/litellm/keys/` (Flux Kustomization `litellm-keys`, after `litellm`) mints
+keys that are declared in git rather than clicked in the Admin UI. Per key: an ExternalSecret
+generates `sk-<random>` into `litellm-key-<name>`, a PushSecret copies it to
+`secret/litellm/keys/<name>` (field `key`), and the `litellm-key-register-<name>` Job registers
+it with the master key. The Job is idempotent: it looks the key up with itself, updates it when
+alias, models, budget, limits or `object_permission.mcp_access_groups` drifted, and when LiteLLM
+does not know the key it deletes whatever still holds the alias before generating.
+
+| Key | Models | Budget | MCP groups | Consumer |
+|---|---|---|---|---|
+| `open-webui` | all | USD 20 / 30d, 60 rpm | `memory`, `brain` | Open WebUI |
+| `claude-code` | none (`no-default-models`) | USD 1 / 30d | `memory`, `brain` | Claude Code on Ryan's workstation |
+
+Add a key with a new ExternalSecret, PushSecret and Job in that directory. Rotate one by
+deleting its Secret and its Job.
 
 ## Rules of the road
 
@@ -56,6 +79,8 @@ declares.
 | `omnigraph` | `litellm` :4000 (embeddings, init and server) | :8080 from `litellm`, `omnigraph-explorer`, `network` | `omnigraph-egress`, `omnigraph-ingress` |
 | `omnigraph-explorer` | `omnigraph` :8080 | :8080 from `network` and the blackbox exporter | `omnigraph-explorer` |
 | `omnigraph-embed-key-register` Job | `litellm` :4000 | none | `omnigraph-embed-key-register-egress` |
+| `litellm-key-register-*` Jobs | `litellm` :4000 | none | `litellm-key-register-egress` |
+| `open-webui` | `litellm` :4000, namespace `network` (gateway hairpin: Authentik OIDC) | :8080 from `network` and the blackbox exporter | `open-webui`, `open-webui-allow-gateway-egress` |
 | `omnigraph-maintenance-restart` CronJob | kube-apiserver | none | `omnigraph-maintenance-restart-apiserver` |
 | `tei-embeddings` | HTTPS to `huggingface.co`, `*.huggingface.co` and up to three labels under `hf.co` (model download in `fetch-model`); every pod outside `kube-system` is denied | :8080 from `litellm`, `observability` | `tei-embeddings-model-fetch`, `tei-embeddings-litellm-only`, `tei-embeddings-ingress` |
 | `docs-mcp-server` | namespace `network` (it indexes `docs.<domain>` through envoy-internal) | :6280 from `ai`, `network` | `docs-mcp-server-allow-gateway-egress`, `docs-mcp-server-ingress` |

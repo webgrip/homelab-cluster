@@ -32,7 +32,7 @@ Each token is generated in-cluster by the `omnigraph-actor-tokens` ExternalSecre
 
 Add an actor by creating a new generator ExternalSecret and PushSecret pair, then adding one line to the aggregator. Do not add keys to `omnigraph-actor-tokens`. It is generate-once, so a new key only appears after its Secret is deleted, and deleting it rotates every existing token.
 
-Give an in-cluster consumer its token with an ExternalSecret against the `openbao` store at `omnigraph/<actor>`. Then open the network path on both ends, because namespace `ai` is default-deny and every pod in it carries its own egress allow: add the consumer to `omnigraph-ingress` (a `namespaceSelector` for another namespace, a `podSelector` for a pod in `ai`), and give a pod in `ai` an egress rule to `app: omnigraph` on 8080. Today only LiteLLM (the `omnigraph_memory` MCP bridge), the explorer and the gateway may connect. The full matrix is in [LiteLLM: network](../general/litellm.md#network-namespace-ai).
+Give an in-cluster consumer its token with an ExternalSecret against the `openbao` store at `omnigraph/<actor>`. Then open the network path on both ends, because namespace `ai` is default-deny and every pod in it carries its own egress allow: add the consumer to `omnigraph-ingress` (a `namespaceSelector` for another namespace, a `podSelector` for a pod in `ai`), and give a pod in `ai` an egress rule to `app: omnigraph` on 8080. Today only LiteLLM (the `omnigraph_memory` and `omnigraph_brain` MCP bridges), the explorer and the gateway may connect. The full matrix is in [LiteLLM: network](../general/litellm.md#network-namespace-ai).
 
 ## Explorer
 
@@ -60,6 +60,10 @@ The bridge exposes inline `query`/`mutate`, `load` and branch tools. It does not
 The server's built-in `/mcp` endpoint does not exist in v0.11.
 
 In-cluster agents reach `memory` through the LiteLLM MCP gateway instead: server `omnigraph_memory`, access group `memory`, running as `act-agent` (read everything, write only on its own unprotected branches, never merge). A LiteLLM key only sees these tools when its `object_permission.mcp_access_groups` contains `memory`. The bridge is installed by the `install-omnigraph-mcp` init container of the LiteLLM pod with `npm ci` from the lockfile in [omnigraph-mcp](../../../../kubernetes/apps/ai/litellm/app/omnigraph-mcp/). LiteLLM refuses to start when `OMNIGRAPH_MEMORY_TOKEN` is missing from its environment, so the `litellm-omnigraph-memory` Secret has to exist before the pod restarts.
+
+`brain` has a second bridge in the same pod: server `omnigraph_brain`, access group `brain`, running as `act-brain-agent` with `OMNIGRAPH_BRAIN_TOKEN` from the `litellm-omnigraph-brain` Secret (`secret/omnigraph/brain-agent`). Its tools carry the prefix `omnigraph_brain-`. Under the current policy `act-brain-agent` reads only on unprotected branches, so a tool call must first create a branch from `main` (`omnigraph_brain-branches_create`) and query that branch; a query on `main` answers 403.
+
+Two keys see both groups: `open-webui` for [Open WebUI](open-webui.md) and `claude-code` for Claude Code on Ryan's workstation (setup in [Open WebUI: Claude Code](open-webui.md#claude-code)).
 
 ## Second brain (`brain`)
 
