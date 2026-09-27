@@ -225,7 +225,7 @@ don't replace each other.
 
 The component ships the cluster **hibernated** (`cnpg.io/hibernation: "on"`: PVCs kept, no pods).
 An app opts into a running standby by setting `cnpg.io/hibernation: "off"` in its `cluster-patch.yaml`;
-`ploeg` does. Two consequences of hibernation:
+`ploeg` and `vikunja` do. Two consequences of hibernation:
 
 - **The phase freezes.** CNPG never reaches the step that sets "Cluster in healthy state" for a
   hibernated cluster, so the last phase it recorded stays. A barman-cloud plugin restart leaves
