@@ -223,6 +223,20 @@ lag metrics. Per-app patches: `.../app/database/backup/disaster-recovery/{cluste
 DR proves "we can stay close to current"; restore drills prove "we can rebuild from backups" — they
 don't replace each other.
 
+The component ships the cluster **hibernated** (`cnpg.io/hibernation: "on"`: PVCs kept, no pods).
+An app opts into a running standby by setting `cnpg.io/hibernation: "off"` in its `cluster-patch.yaml`;
+`ploeg` does. Two consequences of hibernation:
+
+- **The phase freezes.** CNPG never reaches the step that sets "Cluster in healthy state" for a
+  hibernated cluster, so the last phase it recorded stays. A barman-cloud plugin restart leaves
+  `Cluster cannot proceed to reconciliation due to an error while interacting with plugins` on every
+  hibernated DR cluster until it is woken up; the operator log shows only `connection refused` at the
+  moment of the restart. Read the `cnpg.io/hibernation` condition before treating that phase as live.
+- **The PVC ages out.** Waking a standby replays WAL from where it was hibernated. Once that point is
+  older than the source's `firstRecoverabilityPoint` (retention window), the WAL is gone and the
+  standby cannot catch up. Rebuild it instead: delete the `cnpg-disaster-recovery` Cluster (its PVCs
+  go with it) and reconcile the app's database Kustomization; it bootstraps fresh from the latest backup.
+
 ## Alerting
 
 The CNPG monitoring rules in this repo include three groups:
