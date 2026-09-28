@@ -17,7 +17,11 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
   `webgrip/workflows`), [Codeberg Pages TechDocs](rfc-codeberg-pages-techdocs.md) (interim;
   publish path unproven), [security hardening](rfc-security-hardening.md) (program frame),
   [Kyverno audit→enforce hardening](rfc-kyverno-audit-enforce-hardening.md) (waves pending).
-- **Proposed / open** — [Forgejo repo config as GitOps](rfc-forgejo-repo-config-gitops.md)
+- **Proposed / open** — [Outcome observation loop](rfc-outcome-observation-loop.md)
+  (2026-09-28 draft: a ticket closes with a machine-readable Watch; a scheduled evaluator
+  observes it for a window and records Confirmed, Regressed or Inconclusive; regressions and
+  opportunities become capped, human-refined tickets),
+  [Forgejo repo config as GitOps](rfc-forgejo-repo-config-gitops.md)
   (2026-09-28 draft: repo settings and branch protection move from `forgejo-sync.sh` to a git
   profile model applied by tofu-controller; git selects profiles, topics are a projection),
   [CI isolation on Talos](rfc-ci-isolation-talos.md)
