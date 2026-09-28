@@ -34,7 +34,7 @@ Each token is generated in-cluster by the `omnigraph-actor-tokens` ExternalSecre
 
 Add an actor by creating a new generator ExternalSecret and PushSecret pair, then adding one line to the aggregator. Do not add keys to `omnigraph-actor-tokens`. It is generate-once, so a new key only appears after its Secret is deleted, and deleting it rotates every existing token.
 
-Give an in-cluster consumer its token with an ExternalSecret against the `openbao` store at `omnigraph/<actor>`. Then open the network path on both ends, because namespace `ai` is default-deny and every pod in it carries its own egress allow: add the consumer to `omnigraph-ingress` (a `namespaceSelector` for another namespace, a `podSelector` for a pod in `ai`), and give a pod in `ai` an egress rule to `app: omnigraph` on 8080. Today only LiteLLM (the `omnigraph_memory` and `omnigraph_brain` MCP bridges), the explorer, the vault importer and the gateway may connect. The full matrix is in [LiteLLM: network](../general/litellm.md#network-namespace-ai).
+Give an in-cluster consumer its token with an ExternalSecret against the `openbao` store at `omnigraph/<actor>`. Then open the network path on both ends, because namespace `ai` is default-deny and every pod in it carries its own egress allow: add the consumer to `omnigraph-ingress` (a `namespaceSelector` for another namespace, a `podSelector` for a pod in `ai`), and give a pod in `ai` an egress rule to `app: omnigraph` on 8080. Today only LiteLLM (the `omnigraph_memory`, `omnigraph_brain` and `omnigraph_glide_*` MCP bridges), the explorer, the vault importer and the gateway may connect. The full matrix is in [LiteLLM: network](../general/litellm.md#network-namespace-ai).
 
 ## Explorer
 
@@ -66,6 +66,41 @@ In-cluster agents reach `memory` through the LiteLLM MCP gateway instead: server
 `brain` has a second bridge in the same pod: server `omnigraph_brain`, access group `brain`, running as `act-brain-agent` with `OMNIGRAPH_BRAIN_TOKEN` from the `litellm-omnigraph-brain` Secret (`secret/omnigraph/brain-agent`). Its tools carry the prefix `omnigraph_brain-`. Under the current policy `act-brain-agent` reads only on unprotected branches, so a tool call must first create a branch from `main` (`omnigraph_brain-branches_create`) and query that branch; a query on `main` answers 403.
 
 Two keys see both groups: `open-webui` for [Open WebUI](open-webui.md) and `claude-code` for Claude Code on Ryan's workstation (setup in [Open WebUI: Claude Code](open-webui.md#claude-code)).
+
+## Glide agents
+
+Glide runs read and write `memory`, `brain` and `webgrip` through three MCP servers in the LiteLLM pod, all running as `act-glide`:
+
+| Server | Graph | Tool prefix |
+|---|---|---|
+| `omnigraph_glide_memory` | `memory` | `omnigraph_glide_memory-` |
+| `omnigraph_glide_brain` | `brain` | `omnigraph_glide_brain-` |
+| `omnigraph_glide_webgrip` | `webgrip` | `omnigraph_glide_webgrip-` |
+
+The servers sit in access group `glide`. Their token comes from `OMNIGRAPH_GLIDE_TOKEN` in the `litellm-omnigraph-glide` Secret (`secret/omnigraph/glide`).
+
+**How a run gets the tools.** The run holds a LiteLLM virtual key whose `object_permission.mcp_access_groups` contains `glide`. The harness connects to the MCP endpoint `http://litellm.ai.svc.cluster.local:4000/mcp/` over streamable HTTP with `Authorization: Bearer <run key>`. A key without the `glide` group sees none of these tools.
+
+**Branch contract.** A run works on one branch per graph, `glide/<run-id>`:
+
+1. Create it from `main` with `branches_create` before the first write.
+2. Read `main` freely, and read and write the run branch.
+3. Stop there. A write to `main` answers 403, and so does a merge. Ryan reviews the branch and merges it himself.
+
+The policy cannot pin the `glide/` prefix. `act-glide` may write and delete any unprotected branch, including another run's branch or an `agent/*` proposal. The `glide/` name is a convention that the tool descriptions state.
+
+### Open `glide/*` branches block schema changes
+
+An open run branch counts as a non-`main` branch (see [Known v0.11 limits](#known-v011-limits)). A schema change to `memory`, `brain` or `webgrip` while any `glide/*` branch exists fails `cluster apply`, and the init container then stops every graph. Before you push a schema change, list the branches of the graph and merge or delete every `glide/*` branch:
+
+```bash
+omnigraph branch list --profile brain
+omnigraph branch delete glide/<run-id> --profile brain --yes
+```
+
+Repeat for `memory` and `webgrip`. Over HTTP, `GET /graphs/<graph>/branches` lists them. A delete URL-encodes the `/` (`DELETE /graphs/<graph>/branches/glide%2F<run-id>`).
+
+No alert tracks branch age yet. Omnigraph v0.11 exports no metrics and no probe reads branch lists, so an alert on a `glide/*` branch older than 7 days needs a new exporter or probe first. That is follow-up work.
 
 ## Second brain (`brain`)
 

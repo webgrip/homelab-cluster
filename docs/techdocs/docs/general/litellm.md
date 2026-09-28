@@ -24,7 +24,8 @@ Registered servers (`mcp_servers:` in the config) and their groups:
 | `observability` | grafana, victorialogs, kubernetes, opencost | read-only |
 | `board` | vikunja | **write** (task CRUD) |
 | `memory` | omnigraph_memory (stdio bridge, `act-agent`) | read `memory`, write on its own branches |
-| `brain` | omnigraph_brain (stdio bridge, `act-brain-agent`) | read and write on its own proposal branches of `brain` |
+| `brain` | omnigraph_brain (stdio bridge, `act-brain-agent`) | read and write `brain`, including `main` |
+| `glide` | omnigraph_glide_memory, omnigraph_glide_brain, omnigraph_glide_webgrip (stdio bridges, `act-glide`) | read every branch of `memory`, `brain` and `webgrip`; write only on unprotected branches (`glide/<run-id>`); never merge ([runbooks/omnigraph](../runbooks/omnigraph.md#glide-agents)) |
 
 A key with no explicit MCP grant sees an **empty tool list** (deny-by-default,
 `require_key_mcp_access_defined`). Grant on mint via
