@@ -1,0 +1,48 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: omnigraph-forge-import
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: omnigraph-forge-import
+spec:
+  groups:
+    - name: omnigraph-forge-import.rules
+      rules:
+        - alert: OmnigraphForgeImportStale
+          expr: |
+            time() - max(
+              (kube_cronjob_status_last_successful_time{exported_namespace="ai", cronjob="omnigraph-forge-import"} > 0)
+              or
+              kube_cronjob_created{exported_namespace="ai", cronjob="omnigraph-forge-import"}
+            ) > 10800
+            or
+            absent(kube_cronjob_created{exported_namespace="ai", cronjob="omnigraph-forge-import"})
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: omnigraph
+          annotations:
+            summary: "Forgejo projects have not reached the brain graph in over 3h (ai/omnigraph-forge-import)"
+            description: |
+              What's happening:
+              - The omnigraph-forge-import CronJob runs every hour and has not completed a run for more than 3h, or it has never succeeded since it was created, or it no longer exists.
+
+              Impact/risk:
+              - New or changed repositories, READMEs, docs, ADRs, issues and pull requests on Forgejo are missing from the brain graph and from every chat that recalls it.
+              - Repositories, files and threads removed from Forgejo stay in the brain.
+
+              Likely causes:
+              - No read-only Forgejo token at secret/omnigraph/forge-import yet, or it expired or was revoked (log: "no forge token" or "forge token rejected").
+              - Forgejo is down or its API answered an error (log: "forgejo API ... answered HTTP" or "not reachable").
+              - Omnigraph is down or restarting, or act-forge-import is missing from tokens.json (log: "omnigraph not reachable or act-forge-import refused").
+              - A delete or load batch was refused, for example by the 8,192-row or 32 MiB per-commit write limit (log: "forge import failed").
+
+              First actions:
+              - kubectl -n ai get cronjob,jobs -l app.kubernetes.io/name=omnigraph-forge-import
+              - kubectl -n ai logs job/<latest job> --all-containers
+              - kubectl -n ai get externalsecret omnigraph-forge-import-forgejo omnigraph-forge-import-token omnigraph-tokens
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#forgejo-projects"

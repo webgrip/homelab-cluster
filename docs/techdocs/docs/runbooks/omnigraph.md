@@ -28,13 +28,14 @@ Omnigraph v0.11 runs one server in namespace `ai` with three graphs: `memory` (s
 | `act-ingest` | `webgrip` (and future client graphs): create unprotected branches and load onto them. It cannot read anything |
 | `act-explorer` | `brain`, `memory` and `webgrip`: read and export on any branch, nothing else. Only the explorer's proxy holds it |
 | `act-vault-import` | `brain`: read and write on any branch including `main`, and run stored queries. No export, no branch create, merge or delete. Only the [Obsidian vault](#obsidian-vault) importer holds it |
+| `act-forge-import` | `brain`: the same rights as `act-vault-import`. Only the [Forgejo projects](#forgejo-projects) importer holds it |
 | `act-glide` | `brain`, `memory` and `webgrip`: read on any branch, write only on unprotected branches, create and delete unprotected branches, run stored queries. No merge, no export, never a write to `main`. Only the LiteLLM `omnigraph_glide_*` MCP servers hold it (see [Glide agents](#glide-agents)) |
 
 Each token is generated in-cluster by the `omnigraph-actor-tokens` ExternalSecret, pushed to OpenBao at `secret/omnigraph/<actor>` (field `token`), and assembled into the server's `tokens.json` by the `omnigraph-tokens` ExternalSecret.
 
 Add an actor by creating a new generator ExternalSecret and PushSecret pair, then adding one line to the aggregator. Do not add keys to `omnigraph-actor-tokens`. It is generate-once, so a new key only appears after its Secret is deleted, and deleting it rotates every existing token.
 
-Give an in-cluster consumer its token with an ExternalSecret against the `openbao` store at `omnigraph/<actor>`. Then open the network path on both ends, because namespace `ai` is default-deny and every pod in it carries its own egress allow: add the consumer to `omnigraph-ingress` (a `namespaceSelector` for another namespace, a `podSelector` for a pod in `ai`), and give a pod in `ai` an egress rule to `app: omnigraph` on 8080. Today only LiteLLM (the `omnigraph_memory`, `omnigraph_brain` and `omnigraph_glide_*` MCP bridges), the explorer, the vault importer and the gateway may connect. The full matrix is in [LiteLLM: network](../general/litellm.md#network-namespace-ai).
+Give an in-cluster consumer its token with an ExternalSecret against the `openbao` store at `omnigraph/<actor>`. Then open the network path on both ends, because namespace `ai` is default-deny and every pod in it carries its own egress allow: add the consumer to `omnigraph-ingress` (a `namespaceSelector` for another namespace, a `podSelector` for a pod in `ai`), and give a pod in `ai` an egress rule to `app: omnigraph` on 8080. Today only LiteLLM (the `omnigraph_memory`, `omnigraph_brain` and `omnigraph_glide_*` MCP bridges), the explorer, the vault and Forgejo importers and the gateway may connect. The full matrix is in [LiteLLM: network](../general/litellm.md#network-namespace-ai).
 
 ## Explorer
 
@@ -231,6 +232,96 @@ The job fails, and does not retry, with one of these lines:
 **Tests.** [test_omnigraph_vault_import.py](../../../../scripts/test_omnigraph_vault_import.py) covers the mapping, client tagging, the missing-terms path and the empty-vault guard with fixture vaults. It runs without network: `python3 scripts/test_omnigraph_vault_import.py`.
 
 **Rotation.** Deleting the `omnigraph-vault-import-deploy-key` Secret generates a new key pair and pushes the new public key. Replace the deploy key on the repo. Deleting `omnigraph-vault-import-token` rotates the actor token. The aggregator picks it up within 15 minutes and Reloader restarts Omnigraph.
+
+## Forgejo projects
+
+Every repository Ryan's Forgejo account can see is imported into `brain` every hour, at minute 40, by the `omnigraph-forge-import` CronJob in namespace `ai` ([forge-import](../../../../kubernetes/apps/ai/omnigraph/forge-import/app/)). It writes straight to `main` as `act-forge-import`, the same way the vault importer does. Ryan decided this on 2026-09-28 (VIK-1259): repos become projects, and their READMEs, `docs/`, ADRs, issues and pull requests come with them. Client content may go to Claude and Fireworks under their DPAs, so nothing is filtered out. Repos of a client org carry the org name as a tag.
+
+### How it runs
+
+One pod runs three steps in order. Each step logs one line of counts or one error line.
+
+1. `snapshot` reads everything under `forge/` on `brain/main` with the queries in [snapshot.gq](../../../../kubernetes/apps/ai/omnigraph/forge-import/app/snapshot.gq): projects, organizations, people, artifacts, decision notes, passage ids and the edges between them. It does not read artifact or passage text.
+2. `plan` runs [forge_import.py](../../../../kubernetes/apps/ai/omnigraph/forge-import/app/forge_import.py) against the Forgejo API at `http://forgejo-http.forgejo.svc.cluster.local:3000` with the read-only token. It compares Forgejo with the snapshot and writes delete mutations and merge-load files for the difference only.
+3. `apply` runs the deletes, then the loads, onto `main`.
+
+**Scope.** The importer reads `/user/repos` and the repos of every org in `/user/orgs`. [scope.json](../../../../kubernetes/apps/ai/omnigraph/forge-import/app/scope.json) narrows that:
+
+- `skip_repos` are left out entirely. `ryangr0/obsidian-vault` is listed because the [vault importer](#obsidian-vault) owns it.
+- A mirror or fork gets only its `Project` node (tag `mirror` or `fork`) unless its upstream owner is in `owned_upstream_owners`. That keeps the GitHub action mirrors (`actions/*`, `docker/*` and similar) down to one node each, while mirrors of Ryan's own GitHub repos are imported whole.
+- `third_party_repos` lists forks of third-party projects that live under an owned name, such as `webgrip/renovate`. They also get only their `Project` node. Forgejo cannot tell these apart from Ryan's own mirrors, so the list is kept by hand.
+- Archived repos are imported, with the tag `archived` and status `completed`.
+
+**Mapping.** Slugs are lowercase and stable. Owner and repo names keep `a-z0-9._-`, file paths are reduced to `a-z0-9-` per segment, and two paths that reduce to the same slug each get a hash suffix.
+
+| Forgejo | `brain` | Slug |
+|---|---|---|
+| Repository | `Project`. `name` is `owner/repo`, `brief` the repo description, `description` the URL, language, mirror source and last activity. `kind` is `work` for an org repo and `side-project` for a user repo. `status` is `completed` when archived, `active` with activity in the last 180 days, else `paused`. `tags`: `forgejo`, the org name, the topics, and `archived`, `mirror`, `fork` or `private` where they apply | `forge/<owner>/<repo>` |
+| Organization | `Organization` (`kind: company`), linked with `ProjectForOrganization` | `forge/org/<org>` |
+| Author of an issue or pull request | `Person` with `name` and `brief: Forgejo user @<login>`, never an email. `relation` is `self` for the token owner and `professional` for everyone else. Deleted (ghost) users are skipped | `forge/user/<login>` |
+| Root README | `Artifact` (`kind: document`) | `forge/<owner>/<repo>/readme` |
+| `docs/**/*.md` (also `.markdown`, `.mdx`) | `Artifact` (`kind: document`) | `forge/<owner>/<repo>/doc/<path>` |
+| ADR: a file under `docs/` in a folder named `adr*`, `decisions` or `decision-records`, or any file named `adr-*.md`. Index, README and template files are not ADRs | The file's `Artifact`, plus a `Note` of kind `decision` with the ADR text, its title, its `date:` as `when`, and tags `forgejo`, `adr` and the org name. Linked with `NoteAboutProject` and `NoteFromArtifact` | `forge/<owner>/<repo>/adr/<path>` |
+| Issue | `Artifact` (`kind: post`) whose content starts with a header (number, title, state, opened and closed times, labels), then the body, then every comment with author and time | `forge/<owner>/<repo>/issue/<n>` |
+| Pull request | The same, with state `merged` when merged and the head and base branches | `forge/<owner>/<repo>/pull/<n>` |
+
+Every artifact has `source: other`, a `source_ref` (`forgejo:<owner>/<repo>:<path>@<blob sha>` for a file, `forgejo:<owner>/<repo>#<n>` for a thread), the Forgejo `url`, `content_sha256`, `ArtifactForProject` to its project and, for threads, `ArtifactFromPerson` to the author. `timestamp` is the thread's creation time, or the repo's last activity when a file was last written.
+
+Files over 1 MiB and everything outside README, `docs/` and ADRs (code, configs) are left out. The counts line reports `skipped_large`.
+
+**Passages.** The text of every artifact is split into `Passage` rows of at most 1,500 characters (a few hundred tokens), packed by paragraph. Each passage has the explicit id `<artifact slug>#<chunk index>` and a `PassageOf` edge to its artifact. `recall_passages` finds them by meaning and by keyword.
+
+**Only changes are written.** The importer keeps no state of its own, for the same reason as the vault importer: a merge load replaces the whole row and clears its vector.
+
+- A file is fetched only when its git blob sha differs from the one in its `source_ref`, so an unchanged repo costs one tree request and no downloads. Issues and pull requests are listed every run and compared by `content_sha256`.
+- A changed artifact is merge-loaded with all its passages. A passage id that already exists is loaded as a node only: its `PassageOf` edge stays, and loading it again would violate `@unique`. Passage ids the new text no longer needs are deleted.
+- Edges are compared per source. When they differ, the source's edges of that type are deleted and reloaded. Targets outside `forge/` (a link an agent or Ryan added) are reloaded with them.
+- A row under `forge/` that Forgejo no longer has is deleted: a repo, a file, an issue, an org, or a person who no longer authored anything. Its passages are deleted first, because a passage must keep exactly one `PassageOf` edge and Omnigraph refuses to delete an artifact that still has passages.
+- Load files are split at 2,000 rows or 16 MiB, and delete mutations at 500 statements, below the [per-commit write limit](#known-v011-limits). A passage and its `PassageOf` edge always land in the same file. Nodes load before passages, passages before edges, because a load refuses an edge to a missing node.
+
+Forgejo owns everything under `forge/`. An edit made to such a row in the graph is overwritten the next time the source changes. Capture your own notes about a repo under another prefix and link them with `NoteAboutProject`.
+
+A token that sees no repositories never deletes anything: the plan step refuses and the run fails. So does any Forgejo API error, before anything is written.
+
+**Embeddings.** Loads do not embed. New passages and decision notes rank on keywords only until the 03:15 restart fills their vectors. The first import is the largest: every README, doc, issue and pull request at once. That backfill runs inside the Omnigraph init container, so the first restart after it takes longer than usual.
+
+### Setup (Ryan)
+
+1. In Forgejo, open Settings, Applications, and generate a token named `omnigraph-forge-import` with these scopes, all read-only: `read:repository`, `read:issue`, `read:user`, `read:organization`. Do not add any write scope.
+2. Store it without printing it. Paste the token, then press Ctrl-D:
+
+   ```bash
+   export BAO_ADDR="$(just bao-addr)"
+   bao login -method=oidc
+   bao kv put secret/omnigraph/forge-import token=-
+   ```
+
+ESO refreshes the `omnigraph-forge-import-forgejo` Secret within 5 minutes. The next run at minute 40 imports everything. To start sooner:
+
+```bash
+kubectl -n ai create job --from=cronjob/omnigraph-forge-import omnigraph-forge-import-manual
+```
+
+Review [scope.json](../../../../kubernetes/apps/ai/omnigraph/forge-import/app/scope.json) once the first run is done: search `brain` for projects tagged `mirror` or `fork`, and add any third-party fork that was imported whole to `third_party_repos`.
+
+### Monitoring and failures
+
+The job fails, and does not retry, with one of these lines:
+
+- `no forge token`: the `omnigraph-forge-import-forgejo` Secret has no token. Do the setup above.
+- `forge token rejected (HTTP 401)`: the token expired or was revoked. Generate a new one and store it the same way.
+- `forgejo API <path> answered HTTP <code>` or `not reachable`: Forgejo is down or refused one request. Nothing was written.
+- `the forge token sees no repositories`: the token lost its access. Nothing was deleted.
+- `omnigraph not reachable or act-forge-import refused`: Omnigraph is restarting, or `act-forge-import` is not in `tokens.json` yet.
+- `forge import failed`: the server refused a delete or load batch. The next run replans from the graph.
+
+`OmnigraphForgeImportStale` fires when the CronJob has had no successful run for 3 hours, or has never succeeded since it was created. It reads `kube_cronjob_status_last_successful_time` from kube-state-metrics. It fires until the setup above is done.
+
+**Tests.** [test_omnigraph_forge_import.py](../../../../scripts/test_omnigraph_forge_import.py) runs the planner against a fake Forgejo API over HTTP and a simulated graph that enforces Omnigraph's own refusals: a dangling edge, a duplicate edge, a second `PassageOf` for one passage, and deleting an artifact that still has passages. It covers the mapping, the schema enums, chunking, ADR detection, second-run idempotency, changed files and threads, deletes, rewired edges, batching and every fail-closed path. It runs without network: `python3 scripts/test_omnigraph_forge_import.py`. CI runs it in `e2e / Lint & static validation`.
+
+**Network.** The pod may reach `omnigraph` on 8080 and the `forgejo` pods on 3000 (`omnigraph-forge-import-egress`). Forgejo admits it with a rule in `forgejo-allow-ingress`, and Omnigraph with `omnigraph-ingress`.
+
+**Rotation.** Replace the Forgejo token with the same `bao kv put`, then revoke the old one in Forgejo. Deleting `omnigraph-forge-import-token` rotates the actor token. The aggregator picks it up within 15 minutes and Reloader restarts Omnigraph.
 
 ## Company meetings (`webgrip` and client graphs)
 
