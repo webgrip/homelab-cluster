@@ -205,6 +205,10 @@ spec:
         silver:
           assignees:
             - silver
+          forgeFollowUps:
+            reworkOnChangesRequested: true
+            repairFailedChecks: true
+            maxRepairs: 2
         copper:
           assignees:
             - copper
@@ -450,41 +454,26 @@ spec:
                   workerResources:
                     requests: {cpu: 250m, memory: 768Mi}
                     limits: {cpu: 500m, memory: 768Mi}
-        # silver: the ploeg-repo team — the factory working on its own
-        # dispatch plane (first job: the per-run key leak, VIK ticket).
-        # sonnet-5 for real Go surgery, inside the anthropic 5 USD/day router
-        # cap (falls back to deepseek-chat if it trips).
-        #
-        # silver has no `plan:`, so it runs as a synthesized one-writer Shift
-        # with no pool — which means `budget` here is the PER-RUN key ceiling,
-        # the opposite of what it means for bronze above. The comment used to
-        # say "$4/run" and had been wrong since the value was bumped to 6
-        # without anyone touching it; the real figure is $6 per run.
-        #
-        # An explicit `perRunBudget` key that says this in the manifest instead
-        # of in a comment is available as of chart rc.16, deliberately not
-        # taken here yet: the schema still lists `budget` as REQUIRED, so
-        # adopting it today means carrying both keys at the same number, which
-        # trades one ambiguous word for two redundant ones. It becomes the
-        # clear win when `budget` is made optional for a plan-less team.
         - name: silver
           model: litellm_proxy/claude-sonnet-5
           budget: "6"
           repoOwner: webgrip
           repoName: glide
-          # ploeg's trunk is development — main was a stale stub that sent
-          # run 8 into a parallel universe (VIK-589, chart >= rc.5). Fallback
-          # only; the board's rule decides.
           baseBranch: development
           maxReplicaCount: 1
-          # SINGLE WRITER for the same reason as bronze above: the analyst,
-          # reviewer and security Roles were specified with the claude-code
-          # harness, which agent-runner 1.0.3 does not ship either. They would
-          # have failed exactly as bronze's acp readers did.
-          #
-          # The per-Role sizing that made a fan-out fit at all (500m/384Mi
-          # readers against fringe's ~2.3 CPU / 2.3Gi headroom) is in the chart
-          # and stays available the moment there is something to run.
+          maxFixRounds: 1
+          plan:
+            - roles:
+                - {name: builder, writes: true, cap: "2.50"}
+            - roles:
+                - name: reviewer
+                  writes: false
+                  cap: "0.40"
+                  model: litellm_proxy/deepseek-chat
+                  harness: {name: openhands, dind: false}
+                  workerResources:
+                    requests: {cpu: 250m, memory: 768Mi}
+                    limits: {cpu: 500m, memory: 768Mi}
         # copper: seam-smoke team for the pluggable harness/image work
         # (chart >= rc.5). The exec adapter runs /bin/cat on the generated
         # taskspec.json inside the same agent-runner image and exits 0, so a
@@ -493,8 +482,8 @@ spec:
         # without spending a single LLM token. dind: false predates ADR-0053
         # here and is now the estate default; copper proved the sidecar-less
         # pod shape the rest of the plane later standardized on.
-        # copper has no `plan:` either, so `budget` is its per-run ceiling and
-        # not a pool, same as silver above.
+        # copper has no `plan:`, so `budget` is its per-run ceiling and not a
+        # pool.
         - name: copper
           model: litellm_proxy/deepseek-chat # key scope only; the exec harness never calls the LLM
           budget: "1"
