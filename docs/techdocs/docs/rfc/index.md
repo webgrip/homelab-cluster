@@ -16,14 +16,14 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
   gated on the Flux cutover), [CI pipeline performance](rfc-ci-pipeline-performance.md) (lives in
   `webgrip/workflows`), [Codeberg Pages TechDocs](rfc-codeberg-pages-techdocs.md) (interim;
   publish path unproven), [security hardening](rfc-security-hardening.md) (program frame),
-  [Kyverno audit→enforce hardening](rfc-kyverno-audit-enforce-hardening.md) (waves pending).
+  [Kyverno audit→enforce hardening](rfc-kyverno-audit-enforce-hardening.md) (waves pending),
+  [Forgejo repo config as GitOps](rfc-forgejo-repo-config-gitops.md) (accepted 2026-09-28: repo
+  settings and branch protection move from `forgejo-sync.sh` to a git profile model applied hourly
+  by tofu-controller; provider spike zero-diff; epic VIK-1302).
 - **Proposed / open** — [Outcome observation loop](rfc-outcome-observation-loop.md)
   (2026-09-28 draft: a ticket closes with a machine-readable Watch; a scheduled evaluator
   observes it for a window and records Confirmed, Regressed or Inconclusive; regressions and
   opportunities become capped, human-refined tickets),
-  [Forgejo repo config as GitOps](rfc-forgejo-repo-config-gitops.md)
-  (2026-09-28 draft: repo settings and branch protection move from `forgejo-sync.sh` to a git
-  profile model applied by tofu-controller; git selects profiles, topics are a projection),
   [CI isolation on Talos](rfc-ci-isolation-talos.md)
   (2026-08-11 incident-driven: shared privileged dind is unsupported on Talos per Sidero;
   containment wrapper shipped, staged plan → Talos v1.13.8, cilium OOM-exemption, kata for
