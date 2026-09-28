@@ -60,6 +60,10 @@ mutate 'if similarity >= self.settings.same_similarity or (slug, other) in confi
 expect fail "near-identical names always sent to adjudication"
 
 fresh
+mutate 'if entity.type != "Topic" or not entity.new or entity.slug in self.merged:' 'if entity.type != "Topic" or entity.slug in self.merged:'
+expect fail "existing topics merged away"
+
+fresh
 mutate 'if self.alias_verdicts.get((name_key(name), slug)):' 'if True:'
 expect fail "alias hits accepted without confirmation"
 

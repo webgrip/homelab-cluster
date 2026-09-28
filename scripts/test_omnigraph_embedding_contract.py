@@ -61,12 +61,22 @@ def contract_problems(contract, inputs):
     return problems
 
 
+def embed_text(contract, node_type, field, value):
+    trimmed = value.strip(contract["value_trim_characters"])
+    if not trimmed:
+        return contract["empty_value_format"].format(type=node_type)
+    return contract["text_format"].format(type=node_type, field=field, value=trimmed)
+
+
 def parity_problems(contract):
     embedder = rehearsal.FakeEmbedder(contract["model"], scale=3.0)
     url = embedder.start()
     rows = [
         {"type": "Passage", "id": "p1", "field": "text", "value": "Een zin met \"quotes\"\nen een tweede regel"},
         {"type": "Note", "slug": "n1", "field": "content", "value": "A note body"},
+        {"type": "Passage", "id": "p2", "field": "text", "value": " \n\tpadded   inner  spacing kept\r\n \u00a0\u3000"},
+        {"type": "Passage", "id": "p3", "field": "text", "value": "\u001cseparators are not white space\u001f"},
+        {"type": "Passage", "id": "p4", "field": "text", "value": " \n\u2028 "},
     ]
     problems = []
     try:
@@ -96,10 +106,10 @@ def parity_problems(contract):
                 ["omnigraph", "embed", "--input", str(work / "in.jsonl"), "--output", str(work / "out.jsonl"), "--spec", str(work / "spec.json")],
                 env=env, check=True, capture_output=True, text=True,
             )
-            expected = [contract["text_format"].format(type=row["type"], field=row["field"], value=row["value"]) for row in rows]
+            expected = [embed_text(contract, row["type"], row["field"], row["value"]) for row in rows]
             if sorted(embedder.inputs) != sorted(expected):
                 problems.append(f"omnigraph embed sends {embedder.inputs!r}; the contract's text_format builds {expected!r}")
-            for line in (work / "out.jsonl").read_text().splitlines():
+            for line in filter(None, (work / "out.jsonl").read_text().split("\n")):
                 vector = json.loads(line)["data"]["embedding"]
                 if len(vector) != contract["dimensions"]:
                     problems.append(f"omnigraph embed stored {len(vector)} dimensions, the contract says {contract['dimensions']}")
@@ -136,6 +146,9 @@ def self_test(contract, inputs):
     case("cluster.yaml provider serves another model", True, mutate_inputs=lambda i: i["cluster"]["providers"]["embedding"]["litellm"].update(model="bge-m3"))
     case("init container backfills with another model", True, mutate_inputs=lambda i: [e.update(value="bge-m3") for c in i["deployment"]["spec"]["template"]["spec"]["initContainers"] for e in c.get("env", []) if e["name"] == "OMNIGRAPH_EMBED_MODEL"])
     case("contract text format without the type prefix", True, lambda c: c.update(text_format="{value}"), parity=True)
+    case("contract without trimming", True, lambda c: c.update(value_trim_characters=""), parity=True)
+    case("contract trims like Python str.strip, separators included", True, lambda c: c.update(value_trim_characters=c["value_trim_characters"] + "\u001c\u001d\u001e\u001f"), parity=True)
+    case("contract keeps an empty field line", True, lambda c: c.update(empty_value_format="type: {type}\ntext: "), parity=True)
     case("contract claims unnormalized vectors", True, lambda c: c.update(l2_normalized=False), parity=True)
     return all(cases)
 
@@ -148,7 +161,7 @@ def main():
         print(f"FAIL  embedding contract: {problem}")
     if problems:
         return 1
-    print(f"PASS  embedding contract: {contract['model']} x {contract['dimensions']}, text {contract['text_format']!r} matches brain.pg, cluster.yaml, the init container and the pinned omnigraph embed")
+    print(f"PASS  embedding contract: {contract['model']} x {contract['dimensions']}, text {contract['text_format']!r} with trimmed values and {contract['empty_value_format']!r} when empty matches brain.pg, cluster.yaml, the init container and the pinned omnigraph embed")
     if "--self-test" in sys.argv:
         return 0 if self_test(contract, inputs) else 1
     return 0

@@ -538,6 +538,32 @@ class Incremental(unittest.TestCase):
         self.assertIn("hand-made", graph.edges)
         self.assertNotIn(("NoteAboutTopic", "obsidian/fiets", "derived/topic/bicycle-maintenance"), graph.owned())
 
+    def test_a_topic_merge_never_folds_an_existing_topic_so_remember_edges_keep_their_target(self):
+        graph = seeded_graph()
+        first = answers()
+        first["Fiets"] = extraction(topics=[topic("Kubernetes cluster")])
+        Harness(graph, FakeLiteLLM(first, {"Kubernetes": basis(1), "Kubernetes cluster": basis(1, 0.6)})).run()
+        self.assertIn("derived/topic/kubernetes-cluster", graph.nodes)
+        capture = "nt-20260928-a1b2c3d4e5"
+        remembered = f"remember:NoteAboutTopic:{capture}>derived/topic/kubernetes-cluster"
+        graph.add("Note", slug=capture, name="Capture", kind="idea", content="A cluster idea.")
+        graph.link("NoteAboutTopic", capture, "derived/topic/kubernetes-cluster", identifier=remembered)
+        graph.nodes["obsidian/dinner-sam"][1]["content"] = "Now about the kubernetes platform."
+        second = answers()
+        second["Fiets"] = extraction(topics=[topic("Kubernetes cluster")])
+        second["Dinner with Sam"] = extraction(topics=[topic("Kubernetes platform")])
+        second["Capture"] = extraction()
+        platform = basis(1)
+        platform[5] = 0.3
+        vectors = {"Kubernetes": basis(1), "Kubernetes cluster": basis(1, 0.6), "Kubernetes platform": platform}
+        confirmed = [("Kubernetes platform", "Kubernetes"), ("Kubernetes cluster", "Kubernetes")]
+        plan = Harness(graph, FakeLiteLLM(second, vectors, same=confirmed)).run(LATER)
+        self.assertEqual(plan.counts.topics_merged, 1)
+        self.assertNotIn("derived/topic/kubernetes-platform", graph.nodes)
+        self.assertIn("derived/topic/kubernetes", graph.nodes)
+        self.assertIn("derived/topic/kubernetes-cluster", graph.nodes)
+        self.assertEqual(graph.edges[remembered][:3], ("NoteAboutTopic", capture, "derived/topic/kubernetes-cluster"))
+
     def test_rows_outside_the_derived_namespace_are_never_written_or_deleted(self):
         graph = seeded_graph()
         Harness(graph, FakeLiteLLM(answers())).run()
