@@ -544,6 +544,18 @@ restart's init container finishes in under 3 minutes (VictoriaLogs `apply-and-op
 Monitoring: `OmnigraphUnreachable` (blackbox, 10 minutes) already catches a stuck init container;
 `AppPersistentVolumeLowFree` already covers `omnigraph-state`.
 
+**Outcome (2026-09-29).** Shipped as planned, with three additions found while building it. The
+backfill exports every type first and fills the smallest backlogs first: with one global deadline, a
+large `Passage` backlog otherwise used the whole budget and left `Topic`, `memory` and `webgrip` rows
+unfilled every night. The rehearsal opens a branch on every graph, not only `memory`, so a schema
+change of any graph fails unless that graph is declared drained (`OMNIGRAPH_REHEARSAL_DRAINED`). It
+also refuses a policy that names an actor whose token the deployed aggregator lacks (section 7.4).
+Measured with the pinned CLI: `omnigraph embed` sends one row per request with `dimensions: 384`,
+in the text `type: <Type>\n<field>: <value>`, and stores L2-normalised vectors; this is the
+embedding contract. A restart with 20,001 vectorless passages against a fake embedder at 1,000
+tokens a second served after 152 s, with 400 passages filled. Details in the
+[Omnigraph runbook](../runbooks/omnigraph.md#rehearse-a-bundle-change).
+
 ### P2 Eval set, harness and baselines
 
 - Ryan creates `ryangr0/brain-eval` (private, no mirror, no collaborators) **after** the commit

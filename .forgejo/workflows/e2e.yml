@@ -37,8 +37,8 @@ on:
       - "main"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Renovate config validation is a standalone job: `npx renovate` cold-downloads a large npm
@@ -187,6 +187,78 @@ jobs:
 
       - name: Run Kyverno CLI tests
         run: ./scripts/run-kyverno-cli-tests.sh "$GITHUB_WORKSPACE"
+
+  omnigraph:
+    name: Omnigraph bundle rehearsal
+    runs-on: docker
+    env:
+      TMPDIR: /mnt/ci-shared
+      OMNIGRAPH_TOOLS: /mnt/ci-shared/omnigraph-tools-${{ github.run_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Does this change touch the Omnigraph bundle?
+        id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags --quiet origin "${{ github.base_ref }}" || true
+            base="$(git merge-base HEAD FETCH_HEAD 2>/dev/null || true)"
+          else
+            base="${{ github.event.before }}"
+          fi
+          if [ -z "${base}" ] || ! git rev-parse --verify --quiet "${base}^{commit}" >/dev/null; then
+            base="$(git rev-parse --verify --quiet HEAD~1 || git rev-parse HEAD)"
+            run=true
+          elif git diff --name-only "${base}" -- \
+                 kubernetes/apps/ai/omnigraph/app \
+                 kubernetes/apps/ai/omnigraph/embed-step \
+                 kubernetes/components/placement/worker-pool \
+                 .mise.toml \
+                 scripts/omnigraph_rehearsal.py \
+                 scripts/rehearse-omnigraph-bundle.sh \
+                 scripts/test-rehearse-omnigraph-bundle.sh \
+                 scripts/test_omnigraph_embedding_contract.py \
+                 .forgejo/workflows/e2e.yml | grep -q .; then
+            run=true
+          else
+            run=false
+          fi
+          echo "base=${base}" >> "$GITHUB_OUTPUT"
+          echo "run=${run}" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch the pinned omnigraph and kustomize
+        if: steps.filter.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin="$OMNIGRAPH_TOOLS"
+          mkdir -p "$bin"
+          image="$(grep -m1 -oE 'harbor\.webgrip\.dev/dockerhub/modernrelay/omnigraph-server:[^[:space:]]+' kubernetes/apps/ai/omnigraph/app/deployment.yaml)"
+          container="$(docker create "$image")"
+          docker cp "$container:/usr/local/bin/omnigraph" "$bin/omnigraph"
+          docker cp "$container:/usr/local/bin/omnigraph-server" "$bin/omnigraph-server"
+          docker rm "$container" >/dev/null
+          kustomize_version="$(sed -nE 's/^"aqua:kubernetes-sigs\/kustomize" = "([^"]+)"$/\1/p' .mise.toml)"
+          curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${kustomize_version}/kustomize_v${kustomize_version}_linux_amd64.tar.gz" | tar -xz -C "$bin" kustomize
+          "$bin/omnigraph" --version
+
+      - name: Rehearse the bundle over the previous commit's
+        if: steps.filter.outputs.run == 'true'
+        run: PATH="$OMNIGRAPH_TOOLS:$PATH" ./scripts/rehearse-omnigraph-bundle.sh --base-ref "${{ steps.filter.outputs.base }}"
+
+      - name: Mutation-test the rehearsal and the embedding contract
+        if: steps.filter.outputs.run == 'true'
+        run: |
+          export PATH="$OMNIGRAPH_TOOLS:$PATH"
+          bash scripts/test-rehearse-omnigraph-bundle.sh
+          python3 scripts/test_omnigraph_embedding_contract.py --self-test
 
   # Renders every Flux Kustomization. Sharded across workers inside the script (each worker
   # gets its own workspace copy because flux-local mutates its tree in place).

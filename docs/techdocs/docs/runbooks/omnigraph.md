@@ -10,11 +10,46 @@ Omnigraph v0.11 runs one server in namespace `ai` with three graphs: `memory` (s
   2. Imports state on first boot.
   3. Refuses to start if the plan contains an unapproved deletion.
   4. Applies the bundle.
-  5. Fills missing vectors on `main` of every graph (see [Embeddings and recall](#embeddings-and-recall)). A failure here is logged and skipped; it never stops the pod.
+  5. Fills missing vectors on `main` of every graph, capped so a restart stays under 3 minutes (see [Startup backfill](#startup-backfill)). A failure here is logged and skipped; it never stops the pod.
   6. Optimizes every applied graph and rebuilds full-text indexes when optimize reports stale coverage.
 - The `omnigraph-maintenance-restart` CronJob restarts the pod at 03:15. In v0.11, `optimize` next to a live server blocks writes, so it only runs at startup.
 - The PVC is enrolled in the `gitops-backup` Longhorn job (daily, 7 kept, offsite).
 - Renovate never automerges Omnigraph (image or mise CLI). Minor releases change the storage format.
+
+## Rehearse a bundle change
+
+A bundle change is applied by the init container of the only Omnigraph pod. If the apply fails, every graph stops. Every change under [app/](../../../../kubernetes/apps/ai/omnigraph/app/) (the bundle files, `bootstrap.sh`, `deployment.yaml`, the kustomization) therefore passes a rehearsal before it is committed:
+
+```bash
+mise exec -- ./scripts/rehearse-omnigraph-bundle.sh
+```
+
+The `rehearse-omnigraph-bundle` lefthook pre-commit hook runs it for you whenever a staged file under `kubernetes/apps/ai/omnigraph/app/`, the embedding contract, `.mise.toml` or the rehearsal itself changes. It takes about 10 seconds and needs no cluster access. What it does, in order:
+
+1. Renders `kustomize build kubernetes/apps/ai/omnigraph/app` for the working tree and for `origin/main` (`--base-ref` picks another ref), and reads the `omnigraph-bundle` ConfigMap out of each render. It rehearses what the pod mounts, not what git holds.
+2. Checks that the mise `omnigraph` pin, both server image tags in the Deployment and the CLI on `PATH` are the same version.
+3. Checks that every schema, query and policy file `cluster.yaml` names is in the ConfigMap, and that the ConfigMap carries no `.pg`, `.gq` or policy file `cluster.yaml` does not use.
+4. Lints every stored query: a variable ranked by `nearest`, `bm25`, `search` or `fuzzy` must be the first binding in `match {}` (bound as `$v: Type`), every `limit` is an integer literal, and no `rrf()` score is projected. v0.11 errors on anchor-first `nearest` and `bm25`, and silently stops ranking an anchor-first `rrf`.
+5. Checks that every actor a policy names already has a token in the **deployed** `omnigraph-tokens` aggregator. A new actor's token goes in one push and the policy that names it in a later one (see [Actors and tokens](#actors-and-tokens)).
+6. Builds a throwaway cluster from the deployed bundle by running the deployed `bootstrap.sh` with the init container's own environment. Only the storage path, the bundle mount path and the embedding URL are swapped: a local fake embedder stands in for LiteLLM and records what is sent.
+7. Seeds every node and edge type of every graph with synthetic rows, vectors included, plus 601 vectorless `brain` `Passage` rows and one vectorless row per other embedding type.
+8. Opens a branch `rehearsal-open` on every graph, the way an open `glide/*` branch would be live.
+9. Runs the working `bootstrap.sh` over it: a real `cluster apply` (which rejects, for example, `invoke_query` in a rule with `branch_scope`, or a schema change while a branch is open), then the capped backfill, then `optimize`. It checks that the backfill stopped at `OMNIGRAPH_BACKFILL_MAX_ROWS` with a matching `vector backfill capped` line and that every small backlog was filled.
+10. Starts `omnigraph-server --require-all-graphs` on the result and invokes every stored query: reads on `main`, each mutation on its own fresh branch, all as an actor the policy lets read, write and invoke.
+
+A failing stage prints `FAIL <stage>: <reason>` and the commit is refused.
+
+**Schema changes.** Step 8 makes every schema change fail, because live `cluster apply` refuses a schema change while the graph has any branch but `main`. Before a schema push, drain the graph (see [Open `glide/*` branches block schema changes](#open-glide-branches-block-schema-changes)), prove it has only `main`, and then name it:
+
+```bash
+OMNIGRAPH_REHEARSAL_DRAINED=brain git commit ...
+```
+
+The rehearsal then opens no branch on `brain`. The variable is a statement that you checked the live graph; it is not a way around the check.
+
+**CI.** The `e2e / Omnigraph bundle rehearsal` job runs the same script against the previous commit's bundle on every push to `main` and every pull request that touches these paths, with the `omnigraph` binaries copied out of the pinned server image. It runs after the push, so it is a backstop, not the gate. Push runs no longer cancel each other; only pull request runs do.
+
+**Mutation test.** [test-rehearse-omnigraph-bundle.sh](../../../../scripts/test-rehearse-omnigraph-bundle.sh) proves the rehearsal catches what it claims. It must fail on: a query file in `cluster.yaml` but not in the ConfigMap, and the reverse; `invoke_query` in a rule with `branch_scope`; an anchor-first `rrf`; an anchor-first `nearest` with the lint off (caught live); `limit $n`; a schema change while `brain` has a branch; a policy naming an actor without a deployed token; a server image that differs from the mise pin; an init container without a backfill cap; a `bootstrap.sh` that ignores the cap; a `bootstrap.sh` that crashes. It must pass on the unchanged bundle, on a new valid query file (a ranked-first two-hop `Passage` query with a `Vector(384)` parameter) and on a schema change of a graph declared drained. Each case also checks the reason it failed, so a crashing rehearsal does not count as a catch. It runs in pre-commit when the rehearsal changes, and in CI.
 
 ## Actors and tokens
 
@@ -196,7 +231,7 @@ The vault owns everything under `obsidian/`. An edit made to such a note in the 
 
 A vault without importable notes never deletes anything: the plan step refuses and the run fails.
 
-**Embeddings.** Loads do not embed. A new or changed note ranks on keywords only until the 03:15 restart fills its vector (see [Embeddings and recall](#embeddings-and-recall)). An import right after 03:15 waits almost a day. The full-text index is rebuilt at the same restart.
+**Embeddings.** Loads do not embed. A new or changed note ranks on keywords only until a restart fills its vector (see [Startup backfill](#startup-backfill)); each restart fills at most 500 rows per type. An import right after 03:15 waits almost a day. The full-text index is rebuilt at the same restart.
 
 **Write limits.** Load files are split at 2,000 rows or 16 MiB, below the per-commit limit.
 
@@ -295,7 +330,7 @@ Forgejo owns everything under `forge/`. An edit made to such a row in the graph 
 
 A token that sees no repositories never deletes anything: the plan step refuses and the run fails. So does any Forgejo API error, before anything is written.
 
-**Embeddings.** Loads do not embed. New passages and decision notes rank on keywords only until the 03:15 restart fills their vectors. The first import is the largest: every README, doc, issue and pull request at once. That backfill runs inside the Omnigraph init container, so the first restart after it takes longer than usual.
+**Embeddings.** Loads do not embed. New passages and decision notes rank on keywords only until a restart fills their vectors, at most 500 rows per type per restart (see [Startup backfill](#startup-backfill)). A large import therefore takes many nights to get its vectors until the importers embed their own rows (brain retrieval RFC, P3).
 
 ### Setup (Ryan)
 
@@ -510,8 +545,36 @@ Every graph embeds text with `granite-embedding-97m-multilingual-r2` (384 dimens
 - **Model server.** `tei-embeddings` runs Text Embeddings Inference `cpu-1.9.4` on the ONNX Runtime backend. The `fetch-model` init container downloads the pinned revision from Hugging Face into the `tei-embeddings-models` volume and checks every file against [model.sha256](../../../../kubernetes/apps/ai/tei-embeddings/app/model/model.sha256); a mismatch stops the pod. After the first start it only re-verifies. The pod's only internet egress is HTTPS to Hugging Face hosts (`tei-embeddings-model-fetch`, a `toFQDNs` CiliumNetworkPolicy on `huggingface.co` and up to three label levels under `hf.co`), so a download that redirects to a CDN outside those domains times out in `fetch-model`. `--max-batch-tokens 1024` keeps it under 700Mi; longer inputs are truncated to their first 1024 tokens. Only LiteLLM pods may call it (`tei-embeddings-litellm-only`); the `observability` namespace may scrape `/metrics`. Alert: `TeiEmbeddingsDown`.
 - **Key.** Omnigraph authenticates to LiteLLM with the virtual key `omnigraph-embeddings`, generated in-cluster by the `omnigraph-embed-key` ExternalSecret and registered by the `omnigraph-embed-key-register` Job: embedding model only, USD 1 per 30 days, 3000 requests per minute. The Job is idempotent: it looks the key up with the key itself, updates it when it drifted, and when the Secret holds a key LiteLLM does not know it deletes whatever key still holds the `omnigraph-embeddings` alias before registering the new one. The server refuses to start without `OMNIGRAPH_EMBED_API_KEY`, so the Secret must exist before the pod restarts. Rotate by deleting the `omnigraph-embed-key` Secret and the `omnigraph-embed-key-register` Job: ESO generates a new key, Reloader restarts Omnigraph, and the recreated Job revokes the old key.
 - **Schema.** Each vector records its source and model, for example `embedding: Vector(384)? @embed("body", model="granite-embedding-97m-multilingual-r2")`. Queries fail fast when the provider serves another model. Changing the source or model is not an in-place migration: add a new property, backfill it, then drop the old one. The vectors are nullable and have no ANN `@index`: with an index, `optimize` fails (`KMeans cannot train 1 centroids with 0 vectors`) whenever a type's rows have lost all their vectors, which would stop the pod. `nearest()` scans every row instead, which is fast at this size.
-- **Vectors.** Loads and mutations do not embed. The init container fills the vectors that are missing on `main` at every start, so the 03:15 restart embeds what was merged that day. It exports each type named in an `@embed`, keeps the rows with source text and no vector, embeds them with `omnigraph embed` and loads them back with `--mode merge`. A merge load of a row without its vector clears the vector until the next start. If LiteLLM or `tei-embeddings` is down, the init container logs `vector backfill skipped` or `vector backfill for <graph> <type> failed` and starts anyway.
+- **Vectors.** Loads and mutations do not embed. The init container fills some of the vectors that are missing on `main` at every start (see [Startup backfill](#startup-backfill)). A merge load of a row without its vector clears the vector until a start fills it again.
+- **Contract.** The ConfigMap `omnigraph-embedding-contract` ([contract.json](../../../../kubernetes/apps/ai/omnigraph/embed-step/app/contract.json)) states the model, the dimensions, the text format (`type: <Type>` then `<field>: <value>` on the next line) and that stored vectors are L2-normalised. Writers that bring their own vectors read it, so every vector of a type lives in one space. [test_omnigraph_embedding_contract.py](../../../../scripts/test_omnigraph_embedding_contract.py) fails when it disagrees with the `@embed` models and dimensions in the schemas, the provider in `cluster.yaml` or the init container's `OMNIGRAPH_EMBED_MODEL`, and runs the pinned `omnigraph embed` against a recording fake embedder to prove the text format and the normalisation. `--self-test` breaks each input in turn and requires the test to fail. It runs in pre-commit next to the rehearsal and in CI. Measured with the pinned 0.11.0 CLI: `omnigraph embed` sends one row per request with `dimensions` set.
 - **Queries.** `recall_notes` on `memory` and `brain`, `recall_passages` on `brain`, and `recall_notes` and `recall_decisions` on `webgrip` rank by `rrf(nearest(...), bm25(...))`. Rows without a vector still rank on keywords.
+
+### Startup backfill
+
+The init container fills missing vectors after `cluster apply` and before `optimize`, within fixed limits so that a restart never waits on a large backlog again. On 2026-09-28 an uncapped fill of 16,897 new passages kept every graph offline for about 2 hours (VIK-1348).
+
+- It exports every type named in an `@embed` on `main` of every graph and keeps the rows with source text and no vector.
+- It fills the types with the fewest missing rows first, so one large backlog cannot starve the others.
+- Per type it takes at most `OMNIGRAPH_BACKFILL_MAX_ROWS` (500) rows, in parts of `OMNIGRAPH_BACKFILL_PART_ROWS` (100): each part is embedded under `timeout` and loaded back with `--mode merge` in its own commit. A failed part is logged and skipped.
+- It stops starting parts once `OMNIGRAPH_BACKFILL_DEADLINE_SECONDS` (150) have passed since the backfill began, and kills the embedding of a part that runs past it.
+- The window starts at an offset that moves every day, so a row that always fails cannot hold the same place at the head of the queue.
+
+At `tei-embeddings`' speed on worker-2 (about 1,000 tokens a second, about 3 passages a second) a start fills about 400 passages. A restart with 20,001 vectorless passages served after 152 seconds in the drill below.
+
+Log lines, searchable in VictoriaLogs with `namespace:ai container:apply-and-optimize "vector backfill"`:
+
+| Line | Meaning |
+|---|---|
+| `vector backfill embedded <n> <graph> <type> rows into <target>` | Filled this start |
+| `vector backfill capped: <n> <graph> <type> rows left for writers` | Still without a vector after this start |
+| `vector backfill skipped a part of <n> <graph> <type> rows: ...` | That part failed or was killed at the deadline |
+| `vector backfill skipped: <url> is not answering` | LiteLLM or `tei-embeddings` was down; nothing was filled |
+
+Rows still without a vector rank on keywords only. Until the importers write their own vectors (brain retrieval RFC, P3), a large import is filled over several nights. To fill a known large backlog in one go, raise the three variables on the `apply-and-optimize` init container for one restart in a quiet hour, and put them back afterwards; the pod serves nothing while it fills.
+
+**Drill.** `mise exec -- python3 scripts/omnigraph_rehearsal.py backfill-drill` seeds 20,000 vectorless passages into a throwaway cluster, restarts it through the working `bootstrap.sh` against a fake embedder throttled to 1,000 tokens a second, and fails when serving takes more than 180 seconds. Run it after changing the backfill or its variables. It takes about 3 minutes.
+
+**Monitoring.** `OmnigraphUnreachable` (blackbox, 10 minutes) fires when the init container runs too long. A count of vectorless rows per writer, with an alert, comes with the importers' own embedding (RFC P3).
 
 ## Merge conflicts
 
@@ -537,9 +600,11 @@ Merging `main` into the branch first (`branch merge main --into <branch>`) works
 ## Upgrade
 
 1. Read the release notes.
-2. Scale the deployment to 0.
-3. Snapshot the Longhorn volume.
-4. Run `omnigraph upgrade --check`, then `omnigraph upgrade`, against the PVC from a maintenance pod using the new image.
-5. Bump the image and the mise CLI pin in the same commit.
+2. Run the brain retrieval eval gate on the old version and keep its numbers (`kubectl -n ai create job --from=cronjob/omnigraph-brain-eval-gate omnigraph-brain-eval-gate-manual`, once RFC P2 has shipped it). v0.11 behaviour the retrieval depends on, such as the ranked-first rule, can change silently.
+3. Scale the deployment to 0.
+4. Snapshot the Longhorn volume.
+5. Run `omnigraph upgrade --check`, then `omnigraph upgrade`, against the PVC from a maintenance pod using the new image.
+6. Bump the image and the mise CLI pin in the same commit. The rehearsal refuses a commit where the two differ, and it runs the new CLI over the bundle, so run `mise install` first.
+7. Run the eval gate again and compare with step 2 before relying on the new version.
 
 From v0.12, `optimize` and `cleanup` can run beside live writers. At that point the 03:15 restart can become an in-place CronJob.
