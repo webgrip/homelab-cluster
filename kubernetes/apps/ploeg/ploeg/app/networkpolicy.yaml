@@ -2,9 +2,8 @@
 # Zero-trust for ploeg. The namespace label generates default-deny
 # (ingress+egress) + allow-dns. Flow: vikunja webhook -> ploegd:8080 -> db:5432
 # (CNPG); the KEDA operator polls ploeg-db directly for the ScaledJob triggers.
-# The db archives WAL to Garage S3; API-server egress for CNPG comes from
-# components/cnpg-netpol (identity-based — never an ipBlock, the Cilium
-# reserved-identity trap).
+# API-server egress for CNPG comes from components/cnpg-netpol (identity-based —
+# never an ipBlock, the Cilium reserved-identity trap).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -77,14 +76,6 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: ploeg
-    # LAN: Garage S3 (10.0.0.110:3900) for CNPG WAL/backups.
-    # CRITICAL: blocking this breaks WAL archiving (the Garage-WAL SPOF outage).
-    - to:
-        - ipBlock:
-            cidr: 10.0.0.0/24
-            # NOTE: no ipBlock rule for the kube-apiserver — Cilium matches API-server
-            # traffic by the reserved `kube-apiserver` identity; CNPG pods get
-            # identity-based API egress from components/cnpg-netpol.
     # OpenHands workers -> LiteLLM (ai ns, in-cluster: proxy /v1 + admin key
     # mint/revoke on the same port).
     - to:
