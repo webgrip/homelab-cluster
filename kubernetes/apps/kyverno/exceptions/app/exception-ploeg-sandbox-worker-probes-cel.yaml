@@ -1,0 +1,27 @@
+---
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-ploeg-sandbox-worker-probes-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      A ploeg worker is a run-to-completion Run with no endpoint to probe. Under
+      the KEDA executor its pod is Job-owned and outside require-pod-probes-audit;
+      under the agent-sandbox executor the same pod is owned by a Sandbox, so the
+      policy would deny every sandboxed Run. Waived only for ploeg-worker Pods in
+      the ploeg namespace that an agents.x-k8s.io Sandbox owns.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: require-pod-probes-audit
+  matchConditions:
+    - name: ploeg-sandbox-worker-pods
+      expression: >-
+        object.kind == 'Pod' &&
+        object.metadata.namespace == 'ploeg' &&
+        object.metadata.?labels[?'app.kubernetes.io/name'].orValue('') == 'ploeg-worker' &&
+        object.metadata.?ownerReferences.orValue([]).exists(o,
+          o.kind == 'Sandbox' && o.apiVersion.startsWith('agents.x-k8s.io/'))
