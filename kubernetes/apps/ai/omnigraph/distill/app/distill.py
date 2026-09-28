@@ -31,6 +31,8 @@ MAX_INPUT_CHARS = 12000
 MAX_TOPICS = 6
 MAX_ALIASES = 8
 MERGE_CANDIDATES = 3
+MAX_ALIAS_QUESTIONS = 1500
+ALIAS_AUDIT = "alias-audit-v1"
 ROWS_PER_LOAD_FILE = 2000
 BYTES_PER_LOAD_FILE = 16 * 1024 * 1024
 STATEMENTS_PER_PRUNE_FILE = 500
@@ -104,6 +106,8 @@ class Counts:
     topics_merged: int = 0
     merge_questions: int = 0
     merge_failures: int = 0
+    alias_questions: int = 0
+    alias_audits_deferred: int = 0
     related_written: int = 0
     related_removed: int = 0
     prompt_tokens: int = 0
@@ -346,7 +350,7 @@ class LiteLLM:
             return self.ask_same_topic(model, system, pair)
         except (ExtractionFailed, LLMUnreachable):
             self.counts.merge_failures += 1
-            return False
+            return None
 
     def ask_same_topic(self, model, system, pair):
         body, cost = self.post("/v1/chat/completions", {
@@ -363,9 +367,11 @@ class LiteLLM:
         self.counts.completion_tokens += int(usage.get("completion_tokens") or 0)
         content = ((body.get("choices") or [{}])[0].get("message") or {}).get("content")
         try:
-            return json.loads(content).get("same") is True
+            verdict = json.loads(content).get("same")
         except (TypeError, ValueError, AttributeError):
-            return False
+            self.counts.merge_failures += 1
+            return None
+        return verdict if isinstance(verdict, bool) else None
 
     def extract(self, model, system, schema, text):
         body, cost = self.post("/v1/chat/completions", {
@@ -517,8 +523,8 @@ class Resolver:
         answers = same_topic([(name, self.describe(slug)) for name, slug in ordered]) if ordered else []
         counts.merge_questions += len(ordered)
         for (name, slug), same in zip(ordered, answers):
-            self.alias_verdicts[(name_key(name), slug)] = same
-            if not same:
+            self.alias_verdicts[(name_key(name), slug)] = same is True
+            if same is False:
                 self.drop_alias(self.entities[slug], name, counts)
         if missing:
             for name, vector in zip(missing, self.embedder(missing)):
@@ -559,7 +565,7 @@ class Resolver:
         ranked = self.merge_candidates()
         questions = sorted({(slug, other) for slug, scored in ranked.items() for similarity, other in scored if similarity < self.settings.same_similarity})
         answers = same_topic([(self.describe(slug), self.describe(other)) for slug, other in questions]) if questions else []
-        confirmed = {pair for pair, same in zip(questions, answers) if same}
+        confirmed = {pair for pair, same in zip(questions, answers) if same is True}
         counts.merge_questions += len(questions)
         for slug in sorted(ranked):
             for similarity, other in ranked[slug]:
@@ -763,6 +769,41 @@ def related_pairs(edges_by_source, settings, live_topics):
     return {pair: count for pair, count in counts.items() if count >= settings.related_min_documents}
 
 
+def alias_digest(aliases):
+    return sha256(json.dumps(sorted(aliases), ensure_ascii=False))
+
+
+def audit_aliases(graph, resolver, live_topic_slugs, same_topic, counts, now, state_rows):
+    questions, chosen = [], []
+    for slug in sorted(live_topic_slugs):
+        entity = resolver.entities[slug]
+        aliases = list(entity.data.get("aliases") or [])
+        state = graph.state.get(slug) or {}
+        if not aliases or (state.get("content_sha256") == alias_digest(aliases) and state.get("extractor") == ALIAS_AUDIT):
+            continue
+        if len(questions) + len(aliases) > MAX_ALIAS_QUESTIONS:
+            counts.alias_audits_deferred += 1
+            continue
+        questions += [(alias, slug) for alias in aliases]
+        chosen.append(entity)
+    answers = same_topic([(alias, resolver.describe(slug)) for alias, slug in questions]) if questions else []
+    verdicts = {(slug, alias): same for (alias, slug), same in zip(questions, answers)}
+    counts.alias_questions += len(questions)
+    for entity in chosen:
+        aliases = list(entity.data.get("aliases") or [])
+        if any(verdicts.get((entity.slug, alias)) is None for alias in aliases):
+            continue
+        kept = [alias for alias in aliases if verdicts[(entity.slug, alias)]]
+        if kept != aliases:
+            counts.aliases_dropped += len(aliases) - len(kept)
+            entity.data["aliases"] = kept
+            entity.dirty = True
+        existing = graph.state.get(entity.slug) or {}
+        state_rows.append({"type": "Distillation", "data": {
+            "slug": STATE_PREFIX + entity.slug, "source": entity.slug, "content_sha256": alias_digest(kept), "extractor": ALIAS_AUDIT,
+            "processedAt": now, "createdAt": iso_timestamp(existing.get("createdAt")) or now, "updatedAt": now}})
+
+
 def edge_key(edge):
     return edge.id or f"{edge.type}:{edge.source}>{edge.target}"
 
@@ -775,6 +816,8 @@ def build_plan(graph, extractions, resolver, settings, counts, now, same_topic):
     for key, edge in live_edges.items():
         by_source.setdefault(edge.source, set()).add(key)
     for source in sorted(set(graph.state) - set(graph.documents)):
+        if source.startswith(ENTITY_PREFIXES["Topic"]):
+            continue
         prune_state.append(f"delete Distillation where slug = {gq_string(STATE_PREFIX + source)}")
         counts.sources_gone += 1
     resolver.prepare([extractions[slug] for slug in sorted(extractions)], same_topic, counts)
@@ -829,6 +872,10 @@ def build_plan(graph, extractions, resolver, settings, counts, now, same_topic):
             counts.entities_deleted += 1
     for key in [key for key, edge in live_edges.items() if edge.source in doomed or edge.target in doomed]:
         live_edges.pop(key)
+    live_topic_slugs = {slug for slug, entity in resolver.entities.items() if entity.type == "Topic" and entity.derived and slug not in doomed and slug not in resolver.merged}
+    for source in sorted(source for source in graph.state if source.startswith(ENTITY_PREFIXES["Topic"]) and source not in live_topic_slugs):
+        prune_state.append(f"delete Distillation where slug = {gq_string(STATE_PREFIX + source)}")
+    audit_aliases(graph, resolver, live_topic_slugs, same_topic, counts, now, state_rows)
     for entity in sorted(resolver.entities.values(), key=lambda item: (item.type, item.slug)):
         if not entity.derived or not entity.dirty or entity.slug in doomed:
             continue

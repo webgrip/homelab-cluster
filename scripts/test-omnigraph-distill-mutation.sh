@@ -64,8 +64,16 @@ mutate 'if self.alias_verdicts.get((name_key(name), slug)):' 'if True:'
 expect fail "alias hits accepted without confirmation"
 
 fresh
-mutate 'if not same:' 'if False:'
+mutate 'if same is False:' 'if False:'
 expect fail "refused aliases kept"
+
+fresh
+mutate 'kept = [alias for alias in aliases if verdicts[(entity.slug, alias)]]' 'kept = aliases'
+expect fail "alias audit ignores rejections"
+
+fresh
+mutate 'if any(verdicts.get((entity.slug, alias)) is None for alias in aliases):' 'if False:'
+expect fail "unanswered alias audit treated as an answer"
 
 fresh
 mutate 'if not entity.derived or entity.type not in ENTITY_TYPES or referenced.get(entity.slug):' 'if True:'

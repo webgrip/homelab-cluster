@@ -169,8 +169,13 @@ class FakeGraph:
 
 
 class FakeLiteLLM:
-    def __init__(self, answers, vectors=None, cost=0.001, fail=(), unreachable=False, same=(), refuse=()):
+    def __init__(self, answers, vectors=None, cost=0.001, fail=(), unreachable=False, same=(), refuse=(), wrong_aliases=()):
         self.refuse = set(refuse)
+        self.wrong_aliases = set(wrong_aliases)
+        self.declared = {}
+        for answer in answers.values():
+            for item in answer["topics"]:
+                self.declared.setdefault(item["name"], set()).update(item.get("aliases") or [])
         self.same = {frozenset(pair) for pair in same}
         self.questions = []
         self.answers = answers
@@ -199,11 +204,17 @@ class FakeLiteLLM:
     def same_topic(self, model, system, pair):
         names = [side.split(" (")[0] for side in pair]
         self.questions.append(tuple(names))
+        if names[0] in self.declared.get(names[1], set()) and names[0] not in self.wrong_aliases:
+            return True
         return frozenset(names) in self.same
 
     def embed(self, model, texts):
         self.embedded.extend(texts)
         return [self.vectors.get(text) or scattered(text) for text in texts]
+
+
+def documents_distilled(graph):
+    return [slug for slug, data in graph.of_type("Distillation").items() if not data["source"].startswith("derived/")]
 
 
 def seeded_graph():
@@ -333,7 +344,7 @@ class Resolution(unittest.TestCase):
         self.assertNotIn("Organization", {graph.nodes[slug][0] for slug in graph.nodes if slug.startswith("derived/")})
         self.assertEqual(plan.counts.processed, 9)
         self.assertEqual(plan.counts.failed, 0)
-        self.assertEqual(len(graph.of_type("Distillation")), 9)
+        self.assertEqual(len(documents_distilled(graph)), 9)
 
     def test_importer_managed_edges_and_own_project_are_left_alone(self):
         graph = seeded_graph()
@@ -362,7 +373,6 @@ class Resolution(unittest.TestCase):
         self.assertIn("derived/topic/kubernetes-distribution", topics)
         self.assertIn("derived/topic/cycling", topics)
         self.assertIn(("Kubernetes distribution", "Kubernetes"), llm.questions)
-        self.assertNotIn(("Kubernetes spelling", "Kubernetes"), llm.questions)
         self.assertNotIn(("Cycling", "Kubernetes"), llm.questions)
         self.assertIn("Kubernetes platform", topics["derived/topic/kubernetes"]["aliases"])
         self.assertIn(("ProjectAboutTopic", "forge/webgrip/ploeg", "derived/topic/kubernetes"), graph.owned())
@@ -378,6 +388,7 @@ class Resolution(unittest.TestCase):
         second = answers()
         second["Dinner with Sam"] = extraction(topics=[topic("K8S"), topic("Docker")])
         llm = FakeLiteLLM(second, same=[("K8S", "Kubernetes")])
+        llm.declared["containerd"] = {"cri"}
         plan = Harness(graph, llm).run(LATER)
         self.assertIn(("NoteAboutTopic", "obsidian/dinner-sam", "derived/topic/kubernetes"), graph.owned())
         self.assertIn(("NoteAboutTopic", "obsidian/dinner-sam", "derived/topic/docker"), graph.owned())
@@ -391,10 +402,38 @@ class Resolution(unittest.TestCase):
         extra = answers()
         extra["Dinner with Sam"] = extraction(topics=[topic("containerd", aliases=["Docker"])])
         extra["Fiets"] = extraction(topics=[topic("Docker")])
-        llm = FakeLiteLLM(extra)
+        llm = FakeLiteLLM(extra, wrong_aliases={"Docker"})
         Harness(graph, llm).run()
         self.assertIn(("NoteAboutTopic", "obsidian/fiets", "derived/topic/docker"), graph.owned())
         self.assertIn(("Docker", "containerd"), llm.questions)
+
+    def test_every_alias_is_audited_once_and_wrong_ones_are_removed(self):
+        graph = seeded_graph()
+        extra = answers()
+        extra["Fiets"] = extraction(topics=[topic("containerd", aliases=["Docker Engine", "container runtime"])])
+        llm = FakeLiteLLM(extra, wrong_aliases={"Docker Engine"})
+        plan = Harness(graph, llm).run()
+        self.assertEqual(graph.nodes["derived/topic/containerd"][1]["aliases"], ["container runtime"])
+        self.assertEqual(plan.counts.aliases_dropped, 1)
+        self.assertIn("derived/distill/derived/topic/containerd", graph.nodes)
+        graph.nodes["obsidian/dinner-sam"][1]["content"] = "changed"
+        llm = FakeLiteLLM(answers())
+        plan = Harness(graph, llm).run(LATER)
+        self.assertEqual(plan.counts.alias_questions, 0)
+        graph.nodes["obsidian/fiets"][1]["content"] = "changed"
+        Harness(graph, FakeLiteLLM(answers())).run(LATER)
+        self.assertNotIn("derived/topic/containerd", graph.nodes)
+        self.assertNotIn("derived/distill/derived/topic/containerd", graph.nodes)
+
+    def test_an_unanswered_audit_keeps_the_aliases_and_asks_again(self):
+        graph = seeded_graph()
+        extra = answers()
+        extra["Fiets"] = extraction(topics=[topic("containerd", aliases=["Docker Engine"])])
+        llm = FakeLiteLLM(extra)
+        llm.same_topic = lambda model, system, pair: None
+        Harness(graph, llm).run()
+        self.assertEqual(graph.nodes["derived/topic/containerd"][1]["aliases"], ["Docker Engine"])
+        self.assertNotIn("derived/distill/derived/topic/containerd", graph.nodes)
 
     def test_new_topic_aliases_never_shadow_existing_topic_names(self):
         graph = seeded_graph()
@@ -545,7 +584,7 @@ class LimitsAndFailures(unittest.TestCase):
         plan = Harness(graph, llm, max_spend_usd=0.9, workers=1).run(LATER)
         self.assertEqual(plan.counts.processed, 2)
         self.assertEqual(plan.counts.skipped_budget, 4)
-        self.assertEqual(len(graph.of_type("Distillation")), 5)
+        self.assertEqual(len(documents_distilled(graph)), 5)
 
     def test_failed_extractions_are_retried_and_mark_the_run(self):
         graph = seeded_graph()
