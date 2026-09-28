@@ -189,6 +189,20 @@ locals {
       extra_scopes  = []
       adopt         = false
     }
+    omnigraph-review = {
+      provider_name = "omnigraph-review-oidc"
+      app_name      = "Omnigraph Review"
+      description   = "Review, merge and reject agent branches on the brain, memory and webgrip graphs."
+      launch_url    = "https://graph-review.${var.SECRET_DOMAIN}"
+      client_id     = "omnigraph-review"
+      client_secret = data.vault_kv_secret_v2.oidc_client["omnigraph-review"].data["client_secret"]
+      client_type   = "confidential"
+      signing_key   = true
+      grant_types   = ["authorization_code", "refresh_token"]
+      redirects     = [{ matching_mode = "strict", url = "https://graph-review.${var.SECRET_DOMAIN}/oauth2/callback" }]
+      extra_scopes  = []
+      adopt         = false
+    }
     open-webui = {
       provider_name = "open-webui-oidc"
       app_name      = "Open WebUI"

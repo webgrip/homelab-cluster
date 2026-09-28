@@ -15,6 +15,7 @@ data "vault_kv_secret_v2" "oidc_client" {
     longhorn           = "authentik/longhorn-oidc"
     cluster-dashboards = "authentik/dashboards-oidc"
     omnigraph-explorer = "authentik/omnigraph-explorer-oidc"
+    omnigraph-review   = "authentik/omnigraph-review-oidc"
     open-webui         = "authentik/open-webui-oidc"
   }
   mount = "secret"
