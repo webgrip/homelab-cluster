@@ -631,7 +631,7 @@ class Rehearsal:
             (source / name).write_text(text)
         return source
 
-    def bootstrap(self, bundle, rendered, label):
+    def bootstrap(self, bundle, rendered, label, env_overrides=None):
         source = self.source_copy(bundle, label, rendered.bundle_mount_path())
         bundle_dir = self.workdir / f"{label}-bundle"
         bundle_dir.mkdir()
@@ -644,6 +644,7 @@ class Rehearsal:
             "OMNIGRAPH_STATE_DIR": str(self.state),
             "OMNIGRAPH_EMBED_BASE_URL": self.embed_url,
             "OMNIGRAPH_EMBED_API_KEY": "rehearsal",
+            **(env_overrides or {}),
         }
         started = time.monotonic()
         proc = run(["sh", str(source / "bootstrap.sh")], env=env, check=False, timeout=900)
@@ -1048,7 +1049,8 @@ def backfill_drill(args):
             before = rows_without_vector(rehearsal.state, probe_graph, probe_type)
             say("info", "seeded", f"{rows} rows; {before} {probe_graph} {probe_type} rows without a vector")
             started = time.monotonic()
-            bundle_dir, output, elapsed = rehearsal.bootstrap(bundle, rendered, "restart")
+            overrides = {"OMNIGRAPH_BACKFILL_DEADLINE_SECONDS": str(args.deadline_seconds)} if args.deadline_seconds else None
+            bundle_dir, output, elapsed = rehearsal.bootstrap(bundle, rendered, "restart", overrides)
             tokens = {actor: secrets.token_hex(16) for actor in bundle.policy_actors()}
             server_env = {"PATH": os.environ["PATH"], "HOME": os.environ.get("HOME", str(workdir)), **rendered.plain_env(SERVER_CONTAINER), "OMNIGRAPH_EMBED_API_KEY": "rehearsal"}
             server = Server(bundle_dir, tokens, server_env, workdir / "cluster")
@@ -1103,6 +1105,7 @@ def main(argv=None):
     drill_parser.add_argument("--tokens-per-second", type=float, default=1000.0)
     drill_parser.add_argument("--budget-seconds", type=int, default=180)
     drill_parser.add_argument("--backfill-probe", default="brain.Passage")
+    drill_parser.add_argument("--deadline-seconds", type=int, help="override the init container's OMNIGRAPH_BACKFILL_DEADLINE_SECONDS for a short drill")
     drill_parser.set_defaults(handler=backfill_drill)
     lint_parser = commands.add_parser("lint", help="lint .gq files only")
     lint_parser.add_argument("files", nargs="+")

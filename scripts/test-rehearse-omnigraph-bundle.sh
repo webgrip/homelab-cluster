@@ -45,6 +45,24 @@ expect() {
   fi
 }
 
+expect_drill() {
+  local want=$1 label=$2 marker=$3 dir=$4 rc out verdict
+  out=$(python3 "$root/scripts/omnigraph_rehearsal.py" backfill-drill --repo-root "$dir" --app-dir "$dir/$app" --rows 400 --text-chars 400 --tokens-per-second 2000 --deadline-seconds 8 --budget-seconds 15 2>&1)
+  rc=$?
+  verdict=WRONG
+  case "$want:$rc" in
+    pass:0) grep -q '^PASS' <<<"$out" && verdict=ok ;;
+    fail:1) grep -qF -- "$marker" <<<"$out" && verdict=ok ;;
+  esac
+  [ "$verdict" = ok ] || wrong=$((wrong + 1))
+  printf '%-5s expect=%-4s rc=%s  %s\n' "$verdict" "$want" "$rc" "$label"
+  if [ "$verdict" = ok ]; then
+    grep -E '^(FAIL|PASS|ERROR)|restart:' <<<"$out" | cut -c1-240 | sed 's/^/        /'
+  else
+    printf '%s\n' "$out" | tail -25 | sed 's/^/        /'
+  fi
+}
+
 d=$(tree unchanged)
 expect pass "unchanged bundle" "" "$d"
 
@@ -165,6 +183,13 @@ expect fail "bootstrap.sh ignores the backfill cap" "expected 101 left" "$d"
 d=$(tree broken-bootstrap)
 sed -i 's/^backfill_deadline=0$/backfill_deadline=$OMNIGRAPH_UNDEFINED_SETTING/' "$d/$app/bundle/bootstrap.sh"
 expect fail "bootstrap.sh crashes on an unset variable" "bootstrap.sh of the working bundle exited" "$d"
+
+d=$(tree deadline-drill)
+expect_drill pass "restart with a backlog larger than the deadline allows serves within budget" "" "$d"
+
+d=$(tree no-deadline)
+sed -i 's/^    if \[ "\$left" -le 0 \]; then$/    if false; then/; s/if timeout "\$left" omnigraph embed/if omnigraph embed/' "$d/$app/bundle/bootstrap.sh"
+expect_drill fail "bootstrap.sh ignores the backfill deadline" "over the 15s budget" "$d"
 
 echo "wrong verdicts: $wrong"
 [ "$wrong" -eq 0 ]
