@@ -149,7 +149,7 @@ omnigraph branch merge glide/<run> --into main --server homelab --graph brain
 omnigraph branch delete glide/<run> --server homelab --graph brain --yes
 ```
 
-A one-click review screen is VIK-1258.
+If `main` changed the same row since the branch was made, the merge is refused and names the conflicting rows. Write the value you want on `main`, then merge again; see [merge conflicts](../runbooks/omnigraph.md#merge-conflicts). A one-click review screen is VIK-1258.
 
 **Keep branches short-lived.** Any open branch on a graph blocks the next schema change to that graph,
 and a failed schema apply stops every graph until it is fixed. Merge or delete branches instead of

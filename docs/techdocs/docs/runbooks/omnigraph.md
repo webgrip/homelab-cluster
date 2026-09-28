@@ -4,7 +4,7 @@ Omnigraph v0.11 runs one server in namespace `ai` with three graphs: `memory` (s
 
 ## How it runs
 
-- One pod, `strategy: Recreate`, data on the Longhorn PVC `omnigraph-state` with `file://` storage. Garage is deliberately not used: Omnigraph relies on S3 `If-None-Match`/`If-Match` conditional writes, it is not qualified on Garage, and an ignored precondition would corrupt data silently.
+- One pod, `strategy: Recreate`, data on the Longhorn PVC `omnigraph-state` with `file://` storage. Garage is deliberately not used: Omnigraph's commits rely on S3 conditional writes (`If-None-Match: *` to create only if absent, `If-Match` to compare-and-swap), and **Garage ignores both**. Tested 2026-09-28 against the same image digest as the cluster (`dxflrs/garage:v2.4.1@sha256:9c96caa2…`) in a throwaway container: a create-if-absent over an existing object returned 200 and overwrote it, a compare-and-swap with a wrong ETag returned 200, and 20 parallel create-if-absent writers on one new key all got 200 where exactly one may. On Garage, two commits could overwrite each other without an error. Revisit only when a Garage release passes that same test.
 - The init container runs [bootstrap.sh](../../../../kubernetes/apps/ai/omnigraph/app/bundle/bootstrap.sh):
   1. Copies the bundle out of the ConfigMap, because Omnigraph refuses bundle files reached through symlinks.
   2. Imports state on first boot.
@@ -399,6 +399,18 @@ Every graph embeds text with `granite-embedding-97m-multilingual-r2` (384 dimens
 - **Schema.** Each vector records its source and model, for example `embedding: Vector(384)? @embed("body", model="granite-embedding-97m-multilingual-r2")`. Queries fail fast when the provider serves another model. Changing the source or model is not an in-place migration: add a new property, backfill it, then drop the old one. The vectors are nullable and have no ANN `@index`: with an index, `optimize` fails (`KMeans cannot train 1 centroids with 0 vectors`) whenever a type's rows have lost all their vectors, which would stop the pod. `nearest()` scans every row instead, which is fast at this size.
 - **Vectors.** Loads and mutations do not embed. The init container fills the vectors that are missing on `main` at every start, so the 03:15 restart embeds what was merged that day. It exports each type named in an `@embed`, keeps the rows with source text and no vector, embeds them with `omnigraph embed` and loads them back with `--mode merge`. A merge load of a row without its vector clears the vector until the next start. If LiteLLM or `tei-embeddings` is down, the init container logs `vector backfill skipped` or `vector backfill for <graph> <type> failed` and starts anyway.
 - **Queries.** `recall_notes` on `memory` and `brain`, `recall_passages` on `brain`, and `recall_notes` and `recall_decisions` on `webgrip` rank by `rrf(nearest(...), bm25(...))`. Rows without a vector still rank on keywords.
+
+## Merge conflicts
+
+Tested 2026-09-28 against a local v0.11 graph. When `main` and a branch both changed the same entity since the branch was made, `branch merge` refuses the whole merge and names each conflict, for example `merge conflicts: node type 'Note', entity id 'n1' (divergent_update)`. Nothing is partly merged.
+
+To resolve:
+
+1. Decide the value you want for each named entity.
+2. Write that value on `main`, as yourself (`act-ryan`). Writing it only on the branch is not enough: the branch still differs from the common base, and the merge is refused again.
+3. Merge again. Entities that now match on both sides no longer conflict, and the rest of the branch lands.
+
+If a branch has many conflicts, delete it and redo the work on a fresh branch from `main`. v0.11 has no rebase.
 
 ## Known v0.11 limits
 
