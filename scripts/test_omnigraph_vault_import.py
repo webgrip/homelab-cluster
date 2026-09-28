@@ -160,55 +160,53 @@ class ConfiguredFolders(unittest.TestCase):
             fixture.close()
 
 
-class ClientFilter(unittest.TestCase):
-    def test_client_notes_are_withheld_and_previously_imported_ones_deleted(self):
+class ClientTagging(unittest.TestCase):
+    def test_client_notes_are_imported_with_the_client_tag(self):
         fixture = VaultFixture({
-            "Work/Kickoff.md": "Call with ACME corp about the rollout.",
+            "Work/Kickoff.md": "---\ntags: [meeting]\n---\nCall with ACME corp about the rollout.",
             "Work/client-x.example notes.md": "Domain in the path only.",
             "Personal/Acmeville trip.md": "Not a client: acme corporation is a different word boundary.",
             "Personal/Links.md": "See [[Kickoff]].",
-        }, graph_notes=[graph_note("obsidian/work/kickoff", "Kickoff", content="old")])
+        })
         try:
             plan = fixture.plan()
             nodes = nodes_by_slug(fixture.load_rows())
-            self.assertEqual(plan.counts.withheld_client, 2)
-            self.assertEqual(sorted(nodes), ["obsidian/personal/acmeville-trip", "obsidian/personal/links"])
-            self.assertIn('delete Note where slug = "obsidian/work/kickoff"', fixture.prune())
-            self.assertEqual(edges(fixture.load_rows()), [])
+            self.assertEqual(plan.counts.tagged_client, 2)
+            self.assertEqual(sorted(nodes), [
+                "obsidian/personal/acmeville-trip", "obsidian/personal/links",
+                "obsidian/work/client-x-example-notes", "obsidian/work/kickoff"])
+            self.assertEqual(nodes["obsidian/work/kickoff"]["tags"], ["meeting", vault_import.CLIENT_TAG])
+            self.assertEqual(nodes["obsidian/work/client-x-example-notes"]["tags"], [vault_import.CLIENT_TAG])
+            self.assertNotIn(vault_import.CLIENT_TAG, nodes["obsidian/personal/acmeville-trip"]["tags"] or [])
+            self.assertEqual(edges(fixture.load_rows()), [("obsidian/personal/links", "obsidian/work/kickoff")])
         finally:
             fixture.close()
 
-    def test_output_never_contains_client_terms(self):
+    def test_plan_summary_never_names_a_client_term(self):
         fixture = VaultFixture({"Kickoff.md": "Acme Corp budget", "Other.md": "fine"})
         try:
-            fixture.plan()
-            written = "".join(path.read_text(encoding="utf-8") for path in fixture.out.iterdir())
-            self.assertNotIn("acme", written.lower())
+            self.assertNotIn("acme", fixture.plan().counts.line().lower())
         finally:
             fixture.close()
 
 
-class FailClosed(unittest.TestCase):
-    def assert_refused(self, terms):
-        fixture = VaultFixture({"Note.md": "anything"}, terms=terms)
+class WithoutClientTerms(unittest.TestCase):
+    def assert_imports_everything_untagged(self, terms):
+        fixture = VaultFixture({"Note.md": "Acme Corp anything"}, terms=terms)
         try:
-            with self.assertRaises(vault_import.FailClosed) as raised:
-                fixture.plan()
-            self.assertEqual(raised.exception.exit_code, vault_import.EXIT_NO_CLIENT_TERMS)
-            self.assertFalse(fixture.out.exists())
-            self.assertEqual(vault_import.main([
-                "--vault", str(fixture.vault), "--client-terms-file", str(fixture.terms),
-                "--graph-notes", str(fixture.notes), "--graph-links", str(fixture.links), "--out", str(fixture.out)]),
-                vault_import.EXIT_NO_CLIENT_TERMS)
-            self.assertFalse(fixture.out.exists())
+            plan = fixture.plan()
+            nodes = nodes_by_slug(fixture.load_rows())
+            self.assertEqual(plan.counts.tagged_client, 0)
+            self.assertEqual(sorted(nodes), ["obsidian/note"])
+            self.assertIsNone(nodes["obsidian/note"]["tags"])
         finally:
             fixture.close()
 
-    def test_missing_terms_secret_imports_nothing(self):
-        self.assert_refused(None)
+    def test_missing_terms_secret_imports_everything(self):
+        self.assert_imports_everything_untagged(None)
 
-    def test_zero_terms_imports_nothing(self):
-        self.assert_refused("\n  \n")
+    def test_zero_terms_imports_everything(self):
+        self.assert_imports_everything_untagged("\n  \n")
 
     def test_empty_vault_never_wipes_existing_notes(self):
         fixture = VaultFixture({}, graph_notes=[graph_note("obsidian/a", "A")])

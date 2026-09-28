@@ -151,14 +151,14 @@ A vault without importable notes never deletes anything: the plan step refuses a
 
 **Write limits.** Load files are split at 2,000 rows or 16 MiB, below the per-commit limit.
 
-### Client notes never enter the brain
+### Client notes are tagged, not withheld
 
-Client notes are mixed through the vault, and the brain is sent to Claude and Fireworks through the chat. The importer reads a list of client terms (names, company names, domains) from OpenBao `secret/omnigraph/vault-client-terms`, field `terms`, one term per line, through the `omnigraph-vault-client-terms` ExternalSecret.
+Owner decision 2026-09-27: client content may reach Claude and Fireworks under their DPAs ([personal archive RFC](../rfc/rfc-personal-archive.md), D4), so the whole vault is imported. An optional list of client terms (names, company names, domains) in OpenBao `secret/omnigraph/vault-client-terms`, field `terms`, one term per line, reaches the importer through the `omnigraph-vault-client-terms` ExternalSecret.
 
-- A file whose path or text (frontmatter, tags and body) contains any term, case-insensitive and on word boundaries, is not imported. When it was imported before, it is deleted from `brain`. Wikilinks pointing at it are dropped.
-- **Fail closed.** When the Secret is missing or holds no terms, the plan step imports nothing, deletes nothing and exits with `no client terms`.
-- The counts line reports `withheld_client`. The terms themselves are never logged.
-- The filter is a text match. A client note that never names a listed term gets through. Add the client, its people and its domains.
+- A note whose path or text (frontmatter, tags and body) contains any term, case-insensitive and on word boundaries, gets the tag `client`, so a question can include or exclude client material.
+- Without the Secret, or with no terms in it, everything is imported untagged.
+- The counts line reports `tagged_client`. The terms themselves are never logged.
+- The match is textual. A client note that never names a listed term stays untagged.
 
 Deleting a note from `main` does not erase it from history. See [Forget a meeting](#forget-a-meeting) for destroying the data files.
 
@@ -172,7 +172,7 @@ Deleting a note from `main` does not erase it from history. See [Forget a meetin
    bao kv get -field=public_key secret/omnigraph/vault-import-deploy-key
    ```
 
-3. Store the client terms without printing them. Paste one term per line, then press Ctrl-D:
+3. Optionally, store client terms without printing them, so client notes get the `client` tag. Paste one term per line, then press Ctrl-D:
 
    ```bash
    bao kv put secret/omnigraph/vault-client-terms terms=-
@@ -180,20 +180,19 @@ Deleting a note from `main` does not erase it from history. See [Forget a meetin
 
    To add a term later, run the same command with the full list. It replaces the field.
 
-The next run after both steps imports the vault. ESO refreshes the terms every 5 minutes.
+The next run after steps 1 and 2 imports the vault. ESO refreshes the terms every 5 minutes.
 
 ### Monitoring and failures
 
 The job fails, and does not retry, with one of these lines:
 
 - `vault repo not reachable`: the repo does not exist or the deploy key is not on it.
-- `no client terms`: the terms secret is missing or empty.
 - `omnigraph not reachable or act-vault-import refused`: Omnigraph is restarting, or `act-vault-import` is not in `tokens.json` yet.
 - `vault import failed`: the server refused the delete or a load batch.
 
 `OmnigraphVaultImportStale` fires when the CronJob has had no successful run for 2 hours, or has never succeeded since it was created. It reads `kube_cronjob_status_last_successful_time` from kube-state-metrics. It fires until the setup above is done.
 
-**Tests.** [test_omnigraph_vault_import.py](../../../../scripts/test_omnigraph_vault_import.py) covers the mapping, the client filter and the fail-closed paths with fixture vaults. It runs without network: `python3 scripts/test_omnigraph_vault_import.py`.
+**Tests.** [test_omnigraph_vault_import.py](../../../../scripts/test_omnigraph_vault_import.py) covers the mapping, client tagging, the missing-terms path and the empty-vault guard with fixture vaults. It runs without network: `python3 scripts/test_omnigraph_vault_import.py`.
 
 **Rotation.** Deleting the `omnigraph-vault-import-deploy-key` Secret generates a new key pair and pushes the new public key. Replace the deploy key on the repo. Deleting `omnigraph-vault-import-token` rotates the actor token. The aggregator picks it up within 15 minutes and Reloader restarts Omnigraph.
 

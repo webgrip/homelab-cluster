@@ -25,7 +25,6 @@ INLINE_TAG = re.compile(r"(?:^|(?<=[\s(\[,;]))#([^\s#!@$%^&*()+=\[\]{};:'\",.<>?
 WIKILINK = re.compile(r"!?\[\[([^\]\n]+?)\]\]")
 
 EXIT_OK = 0
-EXIT_NO_CLIENT_TERMS = 2
 EXIT_EMPTY_VAULT = 3
 
 
@@ -58,7 +57,7 @@ class Counts:
     unchanged: int = 0
     relinked: int = 0
     deleted: int = 0
-    withheld_client: int = 0
+    tagged_client: int = 0
     skipped_large: int = 0
     skipped_unreadable: int = 0
 
@@ -74,18 +73,20 @@ class Plan:
     edge_rows: list[dict]
 
 
+CLIENT_TAG = "client"
+
+
 def read_client_terms(path):
     try:
         raw = Path(path).read_text(encoding="utf-8")
     except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
-        raise FailClosed(EXIT_NO_CLIENT_TERMS, "no client terms: the client-terms secret is missing; importing nothing")
-    terms = sorted({line.strip() for line in raw.splitlines() if line.strip()})
-    if not terms:
-        raise FailClosed(EXIT_NO_CLIENT_TERMS, "no client terms: the client-terms secret holds zero terms; importing nothing")
-    return terms
+        return []
+    return sorted({line.strip() for line in raw.splitlines() if line.strip()})
 
 
 def client_matcher(terms):
+    if not terms:
+        return None
     alternatives = "|".join(re.escape(term) for term in sorted(terms, key=len, reverse=True))
     return re.compile(rf"(?<!\w)(?:{alternatives})(?!\w)", re.IGNORECASE)
 
@@ -267,14 +268,15 @@ def scan_vault(vault, client_pattern):
         except (UnicodeDecodeError, OSError):
             counts.skipped_unreadable += 1
             continue
-        if client_pattern.search(relpath) or client_pattern.search(text):
-            counts.withheld_client += 1
-            continue
-        candidates.append((relpath, text))
-    slugs = assign_slugs([relpath for relpath, _ in candidates])
+        mentions_client = client_pattern is not None and bool(client_pattern.search(relpath) or client_pattern.search(text))
+        counts.tagged_client += mentions_client
+        candidates.append((relpath, text, mentions_client))
+    slugs = assign_slugs([relpath for relpath, _, _ in candidates])
     notes = {}
-    for relpath, text in candidates:
+    for relpath, text, mentions_client in candidates:
         note = to_note(relpath, text, slugs[relpath], daily_folder)
+        if mentions_client:
+            note.tags = dedup((note.tags or []) + [CLIENT_TAG])
         notes[note.slug] = note
     resolve_links(notes)
     return VaultScan(notes=notes, counts=counts)
@@ -436,7 +438,7 @@ def run(args, now):
     pattern = client_matcher(read_client_terms(args.client_terms_file))
     scan = scan_vault(args.vault, pattern)
     graph_notes = existing_notes(graph_rows(Path(args.graph_notes).read_text(encoding="utf-8")))
-    if graph_notes and not scan.notes and scan.counts.withheld_client == 0:
+    if graph_notes and not scan.notes:
         raise FailClosed(EXIT_EMPTY_VAULT, "vault holds no importable notes; refusing to delete what the brain already has")
     graph_links = existing_links(graph_rows(Path(args.graph_links).read_text(encoding="utf-8")))
     plan = build_plan(scan, graph_notes, graph_links, now)
