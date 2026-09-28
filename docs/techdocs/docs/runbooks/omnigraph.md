@@ -30,6 +30,7 @@ Omnigraph v0.11 runs one server in namespace `ai` with three graphs: `memory` (s
 | `act-vault-import` | `brain`: read and write on any branch including `main`, and run stored queries. No export, no branch create, merge or delete. Only the [Obsidian vault](#obsidian-vault) importer holds it |
 | `act-forge-import` | `brain`: the same rights as `act-vault-import`. Only the [Forgejo projects](#forgejo-projects) importer holds it |
 | `act-glide` | `brain`, `memory` and `webgrip`: read on any branch, write only on unprotected branches, create and delete unprotected branches, run stored queries. No merge, no export, never a write to `main`. Only the LiteLLM `omnigraph_glide_*` MCP servers hold it (see [Glide agents](#glide-agents)) |
+| `act-review` | `brain`, `memory` and `webgrip`: read and write on any branch including `main`, create, delete and merge any branch, run stored queries. No export. Only the explorer's review container holds it (see [Review mode](#review-mode)); client graphs stay CLI-reviewed as `act-ryan` |
 
 Each token is generated in-cluster by the `omnigraph-actor-tokens` ExternalSecret, pushed to OpenBao at `secret/omnigraph/<actor>` (field `token`), and assembled into the server's `tokens.json` by the `omnigraph-tokens` ExternalSecret.
 
@@ -46,6 +47,16 @@ Give an in-cluster consumer its token with an ExternalSecret against the `openba
 - **Token.** `omnigraph-explorer-token` generates it and pushes it to `secret/omnigraph/explorer`. The aggregator adds it to `tokens.json` and the explorer reads it back with `omnigraph-explorer-upstream`. Rotate it by deleting the `omnigraph-explorer-token` Secret; Reloader restarts both pods.
 - **Graphs in the picker.** `OMNIGRAPH_EXPLORER_GRAPHS` on the Deployment. A graph also needs an `explorers` group and `explorers-read-and-export` rule in its policy, or every request answers 403. `OMNIGRAPH_EXPLORER_HEAVY_TYPES` (default `Chunk`) lists node types the explorer skips unless asked, together with every edge that touches them. On `brain` the passage type is `Passage`, so add it to the list.
 - **Monitoring.** `blackbox-omnigraph-explorer` reads `memory` branches through the pod (nginx, proxy, token and policy in one request). `blackbox-omnigraph-explorer-gate` checks that an anonymous request to the route is sent to Authentik. The alerts are `OmnigraphExplorerBackendDown` and `OmnigraphExplorerGateOpen`.
+
+### Review mode
+
+`https://graph-review.<domain>` is the same app with review mode on: an inbox of open branches, an exact merge preview, conflicts per row, merge, reject and update branch. The design is the [branch workflow RFC](../rfc/rfc-omnigraph-branch-workflow.md); the explorer repo documents the app.
+
+- **Who gets in.** Its own HTTPRoute `omnigraph-review` and SecurityPolicy `omnigraph-review-oidc`, with the Authentik client `omnigraph-review`. Authentik issues that client a token only for `knowledge-graph-reviewers`, the group of the `knowledge-graph-review` capability, granted to Ryan by name. The route points at port 8081 of the explorer Service. The explorer route points at port 8080, which answers 404 under `/review/`, so a viewer who is not a reviewer has no path to the review API.
+- **What holds the write token.** A second container, `review` (image `omnigraph-explorer-review`), holds `act-review` from `omnigraph-explorer-review-upstream` (`secret/omnigraph/review`) and listens on `127.0.0.1:8090`. nginx on 8081 proxies `/review/api/` to it and never sees the token. The container never forwards a browser request: it calls a fixed list of Omnigraph endpoints and builds every write from rows it read itself. Every action logs one `review_action` line with the Authentik user, graph, branch and resulting commit, so an `act-review` commit is traced in VictoriaLogs with `review_action AND branch:"glide/..."`.
+- **Archive and sweep.** Reject archives the branch's commits and net diff as JSONL to the in-cluster Garage bucket `omnigraph-branch-archive` (key `omnigraph-branches/<graph>/<branch>/<time>.jsonl`), then deletes it. A branch older than 14 days is archived and deleted the same way. Without the archive keys nothing is deleted. The bucket and its key come from the `garage-omnigraph-archive-bootstrap` Job, pushed to `secret/garage/omnigraph-archive`.
+- **Monitoring.** The review container exports branch metrics on `:9464` (`omnigraph_branches_open`, `omnigraph_branch_age_seconds`, `omnigraph_branch_empty`, `omnigraph_branch_touches_importer_rows`, `omnigraph_review_refresh_success_timestamp_seconds`, `omnigraph_review_actions_total`), scraped by `VMServiceScrape/omnigraph-review` and shown on the Grafana dashboard *Omnigraph — Branch review*. Alerts: `OmnigraphReviewBacklog` (a branch older than 3 days), `OmnigraphBranchNotSwept` (older than 15 days), `OmnigraphBranchesPileUp` (more than 10 on one graph for an hour), `OmnigraphBranchMonitorStale` (no complete refresh for 30 minutes), `OmnigraphReviewGateOpen` (an anonymous request to the review route is not sent to the `omnigraph-review` client) and `OmnigraphExplorerServesReview` (port 8080 answers anything but 404 under `/review/api/`).
+- **Glide.** `act-glide` has no `branch_merge` (decision D3 in the RFC): the policy cannot limit it to a run's own branch. Syncing `main` into a branch is the review UI's **Update branch**.
 
 ## Laptop setup
 
@@ -101,7 +112,7 @@ omnigraph branch delete glide/<run-id> --profile brain --yes
 
 Repeat for `memory` and `webgrip`. Over HTTP, `GET /graphs/<graph>/branches` lists them. A delete URL-encodes the `/` (`DELETE /graphs/<graph>/branches/glide%2F<run-id>`).
 
-No alert tracks branch age yet. Omnigraph v0.11 exports no metrics and no probe reads branch lists, so an alert on a `glide/*` branch older than 7 days needs a new exporter or probe first. That is follow-up work.
+Review mode's inbox marks every graph that has an open branch as "schema blocked", and `omnigraph_branches_open` shows the same count in Grafana. Drain the graph there before a schema push.
 
 ## Second brain (`brain`)
 
@@ -404,7 +415,7 @@ Every graph embeds text with `granite-embedding-97m-multilingual-r2` (384 dimens
 
 Tested 2026-09-28 against a local v0.11 graph. When `main` and a branch both changed the same entity since the branch was made, `branch merge` refuses the whole merge and names each conflict, for example `merge conflicts: node type 'Note', entity id 'n1' (divergent_update)`. Nothing is partly merged.
 
-To resolve:
+The review UI does this per row with **Keep branch** and **Keep main** (see [Review mode](#review-mode)). By hand:
 
 1. Decide the value you want for each named entity.
 2. Make the row identical on both sides. To keep the branch's version, write the branch's full row on `main` as yourself (`act-ryan`). To keep `main`'s version, write `main`'s full row on the branch, or put the branch row back to its value at the fork. A value that matches neither side, even one differing in a single property, is refused again: the unit is the whole row.

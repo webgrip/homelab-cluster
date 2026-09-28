@@ -1,6 +1,6 @@
 # RFC: Omnigraph branch workflow — how agent branches stay mergeable and get reviewed
 
-> Status: **Proposed** · Date: 2026-09-28 · Tickets: VIK-1258 (review UI), VIK-1300 (Glide side) ·
+> Status: **Accepted** (decisions D1–D4 taken by Ryan on 2026-09-28, [section 12](#12-decisions)) · Date: 2026-09-28 · Tickets: VIK-1258 (review UI), VIK-1300 (Glide side) ·
 > Epic: VIK-1259 · Builds on [Glide runs on Omnigraph](spec-glide-omnigraph.md) and the
 > [Omnigraph runbook](../runbooks/omnigraph.md)
 
@@ -205,16 +205,27 @@ Components:
 | `omnigraph-explorer` | No | Stays read-only. The review UI links into it to show a row in context |
 | Ploeg (Glide) | Changed | Prompt contract and worker cleanup, [section 5](#5-branch-lifecycle-for-glide-runs) |
 
-### 4.1 Why a separate service, not the explorer
+### 4.1 Where it lives: inside the explorer (decision D1)
 
-The explorer's security argument is that it cannot write: its proxy forwards only `GET` on four
-paths plus `POST /export`, and its actor is read-only by policy. Adding merge and resolve to it
-would turn that simple argument into a long one. A separate Deployment keeps the explorer as it
-is and puts every write behind a separate Authentik client, a separate group and a separate
-token.
+The RFC argued for a separate service, because the explorer's security argument is that it cannot
+write. Ryan decided (D1) to put review in the explorer instead and keep that argument intact by
+separating the paths rather than the apps:
 
-The UI can still share code with the explorer (graph rendering, type colours). Decision D1 asks
-where the code lives.
+- The read path is unchanged: port 8080, `graph.<domain>`, `act-explorer`, read-only by policy.
+  Port 8080 answers 404 under `/review/`.
+- Review mode is served on port 8081 of the same pod, reached only through its own HTTPRoute
+  (`graph-review.<domain>`), SecurityPolicy and Authentik client. nginx on 8081 proxies
+  `/review/api/` to a second container in the pod (`omnigraph-explorer-review`, a second image
+  from the explorer repo, released and signed by the same pipeline).
+- Only that container holds `act-review`. It never forwards a browser request: it calls a fixed
+  allow-list of Omnigraph endpoints (branches, commits, commit changes, the change feed, the
+  schema, create `preview/*` only, merge, delete never `main`, and a head-guarded mutation it
+  builds from rows it read itself).
+
+Upstream has nothing to reuse yet: Omnigraph v0.11 has no merge preview (the draft
+[#677](https://github.com/ModernRelay/omnigraph/pull/677) is still open), orbit ships graph
+rendering only, and ModernRelay's `notebook` has a table-level branch summary and merge button
+but no row diff, no conflict resolution and no licence.
 
 ### 4.2 Identity: `act-review`
 
@@ -257,15 +268,16 @@ each client graph gets its own reviewer actor.
 
 ### 4.3 Who gets in
 
-- An HTTPRoute `graph-review.<domain>` on `envoy-internal` (LAN only), behind the gateway OIDC
-  `SecurityPolicy` with its own Authentik client `omnigraph-review`
+- An HTTPRoute `graph-review.<domain>` on `envoy-internal` (LAN only) to port 8081 of the explorer
+  Service, behind the gateway OIDC `SecurityPolicy` with its own Authentik client `omnigraph-review`
   ([ADR-0060](../adr/adr-0060-gateway-oidc-for-apps-without-a-login.md)).
 - Authentik issues a token only to `knowledge-graph-reviewers`, the group of a new
   `knowledge-graph-review` capability, granted to Ryan by name, as the explorer's is.
 - Write endpoints are `POST` only, require a custom request header (`X-Review-Intent`) that a
   cross-site form cannot send, and reject a mismatched `Origin`.
-- Network: `omnigraph-ingress` admits the review pod, and the review pod gets an egress rule to
-  `app: omnigraph` on 8080. No other egress.
+- Network: the review container shares the explorer pod, which `omnigraph-ingress` already admits
+  and whose egress allows `app: omnigraph` on 8080. The pod also gets egress to Garage on 3900
+  for the archive (decision D2), and ingress on 9464 from `observability` for metrics.
 - No agent key ever reaches this service. It is not an MCP server and not registered in LiteLLM.
 
 ## 5. Branch lifecycle for Glide runs
@@ -437,12 +449,13 @@ Rules:
 - **Keep `main` writes on the branch**, so it leaves `main` untouched: the preferred side whenever
   the reviewer has no reason to keep the agent's version.
 
-Open risk, to test in phase 2 before shipping resolve: rows with an `@embed` vector (`brain`
-`Note.embedding`, `Passage.embedding`, `memory` `Note.embedding`). The nightly backfill fills
-vectors on `main` only, and a merge `load` clears a row's vector. Whether a vector difference
-alone makes two rows unequal for merge, and whether a copied row carries its vector, is not yet
-measured. If it does, "keep main" on such rows must copy the vector too, and the backfill itself
-can turn an untouched `main` row into a changed one.
+Rows with an `@embed` vector (`brain` `Note.embedding`, `Passage.embedding`, `memory`
+`Note.embedding`), measured on 2026-09-28 against a local v0.11 server: a change image carries the
+full vector, a `Vector(384)?` parameter writes it back exactly, and a copied row merges cleanly. A
+vector difference alone **does** make two rows unequal: a backfill that only fills the vector on
+`main` conflicts (`divergent_update`) with a branch that edited the row's text. "Keep main" copies
+the vector with the row; "keep branch" writes the branch's (usually empty) vector and the next
+backfill fills it again.
 
 ### 7.4 What it does not do
 
@@ -552,29 +565,31 @@ branches, not time series.
 | 5 | Schema drain: drain view, `just omnigraph-schema-ready`, bootstrap fail-safe | 3 |
 | 6 | Deferred, needs drained branches: `@key(@src, @dst)` on edge types that should not repeat; a `Proposal` node type; move preview to upstream merge preview when it ships | 5, upstream |
 
-### 11.1 Proposed board tickets (not created)
+### 11.1 Board tickets
 
-| # | Board | Title | Estimate |
-|---|---|---|---|
-| 1 | Homelab Roadmap | omnigraph: correct the runbook on clearing merge conflicts (write-on-branch works when the rows match) | S, hours, low |
-| 2 | Homelab Roadmap | omnigraph: `act-review` actor, token generator and pushsecret, policy rules on memory/brain/webgrip, validator stays green | S, hours, low |
-| 3 | Homelab Roadmap | omnigraph-review: inbox, preview-branch net diff, merge and reject behind Authentik (refines VIK-1258) | L, days, med |
-| 4 | Homelab Roadmap | omnigraph-review: measure `@embed` vector effect on merge equality and row copy | S, hours, med |
-| 5 | Homelab Roadmap | omnigraph-review: per-row conflict resolution with compare-and-swap, importer rows keep-main only, proposal apply | M, days, med |
-| 6 | Homelab Roadmap | omnigraph: branch metrics, scrape, `OmnigraphReviewBacklog`, `OmnigraphBranchesPileUp`, `OmnigraphBranchMonitorStale`, `OmnigraphReviewGateOpen`, dashboard | M, days, low |
-| 7 | Ploeg | glide: slug namespace `glide/<trace>/`, no edits to `obsidian/` and `forge/`, proposal notes, edges with fixed ids, delete empty branches (amends VIK-1300) | M, days, low |
-| 8 | Ploeg | glide: completion notice links to the run's branches in the review UI; re-run endpoint for a rejected run | M, days, med |
-| 9 | Homelab Roadmap | omnigraph: schema drain view, `just omnigraph-schema-ready`, bootstrap skips a blocked schema apply instead of stopping every graph | M, days, med |
-| 10 | Homelab Roadmap | omnigraph: 14-day stale-branch sweeper (only if D2 says yes) | S, hours, low |
-
-## 12. Decisions for Ryan
-
-| # | Question | Recommendation |
+| # | Title | State |
 |---|---|---|
-| D1 | Where does the review UI live: a new repo `webgrip/omnigraph-review`, or a second image from `webgrip/omnigraph-explorer`? | Second image in the explorer repo. It shares the graph code, and the deployments stay separate |
-| D2 | Auto-delete branches after 14 days, or only alert? | Alert at 3 days, auto-delete at 14. A run's outcome in Ploeg keeps the record of what was proposed |
-| D3 | Give `act-glide` `branch_merge` into unprotected branches so the worker can sync `main` into its own branch? | Not now. Review previews against the live `main` and does not need it. The grant also lets a run merge into another run's branch. Revisit if branches have to wait for days |
-| D4 | New `act-review` or reuse `act-ryan` in the service? | New actor, for separate rotation and clear commit authorship |
+| 1 | Correct the runbook on clearing merge conflicts | Done before this RFC was accepted (runbook "Merge conflicts") |
+| 2 | `act-review` actor, token, policy rules, validator green | Done in VIK-1258 |
+| 3 | Review mode: inbox, preview-branch net diff, merge and reject behind Authentik | Done in VIK-1258 |
+| 4 | Measure the `@embed` vector effect on merge equality and row copy | Done, [section 7.3](#73-resolve-a-conflict) |
+| 5 | Per-row conflict resolution with compare-and-swap, importer rows keep-main only | Done in VIK-1258; proposal notes with "apply" remain: VIK-1344 |
+| 6 | Branch metrics, scrape, the four alerts, dashboard | Done in VIK-1258 |
+| 7 | Glide: slug namespace, no edits to imported rows, proposal notes, fixed edge ids, delete empty branches | VIK-1345 (amends Ploeg VIK-1300) |
+| 8 | Glide: completion notice links to review mode; re-run a rejected run | VIK-1346 |
+| 9 | Schema drain: `just omnigraph-schema-ready`, bootstrap skips a blocked schema apply | VIK-1347 (the drain view is review mode's "schema blocked" marker) |
+| 10 | 14-day stale-branch sweeper | Done in VIK-1258 (D2) |
+
+## 12. Decisions
+
+Taken by Ryan on 2026-09-28 and built in VIK-1258 (explorer v0.1.0).
+
+| # | Question | Decision |
+|---|---|---|
+| D1 | Where does the review UI live? | **In the explorer**, as review mode on a separate port, route, Authentik client and group, with the write token in a second container of the same pod. The read path keeps `act-explorer` and gains nothing ([section 4.1](#41-where-it-lives-inside-the-explorer-decision-d1)) |
+| D2 | Auto-delete branches after 14 days, or only alert? | **Alert at 3 days, archive then delete at 14.** The review container exports a branch's commits and net diff as JSONL to the in-cluster Garage bucket `omnigraph-branch-archive` and only then deletes it; reject does the same. Without the archive keys nothing is deleted. The same container exports the section 10 metrics |
+| D3 | Give `act-glide` `branch_merge`? | **No.** The policy cannot restrict it to the run's own branch. "Update branch" (merge `main` into a branch) is a reviewer action in review mode only |
+| D4 | New `act-review` or reuse `act-ryan`? | **New `act-review`**: generator ExternalSecret and PushSecret (`secret/omnigraph/review`), a line in the `omnigraph-tokens` aggregator, and on `brain`, `memory` and `webgrip` the actions `read`, `change`, `branch_create`, `branch_delete`, `branch_merge` and `invoke_query`, no `export`. The Authentik group is `knowledge-graph-reviewers`, from the `knowledge-graph-review` capability granted to Ryan by name |
 
 ## 13. Alternatives considered
 

@@ -36,7 +36,7 @@ spec:
       containers:
         - name: explorer
           # renovate: datasource=docker depName=harbor.webgrip.dev/webgrip/omnigraph-explorer
-          image: harbor.webgrip.dev/webgrip/omnigraph-explorer:0.0.3@sha256:99d97bfd4a1e976f48c3faa869c7207bccc8893c3e85becd510c0b570b875d28
+          image: harbor.webgrip.dev/webgrip/omnigraph-explorer:0.1.0@sha256:ebf044d088aca74d7a6377b47f7d582be4239a88b4329384d39650cff8a41ed9
           imagePullPolicy: IfNotPresent
           env:
             - name: OMNIGRAPH_UPSTREAM
@@ -47,9 +47,15 @@ spec:
               value: brain,memory,webgrip
             - name: OMNIGRAPH_EXPLORER_HEAVY_TYPES
               value: Chunk,Passage
+            - name: OMNIGRAPH_REVIEW_UPSTREAM
+              value: 127.0.0.1:8090
+            - name: OMNIGRAPH_EXPLORER_URL
+              value: https://graph.${SECRET_DOMAIN}
           ports:
             - name: http
               containerPort: 8080
+            - name: review
+              containerPort: 8081
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false
@@ -75,6 +81,65 @@ spec:
           volumeMounts:
             - {name: upstream-token, mountPath: /run/secrets/omnigraph-explorer, readOnly: true}
             - {name: tmp, mountPath: /tmp}
+        - name: review
+          # renovate: datasource=docker depName=harbor.webgrip.dev/webgrip/omnigraph-explorer-review
+          image: harbor.webgrip.dev/webgrip/omnigraph-explorer-review:0.1.0@sha256:c35fd2f609a7dba669a03597ea7330ff3c123dc451fa368b19d43d8af48c01ce
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: OMNIGRAPH_UPSTREAM
+              value: omnigraph.ai.svc.cluster.local:8080
+            - name: OMNIGRAPH_REVIEW_TOKEN_FILE
+              value: /run/secrets/omnigraph-review/token
+            - name: OMNIGRAPH_REVIEW_GRAPHS
+              value: brain,memory,webgrip
+            - name: REVIEW_LISTEN
+              value: 127.0.0.1:8090
+            - name: REVIEW_METRICS_LISTEN
+              value: 0.0.0.0:9464
+            - name: REVIEW_ORIGIN
+              value: https://graph-review.${SECRET_DOMAIN}
+            - name: REVIEW_STALE_AFTER_DAYS
+              value: "3"
+            - name: REVIEW_SWEEP_AFTER_DAYS
+              value: "14"
+            - name: REVIEW_ARCHIVE_S3_ENDPOINT
+              value: http://garage-s3.garage.svc.cluster.local:3900
+            - name: REVIEW_ARCHIVE_S3_BUCKET
+              value: omnigraph-branch-archive
+            - name: REVIEW_ARCHIVE_S3_REGION
+              value: garage
+            - name: REVIEW_ARCHIVE_S3_ACCESS_KEY_ID_FILE
+              value: /run/secrets/omnigraph-review-archive/access_key_id
+            - name: REVIEW_ARCHIVE_S3_SECRET_ACCESS_KEY_FILE
+              value: /run/secrets/omnigraph-review-archive/secret_access_key
+          ports:
+            - name: metrics
+              containerPort: 9464
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          startupProbe:
+            httpGet: {path: /healthz, port: metrics}
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /healthz, port: metrics}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: {path: /healthz, port: metrics}
+            periodSeconds: 30
+            timeoutSeconds: 3
+          resources:
+            requests: {cpu: 10m, memory: 48Mi}
+            limits: {memory: 192Mi}
+          volumeMounts:
+            - {name: review-token, mountPath: /run/secrets/omnigraph-review, readOnly: true}
+            - {name: review-archive, mountPath: /run/secrets/omnigraph-review-archive, readOnly: true}
       volumes:
         - name: upstream-token
           secret:
@@ -87,3 +152,19 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: 32Mi
+        - name: review-token
+          secret:
+            secretName: omnigraph-explorer-review-upstream
+            defaultMode: 0440
+            items:
+              - key: token
+                path: token
+        - name: review-archive
+          secret:
+            secretName: omnigraph-explorer-review-archive
+            defaultMode: 0440
+            items:
+              - key: access_key_id
+                path: access_key_id
+              - key: secret_access_key
+                path: secret_access_key

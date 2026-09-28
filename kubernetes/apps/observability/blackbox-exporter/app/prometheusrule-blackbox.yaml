@@ -151,6 +151,60 @@ spec:
               - kubectl -n ai get externalsecret omnigraph-explorer-oidc
               - curl -sk -o /dev/null -w '%{http_code} %{redirect_url}' -H 'Host: graph.<domain>' https://10.0.0.27/
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/"
+        - alert: OmnigraphReviewGateOpen
+          expr: |
+            probe_success{endpoint="omnigraph-review-gate"} == 0
+          for: 10m
+          labels:
+            severity: critical
+            owner: platform
+            service: omnigraph-explorer
+          annotations:
+            summary: "Omnigraph review route is not sending anonymous visitors to the omnigraph-review Authentik client"
+            description: |
+              What's happening:
+              - An anonymous request to graph-review.<domain> through envoy-internal did not get a 302 to Authentik's authorize endpoint with client_id=omnigraph-review for 10m.
+
+              Impact/risk:
+              - The review route writes to main on brain, memory and webgrip as act-review. If it answers 200, anyone on the LAN can merge, reject and resolve branches.
+              - If it redirects to another client, members of that client's group reach the review actions.
+
+              Likely causes:
+              - The omnigraph-review-oidc SecurityPolicy was deleted, edited or is not Accepted
+              - The omnigraph-review-oidc Secret is missing (Envoy fails closed with 500)
+              - The omnigraph-review HTTPRoute or envoy-internal is broken
+
+              First actions:
+              - kubectl -n ai get securitypolicy omnigraph-review-oidc -o yaml; check status.ancestors conditions
+              - kubectl -n ai get externalsecret omnigraph-review-oidc
+              - curl -sk -o /dev/null -w '%{http_code} %{redirect_url}' -H 'Host: graph-review.<domain>' https://10.0.0.27/
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#review-mode"
+        - alert: OmnigraphExplorerServesReview
+          expr: |
+            probe_success{endpoint="omnigraph-explorer-no-review"} == 0
+          for: 10m
+          labels:
+            severity: critical
+            owner: platform
+            service: omnigraph-explorer
+          annotations:
+            summary: "The read-only explorer port answers something other than 404 under /review/api/"
+            description: |
+              What's happening:
+              - GET http://omnigraph-explorer.ai.svc:8080/review/api/session did not answer 404 for 10m.
+
+              Impact/risk:
+              - Port 8080 is the one graph.<domain> routes to, gated only to knowledge-graph-viewers. If it serves the review API, a viewer who is not a reviewer can merge and reject branches.
+              - If the probe cannot connect, the explorer itself is down.
+
+              Likely causes:
+              - An explorer image whose nginx config lost the 404 for /review/ on port 8080
+              - The omnigraph-explorer pod is down
+
+              First actions:
+              - kubectl -n ai get pods -l app.kubernetes.io/name=omnigraph-explorer
+              - kubectl -n ai logs deploy/omnigraph-explorer -c explorer --tail=50
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#review-mode"
         - alert: RenovateWebhookGateOpen
           expr: |
             probe_success{endpoint="renovate-operator-webhook"} == 0

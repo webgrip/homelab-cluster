@@ -36,3 +36,60 @@ spec:
         - https://envoy-internal.network.svc.cluster.local/
       labels:
         endpoint: omnigraph-explorer-gate
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: blackbox-omnigraph-review-gate
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  interval: 60s
+  module: http_omnigraph_review_gate
+  prober:
+    url: blackbox-exporter.observability.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - https://envoy-internal.network.svc.cluster.local/
+      labels:
+        endpoint: omnigraph-review-gate
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: blackbox-omnigraph-explorer-no-review
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  interval: 60s
+  module: http_omnigraph_explorer_no_review
+  prober:
+    url: blackbox-exporter.observability.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - http://omnigraph-explorer.ai.svc.cluster.local:8080/review/api/session
+      labels:
+        endpoint: omnigraph-explorer-no-review
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: blackbox-omnigraph-review
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  interval: 60s
+  module: http_omnigraph_review_metrics
+  prober:
+    url: blackbox-exporter.observability.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - http://omnigraph-explorer.ai.svc.cluster.local:9464/metrics
+      labels:
+        endpoint: omnigraph-review
