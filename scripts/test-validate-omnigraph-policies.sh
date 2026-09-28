@@ -28,7 +28,7 @@ for client in ("client-a", "client-b"):
     cluster["graphs"][client] = {"schema": "meetings.pg", "queries": ["meetings.gq"]}
     cluster["policies"][f"{client}-access"] = {"file": f"{client}.policy.yaml", "applies_to": [client]}
     policy = yaml.safe_load(template)
-    webgrip_only_groups = {"explorers", "glide"}
+    webgrip_only_groups = {"explorers", "glide", "reviewers"}
     for group in webgrip_only_groups:
         policy["groups"].pop(group, None)
     policy["rules"] = [rule for rule in policy["rules"] if rule["allow"]["actors"]["group"] not in webgrip_only_groups]
@@ -38,6 +38,9 @@ for client in ("client-a", "client-b"):
     if copied_identity == "keep-glide":
         policy["groups"]["glide"] = ["act-glide"]
         policy["rules"].append({"id": "glide-reads-every-branch", "allow": {"actors": {"group": "glide"}, "actions": ["read"], "branch_scope": "any"}})
+    if copied_identity == "keep-review":
+        policy["groups"]["reviewers"] = ["act-review"]
+        policy["rules"].append({"id": "reviewers-read-and-write-everywhere", "allow": {"actors": {"group": "reviewers"}, "actions": ["read", "change"], "branch_scope": "any"}})
     policy["groups"]["client"] = [f"act-{client}"]
     policy["rules"].append({"id": "client-reads-main", "allow": {"actors": {"group": "client"}, "actions": ["read"], "branch_scope": "protected"}})
     (bundle / f"{client}.policy.yaml").write_text(yaml.safe_dump(policy, sort_keys=False))
@@ -81,6 +84,10 @@ expect fail "explorer copied onto both client graphs" "$d" "${cross_client[@]}"
 d=$(fresh glide-spanning)
 with_two_clients "$d" keep-glide
 expect fail "glide agent copied onto both client graphs" "$d" "${cross_client[@]}"
+
+d=$(fresh review-spanning)
+with_two_clients "$d" keep-review
+expect fail "review actor copied onto both client graphs" "$d" "${cross_client[@]}"
 
 d=$(fresh unprotected)
 with_two_clients "$d"
