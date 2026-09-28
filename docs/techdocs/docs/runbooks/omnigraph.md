@@ -154,7 +154,7 @@ Ryan's Obsidian vault is imported into `brain` every 15 minutes by the `omnigrap
 
 One pod runs four steps in order. Each step logs one line of counts or one error line, never note names, contents or client terms.
 
-1. `clone` shallow-clones `ryangr0/obsidian-vault` over SSH from `forgejo-ssh.forgejo.svc.cluster.local`. It uses the deploy key in the `omnigraph-vault-import-deploy-key` Secret and checks the host key against the pinned [known_hosts](../../../../kubernetes/apps/ai/omnigraph/vault-import/app/known_hosts).
+1. `clone` shallow-clones `webgrip/obsidian-vault` over SSH from `forgejo-ssh.forgejo.svc.cluster.local`. It uses the deploy key in the `omnigraph-vault-import-deploy-key` Secret and checks the host key against the pinned [known_hosts](../../../../kubernetes/apps/ai/omnigraph/vault-import/app/known_hosts).
 2. `snapshot` reads every `obsidian/` note on `brain/main`, with its outgoing `RelatedNote` edges, using the ad-hoc queries in [snapshot.gq](../../../../kubernetes/apps/ai/omnigraph/vault-import/app/snapshot.gq).
 3. `plan` runs [vault_import.py](../../../../kubernetes/apps/ai/omnigraph/vault-import/app/vault_import.py). It compares the vault with the snapshot and writes a delete mutation and merge-load files for the difference only.
 4. `apply` runs the delete mutation, then the loads, onto `main`.
@@ -201,7 +201,7 @@ Deleting a note from `main` does not erase it from history. See [Forget a meetin
 
 ### Setup (Ryan)
 
-1. Create the private repo `ryangr0/obsidian-vault` on Forgejo and push the vault with the Obsidian Git plugin. Leave `.obsidian/` in or out, the importer skips it either way.
+1. Create the private repo `webgrip/obsidian-vault` on Forgejo and push the vault with the Obsidian Git plugin. Leave `.obsidian/` in or out, the importer skips it either way.
 2. Add the importer's public key as a **read-only** deploy key on that repo (Settings, Deploy keys, write access off). Print it with:
 
    ```bash
@@ -247,7 +247,7 @@ One pod runs three steps in order. Each step logs one line of counts or one erro
 
 **Scope.** The importer reads `/user/repos` and the repos of every org in `/user/orgs`. [scope.json](../../../../kubernetes/apps/ai/omnigraph/forge-import/app/scope.json) narrows that:
 
-- `skip_repos` are left out entirely. `ryangr0/obsidian-vault` is listed because the [vault importer](#obsidian-vault) owns it.
+- `skip_repos` are left out entirely. `webgrip/obsidian-vault` is listed because the [vault importer](#obsidian-vault) owns it.
 - A mirror or fork gets only its `Project` node (tag `mirror` or `fork`) unless its upstream owner is in `owned_upstream_owners`. That keeps the GitHub action mirrors (`actions/*`, `docker/*` and similar) down to one node each, while mirrors of Ryan's own GitHub repos are imported whole.
 - `third_party_repos` lists forks of third-party projects that live under an owned name, such as `webgrip/renovate`. They also get only their `Project` node. Forgejo cannot tell these apart from Ryan's own mirrors, so the list is kept by hand.
 - Archived repos are imported, with the tag `archived` and status `completed`.

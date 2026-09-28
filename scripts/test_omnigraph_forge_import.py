@@ -56,10 +56,9 @@ class FakeForge:
         self.orgs = [{"username": "webgrip", "full_name": "Webgrip", "description": "the company", "website": "https://webgrip.example"},
                      {"username": "acme-client", "full_name": "", "description": "", "website": ""}]
         self.user_repos = [repo("ryangr0", "dotfiles", topics=["Shell"]),
-                           repo("ryangr0", "obsidian-vault"),
                            repo("ryangr0", "babyagi", mirror=True, original_url="https://github.com/someone/babyagi.git"),
                            repo("ryangr0", "CV", mirror=True, original_url="https://github.com/Ryangr0/CV.git", archived=True)]
-        self.org_repos = {"webgrip": [repo("webgrip", "homelab-cluster", topics=["gitops", "Kubernetes"]),
+        self.org_repos = {"webgrip": [repo("webgrip", "homelab-cluster", topics=["gitops", "Kubernetes"]), repo("webgrip", "obsidian-vault"),
                                       repo("webgrip", "renovate", mirror=True, original_url="https://github.com/webgrip/renovate.git")],
                           "acme-client": [repo("acme-client", "shop", language="")]}
         self.blobs = {"b-readme": "# Homelab\n\nFlux all the things.\n", "b-runbook": LONG_DOC, "b-adr": ADR_TEXT,
@@ -384,7 +383,7 @@ class Mapping(unittest.TestCase):
         self.assertNotIn("/api/v1/repos/webgrip/renovate/issues", self.harness.forge.requests)
 
     def test_skip_listed_vault_repo_is_not_imported(self):
-        self.assertNotIn("forge/ryangr0/obsidian-vault", nodes(self.rows, "Project"))
+        self.assertNotIn("forge/webgrip/obsidian-vault", nodes(self.rows, "Project"))
 
     def test_readme_docs_and_adrs_become_document_artifacts_for_the_project(self):
         artifacts = nodes(self.rows, "Artifact")
