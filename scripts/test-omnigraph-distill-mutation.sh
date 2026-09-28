@@ -44,7 +44,7 @@ fresh
 expect pass "unmodified distiller"
 
 fresh
-mutate 'candidates = self.by_key.get((entity_type, name_key(name)), [])' 'candidates = self.by_key.get((entity_type, name), [])'
+mutate 'self.by_key.get((entity_type, name_key(name)), [])' 'self.by_key.get((entity_type, name), [])'
 expect fail "exact name and alias resolution disabled"
 
 fresh
@@ -58,6 +58,14 @@ expect fail "every embedding candidate merged without adjudication"
 fresh
 mutate 'if similarity >= self.settings.same_similarity or (slug, other) in confirmed:' 'if (slug, other) in confirmed:'
 expect fail "near-identical names always sent to adjudication"
+
+fresh
+mutate 'if self.alias_verdicts.get((name_key(name), slug)):' 'if True:'
+expect fail "alias hits accepted without confirmation"
+
+fresh
+mutate 'if not same:' 'if False:'
+expect fail "refused aliases kept"
 
 fresh
 mutate 'if not entity.derived or entity.type not in ENTITY_TYPES or referenced.get(entity.slug):' 'if True:'

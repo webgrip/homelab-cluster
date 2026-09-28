@@ -6,6 +6,8 @@ import random
 import re
 import sys
 import tempfile
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -167,7 +169,8 @@ class FakeGraph:
 
 
 class FakeLiteLLM:
-    def __init__(self, answers, vectors=None, cost=0.001, fail=(), unreachable=False, same=()):
+    def __init__(self, answers, vectors=None, cost=0.001, fail=(), unreachable=False, same=(), refuse=()):
+        self.refuse = set(refuse)
         self.same = {frozenset(pair) for pair in same}
         self.questions = []
         self.answers = answers
@@ -187,6 +190,8 @@ class FakeLiteLLM:
         self.calls.append(title)
         if self.unreachable:
             raise distill.LLMUnreachable("down")
+        if title in self.refuse:
+            raise distill.ExtractionFailed("litellm answered HTTP 400", refused=True)
         if title in self.fail:
             return "not json", 10, 0, self.cost
         return json.dumps(self.answers.get(title, extraction())), 100, 20, self.cost
@@ -339,10 +344,9 @@ class Resolution(unittest.TestCase):
         self.assertFalse([edge for edge in owned if edge[0] == "RelatedNote"])
         self.assertEqual(len([edge for edge in graph.edges.values() if edge[0] == "NoteAboutProject" and edge[1].startswith("forge/")]), 1)
 
-    def test_alias_and_embedding_merge_duplicates(self):
+    def test_embedding_candidates_merge_only_when_confirmed_or_near_identical(self):
         graph = seeded_graph()
         extra = answers()
-        extra["Fiets"] = extraction(topics=[topic("k8s")])
         extra["webgrip/ploeg"] = extraction(topics=[topic("Kubernetes platform")])
         extra["actions/checkout"] = extraction(topics=[topic("Cycling"), topic("Kubernetes distribution"), topic("Kubernetes spelling")])
         platform = basis(1)
@@ -352,18 +356,52 @@ class Resolution(unittest.TestCase):
         llm = FakeLiteLLM(extra, vectors, same=[("Kubernetes platform", "Kubernetes")])
         plan = Harness(graph, llm).run()
         topics = graph.of_type("Topic")
-        self.assertIn("derived/topic/kubernetes-distribution", topics)
+        self.assertEqual(plan.counts.topics_merged, 2)
+        self.assertNotIn("derived/topic/kubernetes-platform", topics)
         self.assertNotIn("derived/topic/kubernetes-spelling", topics)
-        self.assertNotIn(("Cycling", "Kubernetes"), llm.questions)
+        self.assertIn("derived/topic/kubernetes-distribution", topics)
+        self.assertIn("derived/topic/cycling", topics)
         self.assertIn(("Kubernetes distribution", "Kubernetes"), llm.questions)
         self.assertNotIn(("Kubernetes spelling", "Kubernetes"), llm.questions)
-        self.assertEqual(plan.counts.topics_merged, 3)
-        self.assertNotIn("derived/topic/k8s", topics)
-        self.assertNotIn("derived/topic/kubernetes-platform", topics)
-        self.assertIn("derived/topic/cycling", topics)
+        self.assertNotIn(("Cycling", "Kubernetes"), llm.questions)
         self.assertIn("Kubernetes platform", topics["derived/topic/kubernetes"]["aliases"])
-        self.assertIn(("NoteAboutTopic", "obsidian/fiets", "derived/topic/kubernetes"), graph.owned())
         self.assertIn(("ProjectAboutTopic", "forge/webgrip/ploeg", "derived/topic/kubernetes"), graph.owned())
+
+    def test_alias_hits_are_confirmed_and_wrong_aliases_are_dropped(self):
+        graph = seeded_graph()
+        first = answers()
+        first["Fiets"] = extraction(topics=[topic("containerd", description="Container runtime", aliases=["Docker", "cri"])])
+        Harness(graph, FakeLiteLLM(first)).run()
+        self.assertEqual(sorted(graph.nodes["derived/topic/kubernetes"][1]["aliases"]), ["k8s"])
+        self.assertEqual(sorted(graph.nodes["derived/topic/containerd"][1]["aliases"]), ["Docker", "cri"])
+        graph.nodes["obsidian/dinner-sam"][1]["content"] = "Now about clusters and images."
+        second = answers()
+        second["Dinner with Sam"] = extraction(topics=[topic("K8S"), topic("Docker")])
+        llm = FakeLiteLLM(second, same=[("K8S", "Kubernetes")])
+        plan = Harness(graph, llm).run(LATER)
+        self.assertIn(("NoteAboutTopic", "obsidian/dinner-sam", "derived/topic/kubernetes"), graph.owned())
+        self.assertIn(("NoteAboutTopic", "obsidian/dinner-sam", "derived/topic/docker"), graph.owned())
+        self.assertEqual(graph.nodes["derived/topic/containerd"][1]["aliases"], ["cri"])
+        self.assertEqual(plan.counts.aliases_dropped, 1)
+        self.assertIn(("K8S", "Kubernetes"), llm.questions)
+        self.assertIn(("Docker", "containerd"), llm.questions)
+
+    def test_an_alias_of_a_topic_created_in_the_same_run_is_not_trusted(self):
+        graph = seeded_graph()
+        extra = answers()
+        extra["Dinner with Sam"] = extraction(topics=[topic("containerd", aliases=["Docker"])])
+        extra["Fiets"] = extraction(topics=[topic("Docker")])
+        llm = FakeLiteLLM(extra)
+        Harness(graph, llm).run()
+        self.assertIn(("NoteAboutTopic", "obsidian/fiets", "derived/topic/docker"), graph.owned())
+        self.assertIn(("Docker", "containerd"), llm.questions)
+
+    def test_new_topic_aliases_never_shadow_existing_topic_names(self):
+        graph = seeded_graph()
+        extra = answers()
+        extra["Fiets"] = extraction(topics=[topic("Container orchestration", aliases=["Kubernetes", "orchestration"])])
+        Harness(graph, FakeLiteLLM(extra)).run()
+        self.assertEqual(graph.nodes["derived/topic/container-orchestration"][1]["aliases"], ["orchestration"])
 
     def test_similar_siblings_stay_apart_when_the_adjudicator_says_no(self):
         graph = seeded_graph()
@@ -375,6 +413,14 @@ class Resolution(unittest.TestCase):
         self.assertIn("derived/topic/mysql", graph.nodes)
         self.assertIn("derived/topic/postgresql", graph.nodes)
         self.assertIn(("PostgreSQL", "MySQL"), llm.questions)
+
+    def test_the_owner_is_recognised_by_first_name_and_login(self):
+        graph = seeded_graph()
+        extra = answers()
+        extra["Fiets"] = extraction(topics=[topic("Bicycle maintenance")], people=[named("Ryan", relation="colleague"), named("ryangr0", relation="colleague")])
+        Harness(graph, FakeLiteLLM(extra)).run()
+        self.assertIn(("NoteAboutPerson", "obsidian/fiets", "forge/user/ryangr0"), graph.owned())
+        self.assertFalse([slug for slug in graph.nodes if slug.startswith("derived/person/ryan")])
 
     def test_ambiguous_project_names_prefer_the_non_mirror_and_never_create_projects(self):
         graph = seeded_graph()
@@ -493,7 +539,7 @@ class LimitsAndFailures(unittest.TestCase):
         graph = seeded_graph()
         llm = FakeLiteLLM(answers())
         plan = Harness(graph, llm, max_documents=3).run()
-        self.assertEqual(sorted(llm.calls), ["ADR-0001 Flux", "Dinner with Sam", "Fiets"])
+        self.assertEqual(sorted(llm.calls), ["Dinner with Sam", "Fiets", "K8s upgrade"])
         self.assertEqual(plan.counts.skipped_budget, 6)
         llm = FakeLiteLLM(answers(), cost=0.5)
         plan = Harness(graph, llm, max_spend_usd=0.9, workers=1).run(LATER)
@@ -512,6 +558,53 @@ class LimitsAndFailures(unittest.TestCase):
         llm = FakeLiteLLM(answers())
         Harness(graph, llm).run(LATER)
         self.assertEqual(sorted(llm.calls), ["Dinner with Sam", "Fiets"])
+
+    def test_a_refused_document_is_not_retried_until_it_changes(self):
+        graph = seeded_graph()
+        llm = FakeLiteLLM(answers(), refuse={"Fiets"})
+        harness = Harness(graph, llm)
+        plan = harness.run()
+        self.assertEqual((plan.counts.refused, plan.counts.failed), (1, 0))
+        self.assertFalse(harness.failed_marker)
+        self.assertIn("derived/distill/obsidian/fiets", graph.nodes)
+        self.assertFalse([edge for edge in graph.owned() if edge[1] == "obsidian/fiets"])
+        llm = FakeLiteLLM(answers())
+        Harness(graph, llm).run(LATER)
+        self.assertEqual(llm.calls, [])
+        graph.nodes["obsidian/fiets"][1]["content"] = "changed"
+        Harness(graph, llm).run(LATER)
+        self.assertEqual(llm.calls, ["Fiets"])
+
+    def test_rate_limits_are_retried_and_other_errors_classified(self):
+        replies = [(429, b"{}"), (503, b"{}"), (200, json.dumps({"choices": [{"message": {"content": "{}"}}], "usage": {}}).encode()), (400, b"{}"), (401, b"{}")]
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers["Content-Length"]))
+                status, body = replies.pop(0)
+                self.send_response(status)
+                self.send_header("Retry-After", "0")
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            counts = distill.Counts()
+            client = distill.LiteLLM(f"http://127.0.0.1:{server.server_port}", "sk-test", counts)
+            body, _ = client.post("/v1/chat/completions", {})
+            self.assertEqual(counts.retries, 2)
+            with self.assertRaises(distill.ExtractionFailed) as refused:
+                client.post("/v1/chat/completions", {})
+            self.assertTrue(refused.exception.refused)
+            with self.assertRaises(distill.ExtractionFailed) as denied:
+                client.post("/v1/chat/completions", {})
+            self.assertFalse(denied.exception.refused)
+        finally:
+            server.shutdown()
 
     def test_unreachable_litellm_fails_closed_without_writing(self):
         graph = seeded_graph()

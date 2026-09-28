@@ -7,13 +7,14 @@ import json
 import math
 import re
 import sys
+import time
 import unicodedata
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
-EXTRACTOR = "v1"
+EXTRACTOR = "v2"
 DERIVED = "derived/"
 STATE_PREFIX = "derived/distill/"
 OWNED_EDGE_PREFIX = "derived:"
@@ -34,6 +35,10 @@ ROWS_PER_LOAD_FILE = 2000
 BYTES_PER_LOAD_FILE = 16 * 1024 * 1024
 STATEMENTS_PER_PRUNE_FILE = 500
 HTTP_TIMEOUT_SECONDS = 120
+ATTEMPTS = 6
+RETRIED_STATUSES = frozenset({429, 500, 502, 503, 504})
+RETRY_BASE_SECONDS = 2.0
+RETRY_CEILING_SECONDS = 30.0
 EMBED_BATCH = 64
 EMBEDDING_DIMENSION = 384
 FAILED_SHARE_THAT_FAILS_THE_RUN = 0.2
@@ -85,6 +90,8 @@ class Counts:
     pending: int = 0
     processed: int = 0
     failed: int = 0
+    refused: int = 0
+    retries: int = 0
     skipped_budget: int = 0
     sources_gone: int = 0
     edges_added: int = 0
@@ -93,6 +100,7 @@ class Counts:
     entities_deleted: int = 0
     topics_created: int = 0
     aliases_added: int = 0
+    aliases_dropped: int = 0
     topics_merged: int = 0
     merge_questions: int = 0
     merge_failures: int = 0
@@ -151,7 +159,9 @@ class Plan:
 
 
 class ExtractionFailed(Exception):
-    pass
+    def __init__(self, message, refused=False):
+        super().__init__(message)
+        self.refused = refused
 
 
 class LLMUnreachable(Exception):
@@ -289,6 +299,13 @@ def read_graph(snapshot_dir):
     return Graph(documents=documents, entities=entities, state=state, edges=list(unique.values()))
 
 
+def retry_after(header, attempt):
+    try:
+        return min(float(header), RETRY_CEILING_SECONDS)
+    except (TypeError, ValueError):
+        return min(RETRY_BASE_SECONDS * 2 ** attempt, RETRY_CEILING_SECONDS)
+
+
 class LiteLLM:
     def __init__(self, base_url, key, counts):
         self.base_url = base_url.rstrip("/")
@@ -298,15 +315,21 @@ class LiteLLM:
     def post(self, path, body):
         request = urllib.request.Request(self.base_url + path, data=json.dumps(body).encode("utf-8"),
                                          headers={"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"}, method="POST")
-        try:
-            with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
-                cost = response.headers.get("x-litellm-response-cost")
-                return json.loads(response.read().decode("utf-8")), float(cost) if cost else 0.0
-        except urllib.error.HTTPError as error:
-            error.close()
-            raise ExtractionFailed(f"litellm {path} answered HTTP {error.code}") from error
-        except (urllib.error.URLError, TimeoutError, OSError) as error:
-            raise LLMUnreachable(f"litellm {path} not reachable: {error}") from error
+        for attempt in range(ATTEMPTS):
+            try:
+                with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
+                    cost = response.headers.get("x-litellm-response-cost")
+                    return json.loads(response.read().decode("utf-8")), float(cost) if cost else 0.0
+            except urllib.error.HTTPError as error:
+                wait = retry_after(error.headers.get("Retry-After"), attempt)
+                error.close()
+                if error.code in RETRIED_STATUSES and attempt + 1 < ATTEMPTS:
+                    self.counts.retries += 1
+                    time.sleep(wait)
+                    continue
+                raise ExtractionFailed(f"litellm {path} answered HTTP {error.code}", refused=error.code == 400) from error
+            except (urllib.error.URLError, TimeoutError, OSError) as error:
+                raise LLMUnreachable(f"litellm {path} not reachable: {error}") from error
 
     def embed(self, model, texts):
         vectors = []
@@ -423,35 +446,33 @@ class Resolver:
         self.embedder = embedder
         self.entities = entities
         self.by_key = {}
+        self.by_alias = {}
         self.topic_units = {}
         self.name_vectors = {}
+        self.alias_verdicts = {}
         self.merged = {}
         for entity in sorted(entities.values(), key=lambda item: (not item.derived, item.slug)):
             self.index(entity)
 
-    def prepare(self, extractions):
-        missing = []
-        for extraction in extractions:
-            for topic in extraction["topics"]:
-                if self.exact("Topic", [topic["name"]] + list(topic.get("aliases") or [])) is None and topic["name"] not in self.name_vectors:
-                    self.name_vectors[topic["name"]] = None
-                    missing.append(topic["name"])
-        if missing:
-            for name, vector in zip(missing, self.embedder(missing)):
-                self.name_vectors[name] = vector
-
     def keys_for(self, entity):
         keys = {name_key(entity.name)}
-        if entity.type == "Topic":
-            keys |= {name_key(alias) for alias in entity.data.get("aliases") or []}
         if entity.type == "Person":
             first, last = entity.data.get("first_name"), entity.data.get("last_name")
             if first and last:
                 keys.add(name_key(f"{first} {last}"))
+            if entity.data.get("relation") == "self":
+                keys.add(name_key(entity.name.split()[0]) if entity.name.split() else "")
+                login = re.search(r"@([A-Za-z0-9._-]+)", entity.data.get("brief") or "") or re.search(r"/user/([a-z0-9._-]+)$", entity.slug)
+                if login:
+                    keys.add(name_key(login.group(1)))
         if entity.type == "Project":
-            repo = entity.name.split("/")[-1]
-            keys.add(name_key(repo))
+            keys.add(name_key(entity.name.split("/")[-1]))
         return {key for key in keys if key}
+
+    def alias_keys_for(self, entity):
+        if entity.type != "Topic":
+            return set()
+        return {name_key(alias) for alias in entity.data.get("aliases") or []} - {name_key(entity.name), ""}
 
     def index(self, entity):
         if entity.type == "Topic" and entity.vector and entity.slug not in self.topic_units:
@@ -462,10 +483,14 @@ class Resolver:
             self.by_key.setdefault((entity.type, key), [])
             if entity.slug not in self.by_key[(entity.type, key)]:
                 self.by_key[(entity.type, key)].append(entity.slug)
+        for key in self.alias_keys_for(entity):
+            self.by_alias.setdefault(key, [])
+            if entity.slug not in self.by_alias[key]:
+                self.by_alias[key].append(entity.slug)
 
     def exact(self, entity_type, names):
         for name in names:
-            candidates = self.by_key.get((entity_type, name_key(name)), [])
+            candidates = [slug for slug in self.by_key.get((entity_type, name_key(name)), []) if slug not in self.merged]
             if entity_type == "Project" and len(candidates) > 1:
                 preferred = [slug for slug in candidates if not set(self.entities[slug].data.get("tags") or []) & {"mirror", "fork"}]
                 candidates = preferred if len(preferred) == 1 else []
@@ -473,24 +498,61 @@ class Resolver:
                 return self.entities[candidates[0]]
         return None
 
+    def alias_holders(self, name):
+        return [slug for slug in self.by_alias.get(name_key(name), []) if slug not in self.merged]
+
+    def prepare(self, extractions, same_topic, counts):
+        questions, missing = set(), []
+        for extraction in extractions:
+            for topic in extraction["topics"]:
+                name = topic["name"]
+                if self.exact("Topic", [name]) is not None:
+                    continue
+                for slug in self.alias_holders(name):
+                    questions.add((name, slug))
+                if name not in self.name_vectors:
+                    self.name_vectors[name] = None
+                    missing.append(name)
+        ordered = sorted(questions)
+        answers = same_topic([(name, self.describe(slug)) for name, slug in ordered]) if ordered else []
+        counts.merge_questions += len(ordered)
+        for (name, slug), same in zip(ordered, answers):
+            self.alias_verdicts[(name_key(name), slug)] = same
+            if not same:
+                self.drop_alias(self.entities[slug], name, counts)
+        if missing:
+            for name, vector in zip(missing, self.embedder(missing)):
+                self.name_vectors[name] = vector
+
+    def drop_alias(self, entity, name, counts):
+        key = name_key(name)
+        kept = [alias for alias in entity.data.get("aliases") or [] if name_key(alias) != key]
+        if len(kept) != len(entity.data.get("aliases") or []):
+            entity.data["aliases"] = kept
+            entity.dirty = True
+            counts.aliases_dropped += 1
+        self.by_alias[key] = [slug for slug in self.by_alias.get(key, []) if slug != entity.slug]
+
     def merge_candidates(self):
         ranked = {}
         for entity in sorted(self.entities.values(), key=lambda item: item.slug):
             if entity.type != "Topic" or not entity.new or entity.slug in self.merged:
                 continue
+            scored = {}
+            for slug in self.alias_holders(entity.name):
+                if slug != entity.slug and not (self.entities[slug].new and slug > entity.slug):
+                    scored[slug] = 0.0
             probe = self.topic_units.get(entity.slug)
-            if probe is None:
-                continue
-            scored = []
-            for slug, candidate in self.topic_units.items():
-                other = self.entities[slug]
-                if slug == entity.slug or slug in self.merged or (other.new and slug > entity.slug):
-                    continue
-                similarity = dot(probe, candidate)
-                if similarity >= self.settings.candidate_similarity:
-                    scored.append((similarity, slug))
+            if probe is not None:
+                for slug, candidate in self.topic_units.items():
+                    other = self.entities[slug]
+                    if slug == entity.slug or slug in self.merged or (other.new and slug > entity.slug):
+                        continue
+                    similarity = dot(probe, candidate)
+                    if similarity >= self.settings.candidate_similarity:
+                        scored[slug] = max(scored.get(slug, 0.0), similarity)
             if scored:
-                ranked[entity.slug] = sorted(scored, reverse=True)[:MERGE_CANDIDATES]
+                ranked[entity.slug] = sorted(((similarity, slug) for slug, similarity in scored.items()), reverse=True)[:MERGE_CANDIDATES]
         return ranked
 
     def merge_similar(self, same_topic, counts):
@@ -505,11 +567,9 @@ class Resolver:
                 if target == slug or self.canonical(slug) != slug:
                     continue
                 if similarity >= self.settings.same_similarity or (slug, other) in confirmed:
-                    keeper = self.entities[target]
-                    duplicate = self.entities[slug]
                     self.merged[slug] = target
                     self.topic_units.pop(slug, None)
-                    self.add_aliases(keeper, [duplicate.name] + list(duplicate.data.get("aliases") or []), counts)
+                    self.add_alias(self.entities[target], self.entities[slug].name, counts)
                     counts.topics_merged += 1
                     break
 
@@ -519,53 +579,44 @@ class Resolver:
         return f"{entity.name} ({description})" if description else entity.name
 
     def resolve_topic(self, topic, now, counts):
-        names = [topic["name"]] + list(topic.get("aliases") or [])
-        found = self.exact("Topic", names)
+        name = topic["name"]
+        found = self.exact("Topic", [name])
         if found is not None:
-            self.absorb_duplicates(found, names, counts)
-            self.add_aliases(found, names, counts)
+            for alias in self.free_aliases(topic):
+                self.add_alias(found, alias, counts)
             return found
-        slug = self.fresh_slug("Topic", topic["name"])
-        aliases = sorted({alias for alias in topic.get("aliases") or [] if name_key(alias) != name_key(topic["name"])})[:MAX_ALIASES]
-        entity = Entity("Topic", slug, topic["name"], {"slug": slug, "name": topic["name"], "description": topic.get("description") or None,
-                                                         "aliases": aliases, "createdAt": now}, True, vector=self.name_vectors.get(topic["name"]), dirty=True, new=True)
+        for slug in self.alias_holders(name):
+            if self.alias_verdicts.get((name_key(name), slug)):
+                return self.entities[slug]
+        slug = self.fresh_slug("Topic", name)
+        aliases = sorted(set(self.free_aliases(topic)))[:MAX_ALIASES]
+        entity = Entity("Topic", slug, name, {"slug": slug, "name": name, "description": topic.get("description") or None,
+                                              "aliases": aliases, "createdAt": now}, True, vector=self.name_vectors.get(name), dirty=True, new=True)
         self.register(entity, counts)
         counts.topics_created += 1
         return entity
+
+    def free_aliases(self, topic):
+        own = name_key(topic["name"])
+        for alias in topic.get("aliases") or []:
+            key = name_key(alias)
+            if key and key != own and ("Topic", key) not in self.by_key:
+                yield alias
 
     def canonical(self, slug):
         while slug in self.merged:
             slug = self.merged[slug]
         return slug
 
-    def absorb_duplicates(self, keeper, names, counts):
-        if not keeper.derived:
-            return
-        for name in names:
-            for slug in list(self.by_key.get(("Topic", name_key(name)), [])):
-                duplicate = self.entities.get(slug)
-                if duplicate is None or slug == keeper.slug or not duplicate.derived or slug in self.merged:
-                    continue
-                self.merged[slug] = keeper.slug
-                self.topic_units.pop(slug, None)
-                for key in self.keys_for(duplicate):
-                    self.by_key[("Topic", key)] = [item for item in self.by_key.get(("Topic", key), []) if item != slug]
-                self.add_aliases(keeper, [duplicate.name] + list(duplicate.data.get("aliases") or []), counts)
-                counts.topics_merged += 1
-
-    def add_aliases(self, entity, names, counts):
+    def add_alias(self, entity, name, counts):
         if not entity.derived or entity.type != "Topic":
             return
-        known = {name_key(entity.name)} | {name_key(alias) for alias in entity.data.get("aliases") or []}
-        aliases = list(entity.data.get("aliases") or [])
-        for name in names:
-            if name_key(name) and name_key(name) not in known and len(aliases) < MAX_ALIASES:
-                aliases.append(name)
-                known.add(name_key(name))
-                counts.aliases_added += 1
-                entity.dirty = True
-        entity.data["aliases"] = aliases
-        self.index(entity)
+        known = {name_key(entity.name)} | self.alias_keys_for(entity)
+        if name_key(name) and name_key(name) not in known and len(entity.data.get("aliases") or []) < MAX_ALIASES:
+            entity.data["aliases"] = list(entity.data.get("aliases") or []) + [name]
+            entity.dirty = True
+            counts.aliases_added += 1
+            self.index(entity)
 
     def fresh_slug(self, entity_type, name):
         base = ENTITY_PREFIXES[entity_type] + (slug_segment(name) or sha256(name)[:12])
@@ -669,8 +720,12 @@ def run_extractions(documents, client, settings, system, schema, counts):
                 except LLMUnreachable:
                     unreachable += 1
                     counts.failed += 1
-                except ExtractionFailed:
-                    counts.failed += 1
+                except ExtractionFailed as error:
+                    if error.refused:
+                        results[document.slug] = extraction_of_nothing(schema)
+                        counts.refused += 1
+                    else:
+                        counts.failed += 1
             if unreachable >= settings.workers and not results:
                 for future in inflight:
                     future.cancel()
@@ -679,14 +734,18 @@ def run_extractions(documents, client, settings, system, schema, counts):
     return results
 
 
+def extraction_of_nothing(schema):
+    return {key: [] for key in schema["properties"]}
+
+
 def pending_documents(graph, settings):
     pending = []
     for slug, document in graph.documents.items():
         state = graph.state.get(slug)
         if state is None or state.get("content_sha256") != document.digest or state.get("extractor") != extractor_version(settings):
             pending.append(document)
-    order = {"Note": 0, "Project": 1, "Artifact": 2}
-    pending.sort(key=lambda document: (order[document.type], document.slug))
+    order = {"Note": 0, "Project": 2, "Artifact": 3}
+    pending.sort(key=lambda document: (order[document.type] + (document.type == "Note" and document.slug.startswith("forge/")), document.slug))
     return pending
 
 
@@ -718,7 +777,7 @@ def build_plan(graph, extractions, resolver, settings, counts, now, same_topic):
     for source in sorted(set(graph.state) - set(graph.documents)):
         prune_state.append(f"delete Distillation where slug = {gq_string(STATE_PREFIX + source)}")
         counts.sources_gone += 1
-    resolver.prepare(extractions[slug] for slug in sorted(extractions))
+    resolver.prepare([extractions[slug] for slug in sorted(extractions)], same_topic, counts)
     wanted_by_document = {slug: desired_links(graph.documents[slug], extractions[slug], resolver, now, counts) for slug in sorted(extractions)}
     resolver.merge_similar(same_topic, counts)
     for slug in sorted(by_source):

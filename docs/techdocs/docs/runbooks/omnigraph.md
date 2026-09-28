@@ -364,14 +364,14 @@ It never writes an edge type an importer manages from that importer's rows (`Not
 
 The counts line has documents, pending, processed, failed, edges added and removed, entities and topics created and deleted, merges, tokens and `cost_usd`. It never logs names or text.
 
-**Incremental.** A document is sent to the model only when the SHA-256 of its model input (kind, title, tags and the first 12,000 characters) differs from the `content_sha256` in its `Distillation` row, or the row's `extractor` (`v1:<model>`) differs. A state row is needed because a document that yields no links has nothing else to hold its hash, and a property on the `Note` or `Artifact` would be an edit to an importer's row. Changing the model or bumping `EXTRACTOR` reprocesses everything once.
+**Incremental.** A document is sent to the model only when the SHA-256 of its model input (kind, title, tags and the first 12,000 characters) differs from the `content_sha256` in its `Distillation` row, or the row's `extractor` (`v2:<model>`) differs. A state row is needed because a document that yields no links has nothing else to hold its hash, and a property on the `Note` or `Artifact` would be an edit to an importer's row. Changing the model or bumping `EXTRACTOR` reprocesses everything once.
 
 - A changed document gets its new links; the `derived:` edges it no longer supports are deleted.
 - A deleted document takes its edges with it (Omnigraph deletes a node's edges); the distiller then deletes its state row.
 - A `derived/` entity that no edge references any more, including links other writers made, is deleted. An entity someone else links to stays.
 - The state row is written last. If a run fails half way, the next run sees the old hash and redoes the document.
 
-**Limits per run.** At most 600 documents and USD 1 of model spend; the rest waits for the next hour. Notes go first, then projects, then artifacts. The first backfill of the whole graph therefore takes several runs. Load files are split at 2,000 rows or 16 MiB and delete mutations at 500 statements, below the [per-commit write limit](#known-v011-limits).
+**Limits per run.** At most 600 documents and USD 1 of model spend; the rest waits for the next hour. Notes outside `forge/` go first, then ADR notes, projects and artifacts. The first backfill of the whole graph therefore takes several runs. Load files are split at 2,000 rows or 16 MiB and delete mutations at 500 statements, below the [per-commit write limit](#known-v011-limits).
 
 ### Extraction
 
@@ -391,13 +391,15 @@ That is about USD 0.0007 per document, so a full backfill of the graph (about 3,
 
 Every extracted name is matched against existing rows before anything is created:
 
-1. **Name key.** Lowercase, accents folded, leading articles (`the`, `de`, `het`, `een`) and legal suffixes (`B.V.`, `Inc`, `GmbH`) dropped, everything but letters and digits removed, a plural `s` or `ies` reduced. Matched against the name and aliases of every topic, the name (and first plus last name) of every person, the name of every organization and place, and the full name and repo name of every project. A repo name shared by two projects matches the one that is not a mirror or fork, otherwise nothing.
-2. **Alias merge.** When a topic's name matches one topic and one of its aliases matches another `derived/` topic, the second is merged into the first: its edges move, its names become aliases.
-3. **Embedding candidates, confirmed by the model.** A topic that is still new is embedded by name with `granite-embedding-97m-multilingual-r2`. Its three nearest topics with cosine similarity at least 0.75 are candidates. At 0.97 or more it is merged directly; otherwise [merge.prompt.txt](../../../../kubernetes/apps/ai/omnigraph/distill/app/merge.prompt.txt) asks the chat model whether the two names are the same concept, and only a yes merges. Topic rows carry their name vector, so the next run compares without embedding them again.
+1. **Name key.** Lowercase, accents folded, leading articles (`the`, `de`, `het`, `een`) and legal suffixes (`B.V.`, `Inc`, `GmbH`) dropped, everything but letters and digits removed, a plural `s` or `ies` reduced. A topic matches on its name, a person on name or first plus last name, an organization or place on its name, a project on its full name or repo name. A repo name shared by two projects matches the one that is not a mirror or fork, otherwise nothing. The person with `relation: self` also matches on first name and Forgejo login, so "Ryan" in a note is Ryan.
+2. **Alias hit, confirmed by the model.** Topic aliases come from the model and are not trusted as keys on their own: when a name matches only another topic's alias, [merge.prompt.txt](../../../../kubernetes/apps/ai/omnigraph/distill/app/merge.prompt.txt) asks the chat model whether the two are the same concept. Yes links the document to that topic. No creates a new topic and removes the wrong alias from the old one, so the question is not asked again. An alias that is already another topic's name is never stored.
+3. **Embedding candidates, confirmed by the model.** A topic that is still new after this is embedded by name with `granite-embedding-97m-multilingual-r2`. Its three nearest topics with cosine similarity at least 0.75, plus any topic whose alias equals its name, are candidates. At 0.97 or more it is merged directly; otherwise the model is asked, and only a yes merges. A merge adds the duplicate's name to the keeper's aliases and moves its links. Topic rows carry their name vector, so the next run compares without embedding them again.
 
 People, organizations and places are matched by key only: the embedding model scores different names of the same kind (two companies, two people) as close, so similarity would merge strangers.
 
-Why the model confirms: on 141 topic names from the test documents, name embeddings alone gave no usable threshold. At 0.85 two of fourteen pairs were real duplicates; `MySQL`/`PostgreSQL` scored 0.907 and `Facturatie`/`Urenregistratie` 0.899, above true pairs such as `Christendom`/`Christianity` (0.848) and `Varnish`/`Varnish Cache` (0.797). Embedding name plus description was no better (`Docker`/`Kubernetes` 0.945). On 35 hand-labelled pairs the confirmation step said yes to 10 of 16 true duplicates and to none of 19 different concepts: precision 100%, recall 63%. It misses broader and narrower pairs (`Talos`/`Talos Linux`, `GDPR`/`GDPR compliance`). A missed merge leaves two topics; a wrong merge would corrupt links, so the step is tuned to say no when unsure. Each question costs about USD 0.00005.
+Why the model confirms: on 141 topic names from the test documents, name embeddings alone gave no usable threshold. Of the 14 pairs above 0.85, two were the same concept; `MySQL`/`PostgreSQL` scored 0.907 and `Facturatie`/`Urenregistratie` 0.899, above true pairs such as `Christendom`/`Christianity` (0.848) and `Varnish`/`Varnish Cache` (0.797). Embedding name plus description was no better (`Docker`/`Kubernetes` 0.945). On 35 hand-labelled pairs the confirmation step said yes to 10 of 16 true duplicates and to none of 19 different concepts: precision 100%, recall 63%. It misses broader and narrower pairs (`Talos`/`Talos Linux`, `GDPR`/`GDPR compliance`). A missed merge leaves two topics; a wrong merge corrupts links, so the step is tuned to say no when unsure. Each question costs about USD 0.00005.
+
+The first live run (extractor `v1`) trusted aliases as keys and merged on any alias collision. One wrong match then copied every name of the incoming topic onto the wrong one, and it spread: `containerd` collected `Docker`, `API design` collected `High availability`. `v2` replaced that with steps 2 and 3 and reprocessed every document.
 
 ### Setup
 
@@ -412,6 +414,8 @@ The job fails, and does not retry, with one of these lines:
 - `distill refused: the snapshot holds no documents`: the snapshot came back empty while state rows exist. Nothing was deleted.
 - `distill failed: delete batch` or `load batch`: the server refused a write. The next run replans from the graph.
 - `distill incomplete: N of M extractions failed`: more than a fifth of the model answers were unusable. What succeeded was written; the rest is retried next run.
+
+LiteLLM answers of 429 and 5xx are retried up to five times with backoff (`retries` in the counts line); the key allows 600 requests a minute. A document the provider refuses with HTTP 400 (`refused`) gets a state row without links and is not sent again until it changes.
 
 `OmnigraphDistillStale` fires when the CronJob has had no successful run for 3 hours, or never succeeded since it was created. `OmnigraphDistillBudgetNearlySpent` fires when the key has spent 80% of its 30-day budget (`litellm_key_spend` over `litellm_key_max_budget` from the LiteLLM exporter). Expected once during the first backfill; a repeat means something reprocesses documents every run.
 
