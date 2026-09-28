@@ -40,7 +40,10 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
   architecture](rfc-layered-hardware-architecture.md) (program doc),
   [task management](rfc-task-management.md) (top-20 field survey → Vikunja, ADR-0040),
   [Proxmox evacuation & offsite storage](rfc-proxmox-evacuation-offsite-storage.md) (object storage
-  goes offsite, Immich/deadman to a cloud VM, reclaim the host as a Talos worker).
+  goes offsite, Immich/deadman to a cloud VM, reclaim the host as a Talos worker),
+  [S3 conditional writes](rfc-s3-conditional-writes.md) (2026-09-28: Garage will not support
+  `If-None-Match`/`If-Match`, by its own documented design; keep Omnigraph on Longhorn and Garage for
+  the rest, add versitygw or SeaweedFS only for a workload that needs conditional writes).
 
 ## Security-audit RFCs (2026-08-04)
 
