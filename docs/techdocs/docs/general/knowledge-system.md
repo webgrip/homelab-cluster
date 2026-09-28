@@ -73,13 +73,45 @@ issues) goes straight into the graph; long or bulk text belongs in the archive o
 
 | Source | How | Lands | You do |
 |---|---|---|---|
-| **Talking to it** | "Remember …" in the chat or Claude Code | `brain` `main`, at once | Nothing |
+| **Talking to it** | "Remember …" in the chat or Claude Code | `brain` `main`, at once; found by keyword at once, by meaning only after the 03:15 restart (see [How finding things works](#how-finding-things-works)) | Nothing |
 | **Obsidian** | Obsidian Git pushes the vault to `webgrip/obsidian-vault`; the importer syncs every 15 minutes | `brain` `main`; `[[links]]` become links, daily notes become journal entries, notes matching a client term get the tag `client` | One-time setup: [Obsidian vault](../runbooks/omnigraph.md#obsidian-vault) |
 | **Forgejo** | Hourly importer over every repo you can see | `brain` `main`: repos as projects, READMEs, `docs/`, ADRs as decisions, issues, PRs, people | One-time: a read-only token, see [Forgejo projects](../runbooks/omnigraph.md#forgejo-projects) |
 | **Distiller** | Hourly, after the importers, over every new or changed note, artifact and project | `brain` `main`: `Topic` rows and links from documents to topics, people, organisations, projects, places and areas, all under `derived/` | Nothing |
 | **Meeting notes** | `just omnigraph-ingest-meeting <graph> extraction.json notes.txt` | An `ingest/*` branch of `webgrip` or a client graph | Review and merge |
 | **Glide agents** | Their own tools through LiteLLM | A `glide/<run>` branch of `memory`, `brain` or `webgrip` | Review and merge |
 | **Mail, Slack, calls, documentation** | Through the archive | Archive first, distilled into the graph | Parked |
+
+## How finding things works
+
+Measured on 2026-09-28. The plan that fixes the gaps below is the
+[brain retrieval RFC](../rfc/rfc-brain-retrieval.md).
+
+`brain` holds 750 notes, 2,615 Forgejo documents (cut into 17,011 passages of at most 1,500
+characters) and 2,544 topics. Two kinds of search exist in the graph:
+
+- **By keyword** (`bm25`, `search`): sees a row the moment it is written. The analyzer is
+  English: it lowercases, stems English words and drops English stopwords. Dutch words are not
+  stemmed and Dutch function words ("de", "het", "welke") count as keywords, so a Dutch question
+  can pull unrelated Dutch documents.
+- **By meaning** (`nearest`): Dutch and English in one space, through the in-cluster embedding
+  model. It only sees rows that have a vector, and it reads at most the first 1,024 tokens (about
+  4,000–5,000 characters) of a text. Half of the Obsidian note text lies past that point.
+
+Hybrid search that combines the two already exists as stored queries on `brain`: `recall_notes`,
+`recall_passages` and `recall_topics`. **Your chat and Claude Code cannot call them by name.** The
+LiteLLM MCP bridge (`@modernrelay/omnigraph-mcp` 0.10.0) only offers raw tools, such as `query`
+with a hand-written query and `mutate`, so the model has to write the query language itself.
+Cheap models often get that wrong, and `recall_notes` returns whole notes (tens of thousands of
+tokens for ten results). Purpose-built brain tools (`search`, `read`, `about`, `connect`,
+`recent`, `open_items`, `remember`) replace this; see the RFC.
+
+When a row gets its vector:
+
+| Row | Vector |
+|---|---|
+| New note, document, passage or capture | At the next omnigraph start (03:15 every night). Until then it ranks on keywords only |
+| Edited Obsidian note or Forgejo document | The importer rewrites the whole row without a vector, and forge-import rewrites every passage of a changed document, so the edited item ranks on keywords only until 03:15 |
+| Topic | At once: the distiller supplies the vector itself |
 
 ## How to use it
 
@@ -120,8 +152,17 @@ key is tools-only (it cannot call models) with a small budget.
 ### Explorer: `https://graph.<domain>`
 
 A read-only visual map of `brain`, `memory` and `webgrip`. Pick a graph at the top, search with `/`,
-click a node to inspect it, press `F` to fit. With only one or two nodes the camera jumps while it
-loads (VIK-1296); it settles once there is real content.
+click a node to inspect it, press `F` to fit. It loads the whole graph into the browser at start (on
+`brain` about 6,500 nodes; passages and distiller bookkeeping are skipped), so it opens on everything
+at once, noise included. Opening on search and a node's neighbourhood instead is phase P8 of the
+[brain retrieval RFC](../rfc/rfc-brain-retrieval.md). With only one or two nodes the camera jumps
+while it loads (VIK-1296); it settles once there is real content.
+
+### Review: `https://graph-review.<domain>`
+
+The same app in review mode: an inbox of open branches, an exact merge preview, conflicts per row,
+merge, reject and update branch. Only you get in. Details: [review
+mode](../runbooks/omnigraph.md#review-mode).
 
 ### Terminal
 
@@ -148,11 +189,12 @@ Glide side (handing each run its tools) is VIK-1300, specified in
 | Forgejo importer | `act-forge-import` | Its own `forge/` rows on `brain` `main` | No |
 | Distiller | `act-distill` | Its own `derived/` rows and `derived:` links on `brain` `main` | No |
 | Glide agents | `act-glide` | Unprotected branches (`glide/<run>`) of all three graphs | No |
+| Review mode | `act-review` | Any branch of all three graphs, on your click | Yes, on your click |
 | In-cluster agents on `memory` | `act-agent` | Their own branches of `memory` | No |
 | Meeting ingest | `act-ingest` | `ingest/*` branches; cannot read | No |
 | Explorer | `act-explorer` | Nothing | No |
 
-**Reviewing a branch today**, as yourself:
+**Reviewing a branch** happens in review mode at `https://graph-review.<domain>`. From the terminal, as yourself:
 
 ```bash
 omnigraph branch list --server homelab --graph brain
@@ -161,7 +203,7 @@ omnigraph branch merge glide/<run> --into main --server homelab --graph brain
 omnigraph branch delete glide/<run> --server homelab --graph brain --yes
 ```
 
-If `main` changed the same row since the branch was made, the merge is refused and names the conflicting rows. Write the value you want on `main`, then merge again; see [merge conflicts](../runbooks/omnigraph.md#merge-conflicts). A one-click review screen is VIK-1258.
+If `main` changed the same row since the branch was made, the merge is refused and names the conflicting rows. Review mode resolves them per row; by hand, write the value you want on `main`, then merge again; see [merge conflicts](../runbooks/omnigraph.md#merge-conflicts).
 
 **Keep branches short-lived.** Any open branch on a graph blocks the next schema change to that graph,
 and a failed schema apply stops every graph until it is fixed. Merge or delete branches instead of
@@ -202,7 +244,10 @@ changes](../runbooks/omnigraph.md#open-glide-branches-block-schema-changes).
 | "Something went wrong" at Authentik | A leftover login attempt | Close all chat and Authentik tabs, open the chat again |
 | The model answers without calling a tool | Omnigraph is not switched on in that chat | Tools menu, switch on Omnigraph |
 | A tool call answers 403 | The identity is not allowed that action (for example a Glide write to `main`) | Expected; work on a branch and merge as yourself |
-| New notes are found by keyword but not by meaning | Vectors are filled at the nightly restart | Wait until after 03:15 |
+| New or edited notes are found by keyword but not by meaning | Vectors are filled at the nightly restart, and an edit clears the row's vector | Wait until after 03:15; the [brain retrieval RFC](../rfc/rfc-brain-retrieval.md) makes writers supply vectors |
+| A Dutch question returns unrelated Dutch documents | The keyword search is English-only and treats Dutch function words as keywords | Ask with a few key words, or in English |
+| Text deep inside a long note is not found by meaning | Only the first 1,024 tokens of a note get a vector | Search with its exact words; chunked notes are phase P3 of the RFC |
+| The model writes broken queries or dumps huge notes | The MCP bridge has no stored-query tools, so the model writes queries by hand | Ask for a keyword search on passages; brain tools are phase P4–P6 of the RFC |
 | A new note has no topics yet | The distiller runs at minute 55 and handles at most 600 documents per run | Wait for the next run; `OmnigraphDistillStale` fires if it stops |
 | `OmnigraphVaultImportStale` or `OmnigraphForgeImportStale` | The importer's setup is incomplete or it failed | See the importer's section in the [runbook](../runbooks/omnigraph.md) |
 | Claude answers look like DeepSeek | The Anthropic key failed and LiteLLM fell back | Check the key in OpenBao (`secret/litellm`); VIK-1251 adds an alert |
@@ -211,7 +256,8 @@ changes](../runbooks/omnigraph.md#open-glide-branches-block-schema-changes).
 
 | Ticket | What |
 |---|---|
-| VIK-1258 | One-click review and merge of branches |
+| VIK-1259 | [Brain retrieval](../rfc/rfc-brain-retrieval.md): an eval set, chunked notes, vectors at write time, brain tools, the Brain preset, a search-first explorer |
+| VIK-1348 | Keep the nightly vector backfill from holding every graph offline |
 | VIK-1300 | Glide hands each run its Omnigraph tools |
 | VIK-1260 | The archive layer, then mail (VIK-1254), Slack (VIK-1290), calls (VIK-1253) |
 | VIK-1251 | Alert when Claude requests silently fall back |
