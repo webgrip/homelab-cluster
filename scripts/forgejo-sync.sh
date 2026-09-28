@@ -60,7 +60,7 @@ FORGEJO_API="https://forgejo.webgrip.dev/api/v1"
 GITHUB_HOST="github.com"
 ORG="webgrip"
 APPLY=0
-ONLY="actions,prs,releases,mirror,webhook"   # protect is OPT-IN (deliberate rollout — see header)
+ONLY="actions,prs,releases,settings,mirror,webhook"   # protect is OPT-IN (deliberate rollout — see header)
 REPOS=()
 # Reusable-workflow LIBRARY repos: their workflows are `on: workflow_call` and run in the *caller*
 # repo, never here. Keep the Forgejo Actions unit OFF for these even though GitHub has it on, so
@@ -162,6 +162,35 @@ sync_releases() {
         -X PATCH "$FORGEJO_API/repos/$ORG/$r" -d '{"has_releases":true}'
   else
     note "releases: already enabled"
+  fi
+}
+
+DEFAULT_MERGE_STYLE="${DEFAULT_MERGE_STYLE:-merge}"
+DEFAULT_DELETE_BRANCH_AFTER_MERGE="${DEFAULT_DELETE_BRANCH_AFTER_MERGE:-true}"
+
+sync_settings() {
+  local r="$1" current desired drift merge_style_disabled
+  current=$(fj "$FORGEJO_API/repos/$ORG/$r")
+  desired=$(python3 -c '
+import sys,json
+print(json.dumps({"default_delete_branch_after_merge":sys.argv[1]=="true","default_merge_style":sys.argv[2]}))' \
+    "$DEFAULT_DELETE_BRANCH_AFTER_MERGE" "$DEFAULT_MERGE_STYLE")
+  drift=$(printf '%s' "$current" | python3 -c '
+import sys,json
+cur,want=json.load(sys.stdin),json.loads(sys.argv[1])
+print("; ".join(f"{k}: {json.dumps(cur.get(k))} -> {json.dumps(v)}" for k,v in want.items() if cur.get(k)!=v))' "$desired")
+  merge_style_disabled=$(printf '%s' "$current" | python3 -c '
+import sys,json
+style=sys.argv[1]
+flag={"merge":"allow_merge_commits","rebase":"allow_rebase","rebase-merge":"allow_rebase_explicit","squash":"allow_squash_merge","fast-forward-only":"allow_fast_forward_only_merge"}.get(style)
+print(bool(flag) and json.load(sys.stdin).get(flag) is False)' "$DEFAULT_MERGE_STYLE")
+  if [ "$merge_style_disabled" = "True" ]; then
+    note "settings: WARN $r disallows merge style '$DEFAULT_MERGE_STYLE', so defaulting to it offers a disabled button"
+  fi
+  if [ -z "$drift" ]; then
+    note "settings: already converged (default_delete_branch_after_merge=$DEFAULT_DELETE_BRANCH_AFTER_MERGE default_merge_style=$DEFAULT_MERGE_STYLE)"
+  else
+    mut "converge settings on $r ($drift)" -X PATCH "$FORGEJO_API/repos/$ORG/$r" -d "$desired"
   fi
 }
 
@@ -302,6 +331,7 @@ for r in "${REPOS[@]}"; do
   have actions  && sync_actions  "$r"
   have prs      && sync_prs      "$r"
   have releases && sync_releases "$r"
+  have settings && sync_settings "$r"
   have mirror   && sync_mirror   "$r"
   have protect && sync_protect "$r"
   have webhook && sync_webhook "$r"

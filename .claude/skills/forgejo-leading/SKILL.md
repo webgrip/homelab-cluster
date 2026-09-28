@@ -38,7 +38,8 @@ visibility) and populate it in step 2 with `git push origin --all && git push or
    `mirror repository is read-only` is the only proof the convert did/didn't land → reference.md.
 4. **Settings parity to GitHub** — gitea-mirror creates repos with the Actions unit OFF. Run
    `scripts/forgejo-sync.sh --repo <name>` (dry-run first, then `--apply`): enables the Actions +
-   PRs + Releases units, adds the Forgejo→GitHub push-mirror. Branch protection is **opt-in**
+   PRs + Releases units, converges the merge defaults (`settings`: delete branch after merge on,
+   merge commit as default style — owner decision 2026-09-28), adds the Forgejo→GitHub push-mirror. Branch protection is **opt-in**
    (`--only protect`) and applies the ADR-0050 delivery-contract whitelists (CI bot pushes,
    owner+Renovate merge) — NOT a mirror of GitHub's rules; order + 403 triage →
    [branch-protection rollout runbook](../../../docs/techdocs/docs/runbooks/forgejo-branch-protection-rollout.md).

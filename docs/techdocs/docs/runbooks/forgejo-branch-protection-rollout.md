@@ -110,6 +110,36 @@ from a non-whitelisted identity is rejected, **and** the next semantic-release r
 commits its `chore(release)` bump — the `webgrip-ci` whitelist is what makes protection
 release-safe.
 
+## Repo merge defaults (`--only settings`)
+
+Owner decision 2026-09-28: every webgrip repo has `default_delete_branch_after_merge: true`
+and `default_merge_style: merge`. The merge commit is only the pre-selected button; squash,
+rebase and fast-forward stay allowed wherever they already are. `sync_settings` PATCHes
+`/repos/webgrip/<repo>` with **only those two fields**, skips repos that already match, and
+prints per-repo drift as `field: current -> desired` in the dry-run. It never touches branch
+protection, so it is safe to sweep with `--all` at any time — unlike `protect`, it cannot
+lock the owner out of homelab-cluster. It is part of the default action set, so a plain
+parity run converges it too.
+
+```bash
+./scripts/forgejo-sync.sh --all --only settings
+./scripts/forgejo-sync.sh --all --only settings --apply
+```
+
+Override per run with `DEFAULT_MERGE_STYLE=<merge|rebase|rebase-merge|squash|fast-forward-only>`
+or `DEFAULT_DELETE_BRANCH_AFTER_MERGE=false`. A `WARN` line means the repo has that merge style
+disabled, so the default would point at a greyed-out button — enable the style or pick another.
+
+Verify:
+
+```bash
+curl -s -H "Authorization: token $FORGEJO_TOKEN" \
+  "https://forgejo.webgrip.dev/api/v1/repos/webgrip/<repo>" |
+  python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["default_delete_branch_after_merge"], d["default_merge_style"])'
+```
+
+Expect `True merge`.
+
 ## Symptom → cause
 
 | Symptom | Cause / fix |
