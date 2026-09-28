@@ -171,6 +171,26 @@ node Passage {
     createdAt: DateTime
 }
 
+node Topic {
+    slug: String @key
+    name: String @index
+    description: String?
+    aliases: [String]?
+    embedding: Vector(384)? @embed("name", model="granite-embedding-97m-multilingual-r2")
+    createdAt: DateTime
+    updatedAt: DateTime
+}
+
+node Distillation {
+    slug: String @key
+    source: String @index
+    content_sha256: String
+    extractor: String
+    processedAt: DateTime
+    createdAt: DateTime
+    updatedAt: DateTime
+}
+
 edge Knows: Person -> Person {
     context: String?
     since: Date?
@@ -249,3 +269,12 @@ edge DerivedFromArtifact: Artifact -> Artifact {
 edge PassageOf: Passage -> Artifact @card(1..1) {
     @unique(@src)
 }
+
+edge NoteAboutTopic: Note -> Topic
+edge ArtifactAboutTopic: Artifact -> Topic
+edge ProjectAboutTopic: Project -> Topic
+edge TopicRelatedTopic: Topic -> Topic {
+    documents: I32?
+}
+edge ArtifactAboutProject: Artifact -> Project
+edge ArtifactAboutOrganization: Artifact -> Organization
