@@ -1,0 +1,28 @@
+---
+title: |
+  {{- $first := first .alerts -}}
+  {{- $total := add (len .alerts) (default 0 .truncatedAlerts) -}}
+  {{- if eq .status "resolved" }}✅ Resolved{{ else }}🚨{{ end }} {{ default "alert" $first.labels.alertname | trunc 120 }}
+  {{- if gt $total 1 }} ×{{ $total }}{{ end }}
+message: |-
+  {{- $shownLimit := 8 -}}
+  {{- $first := first .alerts -}}
+  {{- $total := add (len .alerts) (default 0 .truncatedAlerts) -}}
+  {{- $hidden := sub $total (min (len .alerts) $shownLimit) -}}
+  {{ .status | upper }} · {{ $total }} alert{{ if gt $total 1 }}s{{ end }} · {{ default "unknown" .commonLabels.severity | trunc 20 }} · {{ default "" .receiver | trunc 40 }}
+  {{ with $first.annotations.description }}
+  {{ trunc 1000 . }}
+  {{- end }}
+
+  {{- range $index, $alert := .alerts }}{{ if lt $index $shownLimit }}
+  • {{ if eq $alert.status "resolved" }}✅ {{ end }}{{ default (default "alert" $alert.labels.alertname) $alert.annotations.summary | trunc 160 }}
+  {{- $where := default (default (default "" $alert.labels.pod) $alert.labels.job_name) $alert.labels.exported_pod }}
+  {{- $scope := default (default "" $alert.labels.namespace) $alert.labels.exported_namespace }}
+  {{- if or $scope $where }} [{{ $scope | trunc 40 }}{{ if and $scope $where }}/{{ end }}{{ $where | trunc 60 }}]{{ end }}
+  {{- end }}{{ end }}
+  {{- if gt $hidden 0 }}
+  … and {{ $hidden }} more
+  {{- end }}
+  {{ with $first.annotations.runbook_url }}
+  Runbook: {{ trunc 200 . }}
+  {{- end }}
