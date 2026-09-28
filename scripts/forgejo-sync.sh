@@ -100,7 +100,6 @@ mut()  { # mut <description> <curl-args...>
   else note "DRY-RUN would: $desc"; fi
 }
 
-# Resolve --all to every non-fork, non-mirror repo in the org (mirrors aren't ours to manage yet).
 # PAGINATED: this org holds 100+ repos once GitHub mirrors are counted — a single limit=100 fetch
 # silently dropped everything past page one (ploeg was invisible to --all until 2026-07-26).
 if [ ${#REPOS[@]} -eq 0 ]; then
@@ -113,7 +112,7 @@ if [ ${#REPOS[@]} -eq 0 ]; then
     while IFS= read -r repo_name; do
       [ -n "$repo_name" ] && REPOS+=("$repo_name")
     done < <(printf '%s' "$raw" \
-      | python3 -c 'import sys,json;[print(r["name"]) for r in json.load(sys.stdin) if not r.get("mirror") and not r.get("fork")]' 2>/dev/null || true)
+      | python3 -c 'import sys,json;[print(r["name"]) for r in json.load(sys.stdin) if not r.get("mirror") and not r.get("fork") and not r.get("private")]' 2>/dev/null || true)
     page=$((page + 1))
   done
   [ ${#REPOS[@]} -gt 0 ] || die "--all: could not list org repos (token needs read:organization scope, or pass --repo <name>)"

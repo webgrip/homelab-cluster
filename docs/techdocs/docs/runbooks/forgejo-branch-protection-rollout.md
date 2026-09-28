@@ -32,6 +32,11 @@ grants nothing to `agent-builder` — distinct identities by design.
 
 ## Rollout — order is load-bearing
 
+`--all` means every org repo that is not a mirror, a fork or **private**. Private repos such as
+`webgrip/obsidian-vault` are never swept, so a sweep can never add a GitHub push-mirror to one;
+[test-forgejo-sync-skips-private.sh](../../../../scripts/test-forgejo-sync-skips-private.sh) proves it
+in pre-commit and CI. Name a private repo with `--repo` when it really needs a setting.
+
 Step 3 must run **after** any `--all` sweep: the sweep writes the product-repo default
 (`webgrip-ci`) to every repo it touches, which on homelab-cluster would lock the owner's
 trunk pushes out until the override re-runs.
