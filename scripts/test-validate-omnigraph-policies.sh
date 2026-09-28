@@ -15,24 +15,29 @@ fresh() {
 }
 
 with_two_clients() {
-  local dir=$1 keep_explorer=${2:-}
-  python3 - "$dir" "$keep_explorer" <<'PY'
+  local dir=$1 copied_identity=${2:-}
+  python3 - "$dir" "$copied_identity" <<'PY'
 import sys
 from pathlib import Path
 import yaml
 bundle = Path(sys.argv[1])
-keep_explorer = sys.argv[2]
+copied_identity = sys.argv[2]
 cluster = yaml.safe_load((bundle / "cluster.yaml").read_text())
 template = (bundle / "webgrip.policy.yaml").read_text()
 for client in ("client-a", "client-b"):
     cluster["graphs"][client] = {"schema": "meetings.pg", "queries": ["meetings.gq"]}
     cluster["policies"][f"{client}-access"] = {"file": f"{client}.policy.yaml", "applies_to": [client]}
     policy = yaml.safe_load(template)
-    policy["groups"].pop("explorers", None)
-    policy["rules"] = [rule for rule in policy["rules"] if rule["allow"]["actors"]["group"] != "explorers"]
-    if keep_explorer == "keep-explorer":
+    webgrip_only_groups = {"explorers", "glide"}
+    for group in webgrip_only_groups:
+        policy["groups"].pop(group, None)
+    policy["rules"] = [rule for rule in policy["rules"] if rule["allow"]["actors"]["group"] not in webgrip_only_groups]
+    if copied_identity == "keep-explorer":
         policy["groups"]["explorers"] = ["act-explorer"]
         policy["rules"].append({"id": "explorers-read-and-export", "allow": {"actors": {"group": "explorers"}, "actions": ["read", "export"], "branch_scope": "any"}})
+    if copied_identity == "keep-glide":
+        policy["groups"]["glide"] = ["act-glide"]
+        policy["rules"].append({"id": "glide-reads-every-branch", "allow": {"actors": {"group": "glide"}, "actions": ["read"], "branch_scope": "any"}})
     policy["groups"]["client"] = [f"act-{client}"]
     policy["rules"].append({"id": "client-reads-main", "allow": {"actors": {"group": "client"}, "actions": ["read"], "branch_scope": "protected"}})
     (bundle / f"{client}.policy.yaml").write_text(yaml.safe_dump(policy, sort_keys=False))
@@ -72,6 +77,10 @@ expect fail "client actor granted on both client graphs" "$d" "${cross_client[@]
 d=$(fresh explorer-spanning)
 with_two_clients "$d" keep-explorer
 expect fail "explorer copied onto both client graphs" "$d" "${cross_client[@]}"
+
+d=$(fresh glide-spanning)
+with_two_clients "$d" keep-glide
+expect fail "glide agent copied onto both client graphs" "$d" "${cross_client[@]}"
 
 d=$(fresh unprotected)
 with_two_clients "$d"

@@ -12,6 +12,8 @@ groups:
     - act-reader
   explorers:
     - act-explorer
+  glide:
+    - act-glide
 rules:
   - id: everyone-reads
     allow:
@@ -82,3 +84,27 @@ rules:
         - read
         - export
       branch_scope: any
+  - id: glide-reads-every-branch
+    allow:
+      actors: {group: glide}
+      actions:
+        - read
+      branch_scope: any
+  - id: glide-writes-run-branches
+    allow:
+      actors: {group: glide}
+      actions:
+        - change
+      branch_scope: unprotected
+  - id: glide-manages-run-branches
+    allow:
+      actors: {group: glide}
+      actions:
+        - branch_create
+        - branch_delete
+      target_branch_scope: unprotected
+  - id: glide-invokes-queries
+    allow:
+      actors: {group: glide}
+      actions:
+        - invoke_query
