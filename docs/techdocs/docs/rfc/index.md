@@ -19,7 +19,8 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
   [Kyverno audit→enforce hardening](rfc-kyverno-audit-enforce-hardening.md) (waves pending),
   [Forgejo repo config as GitOps](rfc-forgejo-repo-config-gitops.md) (accepted 2026-09-28: repo
   settings and branch protection move from `forgejo-sync.sh` to a git profile model applied hourly
-  by tofu-controller; provider spike zero-diff; epic VIK-1302).
+  by tofu-controller; provider spike zero-diff; amended 2026-09-28 to fully replace the script,
+  topics, push mirrors and team access included; epic VIK-1302).
 - **Proposed / open** — [Outcome observation loop](rfc-outcome-observation-loop.md)
   (2026-09-28 draft: a ticket closes with a machine-readable Watch; a scheduled evaluator
   observes it for a window and records Confirmed, Regressed or Inconclusive; regressions and

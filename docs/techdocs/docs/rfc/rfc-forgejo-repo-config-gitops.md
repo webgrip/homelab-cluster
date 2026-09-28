@@ -1,6 +1,7 @@
 # RFC: Forgejo repository settings as GitOps — profiles in git, one reconciler
 
-> Status: **Accepted** (2026-09-28, option B; [decisions](#7-decisions-2026-09-28)) · Date: 2026-09-28 ·
+> Status: **Accepted** (2026-09-28, option B; [decisions](#7-decisions-2026-09-28); amended the same day:
+> [full replacement](#8-full-replacement-amendment-2026-09-28)) · Date: 2026-09-28 ·
 > Epic: VIK-1302 · Refines the
 > enforcement half of [ADR-0050](../adr/adr-0050-per-repo-delivery-contract.md) · Reuses the
 > shape of [ADR-0058](../adr/adr-0058-access-plane-one-module-one-model.md)
@@ -166,7 +167,8 @@ Gaps and how B closes them:
   this is not on the safety path.
 - **Push mirrors** stay out: they are a one-time cutover action needing a GitHub PAT, and GitHub
   is on the way out ([GitHub Actions retirement](rfc-github-actions-retirement.md)).
-  `forgejo-sync.sh --only mirror` stays in the `forgejo-leading` cutover recipe.
+  `forgejo-sync.sh --only mirror` stays in the `forgejo-leading` cutover recipe. *Superseded by
+  §8: push mirrors move into the model.*
 - **Lifecycle danger.** `forgejo_repository` owns the repository object; removing it from
   `for_each` plans a **destroy of the repo**. Every repository resource gets
   `lifecycle { prevent_destroy = true }` and `archive_on_destroy = true`; unmanaging a repo is a
@@ -447,7 +449,130 @@ model and `baseline` imported, plan-only → VIK-1311 branch protection, lock-ou
 `approvePlan: auto`, drift alert → VIK-1312 remaining profiles → VIK-1313 Renovate enrollment →
 VIK-1314 retire the migrated `forgejo-sync.sh` sections, ADR and break-glass runbook.
 
-## 8. References
+## 8. Full replacement (amendment, 2026-09-28)
+
+**Owner decision, 2026-09-28.** The model fully *replaces* `scripts/forgejo-sync.sh`. Topics, push
+mirrors, per-repo team access and every other thing the script does are managed by the model with
+drift detection. This overrides "push mirrors stay out" (§4B), decision 4 ("the `ci` team stays
+with its provisioner") and the "keep only `mirror`" end state of §6 step 4. The work is sized for
+later pickup, largely by Glide.
+
+### 8.1 Inventory
+
+Legend: **covered** means `svalabs/forgejo` 1.6.1 models it and reads it back. **Read-back gap**
+means the provider writes it but a live change is invisible to the plan. **Gap** means the
+provider has no resource for it.
+
+`scripts/forgejo-sync.sh`, per section and mechanism:
+
+| # | Item | Today | Status | Evidence |
+| --- | --- | --- | --- | --- |
+| 1 | `actions`: `has_actions` on | reads GitHub `actions/permissions` for parity | covered; the GitHub read is dropped, the profile declares it | §6.1 |
+| 2 | `actions`: forced off for `ACTIONS_OFF_REPOS` | hard-coded `workflows` | covered: `library` profile | §5.2 |
+| 3 | `prs`: `has_pull_requests` | always on | covered | §6.1 |
+| 4 | `releases`: `has_releases` | always on | covered | §6.1 |
+| 5 | `settings`: `default_merge_style` | env default `merge` | covered | §6.1 |
+| 6 | `settings`: `default_delete_branch_after_merge` | env default `true` | **read-back gap** | provider `repository_resource.go` lists it as write-only |
+| 7 | `settings`: warn when the default merge style is disallowed | `allow_*` probe | covered: a precondition over `allow_*` (all read back except fast-forward-only) | §6.1 |
+| 8 | `allow_fast_forward_only_merge` (spike model field) | hand-set | **read-back gap** | same file |
+| 9 | `mirror`: Forgejo → GitHub push mirror, `sync_on_commit`, 8h | laptop `GH_MIRROR_TOKEN` | **gap** | no resource; upstream [#108](https://github.com/svalabs/terraform-provider-forgejo/issues/108) open |
+| 10 | `protect`: `main` + `development` rules, push/merge whitelists, status checks | env vars per run | covered | §6.1 |
+| 11 | `webhook`: Renovate hook URL, events, active, dedupe by URL | per repo | covered | §6.1 |
+| 12 | `webhook`: `authorization_header` bearer | Secret via kubectl | **read-back gap**: Forgejo masks it on GET, so no client can read it | `sync_webhook` note; provider `repository_webhook_resource.go` |
+| 13 | `--all`: paginated org listing, forks and mirrors skipped | runtime | covered by the §5.4 `check` block (`hashicorp/http`) | §5.4 |
+
+Related managers of Forgejo state outside the script:
+
+| # | Item | Where | Status | Recommendation |
+| --- | --- | --- | --- | --- |
+| 14 | Topics (`renovate`; `profile-<name>` projection) | by hand; `scripts/renovate-discovery-drift.sh` detects | **gap** | model (§8.2) |
+| 15 | Teams `ci`, `agent-builder`, `agent-reviewer`: permission, units, all-repos | three provisioner Jobs in `forgejo/forgejo-actions-secrets/app/` | covered: `forgejo_team`; open bugs [#147](https://github.com/svalabs/terraform-provider-forgejo/issues/147), [#197](https://github.com/svalabs/terraform-provider-forgejo/issues/197) | model |
+| 16 | Team membership of the bots | same Jobs | covered: `forgejo_team_member` | model |
+| 17 | Per-repo team grants | click-ops | **gap** | model (§8.2) |
+| 18 | Bot users and their tokens (+ `PushSecret` to OpenBao) | same Jobs | covered (`forgejo_user`, `forgejo_personal_access_token`), but a token would sit in tofu state | stays in the provisioners (identity plane) |
+| 19 | Glide repo webhook to the ploeg receiver | `glide-forge-webhook.job.yaml` | covered | model |
+| 20 | Glide SSH push mirror; GitHub repo and deploy key; old repo's Actions off | `glide-distribution.job.yaml` | mirror **gap** (row 9); GitHub side needs `integrations/github` | model (mirror) |
+| 21 | Org and repo Actions secrets and variables | `forgejo-actions-secrets.cronjob.yaml`, `glide-docs-secrets.job.yaml` | covered (`*_action_secret`, `*_action_variable`), but values are write-only in Forgejo and would land in tofu state | stays: secret delivery is the bridge level of ADR-0055, not repo config |
+| 22 | Package → repo links | `forgejo-package-link-reconciler.cronjob.yaml` | **gap** | stays: links are derived from packages that CI creates, not declared |
+| 23 | Action-mirror pull repos | `scripts/bootstrap-action-mirrors.sh` | covered (`forgejo_repository` with `mirror`); caveats [#187](https://github.com/svalabs/terraform-provider-forgejo/issues/187), [#199](https://github.com/svalabs/terraform-provider-forgejo/pull/199) | later: not required to retire the script |
+| 24 | Runner registrations | runner provisioner Jobs | out of scope: runtime state, not repo config | stays |
+
+**Count**, over the 13 script items and the four the owner named (topics, push mirrors, per-repo
+team access, teams): **11 covered, 3 gaps** (push mirrors, topics, per-repo team grants),
+**3 read-back gaps** (`default_delete_branch_after_merge`, `allow_fast_forward_only_merge`,
+`authorization_header`). Rows 18, 21, 22 and 24 stay where they are.
+
+### 8.2 Options per gap
+
+The four options:
+
+- **(a) Upstream.** Contribute to [`svalabs/terraform-provider-forgejo`](https://github.com/svalabs/terraform-provider-forgejo).
+  It is MPL-2.0 and active: last push 2026-09-22, releases roughly monthly (1.5.0 2026-05-31
+  through 1.6.1 2026-09-18), 21 open issues. One maintainer, `acch`, has 367 of about 520 commits.
+  A [CONTRIBUTING](https://github.com/svalabs/terraform-provider-forgejo/blob/main/CONTRIBUTING.md)
+  guide covers the Go 1.25 build and acceptance tests against a docker Forgejo. The provider
+  depends on [`codeberg.org/mvdkleijn/forgejo-sdk`](https://codeberg.org/mvdkleijn/forgejo-sdk)
+  v3, so a field missing from the SDK needs a PR there first.
+- **(b) Generic REST.** [`Mastercard/restapi`](https://github.com/Mastercard/terraform-provider-restapi)
+  v3.0.0 (2026-02-27, 927 stars, active). `restapi_object` reads back through GET, with
+  `ignore_server_additions` (drift on configured fields only) and `ignore_changes_to` for
+  write-only fields. Per-object `create_method`, `read_path` and `destroy_method` fit Forgejo's
+  sub-resources.
+- **(c) Reconciler for the gaps only.** A CronJob that reads the same model ConfigMap, as
+  `forgejo-package-link-reconciler` does. Its diff lives in our code: this is the option A
+  shape that §4 rejected.
+- **(d) Our own thin provider.** A Go plugin-framework provider, which means signing, publishing
+  or an in-cluster provider mirror, and maintenance. (b) covers the same REST shape without that
+  cost. **Rejected for every gap.**
+
+The Forgejo endpoints below come from the live `swagger.v1.json` on `15.0.2+gitea-1.22.0`.
+
+| Gap | Evidence | (a) upstream | (b) restapi | (c) reconciler | **Recommendation** |
+| --- | --- | --- | --- | --- | --- |
+| **Topics** | `GET`/`PUT /repos/{o}/{r}/topics`; the SDK already has `ListRepoTopics`/`SetRepoTopics`; no upstream issue | small PR: a `topics` set on `forgejo_repository` | one object per repo: `PUT` replaces the whole list and `GET` reads it back, so drift is exact | possible, not needed | **(b) now; file (a).** Switch to (a) when it releases (drop the object from state, import into the attribute). Spike VIK-1322 → VIK-1323 |
+| **Push mirrors** | `POST`/`GET`/`DELETE /repos/{o}/{r}/push_mirrors[/{name}]`, no PATCH; `last_error` and `last_update` readable; SDK has create only, SSH support in open [SDK PR #160](https://codeberg.org/mvdkleijn/forgejo-sdk/pulls/160); [#108](https://github.com/svalabs/terraform-provider-forgejo/issues/108) waiting on an HCL design since March | slow: SDK list/delete first, then the resource | `id_attribute = remote_name`; any change is a replace; `remote_password` goes in `ignore_changes_to` | viable fallback | **(b)**, and post the HCL design on #108. Owner picks the credential mode (below). Spike VIK-1324 → VIK-1325 |
+| **Per-repo team grants** | `PUT`/`GET`/`DELETE /teams/{id}/repos/{org}/{repo}`; upstream [PR #155](https://github.com/svalabs/terraform-provider-forgejo/pull/155) `forgejo_team_repository` (open since 2026-06-16, mergeable; a maintainer question on numeric IDs has been unanswered since 2026-08-05); issues [#114](https://github.com/svalabs/terraform-provider-forgejo/issues/114), [#154](https://github.com/svalabs/terraform-provider-forgejo/issues/154) | **help land #155**: answer the question, add a test | interim object on the same path | no | **(a)**, with (b) as the interim only if #155 has not released when VIK-1327 starts. Spike VIK-1326 → VIK-1327 |
+| **Read-back: merge fields** | Forgejo returns both fields on `GET /repos`, but the SDK's `Repository` struct lacks them, so the provider cannot read them | SDK PR (two fields) + provider PR (read in `from()`) | possible as a `PATCH` object on the repo, but its destroy semantics sit on the repo object: rejected | a `check` block via `hashicorp/http` (detection only) | **(a)**, with the `check` block as the interim; it is already planned for slice 3 (§6.1). Spike VIK-1328 → VIK-1329 |
+| **Read-back: `authorization_header`** | Forgejo masks it on GET; no client can read it | cannot help | cannot help | **behavioural probe**: `POST /repos/{o}/{r}/hooks/{id}/tests`, then assert the receiver answered 2xx, not 401 | **(c) probe + alert.** Rotation stays a config change through OpenBao. Spike VIK-1328 → VIK-1330 |
+
+Every gap stays under the same profile model and the same `Terraform` object, except the webhook
+probe, which reads the same model. The restapi objects authenticate with the same ephemeral
+OpenBao-sourced token as the Forgejo provider (§5.5). The plan-only-first, import-then-empty-plan
+gate (§6 step 2) applies to them too.
+
+### 8.3 Delivery and Glide
+
+Each gap is a spike followed by an implementation. Implementations are blocked by VIK-1310 (the
+module exists), and all of them block VIK-1314, which now deletes the script outright. VIK-1323
+also blocks VIK-1313, because the Renovate topic needs the topics mechanism.
+
+| Track | Spike | Implementation | Glide |
+| --- | --- | --- | --- |
+| Topics | VIK-1322 | VIK-1323 | needs egress |
+| Push mirrors | VIK-1324 | VIK-1325 (needs refinement: credential mode) | needs egress |
+| Teams + per-repo grants | VIK-1326 | VIK-1327 | needs egress |
+| Read-back | VIK-1328 | VIK-1329 (upstream), VIK-1330 (probe) | 1329 needs egress; 1330 authoring does not |
+| Retirement | — | VIK-1314 (delete script, ADR, runbook) | no egress needed |
+
+"Needs egress" means the ticket runs `tofu init` against registry.opentofu.org and GitHub
+releases, builds Go modules, or talks to github.com or codeberg.org. Glide workers have none of
+that today. These tickets become Glide-runnable if the owner grants workers an egress option, or
+once providers are mirrored in-cluster (the tofu part only; upstream PRs always need the forges).
+
+### 8.4 Owner questions
+
+1. **Push-mirror credential.** Use HTTPS with a GitHub PAT from OpenBao (the script's way, one
+   token for all repos), or SSH with a Forgejo-generated key per repo registered as a GitHub deploy
+   key (the Glide way, no long-lived PAT)? SSH needs the `integrations/github` provider, or a Job,
+   for the deploy key.
+2. **Bot users and tokens** stay in the provisioner Jobs, and only teams and memberships move
+   (row 18), so no token enters tofu state. Confirm.
+3. **Actions secrets and package links** (rows 21, 22) stay outside the model as secret delivery
+   and derived state. Confirm that "everything the script does" does not include them.
+4. **Upstream work on the estate's GitHub identity.** Upstream PRs are opened as `ryangr0`, or as
+   an agent identity? This decides whether VIK-1329 and the #155 follow-up can ever be Glide work.
+
+## 9. References
 
 - `scripts/forgejo-sync.sh`; [branch-protection rollout runbook](../runbooks/forgejo-branch-protection-rollout.md);
   [ADR-0050](../adr/adr-0050-per-repo-delivery-contract.md); `forgejo-leading` skill
