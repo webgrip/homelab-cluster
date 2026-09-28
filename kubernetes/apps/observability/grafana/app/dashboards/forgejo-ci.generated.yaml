@@ -1,0 +1,5062 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: forgejo-ci
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: boards
+  json: |-
+    {
+      "uid": "forgejo-ci",
+      "title": "Forgejo CI",
+      "description": "Is CI keeping up, is trunk green, and where does the time go. Runners, queue, red trunks and the builders on the first screen; pipelines, durations, fleet, builders, nodes, logs and the exporter in the collapsed rows.",
+      "tags": [
+        "board",
+        "ci",
+        "forgejo"
+      ],
+      "schemaVersion": 39,
+      "editable": true,
+      "graphTooltip": 1,
+      "refresh": "1m",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "links": [
+        {
+          "title": "Forgejo Actions",
+          "type": "link",
+          "icon": "external link",
+          "url": "https://forgejo.webgrip.dev/webgrip/homelab-cluster/actions",
+          "targetBlank": true,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Runner deep dive",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/infra-forgejo-ci-runners",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "CI telemetry",
+          "type": "link",
+          "icon": "doc",
+          "url": "https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/general/forgejo-ci-telemetry.md",
+          "targetBlank": true,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "type": "dashboards",
+          "tags": [
+            "board"
+          ],
+          "title": "Boards",
+          "asDropdown": true,
+          "keepTime": true,
+          "includeVars": false,
+          "icon": "external link",
+          "targetBlank": false,
+          "tooltip": "",
+          "url": ""
+        }
+      ],
+      "templating": {
+        "list": [
+          {
+            "name": "repo",
+            "label": "Repository",
+            "type": "query",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "query": "label_values(forgejo_ci_consecutive_failures, repo)",
+            "refresh": 2,
+            "sort": 1,
+            "includeAll": true,
+            "multi": true,
+            "current": {
+              "text": "All",
+              "value": "$$__all"
+            },
+            "options": [],
+            "allValue": ".*"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Runners, right now",
+          "description": "Busy is tasks Forgejo says are running (the exporter polls every 5 minutes, so it trails). Pods is runner pods in phase Running, busy or warm. Pending is runner pods the scheduler could not place: the real ceiling is node room, not the ScaledJob's maxReplicaCount of 6, so a Pending runner is the capacity limit showing itself and turns amber. Waiting is KEDA's own read of queued docker-label jobs. Ceiling and the warm floor are read from the ScaledJob manifest in git when this board is generated (1 warm, 6 max).",
+          "gridPos": {
+            "h": 5,
+            "w": 7,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "pending"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "waiting"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 6
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(forgejo_ci_tasks_active{status=\"running\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "busy",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "B",
+              "expr": "sum(kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\", phase=\"Running\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "pods",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "C",
+              "expr": "sum(kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\", phase=\"Pending\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "pending",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "D",
+              "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-runner\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "waiting",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "E",
+              "expr": "vector(6)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "ceiling",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Queue wait p95, last hour",
+          "description": "How long the slowest twentieth of runs waited between Forgejo creating them and a runner starting them, trailing hour. Run level: Forgejo stamps a task with its run's start, so there is no honest per-job queue number. Amber from one minute, vermillion from five, when a push has stopped feeling like CI and started feeling like waiting. The buckets end at 30 minutes, so a p95 past that reads as 30 minutes.",
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 7,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no runs queued in the last hour",
+              "unit": "s",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 60
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 300
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(forgejo_ci_run_queue_seconds_bucket[1h])))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "Trunks red",
+          "description": "Default-branch workflows (main, master, development) whose latest run failed and that ran in the last seven days. A red trunk is a broken main: everything merged on top of it ships unverified. Vermillion from one; the table beside it names them and how many runs in a row failed.",
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 12,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 56
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count((max by (repo, workflow, ref) (forgejo_ci_last_run_status{status=\"failure\", repo=~\"$$repo\"}) == 1) and on (repo, workflow, ref) (time() - max by (repo, workflow, ref) (forgejo_ci_last_run_timestamp_seconds) < 604800)) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "stat",
+          "title": "Run wall-clock · 7 days",
+          "description": "Median and 95th percentile wall-clock of a whole workflow run, created to stopped, trailing seven days, every outcome and every event: the exporter's run histogram carries repo and workflow only, so this is not a success-only time to green. Grey: it is a trend to read, not an alarm.",
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 15,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "s",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.5, sum by (le) (rate(forgejo_ci_run_duration_seconds_bucket{repo=~\"$$repo\"}[7d])))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "p50",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "B",
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(forgejo_ci_run_duration_seconds_bucket{repo=~\"$$repo\"}[7d])))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "p95",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "stat",
+          "title": "CI data age",
+          "description": "Seconds since forgejo-ci-exporter last finished a poll of the Actions API. It polls every 300 s, so up to about 360 s is normal. Amber from 15 minutes, vermillion from 30, where ForgejoCIOutcomeExporterStale fires: every outcome number on this board is that old.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 20,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "exporter not reporting",
+              "unit": "s",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 900
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1800
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "time() - max(forgejo_ci_last_refresh_timestamp_seconds)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 5
+        },
+        {
+          "type": "table",
+          "title": "Red trunks",
+          "description": "Each red trunk, how many runs in a row failed, and how long since its last green run. An empty Red for means the last green run is older than the exporter's window: red longer than it can see. ForgejoCITrunkPipelineFailing fires at three in a row. Fix or revert on the trunk first; anything merged meanwhile is untested.",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "Every trunk that ran this week is green."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Failed in a row"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 3
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 130
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Red for"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 110
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "repo": "Repository",
+                  "workflow": "Workflow",
+                  "ref": "Branch",
+                  "Value #A": "Failed in a row",
+                  "Value #B": "Red for"
+                },
+                "indexByName": {
+                  "Repository": 0,
+                  "Workflow": 1,
+                  "Branch": 2,
+                  "Failed in a row": 3,
+                  "Red for": 4
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "Failed in a row",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (repo, workflow, ref) (forgejo_ci_consecutive_failures) * on (repo, workflow, ref) group_left() ((max by (repo, workflow, ref) (forgejo_ci_last_run_status{status=\"failure\", repo=~\"$$repo\"}) == 1) and on (repo, workflow, ref) (time() - max by (repo, workflow, ref) (forgejo_ci_last_run_timestamp_seconds) < 604800))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "(time() - (max by (repo, workflow, ref) (forgejo_ci_last_success_timestamp_seconds) > 0)) and on (repo, workflow, ref) ((max by (repo, workflow, ref) (forgejo_ci_last_run_status{status=\"failure\", repo=~\"$$repo\"}) == 1) and on (repo, workflow, ref) (time() - max by (repo, workflow, ref) (forgejo_ci_last_run_timestamp_seconds) < 604800))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 6
+        },
+        {
+          "type": "timeseries",
+          "title": "Demand against runner capacity",
+          "description": "Busy tasks, queued jobs, runner pods and Pending pods over the range, against the ScaledJob's ceiling. Waiting above zero while pods sit at the same level for long stretches, with Pending pods under it, is the node pool out of room: the fix is less CI work per push or another node, not a higher maxReplicaCount.",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "pointSize": 6,
+                "drawStyle": "line",
+                "lineInterpolation": "linear",
+                "spanNulls": false,
+                "axisSoftMin": 0
+              },
+              "color": {
+                "mode": "palette-classic"
+              },
+              "decimals": 0
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "busy (Forgejo)"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#56b4e9"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "waiting (KEDA)"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#e69f00"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "runner pods"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#898781"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "pending pods"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#d55e00"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ceiling"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#5b5a56"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ceiling"
+                },
+                "properties": [
+                  {
+                    "id": "custom.lineStyle",
+                    "value": {
+                      "fill": "dash",
+                      "dash": [
+                        8,
+                        6
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.lineWidth",
+                    "value": 1
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(forgejo_ci_tasks_active{status=\"running\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "busy (Forgejo)"
+            },
+            {
+              "refId": "B",
+              "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-runner\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "waiting (KEDA)"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\", phase=\"Running\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "runner pods"
+            },
+            {
+              "refId": "D",
+              "expr": "sum(kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\", phase=\"Pending\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "pending pods"
+            },
+            {
+              "refId": "E",
+              "expr": "vector(6)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "ceiling"
+            }
+          ],
+          "id": 7
+        },
+        {
+          "type": "table",
+          "title": "Running now",
+          "description": "Every task Forgejo reports as running, how long it has run, and that time as a share of the job's usual (its median over the exporter's window). Amber from one and a half times usual, vermillion from three: a job that far past its median is usually hung on a network call or a lock, and cancelling it frees a runner. Click a job to open its run.",
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 0,
+            "y": 14
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "No job is running."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Running"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 90
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "vs usual"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1.5
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 3
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 90
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Job"
+                },
+                "properties": [
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open the run in Forgejo",
+                        "url": "$${__data.fields.url}",
+                        "targetBlank": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "task": true,
+                  "workflow": true,
+                  "url": true
+                },
+                "renameByName": {
+                  "repo": "Repository",
+                  "ci_job": "Job",
+                  "event": "Event",
+                  "ref": "Ref",
+                  "Value #A": "Running",
+                  "Value #B": "vs usual"
+                },
+                "indexByName": {
+                  "Repository": 0,
+                  "Job": 1,
+                  "Event": 2,
+                  "Ref": 3,
+                  "Running": 4,
+                  "vs usual": 5
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "Running",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (task) (forgejo_ci_task_running_seconds) * on (task) group_right() (max by (task, repo, workflow, ci_job, event, ref, url) (forgejo_ci_task_info{status=\"running\", repo=~\"$$repo\"}) * 0 + 1)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "(max by (task) (forgejo_ci_task_running_seconds) * on (task) group_right() (max by (task, repo, workflow, ci_job, event, ref, url) (forgejo_ci_task_info{status=\"running\", repo=~\"$$repo\"}) * 0 + 1)) / on (repo, workflow, ci_job) group_left() max by (repo, workflow, ci_job) (forgejo_ci_job_duration_p50_seconds)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 8
+        },
+        {
+          "type": "stat",
+          "title": "Jobs by outcome, this range",
+          "description": "Finished jobs in the dashboard range, by the outcome Forgejo recorded. Failure is amber from one: each is a push somebody has to look at. Success, skipped and cancelled stay grey; a cancelled job is usually a newer push superseding an older one.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 12,
+            "y": 14
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "failure"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (status) (increase(forgejo_ci_jobs_total{repo=~\"$$repo\"}[$$__range]))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{status}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 9
+        },
+        {
+          "type": "stat",
+          "title": "dind daemons missing",
+          "description": "Nodes where the shared forgejo-dind daemon is wanted but not ready. Every docker build and every `container:` job on that node talks to it, so a missing daemon fails those jobs with a docker socket error that names no cluster component. Vermillion from one.",
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 18,
+            "y": 14
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "dind not reported",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(sum(kube_daemonset_status_desired_number_scheduled{job=\"kube-state-metrics\", exported_namespace=\"forgejo\", daemonset=\"forgejo-dind\"}) - sum(kube_daemonset_status_number_ready{job=\"kube-state-metrics\", exported_namespace=\"forgejo\", daemonset=\"forgejo-dind\"}))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 10
+        },
+        {
+          "type": "stat",
+          "title": "Busiest dind against its CPU limit",
+          "description": "The busier docker daemon's CPU as a share of its own limit, five-minute rate. Builds run inside dind, not in the runner pod, so this is where image builds queue on CPU. Amber from 80 %, vermillion from 95 %, where builds slow for every repository on that node.",
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 21,
+            "y": 14
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "percentunit",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 0.8
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 0.95
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max(sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"forgejo\", pod=~\"forgejo-dind-.+\", container=\"dind\"}[5m])) / on (pod) label_replace(max by (exported_pod) (kube_pod_container_resource_limits{job=\"kube-state-metrics\", exported_namespace=\"forgejo\", exported_pod=~\"forgejo-dind-.+\", exported_container=\"dind\", resource=\"cpu\"}), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "id": 11
+        },
+        {
+          "type": "stat",
+          "title": "Pulls around Harbor, this range",
+          "description": "Image pulls dind made from a registry other than harbor.webgrip.dev, counted from dind's own `image pulled` log lines. Each one skips the proxy cache and spends the anonymous Docker Hub rate limit; the usual culprit is buildx pulling `moby/buildkit` for a docker-container builder. Amber from one. Log lines are duplicated when the node agent restarts, so read this as a floor on the problem, not an exact count.",
+          "gridPos": {
+            "h": 5,
+            "w": 12,
+            "x": 12,
+            "y": 19
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "/^pulls$$/",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "namespace:forgejo container:dind \"image pulled\" -\"harbor.webgrip.dev\" | extract_regexp \"remote=\\\"(?P<reg>[^/\\\"]+)/\" from _msg | stats count() as pulls",
+              "queryType": "stats",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              }
+            }
+          ],
+          "id": 12
+        },
+        {
+          "type": "row",
+          "title": "Trunks and pipelines",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 24
+          },
+          "panels": [
+            {
+              "type": "table",
+              "title": "Failure streaks, every branch the exporter grades",
+              "description": "Every graded workflow whose latest runs failed, including ones older than the seven days the trunk tiles count. A long streak on a scheduled workflow (nightly drift, link rot) is a check nobody reads any more: fix it or delete it.",
+              "gridPos": {
+                "h": 10,
+                "w": 12,
+                "x": 0,
+                "y": 25
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "filterable": false
+                  },
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "text"
+                  },
+                  "noValue": "No workflow is on a failure streak."
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Failed in a row"
+                    },
+                    "properties": [
+                      {
+                        "id": "thresholds",
+                        "value": {
+                          "mode": "absolute",
+                          "steps": [
+                            {
+                              "color": "#898781",
+                              "value": null
+                            },
+                            {
+                              "color": "#e69f00",
+                              "value": 1
+                            },
+                            {
+                              "color": "#d55e00",
+                              "value": 3
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "id": "color",
+                        "value": {
+                          "mode": "thresholds"
+                        }
+                      },
+                      {
+                        "id": "custom.cellOptions",
+                        "value": {
+                          "type": "color-text"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "transformations": [
+                {
+                  "id": "organize",
+                  "options": {
+                    "excludeByName": {
+                      "Time": true
+                    },
+                    "renameByName": {
+                      "repo": "Repository",
+                      "workflow": "Workflow",
+                      "ref": "Branch",
+                      "Value": "Failed in a row"
+                    },
+                    "indexByName": {
+                      "Repository": 0,
+                      "Workflow": 1,
+                      "Branch": 2,
+                      "Failed in a row": 3
+                    }
+                  }
+                },
+                {
+                  "id": "sortBy",
+                  "options": {
+                    "sort": [
+                      {
+                        "field": "Failed in a row",
+                        "desc": true
+                      }
+                    ]
+                  }
+                }
+              ],
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "max by (repo, workflow, ref) (forgejo_ci_consecutive_failures{repo=~\"$$repo\"}) > 0",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false,
+                  "format": "table"
+                }
+              ],
+              "id": 14
+            },
+            {
+              "type": "timeseries",
+              "title": "Runs per hour, by event and outcome",
+              "description": "Finished runs per hour by trigger and outcome. A block of push failures right after a merge is a broken trunk; a block of pull_request failures is somebody iterating, which is what pull requests are for.",
+              "gridPos": {
+                "h": 10,
+                "w": 12,
+                "x": 12,
+                "y": 25
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "lineWidth": 0,
+                    "fillOpacity": 80,
+                    "showPoints": "never",
+                    "pointSize": 6,
+                    "drawStyle": "bars",
+                    "lineInterpolation": "linear",
+                    "spanNulls": false,
+                    "axisSoftMin": 0,
+                    "stacking": {
+                      "mode": "normal",
+                      "group": "A"
+                    }
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "decimals": 0
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum by (event, status) (increase(forgejo_ci_runs_total{repo=~\"$$repo\"}[1h]))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{event}} · {{status}}"
+                }
+              ],
+              "id": 15
+            },
+            {
+              "type": "bargauge",
+              "title": "Repositories with failed jobs, this range",
+              "description": "Failed jobs per repository over the dashboard range, largest first. Open the repository's Actions tab to see which job and why; Forgejo records no failure reason the exporter can read.",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "gridPos": {
+                "h": 9,
+                "w": 12,
+                "x": 0,
+                "y": 35
+              },
+              "options": {
+                "orientation": "horizontal",
+                "displayMode": "basic",
+                "valueMode": "text",
+                "namePlacement": "left",
+                "showUnfilled": true,
+                "sizing": "auto",
+                "minVizWidth": 8,
+                "minVizHeight": 12,
+                "maxVizHeight": 26,
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "values": false
+                },
+                "text": {
+                  "titleSize": 13,
+                  "valueSize": 18
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No job failed in this range.",
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "#e69f00"
+                  },
+                  "decimals": 0
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum by (repo) (increase(forgejo_ci_jobs_total{status=\"failure\", repo=~\"$$repo\"}[$$__range])) > 0",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{repo}}",
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 16
+            },
+            {
+              "type": "table",
+              "title": "Latest trunk run per workflow",
+              "description": "The newest default-branch run of every workflow the exporter grades, and when it ran. Pull requests are left out by design: a red pull request is work in progress, a red trunk is a defect.",
+              "gridPos": {
+                "h": 9,
+                "w": 12,
+                "x": 12,
+                "y": 35
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "filterable": false
+                  },
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "text"
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Ran"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "dateTimeFromNow"
+                      },
+                      {
+                        "id": "custom.width",
+                        "value": 140
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Status"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.cellOptions",
+                        "value": {
+                          "type": "color-text"
+                        }
+                      },
+                      {
+                        "id": "mappings",
+                        "value": [
+                          {
+                            "type": "value",
+                            "options": {
+                              "failure": {
+                                "text": "failure",
+                                "color": "#d55e00"
+                              },
+                              "success": {
+                                "text": "success",
+                                "color": "#898781"
+                              },
+                              "cancelled": {
+                                "text": "cancelled",
+                                "color": "#898781"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "transformations": [
+                {
+                  "id": "merge",
+                  "options": {}
+                },
+                {
+                  "id": "organize",
+                  "options": {
+                    "excludeByName": {
+                      "Time": true,
+                      "Value #A": true
+                    },
+                    "renameByName": {
+                      "repo": "Repository",
+                      "workflow": "Workflow",
+                      "ref": "Branch",
+                      "status": "Status",
+                      "Value #B": "Ran"
+                    },
+                    "indexByName": {
+                      "Repository": 0,
+                      "Workflow": 1,
+                      "Branch": 2,
+                      "Status": 3,
+                      "Ran": 4
+                    }
+                  }
+                },
+                {
+                  "id": "sortBy",
+                  "options": {
+                    "sort": [
+                      {
+                        "field": "Ran",
+                        "desc": true
+                      }
+                    ]
+                  }
+                }
+              ],
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "max by (repo, workflow, ref, status) (forgejo_ci_last_run_status{repo=~\"$$repo\"}) == 1",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false,
+                  "format": "table"
+                },
+                {
+                  "refId": "B",
+                  "expr": "max by (repo, workflow, ref) (forgejo_ci_last_run_timestamp_seconds{repo=~\"$$repo\"}) * 1000",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false,
+                  "format": "table"
+                }
+              ],
+              "id": 17
+            }
+          ],
+          "id": 13
+        },
+        {
+          "type": "row",
+          "title": "Where job time goes",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 44
+          },
+          "panels": [
+            {
+              "type": "table",
+              "title": "Slowest jobs: a typical day against a bad one",
+              "description": "Every job the exporter samples, by its median duration, with its 95th percentile and worst run. The top of this list is where CI minutes go; a p95 far above its p50 is a job whose speed depends on the node or a cache, not on the change.",
+              "gridPos": {
+                "h": 12,
+                "w": 24,
+                "x": 0,
+                "y": 45
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "filterable": false
+                  },
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "text"
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Typical (p50)"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "s"
+                      },
+                      {
+                        "id": "decimals",
+                        "value": 0
+                      },
+                      {
+                        "id": "custom.cellOptions",
+                        "value": {
+                          "type": "gauge",
+                          "mode": "basic",
+                          "valueDisplayMode": "text"
+                        }
+                      },
+                      {
+                        "id": "color",
+                        "value": {
+                          "mode": "fixed",
+                          "fixedColor": "#3987e5"
+                        }
+                      },
+                      {
+                        "id": "min",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Bad day (p95)"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "s"
+                      },
+                      {
+                        "id": "decimals",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Worst"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "s"
+                      },
+                      {
+                        "id": "decimals",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Runs"
+                    },
+                    "properties": [
+                      {
+                        "id": "decimals",
+                        "value": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              "transformations": [
+                {
+                  "id": "merge",
+                  "options": {}
+                },
+                {
+                  "id": "organize",
+                  "options": {
+                    "excludeByName": {
+                      "Time": true
+                    },
+                    "renameByName": {
+                      "repo": "Repository",
+                      "workflow": "Workflow",
+                      "ci_job": "Job",
+                      "Value #A": "Typical (p50)",
+                      "Value #B": "Bad day (p95)",
+                      "Value #C": "Worst",
+                      "Value #D": "Runs"
+                    },
+                    "indexByName": {
+                      "Repository": 0,
+                      "Workflow": 1,
+                      "Job": 2,
+                      "Typical (p50)": 3,
+                      "Bad day (p95)": 4,
+                      "Worst": 5,
+                      "Runs": 6
+                    }
+                  }
+                },
+                {
+                  "id": "sortBy",
+                  "options": {
+                    "sort": [
+                      {
+                        "field": "Typical (p50)",
+                        "desc": true
+                      }
+                    ]
+                  }
+                }
+              ],
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "max by (repo, workflow, ci_job) (forgejo_ci_job_duration_p50_seconds{repo=~\"$$repo\"})",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false,
+                  "format": "table"
+                },
+                {
+                  "refId": "B",
+                  "expr": "max by (repo, workflow, ci_job) (forgejo_ci_job_duration_p95_seconds{repo=~\"$$repo\"})",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false,
+                  "format": "table"
+                },
+                {
+                  "refId": "C",
+                  "expr": "max by (repo, workflow, ci_job) (forgejo_ci_job_duration_max_seconds{repo=~\"$$repo\"})",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false,
+                  "format": "table"
+                },
+                {
+                  "refId": "D",
+                  "expr": "max by (repo, workflow, ci_job) (forgejo_ci_job_runs_sampled{repo=~\"$$repo\"})",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false,
+                  "format": "table"
+                }
+              ],
+              "id": 19
+            },
+            {
+              "type": "timeseries",
+              "title": "Run wall-clock p50 and p95",
+              "description": "Run duration percentiles over a trailing six hours, all outcomes and events.",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 57
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "s",
+                  "custom": {
+                    "lineWidth": 2,
+                    "fillOpacity": 0,
+                    "showPoints": "never",
+                    "pointSize": 6,
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "spanNulls": false,
+                    "axisSoftMin": 0
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "p50"
+                    },
+                    "properties": [
+                      {
+                        "id": "color",
+                        "value": {
+                          "mode": "fixed",
+                          "fixedColor": "#3987e5"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "p95"
+                    },
+                    "properties": [
+                      {
+                        "id": "color",
+                        "value": {
+                          "mode": "fixed",
+                          "fixedColor": "#d95926"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "histogram_quantile(0.5, sum by (le) (rate(forgejo_ci_run_duration_seconds_bucket{repo=~\"$$repo\"}[6h])))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "p50"
+                },
+                {
+                  "refId": "B",
+                  "expr": "histogram_quantile(0.95, sum by (le) (rate(forgejo_ci_run_duration_seconds_bucket{repo=~\"$$repo\"}[6h])))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "p95"
+                }
+              ],
+              "id": 20
+            },
+            {
+              "type": "timeseries",
+              "title": "Queue wait p50 and p95",
+              "description": "Run queue wait percentiles over a trailing hour, against the same one and five minute lines the first screen uses.",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 57
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "s",
+                  "custom": {
+                    "lineWidth": 2,
+                    "fillOpacity": 0,
+                    "showPoints": "never",
+                    "pointSize": 6,
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "spanNulls": false,
+                    "axisSoftMin": 0,
+                    "thresholdsStyle": {
+                      "mode": "line"
+                    }
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#898781",
+                        "value": null
+                      },
+                      {
+                        "color": "#e69f00",
+                        "value": 60
+                      },
+                      {
+                        "color": "#d55e00",
+                        "value": 300
+                      }
+                    ]
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "p50"
+                    },
+                    "properties": [
+                      {
+                        "id": "color",
+                        "value": {
+                          "mode": "fixed",
+                          "fixedColor": "#3987e5"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "p95"
+                    },
+                    "properties": [
+                      {
+                        "id": "color",
+                        "value": {
+                          "mode": "fixed",
+                          "fixedColor": "#d95926"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "histogram_quantile(0.5, sum by (le) (rate(forgejo_ci_run_queue_seconds_bucket[1h])))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "p50"
+                },
+                {
+                  "refId": "B",
+                  "expr": "histogram_quantile(0.95, sum by (le) (rate(forgejo_ci_run_queue_seconds_bucket[1h])))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "p95"
+                }
+              ],
+              "id": 21
+            },
+            {
+              "type": "heatmap",
+              "title": "Job durations",
+              "description": "How long finished jobs took, per time bucket. Two bands is normal (fast checks and slow image builds); a band that climbs over days is a job getting slower.",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "gridPos": {
+                "h": 8,
+                "w": 24,
+                "x": 0,
+                "y": 65
+              },
+              "options": {
+                "calculate": false,
+                "cellGap": 1,
+                "color": {
+                  "mode": "scheme",
+                  "scheme": "Blues",
+                  "steps": 64,
+                  "exponent": 0.5,
+                  "fill": "#3987e5",
+                  "reverse": false
+                },
+                "yAxis": {
+                  "unit": "s",
+                  "axisPlacement": "left"
+                },
+                "legend": {
+                  "show": false
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "yHistogram": true
+                },
+                "filterValues": {
+                  "le": 1e-09
+                },
+                "rowsFrame": {
+                  "layout": "auto"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum by (le) (increase(forgejo_ci_job_duration_seconds_bucket{repo=~\"$$repo\"}[$$__rate_interval]))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{le}}",
+                  "format": "heatmap"
+                }
+              ],
+              "id": 22
+            }
+          ],
+          "id": 18
+        },
+        {
+          "type": "row",
+          "title": "Runner fleet",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 73
+          },
+          "panels": [
+            {
+              "type": "timeseries",
+              "title": "Runner pods per node",
+              "description": "Running runner pods on each node. All of them on one node means every job competes for that node's disk and one dind.",
+              "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 0,
+                "y": 74
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "lineWidth": 0,
+                    "fillOpacity": 55,
+                    "showPoints": "never",
+                    "pointSize": 6,
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "spanNulls": false,
+                    "axisSoftMin": 0,
+                    "stacking": {
+                      "mode": "normal",
+                      "group": "A"
+                    }
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "decimals": 0
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "count by (node) (kube_pod_info{job=\"kube-state-metrics\", exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"} * on (exported_pod) group_left() (kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\", phase=\"Running\"} == 1))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{node}}"
+                }
+              ],
+              "id": 24
+            },
+            {
+              "type": "timeseries",
+              "title": "Runner CPU per pod",
+              "description": "CPU of each runner pod, cores. Host-mode steps only: builds run in dind.",
+              "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 8,
+                "y": 74
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "hidden",
+                  "placement": "bottom",
+                  "showLegend": false
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "lineWidth": 2,
+                    "fillOpacity": 0,
+                    "showPoints": "never",
+                    "pointSize": 6,
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "spanNulls": false,
+                    "axisSoftMin": 0
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"forgejo\", pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\", image!=\"\"}[5m]))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{pod}}"
+                }
+              ],
+              "id": 25
+            },
+            {
+              "type": "timeseries",
+              "title": "Runner memory per pod",
+              "description": "Working set of each runner pod against its limit (6 GiB when this board was written); a pod climbing to the limit is killed without a Forgejo error.",
+              "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 16,
+                "y": 74
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "hidden",
+                  "placement": "bottom",
+                  "showLegend": false
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "bytes",
+                  "custom": {
+                    "lineWidth": 2,
+                    "fillOpacity": 0,
+                    "showPoints": "never",
+                    "pointSize": 6,
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "spanNulls": false,
+                    "axisSoftMin": 0
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "max by (pod) (container_memory_working_set_bytes{namespace=\"forgejo\", pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\", image!=\"\"})",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{pod}}"
+                }
+              ],
+              "id": 26
+            },
+            {
+              "type": "stat",
+              "title": "Runner and dind OOM kills, this range",
+              "description": "Out-of-memory kills in runner and dind containers. A killed runner leaves its job hanging until Forgejo times it out; amber from one.",
+              "gridPos": {
+                "h": 5,
+                "w": 6,
+                "x": 0,
+                "y": 82
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "wideLayout": true,
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "center"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "0",
+                  "decimals": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#898781",
+                        "value": null
+                      },
+                      {
+                        "color": "#e69f00",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum(increase(container_oom_events_total{namespace=\"forgejo\", pod=~\"forgejo-(runner|dind)-.+\"}[$$__range]))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 27
+            },
+            {
+              "type": "stat",
+              "title": "KEDA scaler errors, this range",
+              "description": "Failed reads of the Forgejo job queue by KEDA. While they fail only the warm floor runs jobs; the July 2026 cause was the keda namespace missing from forgejo-allow-ingress.",
+              "gridPos": {
+                "h": 5,
+                "w": 6,
+                "x": 6,
+                "y": 82
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "wideLayout": true,
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "center"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "no data",
+                  "decimals": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#898781",
+                        "value": null
+                      },
+                      {
+                        "color": "#e69f00",
+                        "value": 1
+                      },
+                      {
+                        "color": "#d55e00",
+                        "value": 20
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum(increase(keda_scaler_detail_errors_total{scaledObject=\"forgejo-runner\"}[$$__range])) or on() vector(0)",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 28
+            },
+            {
+              "type": "stat",
+              "title": "KEDA scaler read latency",
+              "description": "How long KEDA's last read of the Forgejo job queue took.",
+              "gridPos": {
+                "h": 5,
+                "w": 6,
+                "x": 12,
+                "y": 82
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "wideLayout": true,
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "center"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "no data",
+                  "unit": "s",
+                  "decimals": 2,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#898781",
+                        "value": null
+                      },
+                      {
+                        "color": "#e69f00",
+                        "value": 2
+                      },
+                      {
+                        "color": "#d55e00",
+                        "value": 10
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "max(keda_scaler_metrics_latency_seconds{scaledObject=\"forgejo-runner\"})",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  }
+                }
+              ],
+              "id": 29
+            },
+            {
+              "type": "stat",
+              "title": "Runner restarts, this range",
+              "description": "Container restarts in runner and dind pods. A restarted dind drops every build running on that node.",
+              "gridPos": {
+                "h": 5,
+                "w": 6,
+                "x": 18,
+                "y": 82
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "wideLayout": true,
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "center"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "0",
+                  "decimals": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#898781",
+                        "value": null
+                      },
+                      {
+                        "color": "#e69f00",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum(increase(kube_pod_container_status_restarts_total{job=\"kube-state-metrics\", exported_namespace=\"forgejo\", exported_pod=~\"forgejo-(runner|dind)-.+\"}[$$__range]))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 30
+            }
+          ],
+          "id": 23
+        },
+        {
+          "type": "row",
+          "title": "Builders and registries",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 87
+          },
+          "panels": [
+            {
+              "type": "timeseries",
+              "title": "dind CPU per node",
+              "description": "Cores each docker daemon uses: this is where image builds and job containers run.",
+              "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 0,
+                "y": 88
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "lineWidth": 2,
+                    "fillOpacity": 0,
+                    "showPoints": "never",
+                    "pointSize": 6,
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "spanNulls": false,
+                    "axisSoftMin": 0
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"forgejo\", pod=~\"forgejo-dind-.+\", container=\"dind\"}[5m]))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{pod}}"
+                }
+              ],
+              "id": 32
+            },
+            {
+              "type": "timeseries",
+              "title": "dind CPU throttling",
+              "description": "Share of CFS periods in which dind hit its CPU limit. Sustained above a quarter, builds are waiting on the limit rather than on work.",
+              "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 8,
+                "y": 88
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "percentunit",
+                  "custom": {
+                    "lineWidth": 2,
+                    "fillOpacity": 0,
+                    "showPoints": "never",
+                    "pointSize": 6,
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "spanNulls": false,
+                    "axisSoftMin": 0,
+                    "thresholdsStyle": {
+                      "mode": "line"
+                    }
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#898781",
+                        "value": null
+                      },
+                      {
+                        "color": "#e69f00",
+                        "value": 0.25
+                      }
+                    ]
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "max by (pod) (rate(container_cpu_cfs_throttled_periods_total{namespace=\"forgejo\", pod=~\"forgejo-dind-.+\", container=\"dind\"}[5m]) / clamp_min(rate(container_cpu_cfs_periods_total{namespace=\"forgejo\", pod=~\"forgejo-dind-.+\", container=\"dind\"}[5m]), 1e-9))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{pod}}"
+                }
+              ],
+              "id": 33
+            },
+            {
+              "type": "bargauge",
+              "title": "Image pulls by dind, this range, per registry",
+              "description": "Pulls dind logged, by the registry host. Anything other than harbor.webgrip.dev bypasses the proxy cache.",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 16,
+                "y": 88
+              },
+              "options": {
+                "orientation": "horizontal",
+                "displayMode": "basic",
+                "valueMode": "text",
+                "namePlacement": "left",
+                "showUnfilled": true,
+                "sizing": "auto",
+                "minVizWidth": 8,
+                "minVizHeight": 12,
+                "maxVizHeight": 26,
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "values": false
+                },
+                "text": {
+                  "titleSize": 13,
+                  "valueSize": 18
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "no pulls logged",
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "#3987e5"
+                  },
+                  "decimals": 0
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "namespace:forgejo container:dind \"image pulled\" | extract_regexp \"remote=\\\"(?P<registry>[^/\\\"]+)/\" from _msg | stats by (registry) count() as pulls",
+                  "queryType": "stats",
+                  "datasource": {
+                    "type": "victoriametrics-logs-datasource",
+                    "uid": "victorialogs"
+                  },
+                  "legendFormat": "{{registry}}"
+                }
+              ],
+              "id": 34
+            },
+            {
+              "type": "timeseries",
+              "title": "Harbor requests by status",
+              "description": "Harbor core requests per second by HTTP status. 401s are anonymous token handshakes and normal; 5xx is Harbor failing pulls for every build.",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 96
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "reqps",
+                  "custom": {
+                    "lineWidth": 2,
+                    "fillOpacity": 0,
+                    "showPoints": "never",
+                    "pointSize": 6,
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "spanNulls": false,
+                    "axisSoftMin": 0
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum by (code) (rate(harbor_core_http_request_total[5m]))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{code}}"
+                }
+              ],
+              "id": 35
+            },
+            {
+              "type": "timeseries",
+              "title": "Harbor pulls per hour, by project",
+              "description": "Artifacts pulled per hour per Harbor project; the proxy projects (dockerhub, ghcr, quay) are the caches CI leans on.",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 96
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "lineWidth": 0,
+                    "fillOpacity": 80,
+                    "showPoints": "never",
+                    "pointSize": 6,
+                    "drawStyle": "bars",
+                    "lineInterpolation": "linear",
+                    "spanNulls": false,
+                    "axisSoftMin": 0,
+                    "stacking": {
+                      "mode": "normal",
+                      "group": "A"
+                    }
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "decimals": 0
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum by (project_name) (increase(harbor_artifact_pulled[1h])) > 0",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{project_name}}"
+                }
+              ],
+              "id": 36
+            }
+          ],
+          "id": 31
+        },
+        {
+          "type": "row",
+          "title": "Nodes under CI",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 104
+          },
+          "panels": [
+            {
+              "type": "timeseries",
+              "title": "I/O pressure per node",
+              "description": "Share of time tasks on each node waited on I/O (PSI). CI is disk-bound here: the flux-local render and image layer unpacking both saturate it.",
+              "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 0,
+                "y": 105
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "percentunit",
+                  "custom": {
+                    "lineWidth": 2,
+                    "fillOpacity": 0,
+                    "showPoints": "never",
+                    "pointSize": 6,
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "spanNulls": false,
+                    "axisSoftMin": 0,
+                    "thresholdsStyle": {
+                      "mode": "line"
+                    }
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#898781",
+                        "value": null
+                      },
+                      {
+                        "color": "#e69f00",
+                        "value": 0.2
+                      },
+                      {
+                        "color": "#d55e00",
+                        "value": 0.5
+                      }
+                    ]
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "max by (nodename) (rate(node_pressure_io_waiting_seconds_total[5m]) * on (instance) group_left(nodename) node_uname_info)",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{nodename}}"
+                }
+              ],
+              "id": 38
+            },
+            {
+              "type": "timeseries",
+              "title": "CPU pressure per node",
+              "description": "Share of time runnable tasks waited for a CPU.",
+              "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 8,
+                "y": 105
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "percentunit",
+                  "custom": {
+                    "lineWidth": 2,
+                    "fillOpacity": 0,
+                    "showPoints": "never",
+                    "pointSize": 6,
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "spanNulls": false,
+                    "axisSoftMin": 0,
+                    "thresholdsStyle": {
+                      "mode": "line"
+                    }
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#898781",
+                        "value": null
+                      },
+                      {
+                        "color": "#e69f00",
+                        "value": 0.2
+                      },
+                      {
+                        "color": "#d55e00",
+                        "value": 0.5
+                      }
+                    ]
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "max by (nodename) (rate(node_pressure_cpu_waiting_seconds_total[5m]) * on (instance) group_left(nodename) node_uname_info)",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{nodename}}"
+                }
+              ],
+              "id": 39
+            },
+            {
+              "type": "timeseries",
+              "title": "Forgejo namespace CPU per node",
+              "description": "Cores the forgejo namespace (runners, dind, server) uses on each node.",
+              "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 16,
+                "y": 105
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "lineWidth": 2,
+                    "fillOpacity": 0,
+                    "showPoints": "never",
+                    "pointSize": 6,
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "spanNulls": false,
+                    "axisSoftMin": 0
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum by (node) (rate(container_cpu_usage_seconds_total{namespace=\"forgejo\", image!=\"\"}[5m]) * on (namespace, pod) group_left(node) max by (namespace, pod, node) (label_replace(label_replace(kube_pod_info{job=\"kube-state-metrics\", exported_namespace=\"forgejo\"}, \"namespace\", \"$$1\", \"exported_namespace\", \"(.+)\"), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\")))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{node}}"
+                }
+              ],
+              "id": 40
+            }
+          ],
+          "id": 37
+        },
+        {
+          "type": "row",
+          "title": "Runner logs",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 113
+          },
+          "panels": [
+            {
+              "type": "logs",
+              "title": "Runner warnings, errors and cancellations",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "gridPos": {
+                "h": 10,
+                "w": 16,
+                "x": 0,
+                "y": 114
+              },
+              "description": "The runner agent's own warning and error lines, and every task it reported cancelled. Job step output never reaches pod stdout here; open the run in Forgejo for that.",
+              "options": {
+                "showTime": true,
+                "wrapLogMessage": true,
+                "sortOrder": "Descending",
+                "enableLogDetails": true,
+                "dedupStrategy": "exact"
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "namespace:forgejo container:runner (\"level=error\" OR \"level=warning\" OR RESULT_CANCELLED)",
+                  "queryType": "instant",
+                  "datasource": {
+                    "type": "victoriametrics-logs-datasource",
+                    "uid": "victorialogs"
+                  }
+                }
+              ],
+              "id": 42
+            },
+            {
+              "type": "bargauge",
+              "title": "Tasks picked up per repository, this range",
+              "description": "Distinct tasks runners picked up per repository, from the runner's `task N repo is` line. Distinct task ids, so the duplicate lines of an agent restart do not inflate it.",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "gridPos": {
+                "h": 10,
+                "w": 8,
+                "x": 16,
+                "y": 114
+              },
+              "options": {
+                "orientation": "horizontal",
+                "displayMode": "basic",
+                "valueMode": "text",
+                "namePlacement": "left",
+                "showUnfilled": true,
+                "sizing": "auto",
+                "minVizWidth": 8,
+                "minVizHeight": 12,
+                "maxVizHeight": 26,
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "values": false
+                },
+                "text": {
+                  "titleSize": 13,
+                  "valueSize": 18
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "no data",
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "#3987e5"
+                  },
+                  "decimals": 0
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "namespace:forgejo container:runner \"repo is\" | extract_regexp \"task (?P<task>[0-9]+) repo is (?P<repo>[^ ]+)\" from _msg | stats by (repo) count_uniq(task) as tasks",
+                  "queryType": "stats",
+                  "datasource": {
+                    "type": "victoriametrics-logs-datasource",
+                    "uid": "victorialogs"
+                  },
+                  "legendFormat": "{{repo}}"
+                }
+              ],
+              "id": 43
+            }
+          ],
+          "id": 41
+        },
+        {
+          "type": "row",
+          "title": "Exporter health",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 124
+          },
+          "panels": [
+            {
+              "type": "stat",
+              "title": "Repositories tracked",
+              "description": "Repositories forgejo-ci-exporter polls.",
+              "gridPos": {
+                "h": 4,
+                "w": 4,
+                "x": 0,
+                "y": 125
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "wideLayout": true,
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "center"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "no data",
+                  "decimals": 0,
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "#898781"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "max(forgejo_ci_repos_tracked)",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 45
+            },
+            {
+              "type": "stat",
+              "title": "Refresh errors, this range",
+              "description": "Failed Actions API calls during polls. A few a day are Forgejo restarts.",
+              "gridPos": {
+                "h": 4,
+                "w": 5,
+                "x": 4,
+                "y": 125
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "wideLayout": true,
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "center"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "no data",
+                  "decimals": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#898781",
+                        "value": null
+                      },
+                      {
+                        "color": "#e69f00",
+                        "value": 5
+                      },
+                      {
+                        "color": "#d55e00",
+                        "value": 50
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum(increase(forgejo_ci_refresh_errors_total[$$__range]))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 46
+            },
+            {
+              "type": "stat",
+              "title": "Poll duration",
+              "description": "How long the last poll of every tracked repository took. Past the poll interval, polls overlap and data ages.",
+              "gridPos": {
+                "h": 4,
+                "w": 5,
+                "x": 9,
+                "y": 125
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "wideLayout": true,
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "center"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "no data",
+                  "unit": "s",
+                  "decimals": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#898781",
+                        "value": null
+                      },
+                      {
+                        "color": "#e69f00",
+                        "value": 120
+                      },
+                      {
+                        "color": "#d55e00",
+                        "value": 240
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "max(forgejo_ci_refresh_duration_seconds)",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  }
+                }
+              ],
+              "id": 47
+            },
+            {
+              "type": "stat",
+              "title": "Runner inventory readable",
+              "description": "Whether the exporter's token can list runners. At 0 the runner inventory series are absent; this board does not depend on them.",
+              "gridPos": {
+                "h": 4,
+                "w": 10,
+                "x": 14,
+                "y": 125
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "wideLayout": true,
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "center"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "no data",
+                  "decimals": 0,
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "#898781"
+                  },
+                  "mappings": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "0": {
+                          "text": "no: token lacks runner scope"
+                        },
+                        "1": {
+                          "text": "yes"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "max(forgejo_ci_runner_inventory_up)",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 48
+            }
+          ],
+          "id": 44
+        }
+      ]
+    }
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: wall-ci
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: walls
+  json: |-
+    {
+      "uid": "wall-ci",
+      "title": "Wall · Forgejo CI",
+      "description": "The Forgejo CI board's first screen, for a TV.",
+      "tags": [
+        "wall",
+        "ci"
+      ],
+      "schemaVersion": 39,
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "1m",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "timepicker": {
+        "hidden": true
+      },
+      "links": [
+        {
+          "title": "Forgejo CI",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/forgejo-ci",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        }
+      ],
+      "templating": {
+        "list": [
+          {
+            "name": "repo",
+            "label": "Repository",
+            "type": "query",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "query": "label_values(forgejo_ci_consecutive_failures, repo)",
+            "refresh": 2,
+            "sort": 1,
+            "includeAll": true,
+            "multi": true,
+            "current": {
+              "text": "All",
+              "value": "$$__all"
+            },
+            "options": [],
+            "allValue": ".*",
+            "hide": 2
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Runners, right now",
+          "description": "Busy is tasks Forgejo says are running (the exporter polls every 5 minutes, so it trails). Pods is runner pods in phase Running, busy or warm. Pending is runner pods the scheduler could not place: the real ceiling is node room, not the ScaledJob's maxReplicaCount of 6, so a Pending runner is the capacity limit showing itself and turns amber. Waiting is KEDA's own read of queued docker-label jobs. Ceiling and the warm floor are read from the ScaledJob manifest in git when this board is generated (1 warm, 6 max).",
+          "gridPos": {
+            "h": 5,
+            "w": 7,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "pending"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "waiting"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 6
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(forgejo_ci_tasks_active{status=\"running\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "busy",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "B",
+              "expr": "sum(kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\", phase=\"Running\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "pods",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "C",
+              "expr": "sum(kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\", phase=\"Pending\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "pending",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "D",
+              "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-runner\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "waiting",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "E",
+              "expr": "vector(6)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "ceiling",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Queue wait p95, last hour",
+          "description": "How long the slowest twentieth of runs waited between Forgejo creating them and a runner starting them, trailing hour. Run level: Forgejo stamps a task with its run's start, so there is no honest per-job queue number. Amber from one minute, vermillion from five, when a push has stopped feeling like CI and started feeling like waiting. The buckets end at 30 minutes, so a p95 past that reads as 30 minutes.",
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 7,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no runs queued in the last hour",
+              "unit": "s",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 60
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 300
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(forgejo_ci_run_queue_seconds_bucket[1h])))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "Trunks red",
+          "description": "Default-branch workflows (main, master, development) whose latest run failed and that ran in the last seven days. A red trunk is a broken main: everything merged on top of it ships unverified. Vermillion from one; the table beside it names them and how many runs in a row failed.",
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 12,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 56
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count((max by (repo, workflow, ref) (forgejo_ci_last_run_status{status=\"failure\", repo=~\"$$repo\"}) == 1) and on (repo, workflow, ref) (time() - max by (repo, workflow, ref) (forgejo_ci_last_run_timestamp_seconds) < 604800)) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "stat",
+          "title": "Run wall-clock · 7 days",
+          "description": "Median and 95th percentile wall-clock of a whole workflow run, created to stopped, trailing seven days, every outcome and every event: the exporter's run histogram carries repo and workflow only, so this is not a success-only time to green. Grey: it is a trend to read, not an alarm.",
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 15,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "s",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.5, sum by (le) (rate(forgejo_ci_run_duration_seconds_bucket{repo=~\"$$repo\"}[7d])))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "p50",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "B",
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(forgejo_ci_run_duration_seconds_bucket{repo=~\"$$repo\"}[7d])))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "p95",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "stat",
+          "title": "CI data age",
+          "description": "Seconds since forgejo-ci-exporter last finished a poll of the Actions API. It polls every 300 s, so up to about 360 s is normal. Amber from 15 minutes, vermillion from 30, where ForgejoCIOutcomeExporterStale fires: every outcome number on this board is that old.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 20,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "exporter not reporting",
+              "unit": "s",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 900
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1800
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "time() - max(forgejo_ci_last_refresh_timestamp_seconds)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 5
+        },
+        {
+          "type": "table",
+          "title": "Red trunks",
+          "description": "Each red trunk, how many runs in a row failed, and how long since its last green run. An empty Red for means the last green run is older than the exporter's window: red longer than it can see. ForgejoCITrunkPipelineFailing fires at three in a row. Fix or revert on the trunk first; anything merged meanwhile is untested.",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "Every trunk that ran this week is green."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Failed in a row"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 3
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 130
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Red for"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 110
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "repo": "Repository",
+                  "workflow": "Workflow",
+                  "ref": "Branch",
+                  "Value #A": "Failed in a row",
+                  "Value #B": "Red for"
+                },
+                "indexByName": {
+                  "Repository": 0,
+                  "Workflow": 1,
+                  "Branch": 2,
+                  "Failed in a row": 3,
+                  "Red for": 4
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "Failed in a row",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (repo, workflow, ref) (forgejo_ci_consecutive_failures) * on (repo, workflow, ref) group_left() ((max by (repo, workflow, ref) (forgejo_ci_last_run_status{status=\"failure\", repo=~\"$$repo\"}) == 1) and on (repo, workflow, ref) (time() - max by (repo, workflow, ref) (forgejo_ci_last_run_timestamp_seconds) < 604800))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "(time() - (max by (repo, workflow, ref) (forgejo_ci_last_success_timestamp_seconds) > 0)) and on (repo, workflow, ref) ((max by (repo, workflow, ref) (forgejo_ci_last_run_status{status=\"failure\", repo=~\"$$repo\"}) == 1) and on (repo, workflow, ref) (time() - max by (repo, workflow, ref) (forgejo_ci_last_run_timestamp_seconds) < 604800))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 6
+        },
+        {
+          "type": "timeseries",
+          "title": "Demand against runner capacity",
+          "description": "Busy tasks, queued jobs, runner pods and Pending pods over the range, against the ScaledJob's ceiling. Waiting above zero while pods sit at the same level for long stretches, with Pending pods under it, is the node pool out of room: the fix is less CI work per push or another node, not a higher maxReplicaCount.",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "pointSize": 6,
+                "drawStyle": "line",
+                "lineInterpolation": "linear",
+                "spanNulls": false,
+                "axisSoftMin": 0
+              },
+              "color": {
+                "mode": "palette-classic"
+              },
+              "decimals": 0
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "busy (Forgejo)"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#56b4e9"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "waiting (KEDA)"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#e69f00"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "runner pods"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#898781"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "pending pods"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#d55e00"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ceiling"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#5b5a56"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ceiling"
+                },
+                "properties": [
+                  {
+                    "id": "custom.lineStyle",
+                    "value": {
+                      "fill": "dash",
+                      "dash": [
+                        8,
+                        6
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.lineWidth",
+                    "value": 1
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(forgejo_ci_tasks_active{status=\"running\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "busy (Forgejo)"
+            },
+            {
+              "refId": "B",
+              "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-runner\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "waiting (KEDA)"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\", phase=\"Running\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "runner pods"
+            },
+            {
+              "refId": "D",
+              "expr": "sum(kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\", phase=\"Pending\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "pending pods"
+            },
+            {
+              "refId": "E",
+              "expr": "vector(6)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "ceiling"
+            }
+          ],
+          "id": 7
+        },
+        {
+          "type": "table",
+          "title": "Running now",
+          "description": "Every task Forgejo reports as running, how long it has run, and that time as a share of the job's usual (its median over the exporter's window). Amber from one and a half times usual, vermillion from three: a job that far past its median is usually hung on a network call or a lock, and cancelling it frees a runner. Click a job to open its run.",
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 0,
+            "y": 14
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "No job is running."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Running"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 90
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "vs usual"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1.5
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 3
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 90
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Job"
+                },
+                "properties": [
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open the run in Forgejo",
+                        "url": "$${__data.fields.url}",
+                        "targetBlank": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "task": true,
+                  "workflow": true,
+                  "url": true
+                },
+                "renameByName": {
+                  "repo": "Repository",
+                  "ci_job": "Job",
+                  "event": "Event",
+                  "ref": "Ref",
+                  "Value #A": "Running",
+                  "Value #B": "vs usual"
+                },
+                "indexByName": {
+                  "Repository": 0,
+                  "Job": 1,
+                  "Event": 2,
+                  "Ref": 3,
+                  "Running": 4,
+                  "vs usual": 5
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "Running",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (task) (forgejo_ci_task_running_seconds) * on (task) group_right() (max by (task, repo, workflow, ci_job, event, ref, url) (forgejo_ci_task_info{status=\"running\", repo=~\"$$repo\"}) * 0 + 1)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "(max by (task) (forgejo_ci_task_running_seconds) * on (task) group_right() (max by (task, repo, workflow, ci_job, event, ref, url) (forgejo_ci_task_info{status=\"running\", repo=~\"$$repo\"}) * 0 + 1)) / on (repo, workflow, ci_job) group_left() max by (repo, workflow, ci_job) (forgejo_ci_job_duration_p50_seconds)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 8
+        },
+        {
+          "type": "stat",
+          "title": "Jobs by outcome, this range",
+          "description": "Finished jobs in the dashboard range, by the outcome Forgejo recorded. Failure is amber from one: each is a push somebody has to look at. Success, skipped and cancelled stay grey; a cancelled job is usually a newer push superseding an older one.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 12,
+            "y": 14
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "failure"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (status) (increase(forgejo_ci_jobs_total{repo=~\"$$repo\"}[$$__range]))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{status}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 9
+        },
+        {
+          "type": "stat",
+          "title": "dind daemons missing",
+          "description": "Nodes where the shared forgejo-dind daemon is wanted but not ready. Every docker build and every `container:` job on that node talks to it, so a missing daemon fails those jobs with a docker socket error that names no cluster component. Vermillion from one.",
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 18,
+            "y": 14
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "dind not reported",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(sum(kube_daemonset_status_desired_number_scheduled{job=\"kube-state-metrics\", exported_namespace=\"forgejo\", daemonset=\"forgejo-dind\"}) - sum(kube_daemonset_status_number_ready{job=\"kube-state-metrics\", exported_namespace=\"forgejo\", daemonset=\"forgejo-dind\"}))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 10
+        },
+        {
+          "type": "stat",
+          "title": "Busiest dind against its CPU limit",
+          "description": "The busier docker daemon's CPU as a share of its own limit, five-minute rate. Builds run inside dind, not in the runner pod, so this is where image builds queue on CPU. Amber from 80 %, vermillion from 95 %, where builds slow for every repository on that node.",
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 21,
+            "y": 14
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "percentunit",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 0.8
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 0.95
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max(sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"forgejo\", pod=~\"forgejo-dind-.+\", container=\"dind\"}[5m])) / on (pod) label_replace(max by (exported_pod) (kube_pod_container_resource_limits{job=\"kube-state-metrics\", exported_namespace=\"forgejo\", exported_pod=~\"forgejo-dind-.+\", exported_container=\"dind\", resource=\"cpu\"}), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "id": 11
+        },
+        {
+          "type": "stat",
+          "title": "Pulls around Harbor, this range",
+          "description": "Image pulls dind made from a registry other than harbor.webgrip.dev, counted from dind's own `image pulled` log lines. Each one skips the proxy cache and spends the anonymous Docker Hub rate limit; the usual culprit is buildx pulling `moby/buildkit` for a docker-container builder. Amber from one. Log lines are duplicated when the node agent restarts, so read this as a floor on the problem, not an exact count.",
+          "gridPos": {
+            "h": 5,
+            "w": 12,
+            "x": 12,
+            "y": 19
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "/^pulls$$/",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "namespace:forgejo container:dind \"image pulled\" -\"harbor.webgrip.dev\" | extract_regexp \"remote=\\\"(?P<reg>[^/\\\"]+)/\" from _msg | stats count() as pulls",
+              "queryType": "stats",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              }
+            }
+          ],
+          "id": 12
+        }
+      ]
+    }

@@ -12,6 +12,9 @@ All `grafana.integreatly.org/v1beta1` CRDs — never dashboard ConfigMaps or Hel
 - Every CRD: `spec.instanceSelector.matchLabels: {grafana.internal/instance: grafana}`; add `allowCrossNamespaceImport: true` outside `observability`.
 - Datasource = `GrafanaDatasource` with `spec.datasource.editable: true`.
 
+## Walls, boards and playlists are generated
+`wall-*`, `alerts-*`, `forgejo-ci`, `glide-plant` and every playlist come from `scripts/dashboards/` (`python3 scripts/dashboards/generate.py`, `--check` in CI Lint and pre-commit). Edit the Python builders, never `*.generated.yaml`. Playlists are `GrafanaManifest` CRs (`playlist.grafana.app/v1`) with the uid set in git. Rules, kiosk URLs and traps: `docs/techdocs/docs/general/information-radiators.md`.
+
 ## Add a dashboard
 1. `observability/grafana/app/dashboards/<name>.yaml`: `kind: GrafanaDashboard`, `spec.folderRef: <folder-crd-name>` (the GrafanaFolder `metadata.name`), `spec.json: |`.
 2. Register in `observability/grafana/app/kustomization.yaml`.

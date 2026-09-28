@@ -1,0 +1,4171 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: glide-plant
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: boards
+  json: |-
+    {
+      "uid": "glide-plant",
+      "title": "Glide · Plant",
+      "description": "Is the Glide machine keeping up: Runs, workers, leases, what waits on a person, what failed and what it cost. The product KPIs are on Glide Loop; this is the plant under it.",
+      "tags": [
+        "board",
+        "glide",
+        "ploeg"
+      ],
+      "schemaVersion": 39,
+      "editable": true,
+      "graphTooltip": 1,
+      "refresh": "1m",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "links": [
+        {
+          "title": "Glide Loop",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/glide-loop",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Glide docs",
+          "type": "link",
+          "icon": "doc",
+          "url": "https://docs.webgrip.dev/glide/",
+          "targetBlank": true,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "type": "dashboards",
+          "tags": [
+            "board"
+          ],
+          "title": "Boards",
+          "asDropdown": true,
+          "keepTime": true,
+          "includeVars": false,
+          "icon": "external link",
+          "targetBlank": false,
+          "tooltip": "",
+          "url": ""
+        }
+      ],
+      "templating": {
+        "list": [
+          {
+            "name": "team",
+            "label": "Team",
+            "type": "query",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "query": "label_values(ploeg_work_items_count, team)",
+            "refresh": 2,
+            "sort": 1,
+            "includeAll": true,
+            "multi": true,
+            "current": {
+              "text": "All",
+              "value": "$$__all"
+            },
+            "options": [],
+            "allValue": ".*"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Runs, right now",
+          "description": "Running is Runs Ploeg has started and not finished (the work-items exporter reads `finished_at IS NULL`). Waiting for a pod is KEDA's read of pending Runs across every ploeg-worker ScaledJob: above zero for long means the node pool has no room for a worker. Worker pods is pods in phase Running. Failed pods is worker pods left in phase Failed, amber from one: open the pod's events, it is usually an OOM kill or a sandbox that never started.",
+          "gridPos": {
+            "h": 5,
+            "w": 8,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "waiting for a pod"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 4
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "failed pods"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(ploeg_agent_runs_count{outcome=\"running\", team=~\"$$team\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "running",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "B",
+              "expr": "sum(keda_scaler_metrics_value{scaledObject=~\"ploeg-worker-.+\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "waiting for a pod",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "C",
+              "expr": "sum(kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"ploeg-worker-.+\", phase=\"Running\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "worker pods",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "D",
+              "expr": "sum(kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"ploeg-worker-.+\", phase=\"Failed\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "failed pods",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Waiting on a person",
+          "description": "Work Items no agent will move until a person does. Review is a pull request ready for you; needs a human is a Work Item an agent gave up on or could not start, with the reason in Vloer. Amber from one, because both are the queue in front of the owner, not in front of the machine.",
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 8,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(ploeg_work_items_count{state=\"awaiting_review\", team=~\"$$team\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "review",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "B",
+              "expr": "sum(ploeg_work_items_count{state=\"needs_human\", team=~\"$$team\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "needs a human",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "Oldest queued Work Item",
+          "description": "Age of the oldest Work Item in state queued, per team. Queued means assigned and not yet leased: a worker should pick it up within minutes. Amber from an hour, vermillion from six. A Work Item Vloer owns (operator_owned) also counts here but is started from Vloer, not by KEDA, so an old one on the vloer team is a person who has not pressed start.",
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 13,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "nothing queued",
+              "unit": "s",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 3600
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 21600
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (team) (ploeg_work_items_oldest_age_seconds{state=\"queued\", team=~\"$$team\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{team}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "stat",
+          "title": "Expired leases",
+          "description": "Writer leases past their expiry that the sweep has not reclaimed. The sweep runs every 15 seconds, so one here means the sweep itself is stuck and a Work Item is locked against every other writer.",
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 18,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 48
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(ploeg_leases_expired_not_reclaimed{team=~\"$$team\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "stat",
+          "title": "Ploeg DB seen",
+          "description": "Whether ploeg-work-items-exporter can query the Ploeg database. At no every Ploeg number on this board is frozen at its last value.",
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 21,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 48
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 0
+                  },
+                  {
+                    "color": "#898781",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "no"
+                    },
+                    "1": {
+                      "text": "yes"
+                    }
+                  }
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max(pg_up{job=\"ploeg-work-items-exporter\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 5
+        },
+        {
+          "type": "table",
+          "title": "Failed and stuck Runs · 30 days",
+          "description": "Every Run in the exporter's 30-day window whose outcome was failed or stuck, newest first, with what its per-Run model key spent. The same ticket failing several times is a Work Item the agents cannot do as written: refine it or take it back. Failure reasons are in Ploeg's database (agent_runs.failure_reason); the Glide Loop board reads them.",
+          "gridPos": {
+            "h": 10,
+            "w": 14,
+            "x": 0,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "No Run failed or got stuck in 30 days."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Started"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeFromNow"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 130
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Ran for"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 90
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Spent"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 80
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Outcome"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "failed": {
+                            "text": "failed",
+                            "color": "#d55e00"
+                          },
+                          "stuck": {
+                            "text": "stuck",
+                            "color": "#e69f00"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 90
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "team": "Team",
+                  "outcome": "Outcome",
+                  "ticket": "Ticket",
+                  "provider": "Tracker",
+                  "Value #A": "Ran for",
+                  "Value #B": "Started",
+                  "Value #C": "Spent",
+                  "key_alias": "Key"
+                },
+                "indexByName": {
+                  "Started": 0,
+                  "Team": 1,
+                  "Outcome": 2,
+                  "Tracker": 3,
+                  "Ticket": 4,
+                  "Ran for": 5,
+                  "Spent": 6,
+                  "Key": 7
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "Started",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (key_alias, team, outcome, ticket, provider) (ploeg_run_duration_seconds{outcome=~\"failed|stuck\", team=~\"$$team\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "max by (key_alias) (ploeg_run_started_epoch{outcome=~\"failed|stuck\", team=~\"$$team\"}) * 1000",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "expr": "max by (key_alias) (litellm_run_spend{key_alias=~\"ploeg-.*\"}) and on (key_alias) max by (key_alias) (ploeg_run_duration_seconds{outcome=~\"failed|stuck\", team=~\"$$team\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 6
+        },
+        {
+          "type": "timeseries",
+          "title": "Runs waiting for a pod, per ScaledJob",
+          "description": "Pending Runs per team and role as KEDA reads them, against running worker pods. A pool that stays above zero while pods do not rise is capacity: the node pool is full or the ScaledJob is paused.",
+          "gridPos": {
+            "h": 10,
+            "w": 10,
+            "x": 14,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "pointSize": 6,
+                "drawStyle": "line",
+                "lineInterpolation": "linear",
+                "spanNulls": false,
+                "axisSoftMin": 0
+              },
+              "color": {
+                "mode": "palette-classic"
+              },
+              "decimals": 0
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "worker pods running"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#898781"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (scaledObject) (keda_scaler_metrics_value{scaledObject=~\"ploeg-worker-.+\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{scaledObject}}"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"ploeg-worker-.+\", phase=\"Running\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "worker pods running"
+            }
+          ],
+          "id": 7
+        },
+        {
+          "type": "bargauge",
+          "title": "Run outcomes · 30 days",
+          "description": "How the Runs of the last 30 days ended. pr_opened and pr_updated are the product; no_change_needed is an honest answer that still cost money; failed and stuck are the ones to read. Neutral bars: this is a mix to watch drift in, not a tile to act on.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 7,
+            "x": 0,
+            "y": 15
+          },
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "basic",
+            "valueMode": "text",
+            "namePlacement": "left",
+            "showUnfilled": true,
+            "sizing": "auto",
+            "minVizWidth": 8,
+            "minVizHeight": 12,
+            "maxVizHeight": 26,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "values": false
+            },
+            "text": {
+              "titleSize": 13,
+              "valueSize": 18
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "noValue": "no data",
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#3987e5"
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (outcome) (ploeg_agent_runs_count{outcome!=\"running\", team=~\"$$team\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{outcome}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 8
+        },
+        {
+          "type": "stat",
+          "title": "Model spend today, per provider",
+          "description": "What LiteLLM has recorded as spent today per provider, every caller included (Glide, Omnigraph, chat). Grey: Glide's own per-Run budgets are enforced in Ploeg, and the SLO rules alert on budget hits.",
+          "gridPos": {
+            "h": 4,
+            "w": 7,
+            "x": 7,
+            "y": 15
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "nothing spent today",
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (provider) (litellm_provider_today_spend) > 0",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{provider}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 9
+        },
+        {
+          "type": "stat",
+          "title": "Glide spend per team · 30 days",
+          "description": "What the per-Run model keys of each team's Runs spent over the exporter's 30-day window, from LiteLLM's ledger joined to Ploeg's Runs on the key alias. Settled spend per Work Item, with reconciliation, is on the Glide Loop board.",
+          "gridPos": {
+            "h": 5,
+            "w": 7,
+            "x": 7,
+            "y": 19
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (team) (litellm_run_spend{key_alias=~\"ploeg-.*\"} * on (key_alias) group_left(team) (max by (key_alias, team) (ploeg_run_started_epoch{team=~\"$$team\"}) >= bool 0))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{team}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 10
+        },
+        {
+          "type": "table",
+          "title": "Models · last 24 hours",
+          "description": "Every model LiteLLM served in the trailing 24 hours: requests, the share that failed, and the 95th percentile latency. MCP tool calls LiteLLM logs as pseudo-models are left out. Failed is amber from 2 % and vermillion from 10 %: at that rate an agent Run on that model burns retries and budget. Swap the model in the team's plan or check the provider's status page.",
+          "gridPos": {
+            "h": 9,
+            "w": 10,
+            "x": 14,
+            "y": 15
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "LiteLLM served nothing in 24 hours."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Requests"
+                },
+                "properties": [
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 90
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Failed"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 0.02
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 0.1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 80
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "p95"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 30
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 90
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 70
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "model": "Model",
+                  "Value #A": "Requests",
+                  "Value #B": "Failed",
+                  "Value #C": "p95"
+                },
+                "indexByName": {
+                  "Model": 0,
+                  "Requests": 1,
+                  "Failed": 2,
+                  "p95": 3
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "Requests",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(sum by (model) (litellm_recent_requests{model!~\"MCP: .*\"}) > 0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "sum by (model) (litellm_recent_failures{model!~\"MCP: .*\"}) / (sum by (model) (litellm_recent_requests{model!~\"MCP: .*\"}) > 0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "expr": "max by (model) (litellm_latency_p95_seconds{model!~\"MCP: .*\"}) and on (model) (sum by (model) (litellm_recent_requests{model!~\"MCP: .*\"}) > 0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 11
+        },
+        {
+          "type": "row",
+          "title": "Dispatch and workers",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 24
+          },
+          "panels": [
+            {
+              "type": "timeseries",
+              "title": "Worker pods by phase",
+              "description": "Worker pods over time by phase.",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 25
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "lineWidth": 0,
+                    "fillOpacity": 55,
+                    "showPoints": "never",
+                    "pointSize": 6,
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "spanNulls": false,
+                    "axisSoftMin": 0,
+                    "stacking": {
+                      "mode": "normal",
+                      "group": "A"
+                    }
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "decimals": 0
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Running"
+                    },
+                    "properties": [
+                      {
+                        "id": "color",
+                        "value": {
+                          "mode": "fixed",
+                          "fixedColor": "#56b4e9"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Pending"
+                    },
+                    "properties": [
+                      {
+                        "id": "color",
+                        "value": {
+                          "mode": "fixed",
+                          "fixedColor": "#e69f00"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Failed"
+                    },
+                    "properties": [
+                      {
+                        "id": "color",
+                        "value": {
+                          "mode": "fixed",
+                          "fixedColor": "#d55e00"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Succeeded"
+                    },
+                    "properties": [
+                      {
+                        "id": "color",
+                        "value": {
+                          "mode": "fixed",
+                          "fixedColor": "#898781"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum by (phase) (kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"ploeg-worker-.+\"} == 1)",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{phase}}"
+                }
+              ],
+              "id": 13
+            },
+            {
+              "type": "bargauge",
+              "title": "KEDA scaler errors per ScaledJob, this range",
+              "description": "Errors KEDA hit while scaling each worker pool. A pool with errors and no plan behind it is an orphaned ScaledJob.",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 25
+              },
+              "options": {
+                "orientation": "horizontal",
+                "displayMode": "basic",
+                "valueMode": "text",
+                "namePlacement": "left",
+                "showUnfilled": true,
+                "sizing": "auto",
+                "minVizWidth": 8,
+                "minVizHeight": 12,
+                "maxVizHeight": 26,
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "values": false
+                },
+                "text": {
+                  "titleSize": 13,
+                  "valueSize": 18
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "no data",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#898781",
+                        "value": null
+                      },
+                      {
+                        "color": "#e69f00",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "decimals": 0
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum by (scaledJob) (increase(keda_scaled_job_errors_total{scaledJob=~\"ploeg-worker-.+\"}[$$__range]))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{scaledJob}}",
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 14
+            },
+            {
+              "type": "bargauge",
+              "title": "Failed worker Jobs, this range",
+              "description": "Worker Jobs Kubernetes marked failed. Each is a Run whose pod died: its Run is failed with reason infra_node unless Ploeg's sweep caught it first.",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 33
+              },
+              "options": {
+                "orientation": "horizontal",
+                "displayMode": "basic",
+                "valueMode": "text",
+                "namePlacement": "left",
+                "showUnfilled": true,
+                "sizing": "auto",
+                "minVizWidth": 8,
+                "minVizHeight": 12,
+                "maxVizHeight": 26,
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "values": false
+                },
+                "text": {
+                  "titleSize": 13,
+                  "valueSize": 18
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No worker Job failed.",
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "#e69f00"
+                  },
+                  "decimals": 0
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum by (job_name) (increase(kube_job_status_failed{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", job_name=~\"ploeg-worker-.*\"}[$$__range])) > 0",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{job_name}}",
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 15
+            },
+            {
+              "type": "bargauge",
+              "title": "OOM kills in worker pods, this range",
+              "description": "Out-of-memory kills per worker pod. OpenHands builders were raised to 1.5 GiB on 2026-09-28 for exactly this.",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 33
+              },
+              "options": {
+                "orientation": "horizontal",
+                "displayMode": "basic",
+                "valueMode": "text",
+                "namePlacement": "left",
+                "showUnfilled": true,
+                "sizing": "auto",
+                "minVizWidth": 8,
+                "minVizHeight": 12,
+                "maxVizHeight": 26,
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "values": false
+                },
+                "text": {
+                  "titleSize": 13,
+                  "valueSize": 18
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No worker was OOM-killed.",
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "#d55e00"
+                  },
+                  "decimals": 0
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum by (pod) (increase(container_oom_events_total{namespace=\"ploeg\", pod=~\"ploeg-worker-.+\"}[$$__range])) > 0",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{pod}}",
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 16
+            }
+          ],
+          "id": 12
+        },
+        {
+          "type": "row",
+          "title": "Work Items and Runs",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 41
+          },
+          "panels": [
+            {
+              "type": "bargauge",
+              "title": "Work Items by state",
+              "description": "Every Work Item Ploeg knows, by state.",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 0,
+                "y": 42
+              },
+              "options": {
+                "orientation": "horizontal",
+                "displayMode": "basic",
+                "valueMode": "text",
+                "namePlacement": "left",
+                "showUnfilled": true,
+                "sizing": "auto",
+                "minVizWidth": 8,
+                "minVizHeight": 12,
+                "maxVizHeight": 26,
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "values": false
+                },
+                "text": {
+                  "titleSize": 13,
+                  "valueSize": 18
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "no data",
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "#3987e5"
+                  },
+                  "decimals": 0
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum by (state) (ploeg_work_items_count{team=~\"$$team\"})",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{state}}",
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 18
+            },
+            {
+              "type": "bargauge",
+              "title": "Retried Work Items per team",
+              "description": "Work Items that needed more than one attempt.",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 8,
+                "y": 42
+              },
+              "options": {
+                "orientation": "horizontal",
+                "displayMode": "basic",
+                "valueMode": "text",
+                "namePlacement": "left",
+                "showUnfilled": true,
+                "sizing": "auto",
+                "minVizWidth": 8,
+                "minVizHeight": 12,
+                "maxVizHeight": 26,
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "values": false
+                },
+                "text": {
+                  "titleSize": 13,
+                  "valueSize": 18
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "no data",
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "#3987e5"
+                  },
+                  "decimals": 0
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum by (team) (ploeg_attempts_retried_items{team=~\"$$team\"})",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{team}}",
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 19
+            },
+            {
+              "type": "bargauge",
+              "title": "Checkpoint funnel · 30 days",
+              "description": "Checkpoints written per phase: branch created, pull request opened, pull request updated. The drop from branch to pull request is work that started and never reached review.",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 16,
+                "y": 42
+              },
+              "options": {
+                "orientation": "horizontal",
+                "displayMode": "basic",
+                "valueMode": "text",
+                "namePlacement": "left",
+                "showUnfilled": true,
+                "sizing": "auto",
+                "minVizWidth": 8,
+                "minVizHeight": 12,
+                "maxVizHeight": 26,
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "values": false
+                },
+                "text": {
+                  "titleSize": 13,
+                  "valueSize": 18
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "no data",
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "#3987e5"
+                  },
+                  "decimals": 0
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum by (phase) (ploeg_checkpoints_count)",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{phase}}",
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 20
+            },
+            {
+              "type": "bargauge",
+              "title": "Stuck Runs by reason · 30 days",
+              "description": "Why agents declared themselves stuck.",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "gridPos": {
+                "h": 7,
+                "w": 12,
+                "x": 0,
+                "y": 50
+              },
+              "options": {
+                "orientation": "horizontal",
+                "displayMode": "basic",
+                "valueMode": "text",
+                "namePlacement": "left",
+                "showUnfilled": true,
+                "sizing": "auto",
+                "minVizWidth": 8,
+                "minVizHeight": 12,
+                "maxVizHeight": 26,
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "values": false
+                },
+                "text": {
+                  "titleSize": 13,
+                  "valueSize": 18
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No Run got stuck.",
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "#e69f00"
+                  },
+                  "decimals": 0
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum by (stuck_reason) (ploeg_stuck_count{team=~\"$$team\"})",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{stuck_reason}}",
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 21
+            },
+            {
+              "type": "table",
+              "title": "Longest Runs per outcome · 30 days",
+              "description": "How long Runs take to reach each outcome.",
+              "gridPos": {
+                "h": 7,
+                "w": 12,
+                "x": 12,
+                "y": 50
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "filterable": false
+                  },
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "text"
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Longest"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "s"
+                      },
+                      {
+                        "id": "decimals",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Average"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "s"
+                      },
+                      {
+                        "id": "decimals",
+                        "value": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              "transformations": [
+                {
+                  "id": "merge",
+                  "options": {}
+                },
+                {
+                  "id": "organize",
+                  "options": {
+                    "excludeByName": {
+                      "Time": true
+                    },
+                    "renameByName": {
+                      "outcome": "Outcome",
+                      "Value #A": "Longest",
+                      "Value #B": "Average"
+                    },
+                    "indexByName": {}
+                  }
+                }
+              ],
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "max by (outcome) (ploeg_run_duration_seconds{outcome!=\"running\", team=~\"$$team\"})",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false,
+                  "format": "table"
+                },
+                {
+                  "refId": "B",
+                  "expr": "avg by (outcome) (ploeg_run_duration_seconds{outcome!=\"running\", team=~\"$$team\"})",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false,
+                  "format": "table"
+                }
+              ],
+              "id": 22
+            }
+          ],
+          "id": 17
+        },
+        {
+          "type": "row",
+          "title": "Spend",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 57
+          },
+          "panels": [
+            {
+              "type": "bargauge",
+              "title": "Per-Run key budget used, top 15",
+              "description": "The Run keys closest to their budget. A key at 100 % blocked its Run mid-work.",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "gridPos": {
+                "h": 9,
+                "w": 8,
+                "x": 0,
+                "y": 58
+              },
+              "options": {
+                "orientation": "horizontal",
+                "displayMode": "basic",
+                "valueMode": "text",
+                "namePlacement": "left",
+                "showUnfilled": true,
+                "sizing": "auto",
+                "minVizWidth": 8,
+                "minVizHeight": 12,
+                "maxVizHeight": 26,
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "values": false
+                },
+                "text": {
+                  "titleSize": 13,
+                  "valueSize": 18
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "no data",
+                  "max": 100,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#898781",
+                        "value": null
+                      },
+                      {
+                        "color": "#e69f00",
+                        "value": 80
+                      },
+                      {
+                        "color": "#d55e00",
+                        "value": 100
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "unit": "percent",
+                  "decimals": 0
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "topk(15, 100 * max by (key_alias) (litellm_key_spend{key_alias=~\"ploeg-.*\"}) / (max by (key_alias) (litellm_key_max_budget{key_alias=~\"ploeg-.*\"}) > 0))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{key_alias}}",
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 24
+            },
+            {
+              "type": "bargauge",
+              "title": "Glide spend by Run outcome · 30 days",
+              "description": "Where Glide's model money went, by how the Run ended. Spend on failed, stuck and no_change_needed Runs bought no pull request.",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "gridPos": {
+                "h": 9,
+                "w": 8,
+                "x": 8,
+                "y": 58
+              },
+              "options": {
+                "orientation": "horizontal",
+                "displayMode": "basic",
+                "valueMode": "text",
+                "namePlacement": "left",
+                "showUnfilled": true,
+                "sizing": "auto",
+                "minVizWidth": 8,
+                "minVizHeight": 12,
+                "maxVizHeight": 26,
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "values": false
+                },
+                "text": {
+                  "titleSize": 13,
+                  "valueSize": 18
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "no data",
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "#3987e5"
+                  },
+                  "unit": "currencyUSD",
+                  "decimals": 2
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum by (outcome) (litellm_run_spend{key_alias=~\"ploeg-.*\"} * on (key_alias) group_left(outcome) (max by (key_alias, outcome) (ploeg_run_started_epoch{team=~\"$$team\"}) >= bool 0))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{outcome}}",
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 25
+            },
+            {
+              "type": "timeseries",
+              "title": "Model spend per model",
+              "description": "Spend per model per hour, every LiteLLM caller.",
+              "gridPos": {
+                "h": 9,
+                "w": 8,
+                "x": 16,
+                "y": 58
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "currencyUSD",
+                  "custom": {
+                    "lineWidth": 0,
+                    "fillOpacity": 80,
+                    "showPoints": "never",
+                    "pointSize": 6,
+                    "drawStyle": "bars",
+                    "lineInterpolation": "linear",
+                    "spanNulls": false,
+                    "axisSoftMin": 0,
+                    "stacking": {
+                      "mode": "normal",
+                      "group": "A"
+                    }
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "decimals": 2
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum by (model) (increase(litellm_model_spend{model!~\"MCP: .*\"}[1h])) > 0",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{model}}"
+                }
+              ],
+              "id": 26
+            }
+          ],
+          "id": 23
+        },
+        {
+          "type": "row",
+          "title": "Model gateway, sandboxes and Vloer",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 67
+          },
+          "panels": [
+            {
+              "type": "timeseries",
+              "title": "LiteLLM error ratio, live",
+              "description": "Share of LiteLLM server spans that ended in error, five-minute rate, from trace span metrics.",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 68
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "percentunit",
+                  "custom": {
+                    "lineWidth": 2,
+                    "fillOpacity": 0,
+                    "showPoints": "never",
+                    "pointSize": 6,
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "spanNulls": false,
+                    "axisSoftMin": 0,
+                    "thresholdsStyle": {
+                      "mode": "line"
+                    }
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#898781",
+                        "value": null
+                      },
+                      {
+                        "color": "#e69f00",
+                        "value": 0.02
+                      },
+                      {
+                        "color": "#d55e00",
+                        "value": 0.1
+                      }
+                    ]
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "errors"
+                    },
+                    "properties": [
+                      {
+                        "id": "color",
+                        "value": {
+                          "mode": "fixed",
+                          "fixedColor": "#d55e00"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum(rate(traces_spanmetrics_calls_total{service_name=\"litellm\", span_kind=\"SPAN_KIND_SERVER\", status_code=\"STATUS_CODE_ERROR\"}[5m])) / sum(rate(traces_spanmetrics_calls_total{service_name=\"litellm\", span_kind=\"SPAN_KIND_SERVER\"}[5m]))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "errors"
+                }
+              ],
+              "id": 28
+            },
+            {
+              "type": "timeseries",
+              "title": "LiteLLM p95 latency, live",
+              "description": "95th percentile LiteLLM server span duration. Long agent completions dominate it.",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 68
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "s",
+                  "custom": {
+                    "lineWidth": 2,
+                    "fillOpacity": 0,
+                    "showPoints": "never",
+                    "pointSize": 6,
+                    "drawStyle": "line",
+                    "lineInterpolation": "linear",
+                    "spanNulls": false,
+                    "axisSoftMin": 0
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "p95"
+                    },
+                    "properties": [
+                      {
+                        "id": "color",
+                        "value": {
+                          "mode": "fixed",
+                          "fixedColor": "#3987e5"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_duration_seconds_bucket{service_name=\"litellm\", span_kind=\"SPAN_KIND_SERVER\"}[5m])))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "p95"
+                }
+              ],
+              "id": 29
+            },
+            {
+              "type": "stat",
+              "title": "Time to first token p95 · 24 h",
+              "description": "95th percentile time to the first streamed token, trailing 24 hours.",
+              "gridPos": {
+                "h": 5,
+                "w": 6,
+                "x": 0,
+                "y": 76
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "wideLayout": true,
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "center"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "no data",
+                  "unit": "s",
+                  "decimals": 1,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#898781",
+                        "value": null
+                      },
+                      {
+                        "color": "#e69f00",
+                        "value": 30
+                      },
+                      {
+                        "color": "#d55e00",
+                        "value": 90
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "max(litellm_ttft_p95_seconds)",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 30
+            },
+            {
+              "type": "stat",
+              "title": "Kata sandboxes started cold · 7 days",
+              "description": "Sandbox claims the copper team's Runs created.",
+              "gridPos": {
+                "h": 5,
+                "w": 6,
+                "x": 6,
+                "y": 76
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "wideLayout": true,
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "center"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "no data",
+                  "decimals": 0,
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "#898781"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum(increase(agent_sandbox_claim_creation_total[7d])) or on() vector(0)",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 31
+            },
+            {
+              "type": "stat",
+              "title": "Sandbox startup p95 · 7 days",
+              "description": "95th percentile time from claim to a started kata sandbox. The histogram's buckets are coarse, so read this as the bucket bound.",
+              "gridPos": {
+                "h": 5,
+                "w": 6,
+                "x": 12,
+                "y": 76
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "wideLayout": true,
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "center"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "no data",
+                  "unit": "ms",
+                  "decimals": 0,
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "#898781"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "histogram_quantile(0.95, sum by (le) (rate(agent_sandbox_claim_controller_startup_latency_ms_bucket[7d])))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 32
+            },
+            {
+              "type": "stat",
+              "title": "De Vloer up",
+              "description": "Available De Vloer replicas.",
+              "gridPos": {
+                "h": 5,
+                "w": 6,
+                "x": 18,
+                "y": 76
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "wideLayout": true,
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "center"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "no data",
+                  "decimals": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#898781",
+                        "value": null
+                      },
+                      {
+                        "color": "#d55e00",
+                        "value": 0
+                      },
+                      {
+                        "color": "#898781",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "max(kube_deployment_status_replicas_available{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", deployment=\"de-vloer\"}) or on() vector(0)",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 33
+            }
+          ],
+          "id": 27
+        },
+        {
+          "type": "row",
+          "title": "ploegd gauges",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 81
+          },
+          "panels": [
+            {
+              "type": "stat",
+              "title": "Longest idle open Shift",
+              "description": "The open Shift that has gone longest without a Run starting, finishing or checkpointing, from ploegd's own gauge. Lease renewals are not progress.",
+              "gridPos": {
+                "h": 5,
+                "w": 6,
+                "x": 0,
+                "y": 82
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "wideLayout": true,
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "center"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "ploegd not scraped",
+                  "unit": "s",
+                  "decimals": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#898781",
+                        "value": null
+                      },
+                      {
+                        "color": "#e69f00",
+                        "value": 7200
+                      },
+                      {
+                        "color": "#d55e00",
+                        "value": 21600
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "max(ploeg_shift_idle_seconds_max{team=~\"$$team\"})",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 35
+            },
+            {
+              "type": "stat",
+              "title": "Model keys past their TTL",
+              "description": "Per-Run model accounts still issued or unknown after their key TTL: a gateway key that may still be live. A blocked key is settlement evidence, not a leak, so it is not counted.",
+              "gridPos": {
+                "h": 5,
+                "w": 6,
+                "x": 6,
+                "y": 82
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "wideLayout": true,
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "center"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "ploegd not scraped",
+                  "decimals": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#898781",
+                        "value": null
+                      },
+                      {
+                        "color": "#d55e00",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum(ploeg_llm_keys_past_ttl) or on() vector(0)",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 36
+            },
+            {
+              "type": "stat",
+              "title": "Settled spend, last hour",
+              "description": "Model spend Ploeg settled in the trailing hour.",
+              "gridPos": {
+                "h": 5,
+                "w": 6,
+                "x": 12,
+                "y": 82
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "wideLayout": true,
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "center"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "ploegd not scraped",
+                  "unit": "currencyUSD",
+                  "decimals": 2,
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "#898781"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum(ploeg_settled_spend_usd_last_hour)",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  }
+                }
+              ],
+              "id": 37
+            },
+            {
+              "type": "stat",
+              "title": "Tracker webhooks missing",
+              "description": "Tracker projects Ploeg expects a webhook from and cannot find one for. Without it, a new ticket never reaches Ploeg.",
+              "gridPos": {
+                "h": 5,
+                "w": 6,
+                "x": 18,
+                "y": 82
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "wideLayout": true,
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "center"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "ploegd not scraped",
+                  "decimals": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#898781",
+                        "value": null
+                      },
+                      {
+                        "color": "#e69f00",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sum(ploeg_tracker_webhooks_missing) or on() vector(0)",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 38
+            }
+          ],
+          "id": 34
+        },
+        {
+          "type": "row",
+          "title": "Ploeg logs",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 87
+          },
+          "panels": [
+            {
+              "type": "logs",
+              "title": "ploegd warnings and errors",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "description": "Ploeg's controller at WARN and ERROR.",
+              "options": {
+                "showTime": true,
+                "wrapLogMessage": true,
+                "sortOrder": "Descending",
+                "enableLogDetails": true,
+                "dedupStrategy": "exact"
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "{namespace=\"ploeg\", container=\"ploegd\"} ~\"level=(WARN|ERROR)\"",
+                  "queryType": "instant",
+                  "datasource": {
+                    "type": "victoriametrics-logs-datasource",
+                    "uid": "victorialogs"
+                  }
+                }
+              ],
+              "gridPos": {
+                "h": 10,
+                "w": 24,
+                "x": 0,
+                "y": 88
+              },
+              "id": 40
+            }
+          ],
+          "id": 39
+        }
+      ]
+    }
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: wall-glide
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: walls
+  json: |-
+    {
+      "uid": "wall-glide",
+      "title": "Wall · Glide",
+      "description": "The Glide plant board's first screen, for a TV.",
+      "tags": [
+        "wall",
+        "glide"
+      ],
+      "schemaVersion": 39,
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "1m",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "timepicker": {
+        "hidden": true
+      },
+      "links": [
+        {
+          "title": "Glide · Plant",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/glide-plant",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        }
+      ],
+      "templating": {
+        "list": [
+          {
+            "name": "team",
+            "label": "Team",
+            "type": "query",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "query": "label_values(ploeg_work_items_count, team)",
+            "refresh": 2,
+            "sort": 1,
+            "includeAll": true,
+            "multi": true,
+            "current": {
+              "text": "All",
+              "value": "$$__all"
+            },
+            "options": [],
+            "allValue": ".*",
+            "hide": 2
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Runs, right now",
+          "description": "Running is Runs Ploeg has started and not finished (the work-items exporter reads `finished_at IS NULL`). Waiting for a pod is KEDA's read of pending Runs across every ploeg-worker ScaledJob: above zero for long means the node pool has no room for a worker. Worker pods is pods in phase Running. Failed pods is worker pods left in phase Failed, amber from one: open the pod's events, it is usually an OOM kill or a sandbox that never started.",
+          "gridPos": {
+            "h": 5,
+            "w": 8,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "waiting for a pod"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 4
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "failed pods"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(ploeg_agent_runs_count{outcome=\"running\", team=~\"$$team\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "running",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "B",
+              "expr": "sum(keda_scaler_metrics_value{scaledObject=~\"ploeg-worker-.+\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "waiting for a pod",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "C",
+              "expr": "sum(kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"ploeg-worker-.+\", phase=\"Running\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "worker pods",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "D",
+              "expr": "sum(kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"ploeg-worker-.+\", phase=\"Failed\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "failed pods",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Waiting on a person",
+          "description": "Work Items no agent will move until a person does. Review is a pull request ready for you; needs a human is a Work Item an agent gave up on or could not start, with the reason in Vloer. Amber from one, because both are the queue in front of the owner, not in front of the machine.",
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 8,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(ploeg_work_items_count{state=\"awaiting_review\", team=~\"$$team\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "review",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "B",
+              "expr": "sum(ploeg_work_items_count{state=\"needs_human\", team=~\"$$team\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "needs a human",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "Oldest queued Work Item",
+          "description": "Age of the oldest Work Item in state queued, per team. Queued means assigned and not yet leased: a worker should pick it up within minutes. Amber from an hour, vermillion from six. A Work Item Vloer owns (operator_owned) also counts here but is started from Vloer, not by KEDA, so an old one on the vloer team is a person who has not pressed start.",
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 13,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "nothing queued",
+              "unit": "s",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 3600
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 21600
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (team) (ploeg_work_items_oldest_age_seconds{state=\"queued\", team=~\"$$team\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{team}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "stat",
+          "title": "Expired leases",
+          "description": "Writer leases past their expiry that the sweep has not reclaimed. The sweep runs every 15 seconds, so one here means the sweep itself is stuck and a Work Item is locked against every other writer.",
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 18,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 48
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(ploeg_leases_expired_not_reclaimed{team=~\"$$team\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "stat",
+          "title": "Ploeg DB seen",
+          "description": "Whether ploeg-work-items-exporter can query the Ploeg database. At no every Ploeg number on this board is frozen at its last value.",
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 21,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 48
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 0
+                  },
+                  {
+                    "color": "#898781",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "no"
+                    },
+                    "1": {
+                      "text": "yes"
+                    }
+                  }
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max(pg_up{job=\"ploeg-work-items-exporter\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 5
+        },
+        {
+          "type": "table",
+          "title": "Failed and stuck Runs · 30 days",
+          "description": "Every Run in the exporter's 30-day window whose outcome was failed or stuck, newest first, with what its per-Run model key spent. The same ticket failing several times is a Work Item the agents cannot do as written: refine it or take it back. Failure reasons are in Ploeg's database (agent_runs.failure_reason); the Glide Loop board reads them.",
+          "gridPos": {
+            "h": 10,
+            "w": 14,
+            "x": 0,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "No Run failed or got stuck in 30 days."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Started"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeFromNow"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 130
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Ran for"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 90
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Spent"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 80
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Outcome"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "failed": {
+                            "text": "failed",
+                            "color": "#d55e00"
+                          },
+                          "stuck": {
+                            "text": "stuck",
+                            "color": "#e69f00"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 90
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "team": "Team",
+                  "outcome": "Outcome",
+                  "ticket": "Ticket",
+                  "provider": "Tracker",
+                  "Value #A": "Ran for",
+                  "Value #B": "Started",
+                  "Value #C": "Spent",
+                  "key_alias": "Key"
+                },
+                "indexByName": {
+                  "Started": 0,
+                  "Team": 1,
+                  "Outcome": 2,
+                  "Tracker": 3,
+                  "Ticket": 4,
+                  "Ran for": 5,
+                  "Spent": 6,
+                  "Key": 7
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "Started",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (key_alias, team, outcome, ticket, provider) (ploeg_run_duration_seconds{outcome=~\"failed|stuck\", team=~\"$$team\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "max by (key_alias) (ploeg_run_started_epoch{outcome=~\"failed|stuck\", team=~\"$$team\"}) * 1000",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "expr": "max by (key_alias) (litellm_run_spend{key_alias=~\"ploeg-.*\"}) and on (key_alias) max by (key_alias) (ploeg_run_duration_seconds{outcome=~\"failed|stuck\", team=~\"$$team\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 6
+        },
+        {
+          "type": "timeseries",
+          "title": "Runs waiting for a pod, per ScaledJob",
+          "description": "Pending Runs per team and role as KEDA reads them, against running worker pods. A pool that stays above zero while pods do not rise is capacity: the node pool is full or the ScaledJob is paused.",
+          "gridPos": {
+            "h": 10,
+            "w": 10,
+            "x": 14,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "pointSize": 6,
+                "drawStyle": "line",
+                "lineInterpolation": "linear",
+                "spanNulls": false,
+                "axisSoftMin": 0
+              },
+              "color": {
+                "mode": "palette-classic"
+              },
+              "decimals": 0
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "worker pods running"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#898781"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (scaledObject) (keda_scaler_metrics_value{scaledObject=~\"ploeg-worker-.+\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{scaledObject}}"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"ploeg-worker-.+\", phase=\"Running\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "worker pods running"
+            }
+          ],
+          "id": 7
+        },
+        {
+          "type": "bargauge",
+          "title": "Run outcomes · 30 days",
+          "description": "How the Runs of the last 30 days ended. pr_opened and pr_updated are the product; no_change_needed is an honest answer that still cost money; failed and stuck are the ones to read. Neutral bars: this is a mix to watch drift in, not a tile to act on.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 7,
+            "x": 0,
+            "y": 15
+          },
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "basic",
+            "valueMode": "text",
+            "namePlacement": "left",
+            "showUnfilled": true,
+            "sizing": "auto",
+            "minVizWidth": 8,
+            "minVizHeight": 12,
+            "maxVizHeight": 26,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "values": false
+            },
+            "text": {
+              "titleSize": 13,
+              "valueSize": 18
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "noValue": "no data",
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#3987e5"
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (outcome) (ploeg_agent_runs_count{outcome!=\"running\", team=~\"$$team\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{outcome}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 8
+        },
+        {
+          "type": "stat",
+          "title": "Model spend today, per provider",
+          "description": "What LiteLLM has recorded as spent today per provider, every caller included (Glide, Omnigraph, chat). Grey: Glide's own per-Run budgets are enforced in Ploeg, and the SLO rules alert on budget hits.",
+          "gridPos": {
+            "h": 4,
+            "w": 7,
+            "x": 7,
+            "y": 15
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "nothing spent today",
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (provider) (litellm_provider_today_spend) > 0",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{provider}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 9
+        },
+        {
+          "type": "stat",
+          "title": "Glide spend per team · 30 days",
+          "description": "What the per-Run model keys of each team's Runs spent over the exporter's 30-day window, from LiteLLM's ledger joined to Ploeg's Runs on the key alias. Settled spend per Work Item, with reconciliation, is on the Glide Loop board.",
+          "gridPos": {
+            "h": 5,
+            "w": 7,
+            "x": 7,
+            "y": 19
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (team) (litellm_run_spend{key_alias=~\"ploeg-.*\"} * on (key_alias) group_left(team) (max by (key_alias, team) (ploeg_run_started_epoch{team=~\"$$team\"}) >= bool 0))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{team}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 10
+        },
+        {
+          "type": "table",
+          "title": "Models · last 24 hours",
+          "description": "Every model LiteLLM served in the trailing 24 hours: requests, the share that failed, and the 95th percentile latency. MCP tool calls LiteLLM logs as pseudo-models are left out. Failed is amber from 2 % and vermillion from 10 %: at that rate an agent Run on that model burns retries and budget. Swap the model in the team's plan or check the provider's status page.",
+          "gridPos": {
+            "h": 9,
+            "w": 10,
+            "x": 14,
+            "y": 15
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "LiteLLM served nothing in 24 hours."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Requests"
+                },
+                "properties": [
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 90
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Failed"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 0.02
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 0.1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 80
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "p95"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 30
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 90
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 70
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "model": "Model",
+                  "Value #A": "Requests",
+                  "Value #B": "Failed",
+                  "Value #C": "p95"
+                },
+                "indexByName": {
+                  "Model": 0,
+                  "Requests": 1,
+                  "Failed": 2,
+                  "p95": 3
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "Requests",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(sum by (model) (litellm_recent_requests{model!~\"MCP: .*\"}) > 0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "sum by (model) (litellm_recent_failures{model!~\"MCP: .*\"}) / (sum by (model) (litellm_recent_requests{model!~\"MCP: .*\"}) > 0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "expr": "max by (model) (litellm_latency_p95_seconds{model!~\"MCP: .*\"}) and on (model) (sum by (model) (litellm_recent_requests{model!~\"MCP: .*\"}) > 0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 11
+        }
+      ]
+    }

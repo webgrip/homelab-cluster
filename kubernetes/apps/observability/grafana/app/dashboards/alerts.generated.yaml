@@ -1,0 +1,3512 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: alerts-all
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: walls
+  json: |-
+    {
+      "uid": "alerts-all",
+      "title": "Alerts · Everything",
+      "description": "What is firing that nobody has silenced: every alert except the heartbeat.",
+      "tags": [
+        "wall",
+        "alerts"
+      ],
+      "schemaVersion": 39,
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "30s",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "timepicker": {
+        "hidden": true
+      },
+      "links": [
+        {
+          "title": "Alerting",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/alerting/list",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Information radiators",
+          "type": "link",
+          "icon": "doc",
+          "url": "https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/general/information-radiators.md",
+          "targetBlank": true,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        }
+      ],
+      "templating": {
+        "list": []
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Critical firing",
+          "description": "Critical alerts firing now in this group, as Alertmanager holds them. Silenced and inhibited alerts are not counted, and neither are the copies OpenCost's scrape of kube-state-metrics series produces. Vermillion from one: a critical alert means someone acts now.",
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and labels.severity = \"critical\"]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Warning firing",
+          "description": "Warning alerts firing now in this group, silenced, inhibited and duplicate-scrape alerts left out. Amber from one: someone should look today.",
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 8,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and labels.severity = \"warning\"]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "Alerting pipeline",
+          "description": "The Watchdog heartbeat as Alertmanager receives it: 1 means vmalert evaluates rules and Alertmanager receives them. Vermillion at 0, because then every other number on this wall is silent for the wrong reason: check vmalert and Alertmanager in the observability namespace.",
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 16,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 0
+                  },
+                  {
+                    "color": "#898781",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname = \"Watchdog\"]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "table",
+          "title": "Firing now",
+          "description": "Every alert firing now for this wall, read from Alertmanager's API with silenced and inhibited alerts left out, so a silence clears the wall at the next refresh. Critical first, then warning, then the rest, newest first within each. `about` is the service, node, namespace, object and repo the alert names, whichever it carries. Click an alert name to open its runbook.",
+          "gridPos": {
+            "h": 12,
+            "w": 24,
+            "x": 0,
+            "y": 4
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "lg",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "left",
+                "cellOptions": {
+                  "type": "auto"
+                }
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "Nothing is firing for anything."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "runbook"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "severity"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "critical": {
+                            "text": "critical",
+                            "color": "#d55e00",
+                            "index": 0
+                          },
+                          "warning": {
+                            "text": "warning",
+                            "color": "#e69f00",
+                            "index": 1
+                          },
+                          "info": {
+                            "text": "info",
+                            "color": "#898781",
+                            "index": 2
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 120
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "alert"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 320
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open the runbook for this alert",
+                        "url": "$${__data.fields.runbook}",
+                        "targetBlank": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "about"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 320
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "since"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeFromNow"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 160
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [],
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "( $$rank := function($$a) { $$a.labels.severity = \"critical\" ? 0 : ($$a.labels.severity = \"warning\" ? 1 : 2) }; $$in := $$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\")]; [$$map($$sort($$in, function($$l, $$r) { $$rank($$l) = $$rank($$r) ? $$l.startsAt > $$r.startsAt : $$rank($$l) > $$rank($$r) }), function($$a) { { \"severity\": $$a.labels.severity, \"alert\": $$a.labels.alertname, \"summary\": $$a.annotations.summary, \"about\": $$join([$$a.labels.service, $$a.labels.node, $$exists($$a.labels.exported_namespace) ? $$a.labels.exported_namespace : $$a.labels.namespace, $$a.labels.name, $$a.labels.repo], \" · \"), \"since\": $$a.startsAt, \"runbook\": $$a.annotations.runbook_url } })] )",
+              "columns": [
+                {
+                  "selector": "severity",
+                  "text": "severity",
+                  "type": "string"
+                },
+                {
+                  "selector": "alert",
+                  "text": "alert",
+                  "type": "string"
+                },
+                {
+                  "selector": "summary",
+                  "text": "summary",
+                  "type": "string"
+                },
+                {
+                  "selector": "about",
+                  "text": "about",
+                  "type": "string"
+                },
+                {
+                  "selector": "since",
+                  "text": "since",
+                  "type": "timestamp"
+                },
+                {
+                  "selector": "runbook",
+                  "text": "runbook",
+                  "type": "string"
+                }
+              ]
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "state-timeline",
+          "title": "Fired · last 24 h (vmalert rules only, silences not applied)",
+          "description": "Which vmalert rules fired in the last 24 hours, one row per alert name, from the `ALERTS` series. That series knows nothing about Alertmanager silences and never carries Grafana-managed SLO alerts, so this is history in grey and the live list above is the one to act on. The bar names the worst severity it fired at.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 16
+          },
+          "options": {
+            "showValue": "always",
+            "rowHeight": 0.8,
+            "mergeValues": true,
+            "legend": {
+              "showLegend": false
+            },
+            "tooltip": {
+              "mode": "single"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "lineWidth": 0,
+                "fillOpacity": 90
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  }
+                ]
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "3": {
+                      "text": "critical"
+                    },
+                    "2": {
+                      "text": "warning"
+                    },
+                    "1": {
+                      "text": "info"
+                    }
+                  }
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (alertname) (3 * ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", job!=\"opencost\", severity=\"critical\"} or 2 * ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", job!=\"opencost\", severity=\"warning\"} or ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", job!=\"opencost\", severity!~\"critical|warning\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{alertname}}"
+            }
+          ],
+          "id": 5
+        }
+      ]
+    }
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: alerts-platform
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: walls
+  json: |-
+    {
+      "uid": "alerts-platform",
+      "title": "Alerts · Platform",
+      "description": "What is firing that nobody has silenced: alerts whose service is kubernetes, kubernetes-api, apiserver, etcd, nodes, scheduling, cilium, network, envoy-gateway, kube-state-metrics, observability, synthetics, talos.",
+      "tags": [
+        "wall",
+        "alerts"
+      ],
+      "schemaVersion": 39,
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "30s",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "timepicker": {
+        "hidden": true
+      },
+      "links": [
+        {
+          "title": "Alerting",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/alerting/list",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Information radiators",
+          "type": "link",
+          "icon": "doc",
+          "url": "https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/general/information-radiators.md",
+          "targetBlank": true,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        }
+      ],
+      "templating": {
+        "list": []
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Critical firing",
+          "description": "Critical alerts firing now in this group, as Alertmanager holds them. Silenced and inhibited alerts are not counted, and neither are the copies OpenCost's scrape of kube-state-metrics series produces. Vermillion from one: a critical alert means someone acts now.",
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and (labels.service in [\"kubernetes\", \"kubernetes-api\", \"apiserver\", \"etcd\", \"nodes\", \"scheduling\", \"cilium\", \"network\", \"envoy-gateway\", \"kube-state-metrics\", \"observability\", \"synthetics\", \"talos\"] or labels.grafana_folder in [\"Kubernetes\", \"Networking\", \"Observability\", \"Synthetics\", \"Platform\"]) and labels.severity = \"critical\"]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Warning firing",
+          "description": "Warning alerts firing now in this group, silenced, inhibited and duplicate-scrape alerts left out. Amber from one: someone should look today.",
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 8,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and (labels.service in [\"kubernetes\", \"kubernetes-api\", \"apiserver\", \"etcd\", \"nodes\", \"scheduling\", \"cilium\", \"network\", \"envoy-gateway\", \"kube-state-metrics\", \"observability\", \"synthetics\", \"talos\"] or labels.grafana_folder in [\"Kubernetes\", \"Networking\", \"Observability\", \"Synthetics\", \"Platform\"]) and labels.severity = \"warning\"]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "Silenced now",
+          "description": "Alerts in this group that are firing but held back by a silence, so the room knows something is muted rather than fixed. Grey at every value: a silence is a decision somebody already made. Who set it and until when is in Alertmanager's silence list.",
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 16,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=false&silenced=true&inhibited=true&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and (labels.service in [\"kubernetes\", \"kubernetes-api\", \"apiserver\", \"etcd\", \"nodes\", \"scheduling\", \"cilium\", \"network\", \"envoy-gateway\", \"kube-state-metrics\", \"observability\", \"synthetics\", \"talos\"] or labels.grafana_folder in [\"Kubernetes\", \"Networking\", \"Observability\", \"Synthetics\", \"Platform\"]) and $$count(status.silencedBy) > 0]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "table",
+          "title": "Firing now",
+          "description": "Every alert firing now for this wall, read from Alertmanager's API with silenced and inhibited alerts left out, so a silence clears the wall at the next refresh. Critical first, then warning, then the rest, newest first within each. `about` is the service, node, namespace, object and repo the alert names, whichever it carries. Click an alert name to open its runbook.",
+          "gridPos": {
+            "h": 12,
+            "w": 24,
+            "x": 0,
+            "y": 4
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "lg",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "left",
+                "cellOptions": {
+                  "type": "auto"
+                }
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "Nothing is firing for the platform group."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "runbook"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "severity"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "critical": {
+                            "text": "critical",
+                            "color": "#d55e00",
+                            "index": 0
+                          },
+                          "warning": {
+                            "text": "warning",
+                            "color": "#e69f00",
+                            "index": 1
+                          },
+                          "info": {
+                            "text": "info",
+                            "color": "#898781",
+                            "index": 2
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 120
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "alert"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 320
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open the runbook for this alert",
+                        "url": "$${__data.fields.runbook}",
+                        "targetBlank": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "about"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 320
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "since"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeFromNow"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 160
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [],
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "( $$rank := function($$a) { $$a.labels.severity = \"critical\" ? 0 : ($$a.labels.severity = \"warning\" ? 1 : 2) }; $$in := $$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and (labels.service in [\"kubernetes\", \"kubernetes-api\", \"apiserver\", \"etcd\", \"nodes\", \"scheduling\", \"cilium\", \"network\", \"envoy-gateway\", \"kube-state-metrics\", \"observability\", \"synthetics\", \"talos\"] or labels.grafana_folder in [\"Kubernetes\", \"Networking\", \"Observability\", \"Synthetics\", \"Platform\"])]; [$$map($$sort($$in, function($$l, $$r) { $$rank($$l) = $$rank($$r) ? $$l.startsAt > $$r.startsAt : $$rank($$l) > $$rank($$r) }), function($$a) { { \"severity\": $$a.labels.severity, \"alert\": $$a.labels.alertname, \"summary\": $$a.annotations.summary, \"about\": $$join([$$a.labels.service, $$a.labels.node, $$exists($$a.labels.exported_namespace) ? $$a.labels.exported_namespace : $$a.labels.namespace, $$a.labels.name, $$a.labels.repo], \" · \"), \"since\": $$a.startsAt, \"runbook\": $$a.annotations.runbook_url } })] )",
+              "columns": [
+                {
+                  "selector": "severity",
+                  "text": "severity",
+                  "type": "string"
+                },
+                {
+                  "selector": "alert",
+                  "text": "alert",
+                  "type": "string"
+                },
+                {
+                  "selector": "summary",
+                  "text": "summary",
+                  "type": "string"
+                },
+                {
+                  "selector": "about",
+                  "text": "about",
+                  "type": "string"
+                },
+                {
+                  "selector": "since",
+                  "text": "since",
+                  "type": "timestamp"
+                },
+                {
+                  "selector": "runbook",
+                  "text": "runbook",
+                  "type": "string"
+                }
+              ]
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "state-timeline",
+          "title": "Fired · last 24 h (vmalert rules only, silences not applied)",
+          "description": "Which vmalert rules fired in the last 24 hours, one row per alert name, from the `ALERTS` series. That series knows nothing about Alertmanager silences and never carries Grafana-managed SLO alerts, so this is history in grey and the live list above is the one to act on. The bar names the worst severity it fired at.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 16
+          },
+          "options": {
+            "showValue": "always",
+            "rowHeight": 0.8,
+            "mergeValues": true,
+            "legend": {
+              "showLegend": false
+            },
+            "tooltip": {
+              "mode": "single"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "lineWidth": 0,
+                "fillOpacity": 90
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  }
+                ]
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "3": {
+                      "text": "critical"
+                    },
+                    "2": {
+                      "text": "warning"
+                    },
+                    "1": {
+                      "text": "info"
+                    }
+                  }
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (alertname) (3 * ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", job!=\"opencost\", service=~\"kubernetes|kubernetes-api|apiserver|etcd|nodes|scheduling|cilium|network|envoy-gateway|kube-state-metrics|observability|synthetics|talos\", severity=\"critical\"} or 2 * ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", job!=\"opencost\", service=~\"kubernetes|kubernetes-api|apiserver|etcd|nodes|scheduling|cilium|network|envoy-gateway|kube-state-metrics|observability|synthetics|talos\", severity=\"warning\"} or ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", job!=\"opencost\", service=~\"kubernetes|kubernetes-api|apiserver|etcd|nodes|scheduling|cilium|network|envoy-gateway|kube-state-metrics|observability|synthetics|talos\", severity!~\"critical|warning\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{alertname}}"
+            }
+          ],
+          "id": 5
+        }
+      ]
+    }
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: alerts-delivery
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: walls
+  json: |-
+    {
+      "uid": "alerts-delivery",
+      "title": "Alerts · Delivery",
+      "description": "What is firing that nobody has silenced: alerts whose service is flux, renovate, forgejo, forgejo-ci, harbor.",
+      "tags": [
+        "wall",
+        "alerts"
+      ],
+      "schemaVersion": 39,
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "30s",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "timepicker": {
+        "hidden": true
+      },
+      "links": [
+        {
+          "title": "Alerting",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/alerting/list",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Information radiators",
+          "type": "link",
+          "icon": "doc",
+          "url": "https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/general/information-radiators.md",
+          "targetBlank": true,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        }
+      ],
+      "templating": {
+        "list": []
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Critical firing",
+          "description": "Critical alerts firing now in this group, as Alertmanager holds them. Silenced and inhibited alerts are not counted, and neither are the copies OpenCost's scrape of kube-state-metrics series produces. Vermillion from one: a critical alert means someone acts now.",
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and (labels.service in [\"flux\", \"renovate\", \"forgejo\", \"forgejo-ci\", \"harbor\"] or labels.grafana_folder in [\"Infrastructure\"]) and labels.severity = \"critical\"]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Warning firing",
+          "description": "Warning alerts firing now in this group, silenced, inhibited and duplicate-scrape alerts left out. Amber from one: someone should look today.",
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 8,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and (labels.service in [\"flux\", \"renovate\", \"forgejo\", \"forgejo-ci\", \"harbor\"] or labels.grafana_folder in [\"Infrastructure\"]) and labels.severity = \"warning\"]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "Silenced now",
+          "description": "Alerts in this group that are firing but held back by a silence, so the room knows something is muted rather than fixed. Grey at every value: a silence is a decision somebody already made. Who set it and until when is in Alertmanager's silence list.",
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 16,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=false&silenced=true&inhibited=true&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and (labels.service in [\"flux\", \"renovate\", \"forgejo\", \"forgejo-ci\", \"harbor\"] or labels.grafana_folder in [\"Infrastructure\"]) and $$count(status.silencedBy) > 0]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "table",
+          "title": "Firing now",
+          "description": "Every alert firing now for this wall, read from Alertmanager's API with silenced and inhibited alerts left out, so a silence clears the wall at the next refresh. Critical first, then warning, then the rest, newest first within each. `about` is the service, node, namespace, object and repo the alert names, whichever it carries. Click an alert name to open its runbook.",
+          "gridPos": {
+            "h": 12,
+            "w": 24,
+            "x": 0,
+            "y": 4
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "lg",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "left",
+                "cellOptions": {
+                  "type": "auto"
+                }
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "Nothing is firing for the delivery group."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "runbook"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "severity"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "critical": {
+                            "text": "critical",
+                            "color": "#d55e00",
+                            "index": 0
+                          },
+                          "warning": {
+                            "text": "warning",
+                            "color": "#e69f00",
+                            "index": 1
+                          },
+                          "info": {
+                            "text": "info",
+                            "color": "#898781",
+                            "index": 2
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 120
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "alert"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 320
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open the runbook for this alert",
+                        "url": "$${__data.fields.runbook}",
+                        "targetBlank": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "about"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 320
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "since"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeFromNow"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 160
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [],
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "( $$rank := function($$a) { $$a.labels.severity = \"critical\" ? 0 : ($$a.labels.severity = \"warning\" ? 1 : 2) }; $$in := $$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and (labels.service in [\"flux\", \"renovate\", \"forgejo\", \"forgejo-ci\", \"harbor\"] or labels.grafana_folder in [\"Infrastructure\"])]; [$$map($$sort($$in, function($$l, $$r) { $$rank($$l) = $$rank($$r) ? $$l.startsAt > $$r.startsAt : $$rank($$l) > $$rank($$r) }), function($$a) { { \"severity\": $$a.labels.severity, \"alert\": $$a.labels.alertname, \"summary\": $$a.annotations.summary, \"about\": $$join([$$a.labels.service, $$a.labels.node, $$exists($$a.labels.exported_namespace) ? $$a.labels.exported_namespace : $$a.labels.namespace, $$a.labels.name, $$a.labels.repo], \" · \"), \"since\": $$a.startsAt, \"runbook\": $$a.annotations.runbook_url } })] )",
+              "columns": [
+                {
+                  "selector": "severity",
+                  "text": "severity",
+                  "type": "string"
+                },
+                {
+                  "selector": "alert",
+                  "text": "alert",
+                  "type": "string"
+                },
+                {
+                  "selector": "summary",
+                  "text": "summary",
+                  "type": "string"
+                },
+                {
+                  "selector": "about",
+                  "text": "about",
+                  "type": "string"
+                },
+                {
+                  "selector": "since",
+                  "text": "since",
+                  "type": "timestamp"
+                },
+                {
+                  "selector": "runbook",
+                  "text": "runbook",
+                  "type": "string"
+                }
+              ]
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "state-timeline",
+          "title": "Fired · last 24 h (vmalert rules only, silences not applied)",
+          "description": "Which vmalert rules fired in the last 24 hours, one row per alert name, from the `ALERTS` series. That series knows nothing about Alertmanager silences and never carries Grafana-managed SLO alerts, so this is history in grey and the live list above is the one to act on. The bar names the worst severity it fired at.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 16
+          },
+          "options": {
+            "showValue": "always",
+            "rowHeight": 0.8,
+            "mergeValues": true,
+            "legend": {
+              "showLegend": false
+            },
+            "tooltip": {
+              "mode": "single"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "lineWidth": 0,
+                "fillOpacity": 90
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  }
+                ]
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "3": {
+                      "text": "critical"
+                    },
+                    "2": {
+                      "text": "warning"
+                    },
+                    "1": {
+                      "text": "info"
+                    }
+                  }
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (alertname) (3 * ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", job!=\"opencost\", service=~\"flux|renovate|forgejo|forgejo-ci|harbor\", severity=\"critical\"} or 2 * ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", job!=\"opencost\", service=~\"flux|renovate|forgejo|forgejo-ci|harbor\", severity=\"warning\"} or ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", job!=\"opencost\", service=~\"flux|renovate|forgejo|forgejo-ci|harbor\", severity!~\"critical|warning\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{alertname}}"
+            }
+          ],
+          "id": 5
+        }
+      ]
+    }
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: alerts-data
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: walls
+  json: |-
+    {
+      "uid": "alerts-data",
+      "title": "Alerts · Data",
+      "description": "What is firing that nobody has silenced: alerts whose service is cnpg, longhorn, garage, garage-s3, openbao.",
+      "tags": [
+        "wall",
+        "alerts"
+      ],
+      "schemaVersion": 39,
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "30s",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "timepicker": {
+        "hidden": true
+      },
+      "links": [
+        {
+          "title": "Alerting",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/alerting/list",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Information radiators",
+          "type": "link",
+          "icon": "doc",
+          "url": "https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/general/information-radiators.md",
+          "targetBlank": true,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        }
+      ],
+      "templating": {
+        "list": []
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Critical firing",
+          "description": "Critical alerts firing now in this group, as Alertmanager holds them. Silenced and inhibited alerts are not counted, and neither are the copies OpenCost's scrape of kube-state-metrics series produces. Vermillion from one: a critical alert means someone acts now.",
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and (labels.service in [\"cnpg\", \"longhorn\", \"garage\", \"garage-s3\", \"openbao\"] or labels.grafana_folder in [\"Storage\", \"Data\"]) and labels.severity = \"critical\"]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Warning firing",
+          "description": "Warning alerts firing now in this group, silenced, inhibited and duplicate-scrape alerts left out. Amber from one: someone should look today.",
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 8,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and (labels.service in [\"cnpg\", \"longhorn\", \"garage\", \"garage-s3\", \"openbao\"] or labels.grafana_folder in [\"Storage\", \"Data\"]) and labels.severity = \"warning\"]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "Silenced now",
+          "description": "Alerts in this group that are firing but held back by a silence, so the room knows something is muted rather than fixed. Grey at every value: a silence is a decision somebody already made. Who set it and until when is in Alertmanager's silence list.",
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 16,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=false&silenced=true&inhibited=true&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and (labels.service in [\"cnpg\", \"longhorn\", \"garage\", \"garage-s3\", \"openbao\"] or labels.grafana_folder in [\"Storage\", \"Data\"]) and $$count(status.silencedBy) > 0]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "table",
+          "title": "Firing now",
+          "description": "Every alert firing now for this wall, read from Alertmanager's API with silenced and inhibited alerts left out, so a silence clears the wall at the next refresh. Critical first, then warning, then the rest, newest first within each. `about` is the service, node, namespace, object and repo the alert names, whichever it carries. Click an alert name to open its runbook.",
+          "gridPos": {
+            "h": 12,
+            "w": 24,
+            "x": 0,
+            "y": 4
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "lg",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "left",
+                "cellOptions": {
+                  "type": "auto"
+                }
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "Nothing is firing for the data group."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "runbook"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "severity"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "critical": {
+                            "text": "critical",
+                            "color": "#d55e00",
+                            "index": 0
+                          },
+                          "warning": {
+                            "text": "warning",
+                            "color": "#e69f00",
+                            "index": 1
+                          },
+                          "info": {
+                            "text": "info",
+                            "color": "#898781",
+                            "index": 2
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 120
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "alert"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 320
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open the runbook for this alert",
+                        "url": "$${__data.fields.runbook}",
+                        "targetBlank": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "about"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 320
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "since"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeFromNow"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 160
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [],
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "( $$rank := function($$a) { $$a.labels.severity = \"critical\" ? 0 : ($$a.labels.severity = \"warning\" ? 1 : 2) }; $$in := $$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and (labels.service in [\"cnpg\", \"longhorn\", \"garage\", \"garage-s3\", \"openbao\"] or labels.grafana_folder in [\"Storage\", \"Data\"])]; [$$map($$sort($$in, function($$l, $$r) { $$rank($$l) = $$rank($$r) ? $$l.startsAt > $$r.startsAt : $$rank($$l) > $$rank($$r) }), function($$a) { { \"severity\": $$a.labels.severity, \"alert\": $$a.labels.alertname, \"summary\": $$a.annotations.summary, \"about\": $$join([$$a.labels.service, $$a.labels.node, $$exists($$a.labels.exported_namespace) ? $$a.labels.exported_namespace : $$a.labels.namespace, $$a.labels.name, $$a.labels.repo], \" · \"), \"since\": $$a.startsAt, \"runbook\": $$a.annotations.runbook_url } })] )",
+              "columns": [
+                {
+                  "selector": "severity",
+                  "text": "severity",
+                  "type": "string"
+                },
+                {
+                  "selector": "alert",
+                  "text": "alert",
+                  "type": "string"
+                },
+                {
+                  "selector": "summary",
+                  "text": "summary",
+                  "type": "string"
+                },
+                {
+                  "selector": "about",
+                  "text": "about",
+                  "type": "string"
+                },
+                {
+                  "selector": "since",
+                  "text": "since",
+                  "type": "timestamp"
+                },
+                {
+                  "selector": "runbook",
+                  "text": "runbook",
+                  "type": "string"
+                }
+              ]
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "state-timeline",
+          "title": "Fired · last 24 h (vmalert rules only, silences not applied)",
+          "description": "Which vmalert rules fired in the last 24 hours, one row per alert name, from the `ALERTS` series. That series knows nothing about Alertmanager silences and never carries Grafana-managed SLO alerts, so this is history in grey and the live list above is the one to act on. The bar names the worst severity it fired at.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 16
+          },
+          "options": {
+            "showValue": "always",
+            "rowHeight": 0.8,
+            "mergeValues": true,
+            "legend": {
+              "showLegend": false
+            },
+            "tooltip": {
+              "mode": "single"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "lineWidth": 0,
+                "fillOpacity": 90
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  }
+                ]
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "3": {
+                      "text": "critical"
+                    },
+                    "2": {
+                      "text": "warning"
+                    },
+                    "1": {
+                      "text": "info"
+                    }
+                  }
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (alertname) (3 * ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", job!=\"opencost\", service=~\"cnpg|longhorn|garage|garage-s3|openbao\", severity=\"critical\"} or 2 * ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", job!=\"opencost\", service=~\"cnpg|longhorn|garage|garage-s3|openbao\", severity=\"warning\"} or ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", job!=\"opencost\", service=~\"cnpg|longhorn|garage|garage-s3|openbao\", severity!~\"critical|warning\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{alertname}}"
+            }
+          ],
+          "id": 5
+        }
+      ]
+    }
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: alerts-security
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: walls
+  json: |-
+    {
+      "uid": "alerts-security",
+      "title": "Alerts · Security",
+      "description": "What is firing that nobody has silenced: alerts whose service is trivy-operator, external-secrets, authentik, kyverno, dependency-track-metrics-exporter, cert-manager.",
+      "tags": [
+        "wall",
+        "alerts"
+      ],
+      "schemaVersion": 39,
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "30s",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "timepicker": {
+        "hidden": true
+      },
+      "links": [
+        {
+          "title": "Alerting",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/alerting/list",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Information radiators",
+          "type": "link",
+          "icon": "doc",
+          "url": "https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/general/information-radiators.md",
+          "targetBlank": true,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        }
+      ],
+      "templating": {
+        "list": []
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Critical firing",
+          "description": "Critical alerts firing now in this group, as Alertmanager holds them. Silenced and inhibited alerts are not counted, and neither are the copies OpenCost's scrape of kube-state-metrics series produces. Vermillion from one: a critical alert means someone acts now.",
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and (labels.service in [\"trivy-operator\", \"external-secrets\", \"authentik\", \"kyverno\", \"dependency-track-metrics-exporter\", \"cert-manager\"] or labels.grafana_folder in [\"Security\"]) and labels.severity = \"critical\"]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Warning firing",
+          "description": "Warning alerts firing now in this group, silenced, inhibited and duplicate-scrape alerts left out. Amber from one: someone should look today.",
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 8,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and (labels.service in [\"trivy-operator\", \"external-secrets\", \"authentik\", \"kyverno\", \"dependency-track-metrics-exporter\", \"cert-manager\"] or labels.grafana_folder in [\"Security\"]) and labels.severity = \"warning\"]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "Silenced now",
+          "description": "Alerts in this group that are firing but held back by a silence, so the room knows something is muted rather than fixed. Grey at every value: a silence is a decision somebody already made. Who set it and until when is in Alertmanager's silence list.",
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 16,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=false&silenced=true&inhibited=true&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and (labels.service in [\"trivy-operator\", \"external-secrets\", \"authentik\", \"kyverno\", \"dependency-track-metrics-exporter\", \"cert-manager\"] or labels.grafana_folder in [\"Security\"]) and $$count(status.silencedBy) > 0]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "table",
+          "title": "Firing now",
+          "description": "Every alert firing now for this wall, read from Alertmanager's API with silenced and inhibited alerts left out, so a silence clears the wall at the next refresh. Critical first, then warning, then the rest, newest first within each. `about` is the service, node, namespace, object and repo the alert names, whichever it carries. Click an alert name to open its runbook.",
+          "gridPos": {
+            "h": 12,
+            "w": 24,
+            "x": 0,
+            "y": 4
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "lg",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "left",
+                "cellOptions": {
+                  "type": "auto"
+                }
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "Nothing is firing for the security group."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "runbook"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "severity"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "critical": {
+                            "text": "critical",
+                            "color": "#d55e00",
+                            "index": 0
+                          },
+                          "warning": {
+                            "text": "warning",
+                            "color": "#e69f00",
+                            "index": 1
+                          },
+                          "info": {
+                            "text": "info",
+                            "color": "#898781",
+                            "index": 2
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 120
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "alert"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 320
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open the runbook for this alert",
+                        "url": "$${__data.fields.runbook}",
+                        "targetBlank": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "about"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 320
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "since"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeFromNow"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 160
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [],
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "( $$rank := function($$a) { $$a.labels.severity = \"critical\" ? 0 : ($$a.labels.severity = \"warning\" ? 1 : 2) }; $$in := $$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and (labels.service in [\"trivy-operator\", \"external-secrets\", \"authentik\", \"kyverno\", \"dependency-track-metrics-exporter\", \"cert-manager\"] or labels.grafana_folder in [\"Security\"])]; [$$map($$sort($$in, function($$l, $$r) { $$rank($$l) = $$rank($$r) ? $$l.startsAt > $$r.startsAt : $$rank($$l) > $$rank($$r) }), function($$a) { { \"severity\": $$a.labels.severity, \"alert\": $$a.labels.alertname, \"summary\": $$a.annotations.summary, \"about\": $$join([$$a.labels.service, $$a.labels.node, $$exists($$a.labels.exported_namespace) ? $$a.labels.exported_namespace : $$a.labels.namespace, $$a.labels.name, $$a.labels.repo], \" · \"), \"since\": $$a.startsAt, \"runbook\": $$a.annotations.runbook_url } })] )",
+              "columns": [
+                {
+                  "selector": "severity",
+                  "text": "severity",
+                  "type": "string"
+                },
+                {
+                  "selector": "alert",
+                  "text": "alert",
+                  "type": "string"
+                },
+                {
+                  "selector": "summary",
+                  "text": "summary",
+                  "type": "string"
+                },
+                {
+                  "selector": "about",
+                  "text": "about",
+                  "type": "string"
+                },
+                {
+                  "selector": "since",
+                  "text": "since",
+                  "type": "timestamp"
+                },
+                {
+                  "selector": "runbook",
+                  "text": "runbook",
+                  "type": "string"
+                }
+              ]
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "state-timeline",
+          "title": "Fired · last 24 h (vmalert rules only, silences not applied)",
+          "description": "Which vmalert rules fired in the last 24 hours, one row per alert name, from the `ALERTS` series. That series knows nothing about Alertmanager silences and never carries Grafana-managed SLO alerts, so this is history in grey and the live list above is the one to act on. The bar names the worst severity it fired at.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 16
+          },
+          "options": {
+            "showValue": "always",
+            "rowHeight": 0.8,
+            "mergeValues": true,
+            "legend": {
+              "showLegend": false
+            },
+            "tooltip": {
+              "mode": "single"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "lineWidth": 0,
+                "fillOpacity": 90
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  }
+                ]
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "3": {
+                      "text": "critical"
+                    },
+                    "2": {
+                      "text": "warning"
+                    },
+                    "1": {
+                      "text": "info"
+                    }
+                  }
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (alertname) (3 * ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", job!=\"opencost\", service=~\"trivy-operator|external-secrets|authentik|kyverno|dependency-track-metrics-exporter|cert-manager\", severity=\"critical\"} or 2 * ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", job!=\"opencost\", service=~\"trivy-operator|external-secrets|authentik|kyverno|dependency-track-metrics-exporter|cert-manager\", severity=\"warning\"} or ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", job!=\"opencost\", service=~\"trivy-operator|external-secrets|authentik|kyverno|dependency-track-metrics-exporter|cert-manager\", severity!~\"critical|warning\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{alertname}}"
+            }
+          ],
+          "id": 5
+        }
+      ]
+    }
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: alerts-ai
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: walls
+  json: |-
+    {
+      "uid": "alerts-ai",
+      "title": "Alerts · AI and Glide",
+      "description": "What is firing that nobody has silenced: alerts whose service is omnigraph, omnigraph-explorer, open-webui, tei-embeddings, litellm, ploeg.",
+      "tags": [
+        "wall",
+        "alerts"
+      ],
+      "schemaVersion": 39,
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "30s",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "timepicker": {
+        "hidden": true
+      },
+      "links": [
+        {
+          "title": "Alerting",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/alerting/list",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Information radiators",
+          "type": "link",
+          "icon": "doc",
+          "url": "https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/general/information-radiators.md",
+          "targetBlank": true,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        }
+      ],
+      "templating": {
+        "list": []
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Critical firing",
+          "description": "Critical alerts firing now in this group, as Alertmanager holds them. Silenced and inhibited alerts are not counted, and neither are the copies OpenCost's scrape of kube-state-metrics series produces. Vermillion from one: a critical alert means someone acts now.",
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and (labels.service in [\"omnigraph\", \"omnigraph-explorer\", \"open-webui\", \"tei-embeddings\", \"litellm\", \"ploeg\"] or labels.grafana_folder in [\"AI\"]) and labels.severity = \"critical\"]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Warning firing",
+          "description": "Warning alerts firing now in this group, silenced, inhibited and duplicate-scrape alerts left out. Amber from one: someone should look today.",
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 8,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and (labels.service in [\"omnigraph\", \"omnigraph-explorer\", \"open-webui\", \"tei-embeddings\", \"litellm\", \"ploeg\"] or labels.grafana_folder in [\"AI\"]) and labels.severity = \"warning\"]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "Silenced now",
+          "description": "Alerts in this group that are firing but held back by a silence, so the room knows something is muted rather than fixed. Grey at every value: a silence is a decision somebody already made. Who set it and until when is in Alertmanager's silence list.",
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 16,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=false&silenced=true&inhibited=true&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and (labels.service in [\"omnigraph\", \"omnigraph-explorer\", \"open-webui\", \"tei-embeddings\", \"litellm\", \"ploeg\"] or labels.grafana_folder in [\"AI\"]) and $$count(status.silencedBy) > 0]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "table",
+          "title": "Firing now",
+          "description": "Every alert firing now for this wall, read from Alertmanager's API with silenced and inhibited alerts left out, so a silence clears the wall at the next refresh. Critical first, then warning, then the rest, newest first within each. `about` is the service, node, namespace, object and repo the alert names, whichever it carries. Click an alert name to open its runbook.",
+          "gridPos": {
+            "h": 12,
+            "w": 24,
+            "x": 0,
+            "y": 4
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "lg",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "left",
+                "cellOptions": {
+                  "type": "auto"
+                }
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "Nothing is firing for the ai and glide group."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "runbook"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "severity"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "critical": {
+                            "text": "critical",
+                            "color": "#d55e00",
+                            "index": 0
+                          },
+                          "warning": {
+                            "text": "warning",
+                            "color": "#e69f00",
+                            "index": 1
+                          },
+                          "info": {
+                            "text": "info",
+                            "color": "#898781",
+                            "index": 2
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 120
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "alert"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 320
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open the runbook for this alert",
+                        "url": "$${__data.fields.runbook}",
+                        "targetBlank": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "about"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 320
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "since"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeFromNow"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 160
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [],
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "( $$rank := function($$a) { $$a.labels.severity = \"critical\" ? 0 : ($$a.labels.severity = \"warning\" ? 1 : 2) }; $$in := $$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and (labels.service in [\"omnigraph\", \"omnigraph-explorer\", \"open-webui\", \"tei-embeddings\", \"litellm\", \"ploeg\"] or labels.grafana_folder in [\"AI\"])]; [$$map($$sort($$in, function($$l, $$r) { $$rank($$l) = $$rank($$r) ? $$l.startsAt > $$r.startsAt : $$rank($$l) > $$rank($$r) }), function($$a) { { \"severity\": $$a.labels.severity, \"alert\": $$a.labels.alertname, \"summary\": $$a.annotations.summary, \"about\": $$join([$$a.labels.service, $$a.labels.node, $$exists($$a.labels.exported_namespace) ? $$a.labels.exported_namespace : $$a.labels.namespace, $$a.labels.name, $$a.labels.repo], \" · \"), \"since\": $$a.startsAt, \"runbook\": $$a.annotations.runbook_url } })] )",
+              "columns": [
+                {
+                  "selector": "severity",
+                  "text": "severity",
+                  "type": "string"
+                },
+                {
+                  "selector": "alert",
+                  "text": "alert",
+                  "type": "string"
+                },
+                {
+                  "selector": "summary",
+                  "text": "summary",
+                  "type": "string"
+                },
+                {
+                  "selector": "about",
+                  "text": "about",
+                  "type": "string"
+                },
+                {
+                  "selector": "since",
+                  "text": "since",
+                  "type": "timestamp"
+                },
+                {
+                  "selector": "runbook",
+                  "text": "runbook",
+                  "type": "string"
+                }
+              ]
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "state-timeline",
+          "title": "Fired · last 24 h (vmalert rules only, silences not applied)",
+          "description": "Which vmalert rules fired in the last 24 hours, one row per alert name, from the `ALERTS` series. That series knows nothing about Alertmanager silences and never carries Grafana-managed SLO alerts, so this is history in grey and the live list above is the one to act on. The bar names the worst severity it fired at.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 16
+          },
+          "options": {
+            "showValue": "always",
+            "rowHeight": 0.8,
+            "mergeValues": true,
+            "legend": {
+              "showLegend": false
+            },
+            "tooltip": {
+              "mode": "single"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "custom": {
+                "lineWidth": 0,
+                "fillOpacity": 90
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  }
+                ]
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "3": {
+                      "text": "critical"
+                    },
+                    "2": {
+                      "text": "warning"
+                    },
+                    "1": {
+                      "text": "info"
+                    }
+                  }
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (alertname) (3 * ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", job!=\"opencost\", service=~\"omnigraph|omnigraph-explorer|open-webui|tei-embeddings|litellm|ploeg\", severity=\"critical\"} or 2 * ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", job!=\"opencost\", service=~\"omnigraph|omnigraph-explorer|open-webui|tei-embeddings|litellm|ploeg\", severity=\"warning\"} or ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", job!=\"opencost\", service=~\"omnigraph|omnigraph-explorer|open-webui|tei-embeddings|litellm|ploeg\", severity!~\"critical|warning\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{alertname}}"
+            }
+          ],
+          "id": 5
+        }
+      ]
+    }

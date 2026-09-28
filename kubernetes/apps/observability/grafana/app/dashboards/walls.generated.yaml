@@ -1,0 +1,5225 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: wall-now
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: walls
+  json: |-
+    {
+      "uid": "wall-now",
+      "title": "Wall · Homelab now",
+      "description": "The homelab in one screen: what is firing, whether git is what runs, whether nodes, endpoints, storage and backups are whole, and the error budgets.",
+      "tags": [
+        "wall"
+      ],
+      "schemaVersion": 39,
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "30s",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "timepicker": {
+        "hidden": true
+      },
+      "links": [
+        {
+          "title": "Alerts · Everything",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/alerts-all",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Information radiators",
+          "type": "link",
+          "icon": "doc",
+          "url": "https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/general/information-radiators.md",
+          "targetBlank": true,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        }
+      ],
+      "templating": {
+        "list": []
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Critical firing",
+          "description": "Critical alerts firing now in this group, as Alertmanager holds them. Silenced and inhibited alerts are not counted, and neither are the copies OpenCost's scrape of kube-state-metrics series produces. Vermillion from one: a critical alert means someone acts now.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and labels.severity = \"critical\"]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Warning firing",
+          "description": "Warning alerts firing now in this group, silenced, inhibited and duplicate-scrape alerts left out. Amber from one: someone should look today.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 4,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and labels.severity = \"warning\"]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "Flux not ready",
+          "description": "Flux objects (Kustomizations, HelmReleases, sources) reporting Ready=False. Git is no longer what runs. `flux get all -A --status-selector ready=false` names them and the reason.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 8,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(flux_resource_info{ready=\"False\", suspended=\"False\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "stat",
+          "title": "Nodes not ready",
+          "description": "Kubernetes nodes whose Ready condition is not true. Anything on them is being evicted or is already gone; the Talos node-drain playbook covers the recovery.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 12,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(kube_node_info{job=\"kube-state-metrics\"}) - sum(kube_node_status_condition{job=\"kube-state-metrics\", condition=\"Ready\", status=\"true\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "stat",
+          "title": "Endpoints down",
+          "description": "Blackbox probes whose last check failed: an endpoint unreachable end to end, through the gateway and TLS. This is the one tile that means a person using the service sees it broken.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 16,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(probe_success == 0) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 5
+        },
+        {
+          "type": "stat",
+          "title": "Alerting pipeline",
+          "description": "The Watchdog heartbeat as Alertmanager receives it: 1 means vmalert evaluates rules and Alertmanager receives them. Vermillion at 0, because then every other number on this wall is silent for the wrong reason: check vmalert and Alertmanager in the observability namespace.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 20,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 0
+                  },
+                  {
+                    "color": "#898781",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname = \"Watchdog\"]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 6
+        },
+        {
+          "type": "stat",
+          "title": "Longhorn volumes",
+          "description": "Longhorn volumes by robustness. Faulted is a volume with no healthy replica, data at risk now, vermillion from one. Degraded is running on fewer replicas than asked for and rebuilding, amber from one: normal for minutes after a node restart, a problem for hours.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 0,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "faulted"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "degraded"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(longhorn_volume_robustness{state=\"faulted\"} == 1) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "faulted",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "B",
+              "expr": "count(longhorn_volume_robustness{state=\"degraded\"} == 1) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "degraded",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 7
+        },
+        {
+          "type": "stat",
+          "title": "Backups late",
+          "description": "CloudNativePG clusters whose newest base backup, and backup or snapshot CronJobs whose last success, is older than 26 hours. Everything here runs daily, so late means a night was missed. The Data wall names which.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 6,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 3
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "((count(max by (namespace) (time() - barman_cloud_cloudnative_pg_io_last_available_backup_timestamp) > 93600)) or on() vector(0)) + ((count(time() - max by (exported_namespace, cronjob) (kube_cronjob_status_last_successful_time{job=\"kube-state-metrics\", cronjob=~\".*(backup|snapshot).*\"}) > 93600)) or on() vector(0))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 8
+        },
+        {
+          "type": "stat",
+          "title": "Worst SLO error budget",
+          "description": "The smallest remaining error budget across every Sloth SLO, this period. Amber under half, vermillion under a tenth; below zero the SLO is broken for the period.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 12,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "percent",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": -1e+18
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 10
+                  },
+                  {
+                    "color": "#898781",
+                    "value": 50
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "min(100 * slo:period_error_budget_remaining:ratio)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 9
+        },
+        {
+          "type": "stat",
+          "title": "Certificate expires in",
+          "description": "Time until the first cert-manager certificate expires. Let's Encrypt renews at 30 days left, so under 20 means renewal is stuck (amber); under a day, vermillion.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 18,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "s",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": -1e+18
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 86400
+                  },
+                  {
+                    "color": "#898781",
+                    "value": 1728000
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "min(certmanager_certificate_expiration_timestamp_seconds - time())",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 10
+        },
+        {
+          "type": "table",
+          "title": "Firing now, not silenced",
+          "description": "Every alert firing now for this wall, read from Alertmanager's API with silenced and inhibited alerts left out, so a silence clears the wall at the next refresh. Critical first, then warning, then the rest, newest first within each. `about` is the service, node, namespace, object and repo the alert names, whichever it carries. Click an alert name to open its runbook.",
+          "gridPos": {
+            "h": 14,
+            "w": 15,
+            "x": 0,
+            "y": 10
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "lg",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "left",
+                "cellOptions": {
+                  "type": "auto"
+                }
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "Nothing is firing for anything."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "runbook"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "severity"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "critical": {
+                            "text": "critical",
+                            "color": "#d55e00",
+                            "index": 0
+                          },
+                          "warning": {
+                            "text": "warning",
+                            "color": "#e69f00",
+                            "index": 1
+                          },
+                          "info": {
+                            "text": "info",
+                            "color": "#898781",
+                            "index": 2
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 120
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "alert"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 320
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open the runbook for this alert",
+                        "url": "$${__data.fields.runbook}",
+                        "targetBlank": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "about"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 320
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "since"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeFromNow"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 160
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [],
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "( $$rank := function($$a) { $$a.labels.severity = \"critical\" ? 0 : ($$a.labels.severity = \"warning\" ? 1 : 2) }; $$in := $$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\")]; [$$map($$sort($$in, function($$l, $$r) { $$rank($$l) = $$rank($$r) ? $$l.startsAt > $$r.startsAt : $$rank($$l) > $$rank($$r) }), function($$a) { { \"severity\": $$a.labels.severity, \"alert\": $$a.labels.alertname, \"summary\": $$a.annotations.summary, \"about\": $$join([$$a.labels.service, $$a.labels.node, $$exists($$a.labels.exported_namespace) ? $$a.labels.exported_namespace : $$a.labels.namespace, $$a.labels.name, $$a.labels.repo], \" · \"), \"since\": $$a.startsAt, \"runbook\": $$a.annotations.runbook_url } })] )",
+              "columns": [
+                {
+                  "selector": "severity",
+                  "text": "severity",
+                  "type": "string"
+                },
+                {
+                  "selector": "alert",
+                  "text": "alert",
+                  "type": "string"
+                },
+                {
+                  "selector": "summary",
+                  "text": "summary",
+                  "type": "string"
+                },
+                {
+                  "selector": "about",
+                  "text": "about",
+                  "type": "string"
+                },
+                {
+                  "selector": "since",
+                  "text": "since",
+                  "type": "timestamp"
+                },
+                {
+                  "selector": "runbook",
+                  "text": "runbook",
+                  "type": "string"
+                }
+              ]
+            }
+          ],
+          "id": 11
+        },
+        {
+          "type": "bargauge",
+          "title": "SLO error budget left",
+          "description": "Remaining error budget per SLO this period, lowest first to read. Amber under half, vermillion under a tenth.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 14,
+            "w": 9,
+            "x": 15,
+            "y": 10
+          },
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "basic",
+            "valueMode": "text",
+            "namePlacement": "left",
+            "showUnfilled": true,
+            "sizing": "auto",
+            "minVizWidth": 8,
+            "minVizHeight": 12,
+            "maxVizHeight": 26,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "values": false
+            },
+            "text": {
+              "titleSize": 13,
+              "valueSize": 18
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "noValue": "no data",
+              "max": 100,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": -1e+18
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 10
+                  },
+                  {
+                    "color": "#898781",
+                    "value": 50
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "unit": "percent",
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "100 * max by (sloth_service, sloth_slo) (slo:period_error_budget_remaining:ratio)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{sloth_service}} · {{sloth_slo}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 12
+        }
+      ]
+    }
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: wall-gitops
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: walls
+  json: |-
+    {
+      "uid": "wall-gitops",
+      "title": "Wall · GitOps and Renovate",
+      "description": "Is git what runs, and is Renovate still moving dependencies.",
+      "tags": [
+        "wall"
+      ],
+      "schemaVersion": 39,
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "1m",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "timepicker": {
+        "hidden": true
+      },
+      "links": [
+        {
+          "title": "Flux",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/flux-gitops-health",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Renovate",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/platform-renovate-operator",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Information radiators",
+          "type": "link",
+          "icon": "doc",
+          "url": "https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/general/information-radiators.md",
+          "targetBlank": true,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        }
+      ],
+      "templating": {
+        "list": []
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Flux not ready",
+          "description": "Flux objects (Kustomizations, HelmReleases, sources) reporting Ready=False. Git is no longer what runs. `flux get all -A --status-selector ready=false` names them and the reason.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(flux_resource_info{ready=\"False\", suspended=\"False\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Flux suspended",
+          "description": "Flux objects someone suspended. A suspension is a deliberate hold that is easy to forget: amber from one until it is resumed.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 4,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(flux_resource_info{suspended=\"True\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "Kustomizations behind git",
+          "description": "Kustomizations whose applied revision is not the revision flux-system last fetched. A few for a minute after a push is Flux working; the same ones for an hour are stuck behind a dependsOn.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 8,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 5
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(flux_resource_info{kind=\"Kustomization\", suspended=\"False\"} unless on (revision) flux_resource_info{kind=\"GitRepository\", name=\"flux-system\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "stat",
+          "title": "Flux reconcile errors · 15 min",
+          "description": "Reconcile errors across the Flux controllers in the last 15 minutes.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 12,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 10
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(increase(controller_runtime_reconcile_errors_total{namespace=\"flux-system\"}[15m])) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "stat",
+          "title": "Renovate projects failed",
+          "description": "Projects whose last Renovate run failed. Dependency pull requests stop for them; the renovate-debug skill maps the failure signatures.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 16,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(renovate_operator_run_failed) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 5
+        },
+        {
+          "type": "stat",
+          "title": "Renovate ticks awaiting approval",
+          "description": "Dependency dashboard items waiting for someone to tick them. Grey: it is a backlog to work down, not an outage.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 20,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(renovate_operator_approvals_needed)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 6
+        },
+        {
+          "type": "table",
+          "title": "Flux objects not ready",
+          "description": "Every Flux object reporting Ready=False and the reason it gives.",
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 0,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "Everything Flux manages is ready."
+            },
+            "overrides": []
+          },
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "Value": true
+                },
+                "renameByName": {
+                  "kind": "Kind",
+                  "exported_namespace": "Namespace",
+                  "name": "Name",
+                  "reason": "Reason"
+                },
+                "indexByName": {
+                  "Kind": 0,
+                  "Namespace": 1,
+                  "Name": 2,
+                  "Reason": 3
+                }
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (kind, exported_namespace, name, reason) (flux_resource_info{ready=\"False\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 7
+        },
+        {
+          "type": "stat",
+          "title": "Renovate, since its last completed project",
+          "description": "Time since each RenovateJob last completed a project run. The forgejo job runs hourly and gitops every six hours, so amber from seven hours and vermillion from thirteen: a whole cycle missed.",
+          "gridPos": {
+            "h": 5,
+            "w": 12,
+            "x": 12,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "s",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 25200
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 46800
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "time() - max by (renovate_job) (max_over_time((timestamp(increase(renovate_operator_project_executions_total{status=\"completed\"}[5m]) > 0))[2d:5m]))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{renovate_job}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 8
+        },
+        {
+          "type": "bargauge",
+          "title": "Renovate dependency issues per project",
+          "description": "Dependencies Renovate could not look up or update, per project. Each is a package that will silently stop getting updates.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 14,
+            "w": 12,
+            "x": 12,
+            "y": 10
+          },
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "basic",
+            "valueMode": "text",
+            "namePlacement": "left",
+            "showUnfilled": true,
+            "sizing": "auto",
+            "minVizWidth": 8,
+            "minVizHeight": 12,
+            "maxVizHeight": 26,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "values": false
+            },
+            "text": {
+              "titleSize": 13,
+              "valueSize": 18
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "noValue": "No project has dependency issues.",
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#e69f00"
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (project) (renovate_operator_dependency_issues) > 0",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{project}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 9
+        },
+        {
+          "type": "timeseries",
+          "title": "Flux objects by readiness",
+          "description": "Flux objects by readiness over the day. Unknown spikes are reconciles in progress.",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 15
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "pointSize": 6,
+                "drawStyle": "line",
+                "lineInterpolation": "linear",
+                "spanNulls": false,
+                "axisSoftMin": 0
+              },
+              "color": {
+                "mode": "palette-classic"
+              },
+              "decimals": 0
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ready True"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#898781"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ready False"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#d55e00"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ready Unknown"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#e69f00"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count by (ready) (flux_resource_info)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "ready {{ready}}"
+            }
+          ],
+          "id": 10
+        }
+      ]
+    }
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: wall-nodes
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: walls
+  json: |-
+    {
+      "uid": "wall-nodes",
+      "title": "Wall · Nodes",
+      "description": "Are the Talos nodes whole and do they have room.",
+      "tags": [
+        "wall"
+      ],
+      "schemaVersion": 39,
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "1m",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "timepicker": {
+        "hidden": true
+      },
+      "links": [
+        {
+          "title": "Information radiators",
+          "type": "link",
+          "icon": "doc",
+          "url": "https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/general/information-radiators.md",
+          "targetBlank": true,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        }
+      ],
+      "templating": {
+        "list": []
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Nodes not ready",
+          "description": "Kubernetes nodes whose Ready condition is not true. Anything on them is being evicted or is already gone; the Talos node-drain playbook covers the recovery.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(kube_node_info{job=\"kube-state-metrics\"}) - sum(kube_node_status_condition{job=\"kube-state-metrics\", condition=\"Ready\", status=\"true\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Node pressure conditions",
+          "description": "Memory, disk or PID pressure conditions set by a kubelet. The kubelet evicts pods while one is set.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 4,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(kube_node_status_condition{job=\"kube-state-metrics\", condition=~\"MemoryPressure|DiskPressure|PIDPressure\", status=\"true\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "Pods pending over 15 min",
+          "description": "Pods created more than 15 minutes ago that have been Pending the whole time. CI runner pods flicker through Pending for seconds, which is why the window is 15 minutes. Usually a node out of requestable memory: see the bars below.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 8,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 3
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count((min_over_time(kube_pod_status_phase{job=\"kube-state-metrics\", phase=\"Pending\"}[15m]) == 1) and on (uid) (kube_pod_created{job=\"kube-state-metrics\"} < time() - 900)) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "stat",
+          "title": "Container restarts · 1 h",
+          "description": "Container restarts across the cluster in the last hour. A healthy hour is zero.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 12,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 5
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 25
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(increase(kube_pod_container_status_restarts_total{job=\"kube-state-metrics\"}[1h]))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "stat",
+          "title": "Scrape targets down",
+          "description": "Metric targets vmagent cannot scrape. Whatever they measure is blind on every board.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 16,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(up == 0) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 5
+        },
+        {
+          "type": "stat",
+          "title": "Memory outside kubepods, worst node",
+          "description": "Resident memory on a node that no pod accounts for. Above 5 GiB for an hour is the dind cgroup escape NodeMemoryOutsideKubepods fires on: pod restarts do not free it, a node reboot does.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 20,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "bytes",
+              "decimals": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 3758096384.0
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 5368709120
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max(max by (instance) (container_memory_rss{id=\"/\"} - on (instance) container_memory_rss{id=\"/kubepods\"}))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 6
+        },
+        {
+          "type": "bargauge",
+          "title": "Memory requested, per node",
+          "description": "Memory requests of running and pending pods as a share of each node's allocatable memory. The scheduler places by requests, not usage: at 98 % a node takes no new pod that asks for real memory, which is what leaves CI runners and Glide workers Pending.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 10,
+            "w": 8,
+            "x": 0,
+            "y": 5
+          },
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "basic",
+            "valueMode": "text",
+            "namePlacement": "left",
+            "showUnfilled": true,
+            "sizing": "auto",
+            "minVizWidth": 8,
+            "minVizHeight": 12,
+            "maxVizHeight": 26,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "values": false
+            },
+            "text": {
+              "titleSize": 13,
+              "valueSize": 18
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "noValue": "no data",
+              "max": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 0.9
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 0.98
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "unit": "percentunit",
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (node) (kube_pod_container_resource_requests{job=\"kube-state-metrics\", resource=\"memory\"} * on (uid) group_left() (max by (uid) (kube_pod_status_phase{job=\"kube-state-metrics\", phase=~\"Running|Pending\"}) == 1)) / on (node) sum by (node) (kube_node_status_allocatable{job=\"kube-state-metrics\", resource=\"memory\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{node}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 7
+        },
+        {
+          "type": "bargauge",
+          "title": "CPU requested, per node",
+          "description": "CPU requests as a share of each node's allocatable CPU.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 10,
+            "w": 8,
+            "x": 8,
+            "y": 5
+          },
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "basic",
+            "valueMode": "text",
+            "namePlacement": "left",
+            "showUnfilled": true,
+            "sizing": "auto",
+            "minVizWidth": 8,
+            "minVizHeight": 12,
+            "maxVizHeight": 26,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "values": false
+            },
+            "text": {
+              "titleSize": 13,
+              "valueSize": 18
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "noValue": "no data",
+              "max": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 0.9
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 0.98
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "unit": "percentunit",
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (node) (kube_pod_container_resource_requests{job=\"kube-state-metrics\", resource=\"cpu\"} * on (uid) group_left() (max by (uid) (kube_pod_status_phase{job=\"kube-state-metrics\", phase=~\"Running|Pending\"}) == 1)) / on (node) sum by (node) (kube_node_status_allocatable{job=\"kube-state-metrics\", resource=\"cpu\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{node}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 8
+        },
+        {
+          "type": "bargauge",
+          "title": "Memory outside kubepods, per node",
+          "description": "The same measure per node.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 10,
+            "w": 8,
+            "x": 16,
+            "y": 5
+          },
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "basic",
+            "valueMode": "text",
+            "namePlacement": "left",
+            "showUnfilled": true,
+            "sizing": "auto",
+            "minVizWidth": 8,
+            "minVizHeight": 12,
+            "maxVizHeight": 26,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "values": false
+            },
+            "text": {
+              "titleSize": 13,
+              "valueSize": 18
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "noValue": "no data",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 3758096384.0
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 5368709120
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "unit": "bytes",
+              "decimals": 1
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (instance) (container_memory_rss{id=\"/\"} - on (instance) container_memory_rss{id=\"/kubepods\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{instance}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 9
+        },
+        {
+          "type": "timeseries",
+          "title": "CPU used per node",
+          "description": "Share of each node's CPU in use, five-minute rate.",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 15
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "pointSize": 6,
+                "drawStyle": "line",
+                "lineInterpolation": "linear",
+                "spanNulls": false,
+                "axisSoftMin": 0
+              },
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * on (instance) group_left(nodename) node_uname_info",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{nodename}}"
+            }
+          ],
+          "id": 10
+        },
+        {
+          "type": "timeseries",
+          "title": "I/O pressure per node",
+          "description": "Share of time tasks waited on I/O (PSI). CI and Longhorn rebuilds are what drive it here.",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 15
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "pointSize": 6,
+                "drawStyle": "line",
+                "lineInterpolation": "linear",
+                "spanNulls": false,
+                "axisSoftMin": 0,
+                "thresholdsStyle": {
+                  "mode": "line"
+                }
+              },
+              "color": {
+                "mode": "palette-classic"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 0.2
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 0.5
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (nodename) (rate(node_pressure_io_waiting_seconds_total[5m]) * on (instance) group_left(nodename) node_uname_info)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{nodename}}"
+            }
+          ],
+          "id": 11
+        }
+      ]
+    }
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: wall-data
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: walls
+  json: |-
+    {
+      "uid": "wall-data",
+      "title": "Wall · Data and backups",
+      "description": "Are volumes whole, did last night's backups land, and does Garage have room.",
+      "tags": [
+        "wall"
+      ],
+      "schemaVersion": 39,
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "1m",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "timepicker": {
+        "hidden": true
+      },
+      "links": [
+        {
+          "title": "Longhorn",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/longhorn-storage-health",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "CNPG backups",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/cnpg-backups-dr",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Information radiators",
+          "type": "link",
+          "icon": "doc",
+          "url": "https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/general/information-radiators.md",
+          "targetBlank": true,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        }
+      ],
+      "templating": {
+        "list": []
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Longhorn volumes",
+          "description": "Longhorn volumes by robustness. Faulted is a volume with no healthy replica, data at risk now, vermillion from one. Degraded is running on fewer replicas than asked for and rebuilding, amber from one: normal for minutes after a node restart, a problem for hours.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "faulted"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "degraded"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(longhorn_volume_robustness{state=\"faulted\"} == 1) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "faulted",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "B",
+              "expr": "count(longhorn_volume_robustness{state=\"degraded\"} == 1) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "degraded",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Longhorn free, worst node",
+          "description": "Free share of the fullest Longhorn node's disks. Amber under a quarter, vermillion under 15 %, where Longhorn stops scheduling replicas there.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 6,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "percentunit",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": -1e+18
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 0.15
+                  },
+                  {
+                    "color": "#898781",
+                    "value": 0.25
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "min(1 - longhorn_node_storage_usage_bytes / longhorn_node_storage_capacity_bytes)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "CNPG backups failing",
+          "description": "Postgres clusters whose newest backup attempt failed after their last good one.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 10,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(barman_cloud_cloudnative_pg_io_last_failed_backup_timestamp > 0 and barman_cloud_cloudnative_pg_io_last_failed_backup_timestamp >= barman_cloud_cloudnative_pg_io_last_available_backup_timestamp) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "stat",
+          "title": "CNPG replica lag, worst",
+          "description": "The largest streaming replica lag. The disaster-recovery check pods are left out: they replay an old backup and report hours of lag by design.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 14,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "s",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 60
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 300
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max(cnpg_pg_replication_lag{pod!~\"cnpg-disaster-recovery.*\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "stat",
+          "title": "Garage healthy",
+          "description": "Garage's own cluster health. Every backup in this cluster lands in Garage S3.",
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 18,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 0
+                  },
+                  {
+                    "color": "#898781",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "no"
+                    },
+                    "1": {
+                      "text": "yes"
+                    }
+                  }
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "min(cluster_healthy{job=\"garage-s3\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 5
+        },
+        {
+          "type": "stat",
+          "title": "Garage free",
+          "description": "Free share of Garage's fullest disk.",
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 21,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "percentunit",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": -1e+18
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 0.1
+                  },
+                  {
+                    "color": "#898781",
+                    "value": 0.25
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "min(garage_local_disk_avail / garage_local_disk_total)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 6
+        },
+        {
+          "type": "bargauge",
+          "title": "Postgres base backup age",
+          "description": "Age of each CloudNativePG cluster's newest available base backup. Daily schedule: amber past 26 hours, vermillion past 50.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 12,
+            "w": 12,
+            "x": 0,
+            "y": 5
+          },
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "basic",
+            "valueMode": "text",
+            "namePlacement": "left",
+            "showUnfilled": true,
+            "sizing": "auto",
+            "minVizWidth": 8,
+            "minVizHeight": 12,
+            "maxVizHeight": 26,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "values": false
+            },
+            "text": {
+              "titleSize": 13,
+              "valueSize": 18
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "noValue": "no data",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 93600
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 180000
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "unit": "s",
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (namespace) (time() - barman_cloud_cloudnative_pg_io_last_available_backup_timestamp)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{namespace}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 7
+        },
+        {
+          "type": "bargauge",
+          "title": "Backup and snapshot CronJobs, since last success",
+          "description": "Time since each backup or snapshot CronJob last succeeded, OpenBao's included.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 12,
+            "w": 12,
+            "x": 12,
+            "y": 5
+          },
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "basic",
+            "valueMode": "text",
+            "namePlacement": "left",
+            "showUnfilled": true,
+            "sizing": "auto",
+            "minVizWidth": 8,
+            "minVizHeight": 12,
+            "maxVizHeight": 26,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "values": false
+            },
+            "text": {
+              "titleSize": 13,
+              "valueSize": 18
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "noValue": "no data",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 93600
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 172800
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "unit": "s",
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (exported_namespace, cronjob) (time() - kube_cronjob_status_last_successful_time{job=\"kube-state-metrics\", cronjob=~\".*(backup|snapshot).*\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{exported_namespace}}/{{cronjob}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 8
+        },
+        {
+          "type": "timeseries",
+          "title": "Longhorn volumes not healthy",
+          "description": "Degraded and faulted volumes over the range. A wave of degraded volumes after a node restart that drains within the hour is a rebuild; one that plateaus is the rebuild wedge the longhorn skill describes.",
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 17
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "pointSize": 6,
+                "drawStyle": "line",
+                "lineInterpolation": "linear",
+                "spanNulls": false,
+                "axisSoftMin": 0
+              },
+              "color": {
+                "mode": "palette-classic"
+              },
+              "decimals": 0
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "degraded"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#e69f00"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "faulted"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#d55e00"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count by (state) (longhorn_volume_robustness{state=~\"degraded|faulted\"} == 1)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{state}}"
+            }
+          ],
+          "id": 9
+        },
+        {
+          "type": "timeseries",
+          "title": "Garage S3 error ratio",
+          "description": "Share of S3 requests Garage answered with an error. About 5 % is the baseline of 404 probes from backup tools; above 10 % something is failing writes.",
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 17
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "pointSize": 6,
+                "drawStyle": "line",
+                "lineInterpolation": "linear",
+                "spanNulls": false,
+                "axisSoftMin": 0,
+                "thresholdsStyle": {
+                  "mode": "line"
+                }
+              },
+              "color": {
+                "mode": "palette-classic"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 0.1
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 0.25
+                  }
+                ]
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "errors"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#d95926"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(api_s3_error_counter[15m])) / sum(rate(api_s3_request_counter[15m]))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "errors"
+            }
+          ],
+          "id": 10
+        }
+      ]
+    }
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: wall-edge
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: walls
+  json: |-
+    {
+      "uid": "wall-edge",
+      "title": "Wall · Edge and security",
+      "description": "Can people reach the services, is TLS current, are secrets syncing, is anything leaking.",
+      "tags": [
+        "wall"
+      ],
+      "schemaVersion": 39,
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "1m",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "timepicker": {
+        "hidden": true
+      },
+      "links": [
+        {
+          "title": "Envoy Gateway",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/envoy-gateway-traffic",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Security",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/security-overview",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Information radiators",
+          "type": "link",
+          "icon": "doc",
+          "url": "https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/general/information-radiators.md",
+          "targetBlank": true,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        }
+      ],
+      "templating": {
+        "list": []
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Endpoints down",
+          "description": "Blackbox probes whose last check failed: an endpoint unreachable end to end, through the gateway and TLS. This is the one tile that means a person using the service sees it broken.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(probe_success == 0) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Gateway 5xx share",
+          "description": "Share of HTTPS requests through Envoy Gateway answered 5xx, five-minute rate. The 7-day p99 was 2.5 % when this board was written, so amber from 2 %, vermillion from 5 %.",
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 4,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "percentunit",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 0.02
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 0.05
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(envoy_http_downstream_rq_xx{namespace=\"network\", envoy_response_code_class=\"5\", envoy_http_conn_manager_prefix=\"https-10443\"}[5m])) / sum(rate(envoy_http_downstream_rq_total{namespace=\"network\", envoy_http_conn_manager_prefix=\"https-10443\"}[5m]))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "Certificate expires in",
+          "description": "Time until the first cert-manager certificate expires. Let's Encrypt renews at 30 days left, so under 20 means renewal is stuck (amber); under a day, vermillion.",
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 9,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "s",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": -1e+18
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 86400
+                  },
+                  {
+                    "color": "#898781",
+                    "value": 1728000
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "min(certmanager_certificate_expiration_timestamp_seconds - time())",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "stat",
+          "title": "Secrets not syncing",
+          "description": "ExternalSecrets and PushSecrets whose Ready condition is False: an app is running on a stale secret or the vault copy is missing. The table below names them.",
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 14,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(count(max by (exported_namespace, name) (externalsecret_status_condition{condition=\"Ready\", status=\"False\"}) == 1) or on() vector(0)) + (count(max by (exported_namespace, name) (pushsecret_status_condition{condition=\"Ready\", status=\"False\"}) == 1) or on() vector(0))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "stat",
+          "title": "Kyverno enforce blocks · 1 h",
+          "description": "Admission requests an Enforce policy rejected in the last hour. A burst after a push is a manifest Flux cannot apply.",
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 19,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 10
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(increase(kyverno_policy_results_total{rule_result=\"fail\", policy_validation_mode=\"enforce\"}[1h])) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 5
+        },
+        {
+          "type": "table",
+          "title": "Endpoints down",
+          "description": "Each blackbox probe that failed its last check and the URL it probes.",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "Every probed endpoint answers."
+            },
+            "overrides": []
+          },
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "Value": true,
+                  "job": true,
+                  "__name__": true,
+                  "cluster": true,
+                  "prometheus": true,
+                  "namespace": true,
+                  "endpoint": true,
+                  "container": true,
+                  "pod": true,
+                  "service": true
+                },
+                "renameByName": {
+                  "probe": "Probe",
+                  "instance": "Target"
+                },
+                "indexByName": {
+                  "Probe": 0,
+                  "Target": 1
+                }
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "label_replace(probe_success == 0, \"probe\", \"$$1\", \"job\", \"probe/[^/]+/blackbox-(.+)\")",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 6
+        },
+        {
+          "type": "table",
+          "title": "Secrets not syncing",
+          "description": "ExternalSecrets and PushSecrets that are not Ready. The fix is almost always the OpenBao path or the store: `kubectl describe` the object for the message.",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "Every ExternalSecret and PushSecret is ready."
+            },
+            "overrides": []
+          },
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "Value": true
+                },
+                "renameByName": {
+                  "kind": "Kind",
+                  "exported_namespace": "Namespace",
+                  "name": "Name"
+                },
+                "indexByName": {
+                  "Kind": 0,
+                  "Namespace": 1,
+                  "Name": 2
+                }
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "label_replace(max by (exported_namespace, name) (externalsecret_status_condition{condition=\"Ready\", status=\"False\"}) == 1, \"kind\", \"ExternalSecret\", \"\", \"\") or label_replace(max by (exported_namespace, name) (pushsecret_status_condition{condition=\"Ready\", status=\"False\"}) == 1, \"kind\", \"PushSecret\", \"\", \"\")",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 7
+        },
+        {
+          "type": "stat",
+          "title": "Trivy exposed secrets",
+          "description": "Secrets Trivy found baked into running images. Rotate the secret, then rebuild the image.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 0,
+            "y": 14
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(trivy_image_exposedsecrets) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 8
+        },
+        {
+          "type": "stat",
+          "title": "Trivy critical CVEs",
+          "description": "Critical vulnerabilities across running images. Grey with a trend line: the number matters less than whether it is going down.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 0,
+            "y": 19
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(trivy_image_vulnerabilities{severity=\"Critical\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "id": 9
+        },
+        {
+          "type": "timeseries",
+          "title": "Gateway requests by response class",
+          "description": "HTTPS requests per second through Envoy Gateway by response class.",
+          "gridPos": {
+            "h": 10,
+            "w": 18,
+            "x": 6,
+            "y": 14
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "pointSize": 6,
+                "drawStyle": "line",
+                "lineInterpolation": "linear",
+                "spanNulls": false,
+                "axisSoftMin": 0
+              },
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "2xx"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#898781"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "3xx"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#56b4e9"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "4xx"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#e69f00"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "5xx"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#d55e00"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (envoy_response_code_class) (rate(envoy_http_downstream_rq_xx{namespace=\"network\", envoy_http_conn_manager_prefix=\"https-10443\"}[5m]))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{envoy_response_code_class}}xx"
+            }
+          ],
+          "id": 10
+        }
+      ]
+    }
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: wall-roadmap
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: walls
+  json: |-
+    {
+      "uid": "wall-roadmap",
+      "title": "Wall · Roadmap",
+      "description": "What the boards on Vikunja say: the top of the stack, what agents hold, what waits for review.",
+      "tags": [
+        "wall"
+      ],
+      "schemaVersion": 39,
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "1m",
+      "time": {
+        "from": "now-30d",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "timepicker": {
+        "hidden": true
+      },
+      "links": [
+        {
+          "title": "Vikunja",
+          "type": "link",
+          "icon": "external link",
+          "url": "https://vikunja.${SECRET_DOMAIN}",
+          "targetBlank": true,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Information radiators",
+          "type": "link",
+          "icon": "doc",
+          "url": "https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/general/information-radiators.md",
+          "targetBlank": true,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        }
+      ],
+      "templating": {
+        "list": []
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "do-next",
+          "description": "Open do-next tickets across the boards. The contract caps it at ten per board.",
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "vikunja-db"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 56
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 11
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "vikunja-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT count(DISTINCT t.id) AS n FROM tasks t JOIN label_tasks lt ON lt.task_id = t.id JOIN labels l ON l.id = lt.label_id WHERE NOT t.done AND t.project_id IN (3, 5, 6, 9, 10) AND l.title = 'do-next'"
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Doing",
+          "description": "Open tickets an agent has claimed (an agent/* label).",
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 5,
+            "y": 0
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "vikunja-db"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 56
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#56b4e9",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "vikunja-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT count(DISTINCT t.id) AS n FROM tasks t JOIN label_tasks lt ON lt.task_id = t.id JOIN labels l ON l.id = lt.label_id WHERE NOT t.done AND t.project_id IN (3, 5, 6, 9, 10) AND l.title LIKE 'agent/%'"
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "Reviewing",
+          "description": "Open tickets with the review label, waiting for the owner. Amber from five.",
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 10,
+            "y": 0
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "vikunja-db"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 56
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 5
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "vikunja-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT count(DISTINCT t.id) AS n FROM tasks t JOIN label_tasks lt ON lt.task_id = t.id JOIN labels l ON l.id = lt.label_id WHERE NOT t.done AND t.project_id IN (3, 5, 6, 9, 10) AND l.title = 'review'"
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "stat",
+          "title": "Closed · 7 days",
+          "description": "Tickets closed across the boards in the last seven days.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 15,
+            "y": 0
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "vikunja-db"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 56
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "vikunja-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT count(*) AS n FROM tasks t WHERE t.done AND t.done_at > now() - interval '7 days' AND t.project_id IN (3, 5, 6, 9, 10)"
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "stat",
+          "title": "Needs refinement",
+          "description": "Open tickets not yet refined to the Definition of Ready.",
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 19,
+            "y": 0
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "vikunja-db"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 56
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "vikunja-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT count(DISTINCT t.id) AS n FROM tasks t JOIN label_tasks lt ON lt.task_id = t.id JOIN labels l ON l.id = lt.label_id WHERE NOT t.done AND t.project_id IN (3, 5, 6, 9, 10) AND l.title = 'needs-refinement'"
+            }
+          ],
+          "id": 5
+        },
+        {
+          "type": "table",
+          "title": "Stages per board",
+          "description": "Open tickets per board by derived stage (ADR-0043): do-next is the top of the stack and is capped at ten, so amber from eleven; Doing is an agent/* claim; Reviewing is the review label, amber from five, the review-capacity limit.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 5
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "vikunja-db"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "do-next"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 11
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Reviewing"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 5
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "project": "Board",
+                  "do_next": "do-next",
+                  "ready": "To do",
+                  "doing": "Doing",
+                  "reviewing": "Reviewing",
+                  "refine": "Needs refinement"
+                },
+                "indexByName": {
+                  "Board": 0,
+                  "do-next": 1,
+                  "To do": 2,
+                  "Doing": 3,
+                  "Reviewing": 4,
+                  "Needs refinement": 5
+                }
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "vikunja-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT CASE t.project_id WHEN 3 THEN 'Homelab Roadmap' WHEN 5 THEN 'Dark Factory' WHEN 6 THEN 'Vellum' WHEN 9 THEN 'CI/CD' WHEN 10 THEN 'Ploeg' END AS project, count(DISTINCT t.id) FILTER (WHERE l.title = 'do-next') AS do_next, count(DISTINCT t.id) FILTER (WHERE l.title = 'ready') AS ready, count(DISTINCT t.id) FILTER (WHERE l.title LIKE 'agent/%') AS doing, count(DISTINCT t.id) FILTER (WHERE l.title = 'review') AS reviewing, count(DISTINCT t.id) FILTER (WHERE l.title = 'needs-refinement') AS refine FROM tasks t LEFT JOIN label_tasks lt ON lt.task_id = t.id LEFT JOIN labels l ON l.id = lt.label_id WHERE NOT t.done AND t.project_id IN (3, 5, 6, 9, 10) GROUP BY t.project_id ORDER BY t.project_id"
+            }
+          ],
+          "id": 6
+        },
+        {
+          "type": "table",
+          "title": "Waiting for review, oldest first",
+          "description": "Tickets with the review label: an agent or a person finished and the owner accepts. Oldest first, because a review that waits is work already paid for and not yet shipped.",
+          "gridPos": {
+            "h": 19,
+            "w": 12,
+            "x": 12,
+            "y": 5
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "vikunja-db"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "Nothing is waiting for review."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "VIK"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 70
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Board"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 150
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Since"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeFromNow"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 130
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "ticket": "VIK",
+                  "title": "Ticket",
+                  "project": "Board",
+                  "since": "Since"
+                },
+                "indexByName": {
+                  "VIK": 0,
+                  "Ticket": 1,
+                  "Board": 2,
+                  "Since": 3
+                }
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "vikunja-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT t.id AS ticket, t.title, CASE t.project_id WHEN 3 THEN 'Homelab Roadmap' WHEN 5 THEN 'Dark Factory' WHEN 6 THEN 'Vellum' WHEN 9 THEN 'CI/CD' WHEN 10 THEN 'Ploeg' END AS project, t.updated AS since FROM tasks t JOIN label_tasks lt ON lt.task_id = t.id JOIN labels l ON l.id = lt.label_id WHERE NOT t.done AND l.title = 'review' AND t.project_id IN (3, 5, 6, 9, 10) ORDER BY t.updated ASC LIMIT 12"
+            }
+          ],
+          "id": 7
+        },
+        {
+          "type": "timeseries",
+          "title": "Tickets closed per day",
+          "description": "Tickets closed per day across the listed boards.",
+          "gridPos": {
+            "h": 11,
+            "w": 12,
+            "x": 0,
+            "y": 13
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "vikunja-db"
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 0,
+                "fillOpacity": 80,
+                "showPoints": "never",
+                "pointSize": 6,
+                "drawStyle": "bars",
+                "lineInterpolation": "linear",
+                "spanNulls": false,
+                "axisSoftMin": 0
+              },
+              "color": {
+                "mode": "palette-classic"
+              },
+              "decimals": 0
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "done"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#898781"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "vikunja-db"
+              },
+              "editorMode": "code",
+              "format": "time_series",
+              "rawQuery": true,
+              "rawSql": "SELECT date_trunc('day', t.done_at) AS time, count(*) AS done FROM tasks t WHERE t.done AND $$__timeFilter(t.done_at) AND t.project_id IN (3, 5, 6, 9, 10) GROUP BY 1 ORDER BY 1"
+            }
+          ],
+          "id": 8
+        }
+      ]
+    }
