@@ -62,7 +62,7 @@ deleting its Secret and its Job.
 - Budgets: SSO-created users get 10 USD/30d automatically; teams default to 25 USD/30d;
   provider daily caps 5 USD (Anthropic) / 2 USD (DeepSeek). Amounts are owner dials in
   `litellm-config.configmap.yaml`.
-- Prompts are **not** stored in the spend ledger (recorded privacy posture); spend-log retention 90d.
+- Prompts are **not** stored in the spend ledger (recorded privacy posture); spend-log retention 90d. MCP tool calls are the exception: LiteLLM 1.102.1 keeps each call's arguments in `LiteLLM_SpendLogs.metadata.mcp_tool_call_metadata.arguments` whatever `turn_off_message_logging` says, so `omnigraph_*` queries and loads, note text included, sit in the ledger for 90 days until VIK-1403 strips them.
 - Dashboards: Grafana → **AI** folder → *LiteLLM — Inference Spend & Budgets* and
   *LiteLLM — Latency & Reliability*. Traces: Explore → Jaeger datasource, service `litellm`.
 

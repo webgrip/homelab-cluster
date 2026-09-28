@@ -1,9 +1,9 @@
 # RFC: Brain retrieval — a measured GraphRAG layer over the `brain` graph
 
 > Status: **Accepted** (direction approved by Ryan on 2026-09-28; open choices in
-> [section 13](#13-decisions-for-ryan)) · Date: 2026-09-28 · Epic: VIK-1259 ·
-> Tickets: VIK-1378, VIK-1379, VIK-1380, VIK-1381, VIK-1382, VIK-1384, VIK-1385, VIK-1386,
-> VIK-1388 (P0–P8, [section 9](#9-phased-plan)), VIK-1348 · Builds on the [knowledge system](../general/knowledge-system.md), the
+> [section 13](#13-decisions-for-ryan)) · Date: 2026-09-28, P0 spikes 2026-09-29 ([results](#p0-spikes)) ·
+> Epic: VIK-1259 · Tickets: VIK-1378, VIK-1379, VIK-1380, VIK-1381, VIK-1382, VIK-1384, VIK-1385,
+> VIK-1386, VIK-1388 (P0–P8, [section 9](#9-phased-plan)), VIK-1348, VIK-1403 · Builds on the [knowledge system](../general/knowledge-system.md), the
 > [Omnigraph runbook](../runbooks/omnigraph.md) and the
 > [branch workflow RFC](rfc-omnigraph-branch-workflow.md)
 
@@ -51,7 +51,9 @@ proposal in this RFC's TL;DR. What was measured that day, read-only:
 
 Everything here was measured on 2026-09-28: live checks were read-only, and v0.11 behaviour was
 tested with the pinned `omnigraph` 0.11.0 CLI on throwaway local graphs. No personal content is
-reproduced; only counts, public repo names and generic examples.
+reproduced; only counts, public repo names and generic examples. The P0 spikes (2026-09-29) re-ran
+every mechanism the plan leans on against the pinned versions in throwaway local containers with
+synthetic data; rows marked *(P0)* come from them, and the [P0 results](#p0-spikes) hold the detail.
 
 ### 2.1 The graph
 
@@ -74,36 +76,72 @@ so "stub daily notes" are a small noise source.
 |---|---|
 | `rrf()` fuses exactly two arms (`nearest` or `bm25`); the fused score cannot be projected | Multi-leg fusion happens in the tool server, over ranks |
 | `limit` must be an integer literal; there is no offset, `OR`, optional match or `IN` list | Candidate queries get fixed limits; expansion is one query per edge type |
-| **Engine bug:** the ranked variable must be the first binding in `match{}`. Anchor-first makes `nearest`/`bm25` error and makes `rrf` silently return unranked rows | Every stored query binds the ranked variable first; a lint enforces it ([P1](#p1-safety-rails)) |
-| `$p: Passage; $p passageOf $a; $a.slug starts_with "obsidian-file/"; $n noteFromArtifact $a` ranks correctly, with the filter applied before the limit | Obsidian chunks can share the `Passage` table and still be searched on their own |
+| **Engine bug:** the ranked variable must be the first binding in `match{}`. Anchor-first makes `nearest`/`bm25` error and makes `rrf` silently return unranked rows. *(P0: anchor-first `nearest` answers 400 `search-ordered query produced rows without its 'p._distance' ranking column`; anchor-first `rrf` answers 200 in unranked order; `omnigraph lint` passes both)* | Every stored query binds the ranked variable first; a lint in this repo enforces it ([P1](#p1-safety-rails)), because the upstream lint cannot |
+| `$p: Passage; $p passageOf $a; $a.slug starts_with "obsidian-file/"; $n noteFromArtifact $a` ranks correctly, with the filter applied before the limit *(P0: exactly the brute-force top 40 by distance)* | Obsidian chunks can share the `Passage` table and still be searched on their own |
 | `nearest()` accepts a `Vector(384)` parameter | The tool server embeds a question once and passes the vector to every leg |
 | Loads and mutations never embed; a writer may supply the vector in the load | Write-time vectors are possible today (the distiller already does this for topics) |
 | A merge load or an `insert` on an existing key replaces the whole row, vector included | Every writer includes the vector, and never rewrites unchanged rows |
 | `search()`/`bm25()` see rows written after the last index build (flat scan); only `fuzzy()` waits for the rebuild | No tool uses `fuzzy()`; no maintenance ever runs beside the live server |
+| A `bm25` order returns only rows that match; an unknown term returns 0 rows *(P0)* | Keyword legs need no `search()` filter, and an empty keyword leg is a normal result |
+| At a pinned `snapshot`, `bm25` and every other read see that snapshot's rows and scores: identical after later commits and after an index rebuild at head, and blind to later text *(P0)* | Eval arms pinned to one `graph_commit_id` are reproducible; a head read after a rebuild can shift scores in the third decimal |
+| `rebuild-full-text-indexes` writes a commit on `main` as the operator actor *(P0)* | Commit audits and "no commit from this work" checks expect `act-gitops` commits after 03:15 |
 | A type's full-text index is built only when `optimize` runs with rows present; before that, keyword search is case-sensitive and unstemmed | A **new** node type would search badly until the next restart. Reusing `Passage` avoids this |
 | Policy-only and query-only bundle changes apply while a branch is open; a schema change does not, and a failed apply stops every graph | This plan changes no `.pg` file, so it needs no branch-free window |
 | `invoke_query` in a rule together with `branch_scope` is rejected by `cluster apply` (`policy_invalid`), and today's validator does not catch it | New rules keep `invoke_query` in a separate rule; the rehearsal gate runs a real apply |
 | Stored queries are served at `POST /graphs/{g}/queries/{name}` (0.07–0.26 s live, embedding included) | A tool server calls them over HTTP directly. Through the stdio bridge the same work costs 1–2 s |
-| Per commit per table: 8,192 rows and 32 MiB; per request: 1 MiB for queries, 32 MiB for loads | Loads carry at most about 5,000 passages with inline vectors |
+| Per commit per table: 8,192 rows and 32 MiB; per request: 1 MiB for queries, 32 MiB for loads. *(P0: the 32 MiB request body binds first with vectors and answers 413 `length limit exceeded`: about 3,200 passages of 1,400 characters with full-precision floats, about 4,800 with 8 significant digits, which keeps cosine at 0.99999994 or more. Row 8,193 of one type answers a structured 413 with `resource_limit`)* | Writers split load files by body size (24 MiB) as well as by rows, and write floats with 8 significant digits |
+| Mutation predicates take only comparison operators: `delete Passage where @id starts_with "…"` is a parse error *(P0)* | A prune names every chunk id; a missed chunk fails the whole mutation with `@card violation on edge PassageOf` |
+| Writes are optimistic, not serialised: a write that sees another commit land during its preparation answers 409 with `read_set_conflict` (`write authority 'graph_head:main' changed during preparation`) and writes nothing *(P0)* | Every writer retries on `read_set_conflict` only, with backoff ([section 7.3](#73-importer-order-of-work)) |
+| An `append` load of an existing id answers 409 `key_conflict`; an identical `merge` re-load still writes an empty commit *(P0)* | `remember` loads with `append`, so a retry never commits twice and never overwrites |
+| A stored-query denial answers 404 `not_found`, like a missing query *(P0)* | The tool server checks the catalog at start; a 404 on a listed query is a policy error |
 | Running `optimize`, `rebuild-full-text-indexes` or `repair` beside a server with writers can leave drift that blocks all writes to a type across restarts (reproduced 1 in 4) | Maintenance stays in the init container |
 
 ### 2.3 Serving stack
 
 - **Embeddings.** TEI `cpu-1.9.4`, `granite-embedding-97m-multilingual-r2` (384 dimensions, Dutch
   and English in one space), about 1,000 tokens per second on worker-2. The model supports 32k
-  tokens; the deployment caps inputs at 1,024. The backfill embeds `type: <Type>\n<field>: <value>`,
-  while query time and the distiller embed raw text (cosine 0.97 between the two forms on a short
-  sample).
+  tokens; the deployment caps inputs at 1,024. *(P0)* TEI's `auto_truncate` defaults to true and
+  `max_input_length` is the smaller of 32,768 and `--max-batch-tokens`, so the OpenAI route drops
+  everything past token 1,024 without an error: a 1,923-token input and its first 1,024 tokens embed
+  identically, and appended text changes nothing. `/embed` with `truncate: false` answers 422, as do
+  more than 64 inputs in one request. `dimensions: 384` is a no-op; a smaller value truncates the
+  vector.
+- **Embedding text.** *(P0)* `omnigraph embed` (the backfill) sends one row per request, body
+  `{model, input: [text], dimensions: 384}`, and stores L2-normalised vectors. The text is
+  `type: <Type>\n<field>: <value>` with the value trimmed of Unicode white space at both ends and
+  inner white space kept verbatim; an empty value gives just `type: <Type>`. The trim set is Rust's,
+  not Python's: `str.strip()` also removes U+001C–U+001F, which Omnigraph keeps. The
+  [embedding contract](../../../../kubernetes/apps/ai/omnigraph/embed-step/app/contract.json) states
+  the format, the trim set and the empty form, and its test proves all three against the pinned CLI.
+  A stdlib builder following it matches `omnigraph embed` through the real TEI to 4.6e-8 per
+  component, single or in batches of 16; without the trim, a trailing space already moves cosine to
+  0.9988. The server embeds query text raw, and the distiller writes topic vectors from raw names.
+  Raw versus prefixed text: cosine 0.98–0.99 for passages and notes, 0.91–0.93 for short topic
+  names, so `Topic` stays raw and `Note` and `Passage` stay prefixed until E1 decides.
 - **Reranking** is possible through LiteLLM's `huggingface/` rerank provider against a TEI
   `/rerank` endpoint. The provider always sends `truncate: false` and ignores `top_n`. On a Ryzen
   (4 cores), 20 candidates of 800 characters took 0.35 s with mMiniLM, 0.8 s with
   gte-multilingual-reranker-base int8 and 1.7 s with bge-reranker-v2-m3 int8. worker-2 (i7-6700K,
   no VNNI) is estimated at 2–3 times slower. No multilingual reranker fits TEI's CPU path besides
-  these three.
+  these three. *(P0)* The provider sends `truncate: false`, `raw_scores: false`,
+  `truncation_direction: Right` and forwards `top_n`; TEI returns every candidate anyway and LiteLLM
+  does not slice. One candidate over the model's input length (512 tokens for mMiniLM) or more
+  candidates than `--max-client-batch-size` fails the whole call with 422.
 - **LiteLLM** spawns a stdio MCP server per call (0.7–1.0 s). An HTTP MCP server answers in
-  0.15–0.4 s. The MCP REST route stops a call at 60 s.
+  0.15–0.4 s. The MCP REST route stops a call at 60 s. *(P0)* Virtual-key access groups hold on every
+  route: `/mcp/`, the scoped `/<server>/mcp` and `/<group>/mcp`, and `/mcp-rest/tools/list` and
+  `/tools/call`; a key without the group gets 403 at `initialize` or `access_denied`.
+  `disallowed_tools` hides a tool and refuses its call on both routes. **Spend logs keep every MCP
+  call's arguments** (`metadata.mcp_tool_call_metadata.arguments`, not the result) for the 90-day
+  retention, with or without `turn_off_message_logging`; live on 2026-09-29, 233 of 251
+  `omnigraph_brain` calls carried them. VIK-1403 strips them.
 - **Open WebUI** 0.11.4 runs with `ENABLE_PERSISTENT_CONFIG=false` and `ENABLE_API_KEYS=false`. A
-  named custom model exists only in its database and needs an admin call to create.
+  named custom model exists only in its database and needs an admin call to create. *(P0)* That
+  call can use a JWT signed with `WEBUI_SECRET_KEY`, but only for the id of an existing admin user,
+  and that id lives only in `webui.db` (SQLite on the RWO volume `open-webui-data`); no API returns
+  it without a token. The model picker pre-selects a model's `meta.toolIds`; the backend only uses
+  `tool_ids` the client sends. Open WebUI adds 27 built-in tools to every UI chat unless the model's
+  `meta.capabilities.builtin_tools` is false.
 
 ## 3. Principles
 
@@ -197,6 +235,16 @@ LiteLLM MCP servers after [P6](#p6-agent-surfaces):
 
 The server is named `brain_tools`, not `brain`, because LiteLLM resolves access-group names on
 the scoped `/<name>/mcp` path and the group `brain` already exists.
+
+*(P0)* This table works as written on LiteLLM 1.102.1. With keys shaped like the ones above, a
+stateless `brain_tools` stub and the real stdio bridge: `open-webui` sees the 7 `brain_tools-*` tools
+on `/mcp/`, `/brain_tools/mcp` and `/brain/mcp` and gets 403 everywhere else; `claude-code` sees 20
+(7 plus the raw bridge's 15 minus the two disallowed); `omnigraph-eval` sees 6 plus 15; a key with no
+groups, or with models only like the `brain-tools` key, gets 403 on every MCP path. On a scoped path
+both `search` and `brain_tools-search` resolve. A `server_id` follows from the server's config, so
+the local `omnigraph_brain` id equalled the live one. `omnigraph_brain_eval` also gets
+`disallowed_tools` for `mutate`, `load` and the branch writes: `act-brain-eval` is refused by policy
+anyway, and the list then shows the model only what it may use.
 
 ### 4.3 Network
 
@@ -301,7 +349,9 @@ question about Ryan's work, notes, decisions, people or projects; `search` or `a
 answering; cite every claim with the link the tool gave; `read` instead of guessing; say plainly
 when the brain has nothing and do not answer from general knowledge unless asked; relay a "brain
 unavailable" error; `remember` only on an explicit request, then repeat back what was saved;
-answer in the question's language.
+answer in the question's language. *(P0)* Open WebUI shows the tools to the model as
+`brain_tools_brain_tools-<tool>` (its connection id, then LiteLLM's prefix), so the prompt names
+tools by their short names: `search`, `read`, `about`.
 
 ## 7. Data changes, without a schema change
 
@@ -323,6 +373,107 @@ One new file, `brain.retrieval.gq`, holds every `rt_*` query that P4 to P7 need,
 the ranked variable is bound first, every limit is a literal, no fused score is projected, and
 passage queries return `$p.@id`. It is one push, so omnigraph restarts once (about 76 s).
 
+*(P0)* These shapes lint clean and returned the expected rows on the pinned server; the legs of
+section 5 follow the first two (captures, summaries and topics filter `$n.slug starts_with "nt-"`,
+`"derived/summary/"` or nothing, with limits 10, 5 and 8):
+
+```gq
+query rt_doc_passages_vec($v: Vector(384)) {
+  match {
+    $p: Passage
+    $p passageOf $a
+    $a.slug starts_with "forge/"
+  }
+  return { $p.@id, $a.slug, $a.name, $a.kind, $a.url, $a.timestamp, $p.chunk_index, $p.text }
+  order { nearest($p.embedding, $v) }
+  limit 40
+}
+
+query rt_note_passages_bm25($k: String) {
+  match {
+    $p: Passage
+    $p passageOf $a
+    $a.slug starts_with "obsidian-file/"
+    $n noteFromArtifact $a
+  }
+  return { $p.@id, $n.slug, $n.name, $n.kind, $n.updatedAt, $p.chunk_index, $p.text }
+  order { bm25($p.text, $k) desc }
+  limit 40
+}
+
+query rt_recent_notes($since: DateTime) {
+  match {
+    $n: Note
+    $n.updatedAt >= $since
+  }
+  return { $n.slug, $n.name, $n.kind, $n.updatedAt }
+  order { $n.updatedAt desc }
+  limit 40
+}
+
+query rt_open_threads($since: DateTime) {
+  match {
+    $a: Artifact
+    $a.timestamp >= $since
+    $a.content contains "\nState: open\n"
+  }
+  return { $a.slug, $a.name, $a.url, $a.timestamp }
+  order { $a.timestamp desc }
+  limit 60
+}
+
+query rt_open_checkboxes() {
+  match {
+    $p: Passage
+    $p.text contains "- [ ] "
+    $p passageOf $a
+    $a.slug starts_with "obsidian-file/"
+    $n noteFromArtifact $a
+  }
+  return { $p.@id, $n.slug, $n.name, $p.text }
+  limit 60
+}
+
+query rt_topic_hubs() {
+  match {
+    $t: Topic
+    $a artifactAboutTopic $t
+  }
+  return { $t.slug, $t.name, count($a) as documents }
+  order { documents desc }
+  limit 20
+}
+
+query rt_passage_window($slug: String, $lo: I32, $hi: I32) {
+  match {
+    $a: Artifact { slug: $slug }
+    $p passageOf $a
+    $p.chunk_index >= $lo
+    $p.chunk_index <= $hi
+  }
+  return { $p.@id, $p.chunk_index, $p.text }
+  order { $p.chunk_index asc }
+  limit 5
+}
+
+query rt_artifact_chunks($slug: String) {
+  match {
+    $a: Artifact { slug: $slug }
+    $p passageOf $a
+  }
+  return { $p.@id, $p.chunk_index, $p.text }
+  order { $p.chunk_index asc }
+  limit 2000
+}
+```
+
+Result columns are named by expression (`p.@id`, `a.slug`, `n.updatedAt`); `DateTime` values come
+back as `2026-09-27T08:00:00` in UTC without `Z`, and a bare date is accepted as a `DateTime`
+parameter. `rt_open_threads` matches the forge thread header's second line exactly;
+`rt_passage_window` and `rt_artifact_chunks` rank nothing, so anchoring them first is fine.
+`rt_artifact_chunks` is the per-document read for the changed-chunk diff and the complete prune
+list of section 7.3.
+
 ### 7.3 Importer order of work
 
 1. **Distiller first, one commit ahead:** skip every Artifact whose slug starts with
@@ -332,12 +483,30 @@ passage queries return `$p.@id`. It is one push, so omnigraph restarts once (abo
    would make it re-extract projects every hour.
 2. **Embed contract and embed step.**
 3. **forge-import:** changed-chunk diff, vectors on every Passage and Note row it writes, heal mode
-   for its own vectorless rows (at most 1,500 per run), retry with backoff on 409 or 503.
+   for its own vectorless rows (at most 1,500 per run), retry with backoff on 409 `read_set_conflict`.
 4. **vault-import:** shadow artifacts and chunks, vectors on Note and Passage rows, heal mode (300
    per run), at most 300 notes chunked per run so the first load spreads over a few runs. A
    renamed or deleted note is pruned from the snapshot's **complete** chunk list, with Passages,
    the shadow Artifact and the Note deleted in one mutation; a missed chunk would fail
-   `PassageOf @card(1..1)` and stop every later run.
+   `PassageOf @card(1..1)` and stop every later run. *(P0)* Deleting only the Note leaves the
+   shadow artifact and its passages behind, so the snapshot also lists `obsidian-file/*` artifacts
+   on their own and prunes any whose Note is gone.
+
+*(P0)* Rules every writer follows, from the S3–S5 spikes:
+
+- **Retry only `read_set_conflict`.** Three concurrent writers made 2–7% of loads and most strict
+  prunes answer 409 `read_set_conflict`; with 200 ms doubling backoff and jitter over 6 attempts
+  every load succeeded and 18 of 20 contended prunes did. The importers run minutes apart, so 8
+  attempts is ample. Never retry `key_conflict` (it will not change) or a 503 (recovery required:
+  fail the run and let the next one replan).
+- **Embed text** per the embedding contract: trim with its `value_trim_characters` (never
+  `str.strip()` without arguments), use `empty_value_format` for an empty value, and skip rows
+  with no text rather than embed `type: <Type>`. Batches of up to 64 inputs give the same vectors
+  as single requests.
+- **Read JSONL by `\n` only.** Python's `splitlines()` also splits on U+0085, U+2028 and U+2029,
+  which JSON strings carry unescaped; `omnigraph embed` output with a U+2028 broke exactly that way.
+- **Write floats with 8 significant digits** and split load files at 24 MiB of request body as well
+  as at the row limit.
 
 ### 7.4 Bundle rollout
 
@@ -363,6 +532,9 @@ Deleting a sensitive note must also clear what was derived from it:
 - Old Lance versions keep the text until a `cleanup` runs; follow
   [forget a meeting](../runbooks/omnigraph.md#forget-a-meeting). A retention for `cleanup` is a
   follow-up (section 9.10).
+- LiteLLM's spend logs keep the arguments of every MCP tool call for 90 days *(P0)*: a `search`
+  question, a `remember` text, a raw `mutate` with note text. VIK-1403 strips them before P2's
+  answer mode; rows written before it age out with the retention.
 
 ## 8. Evaluation
 
@@ -473,7 +645,10 @@ night, is worth doing); fusion-weight sweeps on the dev split.
   quantile}`, `brain_eval_missing_vectors_ratio{type}`, `brain_eval_stale_cases`,
   `brain_eval_judge_control_ok`, `brain_eval_last_success_timestamp_seconds{mode}`. Labels come
   from a fixed allowlist enforced by a unit test. VictoriaMetrics keeps 15 days, so this is a
-  monitoring feed, not the record.
+  monitoring feed, not the record. *(P0)* The push goes to
+  `vmagent-vmagent.observability:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval`.
+  A pushed sample leaves plain instant queries after about 5 minutes, so alerts and stat tiles read
+  `last_over_time(…[3d])`.
 - Grafana *Brain retrieval quality*: stat tiles and tables per profile and category, money in
   nl-NL with 2 decimals.
 - ntfy and Vikunja evidence comments: numbers only. The Vikunja and VictoriaLogs MCP servers log
@@ -498,20 +673,55 @@ night, is worth doing); fusion-weight sweeps on the dev split.
 Pinned `omnigraph` 0.11.0 and `litellm` 1.102.1 in throwaway directories; no live writes. Results
 (yes or no, timings, no data) are appended to this RFC.
 
-| # | Question |
-|---|---|
-| S1 | Done 2026-09-28: policy-only and query-only applies succeed with a branch open; schema changes and queries that depend on a blocked schema do not |
-| S2 | Every `rt_*` query shape: the ranked-first 2-hop join, a `Vector(384)` parameter, `starts_with`, a `DateTime >=` parameter with `order desc`, grouped `count()`; `omnigraph lint` on all; does `bm25` at a historical snapshot use that snapshot's index |
-| S3 | Load shapes: shadow Artifact with null content plus `NoteFromArtifact` plus Passages with vectors in one file; complete prune in one mutation (and the failing partial prune); `/load` merge on `main` as an actor with `change` on `branch_scope: protected`; the write limits with inline vectors |
-| S4 | Three concurrent HTTP writers on one server: are writes serialised, or do some answer 409 or 503? Retry design |
-| S5 | Embed-text parity: the stdlib embedder builds exactly what `omnigraph embed` sends |
-| S6 | LiteLLM: an HTTP MCP server `brain_tools` on the scoped `/brain_tools/mcp` path; a virtual key's `mcp_access_groups` on that path and on `/mcp-rest`; `disallowed_tools`; whether spend or failure logs store tool arguments; the `huggingface/` rerank provider against local TEI |
-| S7 | Open WebUI 0.11.4 in a local container: model import with `meta.toolIds: ["server:mcp:<id>"]`, created with a short-lived admin JWT |
-| S8 | `vmagent` accepts `/api/v1/import/prometheus` pushes (else `vmsingle`) |
-| S9 | Does a distiller topic merge delete or orphan foreign fixed-id edges pointing at the merged topic |
+**Results (2026-09-29).** Run against the pinned binaries and image digests (`omnigraph-server`
+v0.11.0 `db091109`, `litellm-database` v1.102.1 `c38fe5ef`, TEI `cpu-1.9.4` `2538ea1c`, Open WebUI
+v0.11.4-slim `0487ad4a`, vmagent and vmsingle v1.147.0) in local containers on the workstation, with
+synthetic data only: a seeded copy of the live bundle with 270 passages, 60 Obsidian-shaped notes
+and 120 forge-shaped documents. Timings are from that workstation (32 threads), not worker-2.
 
-Verification: each spike has a transcript; `commits_list` on live `brain` shows no commit from this
-work. Monitoring: not applicable (no deploy).
+| # | Result | What was measured |
+|---|---|---|
+| S1 | Yes, re-confirmed | With a branch open, a query-only apply and a policy-only apply converge. A rule with `invoke_query` and `branch_scope` fails `policy_invalid` (`uses branch_scope with unsupported action 'invoke_query'`). A schema change is `Blocked: schema_apply_failed` (`requires a graph with only main`) |
+| S2 | Yes, 20 of 20 shapes | The shapes in [section 7.2](#72-stored-queries) and the legs of section 5 lint clean and return the expected rows: vector legs equal the brute-force top 40 by distance after the prefix filter; the `DateTime` leg is ordered and bounded; grouped `count()` matches a hand count; the `contains` legs find exactly the planted open threads and checkboxes. Anchor-first `nearest` answers 400 and anchor-first `rrf` answers 200 unranked, and `omnigraph lint` passes both. A `bm25` order returns only matches. At a pinned snapshot, `bm25` returns identical rows and scores after later commits and after an offline index rebuild at head, and never sees later text. Legs took 2–15 ms locally |
+| S3 | Yes, with one no | One `/load` carries the Note, the shadow Artifact (no `content`, source `notes-app`), `NoteFromArtifact`, Passages with vectors and their `PassageOf` edges, in any order, 33 ms. A prune naming every chunk commits; missing one chunk, or deleting the artifact first, fails the whole mutation. **No:** `delete … where @id starts_with` does not parse, so the prune must list every id. Deleting only the Note orphans the shadow artifact and its passages. `act-brain-scribe` (`read` and `change` on `branch_scope: protected`) loads on `main` in 16 ms, is refused on another branch, cannot create branches, export or invoke stored queries, and **can** delete any row on `main`: the audit is the only guard. `append` answers 409 `key_conflict` on an existing id. A fixed-id edge merge-loaded twice stays one edge; an identical merge still commits (empty). Limits: see [section 2.2](#22-omnigraph-v011-mechanics-that-shape-the-design) |
+| S4 | Not serialised | Three writers, a pruner and a reader, 40 writes each: without retries 2–7% of loads and 11 to 20 of 20 contended prunes answered 409 `read_set_conflict`; no 503, no 429. With retries on `read_set_conflict` only (200 ms doubling, jitter, 6 attempts): 120 of 120 loads and 18 of 20 prunes succeeded. Reader p95 55–177 ms, unaffected |
+| S5 | Yes, once values are trimmed | See *Embedding text* in [section 2.3](#23-serving-stack). The embedding contract gained `value_trim_characters` and `empty_value_format`; its test now proves both against the pinned CLI, with three new must-fail cases (no trim, Python's trim set, an empty field line) beside the two must-pass cases |
+| S6 | Yes, with one privacy finding | Stub server on `@modelcontextprotocol/sdk` 1.31.0, stateless streamable HTTP (`sessionIdGenerator: undefined`, `enableJsonResponse: true`), behind the live `sitecustomize` protocol cap: registered, listed and called in 18 ms; the stdio bridge answered `branches_list` in 0.16 s. Access groups, scoped paths, `/mcp-rest` and `disallowed_tools`: see [section 4.2](#42-identities). A tool's `isError` result reaches the client unchanged. **Finding:** spend logs keep every call's arguments (VIK-1403); a post-import hook in `sitecustomize.py` that blanks them in `_get_spend_logs_metadata` removed them on both routes and kept tool name and status. Rerank through LiteLLM: 20 candidates of 800 characters in 430–590 ms (TEI alone 240–420 ms) with mMiniLM; the request shape and its 422 failures are in section 2.3 |
+| S7 | Yes, but not as a stand-alone Job | A JWT signed HS256 with `WEBUI_SECRET_KEY` and claims `id`, `exp`, `jti`, `iat` authenticates as that user; expired, foreign-signed or unknown-id tokens get 401, but a token without `exp` never expires. `POST /api/v1/models/create` stores `meta.toolIds: ["server:mcp:brain_tools"]`, `params.system`, `function_calling: native` and `temperature`; a second create answers 401 `MODEL_ID_TAKEN`, so the seeder reads `GET /api/v1/models/model?id=` and updates with `POST /api/v1/models/model/update?id=`. A changed model takes effect after `GET /api/models` refreshes the cache. In a UI-shaped chat (chat id, message id, session id) native tool calling ran `search` through LiteLLM `/brain_tools/mcp` and saved the answer; an API chat without `tool_ids` gets no tools. With `meta.capabilities.builtin_tools: false` the model saw 7 tools instead of 34. The admin id comes only from `webui.db`: `file:…?mode=ro` on a read-only mount reads it while the app runs; `immutable=1` returned 0 admins because it skips the WAL |
+| S8 | Yes | vmagent 1.147.0 answers 204 on `/api/v1/import/prometheus` (optional millisecond timestamps, `extra_label=job=…`), adds `cluster=homelab-cluster` and forwards to vmsingle. The live Service is `vmagent-vmagent.observability:8429`; `observability` has no NetworkPolicy. A pushed sample is invisible for 30 s (`-search.latencyOffset`) and gone from plain instant queries after about 5 minutes |
+| S9 | Yes, nothing is orphaned | Only a topic created in the same run is folded into another; existing topics are never merged, so a `remember:` edge keeps its target. A topic whose distiller links all vanish stays while a foreign edge points at it, and the distiller never adds its own copy of a foreign link when it distils the capture. Five scenarios on the simulated graph passed and two mutants were caught; the merge case is now a test in the distiller suite (`test_a_topic_merge_never_folds_an_existing_topic_so_remember_edges_keep_their_target`) with the mutant *existing topics merged away*, which the suite used to miss |
+
+Verification: each spike ran as a local transcript; `commits_list` on live `brain` shows only the
+scheduled writers' commits since the spikes began (the check is in the VIK-1378 evidence comment).
+Monitoring: not applicable (no deploy). The throwaway containers and directories are removed.
+
+**What P0 changes in later phases.** No phase is blocked; these are the adjustments.
+
+- **P1** (shipped alongside): the `.gq` lint had to be this repo's own, as planned, because the
+  upstream lint passes both anchor-first shapes. The embedding contract now carries the trim rule.
+- **P2:** VIK-1403 ships before the first answer-mode run. Alerts and stat panels on pushed series
+  use `last_over_time(…[3d])`, and a verification waits 30 s after a push. The job's egress names
+  `vmagent-vmagent.observability:8429`. Runs pin with the `snapshot` field of
+  `POST /queries/{name}`, which covers every read, not only `bm25`.
+- **P3:** the writer rules at the end of [section 7.3](#73-importer-order-of-work): retry only
+  `read_set_conflict`, the contract's trim, JSONL split by `\n`, 8 significant digits, 24 MiB
+  files, and pruning orphaned shadow artifacts.
+- **P4:** the confirmed shapes of section 7.2; keyword legs without `search()`; `/readyz` reads
+  `GET /graphs/brain/queries` as `act-brain-reader`. `remember` loads with `append`: a retry that
+  meets its own slug gets 409 `key_conflict` and no commit, and the tool reports "already saved"
+  after comparing the stored text. The scribe audit reads `GET /commits` (with `actor_id`) and
+  `GET /commits/{id}/changes` (kind, type, op, id), both open to `act-brain-reader`.
+- **P5:** `brain-tools` cuts each candidate so the query plus the text stays under the reranker's
+  input length (512 tokens for mMiniLM: about 900 characters of text beside a 300-character
+  question), sends at most 32 candidates, and slices the top-n itself.
+- **P6:** decision D5 keeps its intent (a named Brain model seeded from git with a five-minute admin
+  JWT), but the seeder cannot be a stand-alone Job, because the admin id lives only in `webui.db`
+  on an RWO volume. It runs as a native sidecar in the Open WebUI pod, which already holds
+  `WEBUI_SECRET_KEY`: mount `open-webui-data` read-only, wait for `/health`, read the admin id with
+  `mode=ro` (never `immutable=1`), mint the JWT with `exp`, read then create or update the model,
+  call `GET /api/models`, then idle. It reseeds on every pod start. The model sets
+  `meta.capabilities.builtin_tools: false`; the prompt uses short tool names. If a sidecar is
+  unwelcome, a Job with pod affinity to Open WebUI can mount the same volume read-only instead.
 
 ### P1 Safety rails
 
@@ -585,6 +795,13 @@ empty; `git grep` here finds no case text. Monitoring: `OmnigraphBrainEvalStale`
 for 36 h), `OmnigraphBrainEvalJudgeControlFailed`, `OmnigraphBrainEvalBudgetNearlySpent` (spend
 over 80% of the key's budget).
 
+*(P0)* Answer mode waits for VIK-1403: until LiteLLM stops keeping MCP arguments, every eval
+question sent through `/brain_tools_read/mcp` or the raw bridge would stay in `litellm-db` for 90
+days. Retrieval mode calls Omnigraph and `brain-tools` REST directly and is not affected.
+`OmnigraphBrainEvalStale` reads
+`time() - last_over_time(brain_eval_last_success_timestamp_seconds{mode="retrieval"}[3d]) > 36 * 3600`
+and fires on `absent_over_time` of the same series.
+
 ### P3 Data: write-time vectors and Obsidian chunks
 
 Section 7.3 in that commit order, plus: the vault-import and forge-import egress to
@@ -657,7 +874,9 @@ budget.
 - Open WebUI: a second tool connection `brain_tools` to `/brain_tools/mcp`; the prompt file; the
   **Brain** model (base `chat-default`, brain tools pre-selected, the prompt, native function
   calling, temperature 0.2) seeded by an idempotent provisioner Job that mints a 5-minute admin JWT
-  from `WEBUI_SECRET_KEY`, mounted only in that Job (decision D5).
+  from `WEBUI_SECRET_KEY`, mounted only in that Job (decision D5). *(P0)* The seeder runs as a native
+  sidecar of the Open WebUI pod instead, because only `webui.db` knows the admin id; the steps are
+  in [P0 results](#p0-spikes). The model also sets `meta.capabilities.builtin_tools: false`.
 - `second-brain` skill in `webgrip/ai-skills`: when to use the tools, in what order, citation,
   `remember` only on request, never copy brain content into git, tickets or public pages; with
   synthetic evals. A private *Brain contract* in `~/.claude/CLAUDE.md`, and a rule in this repo's
@@ -773,6 +992,7 @@ and the explorer.
 | Bulk embedding starves chat embeddings on the single CPU TEI | Paced embed step; `BrainToolsDegraded` and a TEI queue-time panel; a second TEI replica for bulk writers only if the alert fires |
 | Mixed vector formats in one type | Writers keep the backfill's prefix format until E1 decides |
 | Private data leaks | Eval data only in the private user repo, `skip_repos` first; ids-and-numbers logs, tested; metric label allowlist; generic skill and prompt; the `AGENTS.md` rule; tool footer |
+| Brain text copied into LiteLLM's spend logs (found in P0: arguments of every MCP call, kept 90 days) | VIK-1403 strips them before answer mode; section 7.5 lists the store until then |
 | The anchor-first bug silently unranks results | Ranked-first rule, lint in this repo's gate, and the `p0` replica check |
 | A cheap model misuses tools | Seven narrow tools, teaching errors, "did you mean", explicit negatives, no raw write tools in chat |
 | `remember` writes junk to `main` | Explicit-ask rule, rate limit, idempotent `nt-` slugs, no branch rights, foreign-write audit, revertible commits, weekly review of captures in the explorer |
@@ -829,7 +1049,7 @@ Each has a recommended default; P0 and P1 can start on the defaults.
 | D2 | Who writes the questions? | About 60 drafted candidates, cut to 36, with at least 6 of your own and 3 unanswerable; 10 hand grades once. About 2 hours | Write all 36 yourself |
 | D3 | Judge model | `claude-haiku-4-5`, about USD 0.30 a run, another model family | `claude-sonnet-5` (about 0.60); `gpt-oss-120b` (about 0.04, but the same family drafts the questions) |
 | D4 | Obsidian chunk representation | Passages of shadow `obsidian-file/*` artifacts, no schema change | A new `NotePassage` type: cleaner, but a schema change needing a drained graph and a restart before its keyword search works |
-| D5 | Brain preset shape | A named *Brain* model seeded by a provisioner Job with a short-lived admin JWT | Global defaults through `DEFAULT_MODEL_METADATA` and `DEFAULT_MODEL_PARAMS`: pure environment, but the brain tools and prompt then sit on every model, Claude included |
+| D5 | Brain preset shape | A named *Brain* model seeded by a provisioner with a short-lived admin JWT (P0: a native sidecar in the Open WebUI pod, since the admin id is only in its database) | Global defaults through `DEFAULT_MODEL_METADATA` and `DEFAULT_MODEL_PARAMS`: pure environment, but the brain tools and prompt then sit on every model, Claude included |
 | D6 | Raw GQ tools in chat | Remove them from chat; keep them for Claude Code with merge and delete disallowed | Keep them in chat next to the brain tools |
 | D7 | Where `remember` writes | `main` directly as `act-brain-scribe`, `nt-` slugs, revertible commits | `agent/*` branches you merge in graph-review; or write into the Obsidian vault so the vault stays the single source of truth |
 | D8 | Reranker placement | Worker pool, never `fringe-workstation`, worker-2 only with 3 GiB free; otherwise worker-1 or a €30–40 DIMM kit for worker-2 | Always worker-2 |
