@@ -1,0 +1,54 @@
+query recall_topics($q: String) @description("Topics ranked by meaning and keywords together, in Dutch or English") @instruction("Follow a topic with topic_notes, topic_artifacts, topic_projects and related_topics using its slug") {
+  match {
+    $t: Topic
+  }
+  return { $t.slug, $t.name, $t.description, $t.aliases }
+  order { rrf(nearest($t.embedding, $q), bm25($t.name, $q)) }
+  limit 10
+}
+
+query topic_notes($slug: String) @description("Notes that are about a topic") {
+  match {
+    $t: Topic { slug: $slug }
+    $n noteAboutTopic $t
+  }
+  return { $n.slug, $n.name, $n.kind, $n.when }
+  order { $n.name }
+}
+
+query topic_artifacts($slug: String) @description("Artifacts (READMEs, docs, issues, pull requests) that are about a topic") {
+  match {
+    $t: Topic { slug: $slug }
+    $a artifactAboutTopic $t
+  }
+  return { $a.slug, $a.name, $a.kind, $a.url }
+  order { $a.name }
+}
+
+query topic_projects($slug: String) @description("Projects that are about a topic") {
+  match {
+    $t: Topic { slug: $slug }
+    $p projectAboutTopic $t
+  }
+  return { $p.slug, $p.name, $p.status, $p.brief }
+  order { $p.name }
+}
+
+query related_topics($slug: String) @description("Topics that appear together with this one in at least three documents") {
+  match {
+    $t: Topic { slug: $slug }
+    $t <topicRelatedTopic> $o
+    $o: Topic
+  }
+  return { $o.slug, $o.name }
+  order { $o.name }
+}
+
+query note_topics($slug: String) @description("Topics a note is about") {
+  match {
+    $n: Note { slug: $slug }
+    $n noteAboutTopic $t
+  }
+  return { $t.slug, $t.name, $t.description }
+  order { $t.name }
+}

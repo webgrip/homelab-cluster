@@ -1,0 +1,355 @@
+query distill_notes() {
+    match {
+        $n: Note
+    }
+    return { $n.slug, $n.name, $n.kind, $n.content, $n.tags }
+}
+
+query distill_artifacts() {
+    match {
+        $n: Artifact
+    }
+    return { $n.slug, $n.name, $n.kind, $n.content }
+}
+
+query distill_projects() {
+    match {
+        $n: Project
+    }
+    return { $n.slug, $n.name, $n.brief, $n.description, $n.tags }
+}
+
+query distill_people() {
+    match {
+        $n: Person
+    }
+    return { $n.slug, $n.name, $n.first_name, $n.last_name, $n.relation }
+}
+
+query distill_orgs() {
+    match {
+        $n: Organization
+    }
+    return { $n.slug, $n.name, $n.kind }
+}
+
+query distill_places() {
+    match {
+        $n: Place
+    }
+    return { $n.slug, $n.name, $n.kind }
+}
+
+query distill_areas() {
+    match {
+        $n: Area
+    }
+    return { $n.slug, $n.name, $n.kind, $n.status }
+}
+
+query distill_topics() {
+    match {
+        $n: Topic
+    }
+    return { $n.slug, $n.name, $n.description, $n.aliases, $n.embedding, $n.createdAt }
+}
+
+query distill_state() {
+    match {
+        $n: Distillation
+    }
+    return { $n.slug, $n.source, $n.content_sha256, $n.extractor, $n.createdAt }
+}
+
+query edge_Knows_to() {
+    match {
+        $s: Person
+        $s $e:knows $t
+        $t.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_Knows_from() {
+    match {
+        $s: Person
+        $s $e:knows $t
+        $s.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_RelatedToPerson_to() {
+    match {
+        $s: Person
+        $s $e:relatedToPerson $t
+        $t.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_RelatedToPerson_from() {
+    match {
+        $s: Person
+        $s $e:relatedToPerson $t
+        $s.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_LivesIn_to() {
+    match {
+        $s: Person
+        $s $e:livesIn $t
+        $t.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_LivesIn_from() {
+    match {
+        $s: Person
+        $s $e:livesIn $t
+        $s.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_WorksAt_to() {
+    match {
+        $s: Person
+        $s $e:worksAt $t
+        $t.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_WorksAt_from() {
+    match {
+        $s: Person
+        $s $e:worksAt $t
+        $s.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_AttendedBy_to() {
+    match {
+        $s: Event
+        $s $e:attendedBy $t
+        $t.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_HappenedAt_to() {
+    match {
+        $s: Event
+        $s $e:happenedAt $t
+        $t.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_EventForPerson_to() {
+    match {
+        $s: Event
+        $s $e:eventForPerson $t
+        $t.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_NoteAboutPerson() {
+    match {
+        $s: Note
+        $s $e:noteAboutPerson $t
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_NoteAboutProject() {
+    match {
+        $s: Note
+        $s $e:noteAboutProject $t
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_NoteAboutArea() {
+    match {
+        $s: Note
+        $s $e:noteAboutArea $t
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_NoteAboutPlace() {
+    match {
+        $s: Note
+        $s $e:noteAboutPlace $t
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_NoteAboutOrganization() {
+    match {
+        $s: Note
+        $s $e:noteAboutOrganization $t
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_TaskForPerson_to() {
+    match {
+        $s: Task
+        $s $e:taskForPerson $t
+        $t.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_TaskForArea_to() {
+    match {
+        $s: Task
+        $s $e:taskForArea $t
+        $t.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_ProjectInArea() {
+    match {
+        $s: Project
+        $s $e:projectInArea $t
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_ProjectForOrganization_to() {
+    match {
+        $s: Project
+        $s $e:projectForOrganization $t
+        $t.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_GoalForArea_to() {
+    match {
+        $s: Goal
+        $s $e:goalForArea $t
+        $t.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_HabitForArea_to() {
+    match {
+        $s: Habit
+        $s $e:habitForArea $t
+        $t.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_PersonInvolvedInProject_from() {
+    match {
+        $s: Person
+        $s $e:personInvolvedInProject $t
+        $s.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_MediaAuthoredBy_to() {
+    match {
+        $s: Media
+        $s $e:mediaAuthoredBy $t
+        $t.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_MediaRecommendedBy_to() {
+    match {
+        $s: Media
+        $s $e:mediaRecommendedBy $t
+        $t.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_MediaForArea_to() {
+    match {
+        $s: Media
+        $s $e:mediaForArea $t
+        $t.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_MentionsPerson() {
+    match {
+        $s: Artifact
+        $s $e:mentionsPerson $t
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_ArtifactFromPerson_to() {
+    match {
+        $s: Artifact
+        $s $e:artifactFromPerson $t
+        $t.slug starts_with "derived/"
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_NoteAboutTopic() {
+    match {
+        $s: Note
+        $s $e:noteAboutTopic $t
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_ArtifactAboutTopic() {
+    match {
+        $s: Artifact
+        $s $e:artifactAboutTopic $t
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_ProjectAboutTopic() {
+    match {
+        $s: Project
+        $s $e:projectAboutTopic $t
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_TopicRelatedTopic() {
+    match {
+        $s: Topic
+        $s $e:topicRelatedTopic $t
+    }
+    return { $e.@id, $s.@id, $t.@id, $e.documents }
+}
+
+query edge_ArtifactAboutProject() {
+    match {
+        $s: Artifact
+        $s $e:artifactAboutProject $t
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}
+
+query edge_ArtifactAboutOrganization() {
+    match {
+        $s: Artifact
+        $s $e:artifactAboutOrganization $t
+    }
+    return { $e.@id, $s.@id, $t.@id }
+}

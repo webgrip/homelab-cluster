@@ -1,0 +1,76 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: omnigraph-distill
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: omnigraph-distill
+spec:
+  groups:
+    - name: omnigraph-distill.rules
+      rules:
+        - alert: OmnigraphDistillStale
+          expr: |
+            time() - max(
+              (kube_cronjob_status_last_successful_time{exported_namespace="ai", cronjob="omnigraph-distill"} > 0)
+              or
+              kube_cronjob_created{exported_namespace="ai", cronjob="omnigraph-distill"}
+            ) > 10800
+            or
+            absent(kube_cronjob_created{exported_namespace="ai", cronjob="omnigraph-distill"})
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: omnigraph
+          annotations:
+            summary: "Brain documents have not been distilled into topics in over 3h (ai/omnigraph-distill)"
+            description: |
+              What's happening:
+              - The omnigraph-distill CronJob runs every hour and has not completed a run for more than 3h, or it has never succeeded since it was created, or it no longer exists.
+
+              Impact/risk:
+              - New and changed notes, artifacts and projects in the brain graph get no topic, person, organization, place or area links, so they stay isolated in the graph and in every chat that walks it.
+              - Links of changed or deleted documents are not cleaned up, so topics can point at text that no longer says so.
+
+              Likely causes:
+              - LiteLLM is down, or the omnigraph-distill virtual key is missing, over budget or not registered yet (log: "distill refused: litellm ... not reachable" or "answered HTTP 401/429").
+              - More than a fifth of the extractions in a run failed, for example the model returned invalid JSON (log: "distill incomplete").
+              - Omnigraph is down or restarting, or act-distill is missing from tokens.json (log: "omnigraph not reachable or act-distill refused").
+              - A delete or load batch was refused by the server (log: "distill failed").
+
+              First actions:
+              - kubectl -n ai get cronjob,jobs -l app.kubernetes.io/name=omnigraph-distill
+              - kubectl -n ai logs job/<latest job> --all-containers
+              - kubectl -n ai get externalsecret omnigraph-distill-token omnigraph-tokens litellm-key-omnigraph-distill; kubectl -n ai logs job/litellm-key-register-omnigraph-distill
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#distiller"
+        - alert: OmnigraphDistillBudgetNearlySpent
+          expr: |
+            max(litellm_key_spend{key_alias="omnigraph-distill"}) / max(litellm_key_max_budget{key_alias="omnigraph-distill"} > 0) > 0.8
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: omnigraph
+          annotations:
+            summary: "The distiller has used over 80% of its 30-day LiteLLM budget (ai/omnigraph-distill)"
+            description: |
+              What's happening:
+              - The omnigraph-distill virtual key has spent more than 80% of its max_budget in the current 30-day budget window.
+
+              Impact/risk:
+              - When the budget runs out LiteLLM refuses the key, every extraction fails and OmnigraphDistillStale follows.
+              - Spend this high means far more documents were distilled than the steady state of a few changes an hour, for example a model or prompt change that reprocessed every document, or a document that changes every run.
+
+              Likely causes:
+              - The first backfill of every document, or a new extractor version (model or prompt), reprocessed the whole graph. Expected once.
+              - An importer rewrites the same documents every run, so their content hash never settles.
+              - The chat model's price went up.
+
+              First actions:
+              - kubectl -n ai logs job/<latest omnigraph-distill job> -c plan (compare pending and processed between runs)
+              - Grafana, AI folder, LiteLLM Inference Spend and Budgets, filtered on key omnigraph-distill
+              - Raise MAX_BUDGET in litellm-keys/app/omnigraph-distill-key-register.job.yaml only after the cause is understood
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#distiller"

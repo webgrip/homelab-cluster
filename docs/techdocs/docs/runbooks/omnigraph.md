@@ -29,6 +29,7 @@ Omnigraph v0.11 runs one server in namespace `ai` with three graphs: `memory` (s
 | `act-explorer` | `brain`, `memory` and `webgrip`: read and export on any branch, nothing else. Only the explorer's proxy holds it |
 | `act-vault-import` | `brain`: read and write on any branch including `main`, and run stored queries. No export, no branch create, merge or delete. Only the [Obsidian vault](#obsidian-vault) importer holds it |
 | `act-forge-import` | `brain`: the same rights as `act-vault-import`. Only the [Forgejo projects](#forgejo-projects) importer holds it |
+| `act-distill` | `brain`: the same rights as `act-vault-import`. Only the [distiller](#distiller) holds it |
 | `act-glide` | `brain`, `memory` and `webgrip`: read on any branch, write only on unprotected branches, create and delete unprotected branches, run stored queries. No merge, no export, never a write to `main`. Only the LiteLLM `omnigraph_glide_*` MCP servers hold it (see [Glide agents](#glide-agents)) |
 | `act-review` | `brain`, `memory` and `webgrip`: read and write on any branch including `main`, create, delete and merge any branch, run stored queries. No export. Only the explorer's review container holds it (see [Review mode](#review-mode)); client graphs stay CLI-reviewed as `act-ryan` |
 
@@ -36,7 +37,7 @@ Each token is generated in-cluster by the `omnigraph-actor-tokens` ExternalSecre
 
 Add an actor by creating a new generator ExternalSecret and PushSecret pair, then adding one line to the aggregator. Do not add keys to `omnigraph-actor-tokens`. It is generate-once, so a new key only appears after its Secret is deleted, and deleting it rotates every existing token.
 
-Give an in-cluster consumer its token with an ExternalSecret against the `openbao` store at `omnigraph/<actor>`. Then open the network path on both ends, because namespace `ai` is default-deny and every pod in it carries its own egress allow: add the consumer to `omnigraph-ingress` (a `namespaceSelector` for another namespace, a `podSelector` for a pod in `ai`), and give a pod in `ai` an egress rule to `app: omnigraph` on 8080. Today only LiteLLM (the `omnigraph_memory`, `omnigraph_brain` and `omnigraph_glide_*` MCP bridges), the explorer, the vault and Forgejo importers and the gateway may connect. The full matrix is in [LiteLLM: network](../general/litellm.md#network-namespace-ai).
+Give an in-cluster consumer its token with an ExternalSecret against the `openbao` store at `omnigraph/<actor>`. Then open the network path on both ends, because namespace `ai` is default-deny and every pod in it carries its own egress allow: add the consumer to `omnigraph-ingress` (a `namespaceSelector` for another namespace, a `podSelector` for a pod in `ai`), and give a pod in `ai` an egress rule to `app: omnigraph` on 8080. Today only LiteLLM (the `omnigraph_memory`, `omnigraph_brain` and `omnigraph_glide_*` MCP bridges), the explorer, the vault and Forgejo importers, the distiller and the gateway may connect. The full matrix is in [LiteLLM: network](../general/litellm.md#network-namespace-ai).
 
 ## Explorer
 
@@ -127,7 +128,7 @@ Conventions that used to live in the cookbook's comments:
 
 **Records and ids**
 
-- Slugs carry a type prefix: `per-` people, `org-` organizations, `pl-` places, `ev-` events, `nt-` notes, `tk-` tasks, `proj-` projects, `area-` areas, `goal-` goals, `hab-` habits, `med-` media, `art-` artifacts. `per-self` is you: create it first with `relation: self`.
+- Slugs carry a type prefix: `per-` people, `org-` organizations, `pl-` places, `ev-` events, `nt-` notes, `tk-` tasks, `proj-` projects, `area-` areas, `goal-` goals, `hab-` habits, `med-` media, `art-` artifacts. `per-self` is you: create it first with `relation: self`. `obsidian/`, `forge/` and `derived/` belong to the vault importer, the Forgejo importer and the [distiller](#distiller).
 - Inserting an existing slug updates that record.
 - `Knows` and `RelatedToPerson` are stored in both directions. The relation is inverted for parent/child and grandparent/grandchild.
 
@@ -333,6 +334,94 @@ The job fails, and does not retry, with one of these lines:
 **Network.** The pod may reach `omnigraph` on 8080 and the `forgejo` pods on 3000 (`omnigraph-forge-import-egress`). Forgejo admits it with a rule in `forgejo-allow-ingress`, and Omnigraph with `omnigraph-ingress`.
 
 **Rotation.** Replace the Forgejo token with the same `bao kv put`, then revoke the old one in Forgejo. Deleting `omnigraph-forge-import-token` rotates the actor token. The aggregator picks it up within 15 minutes and Reloader restarts Omnigraph.
+
+## Distiller
+
+The importers bring documents into `brain`; they do not say what a document is about. Most Obsidian notes had no link to anything. The `omnigraph-distill` CronJob in namespace `ai` ([distill](../../../../kubernetes/apps/ai/omnigraph/distill/app/)) reads every document, asks a model what it is about, and links it to topics, people, organizations, projects, places and areas. It runs every hour at minute 55, after the importers, and writes straight to `main` as `act-distill`. Ryan decided this on 2026-09-28.
+
+### What it writes
+
+| Document | Topic | Person | Organization | Project | Place | Area |
+|---|---|---|---|---|---|---|
+| `Note` | `NoteAboutTopic` | `NoteAboutPerson` | `NoteAboutOrganization` | `NoteAboutProject` (not from `forge/` notes) | `NoteAboutPlace` | `NoteAboutArea` |
+| `Artifact` | `ArtifactAboutTopic` | `MentionsPerson` | `ArtifactAboutOrganization` | `ArtifactAboutProject` (not to its own repo) | | |
+| `Project` (brief, description and README) | `ProjectAboutTopic` | | | | | `ProjectInArea` |
+
+Topics that often appear together are linked with `TopicRelatedTopic`, whose `documents` property counts the documents that name both. A pair needs 3 documents.
+
+**Ownership.** The distiller owns two things and touches nothing else:
+
+- Rows under `derived/`: `Topic` (`derived/topic/<name>`), the `Person`, `Organization` and `Place` rows it creates (`derived/person/`, `derived/org/`, `derived/place/`), one `Area` per area kind (`derived/area/<kind>`, used only when no `Area` of that kind exists), and one `Distillation` state row per document (`derived/distill/<document slug>`).
+- Edges whose id starts with `derived:`, in the fixed-id form `derived:<EdgeType>:<from>><to>`. The prefix is how it tells its own edges from an agent's or Ryan's, so it never deletes an edge it did not write. A link Ryan or an agent made to the same target counts: the distiller then does not add its own and drops its copy.
+
+It never writes an edge type an importer manages from that importer's rows (`NoteAboutProject` from `forge/` notes, `ArtifactForProject`, `ArtifactFromPerson`, `NoteFromArtifact`, `ProjectForOrganization`, `RelatedNote`), because the importer would delete it on its next relink. It never creates a `Project`; a project name must match an existing one.
+
+### How it runs
+
+1. `snapshot` reads, with the queries in [snapshot.gq](../../../../kubernetes/apps/ai/omnigraph/distill/app/snapshot.gq): every note, artifact and project with its text, every person, organization, place, area and topic, the `Distillation` rows, every edge the distiller writes, and every other edge that touches a `derived/` row. About 20 MB, most of it artifact text.
+2. `plan` runs [distill.py](../../../../kubernetes/apps/ai/omnigraph/distill/app/distill.py). It calls LiteLLM, resolves names and writes delete mutations and merge-load files.
+3. `apply` runs the deletes, then the loads (entities, then edges, then state rows) onto `main`.
+
+The counts line has documents, pending, processed, failed, edges added and removed, entities and topics created and deleted, merges, tokens and `cost_usd`. It never logs names or text.
+
+**Incremental.** A document is sent to the model only when the SHA-256 of its model input (kind, title, tags and the first 12,000 characters) differs from the `content_sha256` in its `Distillation` row, or the row's `extractor` (`v1:<model>`) differs. A state row is needed because a document that yields no links has nothing else to hold its hash, and a property on the `Note` or `Artifact` would be an edit to an importer's row. Changing the model or bumping `EXTRACTOR` reprocesses everything once.
+
+- A changed document gets its new links; the `derived:` edges it no longer supports are deleted.
+- A deleted document takes its edges with it (Omnigraph deletes a node's edges); the distiller then deletes its state row.
+- A `derived/` entity that no edge references any more, including links other writers made, is deleted. An entity someone else links to stays.
+- The state row is written last. If a run fails half way, the next run sees the old hash and redoes the document.
+
+**Limits per run.** At most 600 documents and USD 1 of model spend; the rest waits for the next hour. Notes go first, then projects, then artifacts. The first backfill of the whole graph therefore takes several runs. Load files are split at 2,000 rows or 16 MiB and delete mutations at 500 statements, below the [per-commit write limit](#known-v011-limits).
+
+### Extraction
+
+[extraction.prompt.txt](../../../../kubernetes/apps/ai/omnigraph/distill/app/extraction.prompt.txt) is the system message, followed by the names of the known non-mirror projects. [extraction.schema.json](../../../../kubernetes/apps/ai/omnigraph/distill/app/extraction.schema.json) is the strict `response_format`: topics (at most 6, with a one-sentence general description and aliases, including the Dutch name), people, organizations, projects, places and areas (the `Area.kind` values), each with `about`. Only entities the document is about are linked, with one exception: an artifact's mentioned people are linked with `MentionsPerson` when they already exist. New people, organizations and places are created only from `about` entities.
+
+Model choice, tested 2026-09-28 on 20 real documents (6 Dutch and 6 English Obsidian notes, 8 Forgejo docs), temperature 0, `reasoning_effort: low`:
+
+| Model | Valid JSON | Cost for 20 | Mean latency | Notes |
+|---|---|---|---|---|
+| `fireworks-gpt-oss-120b` | 20/20 | USD 0.013 | 3.1 s | Chosen. English topic names with Dutch aliases for Dutch notes |
+| `meeting-extract` | 20/20 | USD 0.007 reported | 3.7 s | The same Fireworks model; LiteLLM reports half the cost for identical token counts, so the real cost equals the row above |
+| `chat-default` (MiniMax) | 16/20 | USD 0.057 | 13.6 s | Four answers were not valid JSON; more organizations and projects per document, several not in the text |
+
+That is about USD 0.0007 per document, so a full backfill of the graph (about 3,400 documents) costs about USD 2.50. The key `omnigraph-distill` allows `fireworks-gpt-oss-120b`, `deepseek-chat` (LiteLLM's fallback when Fireworks fails, owner-approved) and the embedding model, with a budget of USD 5 per 30 days.
+
+### Resolution
+
+Every extracted name is matched against existing rows before anything is created:
+
+1. **Name key.** Lowercase, accents folded, leading articles (`the`, `de`, `het`, `een`) and legal suffixes (`B.V.`, `Inc`, `GmbH`) dropped, everything but letters and digits removed, a plural `s` or `ies` reduced. Matched against the name and aliases of every topic, the name (and first plus last name) of every person, the name of every organization and place, and the full name and repo name of every project. A repo name shared by two projects matches the one that is not a mirror or fork, otherwise nothing.
+2. **Alias merge.** When a topic's name matches one topic and one of its aliases matches another `derived/` topic, the second is merged into the first: its edges move, its names become aliases.
+3. **Embedding candidates, confirmed by the model.** A topic that is still new is embedded by name with `granite-embedding-97m-multilingual-r2`. Its three nearest topics with cosine similarity at least 0.75 are candidates. At 0.97 or more it is merged directly; otherwise [merge.prompt.txt](../../../../kubernetes/apps/ai/omnigraph/distill/app/merge.prompt.txt) asks the chat model whether the two names are the same concept, and only a yes merges. Topic rows carry their name vector, so the next run compares without embedding them again.
+
+People, organizations and places are matched by key only: the embedding model scores different names of the same kind (two companies, two people) as close, so similarity would merge strangers.
+
+Why the model confirms: on 141 topic names from the test documents, name embeddings alone gave no usable threshold. At 0.85 two of fourteen pairs were real duplicates; `MySQL`/`PostgreSQL` scored 0.907 and `Facturatie`/`Urenregistratie` 0.899, above true pairs such as `Christendom`/`Christianity` (0.848) and `Varnish`/`Varnish Cache` (0.797). Embedding name plus description was no better (`Docker`/`Kubernetes` 0.945). On 35 hand-labelled pairs the confirmation step said yes to 10 of 16 true duplicates and to none of 19 different concepts: precision 100%, recall 63%. It misses broader and narrower pairs (`Talos`/`Talos Linux`, `GDPR`/`GDPR compliance`). A missed merge leaves two topics; a wrong merge would corrupt links, so the step is tuned to say no when unsure. Each question costs about USD 0.00005.
+
+### Setup
+
+Nothing to set up by hand. The actor token and the LiteLLM key are generated in the cluster. The first runs after deploy backfill the graph.
+
+### Monitoring and failures
+
+The job fails, and does not retry, with one of these lines:
+
+- `omnigraph not reachable or act-distill refused`: Omnigraph is restarting, or `act-distill` is not in `tokens.json` yet.
+- `distill refused: litellm ... not reachable` or `answered HTTP 401`: LiteLLM is down, or the `omnigraph-distill` key is not registered (`kubectl -n ai logs job/litellm-key-register-omnigraph-distill`). `HTTP 400` with a budget message: the key's budget is spent.
+- `distill refused: the snapshot holds no documents`: the snapshot came back empty while state rows exist. Nothing was deleted.
+- `distill failed: delete batch` or `load batch`: the server refused a write. The next run replans from the graph.
+- `distill incomplete: N of M extractions failed`: more than a fifth of the model answers were unusable. What succeeded was written; the rest is retried next run.
+
+`OmnigraphDistillStale` fires when the CronJob has had no successful run for 3 hours, or never succeeded since it was created. `OmnigraphDistillBudgetNearlySpent` fires when the key has spent 80% of its 30-day budget (`litellm_key_spend` over `litellm_key_max_budget` from the LiteLLM exporter). Expected once during the first backfill; a repeat means something reprocesses documents every run.
+
+**Tests.** [test_omnigraph_distill.py](../../../../scripts/test_omnigraph_distill.py) runs the planner against a simulated graph that enforces the schema's types, enums and edge endpoints and the write limits, with a fake LiteLLM. It covers parsing, resolution (keys, aliases, confirmed and refused merges, project ambiguity), importer-managed edges, second-run idempotence, changed and deleted documents, reference counting, foreign links, co-occurrence, the document and spend caps, failure paths and batching. [test-omnigraph-distill-mutation.sh](../../../../scripts/test-omnigraph-distill-mutation.sh) breaks resolution, merging, reference counting, ownership, the change check, the importer guard and the batch size one at a time, and requires each break to fail the suite and the unmodified distiller to pass. Both run offline in `e2e / Lint & static validation`.
+
+**Network.** The pod may reach `omnigraph` on 8080 and `litellm` on 4000 (`omnigraph-distill-egress`). Omnigraph admits it with `omnigraph-ingress`; LiteLLM admits all of namespace `ai`.
+
+**Rotation.** Deleting `omnigraph-distill-token` rotates the actor token; the aggregator picks it up within 15 minutes and Reloader restarts Omnigraph. Rotate the LiteLLM key by deleting the `litellm-key-omnigraph-distill` Secret and the `litellm-key-register-omnigraph-distill` Job.
+
+**Undo.** Every `derived/` row and `derived:` edge comes from the distiller. To remove its work, suspend the CronJob, then delete those rows and edges as `act-ryan`; the importers' rows are untouched.
 
 ## Company meetings (`webgrip` and client graphs)
 

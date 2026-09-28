@@ -8,7 +8,8 @@ and the [Open WebUI runbook](../runbooks/open-webui.md). Epic: VIK-1259.
 
 Knowledge lives in **Omnigraph**, a graph database with git-style branches, running in the cluster.
 You and your AI assistants reach it through **LiteLLM**, which is the single gateway for models *and*
-tools. Importers keep it fed from Obsidian and Forgejo. Every AI client has its own identity with a
+tools. Importers keep it fed from Obsidian and Forgejo, and a distiller reads every document and links
+it to the topics, people, organisations, projects, places and areas it is about. Every AI client has its own identity with a
 written policy: your own assistant writes straight in, background agents only propose on branches, and
 **only you merge**. Every write is a commit, so anything can be traced and undone.
 
@@ -25,6 +26,7 @@ flowchart LR
   subgraph Knowledge
     AR[(Archive: raw text<br/>planned)]
     OG[(Omnigraph<br/>memory · brain · webgrip)]
+    DS[Distiller, hourly]
   end
   subgraph Doors
     CH[Open WebUI chat]
@@ -37,6 +39,8 @@ flowchart LR
   MT -->|just omnigraph-ingest-meeting| OG
   ML -.->|parked| AR
   AR -.->|distil| OG
+  OG -->|documents| DS
+  DS -->|topics and links| OG
   CH --> LL[LiteLLM<br/>models + MCP tools]
   CC --> LL
   GL --> LL
@@ -47,7 +51,12 @@ flowchart LR
 | Layer | Holds | Good for | Status |
 |---|---|---|---|
 | **Archive** (raw data) | Every email, message, transcript and document, whole | "Find where X was said" | Parked, see the [personal archive RFC](../rfc/rfc-personal-archive.md) |
-| **Omnigraph** (knowledge) | People, organisations, projects, notes, decisions, tasks and the links between them, each pointing at its source | "What do I owe whom", "which decisions touch client X" | Live |
+| **Documents** (in Omnigraph) | Notes, READMEs, docs, ADRs, issues and pull requests as the importers bring them, with their passages | "Find the note where I wrote about X" | Live |
+| **Knowledge** (in Omnigraph) | Topics, people, organisations, projects, places and areas, linked to the documents that are about them, and topics linked to topics that appear together | "Everything I have on Kubernetes networking", "which notes and repos are about client X" | Live, built by the [distiller](../runbooks/omnigraph.md#distiller) |
+
+The importers fill the documents layer; the distiller turns it into the knowledge layer. It asks a model
+(Fireworks `gpt-oss-120b` through LiteLLM) what each document is about, matches the answer against what
+the graph already has, and adds links under its own `derived/` namespace. It never edits a document.
 
 Omnigraph does not replace the raw data. Short, self-written material (Obsidian notes, READMEs, ADRs,
 issues) goes straight into the graph; long or bulk text belongs in the archive once it exists.
@@ -67,6 +76,7 @@ issues) goes straight into the graph; long or bulk text belongs in the archive o
 | **Talking to it** | "Remember …" in the chat or Claude Code | `brain` `main`, at once | Nothing |
 | **Obsidian** | Obsidian Git pushes the vault to `webgrip/obsidian-vault`; the importer syncs every 15 minutes | `brain` `main`; `[[links]]` become links, daily notes become journal entries, notes matching a client term get the tag `client` | One-time setup: [Obsidian vault](../runbooks/omnigraph.md#obsidian-vault) |
 | **Forgejo** | Hourly importer over every repo you can see | `brain` `main`: repos as projects, READMEs, `docs/`, ADRs as decisions, issues, PRs, people | One-time: a read-only token, see [Forgejo projects](../runbooks/omnigraph.md#forgejo-projects) |
+| **Distiller** | Hourly, after the importers, over every new or changed note, artifact and project | `brain` `main`: `Topic` rows and links from documents to topics, people, organisations, projects, places and areas, all under `derived/` | Nothing |
 | **Meeting notes** | `just omnigraph-ingest-meeting <graph> extraction.json notes.txt` | An `ingest/*` branch of `webgrip` or a client graph | Review and merge |
 | **Glide agents** | Their own tools through LiteLLM | A `glide/<run>` branch of `memory`, `brain` or `webgrip` | Review and merge |
 | **Mail, Slack, calls, documentation** | Through the archive | Archive first, distilled into the graph | Parked |
@@ -86,6 +96,7 @@ issues) goes straight into the graph; long or bulk text belongs in the archive o
 | Record a person | "Remember Jan: works at Client X, prefers calls." |
 | Recall | "What do I know about Jan?" · "What have I promised people?" |
 | Use your projects | "Which of my repos have open issues?" · "What do my ADRs say about secrets?" |
+| Follow a topic | "Which notes and repos are about Magento?" · "What topics come up with Kubernetes?" |
 | Review | "What did I save this week?" |
 
 The chat's key sees `memory` and `brain` only. It cannot see `webgrip` or the Glide tools.
@@ -135,6 +146,7 @@ Glide side (handing each run its tools) is VIK-1300, specified in
 | Your chat and Claude Code | `act-brain-agent` | `brain` `main` directly | No |
 | Obsidian importer | `act-vault-import` | Its own `obsidian/` notes on `brain` `main` | No |
 | Forgejo importer | `act-forge-import` | Its own `forge/` rows on `brain` `main` | No |
+| Distiller | `act-distill` | Its own `derived/` rows and `derived:` links on `brain` `main` | No |
 | Glide agents | `act-glide` | Unprotected branches (`glide/<run>`) of all three graphs | No |
 | In-cluster agents on `memory` | `act-agent` | Their own branches of `memory` | No |
 | Meeting ingest | `act-ingest` | `ingest/*` branches; cannot read | No |
@@ -191,6 +203,7 @@ changes](../runbooks/omnigraph.md#open-glide-branches-block-schema-changes).
 | The model answers without calling a tool | Omnigraph is not switched on in that chat | Tools menu, switch on Omnigraph |
 | A tool call answers 403 | The identity is not allowed that action (for example a Glide write to `main`) | Expected; work on a branch and merge as yourself |
 | New notes are found by keyword but not by meaning | Vectors are filled at the nightly restart | Wait until after 03:15 |
+| A new note has no topics yet | The distiller runs at minute 55 and handles at most 600 documents per run | Wait for the next run; `OmnigraphDistillStale` fires if it stops |
 | `OmnigraphVaultImportStale` or `OmnigraphForgeImportStale` | The importer's setup is incomplete or it failed | See the importer's section in the [runbook](../runbooks/omnigraph.md) |
 | Claude answers look like DeepSeek | The Anthropic key failed and LiteLLM fell back | Check the key in OpenBao (`secret/litellm`); VIK-1251 adds an alert |
 

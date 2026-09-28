@@ -1,0 +1,143 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: omnigraph-distill
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: omnigraph-distill
+    app.kubernetes.io/part-of: omnigraph
+spec:
+  schedule: "55 * * * *"
+  timeZone: Europe/Amsterdam
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 900
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 3000
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: omnigraph-distill
+            app.kubernetes.io/part-of: omnigraph
+        spec:
+          serviceAccountName: omnigraph-distill
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            fsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          initContainers:
+            - name: snapshot
+              # renovate: datasource=docker depName=docker.io/modernrelay/omnigraph-server
+              image: harbor.webgrip.dev/dockerhub/modernrelay/omnigraph-server:v0.11.0@sha256:db0911099d93e738641b637a911b83b4ae2b179fe4f0719de4e3eb45a81d50b0
+              imagePullPolicy: IfNotPresent
+              command:
+                - "sh"
+                - "/etc/distill/snapshot.sh"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: NO_COLOR, value: "1"}
+                - {name: OMNIGRAPH_URL, value: "http://omnigraph.ai.svc.cluster.local:8080"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 20m, memory: 64Mi}
+                limits: {memory: 1Gi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/distill, readOnly: true}
+                - {name: token, mountPath: /run/secrets/omnigraph, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+            - name: plan
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - /etc/distill/distill.py
+                - --snapshot-dir=/work/snapshot
+                - --out=/work/plan
+                - --litellm-url=http://litellm.ai.svc.cluster.local:4000
+                - --key-file=/run/secrets/litellm/key
+                - --prompt-file=/etc/distill/extraction.prompt.txt
+                - --schema-file=/etc/distill/extraction.schema.json
+                - --model=fireworks-gpt-oss-120b
+                - --embed-model=granite-embedding-97m-multilingual-r2
+                - --merge-prompt-file=/etc/distill/merge.prompt.txt
+                - --candidate-similarity=0.75
+                - --same-similarity=0.97
+                - --related-min-documents=3
+                - --max-documents=600
+                - --max-spend-usd=1
+                - --workers=6
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 100m, memory: 256Mi}
+                limits: {memory: 1536Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/distill, readOnly: true}
+                - {name: litellm-key, mountPath: /run/secrets/litellm, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+          containers:
+            - name: apply
+              # renovate: datasource=docker depName=docker.io/modernrelay/omnigraph-server
+              image: harbor.webgrip.dev/dockerhub/modernrelay/omnigraph-server:v0.11.0@sha256:db0911099d93e738641b637a911b83b4ae2b179fe4f0719de4e3eb45a81d50b0
+              imagePullPolicy: IfNotPresent
+              command:
+                - "sh"
+                - "/etc/distill/apply.sh"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: NO_COLOR, value: "1"}
+                - {name: OMNIGRAPH_URL, value: "http://omnigraph.ai.svc.cluster.local:8080"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 20m, memory: 64Mi}
+                limits: {memory: 1Gi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/distill, readOnly: true}
+                - {name: token, mountPath: /run/secrets/omnigraph, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: scripts
+              configMap:
+                name: omnigraph-distill
+            - name: token
+              secret:
+                secretName: omnigraph-distill-token
+                defaultMode: 0440
+                items:
+                  - {key: token, path: token}
+            - name: litellm-key
+              secret:
+                secretName: litellm-key-omnigraph-distill
+                defaultMode: 0440
+                items:
+                  - {key: key, path: key}
+            - name: work
+              emptyDir:
+                sizeLimit: 2Gi
+            - name: tmp
+              emptyDir:
+                sizeLimit: 64Mi

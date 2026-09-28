@@ -1,0 +1,80 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: litellm-key-register-omnigraph-distill
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: litellm-key-register
+    app.kubernetes.io/instance: omnigraph-distill
+    cleanup.webgrip.io/retry-failed: "true"
+spec:
+  backoffLimit: 4
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: litellm-key-register
+        app.kubernetes.io/instance: omnigraph-distill
+    spec:
+      serviceAccountName: litellm-key-register
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: register
+          image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.0@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - /scripts/register-key.sh
+          env:
+            - {name: HOME, value: /tmp}
+            - {name: LITELLM_URL, value: "http://litellm.ai.svc.cluster.local:4000"}
+            - {name: KEY_ALIAS, value: omnigraph-distill}
+            - {name: MODELS, value: '["fireworks-gpt-oss-120b","deepseek-chat","granite-embedding-97m-multilingual-r2"]'}
+            - {name: MCP_ACCESS_GROUPS, value: '[]'}
+            - {name: MAX_BUDGET, value: "5"}
+            - {name: BUDGET_DURATION, value: 30d}
+            - {name: RPM_LIMIT, value: "600"}
+            - {name: TPM_LIMIT, value: "1000000"}
+            - {name: KEY_OWNER, value: ryan}
+            - {name: KEY_PURPOSE, value: "omnigraph-distill CronJob: extracts topics and entities from brain documents"}
+            - {name: VIRTUAL_KEY_FILE, value: /run/secrets/virtual-key/key}
+            - {name: MASTER_KEY_FILE, value: /run/secrets/litellm/LITELLM_MASTER_KEY}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 128Mi}
+          volumeMounts:
+            - {name: scripts, mountPath: /scripts, readOnly: true}
+            - {name: virtual-key, mountPath: /run/secrets/virtual-key, readOnly: true}
+            - {name: master-key, mountPath: /run/secrets/litellm, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: scripts
+          configMap:
+            name: litellm-key-register
+        - name: virtual-key
+          secret:
+            secretName: litellm-key-omnigraph-distill
+            items:
+              - key: key
+                path: key
+        - name: master-key
+          secret:
+            secretName: litellm-secret
+            items:
+              - key: LITELLM_MASTER_KEY
+                path: LITELLM_MASTER_KEY
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi
