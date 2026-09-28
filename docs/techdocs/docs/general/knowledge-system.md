@@ -75,7 +75,7 @@ issues) goes straight into the graph; long or bulk text belongs in the archive o
 
 ### Chat: `https://chat.<domain>`
 
-1. Pick a model. The default, `chat-default`, is Fireworks Qwen with the cheapest DeepSeek model as fallback; the Claude models stay selectable.
+1. Pick a model. The default, `chat-default`, is Fireworks MiniMax with the cheapest DeepSeek model as fallback; the Claude models stay selectable.
 2. Under the message box, open the tools menu and switch on **Omnigraph**, once per chat.
 3. Talk to it. You see a tool call each time it reads or writes the graph.
 
