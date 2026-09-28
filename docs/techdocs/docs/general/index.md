@@ -16,6 +16,7 @@ Architecture and reference docs — what the platform *is*. Procedures live in
   (canonical) / [CVE triage ledger](supply-chain-cve-triage.md).
 - **Data** — [database backup tiers](database-backup-tiers.md), [dynamic DB credentials
   explained](dynamic-db-credentials-explained.md).
+- **Knowledge** — [knowledge system](knowledge-system.md) (the second brain, agent memory and company graphs: how things get in, how to use them, review and safety).
 - **Forge & automation** — [Forgejo](forgejo.md), [Forgejo Actions engine
   quirks](forgejo-actions-engine.md), [Renovate](renovate.md).
 - **Planning** — the roadmap lives on the **Vikunja board** (`Homelab Roadmap` project, via the `vikunja` MCP; [ADR-0043](../adr/adr-0043-vikunja-roadmap-system-of-record.md)).
