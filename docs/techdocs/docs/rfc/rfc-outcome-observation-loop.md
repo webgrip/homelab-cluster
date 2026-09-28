@@ -1,6 +1,7 @@
 # RFC: Outcome observation — the loop does not end at Done
 
-> Status: **Proposed (draft)** · Date: 2026-09-28 · Extends the board contract's Definition of
+> Status: **Accepted** (2026-09-28, [decisions](#11-decisions-2026-09-28)) · Date: 2026-09-28 ·
+> Epic: VIK-1315 · Extends the board contract's Definition of
 > Done ([ADR-0043](../adr/adr-0043-vikunja-roadmap-system-of-record.md), `CLAUDE.md` "Board
 > contract") · Borrows created-work limits from Glide
 > ([how work flows](https://forgejo.webgrip.dev/webgrip/glide/src/branch/development/docs/concepts/how-work-flows.md#work-that-creates-work))
@@ -138,8 +139,17 @@ because:
 - the closing comment is where "monitored" is written today. The block replaces a sentence and
   adds no step.
 
-A ticket with no Watch states why in the same comment ("docs-only", "no runtime signal"). That
-line is already part of the DoD. The only change is that the evaluator counts it (§9).
+A Watch is **mandatory at Done** (decision 2, §11). A ticket that cannot have one closes with an
+explicit opt-out block in the same comment, and the reason is required:
+
+```yaml
+watch: none
+because: docs-only change, no runtime signal
+```
+
+A `watch: none` block without a non-empty `because` is a parse error (rule 4 below). A Done ticket
+in scope with neither block gets one comment from the evaluator saying the DoD is not met, and it
+counts against coverage (§9).
 
 ### 4.2 Schema (version 1)
 
@@ -265,10 +275,12 @@ the existing label-chip code.
 
 **Contract impact.** The board contract lists label *dimensions* as contract and their values as
 board state. `watch/*` is a new dimension, so it needs a one-line contract edit in `CLAUDE.md`
-and the product-owner skill's contract section. That is an owner decision (§11 Q1). The contract
+and the product-owner skill's contract section. The owner approved it for slice 2 (decision 1,
+§11). The contract
 explicitly forbids creating a label to make a write succeed. **Slice 1 therefore uses no labels
 at all** (§8). The evaluator derives Observing from "has an admitted Watch and no result comment
-yet", and results live in comments. The labels arrive only after the dimension is approved.
+yet", and results live in comments. The four labels and the `CLAUDE.md` contract line arrive
+together with slice 2.
 
 ## 6. Created work and review capacity
 
@@ -322,6 +334,8 @@ to prevent. If it is ever wanted, it is a Glide planner Role whose output lands 
 - **Identity:** a dedicated Vikunja user `watch-evaluator`, so its comments are attributable and its
   writes can be revoked on their own, plus a Grafana service account with the Viewer role. Both
   tokens are minted by the owner into OpenBao KV and wired with an `ExternalSecret` (no SOPS).
+  Glide's `ploegd` gets its own Vikunja user on the same terms (decision 6), so a comment on a
+  tracker ticket names the automated writer that made it.
 - **Network:** egress to `vikunja` and `grafana` Services only (a `network-policy` skill netpol).
 - **State:** none of its own. Everything is recomputed from the board (comments, done dates) each
   run. The evaluator can be deleted and redeployed without losing anything. Per-evaluation
@@ -357,19 +371,31 @@ board are the channel of record. The alert is a second channel, not the only one
 
 **Slice 1: evaluate and comment (no labels, no created tickets).**
 
-- The Watch schema v1 (`checks` only, no `opportunity`), documented in a techdocs reference page
-  and in the product-owner skill's close procedure.
+- The Watch schema v1 (`checks` only, no `opportunity`) plus the `watch: none` / `because:`
+  opt-out, documented in a techdocs reference page and in the product-owner skill's close
+  procedure.
+- **The DoD contract change ships with slice 1** (decision 2). It lands in `CLAUDE.md` "Board
+  contract" and the product-owner skill in the change that makes the evaluator live, not before:
+  a rule that no program checks is the gap this RFC closes. Proposed wording, replacing the
+  "(2) monitored" clause: *"(2) **watched**: the evidence comment carries a `watch:` block (RFC
+  outcome-observation-loop §4.2) that the evaluator admits, or a `watch: none` block with a
+  `because:` reason (docs-only, decision, spike)."*
+- The evaluator comments once on an in-scope Done ticket that has neither a `watch:` block nor a
+  `watch: none` reason.
 - The evaluator CronJob (§7.2) with all three dead-man guards (§7.3) and admission rules 1–4.
 - Results as comments only: an admission comment, then a result comment (Confirmed, Regressed or
-  Inconclusive) with the evidence. A Regressed result names the evidence but **does not create a
-  ticket yet**. The owner reads it and decides, which gives the first real measure of how often
+  Inconclusive) with the evidence. A Regressed result also fires a `WatchRegressed` **warning**
+  through the existing Alertmanager → ntfy route (decision 5). The board comment stays the channel
+  of record, because the deadman leg of that route is still unproven (§1). A Regressed result
+  names the evidence but **does not create a ticket yet**. The owner reads it and decides, which gives the first real measure of how often
   Regressed is right before the loop is allowed to create work.
 - Proven on real tickets: VIK-1295's Watch (§4.4) plus one Watch per mutation direction. One
   whose baseline also holds must be rejected at admission. One pointed at a deliberately
   unscoped log query must be rejected. One whose `alive` goes to zero must end Inconclusive.
 
-**Slice 2: labels and created work**, after the owner approves the `watch/*` dimension (Q1):
-`watch/*` labels, Regression tickets with caps and dedupe (§6), the Vellum chip.
+**Slice 2: labels and created work** (the `watch/*` dimension is approved, decision 1):
+the four `watch/*` labels and the `CLAUDE.md` board-contract line, Regression tickets as
+`needs-refinement` with caps and dedupe (§6, decision 4), the Vellum chip.
 
 **Slice 3: breadth.** `opportunity[]`, a cross-source `compare:` check (VIK-1295's
 `shifts.spent` against gateway spend), and a Grafana stat panel for the loop metrics (§9).
@@ -388,7 +414,8 @@ They are stats and tables, not timeseries:
 | **Created-ticket acceptance** (slice 2+) | Watch-created tickets refined to `ready` ÷ closed as won't-do | Low acceptance with a full open cap = noise; lower the cap |
 | **Evaluator uptime** | Share of hours with a successful run | 100 % minus maintenance; any gap is a finding |
 
-Decision each metric changes: coverage says whether to make the Watch mandatory in the DoD (Q2).
+Decision each metric changes: the Watch is mandatory (decision 2), so coverage below 100 % is a
+DoD breach to chase, not a vote on the rule.
 False-regression rate says whether slice 2 may create tickets. Loop-caught vs human-caught says
 whether the whole loop is worth keeping.
 
@@ -407,24 +434,29 @@ whether the whole loop is worth keeping.
   as they do today.
 - **No per-evaluation comments.** Two comments per Watch at most. The metrics carry the detail.
 
-## 11. Open questions for the owner
+## 11. Decisions (2026-09-28)
 
-1. **Label dimension.** Approve `watch/*` (`observing`, `confirmed`, `regressed`, `inconclusive`)
-   as a new board-contract dimension? This RFC recommends `watch/` over `outcome/` because of the
-   Glide *Outcome* clash (§3.2). Slice 2 depends on this answer; slice 1 does not.
-2. **Mandatory or opt-in.** Should the DoD *require* a Watch or a stated reason (today the reason
-   is already required for "monitored"), or should Watches stay opt-in until coverage data exists?
-   Recommended: opt-in for slice 1, then decide on the numbers.
-3. **Opportunity** as the name for the third branch, modelled as a created-ticket kind and not
-   a state (§3.1)?
-4. **Created tickets in the tracker at all.** Glide keeps created work out of the tracker until
-   approved (Ploeg ADR-0031). This RFC writes it to the board as `needs-refinement`, so it is
-   visible where the owner already triages. Acceptable, or should created work wait in a
-   comment until approved?
-5. **Paging.** Should a Regressed result also notify through ntfy (warning), or is the board
-   enough? Recommended: board only until the deadman leg is proven again.
-6. **Identity.** A dedicated `watch-evaluator` Vikunja user (recommended) or the existing MCP
-   token? The owner mints the token either way.
+The owner accepted the RFC (option B, §7.1) and answered the open questions
+([VIK-1319](https://vikunja.webgrip.dev/tasks/1319)):
+
+1. **Label dimension.** `watch/*` (`observing`, `confirmed`, `regressed`, `inconclusive`) becomes a
+   board-contract dimension **from slice 2**. Slice 1 writes comments only. The `CLAUDE.md` board
+   contract gains the dimension, and the four labels are created, in the slice 2 change.
+2. **Mandatory at Done, from the start.** Every Done carries a `watch:` block or an explicit
+   `watch: none` with a `because:` reason (§4.1). This overrides the draft's opt-in
+   recommendation. The DoD contract change ships with slice 1 (§8): `CLAUDE.md` is edited when
+   the evaluator goes live, so the rule and its check arrive together.
+3. **Opportunity** is the name of the third branch, modelled as a kind of created ticket, not a
+   state (§3.1).
+4. **Created tickets go on the board** as `needs-refinement` Backlog tickets, capped and
+   deduplicated as in §6. They are not held in a comment.
+5. **Regressed also notifies** through ntfy as a warning (`WatchRegressed`), from slice 1. The
+   board comment remains the channel of record.
+6. **Own identities for automated writers.** The evaluator gets the Vikunja user
+   `watch-evaluator`, and Glide's `ploegd` gets its own Vikunja user as well, so tracker comments
+   from either are authenticated and revocable on their own. The owner mints both tokens into
+   OpenBao. The Glide half is shared with the Glide escalation ladder (Glide ADR-0036), under epic
+   VIK-1276.
 
 ## 12. References
 

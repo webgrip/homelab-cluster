@@ -20,12 +20,12 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
   [Forgejo repo config as GitOps](rfc-forgejo-repo-config-gitops.md) (accepted 2026-09-28: repo
   settings and branch protection move from `forgejo-sync.sh` to a git profile model applied hourly
   by tofu-controller; provider spike zero-diff; amended 2026-09-28 to fully replace the script,
-  topics, push mirrors and team access included; epic VIK-1302).
-- **Proposed / open** — [Outcome observation loop](rfc-outcome-observation-loop.md)
-  (2026-09-28 draft: a ticket closes with a machine-readable Watch; a scheduled evaluator
-  observes it for a window and records Confirmed, Regressed or Inconclusive; regressions and
-  opportunities become capped, human-refined tickets),
-  [CI isolation on Talos](rfc-ci-isolation-talos.md)
+  topics, push mirrors and team access included; epic VIK-1302), [Outcome observation
+  loop](rfc-outcome-observation-loop.md) (accepted 2026-09-28: every Done carries a
+  machine-readable Watch or a stated reason; a scheduled evaluator records Confirmed, Regressed or
+  Inconclusive, Regressed also warns via ntfy; `watch/*` labels and capped `needs-refinement`
+  created tickets from slice 2; epic VIK-1315).
+- **Proposed / open** — [CI isolation on Talos](rfc-ci-isolation-talos.md)
   (2026-08-11 incident-driven: shared privileged dind is unsupported on Talos per Sidero;
   containment wrapper shipped, staged plan → Talos v1.13.8, cilium OOM-exemption, kata for
   KinD e2e, rootless end-state gated on moby#52268),
