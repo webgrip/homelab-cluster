@@ -17,7 +17,10 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
   `webgrip/workflows`), [Codeberg Pages TechDocs](rfc-codeberg-pages-techdocs.md) (interim;
   publish path unproven), [security hardening](rfc-security-hardening.md) (program frame),
   [Kyverno audit→enforce hardening](rfc-kyverno-audit-enforce-hardening.md) (waves pending).
-- **Proposed / open** — [CI isolation on Talos](rfc-ci-isolation-talos.md)
+- **Proposed / open** — [Forgejo repo config as GitOps](rfc-forgejo-repo-config-gitops.md)
+  (2026-09-28 draft: repo settings and branch protection move from `forgejo-sync.sh` to a git
+  profile model applied by tofu-controller; git selects profiles, topics are a projection),
+  [CI isolation on Talos](rfc-ci-isolation-talos.md)
   (2026-08-11 incident-driven: shared privileged dind is unsupported on Talos per Sidero;
   containment wrapper shipped, staged plan → Talos v1.13.8, cilium OOM-exemption, kata for
   KinD e2e, rootless end-state gated on moby#52268),
