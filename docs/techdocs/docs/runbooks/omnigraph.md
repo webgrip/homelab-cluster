@@ -407,10 +407,10 @@ Tested 2026-09-28 against a local v0.11 graph. When `main` and a branch both cha
 To resolve:
 
 1. Decide the value you want for each named entity.
-2. Write that value on `main`, as yourself (`act-ryan`). Writing it only on the branch is not enough: the branch still differs from the common base, and the merge is refused again.
+2. Make the row identical on both sides. To keep the branch's version, write the branch's full row on `main` as yourself (`act-ryan`). To keep `main`'s version, write `main`'s full row on the branch, or put the branch row back to its value at the fork. A value that matches neither side, even one differing in a single property, is refused again: the unit is the whole row.
 3. Merge again. Entities that now match on both sides no longer conflict, and the rest of the branch lands.
 
-If a branch has many conflicts, delete it and redo the work on a fresh branch from `main`. v0.11 has no rebase.
+Merging `main` into the branch first (`branch merge main --into <branch>`) works and makes the later merge a fast-forward, but it meets the same conflicts. If a branch has many conflicts, delete it and redo the work on a fresh branch from `main`. v0.11 has no rebase. The full conflict matrix and the review design are in the [branch workflow RFC](../rfc/rfc-omnigraph-branch-workflow.md).
 
 ## Known v0.11 limits
 
