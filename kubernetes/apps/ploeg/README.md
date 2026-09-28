@@ -36,4 +36,21 @@ egress to `ai:4000` + `forgejo:3000`. The plane is daemonless (ADR-0053): every 
 `exception-ploeg-worker-privileged` Kyverno waiver + PSA carve-out are gone — gates that need
 containers run in CI, in CI's own images.
 
+### What a Run can reach
+
+A worker pod (`app.kubernetes.io/name: ploeg-worker`) reaches DNS, the pods in `ploeg`, LiteLLM
+(`ai:4000`), in-cluster Forgejo (`forgejo:3000`) and the Vikunja API (`vikunja:3456`). It has no
+route to the public gateway, the LAN or the internet: `allow-gateway-egress` (from
+`components/gateway-egress`, patched in `de-vloer/app/kustomization.yaml`) selects only `de-vloer`
+and `ploeg` (ploegd). `worker-egress-probe` checks both halves as a worker-labelled Job; rerun it
+by changing its `PROBED_POLICY` value.
+
+- Workers clone, push and call the PR API through `executor.forgejo.url`, the in-cluster
+  service. ploegd keeps the public `https://forgejo.<domain>` through a post-render env patch,
+  because it checks De Vloer's https repository URL against its own forge URL. Glide VIK-1298
+  asks the chart for a separate value so the patch can go.
+- `forgeTokenIsolation: proxy` and `litellm.keyIsolation: proxy` (Glide ADR-0034) keep the forge
+  token and the per-Run LiteLLM key in `ploeg-worker`; OpenHands gets placeholders and loopback
+  URLs.
+
 Failure-mode drills and the full e2e runbook live in the executor PR description.
