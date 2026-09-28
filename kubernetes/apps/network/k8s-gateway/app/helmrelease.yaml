@@ -16,6 +16,16 @@ spec:
     remediation:
       retries: 3
       remediateLastFailure: true
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: Service
+              name: k8s-gateway
+            patch: |
+              - op: add
+                path: /spec/allocateLoadBalancerNodePorts
+                value: false
   values:
     fullnameOverride: k8s-gateway
     domain: "${SECRET_DOMAIN}"
