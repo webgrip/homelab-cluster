@@ -294,7 +294,7 @@ One pod runs three steps in order. Each step logs one line of counts or one erro
 
 **Scope.** The importer reads `/user/repos` and the repos of every org in `/user/orgs`. [scope.json](../../../../kubernetes/apps/ai/omnigraph/forge-import/app/scope.json) narrows that:
 
-- `skip_repos` are left out entirely. `webgrip/obsidian-vault` is listed because the [vault importer](#obsidian-vault) owns it.
+- `skip_repos` are left out entirely. `webgrip/obsidian-vault` is listed because the [vault importer](#obsidian-vault) owns it, and `ryangr0/brain-eval` because it holds the private [brain eval set](../rfc/rfc-brain-retrieval.md#81-where-it-lives), which must never enter the graph it measures.
 - A mirror or fork gets only its `Project` node (tag `mirror` or `fork`) unless its upstream owner is in `owned_upstream_owners`. That keeps the GitHub action mirrors (`actions/*`, `docker/*` and similar) down to one node each, while mirrors of Ryan's own GitHub repos are imported whole.
 - `third_party_repos` lists forks of third-party projects that live under an owned name, such as `webgrip/renovate`. They also get only their `Project` node. Forgejo cannot tell these apart from Ryan's own mirrors, so the list is kept by hand.
 - Archived repos are imported, with the tag `archived` and status `completed`.

@@ -57,7 +57,8 @@ class FakeForge:
                      {"username": "acme-client", "full_name": "", "description": "", "website": ""}]
         self.user_repos = [repo("ryangr0", "dotfiles", topics=["Shell"]),
                            repo("ryangr0", "babyagi", mirror=True, original_url="https://github.com/someone/babyagi.git"),
-                           repo("ryangr0", "CV", mirror=True, original_url="https://github.com/Ryangr0/CV.git", archived=True)]
+                           repo("ryangr0", "CV", mirror=True, original_url="https://github.com/Ryangr0/CV.git", archived=True),
+                           repo("ryangr0", "brain-eval")]
         self.org_repos = {"webgrip": [repo("webgrip", "homelab-cluster", topics=["gitops", "Kubernetes"]), repo("webgrip", "obsidian-vault"),
                                       repo("webgrip", "renovate", mirror=True, original_url="https://github.com/webgrip/renovate.git")],
                           "acme-client": [repo("acme-client", "shop", language="")]}
@@ -384,6 +385,11 @@ class Mapping(unittest.TestCase):
 
     def test_skip_listed_vault_repo_is_not_imported(self):
         self.assertNotIn("forge/webgrip/obsidian-vault", nodes(self.rows, "Project"))
+
+    def test_the_private_brain_eval_repo_is_never_read_or_imported(self):
+        self.assertFalse([slug for slug in nodes(self.rows, "Project") if slug.startswith("forge/ryangr0/brain-eval")])
+        self.assertFalse([slug for slug in nodes(self.rows, "Artifact") if slug.startswith("forge/ryangr0/brain-eval")])
+        self.assertFalse([path for path in self.harness.forge.requests if "/repos/ryangr0/brain-eval/" in path])
 
     def test_readme_docs_and_adrs_become_document_artifacts_for_the_project(self):
         artifacts = nodes(self.rows, "Artifact")
