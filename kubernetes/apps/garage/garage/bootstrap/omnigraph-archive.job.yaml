@@ -1,0 +1,111 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: garage-omnigraph-archive-bootstrap
+  namespace: garage
+  labels:
+    cleanup.webgrip.io/retry-failed: "true"
+spec:
+  backoffLimit: 4
+  template:
+    spec:
+      serviceAccountName: garage-bootstrap
+      automountServiceAccountToken: true
+      restartPolicy: Never
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: bootstrap
+          image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.0@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: HOME
+              value: /tmp
+            - name: NAMESPACE
+              value: garage
+            - name: ADMIN
+              value: http://garage-s3.garage.svc.cluster.local:3903
+            - name: BUCKET
+              value: omnigraph-branch-archive
+            - name: KEY_NAME
+              value: omnigraph-review
+            - name: KEY_SECRET
+              value: garage-omnigraph-archive-key
+            - name: ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: garage-admin
+                  key: admin_token
+          command:
+            - /bin/sh
+            - -ceu
+            - |
+              auth="Authorization: Bearer ${ADMIN_TOKEN}"
+              api() {
+                curl -fsS --connect-timeout 5 --max-time 60 \
+                  -H "${auth}" -H 'Content-Type: application/json' "$@"
+              }
+              ready=no
+              for i in $(seq 1 60); do
+                code="$(curl -sS -o /dev/null -w '%{http_code}' \
+                  --connect-timeout 5 --max-time 10 "${ADMIN}/metrics" 2>/dev/null || echo 000)"
+                if [ "${code}" != "000" ]; then ready=yes; break; fi
+                echo "admin API not answering yet (${i}/60)"; sleep 5
+              done
+              [ "${ready}" = yes ] || { echo "admin API never answered" >&2; exit 1; }
+
+              bucket_id="$(api "${ADMIN}/v2/GetBucketInfo?globalAlias=${BUCKET}" 2>/dev/null | jq -r '.id // empty' || true)"
+              if [ -z "${bucket_id}" ]; then
+                bucket_id="$(api -X POST "${ADMIN}/v2/CreateBucket" -d "{\"globalAlias\":\"${BUCKET}\"}" | jq -r '.id // empty')"
+                echo "created bucket ${BUCKET} (${bucket_id})"
+              else
+                echo "bucket ${BUCKET} exists (${bucket_id})"
+              fi
+              [ -n "${bucket_id}" ] || { echo "no bucket id for ${BUCKET}" >&2; exit 1; }
+
+              key_id="$(api "${ADMIN}/v2/ListKeys" | jq -r --arg n "${KEY_NAME}" '.[] | select(.name==$n) | .id')"
+              if [ -z "${key_id}" ]; then
+                created="$(api -X POST "${ADMIN}/v2/CreateKey" -d "{\"name\":\"${KEY_NAME}\"}")"
+                key_id="$(echo "${created}" | jq -r '.accessKeyId // empty')"
+                key_secret="$(echo "${created}" | jq -r '.secretAccessKey // empty')"
+                echo "minted key ${KEY_NAME} (${key_id})"
+              else
+                key_secret="$(api "${ADMIN}/v2/GetKeyInfo?id=${key_id}&showSecretKey=true" | jq -r '.secretAccessKey // empty')"
+                echo "key ${KEY_NAME} exists (${key_id})"
+              fi
+              [ -n "${key_id}" ] && [ -n "${key_secret}" ] || { echo "key material for ${KEY_NAME} incomplete" >&2; exit 1; }
+
+              api -X POST "${ADMIN}/v2/AllowBucketKey" \
+                -d "{\"bucketId\":\"${bucket_id}\",\"accessKeyId\":\"${key_id}\",\"permissions\":{\"read\":true,\"write\":true,\"owner\":false}}" >/dev/null
+              echo "granted ${KEY_NAME} read and write on ${BUCKET} only"
+
+              kubectl -n "${NAMESPACE}" create secret generic "${KEY_SECRET}" \
+                --from-literal=access_key_id="${key_id}" \
+                --from-literal=secret_access_key="${key_secret}" \
+                --from-literal=bucket="${BUCKET}" \
+                --dry-run=client -o yaml | kubectl apply -f -
+              echo "converged ${KEY_SECRET}"
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
