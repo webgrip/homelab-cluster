@@ -16,6 +16,25 @@ spec:
     remediation:
       retries: 3
       remediateLastFailure: true
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: Deployment
+              name: ploeg
+            patch: |
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: ploeg
+              spec:
+                template:
+                  spec:
+                    containers:
+                      - name: ploegd
+                        env:
+                          - name: PLOEG_FORGEJO_URL
+                            value: https://forgejo.${SECRET_DOMAIN}
   values:
     imagePullSecrets:
       - name: harbor-pull
@@ -219,7 +238,7 @@ spec:
       # so none pushes from a sidecar that cannot reach it.
       forgeTokenIsolation: proxy
       forgejo:
-        url: https://forgejo.${SECRET_DOMAIN}
+        url: http://forgejo-http.forgejo.svc.cluster.local:3000
         readTokenSecret:
           name: agent-reviewer-token
           key: FORGEJO_TOKEN
