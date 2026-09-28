@@ -75,7 +75,7 @@ issues) goes straight into the graph; long or bulk text belongs in the archive o
 
 ### Chat: `https://chat.<domain>`
 
-1. Pick a model (`claude-sonnet-5` is the default).
+1. Pick a model. The default, `chat-default`, is Fireworks Qwen with the cheapest DeepSeek model as fallback; the Claude models stay selectable.
 2. Under the message box, open the tools menu and switch on **Omnigraph**, once per chat.
 3. Talk to it. You see a tool call each time it reads or writes the graph.
 
@@ -173,10 +173,10 @@ changes](../runbooks/omnigraph.md#open-glide-branches-block-schema-changes).
   model. Your chat and Claude Code write `brain` `main` directly, so an injected instruction could add or
   change rows there. The commit history shows it and allows undo; it does not prevent it. Glide writes
   wait for your merge.
-- **Where your data goes.** Whatever the model reads is sent to the model's provider. Client content may
-  go to Anthropic and Fireworks under their DPAs (owner decision 2026-09-27). LiteLLM's default fallback
-  is DeepSeek, which was **not** approved for client content. Until archive-enabled and client-heavy keys
-  run without that fallback, keep client-sensitive material out of chats that could fall back.
+- **Where your data goes.** Whatever the model reads is sent to the model's provider. The owner rule
+  (2026-09-28): everything runs through LiteLLM, Fireworks first, the cheapest DeepSeek model as the
+  fallback, Claude on request. Client content may reach all three, so a Fireworks outage sends chats,
+  client material included, to DeepSeek.
 - **Branch names are a convention.** Omnigraph protects `main`, not a name prefix, so a Glide run could
   write on another unprotected branch. `main` stays protected.
 - **Deleting is not forgetting.** Old versions stay in the storage files until a cleanup runs. For real

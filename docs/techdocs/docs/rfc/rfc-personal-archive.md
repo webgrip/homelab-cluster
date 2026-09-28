@@ -11,7 +11,7 @@
 > Layer 2, the **brain**, holds people, organisations, projects, decisions and commitments
 > distilled from the personal part of the archive, each linked back to its source; client items
 > distil into their client's graph. Client content may reach Anthropic and Fireworks under their
-> DPAs, never the DeepSeek fallback. Order: Gmail → Slack → calls → Discord export → brain
+> DPAs, and DeepSeek as the fallback. Order: Gmail → Slack → calls → Discord export → brain
 > distillation → WhatsApp revisited. Parked until the Obsidian import runs.
 
 ## Why
@@ -37,7 +37,7 @@
 | D1 | Mail source | Google: personal Gmail, the Workspace mailbox (webgrip.nl) and further Google accounts still to be named |
 | D2 | WhatsApp | Skipped for now |
 | D3 | Calls | A phone call-recorder app, audio files on disk or cloud, and recording going forward |
-| D4 | Client data and external models | **Revised the same day:** client and company content may go to Anthropic and Fireworks, relying on their data processing agreements, so the chat can use it. It must never reach the DeepSeek fallback, which the owner did not approve |
+| D4 | Client data and external models | **Revised twice on 2026-09-27/28:** client and company content may go to Anthropic and Fireworks under their DPAs, and the owner then made the cheapest DeepSeek model the fallback for Fireworks, so it may reach DeepSeek too |
 | D5 | Discord | One-off import of the GDPR data package |
 | D6 | Slack | Several workspaces, some administered by others: one private read-only Slack app per workspace, installed with that workspace admin's approval. On Slack's free plan the API reaches 90 days of history |
 | D7 | Timing | Parked on 2026-09-27; the Obsidian vault import goes first |
@@ -86,11 +86,9 @@ English.
    to `client:<id>`; any match wins over the default.
 3. Anything the rules cannot place is `unknown`, which is treated as client.
 
-**Model routing.** Under the revised D4, client items may reach Anthropic and Fireworks but never
-DeepSeek. LiteLLM's `default_fallbacks` sends failed requests to `deepseek-chat`, so any key that
-can call `archive_search` must run without the DeepSeek fallback: a per-key fallback override, or
-a separate model group for archive-enabled keys. The class tag stays on every item: it keeps
-client graphs apart at distillation and lets the answer cite which client a passage came from.
+**Model routing.** Everything runs through LiteLLM: Fireworks first, `deepseek-chat` as the
+fallback (D4). The class tag stays on every item: it keeps client graphs apart at distillation and
+lets the answer cite which client a passage came from.
 
 ### Layer 2: the brain
 
