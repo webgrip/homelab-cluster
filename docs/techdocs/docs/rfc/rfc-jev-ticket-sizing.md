@@ -297,7 +297,7 @@ Proposed values (D4). An axis that fails its gate is dropped from proposals; the
 | Gate | After | Pass condition, per axis |
 | --- | --- | --- |
 | **G0 labels mean something** | Slice 0 export | Human labels show a monotone per-level median against the axis's actual. If not, rewrite the rubric first; Jev is then gated on actuals only (G1b) |
-| **G1a beats the baseline** | Slice 1 | Jev's macro-MAE is lower than the majority-level guess ("always M"), with the paired-bootstrap 95 % interval of the difference excluding zero |
+| **G1a beats the baseline** | Slice 1 | Jev's macro-MAE is lower than both constant guesses ("always majority" and "always middle"), with the paired-bootstrap 95 % interval of the difference excluding zero, **and** linear weighted kappa is above zero with its interval excluding zero. The kappa clause exists because the [Laya spike](spike-laya-classifier.md) showed macro-MAE alone passes a model that answers M for 73 of 78 tickets |
 | **G1b predicts actuals** | Slice 1 | Jev's rank correlation with the actual is at least the human labels' (interval of the difference includes or exceeds zero) |
 | **G1c no extreme swaps** | Slice 1 | S↔L (or hours↔weeks, low↔high) on at most 5 % of tickets |
 | **G1d confidence means something** | Slice 1 | Exact agreement in the top confidence tercile is higher than in the bottom tercile. If not, proposals never show confidence and never use it to suggest refinement |
