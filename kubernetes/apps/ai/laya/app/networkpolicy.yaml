@@ -1,0 +1,27 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: laya
+  namespace: ai
+  labels:
+    app.kubernetes.io/part-of: laya
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: laya
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vikunja
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: theme-suggester
+      ports:
+        - protocol: TCP
+          port: 8000
+  egress: []

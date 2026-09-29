@@ -1,0 +1,18 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./serviceaccount.yaml
+  - ./harbor-pull.externalsecret.yaml
+  - ./token.externalsecret.yaml
+  - ./cronjob.yaml
+  - ./networkpolicy.yaml
+  - ./prometheusrule.yaml
+configMapGenerator:
+  - name: theme-suggester
+    files:
+      - ./theme_suggester.py
+    options:
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled
