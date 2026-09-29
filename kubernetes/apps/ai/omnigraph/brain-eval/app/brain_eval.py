@@ -1679,7 +1679,7 @@ def command_experiment(args):
         add_aggregate_metrics(sink, aggregate(rows, RETRIEVAL_METRICS), arm, "experiment")
     decision = decide(arms["e1-prefixed"], arms["e1-raw"], {case["id"]: case["category"] for case in cases})
     sink.add("brain_eval_cost_usd", {"mode": "experiment"}, llm.spend.total)
-    log("experiment e1", cases=len(arms["e1-raw"]), **{key: value for key, value in decision.items() if key != "category_losses"})
+    log("experiment e1", **{key: value for key, value in decision.items() if key != "category_losses"})
     if args.dry_run or args.synthetic:
         return 0
     workspace.write_result(dated(args), "experiment-e1", {"run": {"mode": "experiment", "snapshot": snapshot, "harness_version": HARNESS_VERSION},

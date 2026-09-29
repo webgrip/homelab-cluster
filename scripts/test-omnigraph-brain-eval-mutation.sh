@@ -82,6 +82,8 @@ spawn leak-check-blind brain_eval.py '                if owner:
                     leaked |= owner' '                if False:
                     leaked |= owner'
 spawn metric-precision-lost brain_eval.py 'number = format(float(value), ".15g")' 'number = format(float(value), ".6g")'
+spawn e1-log-collision brain_eval.py 'log("experiment e1", **{key' 'log("experiment e1", cases=0, **{key'
+spawn e1-arms-swapped brain_eval.py '        for arm, ordered in (("e1-prefixed", prefixed), ("e1-raw", raw)):' '        for arm, ordered in (("e1-prefixed", raw), ("e1-raw", raw)):'
 spawn no-holdout candidates.py 'chosen.append((candidate, "holdout" if index == holdout else "dev"))' 'chosen.append((candidate, "dev"))'
 wait
 for result in "$work"/*.result; do

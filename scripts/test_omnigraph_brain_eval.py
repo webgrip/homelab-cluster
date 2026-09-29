@@ -97,6 +97,9 @@ class FakeOmnigraph:
     def rows_for_inline(self, source, params):
         if "$p: Project" in source:
             return []
+        if "query e1_" in source:
+            vectors = {RUNBOOK: [0.0, 1.0], ADR_ARTIFACT: [1.0, 0.0], "obsidian-file/gamma": [0.6, 0.8]}
+            return [{"p.@id": f"{slug}#0", "a.slug": slug, "p.text": f"text of {slug}", "p.embedding": vector + [0.0] * 382} for slug, vector in vectors.items()]
         if "count($x)" in source:
             return [{"n": 8}]
         if "nearest($x.embedding, $v)" in source:
@@ -239,6 +242,20 @@ def litellm_handler(fake):
                 self.send_response(200)
                 self.send_header("content-type", "application/json")
                 self.send_header("x-litellm-response-cost", "0.01")
+                self.send_header("content-length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            if self.path == "/v1/embeddings":
+                vectors = []
+                for index, text in enumerate(body["input"]):
+                    axes = {"runbook": (1.0, 0.0, 0.0), "adr-0001": (0.0, 1.0, 0.0), "gamma": (0.0, 0.0, 1.0)}
+                    head = next((axis for word, axis in axes.items() if word in text), (0.8, 0.0, 0.6))
+                    vectors.append({"index": index, "embedding": list(head) + [0.0] * 381})
+                data = json.dumps({"data": vectors, "model": body["model"]}).encode()
+                self.send_response(200)
+                self.send_header("content-type", "application/json")
+                self.send_header("x-litellm-response-cost", "0.0")
                 self.send_header("content-length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
@@ -504,6 +521,27 @@ class PublicRepoLeakCheck(unittest.TestCase):
             self.assertIn("brain_eval_public_repo_leaks 1", (harness.out / "metrics.prom").read_text())
             self.assertIn('"cases_found": 1', result.stdout)
             self.assertNotIn(SENTINEL, result.stdout + result.stderr)
+        finally:
+            harness.close()
+
+
+class ExperimentRun(unittest.TestCase):
+    def test_e1_ranks_the_pool_both_ways_writes_a_decision_and_metrics(self):
+        harness = Harness()
+        try:
+            contract = ROOT / "kubernetes/apps/ai/omnigraph/embed-step/app/contract.json"
+            result = harness.run("experiment", global_args=(f"--snapshot={SNAPSHOT}", f"--contract-file={contract}"))
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            document = json.loads(harness.results("experiment-e1")[0].read_text())
+            self.assertEqual({row["id"] for row in document["arms"]["e1-raw"]}, {"c01", "c02"})
+            self.assertIn("adopt", document["decision"])
+            by_arm = {arm: {row["id"]: row["metrics"]["ndcg_at_8"] for row in rows} for arm, rows in document["arms"].items()}
+            self.assertAlmostEqual(by_arm["e1-raw"]["c01"], 3.5 / (3 + 1 / math.log2(3)), places=6)
+            self.assertAlmostEqual(by_arm["e1-prefixed"]["c01"], 2.5 / (3 + 1 / math.log2(3)), places=6)
+            metrics = (harness.out / "metrics.prom").read_text()
+            self.assertIn('profile="e1-raw"', metrics)
+            self.assertIn('profile="e1-prefixed"', metrics)
+            self.assertIn('"event": "experiment e1"', result.stdout)
         finally:
             harness.close()
 
