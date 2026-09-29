@@ -105,7 +105,9 @@ Two sources, both scraped by the `litellm` VMServiceScrape:
 | 9187 `metrics` | postgres-exporter over the ledger ([queries](../../../../kubernetes/apps/ai/litellm/app/litellm-exporter-queries.configmap.yaml)) | What only SQL answers: per-run and per-key spend, the MCP redaction check, 24-hour percentiles, provider spend per calendar day |
 
 Only `observability` reaches either port (`litellm-allow-internal`); the HTTPRoute sends nothing but
-:4000. `/metrics` on :4000 exists too and needs a virtual key. Prometheus in LiteLLM is open source
+:4000. `prometheus_exclude_labels` drops `hashed_api_key`, `client_ip` and `user_agent` from every
+native series: Ploeg mints a key per run, so the hash and the pod IP would start new series on
+every run, and the key alias already identifies the key. `/metrics` on :4000 exists too and needs a virtual key. Prometheus in LiteLLM is open source
 since v1.80; ADR-0044's original note that it was Enterprise-only predates that.
 
 ## MCP tool arguments
