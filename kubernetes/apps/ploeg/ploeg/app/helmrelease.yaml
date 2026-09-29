@@ -450,18 +450,6 @@ spec:
           executorType: sandbox
           sandbox:
             runtimeClassName: kata
-          # OpenHands over ACP (2026-09-29): the adapter sees every step as a
-          # protocol message, so its idle timer resets while the agent works and
-          # only a silent agent is stopped. Native headless OpenHands printed
-          # nothing until done, and the 45m output watchdog killed 12 busy Runs
-          # that day. promptTimeout bounds the whole Run.
-          harness:
-            name: acp
-            dind: false
-            acp:
-              profile: openhands
-              idleTimeout: 10m
-              promptTimeout: 90m
           plan:
             - roles:
                 - {name: builder, writes: true, cap: "2.00"}
@@ -473,7 +461,7 @@ spec:
                   # Redundant with the executor-level default since ADR-0053,
                   # kept deliberately: a reader role must never regain a
                   # docker daemon by someone editing the global default.
-                  harness: {name: acp, dind: false, acp: {profile: openhands, idleTimeout: 10m, promptTimeout: 90m}}
+                  harness: {name: openhands, dind: false}
                   workerResources:
                     requests: {cpu: 100m, memory: 768Mi}
                     limits: {cpu: 500m, memory: 1536Mi}
