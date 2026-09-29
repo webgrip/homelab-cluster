@@ -54,14 +54,23 @@ roadmap file in git — see
 
 - MCP server: `vikunja` · project: `Homelab Roadmap` (id 3) · instance list cap
   (maxitemsperpage): 250
-- Dark-factory work lives in its own project: `Dark Factory` (id 5, since 2026-07-17) — agent-execution program, LiteLLM
-  inference plane, MCP gateway, agent identity/budgets; same conventions as the main board
 - The custom board front end has its own project: `Vellum` (id 6, since 2026-07-18) —
   the board page itself (`kubernetes/apps/vikunja/board`, served at
   `vikunja.<domain>/board`); same conventions/labels as the main board
-- Glide (Ploeg + Vloer, repo `webgrip/glide`) has one project: `Glide` (id 10; named `Ploeg`
-  until 2026-09-29, when `De Vloer` (id 14) was merged into it and archived). Only work that lands
-  in `webgrip/glide` lives there; the cluster side of Glide stays on Homelab Roadmap
+- The agent-execution program has one project: `Glide` (id 10). It holds Glide itself (Ploeg +
+  Vloer, repo `webgrip/glide`) and everything around it: LiteLLM inference plane, MCP gateway,
+  agent identity/budgets, classifiers, factory observability. Merged into it: `De Vloer` (id 14,
+  2026-09-29), `Dark Factory` (id 5), `Ploeg Test` and `Ploeg Bench` tickets (2026-09-30). Each
+  ticket's `repo/*` label names the repo its work lands in; ploegd routes by that label once Glide
+  ADR-0038 ships, and until then routes the whole board to `webgrip/glide`, so never assign a
+  Glide team to a ticket whose `repo/*` is not `repo/glide`
+- Fixture boards, never backlogs: `Ploeg Test` (id 11, Vloer's test task source and the `vloer`
+  team's route) and `Ploeg Bench` (id 49, benchmark trials, one fresh ticket per trial; id 48 is
+  an archived empty duplicate). Pinned by id in the ploegd routing config
+- Enumerating a board: `tasks_list` returns one capped page and reports the page size as
+  "Found N" (95 of 267 on Glide, 2026-09-30), and search is unreliable. For inventory or
+  counts, query the `vikunja-db` primary read-only (`cnpg.io/cluster=vikunja-db`,
+  `cnpg.io/instanceRole=primary`; never the `cnpg-disaster-recovery` copy, which is a stale restore)
 - CI/CD improvement work lives in its own project: `CI/CD` (id 9, since 2026-07-18) — runner pool, image supply
   chain, pipeline efficiency (mechanics
   reference: docs/techdocs/docs/general/ci-image-flow.md); same conventions/labels as the
