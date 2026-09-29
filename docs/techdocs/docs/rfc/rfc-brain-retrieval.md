@@ -807,14 +807,21 @@ and fires on `absent_over_time` of the same series.
 
 **Outcome (2026-09-29).** Shipped: the three actors (tokens, then policy, each restart converged
 with every graph serving), the `omnigraph-eval` key, the read-only `omnigraph_brain_eval` bridge (10
-tools), the harness and its six CronJobs, the dashboard *Brain retrieval quality*, five alerts, and
-the tests (26 cases against fake Omnigraph, LiteLLM and vmagent servers; 18 mutants; every harness
-query run on the pinned server in CI). Details in the
+tools), the harness and its six CronJobs, the dashboard *Brain retrieval quality*, seven alerts, and
+the tests (36 cases against fake Omnigraph, LiteLLM, vmagent and Forgejo servers and a fake `git`;
+26 mutants, all killed; every harness query run on the pinned server in CI). Details in the
 [Omnigraph runbook](../runbooks/omnigraph.md#brain-eval). Changes from the plan:
 
 - **Provisional store.** The private repo could not be created from this session, so the jobs keep
   the set in a bare git repository on the PVC `omnigraph-brain-eval-store` and move it into
-  `ryangr0/brain-eval` on the first run after Ryan creates the repo and adds the deploy key.
+  `ryangr0/brain-eval` on the first run after Ryan creates the repo and adds the deploy key. The
+  volume is attached only while a job runs, and Longhorn's `gitops-backup` skips detached volumes, so
+  it has its own backup job at 03:15 UTC with a CronJob holding it attached from 03:05 to 03:30 UTC,
+  and `OmnigraphBrainEvalStoreNotBackedUp` while the store is provisional.
+- **Privacy gate.** A deploy key also works on a public repo. Before `store` uses the Forgejo repo and
+  before every `publish`, an anonymous `GET /api/v1/repos/ryangr0/brain-eval` must answer 404;
+  anything else stops the pod, marks the run invalid, and a 200 raises
+  `OmnigraphBrainEvalRepoNotPrivate` (critical).
 - **The cut is automatic.** The candidates job drafted 46 questions from 26 sources and 8
   unanswerable ones, and added 6 templated temporal questions. Pooling dropped 2 unanswerable drafts
   (it found relevant documents) and 1 question whose grading failed, leaving 57 candidates, which it
@@ -830,9 +837,9 @@ query run on the pinned server in CI). Details in the
   fail at the 02:08 restart (logged and skipped, as designed); P3's writer-side vectors remove the
   dependency.
 - **Additions:** a smoke job on public synthetic questions, a nightly scan of a fresh clone of this
-  public repo for eval questions (`brain_eval_public_repo_leaks`, alert
-  `OmnigraphBrainEvalCaseTextInPublicRepo`), `OmnigraphBrainEvalRunInvalid`, and the embedding model
-  on the eval key for experiment E1.
+  public repo for eval questions and for the key facts of cases not sourced from this repo
+  (`brain_eval_public_repo_leaks`, alert `OmnigraphBrainEvalCaseTextInPublicRepo`),
+  `OmnigraphBrainEvalRunInvalid`, and the embedding model on the eval key for experiment E1.
 
 Baseline `p0` on graph commit `01M3N7WZG14MFY9T5PZCY9TWB4`, 33 scored cases (3 unanswerable are
 answer-only), two runs with identical scores, provisional set:
@@ -858,9 +865,10 @@ keyword legs, re-embedded in memory): raw vectors minus `type:`-prefixed vectors
 Not adopted: writers keep the prefixed format (P3), and no raw re-embed is filed. Re-run it once the
 set is curated.
 
-Not yet done, by dependency: B0 and the judge's control pair wait for VIK-1403 and for Anthropic
-budget (the answer and gate CronJobs stay suspended, and the harness refuses real answer runs until
-`BRAIN_EVAL_MCP_ARGUMENTS_REDACTED=true`); judge agreement waits for Ryan's 10 grades.
+VIK-1403 shipped the same day: LiteLLM stores `{"redacted": true}` for MCP tool arguments in the spend
+log and the trace spans, the eval pods set `BRAIN_EVAL_MCP_ARGUMENTS_REDACTED=true`, and the weekly
+answer CronJob runs. B0 and the judge's control pair then waited only for the shared Anthropic day
+budget (spent by other consumers until 18:04 UTC); judge agreement waits for Ryan's 10 grades.
 
 ### P3 Data: write-time vectors and Obsidian chunks
 
