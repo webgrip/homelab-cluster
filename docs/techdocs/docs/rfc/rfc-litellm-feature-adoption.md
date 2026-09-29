@@ -122,7 +122,7 @@ with it.
 | `litellm_content_filter` guardrail | OSS, fully in-process | Prebuilt patterns including `nl_bsn_contextual`, IBAN, card numbers, `passport_netherlands`, API keys; MASK or BLOCK; also runs on MCP arguments (`pre_mcp_call`) and results (`post_mcp_call`) | **Adopt (W3.4)**: mask Dutch personal identifiers before brain and meeting text leaves for Fireworks or DeepSeek |
 | `hide-secrets` guardrail (the `guardrails:` entry, hyphenated) | OSS (the legacy `hide_secrets` callback is Ent) | Redacts secrets with detect-secrets before the prompt leaves | **Adopt (W3.4)** for agent traffic, which reads repositories |
 | `tool_permission`, `mcp_security`, `custom_code` guardrails | OSS | Tool allow and deny by regex; block requests naming unregistered MCP servers; a sandboxed Python check | Trial where a real rule exists; `disallowed_tools` covers today's cases |
-| Guardrails attached per key or team | **Ent** (`litellm_pre_call_utils.py:2957-2969`, returns 403 on every request without a license) | Different guardrails per identity | Substitute: global `default_on` guardrails, plus model-level `guardrails` on a dedicated model group |
+| Guardrails attached per key or team | **Ent** (`litellm_pre_call_utils.py:2957-2969`, returns 403 on every request without a license) | Different guardrails per identity | Substitute: global `default_on` guardrails, with `opted_out_global_guardrails` in key metadata for keys that must skip one. Model-level `guardrails` on a dedicated model group are OSS too, but run only before the call (`async_pre_call_deployment_hook`), so they cannot inspect a reply |
 | Agent loop limits (`max_iterations` in key metadata, `max_budget_per_session`) | OSS | Stop a runaway agent loop by iteration count, keyed on the trace id | Trial with W1.4; per-run keys already cap money |
 | Prompt registry and dotprompt (`prompts:`) | OSS | Versioned prompts referenced by `prompt_id`, recorded in the ledger | Skip; our prompts already live in git next to the code that sends them |
 | A2A gateway, agent registry, workflow runs, memory | OSS | Agent-to-agent calls and durable run logs | Skip; Ploeg and Omnigraph own these jobs. Revisit if kagent resumes (ADR-0063) |
@@ -240,7 +240,10 @@ context holds two tools instead of dozens. Trial on one Glide team and compare p
   `nl_bsn_contextual`, IBAN, card numbers, `passport_netherlands`, action MASK. Brain notes and
   Webgrip meetings go to Fireworks and DeepSeek; a BSN or IBAN in them never needs to.
 - `hide-secrets`, `default_on`, `pre_call`: agents read repositories and logs, and a token pasted in
-  either should not reach a provider.
+  either should not reach a provider. Its default detect-secrets config includes
+  `HexHighEntropyString` (limit 3.0), which matches every `sha256:` image digest in this repo; set
+  `detect_secrets_config` without the two high-entropy plugins, or agents see redacted digests and
+  can write them back broken.
 
 Start both in `logging_only` for a week and read the hit counts
 (`x-litellm-applied-guardrails`, the guardrail metrics from W1.1) before switching to masking. The
@@ -337,6 +340,11 @@ closes only with a live check and a named regression signal.
 | W4.3 minter key | [VIK-1442](https://vikunja.webgrip.dev/tasks/1442) |
 | W4.4 body size | [VIK-1443](https://vikunja.webgrip.dev/tasks/1443) |
 | W4.5 upgrade | [VIK-1444](https://vikunja.webgrip.dev/tasks/1444) |
+| §9 Glide teams per tier | [VIK-1463](https://vikunja.webgrip.dev/tasks/1463) (Ploeg), after VIK-264 |
+| §9 Iteration cap per run | [VIK-1464](https://vikunja.webgrip.dev/tasks/1464) (Ploeg) |
+| §9 Docs search behind the gateway | [VIK-1465](https://vikunja.webgrip.dev/tasks/1465) |
+| §9 Cluster evidence and docs tools per role | [VIK-1466](https://vikunja.webgrip.dev/tasks/1466) (Ploeg), after VIK-1300 and VIK-1465 |
+| §9 Protected paths at the gateway | [VIK-1467](https://vikunja.webgrip.dev/tasks/1467) |
 
 JWT auth for agents ([VIK-281](https://vikunja.webgrip.dev/tasks/281)) is Enterprise-only; its
 comment lists the OSS alternatives. W2.4 (response cache) and W3.3 (rerank) have no ticket: the
@@ -345,7 +353,6 @@ first is a measurement to take once W1.1 has a week of data, the second belongs 
 
 ## 8. What this RFC did not verify
 
-- That `llm_api_routes` includes `/mcp` (W4.2 checks it before minting).
 - Whether the Fireworks and DeepSeek deployments of DeepSeek V4 flash behave identically enough for
   W2.3 (tool calling, cache pricing); the trial compares them.
 - How LiteLLM's HuggingFace rerank provider speaks to TEI (W3.3).
@@ -359,3 +366,24 @@ first is a measurement to take once W1.1 has a week of data, the second belongs 
   before each fallback hop. If it is, `retry_policy.DefaultRetries: 0` makes the hop immediate.
 - That `litellm_settings.content_policy_fallbacks: []` is applied before the Router is built; F10's
   mock test settles it.
+
+## 9. Glide
+
+Glide is the biggest consumer by run count and the one that changed most this month: per-run keys
+minted by Ploeg with `key_type: llm_api` and a `duration`, builders and reviewers from different
+model families (ADR-0045), cheap models since fe95bed4, MCP on the way (VIK-1300). Checked against
+Ploeg at `webgrip/glide 6150dd0` and LiteLLM v1.102.1:
+
+| Feature | For Glide | Verdict |
+| --- | --- | --- |
+| Teams per tier | One LiteLLM team per tier (`bronze`, `silver`, `copper`) plus `vloer`; each run's key minted into its tier's team. The shift pool becomes a LiteLLM team budget that Ploeg cannot miss (its own pool bound "has never once fired"), and each tier gets team metrics. `MintRequest` sends no `team_id` today | **Adopt**: VIK-264 (teams), VIK-1463 (Ploeg) |
+| Iteration cap per run | `max_iterations` in the run key's metadata; the limiter is loaded by default and counts calls per `x-litellm-session-id`. Median run 34 calls, p95 about 193, max 252 (ledger, 2026-09-29), so 400 stops loops only. On cheap models the money cap catches a loop after about 15 runs' worth of calls | **Adopt**: VIK-1464. The session header comes from Ploeg's key-isolation proxy, which also carries VIK-1435's tags |
+| Read-only cluster evidence tools | The unused `observability` access group (Grafana, VictoriaLogs, Kubernetes view, OpenCost) per role, so builders can verify against live state and reviewers can check the evidence. Tool results go to DeepSeek and Fireworks | **Adopt after VIK-1300**, owner decision on the data: VIK-1466 |
+| Docs search | `docs-mcp-server` (SSE :6280) behind the gateway as group `docs` | **Adopt**: VIK-1465 |
+| Per-role MCP scope | Reviewers read, builders write on `glide/<run>`; `llm_api` keys already reach `/mcp` (`llm_api_routes` includes `mcp_inference_routes`) | With VIK-1300 and VIK-1466 |
+| `tool_permission` guardrail | Blocks model tool calls that write protected paths (CI workflows, SOPS files, agent hooks), streaming included, before the harness runs them. Global `default_on` with `default_action: allow`: its built-in default denies every tool call | **Adopt, narrow**: VIK-1467 |
+| `hide-secrets` | Strips tokens from repo and log content, with the digest caveat in W3.4 | With VIK-1439 |
+| LLM-as-judge guardrail | A second judge on every request; Glide already has reviewers from another family | Skip |
+| LiteLLM skills | ZIPs stored in LiteLLM's database and injected into Anthropic Messages requests (`container.skills`). Glide sends OpenAI chat completions through OpenHands, and `supported_db_objects: ["mcp"]` keeps other database objects out | Skip; OpenHands reads repository instructions itself |
+| Agent registry, A2A gateway | Agent-to-agent calls through LiteLLM. Ploeg is the dispatch plane | Skip; revisit if kagent resumes (ADR-0063) |
+
