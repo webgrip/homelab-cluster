@@ -152,13 +152,16 @@ spec:
                     console.error('docker hub: omitting the rejected credential so Renovate uses the anonymous path');
                   }
 
+                  const dockerIdentityHosts = ['docker.io', 'dhi.io'];
                   if (dockerHubUsername && dockerHubToken && !dockerHubRejected) {
-                    hostRules.push({
-                      matchHost: 'docker.io',
-                      hostType: 'docker',
-                      username: dockerHubUsername,
-                      password: dockerHubToken,
-                    });
+                    for (const matchHost of dockerIdentityHosts) {
+                      hostRules.push({
+                        matchHost,
+                        hostType: 'docker',
+                        username: dockerHubUsername,
+                        password: dockerHubToken,
+                      });
+                    }
                   }
 
                   const harborHost = process.env.HARBOR_HOST;

@@ -76,9 +76,25 @@ data:
         "renovate-config",
         "mise",
         "npm",
+        "gomod",
+        "pep621",
         "terraform",
         "dockerfile",
         "docker-compose"
+      ],
+
+      "packageRules": [
+        {
+          "description": "The org preset's constraintsFiltering=strict reads a release's go directive and requires-python floor as exact versions, drops every release that declares one, and proposes a rollback to the last release that did not. Go and Python lookups need the filter off.",
+          "matchManagers": ["gomod", "pep621"],
+          "constraintsFiltering": "none"
+        },
+        {
+          "description": "requires-python is a compatibility floor. Pinning it to the newest interpreter drops every older one.",
+          "matchManagers": ["pep621"],
+          "matchDepTypes": ["requires-python"],
+          "enabled": false
+        }
       ],
 
       "renovate-config": {
