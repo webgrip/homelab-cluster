@@ -18,6 +18,9 @@ MODE = os.environ.get("MODE", "shadow")
 APPLY_THRESHOLD = float(os.environ.get("APPLY_THRESHOLD", "0.9"))
 MIN_THEME_TICKETS = int(os.environ.get("MIN_THEME_TICKETS", "3"))
 LOOKBACK_DAYS = int(os.environ.get("LOOKBACK_DAYS", "30"))
+ROTATION = int(os.environ.get("ROTATION", "6"))
+MAX_EVALUATIONS = int(os.environ.get("MAX_EVALUATIONS", "60"))
+RUN_SLOT = datetime.now(timezone.utc).hour % ROTATION
 MARKER = "theme-suggester:v1"
 SHADOW_THRESHOLDS = [0.5, 0.6, 0.7, 0.8, 0.9, 0.95]
 MAX_DESCRIPTION_CHARS = 6000
@@ -164,8 +167,10 @@ def shadow(board_id, board_title, tasks, options, results):
         themes = themes_of(task)
         if task.get("done") or is_epic(task) or len(themes) != 1 or themes[0]["title"] not in options:
             continue
-        if not created_within(task, LOOKBACK_DAYS):
+        if not created_within(task, LOOKBACK_DAYS) or task["id"] % ROTATION != RUN_SLOT:
             continue
+        if len(results) >= MAX_EVALUATIONS:
+            return
         answer, model = laya(ticket_state(task, board_title), question)
         probability = answer["probabilities"][answer["choice"]]
         results.append((themes[0]["title"] == answer["choice"], probability))
@@ -223,7 +228,7 @@ def main():
         shadow(board_id, board_title, tasks, options, results)
         if MODE == "apply":
             apply(board_id, board_title, tasks, options, counters)
-    log("summary", mode=MODE, scanned=scanned, shadow=shadow_summary(results), applied=counters["applied"], suggested=counters["suggested"], threshold=APPLY_THRESHOLD)
+    log("summary", mode=MODE, slot=RUN_SLOT, rotation=ROTATION, scanned=scanned, shadow=shadow_summary(results), applied=counters["applied"], suggested=counters["suggested"], threshold=APPLY_THRESHOLD)
     if scanned == 0:
         log("empty_scan", reason="no tasks visible; the token may be revoked or the projects not shared with the bot user")
         sys.exit(3)

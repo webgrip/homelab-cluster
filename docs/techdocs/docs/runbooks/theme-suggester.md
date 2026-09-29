@@ -5,6 +5,15 @@ An hourly CronJob (`vikunja/theme-suggester`) that asks the in-cluster Laya clas
 sends no ticket text outside the cluster. Background: [Laya spike](../rfc/spike-laya-classifier.md),
 [ticket sizing RFC](../rfc/rfc-jev-ticket-sizing.md) §11, VIK-1448.
 
+## Load
+
+Laya runs on a high-CPU worker (required affinity `node.webgrip.io/cpu: high`, never
+fringe-workstation) at about 2–4 s per ticket on 4 threads. Each hourly run evaluates one
+rotating slice of tickets (`ticket id % ROTATION == UTC hour % ROTATION`, default 6) capped at
+`MAX_EVALUATIONS` (default 60), so a full shadow pass takes `ROTATION` hours and no run nears
+the 45-minute deadline. The first shadow run on 2026-09-29 made 200 calls on a 4-core worker at
+13 s each and was killed at its deadline; that is what the slice and the placement prevent.
+
 ## Modes
 
 | `MODE` | What it does |

@@ -32,21 +32,17 @@ spec:
           type: RuntimeDefault
       affinity:
         nodeAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              preference:
-                matchExpressions:
-                  - key: kubernetes.io/hostname
-                    operator: In
-                    values:
-                      - worker-2
-            - weight: 50
-              preference:
-                matchExpressions:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
                   - key: node.webgrip.io/cpu
                     operator: In
                     values:
                       - high
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - fringe-workstation
       containers:
         - name: laya
           image: harbor.webgrip.dev/webgrip/laya-serve:0.1.0@sha256:026bccb4517785507907e68728d674d9a7129aeed1606de4055ff8e4ddba1d7e
@@ -78,7 +74,7 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
           resources:
-            requests: {cpu: 250m, memory: 2304Mi}
+            requests: {cpu: 1000m, memory: 2304Mi}
             limits: {memory: 3Gi}
           volumeMounts:
             - {name: tmp, mountPath: /tmp}
