@@ -63,3 +63,43 @@ spec:
               - kubectl -n ai logs deploy/litellm -c exporter --tail=50 (a failing query is logged with its name)
               - Grafana Explore on VictoriaMetrics: pg_up{namespace="ai"} and the litellm_key_spend series (both come from the same exporter)
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/general/litellm/#mcp-tool-arguments"
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: litellm-access
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: litellm
+spec:
+  groups:
+    - name: litellm-access.rules
+      rules:
+        - alert: LiteLLMSSOUserCapNear
+          expr: |
+            max(litellm_user_total) >= 5
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+            service: litellm
+          annotations:
+            summary: "LiteLLM has {{ $value }} user rows; one more locks every SSO login out of the Admin UI (ai/litellm)"
+            description: |
+              What's happening:
+              - LiteLLM_UserTable holds {{ $value }} rows. Without an Enterprise license, /sso/key/generate refuses every SSO sign-in once more than 5 rows exist (ui_sso.py _raise_if_sso_exceeds_free_user_limit). default_user_id counts as one of them.
+
+              Impact/risk:
+              - SSO is the only Admin UI login (disable_env_credential_login and disable_password_login_when_sso_enabled). A sixth row locks the UI for everyone, Ryan included. The API with the master key keeps working.
+
+              Likely causes:
+              - A new homelab-users member signed in to LiteLLM through Authentik (the llm-use capability admits them).
+              - A key carrying a user_id with no row spent money: the batched spend update upserts a user row for it (proxy/utils.py litellm_usertable.upsert). /key/generate alone creates none.
+              - Someone called POST /user/new.
+
+              First actions:
+              - List the rows read-only: SELECT user_id, user_email, user_role, created_at FROM "LiteLLM_UserTable" ORDER BY created_at
+              - Delete a row that should not exist over the API with the master key: POST /user/delete {"user_ids": ["<id>"]}
+              - To admit more people, remove them from llm-use instead and give them a git-declared virtual key
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/general/litellm/#admin-ui-sign-in"
