@@ -237,3 +237,67 @@ spec:
               - Mitigate growth (retention/cleanup) to stabilize
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#platform-longhorn"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-pvc-usage/storage-pvc-longhorn"
+
+        - alert: LonghornBackupFailed
+          expr: count by (volume) (longhorn_backup_state == 4) > 0
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: longhorn
+          annotations:
+            summary: "Longhorn backup in Error state ({{$labels.volume}})"
+            description: |
+              What's happening:
+              - {{ $value }} Backup CR(s) of volume {{$labels.volume}} are in state Error.
+              - The BackupTarget can still report AVAILABLE while every backup fails, so this is
+                the signal to trust.
+
+              Impact/risk:
+              - The volume has no fresh off-site copy; a restore would use an older backup.
+
+              Likely causes:
+              - The off-site Garage rejects writes (disk full, quota, outage)
+              - Credentials in the longhorn-backup-s3 Secret no longer valid
+              - The volume was busy or detached during the recurring job
+
+              First actions:
+              - kubectl -n longhorn-system get backups.longhorn.io -o wide and read .status.error
+              - Check GarageDown / GarageOffsiteDiskCritical and the off-site Garage runbook
+              - Failed Backup CRs age out after the failed-backup-ttl setting (1440 min); delete
+                stale ones in the Longhorn UI once the cause is fixed
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/garage-offsite/#longhorn-backups"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-longhorn-health/longhorn-storage-health"
+
+        - alert: LonghornVolumeBackupStale
+          expr: |
+            (
+              (time() - longhorn_volume_last_backup_at) > 36 * 3600
+              and longhorn_volume_last_backup_at > 0
+            )
+            and on (volume)
+            (max by (volume) (longhorn_volume_state{state="attached"}) == 1)
+          for: 1h
+          labels:
+            severity: warning
+            owner: platform
+            service: longhorn
+          annotations:
+            summary: "Longhorn volume without a backup for 36h ({{$labels.pvc_namespace}}/{{$labels.pvc}})"
+            description: |
+              What's happening:
+              - Attached volume {{$labels.volume}} ({{$labels.pvc_namespace}}/{{$labels.pvc}}) last
+                completed a backup more than 36h ago; every backup recurring job runs daily.
+
+              Impact/risk:
+              - Data written since the last good backup exists only on the cluster.
+
+              Likely causes:
+              - Backups failing (see LonghornBackupFailed)
+              - The volume left its recurring-job group
+
+              First actions:
+              - kubectl -n longhorn-system get backups.longhorn.io -l backup-volume={{$labels.volume}}
+              - Check the recurring job group labels on the Longhorn volume
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/garage-offsite/#longhorn-backups"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-longhorn-health/longhorn-storage-health"

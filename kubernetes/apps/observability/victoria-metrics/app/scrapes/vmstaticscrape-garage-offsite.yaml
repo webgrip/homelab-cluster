@@ -1,0 +1,19 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMStaticScrape
+metadata:
+  name: garage-offsite
+spec:
+  jobName: garage-offsite
+  targetEndpoints:
+    - targets:
+        - s3-offsite.webgrip.dev:443
+      scheme: https
+      path: /_garage/metrics
+      interval: 60s
+      scrapeTimeout: 30s
+      basicAuth:
+        username: {name: garage-offsite-metrics, key: username}
+        password: {name: garage-offsite-metrics, key: password}
+      labels:
+        garage_node: garage-fsn1

@@ -1,0 +1,205 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-garage-offsite-rules
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: garage
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: platform.garage-offsite
+      rules:
+        - alert: GarageOffsiteMetricsMissing
+          expr: absent(up{job="garage-offsite"} == 1)
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: garage
+          annotations:
+            summary: "Off-site Garage metrics are not being scraped (garage-offsite)"
+            description: |
+              What's happening:
+              - vmagent has had no successful scrape of https://s3-offsite.webgrip.dev/_garage/metrics for 15m.
+
+              Impact/risk:
+              - Every other garage-offsite alert is blind, including the disk-full alerts that
+                protect CNPG WAL archiving, Longhorn backups and OpenBao snapshots.
+
+              Likely causes:
+              - Caddy on garage-fsn1 lacks the /_garage/metrics handler or its basic-auth hash no
+                longer matches the garage-offsite-metrics Secret
+              - Caddy or Garage down on garage-fsn1 (GarageDown fires too)
+              - The ExternalSecret observability/garage-offsite-metrics has not synced
+
+              First actions:
+              - curl -s -o /dev/null -w '%{http_code}' https://s3-offsite.webgrip.dev/_garage/metrics (401 = handler present)
+              - Check the target in vmagent's /targets page for the scrape error
+              - Re-run the Caddy handler step of the off-site Garage runbook
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/garage-offsite/#metrics-scrape"
+        - alert: GarageOffsiteDiskLow
+          expr: |
+            min by (job) (
+              garage_local_disk_avail{job="garage-offsite"} / garage_local_disk_total{job="garage-offsite"}
+            ) < 0.15
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: garage
+          annotations:
+            summary: "Off-site Garage disk below 15% free (garage-offsite)"
+            description: |
+              What's happening:
+              - The tightest Garage volume on garage-fsn1 has {{ $value | humanizePercentage }} free.
+
+              Impact/risk:
+              - When the metadata volume fills, Garage rejects every write: CNPG WAL archiving
+                fails in every cluster, Longhorn and OpenBao backups fail, Forgejo loses Actions logs.
+
+              Likely causes:
+              - Backup retention growth in cnpg-backups-bucket
+              - A bucket receiving an unbounded stream of objects (the 2026-09-28 GUAC failure mode)
+              - LMDB data.mdb never shrinks after deletions; it needs a compaction
+
+              First actions:
+              - ssh root@116.202.53.185 'df -h /; du -sh /var/lib/garage/meta /var/lib/garage/data'
+              - garage bucket info per bucket to find the grower (off-site Garage runbook)
+              - Free space before the critical threshold; see the emergency relief section
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/garage-offsite/#disk-capacity"
+        - alert: GarageOffsiteDiskCritical
+          expr: |
+            min by (job) (
+              garage_local_disk_avail{job="garage-offsite"} / garage_local_disk_total{job="garage-offsite"}
+            ) < 0.05
+          for: 10m
+          labels:
+            severity: critical
+            owner: platform
+            service: garage
+          annotations:
+            summary: "Off-site Garage disk below 5% free (garage-offsite)"
+            description: |
+              What's happening:
+              - The tightest Garage volume on garage-fsn1 has {{ $value | humanizePercentage }} free.
+
+              Impact/risk:
+              - A full metadata volume stops every backup write cluster-wide within hours, and a
+                write that races the full disk can leave objects with missing data blocks.
+
+              Likely causes:
+              - Same as GarageOffsiteDiskLow, now close to the edge
+
+              First actions:
+              - Apply the emergency relief steps of the off-site Garage runbook now
+              - Put a max-objects quota on the growing bucket to stop the inflow
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/garage-offsite/#emergency-relief"
+        - alert: GarageOffsiteDiskFillingUp
+          expr: |
+            min by (job) (
+              predict_linear(garage_local_disk_avail{job="garage-offsite"}[2d], 4 * 86400)
+            ) < 0
+          for: 2h
+          labels:
+            severity: warning
+            owner: platform
+            service: garage
+          annotations:
+            summary: "Off-site Garage disk predicted full within 4 days (garage-offsite)"
+            description: |
+              What's happening:
+              - At the growth rate of the last 2 days, a Garage volume on garage-fsn1 runs out of
+                space within 4 days.
+
+              Impact/risk:
+              - Same blast radius as GarageOffsiteDiskCritical, with days to act instead of hours.
+
+              Likely causes:
+              - A bucket growing faster than its retention deletes
+              - A new writer pointed at the off-site store
+
+              First actions:
+              - Compare garage bucket info object counts with yesterday's to find the grower
+              - Check which in-cluster workload writes to that bucket and bound it
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/garage-offsite/#disk-capacity"
+        - alert: GarageOffsiteUnhealthy
+          expr: cluster_healthy{job="garage-offsite"} == 0
+          for: 10m
+          labels:
+            severity: critical
+            owner: platform
+            service: garage
+          annotations:
+            summary: "Off-site Garage reports an unhealthy cluster (garage-offsite)"
+            description: |
+              What's happening:
+              - Garage's own cluster_healthy gauge on garage-fsn1 has been 0 for 10m.
+
+              Impact/risk:
+              - Reads and writes can fail even while the S3 endpoint answers the blackbox probe.
+
+              Likely causes:
+              - Layout or node state problem after a restart
+              - Metadata database errors
+
+              First actions:
+              - ssh root@116.202.53.185 and run garage status and journalctl -u garage -n 200
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/garage-offsite/#access-and-checks"
+        - alert: GarageOffsiteBlocksUnreadable
+          expr: block_resync_errored_blocks{job="garage-offsite"} > 0
+          for: 1h
+          labels:
+            severity: warning
+            owner: platform
+            service: garage
+          annotations:
+            summary: "Off-site Garage has data blocks it cannot read (garage-offsite)"
+            description: |
+              What's happening:
+              - {{ $value }} blocks on garage-fsn1 keep failing resync; on a single node that means
+                the block file is missing or corrupt.
+
+              Impact/risk:
+              - Every object that references such a block is unreadable. For CNPG WAL segments that
+                breaks point-in-time recovery across the gap until the next base backup.
+
+              Likely causes:
+              - Writes that raced a full disk (2026-09-28)
+              - Disk or filesystem errors on the RAID1 pair
+
+              First actions:
+              - garage block list-errors, then garage block info <hash> to map blocks to objects
+              - Follow the unreadable-blocks section of the off-site Garage runbook
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/garage-offsite/#unreadable-blocks"
+        - alert: GarageOffsiteQueueBacklog
+          expr: |
+            max by (job) (table_insert_queue_length{job="garage-offsite"}) > 100000
+            or
+            max by (job) (block_resync_queue_length{job="garage-offsite"}) > 100000
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: garage
+          annotations:
+            summary: "Off-site Garage background queue backlog (garage-offsite)"
+            description: |
+              What's happening:
+              - A Garage table insert queue or the block resync queue on garage-fsn1 holds more
+                than 100k entries for 30m.
+
+              Impact/risk:
+              - Queued entries live in the LMDB metadata file, so a runaway queue consumes the
+                same disk that backups need.
+
+              Likely causes:
+              - A lifecycle rule expiring millions of objects at once (the lifecycle worker queues
+                every expiry without backpressure)
+              - A resync storm after data loss
+
+              First actions:
+              - garage worker list to see which worker is behind
+              - Watch GarageOffsiteDiskLow; remove the lifecycle rule if the queue keeps growing
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/garage-offsite/#lifecycle-and-deletion"
