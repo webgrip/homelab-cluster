@@ -35,21 +35,25 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
               - matchExpressions:
-                  - key: node.webgrip.io/cpu
-                    operator: In
-                    values:
-                      - high
                   - key: kubernetes.io/hostname
                     operator: NotIn
                     values:
                       - fringe-workstation
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node.webgrip.io/cpu
+                    operator: In
+                    values:
+                      - high
       containers:
         - name: laya
           image: harbor.webgrip.dev/webgrip/laya-serve:0.1.0@sha256:026bccb4517785507907e68728d674d9a7129aeed1606de4055ff8e4ddba1d7e
           imagePullPolicy: IfNotPresent
           env:
             - name: LAYA_THREADS
-              value: "4"
+              value: "2"
             - name: HOME
               value: /tmp
           ports:
@@ -74,8 +78,8 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
           resources:
-            requests: {cpu: 1000m, memory: 2304Mi}
-            limits: {memory: 3Gi}
+            requests: {cpu: 500m, memory: 2304Mi}
+            limits: {cpu: "2", memory: 3Gi}
           volumeMounts:
             - {name: tmp, mountPath: /tmp}
       volumes:

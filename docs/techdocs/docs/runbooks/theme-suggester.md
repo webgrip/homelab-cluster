@@ -7,8 +7,10 @@ sends no ticket text outside the cluster. Background: [Laya spike](../rfc/spike-
 
 ## Load
 
-Laya runs on a high-CPU worker (required affinity `node.webgrip.io/cpu: high`, never
-fringe-workstation) at about 2–4 s per ticket on 4 threads. Each hourly run evaluates one
+Laya runs on a worker (never fringe-workstation), preferring `node.webgrip.io/cpu: high`, on
+2 threads with a hard 2-core CPU limit, so it can never take more than half of a 4-core worker.
+A required high-CPU affinity was tried on 2026-09-30 and left Laya unschedulable: worker-2 had
+97 % of its memory requested. Each hourly run evaluates one
 rotating slice of tickets (`ticket id % ROTATION == UTC hour % ROTATION`, default 6) capped at
 `MAX_EVALUATIONS` (default 60), so a full shadow pass takes `ROTATION` hours and no run nears
 the 45-minute deadline. The first shadow run on 2026-09-29 made 200 calls on a 4-core worker at
