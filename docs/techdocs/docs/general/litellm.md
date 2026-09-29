@@ -69,7 +69,7 @@ does not know the key it deletes whatever still holds the alias before generatin
 | `open-webui` | all | USD 20 / 30d, 60 rpm | `memory`, `brain` | Open WebUI |
 | `claude-code` | none (`no-default-models`) | USD 1 / 30d | `memory`, `brain` | Claude Code on Ryan's workstation |
 | `omnigraph-distill` | `fireworks-gpt-oss-120b`, `deepseek-chat`, `granite-embedding-97m-multilingual-r2` | USD 5 / 30d, 600 rpm | none | The [Omnigraph distiller](../runbooks/omnigraph.md#distiller) |
-| `omnigraph-eval` | `chat-default`, `fireworks-gpt-oss-120b`, `claude-haiku-4-5`, `granite-embedding-97m-multilingual-r2` | USD 10 / 30d, 120 rpm | `brain-eval-raw` | The [brain eval harness](../runbooks/omnigraph.md#brain-eval) |
+| `omnigraph-eval` | `chat-default`, `fireworks-gpt-oss-120b`, `fireworks-deepseek-v4p1-flash`, `deepseek-chat`, `granite-embedding-97m-multilingual-r2` | USD 10 / 30d, 120 rpm | `brain-eval-raw` | The [brain eval harness](../runbooks/omnigraph.md#brain-eval) |
 
 Add a key with a new ExternalSecret, PushSecret and Job in that directory. Rotate one by
 deleting its Secret and its Job.
