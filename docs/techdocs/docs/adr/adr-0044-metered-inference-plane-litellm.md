@@ -126,6 +126,11 @@ dollar-budget key ledger, so it cannot be the metering layer this decision needs
 * 2026-07-14 — phase-2 scaffold shipped (`kubernetes/apps/ai/litellm`, commit c39b2b2f); proxy live
   (DB-connected, health 200). Amended the Telemetry clause: OSS LiteLLM has no Prometheus `/metrics`
   (Enterprise-gated) — the metrics path is a CNPG-ledger exporter, tracked as a follow-up.
+* 2026-09-29 — Telemetry clause corrected: the `prometheus` callback has been open source since
+  LiteLLM v1.80 and has no licence check at v1.102.1 (`integrations/prometheus.py`). The 2026-07-14
+  amendment was wrong. The proxy now serves native metrics on a private port next to the ledger
+  exporter, which stays for SQL-only signals
+  ([RFC: using the LiteLLM we already run](../rfc/rfc-litellm-feature-adoption.md), VIK-1433).
 * Supported by [ADR-0045](adr-0045-opencode-runtime-server-side-guards.md) — the `opencode` runtime
   that consumes these keys.
 * Relates to [ADR-0043](adr-0043-vikunja-roadmap-system-of-record.md) and

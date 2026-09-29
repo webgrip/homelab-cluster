@@ -6,7 +6,7 @@ Vloer is where a person starts and follows work. Ploeg records work handed to ag
 
 Use the Vloer application in Authentik from the homelab network or VPN. Sign in with the existing homelab administrator account and complete MFA if requested. The application runs at the hostname declared in the [Vloer route](../../../../kubernetes/apps/ploeg/de-vloer/app/httproute.yaml).
 
-The [deployment settings](../../../../kubernetes/apps/ploeg/de-vloer/app/helmrelease.yaml) allow one session at a time and a maximum of $0.25 per session. Model requests use the existing LiteLLM `deepseek-chat` connection. Fireworks is not configured in this cluster yet. Gateway spending uses the provider's peak prices; off-peak estimates are conservative and are not a final provider invoice.
+The [deployment settings](../../../../kubernetes/apps/ploeg/de-vloer/app/helmrelease.yaml) allow one session at a time and a maximum of $0.25 per session. Model requests use the existing LiteLLM `deepseek-chat` connection. Gateway spending uses the provider's peak prices; off-peak estimates are conservative and are not a final provider invoice.
 
 ## Start from a ticket
 

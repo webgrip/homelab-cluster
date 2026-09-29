@@ -78,11 +78,35 @@ deleting its Secret and its Job.
 
 - Every key mint **requires `key_alias`** (and ideally a team) — anonymous keys are rejected.
 - Budgets: SSO-created users get 10 USD/30d automatically; teams default to 25 USD/30d;
-  provider daily caps 5 USD (Anthropic) / 2 USD (DeepSeek). Amounts are owner dials in
+  provider daily caps 10 USD (Anthropic) / 5 USD (DeepSeek) / 10 USD (Fireworks). Amounts are owner dials in
   `litellm-config.configmap.yaml`.
 - Prompts are **not** stored in the spend ledger (recorded privacy posture); spend-log retention 90d. MCP tool arguments are not stored either: see [MCP tool arguments](#mcp-tool-arguments).
 - Dashboards: Grafana → **AI** folder → *LiteLLM — Inference Spend & Budgets* and
   *LiteLLM — Latency & Reliability*. Traces: Explore → Jaeger datasource, service `litellm`.
+- Refusals surface to the caller. `litellm_settings.content_policy_fallbacks: []` makes a
+  content-policy error end the request instead of walking `fallbacks` and `default_fallbacks`.
+  It must stay in `litellm_settings`: the Router takes `router_settings.content_policy_fallbacks or
+  litellm.content_policy_fallbacks`, so an empty list under `router_settings` turns back into
+  "not set", and "not set" means "use the ordinary fallbacks" (`router.py`, v1.102.1).
+- Admission control caps the proxy at 100 requests in flight and 50 queued for up to 30 s; past
+  that it answers 503 with `retry-after: 1`. A request holds its slot until its response ends, so
+  a stream or an open MCP session holds one too. `global_max_parallel_requests` looks similar and
+  does nothing: only the legacy limiter reads it, and that limiter is not loaded.
+- Nobody can switch logging off per request (`global_disable_no_log_param`), and prompts stay out
+  of the spend log even if someone flips the Admin UI toggle (`store_prompts_in_spend_logs: false`).
+
+## Metrics
+
+Two sources, both scraped by the `litellm` VMServiceScrape:
+
+| Port | Source | What it answers |
+|---|---|---|
+| 4001 `native-metrics` | LiteLLM's own `prometheus` callback, served by a separate process (`--prometheus_metrics_port`), no key auth | Requests, failures, tokens, spend, latency and time-to-first-token histograms, `litellm_deployment_*` state and fallback counters, provider remaining budget, key and team budget gauges, cache hits, MCP tool calls, admission queue |
+| 9187 `metrics` | postgres-exporter over the ledger ([queries](../../../../kubernetes/apps/ai/litellm/app/litellm-exporter-queries.configmap.yaml)) | What only SQL answers: per-run and per-key spend, the MCP redaction check, 24-hour percentiles, provider spend per calendar day |
+
+Only `observability` reaches either port (`litellm-allow-internal`); the HTTPRoute sends nothing but
+:4000. `/metrics` on :4000 exists too and needs a virtual key. Prometheus in LiteLLM is open source
+since v1.80; ADR-0044's original note that it was Enterprise-only predates that.
 
 ## MCP tool arguments
 
