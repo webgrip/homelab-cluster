@@ -165,8 +165,8 @@ GQ
 expect fail "limit \$n" 'uses limit $n' "$d"
 
 d=$(tree actor-before-token)
-sed -i 's/^    - act-brain-agent$/    - act-brain-agent\n    - act-brain-reader/' "$d/$app/bundle/brain.policy.yaml"
-expect fail "policy names an actor whose token is not deployed" "grants act-brain-reader" "$d"
+sed -i 's/^    - act-brain-agent$/    - act-brain-agent\n    - act-never-deployed/' "$d/$app/bundle/brain.policy.yaml"
+expect fail "policy names an actor whose token is not deployed" "grants act-never-deployed" "$d"
 
 d=$(tree version-drift)
 sed -i 's#omnigraph-server:v0\.11\.0@#omnigraph-server:v0.11.1@#' "$d/$app/deployment.yaml"
