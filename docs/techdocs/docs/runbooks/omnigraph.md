@@ -485,7 +485,7 @@ The brain retrieval work ([RFC](../rfc/rfc-brain-retrieval.md)) ships a change o
 | CronJob | When | Does | Cost |
 |---|---|---|---|
 | `omnigraph-brain-eval-retrieval` | 04:40 nightly | Profile `p0` (today's `recall_notes`, `recall_passages` and `recall_topics`, interleaved by rank) for every case, pinned to one graph commit; the share of vectorless `Note`, `Passage` and `Topic` rows; a scan of a fresh clone of this public repo for any eval question | USD 0 |
-| `omnigraph-brain-eval-answer` | Sunday 05:10, **suspended** | The judge's control pair, then B0: `chat-default` answers each case through the read-only raw bridge `omnigraph_brain_eval`, and `claude-haiku-4-5` judges it | about USD 0.50 |
+| `omnigraph-brain-eval-answer` | Sunday 05:10 | The judge's control pair, then B0: `chat-default` answers each case through the read-only raw bridge `omnigraph_brain_eval`, and `claude-haiku-4-5` judges it | about USD 0.50 |
 | `omnigraph-brain-eval-gate` | manual | Retrieval plus answers with 3 repeats, and the decision rule for `--compare baseline:candidate` | about USD 3.50 |
 | `omnigraph-brain-eval-candidates` | manual | Drafts about 60 questions from sampled sources and cuts them to 36 provisional cases | about USD 1 |
 | `omnigraph-brain-eval-experiment` | manual | E1: raw versus `type:`-prefixed vectors over each dev case's candidate pool, in memory | under USD 0.50 |
@@ -496,7 +496,7 @@ Run one by hand with `kubectl -n ai create job --from=cronjob/<name> <name>-manu
 
 Each eval pod runs its containers in order: `privacy-store` proves the eval repo private (below), `store` clones it, `eval` runs the harness, `privacy-publish` proves it private again, `publish` commits the results, and `report` pushes the aggregates to `vmagent-vmagent.observability:8429` with `job="omnigraph-brain-eval"` and stamps `brain_eval_last_success_timestamp_seconds{mode}`. The retrieval pod also clones this public repo (`public-repo`) for the leak check. A run that fails part way stamps nothing, so staleness means "no stored result". Finished Jobs are deleted after a day (`ttlSecondsAfterFinished`), so a failed one raises `KubeJobFailed` for at most that long.
 
-**Answer mode waits for VIK-1403.** LiteLLM 1.102.1 keeps every MCP tool call's arguments in its spend log for 90 days, so an answer run would copy every eval question into `litellm-db`. The harness refuses answer mode on real cases unless the pod sets `BRAIN_EVAL_MCP_ARGUMENTS_REDACTED=true`, and the answer CronJob stays suspended. The control pair and `--synthetic` runs (public questions about this repo's runbooks) are allowed.
+**Answer mode needs MCP argument redaction.** LiteLLM 1.102.1 kept every MCP tool call's arguments in its spend log and trace spans, so an answer run would have copied every eval question into `litellm-db`. Since VIK-1403 LiteLLM stores `{"redacted": true}` instead ([LiteLLM: MCP tool arguments](../general/litellm.md#mcp-tool-arguments)), and the pods set `BRAIN_EVAL_MCP_ARGUMENTS_REDACTED=true`. The harness refuses answer mode on real cases without it; the control pair and `--synthetic` runs (public questions about this repo's runbooks) never need it. If the patch is ever removed or `LiteLLMMCPArgumentsStored` fires, set the variable back to `false` first.
 
 ### Identities
 
