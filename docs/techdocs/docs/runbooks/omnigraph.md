@@ -484,7 +484,7 @@ The brain retrieval work ([RFC](../rfc/rfc-brain-retrieval.md)) ships a change o
 
 | CronJob | When | Does | Cost |
 |---|---|---|---|
-| `omnigraph-brain-eval-retrieval` | 04:40 nightly | Profile `p0` (today's `recall_notes`, `recall_passages` and `recall_topics`, interleaved by rank) for every case, pinned to one graph commit; the share of vectorless `Note`, `Passage` and `Topic` rows | USD 0 |
+| `omnigraph-brain-eval-retrieval` | 04:40 nightly | Profile `p0` (today's `recall_notes`, `recall_passages` and `recall_topics`, interleaved by rank) for every case, pinned to one graph commit; the share of vectorless `Note`, `Passage` and `Topic` rows; a scan of a fresh clone of this public repo for any eval question | USD 0 |
 | `omnigraph-brain-eval-answer` | Sunday 05:10, **suspended** | The judge's control pair, then B0: `chat-default` answers each case through the read-only raw bridge `omnigraph_brain_eval`, and `claude-haiku-4-5` judges it | about USD 0.50 |
 | `omnigraph-brain-eval-gate` | manual | Retrieval plus answers with 3 repeats, and the decision rule for `--compare baseline:candidate` | about USD 3.50 |
 | `omnigraph-brain-eval-candidates` | manual | Drafts about 60 questions from sampled sources and cuts them to 36 provisional cases | about USD 1 |
@@ -546,6 +546,8 @@ Every drafted case is `provisional: true`, and `brain_eval_set_provisional` stay
 - **Rigour**: every read of a retrieval run pins the same `graph_commit_id`, so two runs on one commit give identical scores. Every answer run starts with a control pair (a planted correct answer must score 0.8 or more, a planted unsupported one 0.2 or less); a failure publishes only `brain_eval_judge_control_ok 0` and exits non-zero. A per-run spend cap aborts the run and publishes `brain_eval_run_valid 0`. Answer runs write up to ten answers to `calibration/pending/` for hand grading and publish `brain_eval_judge_agreement` once graded files exist.
 - **Decision rule** (gate mode, dev split): adopt a change only when the paired mean delta of the primary metric is at least +0.05, net wins are at least 3 (sign-test p reported), no category loses more than one case, and the guardrails hold.
 
+The missing-vector share is counted with queries pinned to the same commit (rows that `nearest()` ranks have a vector), not with `/export`: exporting `Passage` stopped at the server's `ordered_scan_input_batch_bytes` limit on 2026-09-29.
+
 Aggregates go to VictoriaMetrics as `brain_eval_*` (15 days); per-question results are the record, in `results/<date>/<mode>-<profile>.json`. Pushed samples leave instant queries after about 5 minutes, so the dashboard and alerts read `last_over_time(...[3d])` (`[8d]` for weekly answer series).
 
 ### Monitoring and failures
@@ -558,6 +560,7 @@ Grafana, folder AI, **Brain retrieval quality**: stat tiles and per-category tab
 | `OmnigraphBrainEvalJudgeControlFailed` | The last answer run's judge failed the control pair |
 | `OmnigraphBrainEvalRunInvalid` | A run hit its spend cap or an upstream error |
 | `OmnigraphBrainEvalBudgetNearlySpent` | The `omnigraph-eval` key spent 80% of its 30-day budget |
+| `OmnigraphBrainEvalCaseTextInPublicRepo` | Eight consecutive words of an eval question appear in this public repo (temporal template questions are skipped; key facts are not checked, because docs-en key facts quote public docs) |
 
 The `eval` container ends with a `run invalid` line naming the reason: an upstream status (`omnigraph answered HTTP 403` means `act-brain-eval` lost a right), `the eval repo holds no cases yet`, a case file and line that do not parse, or `passed the cap`.
 
@@ -565,7 +568,7 @@ The `eval` container ends with a `run invalid` line naming the reason: an upstre
 
 **Tests.** [test_omnigraph_brain_eval.py](../../../../scripts/test_omnigraph_brain_eval.py) runs the harness against a fake Omnigraph, a fake LiteLLM with its MCP endpoint and a fake vmagent: metric maths against hand-computed values, document roll-up, stale exclusion, the independent temporal path (the fake's stored query disagrees with the scan), snapshot pinning, the control pair, the spend cap, the answer-mode redaction gate, calibration agreement, the label allowlist, the candidate cut and the sentinel. [test-omnigraph-brain-eval-mutation.sh](../../../../scripts/test-omnigraph-brain-eval-mutation.sh) breaks each of those in turn and requires the suite to fail, and the unmodified harness to pass. Both run in pre-commit and in `e2e / Lint & static validation`.
 
-**Network.** `omnigraph-brain-eval-egress` allows `omnigraph` :8080, `litellm` :4000, the Forgejo SSH pods :2222 and `vmagent` :8429. Omnigraph admits it in `omnigraph-ingress`, Forgejo in `forgejo-allow-ingress`; LiteLLM admits all of `ai`, and `observability` has no NetworkPolicy.
+**Network.** `omnigraph-brain-eval-egress` allows `omnigraph` :8080, `litellm` :4000, the Forgejo pods on SSH :2222 (eval repo) and HTTP :3000 (anonymous clone of this public repo for the leak check) and `vmagent` :8429. Omnigraph admits it in `omnigraph-ingress`, Forgejo in `forgejo-allow-ingress`; LiteLLM admits all of `ai`, and `observability` has no NetworkPolicy.
 
 ## Company meetings (`webgrip` and client graphs)
 

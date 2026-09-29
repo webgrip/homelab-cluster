@@ -89,7 +89,7 @@ declares.
 | `omnigraph-vault-import` CronJob | `omnigraph` :8080, Forgejo SSH :2222 (`forgejo` pods, admitted by `forgejo-allow-ingress`) | none | `omnigraph-vault-import-egress` |
 | `omnigraph-forge-import` CronJob | `omnigraph` :8080, Forgejo HTTP :3000 (`forgejo` pods, admitted by `forgejo-allow-ingress`) | none | `omnigraph-forge-import-egress` |
 | `omnigraph-distill` CronJob | `omnigraph` :8080, `litellm` :4000 | none | `omnigraph-distill-egress` |
-| `omnigraph-brain-eval-*` CronJobs | `omnigraph` :8080, `litellm` :4000, Forgejo SSH :2222 (`forgejo` pods, admitted by `forgejo-allow-ingress`), `vmagent` :8429 in `observability` | none | `omnigraph-brain-eval-egress` |
+| `omnigraph-brain-eval-*` CronJobs | `omnigraph` :8080, `litellm` :4000, Forgejo SSH :2222 and HTTP :3000 (`forgejo` pods, admitted by `forgejo-allow-ingress`), `vmagent` :8429 in `observability` | none | `omnigraph-brain-eval-egress` |
 | `tei-embeddings` | HTTPS to `huggingface.co`, `*.huggingface.co` and up to three labels under `hf.co` (model download in `fetch-model`); every pod outside `kube-system` is denied | :8080 from `litellm`, `observability` | `tei-embeddings-model-fetch`, `tei-embeddings-litellm-only`, `tei-embeddings-ingress` |
 | `docs-mcp-server` | namespace `network` (it indexes `docs.<domain>` through envoy-internal) | :6280 from `ai`, `network` | `docs-mcp-server-allow-gateway-egress`, `docs-mcp-server-ingress` |
 

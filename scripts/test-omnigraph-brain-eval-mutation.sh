@@ -78,6 +78,9 @@ spawn redaction-gate-off brain_eval.py 'if not args.synthetic and os.environ.get
         raise EvalError("answer mode on real cases waits'
 spawn unanswerable-scored brain_eval.py 'return case["category"] != "unanswerable" and case.get("answerable", True)' 'return True'
 spawn cases-overwritten candidates.py 'if cases_dir.is_dir() and any(cases_dir.glob("*.yaml")):' 'if False:'
+spawn leak-check-blind brain_eval.py '                if owner:
+                    leaked |= owner' '                if False:
+                    leaked |= owner'
 spawn no-holdout candidates.py 'chosen.append((candidate, "holdout" if index == holdout else "dev"))' 'chosen.append((candidate, "dev"))'
 wait
 for result in "$work"/*.result; do

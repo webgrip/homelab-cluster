@@ -124,3 +124,30 @@ spec:
               - kubectl -n ai logs job/<latest omnigraph-brain-eval job> -c eval (spend_usd per run)
               - Raise MAX_BUDGET in litellm/keys/app/omnigraph-eval-key-register.job.yaml only after the cause is understood
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#brain-eval"
+        - alert: OmnigraphBrainEvalCaseTextInPublicRepo
+          expr: |
+            last_over_time(brain_eval_public_repo_leaks[3d]) > 0
+          for: 5m
+          labels:
+            severity: warning
+            owner: platform
+            service: omnigraph
+          annotations:
+            summary: "An eval question from the private brain eval set appears in the public homelab-cluster repo (ai/omnigraph-brain-eval-retrieval)"
+            description: |
+              What's happening:
+              - The nightly retrieval run clones the public webgrip/homelab-cluster repo and looks for any eight consecutive words of an eval question (Obsidian, forge and entity questions; temporal templates are skipped). brain_eval_public_repo_leaks counts the cases it found.
+
+              Impact/risk:
+              - homelab-cluster is mirrored to public GitHub, so a question found there is published: it reveals what Ryan asks his own notes and can hint at note content.
+              - A question the tuned pipeline has seen verbatim also stops being a fair test case.
+
+              Likely causes:
+              - A question, answer or result was pasted into a doc, ticket template, test fixture or commit in this repo.
+              - A drafted question happens to repeat a sentence that is public (rare: questions are paraphrased and checked against their source).
+
+              First actions:
+              - kubectl -n ai logs job/<latest omnigraph-brain-eval-retrieval job> -c eval (the "public repo leak check" line has the count, never the text)
+              - Search this repo for the question text from the private eval repo on a trusted machine, remove it in a commit, and rewrite or drop the case in ryangr0/brain-eval
+              - Treat a real leak as published: GitHub keeps history, so rotate the case rather than only deleting the text
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#brain-eval"

@@ -483,6 +483,29 @@ class RetrievalRun(unittest.TestCase):
                 self.assertIn(value, be.METRIC_LABELS[name][label], line)
 
 
+class PublicRepoLeakCheck(unittest.TestCase):
+    def test_case_text_in_the_public_repo_is_counted_and_a_clean_repo_passes(self):
+        harness = Harness()
+        try:
+            public = harness.root / "public"
+            (public / "docs").mkdir(parents=True)
+            (public / "docs" / "clean.md").write_text("How do I reconcile everything? Flux reconciles git every hour.\n")
+            (public / ".git").mkdir()
+            (public / ".git" / "leak").write_text(Q1)
+            result = harness.run("retrieval", f"--public-repo-dir={public}", global_args=(f"--snapshot={SNAPSHOT}",))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("brain_eval_public_repo_leaks 0", (harness.out / "metrics.prom").read_text())
+            (public / "docs" / "leak.md").write_text(f"Notes: {Q2.upper()} and more\n")
+            (public / "runbook.md").write_text("Flux was chosen for GitOps across the whole homelab, as the ADR says\n")
+            result = harness.run("retrieval", f"--public-repo-dir={public}", global_args=(f"--snapshot={SNAPSHOT}",))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("brain_eval_public_repo_leaks 1", (harness.out / "metrics.prom").read_text())
+            self.assertIn('"cases_found": 1', result.stdout)
+            self.assertNotIn(SENTINEL, result.stdout + result.stderr)
+        finally:
+            harness.close()
+
+
 class AnswerRun(unittest.TestCase):
     def tearDown(self):
         self.harness.close()

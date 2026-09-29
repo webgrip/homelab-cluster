@@ -60,6 +60,7 @@ METRIC_LABELS = {
     "brain_eval_judge_agreement": {},
     "brain_eval_run_valid": {"mode": set(MODES)},
     "brain_eval_store_provisional": {},
+    "brain_eval_public_repo_leaks": {},
     "brain_eval_last_success_timestamp_seconds": {"mode": set(MODES)},
 }
 
@@ -829,6 +830,46 @@ PROFILE_RUNNERS = {"p0": profile_p0}
 P0_QUERIES = ("recall_notes", "recall_passages", "recall_topics")
 
 
+LEAK_SHINGLE_WORDS = 8
+LEAK_MIN_PHRASE_WORDS = 5
+LEAK_MAX_FILE_BYTES = 2 * 1024 * 1024
+
+
+def normalised_words(text):
+    return re.findall(r"\w+", unicodedata.normalize("NFKC", str(text or "")).lower())
+
+
+def leak_shingles(text):
+    words = normalised_words(text)
+    if len(words) >= LEAK_SHINGLE_WORDS:
+        return {" ".join(words[index: index + LEAK_SHINGLE_WORDS]) for index in range(len(words) - LEAK_SHINGLE_WORDS + 1)}
+    if len(words) >= LEAK_MIN_PHRASE_WORDS:
+        return {" ".join(words)}
+    return set()
+
+
+def public_repo_leaks(cases, public_dir):
+    owners = {}
+    for case in cases:
+        if case.get("category") in ("temporal", SYNTHETIC_CATEGORY) or case.get("origin") == "synthetic":
+            continue
+        for shingle in leak_shingles(case.get("question")):
+            owners.setdefault(shingle, set()).add(case["id"])
+    lengths = {len(shingle.split(" ")) for shingle in owners}
+    leaked, files = set(), 0
+    for path in Path(public_dir).rglob("*"):
+        if ".git" in path.parts or not path.is_file() or path.stat().st_size > LEAK_MAX_FILE_BYTES:
+            continue
+        files += 1
+        words = normalised_words(path.read_bytes().decode("utf-8", errors="ignore"))
+        for size in lengths:
+            for index in range(len(words) - size + 1):
+                owner = owners.get(" ".join(words[index: index + size]))
+                if owner:
+                    leaked |= owner
+    return len(leaked), len(owners), files
+
+
 VECTOR_PROBE = [1.0] + [0.0] * 383
 
 
@@ -1479,6 +1520,10 @@ def command_retrieval(args):
         for type_name, ratio in ratios.items():
             sink.add("brain_eval_missing_vectors_ratio", {"type": type_name}, ratio)
         log("vector coverage", **{f"missing_{type_name.lower()}_ratio": round(ratio, 6) for type_name, ratio in ratios.items()})
+    if args.public_repo_dir and Path(args.public_repo_dir).is_dir() and not args.synthetic:
+        leaked, shingles, files = public_repo_leaks(all_cases, args.public_repo_dir)
+        sink.add("brain_eval_public_repo_leaks", {}, leaked)
+        log("public repo leak check", cases_found=leaked, phrases_checked=shingles, files_scanned=files)
     run["provisional"] = set_is_provisional(all_cases, len(workspace.calibration_files())) if not args.synthetic else True
     if args.dry_run or args.synthetic:
         log("dry run: nothing written", scored={profile: len(document["cases"]) for profile, document in documents.items()})
@@ -1704,6 +1749,7 @@ def build_parser():
     retrieval = commands.add_parser("retrieval")
     retrieval.add_argument("--profile", action="append", choices=sorted(PROFILE_RUNNERS), default=None)
     retrieval.add_argument("--missing-vectors", action="store_true")
+    retrieval.add_argument("--public-repo-dir", help="a checkout of the public homelab-cluster repo to scan for case text")
     retrieval.add_argument("--scratch-stale", action="store_true", help="add a copy of one case with a renamed expected slug, to prove the stale check")
     retrieval.set_defaults(handler=command_retrieval)
     answer = commands.add_parser("answer")

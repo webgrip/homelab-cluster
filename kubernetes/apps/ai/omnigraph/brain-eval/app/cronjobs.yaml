@@ -61,6 +61,26 @@ spec:
                 - {name: store, mountPath: /store}
                 - {name: work, mountPath: /work}
                 - {name: tmp, mountPath: /tmp}
+            - name: public-repo
+              image: harbor.webgrip.dev/dockerhub/alpine/git:v2.54.0@sha256:832b1cd1a271509f3d5272a1a62d4cb2ab1a53426ebde1f6c2cb7349f907dc6f
+              imagePullPolicy: IfNotPresent
+              command:
+                - "sh"
+                - "-c"
+                - "timeout 300 git clone -q --depth 1 --single-branch http://forgejo-http.forgejo.svc.cluster.local:3000/webgrip/homelab-cluster.git /work/public && git -C /work/public log -1 --format='public repo cloned at %h'"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: GIT_LFS_SKIP_SMUDGE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 512Mi}
+              volumeMounts:
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
             - name: eval
               image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
               imagePullPolicy: IfNotPresent
@@ -71,6 +91,7 @@ spec:
                 - "--max-spend-usd=0"
                 - "retrieval"
                 - "--missing-vectors"
+                - "--public-repo-dir=/work/public"
               env:
                 - {name: HOME, value: /tmp}
                 - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
