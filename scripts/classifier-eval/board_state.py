@@ -3,7 +3,7 @@ import json
 import re
 from html.parser import HTMLParser
 
-PROJECT_NAMES = {3: "Homelab Roadmap", 5: "Dark Factory", 6: "Vellum", 9: "CI/CD", 10: "Ploeg"}
+PROJECT_NAMES = {3: "Homelab Roadmap", 5: "Dark Factory", 6: "Vellum", 9: "CI/CD", 10: "Glide"}
 SIZING_TOKEN = re.compile(
     r"\b(effort|time|unc|uncertainty|impact)\s*[/:]?\s*(S|M|L|H|hours|days|weeks|h|d|w|low|med|high)\b",
     re.IGNORECASE,
