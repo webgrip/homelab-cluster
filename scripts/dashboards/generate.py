@@ -9,6 +9,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import alerts
 import forgejo_ci
 import glide
+import glide_runs
 import platform_walls
 import playlists
 from lib import DASHBOARDS, check_args, dashboard_cr, screen_height, write_or_check
@@ -21,6 +22,7 @@ MODULES = {
     "alerts.generated.yaml": alerts,
     "forgejo-ci.generated.yaml": forgejo_ci,
     "glide.generated.yaml": glide,
+    "glide-runs.generated.yaml": glide_runs,
     "walls.generated.yaml": platform_walls,
 }
 

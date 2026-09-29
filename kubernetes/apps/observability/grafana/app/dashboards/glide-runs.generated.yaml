@@ -1,0 +1,3862 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: glide-runs
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: boards
+  json: |-
+    {
+      "uid": "glide-runs",
+      "title": "Glide · Runs",
+      "description": "Per-Run view of Glide: what is running now, what just finished and how, where the time went from queued to finished, and why Runs fail. Built from Ploeg's database and Kubernetes.",
+      "tags": [
+        "board",
+        "glide",
+        "ploeg"
+      ],
+      "schemaVersion": 39,
+      "editable": true,
+      "graphTooltip": 1,
+      "refresh": "1m",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "links": [
+        {
+          "title": "Glide · Plant",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/glide-plant",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Glide · Kata overhead",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/glide-kata",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Glide Loop",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/glide-loop",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "type": "dashboards",
+          "tags": [
+            "board"
+          ],
+          "title": "Boards",
+          "asDropdown": true,
+          "keepTime": true,
+          "includeVars": false,
+          "icon": "external link",
+          "targetBlank": false,
+          "tooltip": "",
+          "url": ""
+        }
+      ],
+      "templating": {
+        "list": [
+          {
+            "name": "team",
+            "label": "Team",
+            "type": "query",
+            "datasource": {
+              "type": "grafana-postgresql-datasource",
+              "uid": "ploeg-db"
+            },
+            "query": "SELECT DISTINCT team FROM work_items WHERE team <> '' ORDER BY 1",
+            "definition": "SELECT DISTINCT team FROM work_items WHERE team <> '' ORDER BY 1",
+            "multi": true,
+            "includeAll": true,
+            "refresh": 1,
+            "sort": 1,
+            "hide": 0,
+            "current": {
+              "text": "All",
+              "value": "$$__all"
+            },
+            "options": []
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Runs right now",
+          "description": "Straight from Ploeg's database. Running is a Run a worker has claimed and not finished. Waiting for a worker is a Run Ploeg has queued (a Round opened) that no worker pod has picked up yet. Each team and role has one worker slot, so a second Run for the same slot waits here by design.",
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "ploeg-db"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "ploeg-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT count(*) FILTER (WHERE state = 'running') AS \"running\", count(*) FILTER (WHERE state = 'pending') AS \"waiting for a worker\" FROM agent_runs WHERE state IN ('running', 'pending') AND team IN ($$team)"
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Worker pods waiting for room",
+          "description": "Worker and sandbox pods Kubernetes has not started yet. No node has room means the scheduler looked at every node and none had enough unreserved CPU or memory (or the right Kata label): the Run waits until something finishes. Pending, any reason also counts pods that are only pulling their image. Amber from one pod without room.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 5,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "no node has room"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 3
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(kube_pod_status_unschedulable{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "no node has room",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "B",
+              "expr": "sum(kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\", phase=\"Pending\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "pending, any reason",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "Idle-timeout kills · 24 h",
+          "description": "Runs the worker stopped in the last 24 hours because the agent went quiet. No output for too long is PLOEG_HARNESS_IDLE_TIMEOUT (45 minutes on the builders): the harness printed nothing, so the worker killed it. Hit the hard limit is PLOEG_HARNESS_TIMEOUT, the total time cap. Both are failure_reason timeout; the split reads the Run's summary text. Every kill still spent money on the model.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 11,
+            "y": 0
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "ploeg-db"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 3
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "ploeg-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT count(*) FILTER (WHERE r.failure_reason = 'timeout' AND r.summary ILIKE '%idle timeout%') AS \"no output for too long\", count(*) FILTER (WHERE r.failure_reason = 'timeout' AND NOT (r.failure_reason = 'timeout' AND r.summary ILIKE '%idle timeout%')) AS \"hit the hard limit\" FROM agent_runs r WHERE r.finished_at > now() - interval '24 hours' AND r.team IN ($$team)"
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "stat",
+          "title": "Failed Runs by reason · this range",
+          "description": "Why failed Runs ended, over the selected time range. infra_node: the pod or node went away. infra_llm: the model gateway failed. timeout: the idle or total time limit. agent_error: the agent program crashed. budget: the Run hit its token ceiling. lease_lost: the Run stopped renewing its lock and the sweeper took it back.",
+          "gridPos": {
+            "h": 5,
+            "w": 7,
+            "x": 17,
+            "y": 0
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "ploeg-db"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "/^(count|kills)$$/",
+              "values": true
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no failed Run",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#d55e00"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "ploeg-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT coalesce(nullif(failure_reason, ''), 'unclassified') AS reason, count(*) AS count FROM agent_runs WHERE outcome = 'failed' AND team IN ($$team) AND $$__timeFilter(finished_at) GROUP BY 1 ORDER BY 2 DESC"
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "table",
+          "title": "Runs in flight",
+          "description": "Every Run Ploeg has queued or started and not finished. Waited for a worker is from the Round opening to a worker claiming the Run: it covers the KEDA poll, pod scheduling, the pod booting and the worker starting. Node comes from the checkpoint the worker writes once it has cloned the repository, so a Run still starting shows none yet. Authorized is the most this Run may spend; the live spend per key is in the table beside Worker pods now, matched by Key. Harness is not stored per Run in Ploeg.",
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 5
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "ploeg-db"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "No Run is running or waiting."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Work Item"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 120
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open the ticket",
+                        "url": "$${__data.fields.work_item_url}",
+                        "targetBlank": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "work_item_url"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "State"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "running": {
+                            "text": "running",
+                            "color": "#56b4e9"
+                          },
+                          "pending": {
+                            "text": "waiting",
+                            "color": "#e69f00"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 90
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Queued for"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 100
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Waited for a worker"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 600
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 3600
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 150
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Running for"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 110
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Authorized"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 100
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Run"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 60
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Round"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 70
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Team"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 80
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {},
+                "indexByName": {}
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "ploeg-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT r.id AS \"Run\", r.team AS \"Team\", coalesce(nullif(r.role, ''), 'pre-Shift') AS \"Role\", r.round AS \"Round\", CASE WHEN w.provider = 'vikunja' THEN 'vikunja #' || w.external_id WHEN w.provider = 'manual' THEN 'vloer ' || left(split_part(w.external_id, ':', 2), 8) ELSE w.provider || ' ' || w.external_id END AS \"Work Item\", CASE WHEN w.provider = 'vikunja' THEN 'https://vikunja.webgrip.dev/tasks/' || w.external_id ELSE coalesce(nullif(w.url, ''), 'https://vloer.webgrip.dev') END AS work_item_url, left(w.title, 60) AS \"Title\", r.state AS \"State\", extract(epoch FROM now() - q.at) AS \"Queued for\", extract(epoch FROM coalesce(r.started_at, now()) - q.at) AS \"Waited for a worker\", extract(epoch FROM now() - r.started_at) AS \"Running for\", coalesce(cp.node_name, '') AS \"Node\", r.authorized AS \"Authorized\", 'ploeg-' || left(r.run_token, 12) AS \"Key\" FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id LEFT JOIN LATERAL (SELECT max(l.at) AS at FROM audit_log l WHERE l.action IN ('round.opened', 'round.reopened') AND l.detail->>'shift' = r.shift_id::text AND l.detail->>'round' = r.round::text AND l.at <= coalesce(r.started_at, now())) q ON true LEFT JOIN LATERAL (SELECT c.node_name, c.pod_uid FROM checkpoints c WHERE c.work_item_id = r.work_item_id AND c.pod_uid <> '' AND c.created_at >= r.started_at AND c.created_at <= coalesce(r.finished_at, now()) ORDER BY c.created_at DESC LIMIT 1) cp ON true WHERE r.state IN ('pending', 'running') AND r.team IN ($$team) ORDER BY r.state DESC, q.at"
+            }
+          ],
+          "id": 5
+        },
+        {
+          "type": "table",
+          "title": "Worker pods now",
+          "description": "Worker pods that are pending or running now. A Run on a Kata team uses two pods: a small launcher (ploeg-worker-...) on the normal runtime and the sandbox (sbx-ploeg-worker-...) that does the work in a Kata virtual machine. Runtime is blank for normal (runc) pods. No room is yes while the scheduler cannot find a node with enough unreserved CPU or memory. Memory now is what the pod's cgroup holds; for a Kata sandbox that is the whole virtual machine.",
+          "gridPos": {
+            "h": 7,
+            "w": 14,
+            "x": 0,
+            "y": 12
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "No worker pod is pending or running."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Age"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 80
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Memory now"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 100
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Runtime"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "kata": {
+                            "text": "kata",
+                            "color": "#56b4e9"
+                          },
+                          "runc": {
+                            "text": "runc",
+                            "color": "#898781"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 80
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "No room"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "0": {
+                            "text": "no"
+                          },
+                          "1": {
+                            "text": "yes"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 80
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Phase"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "Pending": {
+                            "text": "Pending",
+                            "color": "#e69f00"
+                          },
+                          "Running": {
+                            "text": "Running",
+                            "color": "#56b4e9"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 85
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "Value #A": true,
+                  "Value #B": true,
+                  "Value #C": true
+                },
+                "renameByName": {
+                  "pod": "Pod",
+                  "team": "Team",
+                  "role": "Role",
+                  "node": "Node",
+                  "phase": "Phase",
+                  "runtime": "Runtime",
+                  "Value #D": "Age",
+                  "Value #E": "No room",
+                  "Value #F": "Memory now"
+                },
+                "indexByName": {
+                  "Pod": 0,
+                  "Team": 1,
+                  "Role": 2,
+                  "Runtime": 3,
+                  "Phase": 4,
+                  "Node": 5,
+                  "Age": 6,
+                  "No room": 7,
+                  "Memory now": 8
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "Age",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (pod, team, role, node) (label_replace(label_replace(label_replace(max by (exported_pod, node) (kube_pod_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}) and on (exported_pod) (max by (exported_pod) (kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\", phase=~\"Pending|Running\"}) == 1), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"team\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-([a-z0-9]+)-.+\"), \"role\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-[a-z0-9]+-(.+)-[a-z0-9]{5}-[a-z0-9]{5}\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "max by (pod, phase) (label_replace(max by (exported_pod, phase) (kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\", phase=~\"Pending|Running\"} == 1), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "expr": "max by (pod, runtime) (label_replace(label_replace(max by (exported_pod) (kube_pod_runtimeclass_name_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}), \"runtime\", \"kata\", \"\", \"\") and on (exported_pod) (max by (exported_pod) (kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\", phase=~\"Pending|Running\"}) == 1), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "D",
+              "expr": "max by (pod) (label_replace(time() - kube_pod_created{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"} and on (exported_pod) (max by (exported_pod) (kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\", phase=~\"Pending|Running\"}) == 1), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "E",
+              "expr": "max by (pod) (label_replace(kube_pod_status_unschedulable{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}, \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "F",
+              "expr": "max by (pod) (container_memory_working_set_bytes{job=\"cadvisor\", namespace=\"ploeg\", container=\"\", id=~\"/kubepods(/[a-z]+)?/pod[^/]+\", pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}) and on (pod) label_replace((max by (exported_pod) (kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\", phase=~\"Pending|Running\"}) == 1), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\")",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 6
+        },
+        {
+          "type": "table",
+          "title": "Spend so far vs authorized",
+          "description": "What each running Run's model key has spent so far, from LiteLLM's own ledger, against the budget the key was minted with (the Run's authorized amount). At 100 % LiteLLM refuses the next model call and the Run fails. Key matches the Key column in Runs in flight. The Run list comes from Ploeg's exporter, so a Run appears here up to a minute after it starts.",
+          "gridPos": {
+            "h": 7,
+            "w": 10,
+            "x": 14,
+            "y": 12
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "No Run is spending right now."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Started"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeFromNow"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 110
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Spent"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 80
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Authorized"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 95
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Used"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "gauge",
+                      "mode": "basic",
+                      "valueDisplayMode": "text"
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#3987e5"
+                    }
+                  },
+                  {
+                    "id": "min",
+                    "value": 0
+                  },
+                  {
+                    "id": "max",
+                    "value": 1
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "key_alias": "Key",
+                  "team": "Team",
+                  "ticket": "Ticket",
+                  "Value #A": "Started",
+                  "Value #B": "Spent",
+                  "Value #C": "Authorized",
+                  "Value #D": "Used"
+                },
+                "indexByName": {
+                  "Key": 0,
+                  "Team": 1,
+                  "Ticket": 2,
+                  "Started": 3,
+                  "Spent": 4,
+                  "Authorized": 5,
+                  "Used": 6
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "Used",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (key_alias, team, ticket) (ploeg_run_started_epoch{outcome=\"running\", team=~\"$$team\"}) * 1000",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "max by (key_alias) (litellm_key_spend{key_alias=~\"ploeg-.+\"}) and on (key_alias) max by (key_alias) (ploeg_run_started_epoch{outcome=\"running\", team=~\"$$team\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "expr": "max by (key_alias) (litellm_key_max_budget{key_alias=~\"ploeg-.+\"}) and on (key_alias) max by (key_alias) (ploeg_run_started_epoch{outcome=\"running\", team=~\"$$team\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "D",
+              "expr": "(max by (key_alias) (litellm_key_spend{key_alias=~\"ploeg-.+\"}) and on (key_alias) max by (key_alias) (ploeg_run_started_epoch{outcome=\"running\", team=~\"$$team\"})) / (max by (key_alias) (litellm_key_max_budget{key_alias=~\"ploeg-.+\"}) and on (key_alias) max by (key_alias) (ploeg_run_started_epoch{outcome=\"running\", team=~\"$$team\"}))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 7
+        },
+        {
+          "type": "table",
+          "title": "Recent Runs",
+          "description": "The last 100 Runs that finished in the selected range, newest first. The timeline reads left to right: Queued → claimed is from the Round opening to a worker claiming the Run; inside that, Pod scheduling is how long Kubernetes looked for a node and Pod boot is from placement to the pod being ready (image pull, and for Kata the virtual machine start). Ran for is claim to finish. Runtime, Node and the two pod columns come from the pod the worker recorded in its checkpoint; a Run that died before its first checkpoint (about 1 in 15) shows blanks there. Harness is read from the start of the Run's summary (\"openhands run ...\") because Ploeg does not store it; a blank means the summary did not say. Spent is the settled model cost; Authorized is the Run's ceiling.",
+          "gridPos": {
+            "h": 12,
+            "w": 24,
+            "x": 0,
+            "y": 19
+          },
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Mixed --"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "No Run finished in this range."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Work Item"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 120
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open the ticket",
+                        "url": "$${__data.fields.work_item_url}",
+                        "targetBlank": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "work_item_url"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "uid"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Value #B"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Outcome"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "failed": {
+                            "text": "failed",
+                            "color": "#d55e00"
+                          },
+                          "stuck": {
+                            "text": "stuck",
+                            "color": "#e69f00"
+                          },
+                          "pr_opened": {
+                            "text": "pr_opened",
+                            "color": "#56b4e9"
+                          },
+                          "pr_updated": {
+                            "text": "pr_updated",
+                            "color": "#56b4e9"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 130
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Finished"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeAsLocal"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 160
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Failure reason"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 120
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Runtime"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "kata": {
+                            "text": "kata",
+                            "color": "#56b4e9"
+                          },
+                          "runc": {
+                            "text": "runc",
+                            "color": "#898781"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 80
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Queued → claimed"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 130
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Pod scheduling"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 115
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Pod boot"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 85
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Ran for"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 85
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Spent"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 75
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Authorized"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 95
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Run"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 60
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Round"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 65
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Team"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 75
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Harness"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 90
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "filterFieldsByName",
+              "options": {
+                "exclude": {
+                  "pattern": "^Time$$"
+                }
+              }
+            },
+            {
+              "id": "joinByField",
+              "options": {
+                "byField": "uid",
+                "mode": "outer"
+              }
+            },
+            {
+              "id": "filterByValue",
+              "options": {
+                "type": "exclude",
+                "match": "any",
+                "filters": [
+                  {
+                    "fieldName": "Run",
+                    "config": {
+                      "id": "isNull",
+                      "options": {}
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "runtime": "Runtime",
+                  "Value #C": "Pod scheduling",
+                  "Value #D": "Pod boot"
+                },
+                "indexByName": {
+                  "Finished": 0,
+                  "Run": 1,
+                  "Team": 2,
+                  "Role": 3,
+                  "Round": 4,
+                  "Work Item": 5,
+                  "Harness": 6,
+                  "Runtime": 7,
+                  "Node": 8,
+                  "Outcome": 9,
+                  "Failure reason": 10,
+                  "Queued → claimed": 11,
+                  "Pod scheduling": 12,
+                  "Pod boot": 13,
+                  "Ran for": 14,
+                  "Spent": 15,
+                  "Authorized": 16,
+                  "Summary": 17
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "Finished",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "ploeg-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT r.finished_at AS \"Finished\", r.id AS \"Run\", r.team AS \"Team\", coalesce(nullif(r.role, ''), 'pre-Shift') AS \"Role\", r.round AS \"Round\", CASE WHEN w.provider = 'vikunja' THEN 'vikunja #' || w.external_id WHEN w.provider = 'manual' THEN 'vloer ' || left(split_part(w.external_id, ':', 2), 8) ELSE w.provider || ' ' || w.external_id END AS \"Work Item\", CASE WHEN w.provider = 'vikunja' THEN 'https://vikunja.webgrip.dev/tasks/' || w.external_id ELSE coalesce(nullif(w.url, ''), 'https://vloer.webgrip.dev') END AS work_item_url, coalesce(substring(r.summary from '^([a-z0-9_-]+) run '), '') AS \"Harness\", coalesce(r.outcome, '') AS \"Outcome\", coalesce(r.failure_reason, '') AS \"Failure reason\", coalesce(cp.node_name, '') AS \"Node\", coalesce(cp.pod_uid, 'run-' || r.id) AS uid, extract(epoch FROM r.started_at - q.at) AS \"Queued → claimed\", extract(epoch FROM r.finished_at - r.started_at) AS \"Ran for\", COALESCE(a.reconciled_spend, a.observed_spend, CASE WHEN jsonb_typeof(r.usage->'costUsd') = 'number' THEN (r.usage->>'costUsd')::numeric END) AS \"Spent\", r.authorized AS \"Authorized\", left(r.summary, 140) AS \"Summary\" FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id LEFT JOIN run_llm_accounts a ON a.run_token = r.run_token LEFT JOIN LATERAL (SELECT max(l.at) AS at FROM audit_log l WHERE l.action IN ('round.opened', 'round.reopened') AND l.detail->>'shift' = r.shift_id::text AND l.detail->>'round' = r.round::text AND l.at <= coalesce(r.started_at, now())) q ON true LEFT JOIN LATERAL (SELECT c.node_name, c.pod_uid FROM checkpoints c WHERE c.work_item_id = r.work_item_id AND c.pod_uid <> '' AND c.created_at >= r.started_at AND c.created_at <= coalesce(r.finished_at, now()) ORDER BY c.created_at DESC LIMIT 1) cp ON true WHERE r.state = 'finished' AND r.team IN ($$team) AND $$__timeFilter(r.finished_at) ORDER BY r.finished_at DESC LIMIT 100"
+            },
+            {
+              "refId": "B",
+              "expr": "max by (uid, runtime) (label_replace(last_over_time(kube_pod_runtimeclass_name_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range]), \"runtime\", \"kata\", \"\", \"\")) or on (uid) max by (uid, runtime) (label_replace(last_over_time(kube_pod_container_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"ploeg-worker-($$team)-.+\"}[$$__range]), \"runtime\", \"runc\", \"\", \"\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "expr": "max by (uid) (last_over_time(kube_pod_status_scheduled_time{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]) - last_over_time(kube_pod_created{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "D",
+              "expr": "max by (uid) (last_over_time(kube_pod_status_ready_time{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]) - last_over_time(kube_pod_status_scheduled_time{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 8
+        },
+        {
+          "type": "table",
+          "title": "Runs per outcome per team · this range",
+          "description": "How every Run that finished in the selected range ended, per team. pr_opened and pr_updated are the product. no_change_needed is a reviewer's approval or a builder that found nothing to do. failed and stuck bought nothing. Failed share is amber from 20 % and vermillion from 50 %.",
+          "gridPos": {
+            "h": 6,
+            "w": 12,
+            "x": 0,
+            "y": 31
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "ploeg-db"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "No Run finished in this range."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "failed"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "stuck"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Failed share"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 0.2
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 0.5
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {},
+                "indexByName": {}
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "ploeg-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT team AS \"Team\", count(*) AS \"Runs\", count(*) FILTER (WHERE outcome = 'pr_opened') AS \"pr_opened\", count(*) FILTER (WHERE outcome = 'pr_updated') AS \"pr_updated\", count(*) FILTER (WHERE outcome = 'no_change_needed') AS \"no_change_needed\", count(*) FILTER (WHERE outcome = 'failed') AS \"failed\", count(*) FILTER (WHERE outcome = 'stuck') AS \"stuck\", count(*) FILTER (WHERE outcome NOT IN ('pr_opened', 'pr_updated', 'no_change_needed', 'failed', 'stuck')) AS \"other\", count(*) FILTER (WHERE outcome = 'failed')::numeric / NULLIF(count(*), 0) AS \"Failed share\" FROM agent_runs WHERE state = 'finished' AND team IN ($$team) AND $$__timeFilter(finished_at) GROUP BY team ORDER BY team"
+            }
+          ],
+          "id": 9
+        },
+        {
+          "type": "table",
+          "title": "Failures by reason per team · this range",
+          "description": "Failed Runs split by team, role and failure_reason, with how many were idle-timeout kills and what the failed Runs spent on the model. A reason that repeats for one role is a pattern: timeout on builders usually means the agent loops without printing, infra_node means pods are being evicted.",
+          "gridPos": {
+            "h": 6,
+            "w": 12,
+            "x": 12,
+            "y": 31
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "ploeg-db"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "No Run failed in this range."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Spent"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Reason"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 130
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {},
+                "indexByName": {}
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "ploeg-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT r.team AS \"Team\", coalesce(nullif(r.role, ''), 'pre-Shift') AS \"Role\", coalesce(nullif(r.failure_reason, ''), 'unclassified') AS \"Reason\", count(*) AS \"Runs\", count(*) FILTER (WHERE r.failure_reason = 'timeout' AND r.summary ILIKE '%idle timeout%') AS \"Idle kills\", sum(COALESCE(a.reconciled_spend, a.observed_spend, CASE WHEN jsonb_typeof(r.usage->'costUsd') = 'number' THEN (r.usage->>'costUsd')::numeric END)) AS \"Spent\" FROM agent_runs r LEFT JOIN run_llm_accounts a ON a.run_token = r.run_token WHERE r.outcome = 'failed' AND r.team IN ($$team) AND $$__timeFilter(r.finished_at) GROUP BY 1, 2, 3 ORDER BY 4 DESC"
+            }
+          ],
+          "id": 10
+        },
+        {
+          "type": "table",
+          "title": "Where the wait goes, per team and role · this range",
+          "description": "How long Runs waited between being queued and a worker claiming them, and how long they then ran, per team and role (p50 is the median). A long queue on one slot usually means the previous Run of the same slot was still running: each slot runs one Run at a time. Pod-level detail is on Glide · Kata overhead.",
+          "gridPos": {
+            "h": 7,
+            "w": 14,
+            "x": 0,
+            "y": 37
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "ploeg-db"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "No Run finished in this range."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Queued p50"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Queued max"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Ran p50"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Ran max"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {},
+                "indexByName": {}
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "ploeg-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT r.team AS \"Team\", coalesce(nullif(r.role, ''), 'pre-Shift') AS \"Role\", count(*) AS \"Runs\", percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM r.started_at - q.at)) AS \"Queued p50\", max(extract(epoch FROM r.started_at - q.at)) AS \"Queued max\", percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM r.finished_at - r.started_at)) AS \"Ran p50\", max(extract(epoch FROM r.finished_at - r.started_at)) AS \"Ran max\" FROM agent_runs r LEFT JOIN LATERAL (SELECT max(l.at) AS at FROM audit_log l WHERE l.action IN ('round.opened', 'round.reopened') AND l.detail->>'shift' = r.shift_id::text AND l.detail->>'round' = r.round::text AND l.at <= coalesce(r.started_at, now())) q ON true WHERE r.state = 'finished' AND r.team IN ($$team) AND $$__timeFilter(r.finished_at) GROUP BY 1, 2 ORDER BY 1, 2"
+            }
+          ],
+          "id": 11
+        },
+        {
+          "type": "timeseries",
+          "title": "Worker pods without room, over time",
+          "description": "Worker and sandbox pods the scheduler could not place, per team, over the selected range. Bars that keep coming back mean the Kata nodes are full: see node headroom on Glide · Kata overhead.",
+          "gridPos": {
+            "h": 7,
+            "w": 10,
+            "x": 14,
+            "y": 37
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 0,
+                "fillOpacity": 80,
+                "showPoints": "never",
+                "pointSize": 6,
+                "drawStyle": "bars",
+                "lineInterpolation": "linear",
+                "spanNulls": false,
+                "axisSoftMin": 0,
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                }
+              },
+              "color": {
+                "mode": "palette-classic"
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (team) (label_replace(label_replace(label_replace(kube_pod_status_unschedulable{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}, \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"team\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-([a-z0-9]+)-.+\"), \"role\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-[a-z0-9]+-(.+)-[a-z0-9]{5}-[a-z0-9]{5}\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{team}}"
+            }
+          ],
+          "id": 12
+        }
+      ]
+    }
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: glide-kata
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: boards
+  json: |-
+    {
+      "uid": "glide-kata",
+      "title": "Glide · Kata overhead",
+      "description": "What running Glide's agents inside Kata virtual machines costs compared with plain runc containers: CPU and memory used against what is reserved, node room on the three Kata nodes, and how long a sandbox takes to start. Each panel says what it cannot measure.",
+      "tags": [
+        "board",
+        "glide",
+        "ploeg",
+        "kata"
+      ],
+      "schemaVersion": 39,
+      "editable": true,
+      "graphTooltip": 1,
+      "refresh": "1m",
+      "time": {
+        "from": "now-7d",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "links": [
+        {
+          "title": "Glide · Runs",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/glide-runs",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Glide · Plant",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/glide-plant",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "type": "dashboards",
+          "tags": [
+            "board"
+          ],
+          "title": "Boards",
+          "asDropdown": true,
+          "keepTime": true,
+          "includeVars": false,
+          "icon": "external link",
+          "targetBlank": false,
+          "tooltip": "",
+          "url": ""
+        }
+      ],
+      "templating": {
+        "list": [
+          {
+            "name": "team",
+            "label": "Team",
+            "type": "query",
+            "datasource": {
+              "type": "grafana-postgresql-datasource",
+              "uid": "ploeg-db"
+            },
+            "query": "SELECT DISTINCT team FROM work_items WHERE team <> '' ORDER BY 1",
+            "definition": "SELECT DISTINCT team FROM work_items WHERE team <> '' ORDER BY 1",
+            "multi": true,
+            "includeAll": true,
+            "refresh": 1,
+            "sort": 1,
+            "hide": 0,
+            "current": {
+              "text": "All",
+              "value": "$$__all"
+            },
+            "options": []
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Run pods in this range",
+          "description": "How many Run pods each runtime ran in the selected range. Kata sandboxes are the sbx-ploeg-worker pods: each Run gets its own small virtual machine. runc workers are ordinary containers sharing the node's kernel. The launcher pods Kata teams also start are not counted.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(max by (pod) (label_replace(last_over_time(kube_pod_runtimeclass_name_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range]), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"))) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "kata sandboxes",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "B",
+              "expr": "count(max by (pod) (label_replace(last_over_time(kube_pod_container_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_container=\"worker\", exported_pod=~\"ploeg-worker-($$team)-.+\"}[$$__range]), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"))) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "runc workers",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Kata overhead reserved per pod",
+          "description": "What Kubernetes added to the newest Kata sandbox's reservation on top of its own requests, read from the pod's spec.overhead, which the kata RuntimeClass sets (100m CPU and 160 MiB since 2026-09-29; older sandboxes carried 250m CPU, and the per-pod table shows each pod's own). The scheduler counts it when it looks for room, so a Kata Run needs this much more free space than the same Run on runc.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 6,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no sandbox in range",
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU cores"
+                },
+                "properties": [
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "memory"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max(max by (uid) (last_over_time(kube_pod_overhead_cpu_cores{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range])) and on (uid) topk(1, max by (uid) (last_over_time(kube_pod_created{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range]))))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "CPU cores",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "B",
+              "expr": "max(max by (uid) (last_over_time(kube_pod_overhead_memory_bytes{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range])) and on (uid) topk(1, max by (uid) (last_over_time(kube_pod_created{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range]))))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "memory",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "Kata CPU spent outside the pod",
+          "description": "CPU time Kata's own helper processes (the shim and the hypervisor threads, in the host cgroup /kata_overhead) used, as a share of the CPU time used inside the sandbox pods. This is overhead the pod's own numbers do not show. The memory those helpers hold cannot be measured here: cAdvisor reports zero memory for /kata_overhead because the memory controller is not enabled on it.",
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 12,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no sandbox in range",
+              "unit": "percentunit",
+              "decimals": 1,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(max by (id) (max_over_time(container_cpu_usage_seconds_total{job=\"cadvisor\", namespace=\"ploeg\", id=~\"/kata_overhead/.+\", pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range]))) / sum(max by (pod) (max_over_time(container_cpu_usage_seconds_total{job=\"cadvisor\", namespace=\"ploeg\", container=\"\", id=~\"/kubepods(/[a-z]+)?/pod[^/]+\", pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range])))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "text",
+          "title": "What this board cannot see",
+          "gridPos": {
+            "h": 10,
+            "w": 7,
+            "x": 17,
+            "y": 0
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "- **Kata helper memory.** The shim and hypervisor run in the host cgroup `/kata_overhead`; cAdvisor reports CPU for it but zero memory, because the memory controller is not enabled there. The 160 MiB reserved overhead is a promise, not a measurement.\n- **Containers inside a sandbox.** cAdvisor sees a Kata pod as one virtual machine. Per-container CPU and memory inside the guest would need an exporter inside the sandbox.\n- **Guest memory is host memory.** A Kata pod's working set counts the guest kernel and guest page cache. That is the real cost to the node, but it is not what the agent process itself used.\n- **Which Run a pod served** is known only through the checkpoint a worker writes after cloning; a Run that dies before that has no pod on record. The per-Run join lives on Glide · Runs."
+          },
+          "id": 4
+        },
+        {
+          "type": "table",
+          "title": "kata vs runc per role · this range",
+          "description": "The same Roles side by side on each runtime. Avg CPU cores is CPU time divided by how long the pod lived. Peak memory is the pod cgroup's highest working set: for runc that is the container, for Kata it is the guest virtual machine's memory as the host sees it (guest kernel and page cache included), so it is the fairer cost number, not a bug. Reserved memory is requests plus Kata's overhead. Avg boot is from placement to ready. Only compare rows with several pods; the team plans differ, so a role's work is similar, not identical.",
+          "gridPos": {
+            "h": 6,
+            "w": 17,
+            "x": 0,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "No Run pod in this range."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Runtime"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "kata": {
+                            "text": "kata",
+                            "color": "#56b4e9"
+                          },
+                          "runc": {
+                            "text": "runc",
+                            "color": "#898781"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 90
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Avg CPU cores"
+                },
+                "properties": [
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Avg peak memory"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Max peak memory"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Reserved memory"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Avg scheduling wait"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Avg boot"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "runtime": "Runtime",
+                  "role": "Role",
+                  "Value #A": "Pods",
+                  "Value #B": "Avg CPU cores",
+                  "Value #C": "Avg peak memory",
+                  "Value #D": "Max peak memory",
+                  "Value #E": "Reserved memory",
+                  "Value #F": "Avg scheduling wait",
+                  "Value #G": "Avg boot"
+                },
+                "indexByName": {
+                  "Role": 0,
+                  "Runtime": 1,
+                  "Pods": 2,
+                  "Avg CPU cores": 3,
+                  "Avg peak memory": 4,
+                  "Max peak memory": 5,
+                  "Reserved memory": 6,
+                  "Avg scheduling wait": 7,
+                  "Avg boot": 8
+                }
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count by (runtime, role) (label_replace(label_replace(label_replace((label_replace(max by (exported_pod) (last_over_time(kube_pod_runtimeclass_name_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"kata\", \"\", \"\") or label_replace(max by (exported_pod) (last_over_time(kube_pod_container_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_container=\"worker\", exported_pod=~\"ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"runc\", \"\", \"\")), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"team\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-([a-z0-9]+)-.+\"), \"role\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-[a-z0-9]+-(.+)-[a-z0-9]{5}-[a-z0-9]{5}\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "avg by (runtime, role) (max by (pod) (max_over_time(container_cpu_usage_seconds_total{job=\"cadvisor\", namespace=\"ploeg\", container=\"\", id=~\"/kubepods(/[a-z]+)?/pod[^/]+\", pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range])) / max by (pod) (tlast_over_time(container_cpu_usage_seconds_total{job=\"cadvisor\", namespace=\"ploeg\", container=\"\", id=~\"/kubepods(/[a-z]+)?/pod[^/]+\", pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]) - tfirst_over_time(container_cpu_usage_seconds_total{job=\"cadvisor\", namespace=\"ploeg\", container=\"\", id=~\"/kubepods(/[a-z]+)?/pod[^/]+\", pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]) + 60) * on (pod) group_left (runtime, role) label_replace(label_replace(label_replace((label_replace(max by (exported_pod) (last_over_time(kube_pod_runtimeclass_name_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"kata\", \"\", \"\") or label_replace(max by (exported_pod) (last_over_time(kube_pod_container_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_container=\"worker\", exported_pod=~\"ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"runc\", \"\", \"\")), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"team\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-([a-z0-9]+)-.+\"), \"role\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-[a-z0-9]+-(.+)-[a-z0-9]{5}-[a-z0-9]{5}\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "expr": "avg by (runtime, role) (max by (pod) (max_over_time(container_memory_working_set_bytes{job=\"cadvisor\", namespace=\"ploeg\", container=\"\", id=~\"/kubepods(/[a-z]+)?/pod[^/]+\", pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range])) * on (pod) group_left (runtime, role) label_replace(label_replace(label_replace((label_replace(max by (exported_pod) (last_over_time(kube_pod_runtimeclass_name_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"kata\", \"\", \"\") or label_replace(max by (exported_pod) (last_over_time(kube_pod_container_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_container=\"worker\", exported_pod=~\"ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"runc\", \"\", \"\")), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"team\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-([a-z0-9]+)-.+\"), \"role\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-[a-z0-9]+-(.+)-[a-z0-9]{5}-[a-z0-9]{5}\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "D",
+              "expr": "max by (runtime, role) (max by (pod) (max_over_time(container_memory_working_set_bytes{job=\"cadvisor\", namespace=\"ploeg\", container=\"\", id=~\"/kubepods(/[a-z]+)?/pod[^/]+\", pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range])) * on (pod) group_left (runtime, role) label_replace(label_replace(label_replace((label_replace(max by (exported_pod) (last_over_time(kube_pod_runtimeclass_name_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"kata\", \"\", \"\") or label_replace(max by (exported_pod) (last_over_time(kube_pod_container_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_container=\"worker\", exported_pod=~\"ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"runc\", \"\", \"\")), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"team\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-([a-z0-9]+)-.+\"), \"role\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-[a-z0-9]+-(.+)-[a-z0-9]{5}-[a-z0-9]{5}\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "E",
+              "expr": "avg by (runtime, role) ((max by (pod) (label_replace(sum by (exported_pod) (max_over_time(kube_pod_container_resource_requests{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", resource=\"memory\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range])), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\")) + (max by (pod) (label_replace(max_over_time(kube_pod_overhead_memory_bytes{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\")) or max by (pod) (label_replace(sum by (exported_pod) (max_over_time(kube_pod_container_resource_requests{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", resource=\"memory\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range])), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\")) * 0)) * on (pod) group_left (runtime, role) label_replace(label_replace(label_replace((label_replace(max by (exported_pod) (last_over_time(kube_pod_runtimeclass_name_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"kata\", \"\", \"\") or label_replace(max by (exported_pod) (last_over_time(kube_pod_container_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_container=\"worker\", exported_pod=~\"ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"runc\", \"\", \"\")), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"team\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-([a-z0-9]+)-.+\"), \"role\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-[a-z0-9]+-(.+)-[a-z0-9]{5}-[a-z0-9]{5}\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "F",
+              "expr": "avg by (runtime, role) (max by (pod) (label_replace(last_over_time(kube_pod_status_scheduled_time{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]) - last_over_time(kube_pod_created{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\")) * on (pod) group_left (runtime, role) label_replace(label_replace(label_replace((label_replace(max by (exported_pod) (last_over_time(kube_pod_runtimeclass_name_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"kata\", \"\", \"\") or label_replace(max by (exported_pod) (last_over_time(kube_pod_container_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_container=\"worker\", exported_pod=~\"ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"runc\", \"\", \"\")), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"team\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-([a-z0-9]+)-.+\"), \"role\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-[a-z0-9]+-(.+)-[a-z0-9]{5}-[a-z0-9]{5}\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "G",
+              "expr": "avg by (runtime, role) (max by (pod) (label_replace(last_over_time(kube_pod_status_ready_time{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]) - last_over_time(kube_pod_status_scheduled_time{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\")) * on (pod) group_left (runtime, role) label_replace(label_replace(label_replace((label_replace(max by (exported_pod) (last_over_time(kube_pod_runtimeclass_name_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"kata\", \"\", \"\") or label_replace(max by (exported_pod) (last_over_time(kube_pod_container_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_container=\"worker\", exported_pod=~\"ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"runc\", \"\", \"\")), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"team\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-([a-z0-9]+)-.+\"), \"role\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-[a-z0-9]+-(.+)-[a-z0-9]{5}-[a-z0-9]{5}\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 5
+        },
+        {
+          "type": "table",
+          "title": "Kata node headroom, right now",
+          "description": "The three nodes that can run Kata sandboxes. Allocatable is what Kubernetes may hand out. Reserved is the sum of requests of every pending or running pod on the node, plus Kata overhead: this, not real use, decides whether a new pod fits. Used is what the whole machine uses now, system services included. Kata Runs that still fit divides the unreserved room by one Kata Run (100m CPU and 768 MiB requested, plus 100m and 160 MiB overhead, from the Ploeg HelmRelease on 2026-09-29) and takes the smaller of CPU and memory. Zero on all three means the next sandbox waits.",
+          "gridPos": {
+            "h": 6,
+            "w": 24,
+            "x": 0,
+            "y": 11
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU allocatable"
+                },
+                "properties": [
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU reserved"
+                },
+                "properties": [
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU used"
+                },
+                "properties": [
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Memory allocatable"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Memory reserved"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Memory used"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Kata Runs that still fit"
+                },
+                "properties": [
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#d55e00",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        },
+                        {
+                          "color": "#898781",
+                          "value": 2
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "node": "Node",
+                  "Value #A": "CPU allocatable",
+                  "Value #B": "CPU reserved",
+                  "Value #C": "CPU used",
+                  "Value #D": "Memory allocatable",
+                  "Value #E": "Memory reserved",
+                  "Value #F": "Memory used",
+                  "Value #G": "Kata Runs that still fit"
+                },
+                "indexByName": {
+                  "Node": 0,
+                  "CPU allocatable": 1,
+                  "CPU reserved": 2,
+                  "CPU used": 3,
+                  "Memory allocatable": 4,
+                  "Memory reserved": 5,
+                  "Memory used": 6,
+                  "Kata Runs that still fit": 7
+                }
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (node) (kube_node_status_allocatable{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\", resource=\"cpu\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "(sum by (node) (kube_pod_container_resource_requests{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\", resource=\"cpu\"} * on (uid) group_left () (max by (uid) (kube_pod_status_phase{job=\"kube-state-metrics\", phase=~\"Pending|Running\"}) == 1)) + (sum by (node) (kube_pod_overhead_cpu_cores{job=\"kube-state-metrics\"} * on (uid) group_left (node) max by (uid, node) (kube_pod_info{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\"}) * on (uid) group_left () (max by (uid) (kube_pod_status_phase{job=\"kube-state-metrics\", phase=~\"Pending|Running\"}) == 1)) or sum by (node) (kube_pod_container_resource_requests{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\", resource=\"cpu\"} * on (uid) group_left () (max by (uid) (kube_pod_status_phase{job=\"kube-state-metrics\", phase=~\"Pending|Running\"}) == 1)) * 0))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "expr": "sum by (node) (rate(container_cpu_usage_seconds_total{job=\"cadvisor\", node=~\"worker-1|worker-2|fringe-workstation\", id=\"/\"}[5m]))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "D",
+              "expr": "max by (node) (kube_node_status_allocatable{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\", resource=\"memory\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "E",
+              "expr": "(sum by (node) (kube_pod_container_resource_requests{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\", resource=\"memory\"} * on (uid) group_left () (max by (uid) (kube_pod_status_phase{job=\"kube-state-metrics\", phase=~\"Pending|Running\"}) == 1)) + (sum by (node) (kube_pod_overhead_memory_bytes{job=\"kube-state-metrics\"} * on (uid) group_left (node) max by (uid, node) (kube_pod_info{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\"}) * on (uid) group_left () (max by (uid) (kube_pod_status_phase{job=\"kube-state-metrics\", phase=~\"Pending|Running\"}) == 1)) or sum by (node) (kube_pod_container_resource_requests{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\", resource=\"memory\"} * on (uid) group_left () (max by (uid) (kube_pod_status_phase{job=\"kube-state-metrics\", phase=~\"Pending|Running\"}) == 1)) * 0))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "F",
+              "expr": "sum by (node) (container_memory_working_set_bytes{job=\"cadvisor\", node=~\"worker-1|worker-2|fringe-workstation\", id=\"/\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "G",
+              "expr": "(floor(clamp_min((max by (node) (kube_node_status_allocatable{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\", resource=\"cpu\"}) - (sum by (node) (kube_pod_container_resource_requests{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\", resource=\"cpu\"} * on (uid) group_left () (max by (uid) (kube_pod_status_phase{job=\"kube-state-metrics\", phase=~\"Pending|Running\"}) == 1)) + (sum by (node) (kube_pod_overhead_cpu_cores{job=\"kube-state-metrics\"} * on (uid) group_left (node) max by (uid, node) (kube_pod_info{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\"}) * on (uid) group_left () (max by (uid) (kube_pod_status_phase{job=\"kube-state-metrics\", phase=~\"Pending|Running\"}) == 1)) or sum by (node) (kube_pod_container_resource_requests{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\", resource=\"cpu\"} * on (uid) group_left () (max by (uid) (kube_pod_status_phase{job=\"kube-state-metrics\", phase=~\"Pending|Running\"}) == 1)) * 0))) / 0.2, 0)) <= floor(clamp_min((max by (node) (kube_node_status_allocatable{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\", resource=\"memory\"}) - (sum by (node) (kube_pod_container_resource_requests{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\", resource=\"memory\"} * on (uid) group_left () (max by (uid) (kube_pod_status_phase{job=\"kube-state-metrics\", phase=~\"Pending|Running\"}) == 1)) + (sum by (node) (kube_pod_overhead_memory_bytes{job=\"kube-state-metrics\"} * on (uid) group_left (node) max by (uid, node) (kube_pod_info{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\"}) * on (uid) group_left () (max by (uid) (kube_pod_status_phase{job=\"kube-state-metrics\", phase=~\"Pending|Running\"}) == 1)) or sum by (node) (kube_pod_container_resource_requests{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\", resource=\"memory\"} * on (uid) group_left () (max by (uid) (kube_pod_status_phase{job=\"kube-state-metrics\", phase=~\"Pending|Running\"}) == 1)) * 0))) / 973078528, 0))) or floor(clamp_min((max by (node) (kube_node_status_allocatable{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\", resource=\"memory\"}) - (sum by (node) (kube_pod_container_resource_requests{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\", resource=\"memory\"} * on (uid) group_left () (max by (uid) (kube_pod_status_phase{job=\"kube-state-metrics\", phase=~\"Pending|Running\"}) == 1)) + (sum by (node) (kube_pod_overhead_memory_bytes{job=\"kube-state-metrics\"} * on (uid) group_left (node) max by (uid, node) (kube_pod_info{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\"}) * on (uid) group_left () (max by (uid) (kube_pod_status_phase{job=\"kube-state-metrics\", phase=~\"Pending|Running\"}) == 1)) or sum by (node) (kube_pod_container_resource_requests{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\", resource=\"memory\"} * on (uid) group_left () (max by (uid) (kube_pod_status_phase{job=\"kube-state-metrics\", phase=~\"Pending|Running\"}) == 1)) * 0))) / 973078528, 0))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 6
+        },
+        {
+          "type": "timeseries",
+          "title": "Kata nodes: share of allocatable reserved",
+          "description": "How full each Kata node's reservation book was over time (requests of pending and running pods, without Kata overhead, divided by allocatable). Near 100 % a new sandbox cannot be placed even if the machine is idle.",
+          "gridPos": {
+            "h": 8,
+            "w": 10,
+            "x": 0,
+            "y": 17
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "pointSize": 6,
+                "drawStyle": "line",
+                "lineInterpolation": "linear",
+                "spanNulls": false,
+                "axisSoftMin": 0,
+                "thresholdsStyle": {
+                  "mode": "line"
+                }
+              },
+              "color": {
+                "mode": "palette-classic"
+              },
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 0.85
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 0.95
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (node) (kube_pod_container_resource_requests{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\", resource=\"memory\"} * on (uid) group_left () (max by (uid) (kube_pod_status_phase{job=\"kube-state-metrics\", phase=~\"Pending|Running\"}) == 1)) / max by (node) (kube_node_status_allocatable{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\", resource=\"memory\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{node}} memory"
+            },
+            {
+              "refId": "B",
+              "expr": "sum by (node) (kube_pod_container_resource_requests{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\", resource=\"cpu\"} * on (uid) group_left () (max by (uid) (kube_pod_status_phase{job=\"kube-state-metrics\", phase=~\"Pending|Running\"}) == 1)) / max by (node) (kube_node_status_allocatable{job=\"kube-state-metrics\", node=~\"worker-1|worker-2|fringe-workstation\", resource=\"cpu\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{node}} CPU"
+            }
+          ],
+          "id": 7
+        },
+        {
+          "type": "table",
+          "title": "Sandbox start, step by step",
+          "description": "Each Kata Run starts in three steps. The launcher pod starts on runc and asks the agent-sandbox controller for a sandbox: Sandbox requested is the gap until the sandbox pod exists. Waited for a node is how long the scheduler needed to find room for it. VM boot to ready is from placement until the pod is ready: pulling the image and starting the Kata virtual machine. Was without room is yes if the scheduler reported no node with room at any point in the range. A missing launcher (blank Sandbox requested) means the launcher pod was already cleaned up.",
+          "gridPos": {
+            "h": 8,
+            "w": 14,
+            "x": 10,
+            "y": 17
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "No sandbox in this range."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Launcher created"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeFromNow"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 130
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Sandbox requested"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Waited for a node"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 60
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 600
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "VM boot to ready"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Was without room"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "0": {
+                            "text": "no"
+                          },
+                          "1": {
+                            "text": "yes"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "Value #B": true
+                },
+                "renameByName": {
+                  "run_pod": "Run pod",
+                  "node": "Node",
+                  "Value #A": "Launcher created",
+                  "Value #C": "Sandbox requested",
+                  "Value #D": "Waited for a node",
+                  "Value #E": "VM boot to ready",
+                  "Value #F": "Was without room"
+                },
+                "indexByName": {
+                  "Launcher created": 0,
+                  "Run pod": 1,
+                  "Node": 2,
+                  "Sandbox requested": 3,
+                  "Waited for a node": 4,
+                  "VM boot to ready": 5,
+                  "Was without room": 6
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "Launcher created",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (run_pod) (label_replace(last_over_time(kube_pod_created{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"ploeg-worker-($$team)-.+\"}[$$__range]), \"run_pod\", \"$$1\", \"exported_pod\", \"(?:sbx-)?(.+)\")) * 1000",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "max by (run_pod, node) (label_replace(last_over_time(kube_pod_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range]), \"run_pod\", \"$$1\", \"exported_pod\", \"sbx-(.+)\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "expr": "max by (run_pod) (label_replace(last_over_time(kube_pod_created{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range]), \"run_pod\", \"$$1\", \"exported_pod\", \"(?:sbx-)?(.+)\")) - max by (run_pod) (label_replace(last_over_time(kube_pod_created{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"ploeg-worker-($$team)-.+\"}[$$__range]), \"run_pod\", \"$$1\", \"exported_pod\", \"(?:sbx-)?(.+)\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "D",
+              "expr": "max by (run_pod) (label_replace(last_over_time(kube_pod_status_scheduled_time{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range]), \"run_pod\", \"$$1\", \"exported_pod\", \"(?:sbx-)?(.+)\")) - max by (run_pod) (label_replace(last_over_time(kube_pod_created{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range]), \"run_pod\", \"$$1\", \"exported_pod\", \"(?:sbx-)?(.+)\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "E",
+              "expr": "max by (run_pod) (label_replace(last_over_time(kube_pod_status_ready_time{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range]), \"run_pod\", \"$$1\", \"exported_pod\", \"(?:sbx-)?(.+)\")) - max by (run_pod) (label_replace(last_over_time(kube_pod_status_scheduled_time{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range]), \"run_pod\", \"$$1\", \"exported_pod\", \"(?:sbx-)?(.+)\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "F",
+              "expr": "max by (run_pod) (label_replace(max_over_time(kube_pod_status_unschedulable{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range]), \"run_pod\", \"$$1\", \"exported_pod\", \"(?:sbx-)?(.+)\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 8
+        },
+        {
+          "type": "table",
+          "title": "Every Run pod · used vs reserved",
+          "description": "One row per Run pod in the range. CPU used is average cores over the pod's life; CPU reserved is its request plus Kata's overhead. Peak memory against Memory reserved shows whether the reservation fits: above 100 % the pod used more than it reserved (allowed up to its limit, but the node was promised less). Kata helper CPU is seconds the Kata shim and hypervisor used outside the pod. What is not visible: memory of those helpers, and per-container numbers inside a Kata sandbox (cAdvisor sees the virtual machine as one pod).",
+          "gridPos": {
+            "h": 12,
+            "w": 24,
+            "x": 0,
+            "y": 25
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "No Run pod in this range."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Created"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeFromNow"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 110
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Runtime"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "kata": {
+                            "text": "kata",
+                            "color": "#56b4e9"
+                          },
+                          "runc": {
+                            "text": "runc",
+                            "color": "#898781"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 80
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU used"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "none"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 85
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU reserved"
+                },
+                "properties": [
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 100
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Peak memory"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 105
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Memory reserved"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 125
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Peak / reserved"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "gauge",
+                      "mode": "basic",
+                      "valueDisplayMode": "text"
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#3987e5"
+                    }
+                  },
+                  {
+                    "id": "min",
+                    "value": 0
+                  },
+                  {
+                    "id": "max",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Kata helper CPU"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 120
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "Value #A": true,
+                  "Value #B": true
+                },
+                "renameByName": {
+                  "pod": "Pod",
+                  "runtime": "Runtime",
+                  "team": "Team",
+                  "role": "Role",
+                  "node": "Node",
+                  "Value #C": "CPU used",
+                  "Value #D": "CPU reserved",
+                  "Value #E": "Peak memory",
+                  "Value #F": "Memory reserved",
+                  "Value #G": "Peak / reserved",
+                  "Value #H": "Kata helper CPU",
+                  "Value #I": "Created"
+                },
+                "indexByName": {
+                  "Created": 0,
+                  "Pod": 1,
+                  "Team": 2,
+                  "Role": 3,
+                  "Runtime": 4,
+                  "Node": 5,
+                  "CPU used": 6,
+                  "CPU reserved": 7,
+                  "Peak memory": 8,
+                  "Memory reserved": 9,
+                  "Peak / reserved": 10,
+                  "Kata helper CPU": 11
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "Created",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (pod, runtime, team, role) (label_replace(label_replace(label_replace((label_replace(max by (exported_pod) (last_over_time(kube_pod_runtimeclass_name_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"kata\", \"\", \"\") or label_replace(max by (exported_pod) (last_over_time(kube_pod_container_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_container=\"worker\", exported_pod=~\"ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"runc\", \"\", \"\")), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"team\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-([a-z0-9]+)-.+\"), \"role\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-[a-z0-9]+-(.+)-[a-z0-9]{5}-[a-z0-9]{5}\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "(max by (pod, node) (label_replace(last_over_time(kube_pod_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"))) and on (pod) max by (pod) (label_replace(label_replace(label_replace((label_replace(max by (exported_pod) (last_over_time(kube_pod_runtimeclass_name_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"kata\", \"\", \"\") or label_replace(max by (exported_pod) (last_over_time(kube_pod_container_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_container=\"worker\", exported_pod=~\"ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"runc\", \"\", \"\")), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"team\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-([a-z0-9]+)-.+\"), \"role\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-[a-z0-9]+-(.+)-[a-z0-9]{5}-[a-z0-9]{5}\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "expr": "(max by (pod) (max_over_time(container_cpu_usage_seconds_total{job=\"cadvisor\", namespace=\"ploeg\", container=\"\", id=~\"/kubepods(/[a-z]+)?/pod[^/]+\", pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range])) / max by (pod) (tlast_over_time(container_cpu_usage_seconds_total{job=\"cadvisor\", namespace=\"ploeg\", container=\"\", id=~\"/kubepods(/[a-z]+)?/pod[^/]+\", pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]) - tfirst_over_time(container_cpu_usage_seconds_total{job=\"cadvisor\", namespace=\"ploeg\", container=\"\", id=~\"/kubepods(/[a-z]+)?/pod[^/]+\", pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]) + 60)) and on (pod) max by (pod) (label_replace(label_replace(label_replace((label_replace(max by (exported_pod) (last_over_time(kube_pod_runtimeclass_name_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"kata\", \"\", \"\") or label_replace(max by (exported_pod) (last_over_time(kube_pod_container_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_container=\"worker\", exported_pod=~\"ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"runc\", \"\", \"\")), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"team\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-([a-z0-9]+)-.+\"), \"role\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-[a-z0-9]+-(.+)-[a-z0-9]{5}-[a-z0-9]{5}\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "D",
+              "expr": "(max by (pod) (label_replace(sum by (exported_pod) (max_over_time(kube_pod_container_resource_requests{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", resource=\"cpu\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range])), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\")) + (max by (pod) (label_replace(max_over_time(kube_pod_overhead_cpu_cores{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\")) or max by (pod) (label_replace(sum by (exported_pod) (max_over_time(kube_pod_container_resource_requests{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", resource=\"cpu\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range])), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\")) * 0)) and on (pod) max by (pod) (label_replace(label_replace(label_replace((label_replace(max by (exported_pod) (last_over_time(kube_pod_runtimeclass_name_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"kata\", \"\", \"\") or label_replace(max by (exported_pod) (last_over_time(kube_pod_container_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_container=\"worker\", exported_pod=~\"ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"runc\", \"\", \"\")), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"team\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-([a-z0-9]+)-.+\"), \"role\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-[a-z0-9]+-(.+)-[a-z0-9]{5}-[a-z0-9]{5}\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "E",
+              "expr": "(max by (pod) (max_over_time(container_memory_working_set_bytes{job=\"cadvisor\", namespace=\"ploeg\", container=\"\", id=~\"/kubepods(/[a-z]+)?/pod[^/]+\", pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]))) and on (pod) max by (pod) (label_replace(label_replace(label_replace((label_replace(max by (exported_pod) (last_over_time(kube_pod_runtimeclass_name_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"kata\", \"\", \"\") or label_replace(max by (exported_pod) (last_over_time(kube_pod_container_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_container=\"worker\", exported_pod=~\"ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"runc\", \"\", \"\")), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"team\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-([a-z0-9]+)-.+\"), \"role\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-[a-z0-9]+-(.+)-[a-z0-9]{5}-[a-z0-9]{5}\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "F",
+              "expr": "(max by (pod) (label_replace(sum by (exported_pod) (max_over_time(kube_pod_container_resource_requests{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", resource=\"memory\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range])), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\")) + (max by (pod) (label_replace(max_over_time(kube_pod_overhead_memory_bytes{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\")) or max by (pod) (label_replace(sum by (exported_pod) (max_over_time(kube_pod_container_resource_requests{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", resource=\"memory\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range])), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\")) * 0)) and on (pod) max by (pod) (label_replace(label_replace(label_replace((label_replace(max by (exported_pod) (last_over_time(kube_pod_runtimeclass_name_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"kata\", \"\", \"\") or label_replace(max by (exported_pod) (last_over_time(kube_pod_container_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_container=\"worker\", exported_pod=~\"ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"runc\", \"\", \"\")), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"team\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-([a-z0-9]+)-.+\"), \"role\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-[a-z0-9]+-(.+)-[a-z0-9]{5}-[a-z0-9]{5}\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "G",
+              "expr": "((max by (pod) (max_over_time(container_memory_working_set_bytes{job=\"cadvisor\", namespace=\"ploeg\", container=\"\", id=~\"/kubepods(/[a-z]+)?/pod[^/]+\", pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]))) / (max by (pod) (label_replace(sum by (exported_pod) (max_over_time(kube_pod_container_resource_requests{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", resource=\"memory\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range])), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\")) + (max by (pod) (label_replace(max_over_time(kube_pod_overhead_memory_bytes{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\")) or max by (pod) (label_replace(sum by (exported_pod) (max_over_time(kube_pod_container_resource_requests{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", resource=\"memory\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range])), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\")) * 0))) and on (pod) max by (pod) (label_replace(label_replace(label_replace((label_replace(max by (exported_pod) (last_over_time(kube_pod_runtimeclass_name_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"kata\", \"\", \"\") or label_replace(max by (exported_pod) (last_over_time(kube_pod_container_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_container=\"worker\", exported_pod=~\"ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"runc\", \"\", \"\")), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"team\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-([a-z0-9]+)-.+\"), \"role\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-[a-z0-9]+-(.+)-[a-z0-9]{5}-[a-z0-9]{5}\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "H",
+              "expr": "max by (pod) (max_over_time(container_cpu_usage_seconds_total{job=\"cadvisor\", namespace=\"ploeg\", id=~\"/kata_overhead/.+\", pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range]))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "I",
+              "expr": "(max by (pod) (label_replace(last_over_time(kube_pod_created{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]) * 1000, \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"))) and on (pod) max by (pod) (label_replace(label_replace(label_replace((label_replace(max by (exported_pod) (last_over_time(kube_pod_runtimeclass_name_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"kata\", \"\", \"\") or label_replace(max by (exported_pod) (last_over_time(kube_pod_container_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_container=\"worker\", exported_pod=~\"ploeg-worker-($$team)-.+\"}[$$__range])), \"runtime\", \"runc\", \"\", \"\")), \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"team\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-([a-z0-9]+)-.+\"), \"role\", \"$$1\", \"pod\", \"(?:sbx-)?ploeg-worker-[a-z0-9]+-(.+)-[a-z0-9]{5}-[a-z0-9]{5}\"))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 9
+        }
+      ]
+    }

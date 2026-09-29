@@ -323,7 +323,8 @@ def row_native():
     ]
 
 
-LINKS = [link("Glide Loop", "/d/glide-loop"), link("Glide docs", GLIDE_DOCS, icon="doc", blank=True),
+LINKS = [link("Glide Loop", "/d/glide-loop"), link("Glide · Runs", "/d/glide-runs"),
+         link("Glide · Kata overhead", "/d/glide-kata"), link("Glide docs", GLIDE_DOCS, icon="doc", blank=True),
          tag_links(["board"], "Boards")]
 
 
