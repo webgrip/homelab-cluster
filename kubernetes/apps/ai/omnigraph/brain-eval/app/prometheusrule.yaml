@@ -133,21 +133,82 @@ spec:
             owner: platform
             service: omnigraph
           annotations:
-            summary: "An eval question from the private brain eval set appears in the public homelab-cluster repo (ai/omnigraph-brain-eval-retrieval)"
+            summary: "An eval question or key fact from the private brain eval set appears in the public homelab-cluster repo (ai/omnigraph-brain-eval-retrieval)"
             description: |
               What's happening:
-              - The nightly retrieval run clones the public webgrip/homelab-cluster repo and looks for any eight consecutive words of an eval question (Obsidian, forge and entity questions; temporal templates are skipped). brain_eval_public_repo_leaks counts the cases it found.
+              - The nightly retrieval run clones the public webgrip/homelab-cluster repo and looks for any eight consecutive words (or the whole phrase, at 5 to 7 words) of an eval question or key fact. Temporal templates are skipped, and so are the key facts of cases whose source document is in this repo, since those quote it. brain_eval_public_repo_leaks counts the cases it found.
 
               Impact/risk:
               - homelab-cluster is mirrored to public GitHub, so a question found there is published: it reveals what Ryan asks his own notes and can hint at note content.
               - A question the tuned pipeline has seen verbatim also stops being a fair test case.
 
               Likely causes:
-              - A question, answer or result was pasted into a doc, ticket template, test fixture or commit in this repo.
-              - A drafted question happens to repeat a sentence that is public (rare: questions are paraphrased and checked against their source).
+              - A question, key fact, answer or result was pasted into a doc, ticket template, test fixture or commit in this repo.
+              - A drafted question or key fact repeats a sentence that is public anyway, for example a key fact quoting a public doc of another repo that this repo also quotes; check the case's source before treating it as a leak.
 
               First actions:
               - kubectl -n ai logs job/<latest omnigraph-brain-eval-retrieval job> -c eval (the "public repo leak check" line has the count, never the text)
               - Search this repo for the question text from the private eval repo on a trusted machine, remove it in a commit, and rewrite or drop the case in ryangr0/brain-eval
               - Treat a real leak as published: GitHub keeps history, so rotate the case rather than only deleting the text
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#brain-eval"
+        - alert: OmnigraphBrainEvalRepoNotPrivate
+          expr: |
+            last_over_time(brain_eval_repo_private[3d]) == 0
+          for: 1m
+          labels:
+            severity: critical
+            owner: platform
+            service: omnigraph
+          annotations:
+            summary: "The private brain eval repo ryangr0/brain-eval can be read without signing in (ai/omnigraph-brain-eval)"
+            description: |
+              What's happening:
+              - Before a brain eval job pushes to the eval repo it reads GET /api/v1/repos/ryangr0/brain-eval on Forgejo without credentials. A private repo answers 404; this one answered 200, so anyone can read it. The job stopped before pushing and marked the run invalid.
+
+              Impact/risk:
+              - The repo holds Ryan's own eval questions, key facts taken from his notes, and every per-question result. If it is public, all of that is published, and Forgejo may push-mirror it onward.
+              - Every brain eval job stays blocked until the repo is private again, so retrieval and answer scores go stale.
+
+              Likely causes:
+              - The repo was created without "Make repository private", or its visibility was changed in Settings.
+              - The owner account's visibility or the instance's anonymous-access settings changed.
+
+              First actions:
+              - In Forgejo, ryangr0/brain-eval, Settings, Danger zone: make the repository private, then check Settings, Mirror settings for any push mirror and remove it.
+              - Treat the contents as published: check the access log for anonymous reads since it went public, and rotate affected cases.
+              - Re-run a job: kubectl -n ai create job --from=cronjob/omnigraph-brain-eval-retrieval omnigraph-brain-eval-retrieval-manual (its privacy-store log must say "private": true)
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#brain-eval"
+        - alert: OmnigraphBrainEvalStoreNotBackedUp
+          expr: |
+            (
+              time() - max(longhorn_volume_last_backup_at{pvc_namespace="ai", pvc="omnigraph-brain-eval-store"}) > 36 * 3600
+              or
+              absent_over_time(longhorn_volume_last_backup_at{pvc_namespace="ai", pvc="omnigraph-brain-eval-store"}[1h])
+            )
+            and on()
+            last_over_time(brain_eval_store_provisional[3d]) == 1
+          for: 1h
+          labels:
+            severity: warning
+            owner: platform
+            service: omnigraph
+          annotations:
+            summary: "The provisional brain eval store has no Longhorn backup from the last 36h (ai/omnigraph-brain-eval-store)"
+            description: |
+              What's happening:
+              - Until the private repo ryangr0/brain-eval exists, the eval set, its candidate pool and the results history live only in a bare git repo on the PVC omnigraph-brain-eval-store. The volume is attached only while a job runs, so it is backed up by its own Longhorn RecurringJob brain-eval-store-backup at 03:15 UTC, while the CronJob omnigraph-brain-eval-store-backup-window holds it attached from 03:05 to 03:30 UTC. No backup has completed for 36 hours.
+
+              Impact/risk:
+              - Losing the volume's replicas loses the only copy of the drafted cases and every stored result.
+
+              Likely causes:
+              - The backup target is failing: Garage full or unreachable (the Backup CR is in state Error with "failed to put object").
+              - The backup-window job did not run or started too late, so the volume was detached at 03:15 and Longhorn skipped it.
+              - The Volume CR lost its recurring-job-group.longhorn.io/brain-eval-store label (Kyverno policy longhorn-backup-enrollment, rule enrol-brain-eval-store).
+
+              First actions:
+              - kubectl -n longhorn-system get backups.longhorn.io -l backup-volume=<volume of ai/omnigraph-brain-eval-store> (state and error)
+              - kubectl -n ai get jobs -l app.kubernetes.io/name=omnigraph-brain-eval-store-backup-window
+              - Take one now: kubectl -n ai create job --from=cronjob/omnigraph-brain-eval-store-backup-window omnigraph-brain-eval-store-backup-window-manual, then kubectl -n longhorn-system create job --from=cronjob/brain-eval-store-backup brain-eval-store-backup-manual
+              - The lasting fix is the private repo: once the store moves into ryangr0/brain-eval, Forgejo's own backup covers it and this alert stops applying.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#the-eval-store"

@@ -1,12 +1,19 @@
 #!/bin/sh
 set -eu
-cd /work/repo
-if [ "$(cat /work/store-kind)" = forgejo ]; then
-  cp /run/secrets/deploy-key/privateKey /tmp/deploy-key
-  chmod 0600 /tmp/deploy-key
-  export GIT_SSH_COMMAND="ssh -i /tmp/deploy-key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/etc/brain-eval/known_hosts"
+WORK="${EVAL_WORK_DIR:-/work}"
+SCRATCH="${TMPDIR:-/tmp}"
+DEPLOY_KEY="${EVAL_DEPLOY_KEY_FILE:-/run/secrets/deploy-key/privateKey}"
+cd "$WORK/repo"
+if [ "$(cat "$WORK/store-kind")" = forgejo ]; then
+  if [ "$(cat "$WORK/privacy-publish" 2> /dev/null || true)" != private ]; then
+    echo "eval publish: refusing to push to the Forgejo repo: no anonymous read just before this proved it private" >&2
+    exit 1
+  fi
+  cp "$DEPLOY_KEY" "$SCRATCH/deploy-key"
+  chmod 0600 "$SCRATCH/deploy-key"
+  export GIT_SSH_COMMAND="ssh -i $SCRATCH/deploy-key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/etc/brain-eval/known_hosts"
 fi
-if [ ! -f /work/out/commit-message ]; then
+if [ ! -f "$WORK/out/commit-message" ]; then
   echo "eval publish: the run wrote no results"
   exit 0
 fi
@@ -16,11 +23,11 @@ if git diff --cached --quiet; then
   exit 0
 fi
 files=$(git diff --cached --name-only | wc -l | tr -d ' ')
-git -c user.name=brain-eval -c user.email=brain-eval@homelab.invalid -c commit.gpgsign=false commit -q -F /work/out/commit-message
+git -c user.name=brain-eval -c user.email=brain-eval@homelab.invalid -c commit.gpgsign=false commit -q -F "$WORK/out/commit-message"
 attempt=1
 while [ "$attempt" -le 4 ]; do
   if timeout 120 git push -q origin HEAD:refs/heads/main; then
-    echo "eval publish: commit $(git rev-parse --short HEAD) with $files files to the $(cat /work/store-kind) store"
+    echo "eval publish: commit $(git rev-parse --short HEAD) with $files files to the $(cat "$WORK/store-kind") store"
     exit 0
   fi
   if git rev-parse -q --verify refs/remotes/origin/main > /dev/null || git ls-remote --exit-code origin refs/heads/main > /dev/null 2>&1; then

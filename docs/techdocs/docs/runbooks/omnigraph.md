@@ -490,10 +490,11 @@ The brain retrieval work ([RFC](../rfc/rfc-brain-retrieval.md)) ships a change o
 | `omnigraph-brain-eval-candidates` | manual | Drafts about 60 questions from sampled sources and cuts them to 36 provisional cases | about USD 1 |
 | `omnigraph-brain-eval-experiment` | manual | E1: raw versus `type:`-prefixed vectors over each dev case's candidate pool, in memory | under USD 0.50 |
 | `omnigraph-brain-eval-smoke` | manual | The whole path on public synthetic questions about this repo's runbooks, writing nothing: a retrieval run with a scratch case whose slug is renamed (its log must say `"stale": 1`), then the judge's control pair and B0 through the bridge. Run it after a LiteLLM or Omnigraph upgrade | under USD 0.10 |
+| `omnigraph-brain-eval-store-backup-window` | 03:05 UTC nightly | Holds the eval store volume attached until 03:30 UTC so the Longhorn RecurringJob `brain-eval-store-backup` (03:15 UTC) can back it up; see [the eval store](#the-eval-store) | USD 0 |
 
 Run one by hand with `kubectl -n ai create job --from=cronjob/<name> <name>-manual`.
 
-Each pod runs four containers in order: `store` clones the eval repo, `eval` runs the harness, `publish` commits the results, and `report` pushes the aggregates to `vmagent-vmagent.observability:8429` with `job="omnigraph-brain-eval"` and stamps `brain_eval_last_success_timestamp_seconds{mode}`. A run that fails part way stamps nothing, so staleness means "no stored result".
+Each eval pod runs its containers in order: `privacy-store` proves the eval repo private (below), `store` clones it, `eval` runs the harness, `privacy-publish` proves it private again, `publish` commits the results, and `report` pushes the aggregates to `vmagent-vmagent.observability:8429` with `job="omnigraph-brain-eval"` and stamps `brain_eval_last_success_timestamp_seconds{mode}`. The retrieval pod also clones this public repo (`public-repo`) for the leak check. A run that fails part way stamps nothing, so staleness means "no stored result". Finished Jobs are deleted after a day (`ttlSecondsAfterFinished`), so a failed one raises `KubeJobFailed` for at most that long.
 
 **Answer mode waits for VIK-1403.** LiteLLM 1.102.1 keeps every MCP tool call's arguments in its spend log for 90 days, so an answer run would copy every eval question into `litellm-db`. The harness refuses answer mode on real cases unless the pod sets `BRAIN_EVAL_MCP_ARGUMENTS_REDACTED=true`, and the answer CronJob stays suspended. The control pair and `--synthetic` runs (public questions about this repo's runbooks) are allowed.
 
@@ -513,8 +514,12 @@ Each pod runs four containers in order: `store` clones the eval repo, `eval` run
 The jobs read and write a git repository with the layout the repo README describes (`cases/`, `candidates/`, `calibration/`, `results/`).
 
 - When `ssh://git@forgejo-ssh.forgejo.svc.cluster.local/ryangr0/brain-eval.git` answers with the deploy key, that repo is the store.
-- Until then the jobs use a **provisional in-cluster store**: a bare repository on the PVC `omnigraph-brain-eval-store` (Longhorn, enrolled in the `gitops-backup` job). `brain_eval_store_provisional` is 1.
+- Until then the jobs use a **provisional in-cluster store**: a bare repository on the PVC `omnigraph-brain-eval-store`. `brain_eval_store_provisional` is 1.
 - The first run that reaches an empty Forgejo repo pushes every branch of the provisional store into it and writes a marker on the PVC. From then on an unreachable repo fails the run instead of silently writing to the old store.
+
+**Privacy gate.** A deploy key works on a public repo too, so the key alone proves nothing. Before `store` may use the Forgejo repo, and again right before every `publish`, a `repo-privacy` container reads `GET /api/v1/repos/ryangr0/brain-eval` on `forgejo-http:3000` without credentials. Only a 404 counts as private: it writes the verdict file that `store.sh` and `publish.sh` require before they touch the remote, and pushes `brain_eval_repo_private 1`. A 200 (anyone can read the repo) pushes `brain_eval_repo_private 0` and `brain_eval_run_valid 0` and stops the pod, which raises `OmnigraphBrainEvalRepoNotPrivate` (critical). Any other answer, including no connection, also stops the pod and marks the run invalid, because privacy could not be proven. A missing repo answers 404 as well, which is harmless: nothing is pushed until the deploy key reaches it.
+
+**Backup of the provisional store.** Longhorn's `gitops-backup` job skips detached volumes (`allow-recurring-job-while-volume-detached` is false), and this volume is attached only while a job runs, so the `gitops-backup` enrolment alone never produced a backup. The volume therefore has its own RecurringJob, `brain-eval-store-backup` (task `backup`, 03:15 UTC, retain 14, group `brain-eval-store` stamped by the Kyverno rule `enrol-brain-eval-store`), and the CronJob `omnigraph-brain-eval-store-backup-window` mounts it read-only from 03:05 to 03:30 UTC so it is attached when that job fires. Both run in UTC, so daylight saving never moves them apart; a manual eval job started in that window on another node waits for the volume. `OmnigraphBrainEvalStoreNotBackedUp` fires while the store is provisional and has no backup from the last 36 hours. Once the store has moved to Forgejo, Forgejo's own backup covers it.
 
 **Setup (Ryan).** Create the repo, then give the jobs write access:
 
@@ -526,7 +531,7 @@ The jobs read and write a git repository with the layout the repo README describ
    bao kv get -field=public_key secret/omnigraph/brain-eval-deploy-key
    ```
 
-3. Run the retrieval job by hand. Its `store` log says `moved the provisional in-cluster store into the private Forgejo repo`.
+3. Run the retrieval job by hand. Its `privacy-store` log says `"private": true` and its `store` log says `moved the provisional in-cluster store into the private Forgejo repo`.
 
 ### The set
 
@@ -560,13 +565,15 @@ Grafana, folder AI, **Brain retrieval quality**: stat tiles and per-category tab
 | `OmnigraphBrainEvalJudgeControlFailed` | The last answer run's judge failed the control pair |
 | `OmnigraphBrainEvalRunInvalid` | A run hit its spend cap or an upstream error |
 | `OmnigraphBrainEvalBudgetNearlySpent` | The `omnigraph-eval` key spent 80% of its 30-day budget |
-| `OmnigraphBrainEvalCaseTextInPublicRepo` | Eight consecutive words of an eval question appear in this public repo (temporal template questions are skipped; key facts are not checked, because docs-en key facts quote public docs) |
+| `OmnigraphBrainEvalCaseTextInPublicRepo` | Eight consecutive words (or the whole phrase, at 5 to 7 words) of an eval question or key fact appear in this public repo. Temporal template questions are skipped, and so are the key facts of cases whose source document is in this repo, because those quote it |
+| `OmnigraphBrainEvalRepoNotPrivate` | An anonymous read of `ryangr0/brain-eval` answered 200: the repo is readable by anyone (critical) |
+| `OmnigraphBrainEvalStoreNotBackedUp` | The store is still provisional and its volume has no Longhorn backup from the last 36 hours |
 
 The `eval` container ends with a `run invalid` line naming the reason: an upstream status (`omnigraph answered HTTP 403` means `act-brain-eval` lost a right), `the eval repo holds no cases yet`, a case file and line that do not parse, or `passed the cap`.
 
 `litellm answered HTTP 429` usually means a LiteLLM provider budget is spent, not the key's: the Anthropic provider is capped at USD 5 a day for every consumer together, Glide included (`GET /provider/budgets` with the master key shows the spend and `budget_reset_at`). The judge never falls back to another model, so answer runs and the smoke job fail until the reset. Relevance pooling in the candidates job falls back to `fireworks-gpt-oss-120b` for the rest of the run and records the grading model per candidate in `pool.json` (`pooled_by_fallback` in the log).
 
-**Tests.** [test_omnigraph_brain_eval.py](../../../../scripts/test_omnigraph_brain_eval.py) runs the harness against a fake Omnigraph, a fake LiteLLM with its MCP endpoint and a fake vmagent: metric maths against hand-computed values, document roll-up, stale exclusion, the independent temporal path (the fake's stored query disagrees with the scan), snapshot pinning, the control pair, the spend cap, the answer-mode redaction gate, calibration agreement, the label allowlist, the candidate cut and the sentinel. [test-omnigraph-brain-eval-mutation.sh](../../../../scripts/test-omnigraph-brain-eval-mutation.sh) breaks each of those in turn and requires the suite to fail, and the unmodified harness to pass. Both run in pre-commit and in `e2e / Lint & static validation`.
+**Tests.** [test_omnigraph_brain_eval.py](../../../../scripts/test_omnigraph_brain_eval.py) runs the harness against a fake Omnigraph, a fake LiteLLM with its MCP endpoint and a fake vmagent: metric maths against hand-computed values, document roll-up, stale exclusion, the independent temporal path (the fake's stored query disagrees with the scan), snapshot pinning, the control pair, the spend cap, the answer-mode redaction gate, calibration agreement, the label allowlist, the candidate cut, the sentinel, full-precision values, the key-fact leak scan and the privacy gate: the `repo-privacy` check against a fake Forgejo (404, 200, 503), and `store.sh` and `publish.sh` run with a fake `git` that must never push without a verdict. [test-omnigraph-brain-eval-mutation.sh](../../../../scripts/test-omnigraph-brain-eval-mutation.sh) breaks each of those in turn and requires the suite to fail, and the unmodified harness to pass. Both run in pre-commit and in `e2e / Lint & static validation`.
 
 **Network.** `omnigraph-brain-eval-egress` allows `omnigraph` :8080, `litellm` :4000, the Forgejo pods on SSH :2222 (eval repo) and HTTP :3000 (anonymous clone of this public repo for the leak check) and `vmagent` :8429. Omnigraph admits it in `omnigraph-ingress`, Forgejo in `forgejo-allow-ingress`; LiteLLM admits all of `ai`, and `observability` has no NetworkPolicy.
 

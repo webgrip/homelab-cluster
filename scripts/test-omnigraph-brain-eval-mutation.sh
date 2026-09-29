@@ -85,6 +85,12 @@ spawn metric-precision-lost brain_eval.py 'number = format(float(value), ".15g")
 spawn e1-log-collision brain_eval.py 'log("experiment e1", **{key' 'log("experiment e1", cases=0, **{key'
 spawn e1-arms-swapped brain_eval.py '        for arm, ordered in (("e1-prefixed", prefixed), ("e1-raw", raw)):' '        for arm, ordered in (("e1-prefixed", raw), ("e1-raw", raw)):'
 spawn no-holdout candidates.py 'chosen.append((candidate, "holdout" if index == holdout else "dev"))' 'chosen.append((candidate, "dev"))'
+spawn privacy-check-off brain_eval.py '    if status == HIDDEN_FROM_ANONYMOUS_STATUS:' '    if True:'
+spawn public-repo-counted-private brain_eval.py '    if status == HIDDEN_FROM_ANONYMOUS_STATUS:' '    if status in (HIDDEN_FROM_ANONYMOUS_STATUS, READABLE_BY_ANONYMOUS_STATUS):'
+spawn store-privacy-gate-off store.sh 'if [ "$(cat "$PRIVACY_VERDICT" 2> /dev/null || true)" != private ]; then' 'if false; then'
+spawn publish-privacy-gate-off publish.sh 'if [ "$(cat "$WORK/privacy-publish" 2> /dev/null || true)" != private ]; then' 'if false; then'
+spawn key-facts-unscanned brain_eval.py '        phrases += list(case.get("key_facts") or [])' '        pass'
+spawn public-source-facts-scanned brain_eval.py '    if not sourced_from_the_public_repo(case):' '    if True:'
 wait
 for result in "$work"/*.result; do
   cat "$result"

@@ -34,6 +34,7 @@ ANSWER_METRICS = ("key_fact_recall", "faithfulness", "citation_precision", "abst
 TOOL_METRICS = ("about_top1", "connect_path_found")
 PROFILES = ("p0", "p1", "p2", "p3", "b0", "tools", "e1-raw", "e1-prefixed")
 MODES = ("retrieval", "answer", "gate", "experiment", "candidates", "calibration")
+JOB_MODES = MODES + ("smoke",)
 LATENCY_STAGES = ("leg", "case", "answer", "judge")
 QUANTILES = ("0.5", "0.95")
 VECTOR_TYPES = ("Note", "Passage", "Topic")
@@ -58,7 +59,8 @@ METRIC_LABELS = {
     "brain_eval_calibration_grades": {},
     "brain_eval_judge_control_ok": {},
     "brain_eval_judge_agreement": {},
-    "brain_eval_run_valid": {"mode": set(MODES)},
+    "brain_eval_run_valid": {"mode": set(JOB_MODES)},
+    "brain_eval_repo_private": {},
     "brain_eval_store_provisional": {},
     "brain_eval_public_repo_leaks": {},
     "brain_eval_last_success_timestamp_seconds": {"mode": set(MODES)},
@@ -833,6 +835,7 @@ P0_QUERIES = ("recall_notes", "recall_passages", "recall_topics")
 LEAK_SHINGLE_WORDS = 8
 LEAK_MIN_PHRASE_WORDS = 5
 LEAK_MAX_FILE_BYTES = 2 * 1024 * 1024
+PUBLIC_REPO_SLUG_PREFIX = "forge/webgrip/homelab-cluster/"
 
 
 def normalised_words(text):
@@ -848,13 +851,25 @@ def leak_shingles(text):
     return set()
 
 
+def sourced_from_the_public_repo(case):
+    return any(item.get("grade") == 2 and str(item.get("slug") or "").startswith(PUBLIC_REPO_SLUG_PREFIX) for item in case.get("expected") or [])
+
+
+def private_case_phrases(case):
+    if case.get("category") in ("temporal", SYNTHETIC_CATEGORY) or case.get("origin") == "synthetic":
+        return []
+    phrases = [case.get("question")]
+    if not sourced_from_the_public_repo(case):
+        phrases += list(case.get("key_facts") or [])
+    return phrases
+
+
 def public_repo_leaks(cases, public_dir):
     owners = {}
     for case in cases:
-        if case.get("category") in ("temporal", SYNTHETIC_CATEGORY) or case.get("origin") == "synthetic":
-            continue
-        for shingle in leak_shingles(case.get("question")):
-            owners.setdefault(shingle, set()).add(case["id"])
+        for phrase in private_case_phrases(case):
+            for shingle in leak_shingles(phrase):
+                owners.setdefault(shingle, set()).add(case["id"])
     lengths = {len(shingle.split(" ")) for shingle in owners}
     leaked, files = set(), 0
     for path in Path(public_dir).rglob("*"):
@@ -1485,6 +1500,52 @@ def invalid_run(args, mode, reason):
     log("run invalid", mode=mode, reason=reason)
 
 
+EVAL_REPO_API_URL = "http://forgejo-http.forgejo.svc.cluster.local:3000/api/v1/repos/ryangr0/brain-eval"
+HIDDEN_FROM_ANONYMOUS_STATUS = 404
+READABLE_BY_ANONYMOUS_STATUS = 200
+PRIVATE_VERDICT = "private"
+
+
+def anonymous_read_status(url, timeout=20):
+    request = urllib.request.Request(url, method="GET", headers={"accept": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return response.status
+    except urllib.error.HTTPError as error:
+        return error.code
+    except (urllib.error.URLError, ConnectionError, TimeoutError, OSError):
+        return 0
+
+
+def push_now(args, sink):
+    if not args.vmagent_url or args.dry_run:
+        return
+    try:
+        push_metrics(args.vmagent_url, sink.text())
+    except UpstreamError as error:
+        log("metrics push failed", reason=str(error))
+
+
+def command_repo_privacy(args):
+    verdict = Path(args.verdict_file)
+    verdict.parent.mkdir(parents=True, exist_ok=True)
+    verdict.unlink(missing_ok=True)
+    status = anonymous_read_status(args.repo_api_url)
+    sink = MetricSink()
+    if status == HIDDEN_FROM_ANONYMOUS_STATUS:
+        verdict.write_text(PRIVATE_VERDICT + "\n", encoding="utf-8")
+        sink.add("brain_eval_repo_private", {}, 1.0)
+        push_now(args, sink)
+        log("eval repo privacy", anonymous_status=status, private=True)
+        return 0
+    if status == READABLE_BY_ANONYMOUS_STATUS:
+        sink.add("brain_eval_repo_private", {}, 0.0)
+        push_now(args, sink)
+        raise EvalError("the eval repo ryangr0/brain-eval is readable without signing in (HTTP 200): make it private; nothing is pushed to it until then")
+    answer = "no connection" if status == 0 else f"HTTP {status}"
+    raise EvalError(f"could not prove the eval repo is private: an anonymous read of it answered {answer}; nothing is pushed to it")
+
+
 def omnigraph_client(args):
     return Omnigraph(args.omnigraph_url, "brain", read_secret(args.omnigraph_token_file))
 
@@ -1775,6 +1836,11 @@ def build_parser():
     candidates.set_defaults(handler=command_candidates)
     push = commands.add_parser("push-metrics")
     push.set_defaults(handler=command_push_metrics)
+    privacy = commands.add_parser("repo-privacy", help="prove with an anonymous read that the eval repo is private before a job pushes to it")
+    privacy.add_argument("--repo-api-url", default=EVAL_REPO_API_URL)
+    privacy.add_argument("--for-mode", choices=JOB_MODES, required=True)
+    privacy.add_argument("--verdict-file", required=True)
+    privacy.set_defaults(handler=command_repo_privacy)
     return parser
 
 
@@ -1784,7 +1850,7 @@ def main(argv=None):
         args.profile = ["p0"]
     if getattr(args, "arm", "unset") is None and args.command == "answer":
         args.arm = ["b0"]
-    mode = args.command if args.command in MODES else "retrieval"
+    mode = getattr(args, "for_mode", None) or (args.command if args.command in MODES else "retrieval")
     try:
         return args.handler(args)
     except SpendCapReached as error:

@@ -416,6 +416,13 @@ class Metrics(unittest.TestCase):
         with self.assertRaisesRegex(be.EvalError, "allowlist"):
             sink.add("brain_eval_question_text", {}, 1)
 
+    def test_values_keep_every_significant_digit_a_timestamp_needs(self):
+        sink = be.MetricSink()
+        sink.add("brain_eval_last_success_timestamp_seconds", {"mode": "retrieval"}, 1790648123.25)
+        sink.add("brain_eval_score", {"metric": "ndcg_at_8", "profile": "p0", "category": "all", "split": "all", "mode": "retrieval"}, 0.437283123)
+        self.assertEqual(sink.text(), 'brain_eval_last_success_timestamp_seconds{mode="retrieval"} 1790648123.25\n'
+                                      'brain_eval_score{category="all",metric="ndcg_at_8",mode="retrieval",profile="p0",split="all"} 0.437283123\n')
+
 
 class TemporalTruth(unittest.TestCase):
     def test_expectations_come_from_the_scan_and_a_python_filter_never_from_stored_queries(self):
@@ -719,6 +726,151 @@ class CandidateCut(unittest.TestCase):
         candidate = cand.Candidate(source, 0, "Wat schreef ik?", [], temporal={"kind": "recent_notes", "days": 7})
         case = cand.case_document("c01", candidate, "dev")
         self.assertEqual(be.load_case(be.dump_case(be.validate_case(case, "c01"))), case)
+
+
+class FakeForgejo:
+    def __init__(self, status):
+        self.status = status
+        self.authorization = []
+
+
+def forgejo_handler(fake):
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            fake.authorization.append(self.headers.get("authorization"))
+            data = json.dumps({"private": fake.status == 404}).encode()
+            self.send_response(fake.status)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+    return Handler
+
+
+class RepoPrivacy(unittest.TestCase):
+    def check(self, status, mode="answer", stale_verdict=False):
+        harness = Harness()
+        self.addCleanup(harness.close)
+        forgejo = FakeForgejo(status)
+        server, url = serve(forgejo_handler(forgejo))
+        self.addCleanup(server.shutdown)
+        verdict = harness.root / "work" / "privacy-publish"
+        if stale_verdict:
+            verdict.write_text("private\n")
+        result = harness.run("repo-privacy", f"--repo-api-url={url}/api/v1/repos/ryangr0/brain-eval", f"--for-mode={mode}", f"--verdict-file={verdict}")
+        return result, verdict, "".join(harness.vmagent.bodies), forgejo
+
+    def test_a_repo_hidden_from_anonymous_readers_may_be_pushed_to(self):
+        result, verdict, pushed, forgejo = self.check(404)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(verdict.read_text().strip(), "private")
+        self.assertIn("brain_eval_repo_private 1", pushed)
+        self.assertEqual(forgejo.authorization, [None])
+
+    def test_a_repo_anyone_can_read_stops_the_run_and_alerts(self):
+        result, verdict, pushed, _ = self.check(200, stale_verdict=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertFalse(verdict.exists())
+        self.assertIn("brain_eval_repo_private 0", pushed)
+        self.assertIn('brain_eval_run_valid{mode="answer"} 0', pushed)
+        self.assertIn("readable without signing in", result.stdout)
+
+    def test_privacy_that_cannot_be_proven_stops_the_run(self):
+        result, verdict, pushed, _ = self.check(503, mode="smoke", stale_verdict=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertFalse(verdict.exists())
+        self.assertIn('brain_eval_run_valid{mode="smoke"} 0', pushed)
+        self.assertNotIn("brain_eval_repo_private", pushed)
+        self.assertIn("HTTP 503", result.stdout)
+
+
+FAKE_GIT = """#!/bin/sh
+echo "git $*" >> "$FAKE_GIT_LOG"
+case "$*" in
+  *ls-remote*) printf '%s' "$FAKE_REMOTE_REFS"; exit 0 ;;
+  *"diff --cached --quiet"*) exit 1 ;;
+  *"diff --cached --name-only"*) echo results/2026-09-29/retrieval-p0.json; exit 0 ;;
+  *rev-parse*) echo abc1234; exit 0 ;;
+esac
+exit 0
+"""
+
+
+class StoreScripts(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="brain-eval-store-")
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        self.bin, self.store, self.work, self.scratch = root / "bin", root / "store", root / "work", root / "scratch"
+        for folder in (self.bin, self.store / "brain-eval.git", self.work / "repo", self.work / "out", self.scratch):
+            folder.mkdir(parents=True)
+        (self.bin / "git").write_text(FAKE_GIT)
+        (self.bin / "git").chmod(0o755)
+        self.key = root / "deploy-key"
+        self.key.write_text("not a real key\n")
+        self.git_log = root / "git.log"
+        self.git_log.write_text("")
+
+    def run_script(self, name):
+        env = {"PATH": f"{self.bin}{os.pathsep}{os.environ['PATH']}", "TMPDIR": str(self.scratch), "EVAL_STORE_DIR": str(self.store),
+               "EVAL_WORK_DIR": str(self.work), "EVAL_DEPLOY_KEY_FILE": str(self.key), "FAKE_GIT_LOG": str(self.git_log),
+               "FAKE_REMOTE_REFS": "", "EVAL_REPO_URL": "ssh://git@forgejo-ssh.invalid/ryangr0/brain-eval.git"}
+        return subprocess.run(["sh", str(APP / name)], capture_output=True, text=True, timeout=60, env=env)
+
+    def pushes(self):
+        return [line for line in self.git_log.read_text().split("\n") if " push " in f"{line} "]
+
+    def test_the_store_moves_into_forgejo_only_after_a_proven_private_read(self):
+        refused = self.run_script("store.sh")
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn("refusing", refused.stderr)
+        self.assertEqual(self.pushes(), [])
+        self.assertFalse((self.store / "moved-to-forgejo").exists())
+        (self.work / "privacy-store").write_text("private\n")
+        moved = self.run_script("store.sh")
+        self.assertEqual(moved.returncode, 0, moved.stderr)
+        self.assertIn("moved the provisional in-cluster store", moved.stdout)
+        self.assertEqual(len(self.pushes()), 1)
+        self.assertEqual((self.work / "store-kind").read_text().strip(), "forgejo")
+
+    def test_the_provisional_store_needs_no_privacy_proof(self):
+        self.key.write_text("")
+        result = self.run_script("store.sh")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.work / "store-kind").read_text().strip(), "provisional")
+        self.assertEqual(self.pushes(), [])
+
+    def test_publish_pushes_to_forgejo_only_after_a_proven_private_read(self):
+        (self.work / "store-kind").write_text("forgejo\n")
+        (self.work / "out" / "commit-message").write_text("results: retrieval p0\n")
+        refused = self.run_script("publish.sh")
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn("refusing", refused.stderr)
+        self.assertEqual(self.pushes(), [])
+        (self.work / "privacy-publish").write_text("private\n")
+        published = self.run_script("publish.sh")
+        self.assertEqual(published.returncode, 0, published.stderr)
+        self.assertEqual(len(self.pushes()), 1)
+
+
+class KeyFactLeaks(unittest.TestCase):
+    def test_key_facts_of_private_sources_are_scanned_and_facts_quoting_this_repo_are_not(self):
+        private_fact = "the greenhouse heater runs on its own twelve volt circuit since spring"
+        public_fact = "flux reconciles the whole cluster from the forgejo repository every hour"
+        short_fact = "heater on twelve volt"
+        cases = [
+            {"id": "k1", "category": "notes-en", "question": "Why?", "expected": [{"slug": "obsidian/greenhouse", "grade": 2}], "key_facts": [private_fact]},
+            {"id": "k2", "category": "docs-en", "question": "How?", "expected": [{"slug": RUNBOOK, "grade": 2}], "key_facts": [public_fact]},
+            {"id": "k3", "category": "notes-en", "question": "What?", "expected": [{"slug": "obsidian/shed", "grade": 2}], "key_facts": [short_fact]},
+        ]
+        with tempfile.TemporaryDirectory(prefix="brain-eval-leaks-") as public:
+            Path(public, "docs.md").write_text(f"{public_fact.upper()}.\n{short_fact}\n")
+            self.assertEqual(be.public_repo_leaks(cases, public)[0], 0)
+            Path(public, "notes.md").write_text(f"Pasted: {private_fact}\n")
+            self.assertEqual(be.public_repo_leaks(cases, public)[0], 1)
 
 
 def progress(stage):

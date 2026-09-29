@@ -1773,6 +1773,138 @@ spec:
             },
             "overrides": []
           }
+        },
+        {
+          "id": 28,
+          "type": "stat",
+          "title": "Eval repo privacy",
+          "description": "An anonymous read of ryangr0/brain-eval before each store and publish step: private means Forgejo answered 404. A job that finds it readable stops before pushing",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 34,
+            "w": 6,
+            "h": 4
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "last_over_time(brain_eval_repo_private[3d])",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 0,
+              "noValue": "Not checked yet",
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "Readable by anyone",
+                      "color": "red"
+                    },
+                    "1": {
+                      "text": "Private",
+                      "color": "green"
+                    }
+                  }
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 29,
+          "type": "stat",
+          "title": "Eval store backup age",
+          "description": "Age of the newest Longhorn backup of the eval store volume (RecurringJob brain-eval-store-backup, 03:15 UTC). Matters while the store is provisional; red after 36 hours",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "x": 6,
+            "y": 34,
+            "w": 6,
+            "h": 4
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "time() - max(longhorn_volume_last_backup_at{pvc_namespace=\"ai\", pvc=\"omnigraph-brain-eval-store\"} > 0)",
+              "legendFormat": "",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "decimals": 0,
+              "noValue": "No backup yet",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 129600
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
         }
       ],
       "description": "Aggregates only. Questions, answers and per-question results live in the private eval repo."

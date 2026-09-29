@@ -19,6 +19,7 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 0
+      ttlSecondsAfterFinished: 86400
       activeDeadlineSeconds: 1800
       template:
         metadata:
@@ -39,6 +40,30 @@ spec:
             fsGroup: 65534
             seccompProfile: {type: RuntimeDefault}
           initContainers:
+            - name: privacy-store
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "repo-privacy"
+                - "--for-mode=retrieval"
+                - "--verdict-file=/work/privacy-store"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
             - name: store
               image: harbor.webgrip.dev/dockerhub/alpine/git:v2.54.0@sha256:832b1cd1a271509f3d5272a1a62d4cb2ab1a53426ebde1f6c2cb7349f907dc6f
               imagePullPolicy: IfNotPresent
@@ -108,6 +133,30 @@ spec:
                 - {name: token, mountPath: /run/secrets/omnigraph, readOnly: true}
                 - {name: litellm-key, mountPath: /run/secrets/litellm, readOnly: true}
                 - {name: contract, mountPath: /etc/omnigraph-embedding-contract, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+            - name: privacy-publish
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "repo-privacy"
+                - "--for-mode=retrieval"
+                - "--verdict-file=/work/privacy-publish"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
                 - {name: work, mountPath: /work}
                 - {name: tmp, mountPath: /tmp}
             - name: publish
@@ -209,6 +258,7 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 0
+      ttlSecondsAfterFinished: 86400
       activeDeadlineSeconds: 3600
       template:
         metadata:
@@ -229,6 +279,30 @@ spec:
             fsGroup: 65534
             seccompProfile: {type: RuntimeDefault}
           initContainers:
+            - name: privacy-store
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "repo-privacy"
+                - "--for-mode=answer"
+                - "--verdict-file=/work/privacy-store"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
             - name: store
               image: harbor.webgrip.dev/dockerhub/alpine/git:v2.54.0@sha256:832b1cd1a271509f3d5272a1a62d4cb2ab1a53426ebde1f6c2cb7349f907dc6f
               imagePullPolicy: IfNotPresent
@@ -278,6 +352,30 @@ spec:
                 - {name: token, mountPath: /run/secrets/omnigraph, readOnly: true}
                 - {name: litellm-key, mountPath: /run/secrets/litellm, readOnly: true}
                 - {name: contract, mountPath: /etc/omnigraph-embedding-contract, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+            - name: privacy-publish
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "repo-privacy"
+                - "--for-mode=answer"
+                - "--verdict-file=/work/privacy-publish"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
                 - {name: work, mountPath: /work}
                 - {name: tmp, mountPath: /tmp}
             - name: publish
@@ -379,6 +477,7 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 0
+      ttlSecondsAfterFinished: 86400
       activeDeadlineSeconds: 7200
       template:
         metadata:
@@ -399,6 +498,30 @@ spec:
             fsGroup: 65534
             seccompProfile: {type: RuntimeDefault}
           initContainers:
+            - name: privacy-store
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "repo-privacy"
+                - "--for-mode=gate"
+                - "--verdict-file=/work/privacy-store"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
             - name: store
               image: harbor.webgrip.dev/dockerhub/alpine/git:v2.54.0@sha256:832b1cd1a271509f3d5272a1a62d4cb2ab1a53426ebde1f6c2cb7349f907dc6f
               imagePullPolicy: IfNotPresent
@@ -449,6 +572,30 @@ spec:
                 - {name: token, mountPath: /run/secrets/omnigraph, readOnly: true}
                 - {name: litellm-key, mountPath: /run/secrets/litellm, readOnly: true}
                 - {name: contract, mountPath: /etc/omnigraph-embedding-contract, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+            - name: privacy-publish
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "repo-privacy"
+                - "--for-mode=gate"
+                - "--verdict-file=/work/privacy-publish"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
                 - {name: work, mountPath: /work}
                 - {name: tmp, mountPath: /tmp}
             - name: publish
@@ -550,6 +697,7 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 0
+      ttlSecondsAfterFinished: 86400
       activeDeadlineSeconds: 3600
       template:
         metadata:
@@ -570,6 +718,30 @@ spec:
             fsGroup: 65534
             seccompProfile: {type: RuntimeDefault}
           initContainers:
+            - name: privacy-store
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "repo-privacy"
+                - "--for-mode=candidates"
+                - "--verdict-file=/work/privacy-store"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
             - name: store
               image: harbor.webgrip.dev/dockerhub/alpine/git:v2.54.0@sha256:832b1cd1a271509f3d5272a1a62d4cb2ab1a53426ebde1f6c2cb7349f907dc6f
               imagePullPolicy: IfNotPresent
@@ -617,6 +789,30 @@ spec:
                 - {name: token, mountPath: /run/secrets/omnigraph, readOnly: true}
                 - {name: litellm-key, mountPath: /run/secrets/litellm, readOnly: true}
                 - {name: contract, mountPath: /etc/omnigraph-embedding-contract, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+            - name: privacy-publish
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "repo-privacy"
+                - "--for-mode=candidates"
+                - "--verdict-file=/work/privacy-publish"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
                 - {name: work, mountPath: /work}
                 - {name: tmp, mountPath: /tmp}
             - name: publish
@@ -718,6 +914,7 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 0
+      ttlSecondsAfterFinished: 86400
       activeDeadlineSeconds: 3600
       template:
         metadata:
@@ -738,6 +935,30 @@ spec:
             fsGroup: 65534
             seccompProfile: {type: RuntimeDefault}
           initContainers:
+            - name: privacy-store
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "repo-privacy"
+                - "--for-mode=experiment"
+                - "--verdict-file=/work/privacy-store"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
             - name: store
               image: harbor.webgrip.dev/dockerhub/alpine/git:v2.54.0@sha256:832b1cd1a271509f3d5272a1a62d4cb2ab1a53426ebde1f6c2cb7349f907dc6f
               imagePullPolicy: IfNotPresent
@@ -785,6 +1006,30 @@ spec:
                 - {name: token, mountPath: /run/secrets/omnigraph, readOnly: true}
                 - {name: litellm-key, mountPath: /run/secrets/litellm, readOnly: true}
                 - {name: contract, mountPath: /etc/omnigraph-embedding-contract, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+            - name: privacy-publish
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "repo-privacy"
+                - "--for-mode=experiment"
+                - "--verdict-file=/work/privacy-publish"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
                 - {name: work, mountPath: /work}
                 - {name: tmp, mountPath: /tmp}
             - name: publish
@@ -886,6 +1131,7 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 0
+      ttlSecondsAfterFinished: 86400
       activeDeadlineSeconds: 900
       template:
         metadata:
@@ -906,6 +1152,30 @@ spec:
             fsGroup: 65534
             seccompProfile: {type: RuntimeDefault}
           initContainers:
+            - name: privacy-store
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "repo-privacy"
+                - "--for-mode=smoke"
+                - "--verdict-file=/work/privacy-store"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
             - name: store
               image: harbor.webgrip.dev/dockerhub/alpine/git:v2.54.0@sha256:832b1cd1a271509f3d5272a1a62d4cb2ab1a53426ebde1f6c2cb7349f907dc6f
               imagePullPolicy: IfNotPresent
@@ -951,6 +1221,30 @@ spec:
                 - {name: token, mountPath: /run/secrets/omnigraph, readOnly: true}
                 - {name: litellm-key, mountPath: /run/secrets/litellm, readOnly: true}
                 - {name: contract, mountPath: /etc/omnigraph-embedding-contract, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+            - name: privacy-publish
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "repo-privacy"
+                - "--for-mode=smoke"
+                - "--verdict-file=/work/privacy-publish"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
                 - {name: work, mountPath: /work}
                 - {name: tmp, mountPath: /tmp}
             - name: publish
