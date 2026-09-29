@@ -912,7 +912,8 @@ class MetricSink:
         if value is None or (isinstance(value, float) and not math.isfinite(value)):
             return
         rendered = ",".join(f'{label}="{labels[label]}"' for label in sorted(labels))
-        self.lines.append(f"{name}{{{rendered}}} {float(value):.6g}" if labels else f"{name} {float(value):.6g}")
+        number = format(float(value), ".15g")
+        self.lines.append(f"{name}{{{rendered}}} {number}" if labels else f"{name} {number}")
 
     def text(self):
         return "\n".join(self.lines) + ("\n" if self.lines else "")

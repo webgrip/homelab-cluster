@@ -81,6 +81,7 @@ spawn cases-overwritten candidates.py 'if cases_dir.is_dir() and any(cases_dir.g
 spawn leak-check-blind brain_eval.py '                if owner:
                     leaked |= owner' '                if False:
                     leaked |= owner'
+spawn metric-precision-lost brain_eval.py 'number = format(float(value), ".15g")' 'number = format(float(value), ".6g")'
 spawn no-holdout candidates.py 'chosen.append((candidate, "holdout" if index == holdout else "dev"))' 'chosen.append((candidate, "dev"))'
 wait
 for result in "$work"/*.result; do

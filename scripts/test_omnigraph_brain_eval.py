@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -443,8 +444,8 @@ class RetrievalRun(unittest.TestCase):
         self.assertEqual(set(self.harness.omnigraph.snapshots), {SNAPSHOT})
         self.assertNotIn("notes_recent", self.harness.omnigraph.stored_calls)
         metrics = (self.harness.out / "metrics.prom").read_text()
-        self.assertIn('brain_eval_missing_vectors_ratio{type="Passage"} 0.25', metrics)
-        self.assertIn('brain_eval_missing_vectors_ratio{type="Note"} 0.2', metrics)
+        self.assertIn('brain_eval_missing_vectors_ratio{type="Passage"} 0.25\n', metrics)
+        self.assertIn('brain_eval_missing_vectors_ratio{type="Note"} 0.2\n', metrics)
         self.assertEqual(self.harness.omnigraph.export_calls, 0)
         self.assertIn('brain_eval_stale_cases 0', metrics)
         self.assertIn('brain_eval_set_provisional 1', metrics)
@@ -474,7 +475,8 @@ class RetrievalRun(unittest.TestCase):
         result = self.harness.run("push-metrics")
         self.assertEqual(result.returncode, 0, result.stderr)
         pushed = "".join(self.harness.vmagent.bodies)
-        self.assertIn('brain_eval_last_success_timestamp_seconds{mode="retrieval"}', pushed)
+        stamp = float(re.search(r'brain_eval_last_success_timestamp_seconds\{mode="retrieval"\} (\S+)', pushed).group(1))
+        self.assertLess(abs(stamp - time.time()), 120)
         self.assertIn('brain_eval_run_valid{mode="retrieval"} 1', pushed)
         for line in pushed.strip().split("\n"):
             name = line.split("{")[0].split(" ")[0]
