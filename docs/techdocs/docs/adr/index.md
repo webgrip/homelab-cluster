@@ -148,6 +148,7 @@ The Harbor family — adoption, backing services, exposure, SSO — then the cac
 | --- | -------- | ------ | ------------ |
 | [0032](adr-0032-kyverno-enforce-promotion-policy.md) | Gated Kyverno audit→enforce promotion + mandatory tests | accepted | 2026-07-02 |
 | [0033](adr-0033-approved-registries-stays-audit.md) | `require-approved-registries` stays Audit | accepted | 2026-07-02 |
+| [0064](adr-0064-dependency-track-only-sbom-platform.md) | Dependency-Track is the only SBOM platform; GUAC is removed | accepted | 2026-09-29 |
 
 ### 9. Observability
 

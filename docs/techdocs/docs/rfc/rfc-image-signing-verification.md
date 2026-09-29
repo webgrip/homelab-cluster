@@ -80,7 +80,7 @@ Three gaps:
 | --- | --- | --- |
 | candidate | — | OpenBao Transit as the image-signing trust anchor (retroactive) |
 | candidate | — | Verify-policy enforce waves, first-party first (new) |
-| candidate | — | SBOM platform: consolidate on DT vs dual-run with recorded roles (new) |
+| [ADR-0064](../adr/adr-0064-dependency-track-only-sbom-platform.md) | accepted | SBOM platform: consolidate on Dependency-Track; GUAC removed |
 
 ## Out of scope
 
