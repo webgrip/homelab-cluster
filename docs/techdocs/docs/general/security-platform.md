@@ -2,7 +2,7 @@
 
 Most Kubernetes security writeups fall into one of two traps: they are either architecture-diagram fantasy with no operational details, or they are so vendor-specific that they stop being useful the moment you leave a managed enterprise platform. This cluster takes a more useful path. The goal is not to cosplay a SOC; it is to build a security platform that is GitOps-native, evidence-driven, and realistic enough that the same patterns could scale from a homelab to a serious production environment.
 
-The result is a layered security stack that combines **Kyverno**, **Trivy Operator**, **Cosign with OpenBao Transit (key-based signing)**, **CycloneDX SBOM attestations**, **GUAC**, **Dependency-Track**, **trust-manager**, **Policy Reporter**, **Prometheus alerts**, **Grafana dashboards**, **Renovate**, **cert-manager**, **Flux**, **ESO + OpenBao**, and the cluster’s existing **Cilium** and **Talos** foundations. (**Falco** and **Tetragon** were part of this stack but are **suspended since 2026-06-19** — see §5.) That sounds like a lot, but it maps cleanly to the way security teams actually think: software supply chain, admission control, runtime detection, identity and least privilege, observability, and operational governance.
+The result is a layered security stack that combines **Kyverno**, **Trivy Operator**, **Cosign with OpenBao Transit (key-based signing)**, **CycloneDX SBOM attestations**, **Dependency-Track**, **trust-manager**, **Policy Reporter**, **Prometheus alerts**, **Grafana dashboards**, **Renovate**, **cert-manager**, **Flux**, **ESO + OpenBao**, and the cluster’s existing **Cilium** and **Talos** foundations. (**Falco** and **Tetragon** were part of this stack but are **suspended since 2026-06-19** — see §5.) That sounds like a lot, but it maps cleanly to the way security teams actually think: software supply chain, admission control, runtime detection, identity and least privilege, observability, and operational governance.
 
 This page explains what is actually implemented in the repo today, why each layer exists, where the overlap is, where the gaps still are, and how the controls map to frameworks security professionals already use such as **NIST SSDF**, **SLSA**, **NIST SP 800-190**, **CIS Kubernetes Benchmark**, **NSA/CISA Kubernetes hardening guidance**, and **MITRE ATT&CK for Containers**.
 
@@ -90,30 +90,26 @@ which still verify via GitHub Actions OIDC against the public Rekor. Do not desc
 Full contract, the `rekor.ignoreTlog: true` gotcha, and the Audit→Enforce promotion gate:
 [Supply Chain Intelligence Pipeline](supply-chain-pipeline.md).
 
-### 4.5. GUAC, Dependency-Track, and trust-manager as the graph + analysis + trust-distribution layer
+### 4.5. Dependency-Track and trust-manager as the analysis + trust-distribution layer
 
-This rollout adds three more supply-chain building blocks:
+This rollout adds two more supply-chain building blocks:
 
-- **GUAC** gives the cluster a graph-oriented metadata plane for software supply-chain evidence. It is the place where provenance, SBOMs, vulnerabilities, and VEX/OpenVEX data can be connected instead of living as isolated documents.
 - **Dependency-Track** adds a dedicated SBOM analysis platform that is especially useful for continuous component risk review, policy, and software inventory workflows outside admission control.
 - **trust-manager** adds a consistent mechanism for distributing trust bundles in-cluster, starting here with a managed public CA bundle in namespaces that opt in to trust distribution.
 
 These are not replacements for Kyverno or Trivy. They fill different jobs:
 
-- GUAC = relationship graph and evidence aggregation
 - Dependency-Track = continuous SBOM/component risk analysis
 - trust-manager = trust-bundle lifecycle and distribution
 - OpenVEX = machine-readable exploitability context
 
-**Both GUAC and DT are now fully wired.** See [Supply Chain Intelligence Pipeline](supply-chain-pipeline.md) for the complete data flow, including how CI attestations and cluster runtime SBOMs converge.
+**DT is fully wired and is the only SBOM platform.** GUAC ran next to it until it was removed on 2026-09-29 ([ADR-0064](../adr/adr-0064-dependency-track-only-sbom-platform.md)). See [Supply Chain Intelligence Pipeline](supply-chain-pipeline.md) for the complete data flow, including how CI attestations and cluster runtime SBOMs converge.
 
 Key operational facts:
 
-- **Weekly SBOM upload** (`sbom-uploader`, Sun 02:10 UTC): scans all running images, pushes CycloneDX SBOMs to both DT and the GUAC S3 bucket.
+- **Weekly SBOM upload** (`sbom-uploader`, Sun 02:10 UTC): scans all running images, pushes CycloneDX SBOMs to DT.
 - **DT policy engine**: 10 IaC-managed policies evaluate every SBOM upload.
 - **DT metrics exporter**: Python Deployment in `security` namespace polls DT REST API every 5m, exposes `dt_portfolio_*` Prometheus metrics.
-- **GUAC S3 collector** (`guac-s3-collector`, weekly Sun 05:20 UTC CronJob): ingests runtime SBOMs into the GUAC graph after DT uploads complete.
-- **GUAC OCI collector**: continuously polls the registries for Cosign attestations (build-time SBOMs) on `webgrip/*` images.
 
 ### 5. Falco and Tetragon as the runtime layer — SUSPENDED
 
@@ -179,7 +175,6 @@ If we flatten the stack into a practical inventory, the cluster currently has th
 | **Artifact trust** | Cosign key-based verification against the OpenBao Transit public key | Verifies webgrip images were signed by the release pipeline; the key never leaves OpenBao. |
 | **Supply-chain evidence** | CycloneDX SBOM attestation audit policies | Lets the cluster reason about software composition, not just image tags. |
 | **Admission governance** | Kyverno enforcement and audit policies | Encodes acceptable state at deployment time. |
-| **Metadata graphing** | GUAC | Links provenance, SBOMs, vulnerabilities, and VEX/OpenVEX evidence into a queryable graph. |
 | **Continuous SCA/SBOM analysis** | Dependency-Track | Adds portfolio-level component analysis and risk review outside admission-time decisions. |
 | **Workload hardening** | Non-root, seccomp, capability drops, read-only filesystem, service account hygiene, volume restrictions | Shrinks the blast radius when an app is compromised. |
 | **Identity and privilege** | New RBAC least-privilege audit policies plus Trivy RBAC assessments | Reduces the chance that a workload compromise becomes a cluster compromise. |
@@ -190,7 +185,7 @@ If we flatten the stack into a practical inventory, the cluster currently has th
 | **Observability** | Policy Reporter, VictoriaMetrics, Grafana dashboards, SLO rules via GrafanaAlertRuleGroup | Makes the security controls operational instead of invisible background agents. |
 | **Maintenance** | Renovate | Security posture degrades quickly without dependable update hygiene. |
 | **PKI and trust distribution** | cert-manager, trust-manager | Stable certificate automation plus managed trust-bundle distribution is foundational for secure service exposure and identity. |
-| **Supply-chain pipeline** | Trivy → DT + GUAC S3, OCI collector → GUAC graph, 10 IaC DT policies, DT metrics exporter | Continuous SBOM-to-graph pipeline: every running image lands in DT (policy/CVE) and GUAC (relationship queries) daily. |
+| **Supply-chain pipeline** | Trivy → DT, 10 IaC DT policies, DT metrics exporter | Continuous SBOM pipeline: every running image lands in DT (policy/CVE) weekly. |
 
 That is already a meaningful “enterprise-parity” footprint because it covers **preventive**, **detective**, **assurance**, and **operational** controls in a single GitOps workflow.
 
@@ -270,7 +265,7 @@ This is also where the dashboards matter. Security professionals do not just wan
 
 ## Secrets
 
-All security-platform secrets (GUAC, Dependency-Track, `security-s3`, Harbor robots, …) are
+All security-platform secrets (Dependency-Track, Harbor robots, …) are
 **ESO-managed** — `ExternalSecret`s backed by OpenBao KV or in-cluster `password-generator`s.
 There are no SOPS templates to fill in. To add or migrate one, use the **`external-secrets`
 skill**; operational detail lives in the [External Secrets runbook](../runbooks/external-secrets.md).
@@ -350,7 +345,7 @@ gaps:
 ## Suggested next OSS moves
 
 1. **VEX analysis in Dependency-Track** — review and suppress known-unexploitable CVEs to reduce portfolio noise.
-2. **OpenVEX / openvex-go** to generate machine-readable exploitability context at build time and feed it to GUAC and DT.
+2. **OpenVEX / openvex-go** to generate machine-readable exploitability context at build time and feed it to DT.
 3. **Kubescape** if you want another posture lens to cross-reference against Trivy and Kyverno results.
 4. **Grafana contact points** — ensure at least one contact point is wired for critical-severity alerts (Grafana UI, Alerting → Contact Points).
 

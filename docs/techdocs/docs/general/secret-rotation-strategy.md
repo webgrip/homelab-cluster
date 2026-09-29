@@ -38,7 +38,7 @@ change it once at the provider, and it flows to the pod without hand-editing man
 **Done for freshrss.** Roll out by workload shape (this is the reusable win):
 
 - **Surge-capable app** (multi-replica or stateless, no single-attach RWO volume): dynamic creds +
-  an ordinary rolling restart = **zero downtime, no pooler**. → authentik, grafana, guac, backstage,
+  an ordinary rolling restart = **zero downtime, no pooler**. → authentik, grafana, backstage,
   devex, sparkyfitness-server.
 - **Single-replica RWO app** (restart = downtime): needs the **PgBouncer sidecar** (the freshrss
   template). → n8n, forgejo, dependency-track. MySQL (invoiceninja) needs a MySQL pooler; harbor

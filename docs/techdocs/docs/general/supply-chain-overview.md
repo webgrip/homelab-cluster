@@ -56,7 +56,6 @@ flowchart TB
   subgraph SCA["🔎 SUPPLY-CHAIN ANALYSIS"]
     trivyop["Trivy Operator"]
     dt["Dependency-Track"]
-    guac["GUAC graph"]
   end
 
   subgraph APPS["🚀 PERIPHERAL APPS"]
@@ -94,9 +93,6 @@ flowchart TB
   kverify -.->|verify sig + SBOM at admission| harbor
 
   trivyop --> dt
-  trivyop --> guac
-  harbor -.->|attestations · planned| guac
-  dt <--> guac
   dhproxy --> harbor
 
   authentik -->|SSO| apps
@@ -125,7 +121,7 @@ flowchart TB
   class harbor,ghcr,dhproxy reg;
   class flux,fluxverify gitops;
   class kverify adm;
-  class trivyop,dt,guac sca;
+  class trivyop,dt sca;
   class apps apps;
   class gh,codeberg,docs mirr;
   style OB fill:#fffdf5,stroke:#f9a825,stroke-dasharray:4 3;
@@ -164,7 +160,7 @@ sequenceDiagram
     end
     box rgb(232,245,233) Registry & analysis
       participant harbor as Harbor
-      participant dt as Dependency-Track / GUAC
+      participant dt as Dependency-Track
     end
     box rgb(224,247,250) Cluster · deploy
       participant flux as Flux

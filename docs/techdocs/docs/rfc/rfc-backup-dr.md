@@ -16,7 +16,7 @@ What is protected today (verified in-tree 2026-07-02), and the holes:
 | Data | Mechanism | Hole |
 | --- | --- | --- |
 | 10 CNPG databases | barman WAL + `ScheduledBackup` → Garage | single target; restore drilled for some, not all |
-| guac DB | nightly `pg_dump` → Garage | no PITR; deviation unrecorded ([Postgres RFC](rfc-postgres-data-layer.md)) |
+| guac DB | removed with GUAC ([ADR-0064](../adr/adr-0064-dependency-track-only-sbom-platform.md)) | none; its `pg_dump`-only deviation went with it |
 | Longhorn volumes | `BackupTarget` → Garage | **which** volumes have RecurringJobs is undecided/unaudited |
 | OpenBao | nightly raft snapshot → Garage (14 kept) | **unseal key exists only in the in-cluster `openbao-keys` Secret** — the [restore runbook](../runbooks/openbao-restore.md) itself says the snapshots are "not a complete DR story" without it |
 | Git (the cluster's definition) | GitHub today; Forgejo→GitHub/Codeberg mirrors planned | solid — [ADR-0012](../adr/adr-0012-external-bootstrap-fallback-source.md)/[0020](../adr/adr-0014-codeberg-offsite-push-mirror.md) own it |

@@ -15,7 +15,7 @@ TechDocs for the Flux-managed Talos homelab. Everything here mirrors the manifes
 | Storage | Longhorn (replicas confined to the worker pool); Garage S3 off-cluster for object storage |
 | Databases | CloudNativePG Postgres per app namespace, barman-cloud backups to Garage |
 | Observability | VictoriaMetrics + Loki + Grafana (grafana-operator) — [Observability](general/observability.md) |
-| Security | Kyverno, Trivy Operator, cosign/OpenBao Transit signing, DT + GUAC — [Security platform](general/security-platform.md) |
+| Security | Kyverno, Trivy Operator, cosign/OpenBao Transit signing, Dependency-Track — [Security platform](general/security-platform.md) |
 | CI | Forgejo Actions (in-cluster, release authority) — [Forgejo](general/forgejo.md) |
 | Identity | Authentik OIDC SSO — [Authentik](general/authentik.md) |
 
@@ -31,7 +31,7 @@ lives in [Applications — canonical inventory](general/applications.md).
 | `cluster_gateway_addr` | `envoy-internal` LoadBalancer (LAN-only) | `kubernetes/apps/network/envoy-gateway` | `10.0.0.27` |
 | `cloudflare_gateway_addr` | `envoy-external` / Cloudflare Tunnel origin | `kubernetes/apps/network/cloudflare-tunnel` | `10.0.0.28` |
 | Garage S3 (in-cluster) | Harbor registry blobs | — | `garage-s3.garage.svc.cluster.local:3900` |
-| Garage S3 (off-site) | All backups: CNPG, Longhorn, OpenBao, Forgejo, guac | Hetzner FSN1 | `https://s3-offsite.webgrip.dev` |
+| Garage S3 (off-site) | All backups: CNPG, Longhorn, OpenBao, Forgejo | Hetzner FSN1 | `https://s3-offsite.webgrip.dev` |
 
 Supporting controllers in `kubernetes/apps/network/`: `k8s-gateway` (split DNS, watches
 `HTTPRoute` + `Service`), `envoy-gateway` (both `Gateway` resources), `cloudflare-tunnel`

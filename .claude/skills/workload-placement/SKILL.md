@@ -46,7 +46,7 @@ strategic-merge would replace that list; set the affinity inline there instead.
 
 ## When NOT to use the component — prefer native `nodeSelector`
 
-The component works for **stateless multi-Deployment** charts (keda, guac). Set the chart's **native
+The component works for **stateless multi-Deployment** charts (keda). Set the chart's **native
 `nodeSelector`** in `values` instead (plain values apply cleanly; postRenderers don't) for:
 
 1. **Charts that expose `nodeSelector` per component** (harbor/goharbor; app-template `pod.nodeSelector`;

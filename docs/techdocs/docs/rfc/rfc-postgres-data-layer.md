@@ -54,6 +54,8 @@ Why the posture matters enough to record:
 3. **Normalize guac**: either bring it onto the barman pattern like the other ten, or record its
    pg_dump-only status as a deliberate tier decision (its data is re-derivable from SBOM
    re-ingestion, which is a fair argument for the cheaper path) — currently it is neither.
+   Mooted by [ADR-0064](../adr/adr-0064-dependency-track-only-sbom-platform.md): guac-db is
+   removed with GUAC.
 4. **Decide pooling once**: CNPG `Pooler` CR vs per-app PgBouncer sidecar vs none-by-default.
    The sidecar exists solely for the dynamic-creds pilot; if the `Pooler` CR can serve that role
    (rotating backend creds behind stable client creds), one mechanism serves both needs. Feeds
@@ -66,7 +68,7 @@ Why the posture matters enough to record:
 | --- | --- | --- |
 | candidate | — | CNPG as the cluster database standard (retroactive) |
 | candidate | — | Single-instance posture + the exception test (new) |
-| candidate | — | guac backup normalization (or recorded tier exception) (new) |
+| [ADR-0064](../adr/adr-0064-dependency-track-only-sbom-platform.md) | mooted | guac backup normalization: mooted by ADR-0064, which removes guac-db with GUAC |
 | candidate | — | Connection-pooling mechanism (new; feeds dynamic creds) |
 
 ## Out of scope

@@ -7,7 +7,7 @@
 
 This document explains the end-to-end software supply chain in this cluster: how first-party
 images are built, signed and published; how they are verified at admission; where SBOMs come
-from and how they flow into Dependency-Track and GUAC; and what questions you can actually
+from and how they flow into Dependency-Track; and what questions you can actually
 answer as a result.
 
 ---
@@ -151,7 +151,7 @@ There are two fundamentally different moments at which an SBOM is produced. Both
 During the release job, the `.forgejo` sign-attest action runs **Syft** to produce a
 **CycloneDX** (and SPDX) SBOM, then **`cosign attest --type cyclonedx`** by digest (same
 Transit key, same `--tlog-upload=false`). This attestation is what Kyverno's SBOM policies
-verify, and what GUAC's OCI collector ingests.
+verify.
 
 The action also **uploads the CycloneDX SBOM to in-cluster Dependency-Track**
 (`POST http://dependency-track-api-server.security.svc.cluster.local:8080/api/v1/bom`,
@@ -178,7 +178,6 @@ The `dependency-track/sbom-uploader` CronJob runs **Sundays at 02:10 UTC** (`10 
 1. Lists every running container image across all namespaces.
 2. Runs `trivy image --format cyclonedx` on each (scans actual layers).
 3. Uploads each CycloneDX SBOM to Dependency-Track (`POST /api/v1/bom`).
-4. Writes the SBOM to the GUAC Garage S3 bucket (`s3://guac/sboms/`) for GUAC ingestion.
 
 This auto-populates **~160 DT projects (and growing)** — overwhelmingly **third-party / system
 / operator images**, not just webgrip images. Keep that in mind when reading DT/SLO numbers:
@@ -217,14 +216,6 @@ flowchart TD
     subgraph DT ["Dependency-Track (security ns)"]
         SY -.->|fail-soft POST /api/v1/bom| DTU[CI upload]
         TRIVY[sbom-uploader CronJob\nSun 02:10 UTC, ~160 imgs] --> DTU
-        TRIVY --> S3[Garage S3 s3://guac/sboms/]
-    end
-
-    subgraph GUAC ["GUAC (security ns)"]
-        SH --> OCI[oci-collector polls registries]
-        S3 --> S3C[s3-collector CronJob]
-        OCI --> GR[GUAC graph]
-        S3C --> GR
     end
 
     subgraph Admit ["Kyverno verifyImages — single admission gate (Audit)"]
@@ -259,27 +250,13 @@ projects, components, risk score, last-scrape timestamp) to VictoriaMetrics.
 > images. A "critical CVE" in DT is usually an upstream-image finding, not a defect in a
 > webgrip image — triage accordingly before paging on it.
 
----
-
-## GUAC in depth
-
-GUAC (Graph for Understanding Artifact Composition) is the **supply-chain metadata graph** —
-it answers relationship questions ("which running images depend on log4j?", "what is the
-provenance of image Z?", "which images share this vulnerable component?"). It ingests SBOMs +
-attestations and stores them as a graph in CloudNativePG PostgreSQL, queried via GraphQL
-(`https://guac.${SECRET_DOMAIN}`).
-
-Two ingest paths:
-
-- **OCI attestations (build-time):** `oci-collector` polls the registries for cosign-attached
-  CycloneDX attestations on `webgrip/*` images — the cryptographically-anchored graph.
-- **S3 cluster SBOMs (runtime):** the `guac-s3-collector` CronJob ingests every CycloneDX SBOM
-  the Trivy uploader wrote to `s3://guac/sboms/` — visibility into every running image,
-  including third-party/operator images with no attestation.
+Dependency-Track is the only SBOM platform. GUAC, the supply-chain graph that ran next to it,
+was removed on 2026-09-29; see
+[ADR-0064](../adr/adr-0064-dependency-track-only-sbom-platform.md).
 
 ---
 
-## How Kyverno, Trivy, DT, and GUAC relate
+## How Kyverno, Trivy, and DT relate
 
 They are layered, not redundant:
 
@@ -288,11 +265,10 @@ They are layered, not redundant:
 | **Kyverno** | Admission gate — only signed first-party images run | cosign sig + SBOM attestation (key-based) | Every pod admission |
 | **Trivy Operator** | Continuous in-cluster CVE/config/RBAC posture | Running images | Scheduled / on change |
 | **Dependency-Track** | Portfolio SBOM risk + policy + license | CycloneDX SBOMs (CI upload + weekly Trivy) | On upload + hourly aggregation |
-| **GUAC** | Supply-chain graph / relationship queries | SBOMs + attestations + OSV | Continuous (OCI) + S3 ingest |
 
 A finding may surface in more than one — that is intentional: DT says *what component is
-vulnerable*, GUAC says *which images share it*, Kyverno says *this image isn't signed*, Trivy
-Operator says *this running pod has the CVE*.
+vulnerable* and, through its portfolio component search, *which images contain it*, Kyverno
+says *this image isn't signed*, Trivy Operator says *this running pod has the CVE*.
 
 ---
 
@@ -302,12 +278,10 @@ Operator says *this running pod has the CVE*.
 |---|---|---|
 | On `ops/docker/**` change | Forgejo `semantic-release` + runner | Tag, build, dual-publish, sign + attest by digest |
 | Per release | DT upload (CI) | `POST /api/v1/bom` — **fail-soft** |
-| Sun 02:10 | `dependency-track/sbom-uploader` | Scans ~160 running images → DT + Garage S3 |
+| Sun 02:10 | `dependency-track/sbom-uploader` | Scans ~160 running images → DT |
 | ~hourly | DT `PROJECTMETRICS` aggregation | Portfolio metric rollup |
 | every 30 min | `cosign-pubkey` CronJob | Publishes Transit public key(s) → `cosign-webgrip-pub` |
 | every 5 min | DT metrics exporter | Exposes `dt_portfolio_*` to VictoriaMetrics |
-| continuous | GUAC `oci-collector` | Polls registries for attestations |
-| weekly (Sun 05:20) | GUAC `s3-collector` | Ingests S3 SBOMs into the graph |
 
 ---
 
@@ -333,7 +307,6 @@ Operator says *this running pod has the CVE*.
 | Service | In-cluster URL | External URL |
 |---|---|---|
 | Dependency-Track API | `http://dependency-track-api-server.security.svc.cluster.local:8080` | `https://dependency-track.${SECRET_DOMAIN}` |
-| GUAC GraphQL | `http://graphql-server.security.svc.cluster.local:8080/query` | `https://guac.${SECRET_DOMAIN}` |
 | Harbor (registry) | `harbor.${SECRET_DOMAIN}` (LAN-only) | — |
 | OpenBao (Transit + auth/forgejo) | `http://openbao.security.svc.cluster.local:8200` | — |
 

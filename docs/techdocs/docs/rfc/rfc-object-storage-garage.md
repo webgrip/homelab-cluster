@@ -4,7 +4,7 @@
 
 > **TL;DR.** A single off-cluster Garage host (`10.0.0.110:3900`) is the S3 endpoint behind
 > everything durable this cluster does: all CNPG WAL/backups, Longhorn volume backups, OpenBao
-> snapshots, Loki chunks, Tempo traces, Harbor blobs, Forgejo LFS, GUAC blobs — and it has no
+> snapshots, Loki chunks, Tempo traces, Harbor blobs, Forgejo LFS — and it has no
 > decision record, no GitOps management, no monitoring beyond a blackbox probe, and no redundancy.
 > This RFC backfills the adoption ADR and decides how the biggest single point of failure in the
 > platform gets managed, watched, and eventually mirrored.
@@ -22,7 +22,7 @@ Every consumer verified in-tree (2026-07-02):
 | Tempo | `tempo` (14d of traces) |
 | Harbor | registry blobs, `harbor` bucket ([ADR-0018](../adr/adr-0018-registry-blob-storage-garage-s3.md)) |
 | Forgejo | LFS/attachments (MinIO-mode config) |
-| GUAC | `guac` blobstore (SBOMs) |
+| GUAC (removed 2026-09-29, [ADR-0064](../adr/adr-0064-dependency-track-only-sbom-platform.md)) | `guac` blobstore (SBOMs); the bucket is deleted with it |
 | Backstage TechDocs (planned) | `techdocs` ([ADR-0039](../adr/adr-0039-backstage-techdocs.md)) |
 
 Individual ADRs treat Garage as a given ("the cluster already runs Garage") — but adopting Garage,
@@ -37,9 +37,9 @@ what hardware it runs on, how it's upgraded, how its layout/keys are provisioned
 of which watch the S3 endpoint, not disk health or capacity on the host.
 
 Conventions have also drifted ad hoc: `cnpg-backups-bucket` holds CNPG backups *and* Longhorn
-backups *and* OpenBao snapshots; per-app buckets (`loki-*`, `tempo`, `harbor`, `guac`) follow a
-different one-bucket-per-consumer shape; credentials arrive variously via `observability-s3`,
-`cnpg-backup`, `security-s3` components and app-specific ExternalSecrets.
+backups *and* OpenBao snapshots; per-app buckets (`loki-*`, `tempo`, `harbor`) follow a
+different one-bucket-per-consumer shape; credentials arrive variously via `observability-s3` and
+`cnpg-backup` components and app-specific ExternalSecrets.
 
 ## Proposal
 

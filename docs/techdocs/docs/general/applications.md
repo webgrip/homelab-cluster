@@ -32,7 +32,6 @@ Hostnames follow `<app>.${SECRET_DOMAIN}` (`cluster-secrets`, SOPS-encrypted). G
 | Renovate webhook | `renovate` | `renovate-webhook.${SECRET_DOMAIN}` | renovate-operator webhook; its only caller, Forgejo, uses the in-cluster Service |
 | SearXNG | `searxng` | `searxng.${SECRET_DOMAIN}` | Meta-search + Valkey cache; LAN, no auth |
 | Dependency-Track | `security` | `dependency-track.${SECRET_DOMAIN}` | SBOM/CVE portfolio; CNPG DB |
-| GUAC | `security` | `guac.${SECRET_DOMAIN}` | Supply-chain graph; CNPG DB |
 | OpenBao | `security` | `openbao.${SECRET_DOMAIN}` | Secrets backend (ESO source) |
 | SparkyFitness | `sparkyfitness` | `sparkyfitness.${SECRET_DOMAIN}` | Fitness tracker; CNPG DB |
 | Vikunja | `vikunja` | `vikunja.${SECRET_DOMAIN}` | Task management (ADR-0040); CNPG DB; Authentik OIDC |
@@ -59,7 +58,7 @@ Hostnames follow `<app>.${SECRET_DOMAIN}` (`cluster-secrets`, SOPS-encrypted). G
 | `envoy-external` | `network` | `10.0.0.28` | 443 |
 | zomboid (**disabled**) | `zomboid` | `10.0.0.29` | UDP 16261-2, 8766-7; TCP 27015 |
 
-Object storage is split as of 2026-08-02: Harbor registry blobs on the **in-cluster** Garage (`http://garage-s3.garage.svc.cluster.local:3900`), and all backups (CNPG, Longhorn, OpenBao snapshots, Forgejo, guac) on the **off-site** Garage (`https://s3-offsite.webgrip.dev`, Hetzner FSN1).
+Object storage is split as of 2026-08-02: Harbor registry blobs on the **in-cluster** Garage (`http://garage-s3.garage.svc.cluster.local:3900`), and all backups (CNPG, Longhorn, OpenBao snapshots, Forgejo) on the **off-site** Garage (`https://s3-offsite.webgrip.dev`, Hetzner FSN1).
 
 ## Not routed (no HTTPRoute, by design)
 
