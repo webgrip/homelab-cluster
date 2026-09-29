@@ -158,6 +158,15 @@ jobs:
           docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
             sh -ec "python3 scripts/test_omnigraph_distill.py && bash scripts/test-omnigraph-distill-mutation.sh"
 
+      - name: Test the brain eval harness
+        run: |
+          ws="$(mktemp -d)"
+          mkdir -p "$ws/kubernetes/apps/ai/omnigraph"
+          rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/brain-eval" "$ws/kubernetes/apps/ai/omnigraph/"
+          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
+            sh -ec "python3 scripts/test_omnigraph_brain_eval.py && bash scripts/test-omnigraph-brain-eval-mutation.sh"
+
       - name: Test forgejo-sync leaves private repos alone
         run: bash scripts/test-forgejo-sync-skips-private.sh
 
@@ -228,6 +237,8 @@ jobs:
                  scripts/rehearse-omnigraph-bundle.sh \
                  scripts/test-rehearse-omnigraph-bundle.sh \
                  scripts/test_omnigraph_embedding_contract.py \
+                 kubernetes/apps/ai/omnigraph/brain-eval \
+                 scripts/test_omnigraph_brain_eval.py \
                  .forgejo/workflows/e2e.yml | grep -q .; then
             run=true
           else
@@ -262,6 +273,10 @@ jobs:
           export PATH="$OMNIGRAPH_TOOLS:$PATH"
           bash scripts/test-rehearse-omnigraph-bundle.sh
           python3 scripts/test_omnigraph_embedding_contract.py --self-test
+
+      - name: Run every brain eval query on the pinned server
+        if: steps.filter.outputs.run == 'true'
+        run: PATH="$OMNIGRAPH_TOOLS:$PATH" BRAIN_EVAL_REAL_SERVER=1 python3 scripts/test_omnigraph_brain_eval.py RealServerShapes
 
   # Renders every Flux Kustomization. Sharded across workers inside the script (each worker
   # gets its own workspace copy because flux-local mutates its tree in place).

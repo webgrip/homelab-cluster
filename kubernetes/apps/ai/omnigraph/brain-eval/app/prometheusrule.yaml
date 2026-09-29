@@ -1,0 +1,126 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: omnigraph-brain-eval
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: omnigraph-brain-eval
+spec:
+  groups:
+    - name: omnigraph-brain-eval.rules
+      rules:
+        - alert: OmnigraphBrainEvalStale
+          expr: |
+            time() - last_over_time(brain_eval_last_success_timestamp_seconds{mode="retrieval"}[3d]) > 36 * 3600
+            or
+            absent_over_time(brain_eval_last_success_timestamp_seconds{mode="retrieval"}[3d])
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: omnigraph
+          annotations:
+            summary: "The brain retrieval eval has not completed a nightly run in 36h (ai/omnigraph-brain-eval-retrieval)"
+            description: |
+              What's happening:
+              - The omnigraph-brain-eval-retrieval CronJob scores brain retrieval every night at 04:40 and pushes brain_eval_last_success_timestamp_seconds{mode="retrieval"} only after its results are stored. No run has completed for more than 36 hours, or none in the last 3 days.
+
+              Impact/risk:
+              - Retrieval changes (a new stored query, a writer change, an Omnigraph upgrade) are no longer measured, so a regression in how well the brain finds things goes unnoticed.
+              - The brain retrieval phases gate on these scores and cannot be accepted without fresh numbers.
+
+              Likely causes:
+              - Omnigraph is restarting or down, or act-brain-eval is missing from tokens.json (log: "omnigraph answered HTTP 401/403" or "HTTP 0").
+              - The eval store is unreachable: after the move to the private Forgejo repo the deploy key was removed or forgejo-ssh is down (log: "eval repo not reachable").
+              - The eval repo holds no cases or a case file does not parse (log: "the eval repo holds no cases" or a case file name with the line number).
+              - vmagent did not accept the push (log: "vmagent answered").
+
+              First actions:
+              - kubectl -n ai get cronjob,jobs -l app.kubernetes.io/instance=omnigraph-brain-eval-retrieval
+              - kubectl -n ai logs job/<latest job> --all-containers
+              - kubectl -n ai create job --from=cronjob/omnigraph-brain-eval-retrieval omnigraph-brain-eval-retrieval-manual
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#brain-eval"
+        - alert: OmnigraphBrainEvalJudgeControlFailed
+          expr: |
+            last_over_time(brain_eval_judge_control_ok[8d]) == 0
+          for: 5m
+          labels:
+            severity: warning
+            owner: platform
+            service: omnigraph
+          annotations:
+            summary: "The brain eval judge failed its control pair; answer scores are withheld (ai/omnigraph-brain-eval)"
+            description: |
+              What's happening:
+              - Every answer run first asks the judge model to grade a planted correct answer and a planted unsupported one. The correct one must score 0.8 or more and the unsupported one 0.2 or less. The last run's judge failed that check, so the run published no answer scores and exited non-zero.
+
+              Impact/risk:
+              - Answer quality (key-fact recall, faithfulness, citation precision, abstention) is not measured until the judge passes again.
+              - A judge that cannot tell a supported from an unsupported answer would make every later gate decision meaningless.
+
+              Likely causes:
+              - LiteLLM served a fallback model instead of claude-haiku-4-5, or the model's behaviour changed.
+              - The judge prompt or its JSON schema changed and the judge now misreads the task.
+              - The provider returned invalid JSON repeatedly.
+
+              First actions:
+              - kubectl -n ai logs job/<latest omnigraph-brain-eval-answer job> -c eval (the "judge control pair" line has both scores)
+              - Check the judge model route in LiteLLM and the spend log for the key omnigraph-eval
+              - Re-run only the control pair: kubectl -n ai create job --from=cronjob/omnigraph-brain-eval-answer omnigraph-brain-eval-answer-manual after fixing
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#brain-eval"
+        - alert: OmnigraphBrainEvalRunInvalid
+          expr: |
+            last_over_time(brain_eval_run_valid[3d]) == 0
+          for: 5m
+          labels:
+            severity: warning
+            owner: platform
+            service: omnigraph
+          annotations:
+            summary: "A brain eval run was marked invalid (ai/omnigraph-brain-eval, mode {{ $labels.mode }})"
+            description: |
+              What's happening:
+              - The last brain eval run of this mode stopped before it stored results and pushed brain_eval_run_valid 0: it hit its spend cap, an upstream refused it, or the eval set did not load.
+
+              Impact/risk:
+              - That mode's scores are missing for this run; a gate run that is invalid cannot be used for a phase decision.
+
+              Likely causes:
+              - The per-run spend cap was reached (log: "passed the cap"), for example because the raw B0 bridge returned very large outputs.
+              - Omnigraph or LiteLLM answered with an error (log: "answered HTTP").
+              - A case file in the eval repo does not parse or validate (log names the file and line).
+
+              First actions:
+              - kubectl -n ai logs job/<latest omnigraph-brain-eval job> -c eval (the "run invalid" line has the reason)
+              - Fix the cause, then re-run the mode with kubectl -n ai create job --from=cronjob/<cronjob> <cronjob>-manual
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#brain-eval"
+        - alert: OmnigraphBrainEvalBudgetNearlySpent
+          expr: |
+            max(litellm_key_spend{key_alias="omnigraph-eval"}) / max(litellm_key_max_budget{key_alias="omnigraph-eval"} > 0) > 0.8
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: omnigraph
+          annotations:
+            summary: "The brain eval has used over 80% of its 30-day LiteLLM budget (ai/omnigraph-eval key)"
+            description: |
+              What's happening:
+              - The omnigraph-eval virtual key has spent more than 80% of its max_budget of USD 10 in the current 30-day window.
+
+              Impact/risk:
+              - When the budget runs out LiteLLM refuses the key: weekly answer runs, gates and candidate drafting fail until the window resets.
+              - Spend this high means far more runs or far larger runs than the steady state of about USD 2.40 a month.
+
+              Likely causes:
+              - Several manual gate runs in one window (about USD 3.50 each).
+              - The raw B0 bridge returned very large tool outputs, so each answer used many tokens.
+              - A model price rose, or answer mode ran with more repeats than planned.
+
+              First actions:
+              - Grafana, AI folder, LiteLLM Inference Spend and Budgets, filtered on key omnigraph-eval
+              - kubectl -n ai logs job/<latest omnigraph-brain-eval job> -c eval (spend_usd per run)
+              - Raise MAX_BUDGET in litellm/keys/app/omnigraph-eval-key-register.job.yaml only after the cause is understood
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#brain-eval"

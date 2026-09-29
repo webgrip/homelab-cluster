@@ -1,0 +1,846 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: omnigraph-brain-eval-retrieval
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: omnigraph-brain-eval
+    app.kubernetes.io/instance: omnigraph-brain-eval-retrieval
+    app.kubernetes.io/part-of: omnigraph
+spec:
+  schedule: "40 4 * * *"
+  timeZone: Europe/Amsterdam
+  suspend: false
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 900
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: omnigraph-brain-eval
+            app.kubernetes.io/instance: omnigraph-brain-eval-retrieval
+            app.kubernetes.io/part-of: omnigraph
+        spec:
+          serviceAccountName: omnigraph-brain-eval
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            fsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          initContainers:
+            - name: store
+              image: harbor.webgrip.dev/dockerhub/alpine/git:v2.54.0@sha256:832b1cd1a271509f3d5272a1a62d4cb2ab1a53426ebde1f6c2cb7349f907dc6f
+              imagePullPolicy: IfNotPresent
+              command:
+                - "sh"
+                - "/etc/brain-eval/store.sh"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: EVAL_REPO_URL, value: "ssh://git@forgejo-ssh.forgejo.svc.cluster.local/ryangr0/brain-eval.git"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 256Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: deploy-key, mountPath: /run/secrets/deploy-key, readOnly: true}
+                - {name: store, mountPath: /store}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+            - name: eval
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "--max-spend-usd=0"
+                - "retrieval"
+                - "--missing-vectors"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+                - {name: BRAIN_EVAL_MCP_ARGUMENTS_REDACTED, value: "false"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 50m, memory: 128Mi}
+                limits: {memory: 512Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: token, mountPath: /run/secrets/omnigraph, readOnly: true}
+                - {name: litellm-key, mountPath: /run/secrets/litellm, readOnly: true}
+                - {name: contract, mountPath: /etc/omnigraph-embedding-contract, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+            - name: publish
+              image: harbor.webgrip.dev/dockerhub/alpine/git:v2.54.0@sha256:832b1cd1a271509f3d5272a1a62d4cb2ab1a53426ebde1f6c2cb7349f907dc6f
+              imagePullPolicy: IfNotPresent
+              command:
+                - "sh"
+                - "/etc/brain-eval/publish.sh"
+              env:
+                - {name: HOME, value: /tmp}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 256Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: deploy-key, mountPath: /run/secrets/deploy-key, readOnly: true}
+                - {name: store, mountPath: /store}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+          containers:
+            - name: report
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "push-metrics"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: scripts
+              configMap:
+                name: omnigraph-brain-eval
+            - name: token
+              secret:
+                secretName: omnigraph-brain-eval-token
+                defaultMode: 0440
+                items:
+                  - {key: token, path: token}
+            - name: litellm-key
+              secret:
+                secretName: litellm-key-omnigraph-eval
+                defaultMode: 0440
+                items:
+                  - {key: key, path: key}
+            - name: deploy-key
+              secret:
+                secretName: omnigraph-brain-eval-deploy-key
+                defaultMode: 0440
+                items:
+                  - {key: privateKey, path: privateKey}
+            - name: contract
+              configMap:
+                name: omnigraph-embedding-contract
+            - name: store
+              persistentVolumeClaim:
+                claimName: omnigraph-brain-eval-store
+            - name: work
+              emptyDir:
+                sizeLimit: 512Mi
+            - name: tmp
+              emptyDir:
+                sizeLimit: 64Mi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: omnigraph-brain-eval-answer
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: omnigraph-brain-eval
+    app.kubernetes.io/instance: omnigraph-brain-eval-answer
+    app.kubernetes.io/part-of: omnigraph
+spec:
+  schedule: "10 5 * * 0"
+  timeZone: Europe/Amsterdam
+  suspend: true
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 900
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: omnigraph-brain-eval
+            app.kubernetes.io/instance: omnigraph-brain-eval-answer
+            app.kubernetes.io/part-of: omnigraph
+        spec:
+          serviceAccountName: omnigraph-brain-eval
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            fsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          initContainers:
+            - name: store
+              image: harbor.webgrip.dev/dockerhub/alpine/git:v2.54.0@sha256:832b1cd1a271509f3d5272a1a62d4cb2ab1a53426ebde1f6c2cb7349f907dc6f
+              imagePullPolicy: IfNotPresent
+              command:
+                - "sh"
+                - "/etc/brain-eval/store.sh"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: EVAL_REPO_URL, value: "ssh://git@forgejo-ssh.forgejo.svc.cluster.local/ryangr0/brain-eval.git"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 256Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: deploy-key, mountPath: /run/secrets/deploy-key, readOnly: true}
+                - {name: store, mountPath: /store}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+            - name: eval
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "--max-spend-usd=1.5"
+                - "answer"
+                - "--arm=b0"
+                - "--repeats=1"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+                - {name: BRAIN_EVAL_MCP_ARGUMENTS_REDACTED, value: "false"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 50m, memory: 128Mi}
+                limits: {memory: 512Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: token, mountPath: /run/secrets/omnigraph, readOnly: true}
+                - {name: litellm-key, mountPath: /run/secrets/litellm, readOnly: true}
+                - {name: contract, mountPath: /etc/omnigraph-embedding-contract, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+            - name: publish
+              image: harbor.webgrip.dev/dockerhub/alpine/git:v2.54.0@sha256:832b1cd1a271509f3d5272a1a62d4cb2ab1a53426ebde1f6c2cb7349f907dc6f
+              imagePullPolicy: IfNotPresent
+              command:
+                - "sh"
+                - "/etc/brain-eval/publish.sh"
+              env:
+                - {name: HOME, value: /tmp}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 256Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: deploy-key, mountPath: /run/secrets/deploy-key, readOnly: true}
+                - {name: store, mountPath: /store}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+          containers:
+            - name: report
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "push-metrics"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: scripts
+              configMap:
+                name: omnigraph-brain-eval
+            - name: token
+              secret:
+                secretName: omnigraph-brain-eval-token
+                defaultMode: 0440
+                items:
+                  - {key: token, path: token}
+            - name: litellm-key
+              secret:
+                secretName: litellm-key-omnigraph-eval
+                defaultMode: 0440
+                items:
+                  - {key: key, path: key}
+            - name: deploy-key
+              secret:
+                secretName: omnigraph-brain-eval-deploy-key
+                defaultMode: 0440
+                items:
+                  - {key: privateKey, path: privateKey}
+            - name: contract
+              configMap:
+                name: omnigraph-embedding-contract
+            - name: store
+              persistentVolumeClaim:
+                claimName: omnigraph-brain-eval-store
+            - name: work
+              emptyDir:
+                sizeLimit: 512Mi
+            - name: tmp
+              emptyDir:
+                sizeLimit: 64Mi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: omnigraph-brain-eval-gate
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: omnigraph-brain-eval
+    app.kubernetes.io/instance: omnigraph-brain-eval-gate
+    app.kubernetes.io/part-of: omnigraph
+spec:
+  schedule: "0 0 1 1 *"
+  timeZone: Europe/Amsterdam
+  suspend: true
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 900
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 7200
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: omnigraph-brain-eval
+            app.kubernetes.io/instance: omnigraph-brain-eval-gate
+            app.kubernetes.io/part-of: omnigraph
+        spec:
+          serviceAccountName: omnigraph-brain-eval
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            fsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          initContainers:
+            - name: store
+              image: harbor.webgrip.dev/dockerhub/alpine/git:v2.54.0@sha256:832b1cd1a271509f3d5272a1a62d4cb2ab1a53426ebde1f6c2cb7349f907dc6f
+              imagePullPolicy: IfNotPresent
+              command:
+                - "sh"
+                - "/etc/brain-eval/store.sh"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: EVAL_REPO_URL, value: "ssh://git@forgejo-ssh.forgejo.svc.cluster.local/ryangr0/brain-eval.git"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 256Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: deploy-key, mountPath: /run/secrets/deploy-key, readOnly: true}
+                - {name: store, mountPath: /store}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+            - name: eval
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "--max-spend-usd=5"
+                - "gate"
+                - "--profile=p0"
+                - "--arm=b0"
+                - "--repeats=3"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+                - {name: BRAIN_EVAL_MCP_ARGUMENTS_REDACTED, value: "false"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 50m, memory: 128Mi}
+                limits: {memory: 512Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: token, mountPath: /run/secrets/omnigraph, readOnly: true}
+                - {name: litellm-key, mountPath: /run/secrets/litellm, readOnly: true}
+                - {name: contract, mountPath: /etc/omnigraph-embedding-contract, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+            - name: publish
+              image: harbor.webgrip.dev/dockerhub/alpine/git:v2.54.0@sha256:832b1cd1a271509f3d5272a1a62d4cb2ab1a53426ebde1f6c2cb7349f907dc6f
+              imagePullPolicy: IfNotPresent
+              command:
+                - "sh"
+                - "/etc/brain-eval/publish.sh"
+              env:
+                - {name: HOME, value: /tmp}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 256Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: deploy-key, mountPath: /run/secrets/deploy-key, readOnly: true}
+                - {name: store, mountPath: /store}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+          containers:
+            - name: report
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "push-metrics"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: scripts
+              configMap:
+                name: omnigraph-brain-eval
+            - name: token
+              secret:
+                secretName: omnigraph-brain-eval-token
+                defaultMode: 0440
+                items:
+                  - {key: token, path: token}
+            - name: litellm-key
+              secret:
+                secretName: litellm-key-omnigraph-eval
+                defaultMode: 0440
+                items:
+                  - {key: key, path: key}
+            - name: deploy-key
+              secret:
+                secretName: omnigraph-brain-eval-deploy-key
+                defaultMode: 0440
+                items:
+                  - {key: privateKey, path: privateKey}
+            - name: contract
+              configMap:
+                name: omnigraph-embedding-contract
+            - name: store
+              persistentVolumeClaim:
+                claimName: omnigraph-brain-eval-store
+            - name: work
+              emptyDir:
+                sizeLimit: 512Mi
+            - name: tmp
+              emptyDir:
+                sizeLimit: 64Mi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: omnigraph-brain-eval-candidates
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: omnigraph-brain-eval
+    app.kubernetes.io/instance: omnigraph-brain-eval-candidates
+    app.kubernetes.io/part-of: omnigraph
+spec:
+  schedule: "0 0 1 1 *"
+  timeZone: Europe/Amsterdam
+  suspend: true
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 900
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: omnigraph-brain-eval
+            app.kubernetes.io/instance: omnigraph-brain-eval-candidates
+            app.kubernetes.io/part-of: omnigraph
+        spec:
+          serviceAccountName: omnigraph-brain-eval
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            fsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          initContainers:
+            - name: store
+              image: harbor.webgrip.dev/dockerhub/alpine/git:v2.54.0@sha256:832b1cd1a271509f3d5272a1a62d4cb2ab1a53426ebde1f6c2cb7349f907dc6f
+              imagePullPolicy: IfNotPresent
+              command:
+                - "sh"
+                - "/etc/brain-eval/store.sh"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: EVAL_REPO_URL, value: "ssh://git@forgejo-ssh.forgejo.svc.cluster.local/ryangr0/brain-eval.git"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 256Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: deploy-key, mountPath: /run/secrets/deploy-key, readOnly: true}
+                - {name: store, mountPath: /store}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+            - name: eval
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "--max-spend-usd=3"
+                - "candidates"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+                - {name: BRAIN_EVAL_MCP_ARGUMENTS_REDACTED, value: "false"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 50m, memory: 128Mi}
+                limits: {memory: 1536Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: token, mountPath: /run/secrets/omnigraph, readOnly: true}
+                - {name: litellm-key, mountPath: /run/secrets/litellm, readOnly: true}
+                - {name: contract, mountPath: /etc/omnigraph-embedding-contract, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+            - name: publish
+              image: harbor.webgrip.dev/dockerhub/alpine/git:v2.54.0@sha256:832b1cd1a271509f3d5272a1a62d4cb2ab1a53426ebde1f6c2cb7349f907dc6f
+              imagePullPolicy: IfNotPresent
+              command:
+                - "sh"
+                - "/etc/brain-eval/publish.sh"
+              env:
+                - {name: HOME, value: /tmp}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 256Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: deploy-key, mountPath: /run/secrets/deploy-key, readOnly: true}
+                - {name: store, mountPath: /store}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+          containers:
+            - name: report
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "push-metrics"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: scripts
+              configMap:
+                name: omnigraph-brain-eval
+            - name: token
+              secret:
+                secretName: omnigraph-brain-eval-token
+                defaultMode: 0440
+                items:
+                  - {key: token, path: token}
+            - name: litellm-key
+              secret:
+                secretName: litellm-key-omnigraph-eval
+                defaultMode: 0440
+                items:
+                  - {key: key, path: key}
+            - name: deploy-key
+              secret:
+                secretName: omnigraph-brain-eval-deploy-key
+                defaultMode: 0440
+                items:
+                  - {key: privateKey, path: privateKey}
+            - name: contract
+              configMap:
+                name: omnigraph-embedding-contract
+            - name: store
+              persistentVolumeClaim:
+                claimName: omnigraph-brain-eval-store
+            - name: work
+              emptyDir:
+                sizeLimit: 512Mi
+            - name: tmp
+              emptyDir:
+                sizeLimit: 64Mi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: omnigraph-brain-eval-experiment
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: omnigraph-brain-eval
+    app.kubernetes.io/instance: omnigraph-brain-eval-experiment
+    app.kubernetes.io/part-of: omnigraph
+spec:
+  schedule: "0 0 1 1 *"
+  timeZone: Europe/Amsterdam
+  suspend: true
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 900
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: omnigraph-brain-eval
+            app.kubernetes.io/instance: omnigraph-brain-eval-experiment
+            app.kubernetes.io/part-of: omnigraph
+        spec:
+          serviceAccountName: omnigraph-brain-eval
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            fsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          initContainers:
+            - name: store
+              image: harbor.webgrip.dev/dockerhub/alpine/git:v2.54.0@sha256:832b1cd1a271509f3d5272a1a62d4cb2ab1a53426ebde1f6c2cb7349f907dc6f
+              imagePullPolicy: IfNotPresent
+              command:
+                - "sh"
+                - "/etc/brain-eval/store.sh"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: EVAL_REPO_URL, value: "ssh://git@forgejo-ssh.forgejo.svc.cluster.local/ryangr0/brain-eval.git"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 256Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: deploy-key, mountPath: /run/secrets/deploy-key, readOnly: true}
+                - {name: store, mountPath: /store}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+            - name: eval
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "--max-spend-usd=0.5"
+                - "experiment"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+                - {name: BRAIN_EVAL_MCP_ARGUMENTS_REDACTED, value: "false"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 50m, memory: 128Mi}
+                limits: {memory: 512Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: token, mountPath: /run/secrets/omnigraph, readOnly: true}
+                - {name: litellm-key, mountPath: /run/secrets/litellm, readOnly: true}
+                - {name: contract, mountPath: /etc/omnigraph-embedding-contract, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+            - name: publish
+              image: harbor.webgrip.dev/dockerhub/alpine/git:v2.54.0@sha256:832b1cd1a271509f3d5272a1a62d4cb2ab1a53426ebde1f6c2cb7349f907dc6f
+              imagePullPolicy: IfNotPresent
+              command:
+                - "sh"
+                - "/etc/brain-eval/publish.sh"
+              env:
+                - {name: HOME, value: /tmp}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 256Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: deploy-key, mountPath: /run/secrets/deploy-key, readOnly: true}
+                - {name: store, mountPath: /store}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+          containers:
+            - name: report
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - "/etc/brain-eval/brain_eval.py"
+                - "--vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=omnigraph-brain-eval"
+                - "push-metrics"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/brain-eval, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: scripts
+              configMap:
+                name: omnigraph-brain-eval
+            - name: token
+              secret:
+                secretName: omnigraph-brain-eval-token
+                defaultMode: 0440
+                items:
+                  - {key: token, path: token}
+            - name: litellm-key
+              secret:
+                secretName: litellm-key-omnigraph-eval
+                defaultMode: 0440
+                items:
+                  - {key: key, path: key}
+            - name: deploy-key
+              secret:
+                secretName: omnigraph-brain-eval-deploy-key
+                defaultMode: 0440
+                items:
+                  - {key: privateKey, path: privateKey}
+            - name: contract
+              configMap:
+                name: omnigraph-embedding-contract
+            - name: store
+              persistentVolumeClaim:
+                claimName: omnigraph-brain-eval-store
+            - name: work
+              emptyDir:
+                sizeLimit: 512Mi
+            - name: tmp
+              emptyDir:
+                sizeLimit: 64Mi

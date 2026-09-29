@@ -1,0 +1,30 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./serviceaccount.yaml
+  - ./deploy-key.externalsecret.yaml
+  - ./deploy-key.pushsecret.yaml
+  - ./pvc.yaml
+  - ./cronjobs.yaml
+  - ./networkpolicy.yaml
+  - ./prometheusrule.yaml
+  - ./grafana-dashboard.yaml
+configMapGenerator:
+  - name: omnigraph-brain-eval
+    files:
+      - ./brain_eval.py
+      - ./candidates.py
+      - ./judge.prompt.txt
+      - ./draft.prompt.txt
+      - ./unanswerable.prompt.txt
+      - ./pool.prompt.txt
+      - ./repo-readme.md
+      - ./calibration-readme.md
+      - ./store.sh
+      - ./publish.sh
+      - ./known_hosts
+    options:
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled

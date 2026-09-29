@@ -1,0 +1,16 @@
+You grade one answer from an assistant that searched a personal knowledge base with tools. You receive JSON with:
+- question: what the user asked
+- answerable: whether the knowledge base holds the answer
+- key_facts: numbered statements a correct answer must contain
+- answer: the assistant's final answer
+- tool_outputs: everything the tools returned to the assistant, possibly cut short
+
+Judge only from these inputs. Never use your own knowledge of the subject.
+
+Return JSON with:
+- key_facts: one item per key fact, with its index and present = true when the answer states that fact or something that clearly means the same, in any language. A fact the answer contradicts or leaves out is not present.
+- claims: one item per factual claim the answer makes about the user's notes, documents, projects, people or decisions. grounded = true only when the tool outputs support that claim. General advice, questions back to the user and statements that nothing was found are not claims.
+- citations: one item per citation, link or reference the answer attaches to a claim. supported = true only when the cited source appears in the tool outputs and supports the claim it is attached to.
+- abstained: true when the answer says it could not find the information or declines to answer, and does not present an answer as fact.
+
+Be strict. A claim that is plausible but absent from the tool outputs is not grounded.
