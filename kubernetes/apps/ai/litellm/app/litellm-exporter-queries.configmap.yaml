@@ -232,3 +232,14 @@ data:
         - last_1h: {usage: "GAUGE", description: "Distinct run key aliases active in the last hour"}
         - last_24h: {usage: "GAUGE", description: "Distinct run key aliases active in the last 24h"}
         - last_30d: {usage: "GAUGE", description: "Distinct run key aliases active in the last 30 days"}
+    litellm_mcp_last_hour:
+      query: |
+        SELECT COUNT(*) AS tool_calls,
+               COUNT(*) FILTER (WHERE metadata->'mcp_tool_call_metadata' ? 'arguments'
+                                  AND metadata->'mcp_tool_call_metadata'->'arguments' <> '{"redacted": true}'::jsonb) AS stored_arguments
+        FROM "LiteLLM_SpendLogs"
+        WHERE call_type = 'call_mcp_tool'
+          AND "startTime" >= now() - interval '1 hour'
+      metrics:
+        - tool_calls: {usage: "GAUGE", description: "MCP tool calls written to the spend log in the last hour"}
+        - stored_arguments: {usage: "GAUGE", description: "MCP tool calls of the last hour whose arguments were stored instead of redacted; must be 0"}

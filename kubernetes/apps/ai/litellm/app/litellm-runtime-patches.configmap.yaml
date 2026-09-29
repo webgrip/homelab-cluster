@@ -1,7 +1,8 @@
 ---
 # Runtime monkeypatches for the litellm interpreter (sitecustomize.py is
-# auto-imported by Python at startup). TWO stopgaps live here; each names its
-# removal condition. Mounted into the venv's site-packages via subPath.
+# auto-imported by Python at startup). Every stopgap and its removal condition
+# is listed in docs/techdocs/docs/general/litellm.md. Mounted into the venv's
+# site-packages via subPath.
 #
 # PATCH 1 — SSO timeout (2026-07-15): litellm's Admin UI SSO uses fastapi-sso,
 # which constructs `httpx.AsyncClient()` with NO timeout override in
@@ -28,6 +29,63 @@ metadata:
   name: litellm-runtime-patches
 data:
   sitecustomize.py: |-
+    import importlib.machinery
+    import sys
+
+    MCP_TOOL_CALL_REDACTED = {"redacted": True}
+    STANDARD_LOGGING_MODULE = "litellm.litellm_core_utils.litellm_logging"
+    SPEND_TRACKING_MODULE = "litellm.proxy.spend_tracking.spend_tracking_utils"
+
+    def _mcp_tool_call_without_arguments(tool_call):
+        if not isinstance(tool_call, dict):
+            return tool_call
+        redacted = dict(tool_call)
+        redacted["arguments"] = dict(MCP_TOOL_CALL_REDACTED)
+        if "result" in redacted:
+            redacted["result"] = dict(MCP_TOOL_CALL_REDACTED)
+        return redacted
+
+    def _without_mcp_arguments(build_metadata):
+        def build_metadata_without_mcp_arguments(*args, **kwargs):
+            metadata = build_metadata(*args, **kwargs)
+            if isinstance(metadata, dict) and metadata.get("mcp_tool_call_metadata") is not None:
+                metadata["mcp_tool_call_metadata"] = _mcp_tool_call_without_arguments(metadata["mcp_tool_call_metadata"])
+            return metadata
+
+        build_metadata_without_mcp_arguments.redacts_mcp_arguments = True
+        return build_metadata_without_mcp_arguments
+
+    def _redact_standard_logging_metadata(module):
+        setup = module.StandardLoggingPayloadSetup
+        setup.get_standard_logging_metadata = staticmethod(_without_mcp_arguments(setup.get_standard_logging_metadata))
+
+    def _redact_spend_logs_metadata(module):
+        module._get_spend_logs_metadata = _without_mcp_arguments(module._get_spend_logs_metadata)
+
+    MCP_ARGUMENT_REDACTORS = {
+        STANDARD_LOGGING_MODULE: _redact_standard_logging_metadata,
+        SPEND_TRACKING_MODULE: _redact_spend_logs_metadata,
+    }
+
+    class RedactMcpArgumentsOnImport:
+        def find_spec(self, fullname, path, target=None):
+            redact = MCP_ARGUMENT_REDACTORS.get(fullname)
+            if redact is None:
+                return None
+            spec = importlib.machinery.PathFinder.find_spec(fullname, path)
+            if spec is None or spec.loader is None:
+                return spec
+            load = spec.loader.exec_module
+
+            def load_then_redact(module):
+                load(module)
+                redact(module)
+
+            spec.loader.exec_module = load_then_redact
+            return spec
+
+    sys.meta_path.insert(0, RedactMcpArgumentsOnImport())
+
     import httpx
 
     _orig_init = httpx.AsyncClient.__init__

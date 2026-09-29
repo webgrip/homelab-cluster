@@ -64,9 +64,36 @@ deleting its Secret and its Job.
 - Budgets: SSO-created users get 10 USD/30d automatically; teams default to 25 USD/30d;
   provider daily caps 5 USD (Anthropic) / 2 USD (DeepSeek). Amounts are owner dials in
   `litellm-config.configmap.yaml`.
-- Prompts are **not** stored in the spend ledger (recorded privacy posture); spend-log retention 90d. MCP tool calls are the exception: LiteLLM 1.102.1 keeps each call's arguments in `LiteLLM_SpendLogs.metadata.mcp_tool_call_metadata.arguments` whatever `turn_off_message_logging` says, so `omnigraph_*` queries and loads, note text included, sit in the ledger for 90 days until VIK-1403 strips them.
+- Prompts are **not** stored in the spend ledger (recorded privacy posture); spend-log retention 90d. MCP tool arguments are not stored either: see [MCP tool arguments](#mcp-tool-arguments).
 - Dashboards: Grafana → **AI** folder → *LiteLLM — Inference Spend & Budgets* and
   *LiteLLM — Latency & Reliability*. Traces: Explore → Jaeger datasource, service `litellm`.
+
+## MCP tool arguments
+
+LiteLLM 1.102.1 copies every MCP tool call's arguments into its standard logging payload, whatever
+`turn_off_message_logging` or the OTEL callback's `message_logging: false` say. From there they
+reached two stores: `LiteLLM_SpendLogs.metadata.mcp_tool_call_metadata.arguments` (90 days, and the
+`litellm-db` backups) and the `metadata.mcp_tool_call_metadata` attribute of every `litellm` span in
+VictoriaTraces (14 days). For the `omnigraph_*` bridges that meant queries, loads with note text and
+captures, outside every forgetting path.
+
+Since VIK-1403 the runtime patch replaces `arguments`, and `result` when present, with
+`{"redacted": true}` before any callback reads the payload. The tool itself still gets its
+arguments, and the ledger keeps tool name, server and status, so spend attribution is unchanged.
+
+| What | Where |
+|---|---|
+| The patch | PATCH 3 in [litellm-runtime-patches](../../../../kubernetes/apps/ai/litellm/app/litellm-runtime-patches.configmap.yaml): an import hook wraps `StandardLoggingPayloadSetup.get_standard_logging_metadata` (spend log, OTEL spans and every other callback) and `_get_spend_logs_metadata` (the spend log again, in case another path builds it) once LiteLLM imports those modules. It never imports LiteLLM itself |
+| The test | `bash scripts/test-litellm-runtime-patches.sh --pinned-image` builds a real standard logging payload and spend-log row inside the image pinned in `helmrelease.yaml` with a sentinel argument. The sentinel must not appear, and 6 mutants (hook not registered, one module unpatched, arguments or result kept, the live call rewritten) must each fail. Without `--pinned-image` it runs against fake modules in seconds. It runs in pre-commit and in the e2e job *LiteLLM runtime patches*, which also runs for Renovate's LiteLLM bumps |
+| The signal | The exporter query `litellm_mcp_last_hour` counts the last hour's `call_mcp_tool` rows and those whose arguments are not redacted: `litellm_mcp_last_hour_stored_arguments` must be 0. Alerts `LiteLLMMCPArgumentsStored` and `LiteLLMMCPRedactionCheckMissing` ([prometheusrule](../../../../kubernetes/apps/ai/litellm/app/prometheusrule.yaml)) |
+| Rows from before the patch | They age out: spend logs after 90 days, spans after 14. Deleting them sooner is a database write and Ryan's decision |
+| Removal | When LiteLLM gains an option to keep MCP arguments out of the logging payload, set it, keep the test and the alert, and delete PATCH 3 |
+
+The other two patches in the same file: PATCH 1 widens the default `httpx.AsyncClient` timeout to 30 s
+for the Admin UI's Authentik SSO exchange (remove once fastapi-sso makes the timeout configurable or
+Authentik answers in under 5 s); PATCH 2 caps the MCP client's proposed protocol version at
+`2025-06-18` because supergateway echoes versions it cannot serve (remove once supergateway
+negotiates properly).
 
 ## Network (namespace `ai`)
 

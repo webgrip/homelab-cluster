@@ -1,0 +1,65 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: litellm-privacy
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: litellm
+spec:
+  groups:
+    - name: litellm-privacy.rules
+      rules:
+        - alert: LiteLLMMCPArgumentsStored
+          expr: |
+            max(litellm_mcp_last_hour_stored_arguments) > 0
+          for: 5m
+          labels:
+            severity: warning
+            owner: platform
+            service: litellm
+          annotations:
+            summary: "LiteLLM stored the arguments of an MCP tool call in its spend log (ai/litellm)"
+            description: |
+              What's happening:
+              - At least one MCP tool call of the last hour was written to LiteLLM_SpendLogs with its arguments instead of {"redacted": true}. The redaction is PATCH 3 in the litellm-runtime-patches sitecustomize.py; it rewrites mcp_tool_call_metadata before the spend log and the OpenTelemetry spans read it.
+
+              Impact/risk:
+              - Tool arguments carry private text: brain and memory queries, note text in loads, remember captures, eval questions. They now sit in litellm-db and its backups for 90 days, and in VictoriaTraces as span attributes, outside every forgetting path.
+
+              Likely causes:
+              - A LiteLLM upgrade renamed StandardLoggingPayloadSetup.get_standard_logging_metadata or _get_spend_logs_metadata, or moved the modules, so the import hook no longer wraps them.
+              - The litellm-runtime-patches ConfigMap is no longer mounted at the venv's site-packages/sitecustomize.py (a changed Python version changes that path).
+              - A new code path writes MCP metadata without the standard logging payload.
+
+              First actions:
+              - bash scripts/test-litellm-runtime-patches.sh --pinned-image (probes the deployed image with the patch)
+              - kubectl -n ai exec deploy/litellm -c app -- ls /app/.venv/lib/ (the Python directory must match the subPath mount in helmrelease.yaml)
+              - Count the rows read-only: SELECT count(*) FROM "LiteLLM_SpendLogs" WHERE call_type = 'call_mcp_tool' AND "startTime" >= now() - interval '1 hour' AND metadata->'mcp_tool_call_metadata'->'arguments' <> '{"redacted": true}'::jsonb
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/general/litellm/#mcp-tool-arguments"
+        - alert: LiteLLMMCPRedactionCheckMissing
+          expr: |
+            absent_over_time(litellm_mcp_last_hour_stored_arguments[30m])
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: litellm
+          annotations:
+            summary: "The check that LiteLLM redacts MCP tool arguments reports nothing (ai/litellm exporter)"
+            description: |
+              What's happening:
+              - The postgres exporter beside LiteLLM has not reported litellm_mcp_last_hour_stored_arguments for 30 minutes. That series is the only signal that MCP tool-call arguments stay out of the spend log.
+
+              Impact/risk:
+              - A regression of the redaction patch would go unnoticed, and private tool arguments would accumulate in litellm-db for 90 days.
+
+              Likely causes:
+              - The query litellm_mcp_last_hour in litellm-exporter-queries fails, for example after a LiteLLM schema migration renamed a column.
+              - The exporter container or its scrape (vmservicescrape litellm) is down, or litellm-db is unreachable.
+
+              First actions:
+              - kubectl -n ai logs deploy/litellm -c exporter --tail=50 (a failing query is logged with its name)
+              - Grafana Explore on VictoriaMetrics: pg_up{namespace="ai"} and the litellm_key_spend series (both come from the same exporter)
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/general/litellm/#mcp-tool-arguments"

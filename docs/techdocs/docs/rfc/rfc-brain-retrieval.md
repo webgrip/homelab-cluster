@@ -134,7 +134,9 @@ so "stub daily notes" are a small noise source.
   `disallowed_tools` hides a tool and refuses its call on both routes. **Spend logs keep every MCP
   call's arguments** (`metadata.mcp_tool_call_metadata.arguments`, not the result) for the 90-day
   retention, with or without `turn_off_message_logging`; live on 2026-09-29, 233 of 251
-  `omnigraph_brain` calls carried them. VIK-1403 strips them.
+  `omnigraph_brain` calls carried them, and the OTEL spans carried them too (327 `litellm` spans
+  in VictoriaTraces over 7 days, attribute `metadata.mcp_tool_call_metadata`). VIK-1403 strips
+  them from both since 2026-09-29 ([LiteLLM: MCP tool arguments](../general/litellm.md#mcp-tool-arguments)).
 - **Open WebUI** 0.11.4 runs with `ENABLE_PERSISTENT_CONFIG=false` and `ENABLE_API_KEYS=false`. A
   named custom model exists only in its database and needs an admin call to create. *(P0)* That
   call can use a JWT signed with `WEBUI_SECRET_KEY`, but only for the id of an existing admin user,
@@ -532,9 +534,10 @@ Deleting a sensitive note must also clear what was derived from it:
 - Old Lance versions keep the text until a `cleanup` runs; follow
   [forget a meeting](../runbooks/omnigraph.md#forget-a-meeting). A retention for `cleanup` is a
   follow-up (section 9.10).
-- LiteLLM's spend logs keep the arguments of every MCP tool call for 90 days *(P0)*: a `search`
-  question, a `remember` text, a raw `mutate` with note text. VIK-1403 strips them before P2's
-  answer mode; rows written before it age out with the retention.
+- LiteLLM kept the arguments of every MCP tool call *(P0)*: a `search` question, a `remember`
+  text, a raw `mutate` with note text, for 90 days in the spend logs and 14 days in the trace
+  spans. VIK-1403 replaces them with `{"redacted": true}` since 2026-09-29, before P2's answer
+  mode; rows and spans written before it age out with their retention.
 
 ## 8. Evaluation
 
@@ -1049,7 +1052,7 @@ and the explorer.
 | Bulk embedding starves chat embeddings on the single CPU TEI | Paced embed step; `BrainToolsDegraded` and a TEI queue-time panel; a second TEI replica for bulk writers only if the alert fires |
 | Mixed vector formats in one type | Writers keep the backfill's prefix format until E1 decides |
 | Private data leaks | Eval data only in the private user repo, `skip_repos` first; ids-and-numbers logs, tested; metric label allowlist; generic skill and prompt; the `AGENTS.md` rule; tool footer |
-| Brain text copied into LiteLLM's spend logs (found in P0: arguments of every MCP call, kept 90 days) | VIK-1403 strips them before answer mode; section 7.5 lists the store until then |
+| Brain text copied into LiteLLM's spend logs and trace spans (found in P0: arguments of every MCP call, kept 90 and 14 days) | VIK-1403 redacts them before answer mode, tested against the pinned image and alerted on (`LiteLLMMCPArgumentsStored`); section 7.5 lists the old rows until they age out |
 | The anchor-first bug silently unranks results | Ranked-first rule, lint in this repo's gate, and the `p0` replica check |
 | A cheap model misuses tools | Seven narrow tools, teaching errors, "did you mean", explicit negatives, no raw write tools in chat |
 | `remember` writes junk to `main` | Explicit-ask rule, rate limit, idempotent `nt-` slugs, no branch rights, foreign-write audit, revertible commits, weekly review of captures in the explorer |

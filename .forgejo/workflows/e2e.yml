@@ -170,6 +170,9 @@ jobs:
       - name: Test forgejo-sync leaves private repos alone
         run: bash scripts/test-forgejo-sync-skips-private.sh
 
+      - name: Test the LiteLLM runtime patches on fake modules
+        run: bash scripts/test-litellm-runtime-patches.sh
+
       - name: Validate synthetic coverage of routes
         run: |
           ws="$(mktemp -d)"
@@ -277,6 +280,52 @@ jobs:
       - name: Run every brain eval query on the pinned server
         if: steps.filter.outputs.run == 'true'
         run: PATH="$OMNIGRAPH_TOOLS:$PATH" BRAIN_EVAL_REAL_SERVER=1 timeout 600 python3 -X faulthandler -W ignore scripts/test_omnigraph_brain_eval.py -v RealServerShapes
+
+  litellm-patches:
+    name: LiteLLM runtime patches
+    runs-on: docker
+    env:
+      TMPDIR: /mnt/ci-shared
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Does this change touch the LiteLLM image or its patches?
+        id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags --quiet origin "${{ github.base_ref }}" || true
+            base="$(git merge-base HEAD FETCH_HEAD 2>/dev/null || true)"
+          else
+            base="${{ github.event.before }}"
+          fi
+          if [ -z "${base}" ] || ! git rev-parse --verify --quiet "${base}^{commit}" >/dev/null; then
+            run=true
+          elif git diff --name-only "${base}" -- \
+                 kubernetes/apps/ai/litellm/app/litellm-runtime-patches.configmap.yaml \
+                 kubernetes/apps/ai/litellm/app/helmrelease.yaml \
+                 scripts/test_litellm_runtime_patches.py \
+                 scripts/test-litellm-runtime-patches.sh \
+                 .forgejo/workflows/e2e.yml | grep -q .; then
+            run=true
+          else
+            run=false
+          fi
+          echo "run=${run}" >> "$GITHUB_OUTPUT"
+
+      - name: Probe the pinned LiteLLM image with the patches
+        if: steps.filter.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="$(python3 scripts/test_litellm_runtime_patches.py --print-pinned-image | sed 's#^ghcr\.io/#harbor.webgrip.dev/ghcr/#')"
+          timeout 1500 bash scripts/test-litellm-runtime-patches.sh --pinned-image "$image"
 
   # Renders every Flux Kustomization. Sharded across workers inside the script (each worker
   # gets its own workspace copy because flux-local mutates its tree in place).
