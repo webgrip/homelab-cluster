@@ -489,7 +489,7 @@ The brain retrieval work ([RFC](../rfc/rfc-brain-retrieval.md)) ships a change o
 | `omnigraph-brain-eval-gate` | manual | Retrieval plus answers with 3 repeats, and the decision rule for `--compare baseline:candidate` | about USD 3.50 |
 | `omnigraph-brain-eval-candidates` | manual | Drafts about 60 questions from sampled sources and cuts them to 36 provisional cases | about USD 1 |
 | `omnigraph-brain-eval-experiment` | manual | E1: raw versus `type:`-prefixed vectors over each dev case's candidate pool, in memory | under USD 0.50 |
-| `omnigraph-brain-eval-smoke` | manual | The whole path on public synthetic questions about this repo's runbooks, writing nothing: the judge's control pair, B0 through the bridge, and a retrieval run with a scratch case whose slug is renamed (its log must say `stale: 1`). Run it after a LiteLLM or Omnigraph upgrade | under USD 0.10 |
+| `omnigraph-brain-eval-smoke` | manual | The whole path on public synthetic questions about this repo's runbooks, writing nothing: a retrieval run with a scratch case whose slug is renamed (its log must say `"stale": 1`), then the judge's control pair and B0 through the bridge. Run it after a LiteLLM or Omnigraph upgrade | under USD 0.10 |
 
 Run one by hand with `kubectl -n ai create job --from=cronjob/<name> <name>-manual`.
 
@@ -560,6 +560,8 @@ Grafana, folder AI, **Brain retrieval quality**: stat tiles and per-category tab
 | `OmnigraphBrainEvalBudgetNearlySpent` | The `omnigraph-eval` key spent 80% of its 30-day budget |
 
 The `eval` container ends with a `run invalid` line naming the reason: an upstream status (`omnigraph answered HTTP 403` means `act-brain-eval` lost a right), `the eval repo holds no cases yet`, a case file and line that do not parse, or `passed the cap`.
+
+`litellm answered HTTP 429` usually means a LiteLLM provider budget is spent, not the key's: the Anthropic provider is capped at USD 5 a day for every consumer together, Glide included (`GET /provider/budgets` with the master key shows the spend and `budget_reset_at`). The judge never falls back to another model, so answer runs and the smoke job fail until the reset. Relevance pooling in the candidates job falls back to `fireworks-gpt-oss-120b` for the rest of the run and records the grading model per candidate in `pool.json` (`pooled_by_fallback` in the log).
 
 **Tests.** [test_omnigraph_brain_eval.py](../../../../scripts/test_omnigraph_brain_eval.py) runs the harness against a fake Omnigraph, a fake LiteLLM with its MCP endpoint and a fake vmagent: metric maths against hand-computed values, document roll-up, stale exclusion, the independent temporal path (the fake's stored query disagrees with the scan), snapshot pinning, the control pair, the spend cap, the answer-mode redaction gate, calibration agreement, the label allowlist, the candidate cut and the sentinel. [test-omnigraph-brain-eval-mutation.sh](../../../../scripts/test-omnigraph-brain-eval-mutation.sh) breaks each of those in turn and requires the suite to fail, and the unmodified harness to pass. Both run in pre-commit and in `e2e / Lint & static validation`.
 

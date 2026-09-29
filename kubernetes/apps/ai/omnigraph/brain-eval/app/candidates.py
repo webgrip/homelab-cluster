@@ -84,6 +84,7 @@ class Candidate:
     temporal: dict = None
     expected: list = field(default_factory=list)
     pooled: int = 0
+    pool_model: str = ""
 
 
 def stripped(text):
@@ -329,6 +330,21 @@ def grade_pool(llm, model, prompt, question, pooled):
     return {pooled[item["index"]][0]: int(item["grade"]) for item in grades if isinstance(item.get("index"), int) and 0 <= item["index"] < len(pooled)}
 
 
+def grade_with_fallback(llm, models, prompt, question, pooled, counts, refused):
+    usable = [model for model in models if model not in refused] or models[-1:]
+    for index, model in enumerate(usable):
+        try:
+            graded = grade_pool(llm, model, prompt, question, pooled)
+            if model != models[0]:
+                counts["pooled_by_fallback"] = counts.get("pooled_by_fallback", 0) + 1
+            return graded, model
+        except be.UpstreamError as error:
+            if error.status != 429 or index == len(usable) - 1:
+                raise
+            refused.add(model)
+    return None, ""
+
+
 def expected_for(candidate, graded, catalog):
     grades = {}
     for slug in candidate.source.grade_two:
@@ -401,9 +417,10 @@ def command_candidates(args):
     unanswerable = draft_unanswerable(llm, args.draft_model, draft_prompt(args.prompts_dir, "unanswerable.prompt.txt"), [topic.get("name") for topic in top_topics])
     pool_prompt = draft_prompt(args.prompts_dir, "pool.prompt.txt")
     kept = []
+    refused_models = set()
     for candidate in candidates + unanswerable:
         pooled = pool_documents(omnigraph, snapshot, catalog, candidate.question)
-        graded = grade_pool(llm, args.pool_model, pool_prompt, candidate.question, pooled)
+        graded, candidate.pool_model = grade_with_fallback(llm, [args.pool_model, args.draft_model], pool_prompt, candidate.question, pooled, counts, refused_models)
         if graded is None:
             counts["dropped_pool_failed"] += 1
             continue
@@ -425,7 +442,7 @@ def command_candidates(args):
         "snapshot": snapshot, "harness_version": be.HARNESS_VERSION, "seed": args.seed, "counts": counts, "shortfall": shortfall,
         "candidates": [{"category": candidate.source.category, "language": candidate.source.question_language, "source": candidate.source.slug,
                         "question": candidate.question, "key_facts": candidate.key_facts, "answerable": candidate.answerable, "temporal": candidate.temporal,
-                        "expected": candidate.expected, "pooled_documents": candidate.pooled, "paraphrase": candidate.paraphrase} for candidate in kept],
+                        "expected": candidate.expected, "pooled_documents": candidate.pooled, "pool_model": candidate.pool_model, "paraphrase": candidate.paraphrase} for candidate in kept],
     }, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     cases_dir.mkdir(parents=True, exist_ok=True)
     for number, (candidate, split) in enumerate(chosen, start=1):

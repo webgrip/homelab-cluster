@@ -615,6 +615,24 @@ class CandidateCut(unittest.TestCase):
         finally:
             harness.close()
 
+    def test_pooling_falls_back_once_when_the_judge_provider_is_out_of_budget(self):
+        calls = []
+
+        class Llm:
+            def chat(self, payload):
+                calls.append(payload["model"])
+                if payload["model"] == "claude-haiku-4-5":
+                    raise be.UpstreamError("litellm", 429)
+                return {"choices": [{"message": {"content": json.dumps({"grades": [{"index": 0, "grade": 2}]})}}]}, 0.0
+
+        counts, refused = {}, set()
+        pooled = [("doc-a", "A", "text")]
+        for _ in range(3):
+            graded, model = cand.grade_with_fallback(Llm(), ["claude-haiku-4-5", "fireworks-gpt-oss-120b"], "prompt", "q", pooled, counts, refused)
+            self.assertEqual((graded, model), ({"doc-a": 2}, "fireworks-gpt-oss-120b"))
+        self.assertEqual(calls.count("claude-haiku-4-5"), 1)
+        self.assertEqual(counts["pooled_by_fallback"], 3)
+
     def test_every_case_the_cut_writes_validates(self):
         source = cand.Source("temporal", "nl", "temporal-recent_notes", "", "", "temporal")
         candidate = cand.Candidate(source, 0, "Wat schreef ik?", [], temporal={"kind": "recent_notes", "days": 7})
