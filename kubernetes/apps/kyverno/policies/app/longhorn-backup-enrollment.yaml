@@ -159,3 +159,25 @@ spec:
           metadata:
             labels:
               recurring-job-group.longhorn.io/gitops-backup-bulk: enabled
+    - name: enrol-brain-eval-store
+      match:
+        any:
+          - resources:
+              kinds:
+                - PersistentVolume
+      preconditions:
+        any:
+          - key: "{{ request.object.spec.claimRef.namespace || '' }}/{{ request.object.spec.claimRef.name || '' }}"
+            operator: AnyIn
+            value:
+              - ai/omnigraph-brain-eval-store
+      mutate:
+        targets:
+          - apiVersion: longhorn.io/v1beta2
+            kind: Volume
+            name: "{{ request.object.metadata.name }}"
+            namespace: longhorn-system
+        patchStrategicMerge:
+          metadata:
+            labels:
+              recurring-job-group.longhorn.io/brain-eval-store: enabled
