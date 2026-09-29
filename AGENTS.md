@@ -59,9 +59,9 @@ roadmap file in git — see
 - The custom board front end has its own project: `Vellum` (id 6, since 2026-07-18) —
   the board page itself (`kubernetes/apps/vikunja/board`, served at
   `vikunja.<domain>/board`); same conventions/labels as the main board
-- The agent dispatch plane has its own project: `Ploeg` (id 10, since 2026-07-21) —
-  the standalone repo `webgrip/ploeg` (Forgejo-leading, GitHub
-  mirror; design doc lives in-repo at docs/design.md); same conventions/labels as the main board
+- Glide (Ploeg + Vloer, repo `webgrip/glide`) has one project: `Glide` (id 10; named `Ploeg`
+  until 2026-09-29, when `De Vloer` (id 14) was merged into it and archived). Only work that lands
+  in `webgrip/glide` lives there; the cluster side of Glide stays on Homelab Roadmap
 - CI/CD improvement work lives in its own project: `CI/CD` (id 9, since 2026-07-18) — runner pool, image supply
   chain, pipeline efficiency (mechanics
   reference: docs/techdocs/docs/general/ci-image-flow.md); same conventions/labels as the
