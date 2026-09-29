@@ -15,6 +15,14 @@ the single, budgeted front door to LLM providers *and* to the in-cluster MCP ser
 Models come **only from git** (`litellm-config.configmap.yaml`); the Admin UI cannot add one
 (`supported_db_objects` limits DB objects to MCP registrations).
 
+SSO is the only way into the Admin UI. `disable_env_credential_login` refuses the shared
+`UI_USERNAME`/`UI_PASSWORD` login and the master key typed as a UI password, and
+`disable_password_login_when_sso_enabled` refuses every username/password login while the Authentik
+client is configured. Admin rights come from the `litellm_role` claim, which Authentik sets to
+`proxy_admin` for `homelab-admins`. If Authentik is down, administer the proxy over the API with
+`Authorization: Bearer <master key>`, which neither setting touches. To get UI password login
+back, remove both settings and restart the proxy.
+
 ## MCP access groups
 
 Registered servers (`mcp_servers:` in the config) and their groups:
