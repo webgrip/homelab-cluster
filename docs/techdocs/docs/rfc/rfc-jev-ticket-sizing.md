@@ -369,7 +369,53 @@ Tracked in [VIK-1411](https://vikunja.webgrip.dev/tasks/1411).
 - LiteLLM adds Jev as a native provider with key scoping.
 - The served model version changes: re-run slice 1 automatically.
 
-## 11. References
+## 11. Further uses
+
+Epic [VIK-1445](https://vikunja.webgrip.dev/tasks/1445) collects the other places where a stream of
+short English text meets a fixed set of answers, and a human or code takes over when Jev is
+unsure. Every child follows R1–R8: advisory only, fail loudly, beat a baseline first, and never
+route data by model guess (the VIK-1259 guardrail: Omnigraph has no row-level security, so
+destinations stay explicit).
+
+| Use | Jev decides | Board | Ticket | Gate |
+| --- | --- | --- | --- | --- |
+| Self-hosted fallback | Can Laya (`laya-serve`, Jev API) replace Jev per question type? | Dark Factory | VIK-1446 | Spike; decides the private-data rows |
+| FreshRSS scoring | must-read / skim / skip per article | Homelab Roadmap | VIK-1454 | Public data; the first live consumer |
+| Renovate PR risk | safe / review / breaking; renamed config key; CRD migration | CI/CD | VIK-1458 | Backtest on 100 merged PRs |
+| Glide run forensics | Why an `agent_error` or `no_change_needed` run stopped | Ploeg | VIK-1459 | 60 hand-labelled runs |
+| Theme and repo labels | `theme/*` and `repo/*` suggestions in the sizing comment | Dark Factory | VIK-1448 | After the sizer (VIK-1416) |
+| Ticket linter | The DoR judgement checks `ticket_lint.py` returns as MANUAL | Dark Factory | VIK-1449 | 50 hand-labelled tickets |
+| Duplicate tickets | Which of ten embedding neighbours is the same work, or none | Dark Factory | VIK-1450 | Known `duplicateof` pairs |
+| Review evidence | Is the evidence live state, a CI result, a diff or prose? | Dark Factory | VIK-1451 | 40 closed tickets |
+| Commit trailers | Does each commit belong to the `VIK-` ticket it names? | Dark Factory | VIK-1452 | Includes the VIK-364 case |
+| Alert runbooks | Does the linked runbook section cover its alert? | Homelab Roadmap | VIK-1455 | One-off audit, outside the alert path |
+| Shared consumer kit | Client, key, metrics and evaluation harness, once two consumers exist | Dark Factory | VIK-1447 | Needs refinement |
+| Brain review queue | Keep-or-reject order for graph-review | Homelab Roadmap | VIK-1456 | Private: VIK-1411 or VIK-1446 |
+| Archive keep-or-skip | Is a mail or chat item worth distilling? A filter, never a router | Homelab Roadmap | VIK-1457 | Private; archive RFC parked |
+| Chat model choice | Cheap or premium model per Open WebUI prompt | Dark Factory | VIK-1453 | Private; lowest priority |
+| Glide team tier | copper / bronze / silver per work item | Ploeg | VIK-1460 | Only after G3 (VIK-1417) and a Glide ADR |
+| Created work items | Duplicate or out-of-scope items held for approval | Ploeg | VIK-1461 | Only after Glide ADR-0031 is accepted |
+
+Considered and rejected, with the reason:
+
+- **Muting Falco or Tetragon events.** Adversarial input is a documented Jev weak spot, so an
+  attacker could shape an event to look benign. A classifier never silences a security signal.
+- **Live alert enrichment in the delivery path.** 153 of 159 rules already carry a
+  `runbook_url`. A relay in the path would make alert delivery depend on Jev. The one-off audit
+  (VIK-1455) gets the value without the dependency.
+- **Routing brain or archive items to a graph or client.** Forbidden by the VIK-1259 guardrail.
+- **Erfbeeld content.** Dutch legal and personal data. Jev is weaker outside English, and the
+  data is sensitive.
+- **Invoice or transaction categories.** A classic classifier task, but financial data. Revisit
+  only if the Laya spike passes.
+- **Web-search reranking.** Open WebUI has web search disabled
+  (`ENABLE_WEB_SEARCH: "false"`), and brain retrieval already plans a CPU reranker
+  ([brain retrieval RFC](rfc-brain-retrieval.md)).
+- **Anything that counts, compares dates or does maths**, such as SLE breaches, certificate
+  expiry or cost checks. These are documented weak spots, so they stay in code.
+- **The outcome-observation evaluator.** Its RFC keeps LLMs out of verdicts, and that stays.
+
+## 12. References
 
 - Board contract: `CLAUDE.md` "Board contract"; [ADR-0043](../adr/adr-0043-vikunja-roadmap-system-of-record.md);
   product-owner skill (`agents.md` agent-ready sizing, `refine.md` estimation at refinement,
