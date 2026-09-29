@@ -26,6 +26,7 @@ Registered servers (`mcp_servers:` in the config) and their groups:
 | `memory` | omnigraph_memory (stdio bridge, `act-agent`) | read `memory`, write on its own branches |
 | `brain` | omnigraph_brain (stdio bridge, `act-brain-agent`) | read and write `brain`, including `main` |
 | `glide` | omnigraph_glide_memory, omnigraph_glide_brain, omnigraph_glide_webgrip (stdio bridges, `act-glide`) | read every branch of `memory`, `brain` and `webgrip`; write only on unprotected branches (`glide/<run-id>`); never merge ([runbooks/omnigraph](../runbooks/omnigraph.md#glide-agents)) |
+| `brain-eval-raw` | omnigraph_brain_eval (stdio bridge, `act-brain-eval`) | read every branch of `brain` and run stored queries; `mutate`, `load` and the branch writes are hidden by `disallowed_tools` and refused by policy. Only the brain eval key holds it, to score today's raw-query chat path as baseline B0 ([runbooks/omnigraph](../runbooks/omnigraph.md#brain-eval)) |
 
 A key with no explicit MCP grant sees an **empty tool list** (deny-by-default,
 `require_key_mcp_access_defined`). Grant on mint via
@@ -52,6 +53,7 @@ does not know the key it deletes whatever still holds the alias before generatin
 | `open-webui` | all | USD 20 / 30d, 60 rpm | `memory`, `brain` | Open WebUI |
 | `claude-code` | none (`no-default-models`) | USD 1 / 30d | `memory`, `brain` | Claude Code on Ryan's workstation |
 | `omnigraph-distill` | `fireworks-gpt-oss-120b`, `deepseek-chat`, `granite-embedding-97m-multilingual-r2` | USD 5 / 30d, 600 rpm | none | The [Omnigraph distiller](../runbooks/omnigraph.md#distiller) |
+| `omnigraph-eval` | `chat-default`, `fireworks-gpt-oss-120b`, `claude-haiku-4-5`, `granite-embedding-97m-multilingual-r2` | USD 10 / 30d, 120 rpm | `brain-eval-raw` | The [brain eval harness](../runbooks/omnigraph.md#brain-eval) |
 
 Add a key with a new ExternalSecret, PushSecret and Job in that directory. Rotate one by
 deleting its Secret and its Job.
@@ -78,7 +80,7 @@ declares.
 | `litellm` | valkey :6379, `litellm-db` instances :5432, `tei-embeddings` and `omnigraph` :8080, namespaces `observability` and `vikunja` (MCP backends, OTLP to alloy-gateway), namespace `network` (gateway hairpin: Authentik OIDC, own hostname), internet TCP 443 outside RFC1918, CGNAT and link-local | :4000 from `ai`, `network`, `ploeg`, `de-vloer-workspaces`, LAN; :9187 from `observability` | `litellm-allow-egress`, `litellm-allow-gateway-egress`, `litellm-private-ingress`, `litellm-allow-internal` |
 | `litellm-valkey` | none | :6379 from `litellm` | `litellm-valkey-ingress` |
 | `litellm-db` (CNPG instances and jobs) | kube-apiserver, the off-site store `116.202.53.185/32` :443, other `litellm-db` instances :5432 | :5432 from `litellm`, `observability` (Grafana SQL datasource) and its own instances; :9187 from `observability`; :8000 and :5432 from `cnpg-system` | `litellm-db-ingress`, `litellm-db-replication-egress` (DB layer) plus `components/cnpg-netpol` |
-| `omnigraph` | `litellm` :4000 (embeddings, init and server) | :8080 from `litellm`, `omnigraph-explorer`, `omnigraph-vault-import`, `omnigraph-forge-import`, `omnigraph-distill`, `network` | `omnigraph-egress`, `omnigraph-ingress` |
+| `omnigraph` | `litellm` :4000 (embeddings, init and server) | :8080 from `litellm`, `omnigraph-explorer`, `omnigraph-vault-import`, `omnigraph-forge-import`, `omnigraph-distill`, `omnigraph-brain-eval`, `network` | `omnigraph-egress`, `omnigraph-ingress` |
 | `omnigraph-explorer` | `omnigraph` :8080 | :8080 from `network` and the blackbox exporter | `omnigraph-explorer` |
 | `omnigraph-embed-key-register` Job | `litellm` :4000 | none | `omnigraph-embed-key-register-egress` |
 | `litellm-key-register-*` Jobs | `litellm` :4000 | none | `litellm-key-register-egress` |
@@ -87,6 +89,7 @@ declares.
 | `omnigraph-vault-import` CronJob | `omnigraph` :8080, Forgejo SSH :2222 (`forgejo` pods, admitted by `forgejo-allow-ingress`) | none | `omnigraph-vault-import-egress` |
 | `omnigraph-forge-import` CronJob | `omnigraph` :8080, Forgejo HTTP :3000 (`forgejo` pods, admitted by `forgejo-allow-ingress`) | none | `omnigraph-forge-import-egress` |
 | `omnigraph-distill` CronJob | `omnigraph` :8080, `litellm` :4000 | none | `omnigraph-distill-egress` |
+| `omnigraph-brain-eval-*` CronJobs | `omnigraph` :8080, `litellm` :4000, Forgejo SSH :2222 (`forgejo` pods, admitted by `forgejo-allow-ingress`), `vmagent` :8429 in `observability` | none | `omnigraph-brain-eval-egress` |
 | `tei-embeddings` | HTTPS to `huggingface.co`, `*.huggingface.co` and up to three labels under `hf.co` (model download in `fetch-model`); every pod outside `kube-system` is denied | :8080 from `litellm`, `observability` | `tei-embeddings-model-fetch`, `tei-embeddings-litellm-only`, `tei-embeddings-ingress` |
 | `docs-mcp-server` | namespace `network` (it indexes `docs.<domain>` through envoy-internal) | :6280 from `ai`, `network` | `docs-mcp-server-allow-gateway-egress`, `docs-mcp-server-ingress` |
 

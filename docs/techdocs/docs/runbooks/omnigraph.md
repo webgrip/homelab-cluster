@@ -67,12 +67,15 @@ The rehearsal then opens no branch on `brain`. The variable is a statement that 
 | `act-distill` | `brain`: the same rights as `act-vault-import`. Only the [distiller](#distiller) holds it |
 | `act-glide` | `brain`, `memory` and `webgrip`: read on any branch, write only on unprotected branches, create and delete unprotected branches, run stored queries. No merge, no export, never a write to `main`. Only the LiteLLM `omnigraph_glide_*` MCP servers hold it (see [Glide agents](#glide-agents)) |
 | `act-review` | `brain`, `memory` and `webgrip`: read and write on any branch including `main`, create, delete and merge any branch, run stored queries. No export. Only the explorer's review container holds it (see [Review mode](#review-mode)); client graphs stay CLI-reviewed as `act-ryan` |
+| `act-brain-eval` | `brain`: read and export on any branch, run stored queries. No writes, no branch actions. The [brain eval](#brain-eval) jobs and the `omnigraph_brain_eval` bridge hold it |
+| `act-brain-reader` | `brain`: read on any branch, run stored queries. Nothing else. For `brain-tools` reads (brain retrieval RFC, P4) |
+| `act-brain-scribe` | `brain`: read and write on `main` only. No branch actions, no stored queries, no export. For `brain-tools` `remember` (brain retrieval RFC, P6); it can delete any row on `main`, so the scribe audit is its guard |
 
 Each token is generated in-cluster by the `omnigraph-actor-tokens` ExternalSecret, pushed to OpenBao at `secret/omnigraph/<actor>` (field `token`), and assembled into the server's `tokens.json` by the `omnigraph-tokens` ExternalSecret.
 
 Add an actor by creating a new generator ExternalSecret and PushSecret pair, then adding one line to the aggregator. Do not add keys to `omnigraph-actor-tokens`. It is generate-once, so a new key only appears after its Secret is deleted, and deleting it rotates every existing token.
 
-Give an in-cluster consumer its token with an ExternalSecret against the `openbao` store at `omnigraph/<actor>`. Then open the network path on both ends, because namespace `ai` is default-deny and every pod in it carries its own egress allow: add the consumer to `omnigraph-ingress` (a `namespaceSelector` for another namespace, a `podSelector` for a pod in `ai`), and give a pod in `ai` an egress rule to `app: omnigraph` on 8080. Today only LiteLLM (the `omnigraph_memory`, `omnigraph_brain` and `omnigraph_glide_*` MCP bridges), the explorer, the vault and Forgejo importers, the distiller and the gateway may connect. The full matrix is in [LiteLLM: network](../general/litellm.md#network-namespace-ai).
+Give an in-cluster consumer its token with an ExternalSecret against the `openbao` store at `omnigraph/<actor>`. Then open the network path on both ends, because namespace `ai` is default-deny and every pod in it carries its own egress allow: add the consumer to `omnigraph-ingress` (a `namespaceSelector` for another namespace, a `podSelector` for a pod in `ai`), and give a pod in `ai` an egress rule to `app: omnigraph` on 8080. Today only LiteLLM (the `omnigraph_memory`, `omnigraph_brain`, `omnigraph_brain_eval` and `omnigraph_glide_*` MCP bridges), the explorer, the vault and Forgejo importers, the distiller, the brain eval jobs and the gateway may connect. The full matrix is in [LiteLLM: network](../general/litellm.md#network-namespace-ai).
 
 ## Explorer
 
@@ -294,7 +297,7 @@ One pod runs three steps in order. Each step logs one line of counts or one erro
 
 **Scope.** The importer reads `/user/repos` and the repos of every org in `/user/orgs`. [scope.json](../../../../kubernetes/apps/ai/omnigraph/forge-import/app/scope.json) narrows that:
 
-- `skip_repos` are left out entirely. `webgrip/obsidian-vault` is listed because the [vault importer](#obsidian-vault) owns it, and `ryangr0/brain-eval` because it holds the private [brain eval set](../rfc/rfc-brain-retrieval.md#81-where-it-lives), which must never enter the graph it measures.
+- `skip_repos` are left out entirely. `webgrip/obsidian-vault` is listed because the [vault importer](#obsidian-vault) owns it, and `ryangr0/brain-eval` because it holds the private [brain eval set](#brain-eval), which must never enter the graph it measures.
 - A mirror or fork gets only its `Project` node (tag `mirror` or `fork`) unless its upstream owner is in `owned_upstream_owners`. That keeps the GitHub action mirrors (`actions/*`, `docker/*` and similar) down to one node each, while mirrors of Ryan's own GitHub repos are imported whole.
 - `third_party_repos` lists forks of third-party projects that live under an owned name, such as `webgrip/renovate`. They also get only their `Project` node. Forgejo cannot tell these apart from Ryan's own mirrors, so the list is kept by hand.
 - Archived repos are imported, with the tag `archived` and status `completed`.
@@ -470,6 +473,96 @@ LiteLLM answers of 429 and 5xx are retried up to five times with backoff (`retri
 **Rotation.** Deleting `omnigraph-distill-token` rotates the actor token; the aggregator picks it up within 15 minutes and Reloader restarts Omnigraph. Rotate the LiteLLM key by deleting the `litellm-key-omnigraph-distill` Secret and the `litellm-key-register-omnigraph-distill` Job.
 
 **Undo.** Every `derived/` row and `derived:` edge comes from the distiller. To remove its work, suspend the CronJob, then delete those rows and edges as `act-ryan`; the importers' rows are untouched.
+
+## Brain eval
+
+The brain retrieval work ([RFC](../rfc/rfc-brain-retrieval.md)) ships a change only when it moves a measured score. The `omnigraph-brain-eval-*` CronJobs in namespace `ai` ([brain-eval](../../../../kubernetes/apps/ai/omnigraph/brain-eval/app/)) do the measuring. The harness is one stdlib Python program, [brain_eval.py](../../../../kubernetes/apps/ai/omnigraph/brain-eval/app/brain_eval.py), with [candidates.py](../../../../kubernetes/apps/ai/omnigraph/brain-eval/app/candidates.py) for drafting questions.
+
+**Privacy.** The questions, expected documents, key facts, answers and per-question results live only in the private repo `ryangr0/brain-eval` (forge-import skips it). This repo holds the harness, generic prompts, synthetic fixtures and aggregate scores. Job logs carry case ids (`c01`), counts, timings and aggregate scores, never question text or slugs; metric labels come from a fixed allowlist. A test plants a sentinel phrase and fails if it reaches stdout, stderr or a metric.
+
+### Jobs
+
+| CronJob | When | Does | Cost |
+|---|---|---|---|
+| `omnigraph-brain-eval-retrieval` | 04:40 nightly | Profile `p0` (today's `recall_notes`, `recall_passages` and `recall_topics`, interleaved by rank) for every case, pinned to one graph commit; the share of vectorless `Note`, `Passage` and `Topic` rows | USD 0 |
+| `omnigraph-brain-eval-answer` | Sunday 05:10, **suspended** | The judge's control pair, then B0: `chat-default` answers each case through the read-only raw bridge `omnigraph_brain_eval`, and `claude-haiku-4-5` judges it | about USD 0.50 |
+| `omnigraph-brain-eval-gate` | manual | Retrieval plus answers with 3 repeats, and the decision rule for `--compare baseline:candidate` | about USD 3.50 |
+| `omnigraph-brain-eval-candidates` | manual | Drafts about 60 questions from sampled sources and cuts them to 36 provisional cases | about USD 1 |
+| `omnigraph-brain-eval-experiment` | manual | E1: raw versus `type:`-prefixed vectors over each dev case's candidate pool, in memory | under USD 0.50 |
+
+Run one by hand with `kubectl -n ai create job --from=cronjob/<name> <name>-manual`.
+
+Each pod runs four containers in order: `store` clones the eval repo, `eval` runs the harness, `publish` commits the results, and `report` pushes the aggregates to `vmagent-vmagent.observability:8429` with `job="omnigraph-brain-eval"` and stamps `brain_eval_last_success_timestamp_seconds{mode}`. A run that fails part way stamps nothing, so staleness means "no stored result".
+
+**Answer mode waits for VIK-1403.** LiteLLM 1.102.1 keeps every MCP tool call's arguments in its spend log for 90 days, so an answer run would copy every eval question into `litellm-db`. The harness refuses answer mode on real cases unless the pod sets `BRAIN_EVAL_MCP_ARGUMENTS_REDACTED=true`, and the answer CronJob stays suspended. The control pair and `--synthetic` runs (public questions about this repo's runbooks) are allowed.
+
+### Identities
+
+| Identity | Rights | Used for |
+|---|---|---|
+| `act-brain-eval` | `brain`: read and export on any branch; stored queries in a separate rule | every harness read, and the `omnigraph_brain_eval` bridge |
+| `act-brain-reader` | `brain`: read on any branch; stored queries in a separate rule | `brain-tools` reads (RFC P4) |
+| `act-brain-scribe` | `brain`: read and change on protected branches (`main`), nothing else | `brain-tools` `remember` (RFC P6) |
+| LiteLLM key `omnigraph-eval` | `chat-default`, `fireworks-gpt-oss-120b`, `claude-haiku-4-5`, the embedding model; MCP group `brain-eval-raw`; USD 10 per 30 days | the harness |
+
+`act-brain-scribe` can delete any row on `main`: its only guard is the scribe audit that `brain-tools` runs (RFC section 6.2).
+
+### The eval store
+
+The jobs read and write a git repository with the layout the repo README describes (`cases/`, `candidates/`, `calibration/`, `results/`).
+
+- When `ssh://git@forgejo-ssh.forgejo.svc.cluster.local/ryangr0/brain-eval.git` answers with the deploy key, that repo is the store.
+- Until then the jobs use a **provisional in-cluster store**: a bare repository on the PVC `omnigraph-brain-eval-store` (Longhorn, enrolled in the `gitops-backup` job). `brain_eval_store_provisional` is 1.
+- The first run that reaches an empty Forgejo repo pushes every branch of the provisional store into it and writes a marker on the PVC. From then on an unreachable repo fails the run instead of silently writing to the old store.
+
+**Setup (Ryan).** Create the repo, then give the jobs write access:
+
+1. In Forgejo, **+**, **New repository**: owner `ryangr0`, name `brain-eval`, **Make repository private** checked, no template, no README, no licence. Leave it empty. Add no collaborators and no push mirror.
+2. Print the deploy key and add it under the repo's **Settings**, **Deploy keys**, **Add deploy key**, with **Enable write access** checked:
+
+   ```bash
+   export BAO_ADDR="$(just bao-addr)"
+   bao kv get -field=public_key secret/omnigraph/brain-eval-deploy-key
+   ```
+
+3. Run the retrieval job by hand. Its `store` log says `moved the provisional in-cluster store into the private Forgejo repo`.
+
+### The set
+
+36 cases, one YAML file each under `cases/`, in eight categories (docs-en 6, notes-nl 6, notes-en 4, cross-lingual 4, about 6, connect 4, temporal 3, unanswerable 3), one holdout per category. The candidates job built the first set:
+
+1. It samples sources from a pinned snapshot: Obsidian notes of 300 or more characters (Dutch and English, two Dutch notes long enough that the question targets text past the first 1,024 tokens), forge documents and ADRs (at most two per repo), topics with 10 or more documents, a person with 3 or more, and pairs of related topics with 3 or more shared documents.
+2. `fireworks-gpt-oss-120b` drafts two questions and 1 to 4 key facts per source ([draft.prompt.txt](../../../../kubernetes/apps/ai/omnigraph/brain-eval/app/draft.prompt.txt)). A question that repeats five consecutive words of its source is redrafted once, then dropped. Eight unanswerable questions are drafted against the list of covered topics, and temporal questions come from fixed templates.
+3. Relevance pooling: the union of the top 10 from `p0`, a meaning-only leg and a keyword-only leg is graded 0, 1 or 2 by `claude-haiku-4-5` ([pool.prompt.txt](../../../../kubernetes/apps/ai/omnigraph/brain-eval/app/pool.prompt.txt)). The source document is grade 2, graded documents fill the rest of `expected`. An unanswerable question with any relevant document is dropped.
+4. The cut keeps the first question of each source where it can, meets each category's count and picks one holdout per category. It never overwrites existing cases.
+
+Every drafted case is `provisional: true`, and `brain_eval_set_provisional` stays 1, until Ryan has reviewed the cases, replaced at least 6 with questions he really asks (`origin: ryan`) and hand-graded 10 answers. The repo's own README says how.
+
+### What is measured
+
+- **Retrieval** (nightly): Recall@5, Recall@8, Hit@1, MRR@8, graded nDCG@8 (primary) and candidate recall@40 per category and split. Ground truth is per document: a passage counts as its artifact, `obsidian-file/x` as `obsidian/x`, a forge ADR note as its artifact. A case whose expected slug no longer exists is excluded and counted in `brain_eval_stale_cases`. Temporal cases compute their expectation at run time from a full scan of the type at the pinned commit and a Python filter, never from a stored query. Unanswerable cases are only scored in answer mode.
+- **Answers**: key-fact recall, faithfulness, citation precision and abstention accuracy from the judge ([judge.prompt.txt](../../../../kubernetes/apps/ai/omnigraph/brain-eval/app/judge.prompt.txt), strict JSON, temperature 0, no fallbacks), plus tool calls, tool errors, USD and latency per answer. Every tool output is cut to 12,000 characters for the model and the judge alike. At most 6 tool turns.
+- **Rigour**: every read of a retrieval run pins the same `graph_commit_id`, so two runs on one commit give identical scores. Every answer run starts with a control pair (a planted correct answer must score 0.8 or more, a planted unsupported one 0.2 or less); a failure publishes only `brain_eval_judge_control_ok 0` and exits non-zero. A per-run spend cap aborts the run and publishes `brain_eval_run_valid 0`. Answer runs write up to ten answers to `calibration/pending/` for hand grading and publish `brain_eval_judge_agreement` once graded files exist.
+- **Decision rule** (gate mode, dev split): adopt a change only when the paired mean delta of the primary metric is at least +0.05, net wins are at least 3 (sign-test p reported), no category loses more than one case, and the guardrails hold.
+
+Aggregates go to VictoriaMetrics as `brain_eval_*` (15 days); per-question results are the record, in `results/<date>/<mode>-<profile>.json`. Pushed samples leave instant queries after about 5 minutes, so the dashboard and alerts read `last_over_time(...[3d])` (`[8d]` for weekly answer series).
+
+### Monitoring and failures
+
+Grafana, folder AI, **Brain retrieval quality**: stat tiles and per-category tables for `p0` and B0, whether scores are provisional, stale cases, the judge's control pair and agreement, missing vectors, latency and spend.
+
+| Alert | Fires when |
+|---|---|
+| `OmnigraphBrainEvalStale` | No stored retrieval run for 36 hours, or none in 3 days |
+| `OmnigraphBrainEvalJudgeControlFailed` | The last answer run's judge failed the control pair |
+| `OmnigraphBrainEvalRunInvalid` | A run hit its spend cap or an upstream error |
+| `OmnigraphBrainEvalBudgetNearlySpent` | The `omnigraph-eval` key spent 80% of its 30-day budget |
+
+The `eval` container ends with a `run invalid` line naming the reason: an upstream status (`omnigraph answered HTTP 403` means `act-brain-eval` lost a right), `the eval repo holds no cases yet`, a case file and line that do not parse, or `passed the cap`.
+
+**Tests.** [test_omnigraph_brain_eval.py](../../../../scripts/test_omnigraph_brain_eval.py) runs the harness against a fake Omnigraph, a fake LiteLLM with its MCP endpoint and a fake vmagent: metric maths against hand-computed values, document roll-up, stale exclusion, the independent temporal path (the fake's stored query disagrees with the scan), snapshot pinning, the control pair, the spend cap, the answer-mode redaction gate, calibration agreement, the label allowlist, the candidate cut and the sentinel. [test-omnigraph-brain-eval-mutation.sh](../../../../scripts/test-omnigraph-brain-eval-mutation.sh) breaks each of those in turn and requires the suite to fail, and the unmodified harness to pass. Both run in pre-commit and in `e2e / Lint & static validation`.
+
+**Network.** `omnigraph-brain-eval-egress` allows `omnigraph` :8080, `litellm` :4000, the Forgejo SSH pods :2222 and `vmagent` :8429. Omnigraph admits it in `omnigraph-ingress`, Forgejo in `forgejo-allow-ingress`; LiteLLM admits all of `ai`, and `observability` has no NetworkPolicy.
 
 ## Company meetings (`webgrip` and client graphs)
 
