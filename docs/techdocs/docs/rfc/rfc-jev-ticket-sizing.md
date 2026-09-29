@@ -1,6 +1,6 @@
 # RFC: Ticket sizing with Jev
 
-> Status: **Proposed** · Date: 2026-09-29 · Epic: [VIK-1410](https://vikunja.webgrip.dev/tasks/1410)
+> Status: **Accepted, Jev deferred** (owner decisions 2026-09-29, [§9](#9-decisions-for-the-owner)) · Date: 2026-09-29 · Epic: [VIK-1410](https://vikunja.webgrip.dev/tasks/1410)
 > (Dark Factory) · Extends the board contract's 3D estimation (`CLAUDE.md` "Board contract";
 > product-owner skill `refine.md`, `flow.md`)
 
@@ -347,6 +347,13 @@ the human's labelling.
 ## 9. Decisions for the owner
 
 Tracked in [VIK-1411](https://vikunja.webgrip.dev/tasks/1411).
+
+**Decided 2026-09-29.** D1–D3: no Jev. It cannot be self-hosted (TypeSafe publishes no weights)
+and the owner wants no new vendor accounts, so classifier work runs on in-cluster Laya
+([spike](spike-laya-classifier.md)). D4: the gates below stand, including the kappa clause.
+Owner exception to R1 for `theme/*` only: the theme suggester may apply the label above a
+threshold tuned in shadow mode ([runbook](../runbooks/theme-suggester.md)). Sizing stays
+parked until Laya is fine-tuned on enough labels or Jev is revisited.
 
 1. **D1 Access path.** Direct TypeSafe account (signups paused, wait), OpenRouter, or the Vercel
    AI Gateway. All three are US SaaS; the resellers add a second processor. Recommendation: wait

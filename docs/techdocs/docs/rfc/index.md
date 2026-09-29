@@ -44,7 +44,7 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
   [S3 conditional writes](rfc-s3-conditional-writes.md) (2026-09-28: Garage will not support
   `If-None-Match`/`If-Match`, by its own documented design; keep Omnigraph on Longhorn and Garage for
   the rest, add versitygw or SeaweedFS only for a workload that needs conditional writes),
-  [ticket sizing with Jev](rfc-jev-ticket-sizing.md) (2026-09-29: TypeSafe's classifier model as an
+  [ticket sizing with Jev](rfc-jev-ticket-sizing.md) (accepted with Jev deferred: no vendor account, so classifiers run on in-cluster Laya and only theme suggestion ships; 2026-09-29: TypeSafe's classifier model as an
   advisory second estimator for the three sizing axes; first a rubric and a check that our own
   labels predict actuals, then a backtest that must beat "always M", a blind shadow and an
   anchoring check; never sets labels or `agent-ready`; epic VIK-1410),
