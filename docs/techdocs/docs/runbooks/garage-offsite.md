@@ -51,15 +51,16 @@ vmagent scrapes Garage's own metrics as `job="garage-offsite"`
 bucket. The password is generated in-cluster (`observability/garage-offsite-metrics`,
 generate-once); only its bcrypt hash lives on the host.
 
-One-time setup, from a machine with cluster access and the SSH key:
+One-time setup, from a machine with cluster access, Docker and the SSH key. The bcrypt hash is computed locally with the same Caddy version as the host, so the password never leaves the machine; `caddy hash-password` on the host does not read a piped password (it fails with `Error: EOF` and yields an empty hash). The new config is validated as a separate file before it replaces the live one, so a bad hash can never leave an invalid Caddyfile behind:
 
 ```sh
 HASH="$(kubectl -n observability get secret garage-offsite-metrics -o jsonpath='{.data.password}' \
-  | base64 -d | ssh root@116.202.53.185 caddy hash-password --algorithm bcrypt)"
+  | base64 -d | docker run --rm -i caddy:2.11.4 sh -c 'caddy hash-password --algorithm bcrypt --plaintext "$(cat)"')"
 ssh root@116.202.53.185 "HASH='$HASH' sh -s" <<'EOF'
 set -eu
 f=/etc/caddy/Caddyfile
 if grep -q '_garage/metrics' "$f"; then echo "handler already present"; exit 0; fi
+[ -n "$HASH" ] || { echo "empty hash, aborting"; exit 1; }
 cp "$f" "$f.bak-vik62"
 awk -v h="$HASH" '
   { print }
@@ -71,11 +72,14 @@ awk -v h="$HASH" '
     print "\t\trewrite * /metrics"
     print "\t\treverse_proxy 127.0.0.1:3903"
     print "\t}"
-  }' "$f.bak-vik62" > "$f"
-caddy validate --config "$f" --adapter caddyfile
+  }' "$f" > "$f.new"
+caddy validate --config "$f.new" --adapter caddyfile >/dev/null 2>&1 || { echo "new config invalid, left untouched"; rm -f "$f.new"; exit 1; }
+mv "$f.new" "$f"
 systemctl reload caddy
 EOF
 ```
+
+Applied 2026-09-29; `up{job="garage-offsite"}` is 1 and `garage_local_disk_avail` reports both volumes.
 
 Verify: `curl -s -o /dev/null -w '%{http_code}\n' https://s3-offsite.webgrip.dev/_garage/metrics`
 returns `401`, and in Grafana `up{job="garage-offsite"}` is `1` within two minutes. If the
