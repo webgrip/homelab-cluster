@@ -141,6 +141,10 @@ Owner decisions are collected in §6.
   configured"; `/sso/key/generate` still redirects to Authentik.
 - **0e6f8b31** `LiteLLMSSOUserCapNear`. Verified live: vmalert loaded it, health `ok`, state inactive
   at 2 rows.
+- **6f2c2b33** W1.3 and W1.1 (see below). The refusal fix was proven in the pinned v1.102.1 image
+  before it shipped: with the old config a forced content-policy error on the GLM reviewer group was
+  answered by the `deepseek-chat` group; with the new config it raised
+  `ContentPolicyViolationError`.
 
 ### Wave 1: see what the proxy does
 
@@ -310,11 +314,34 @@ targets are unchanged in v1.103.0.
 
 ## 7. Rollout
 
-W0 is done. W1 goes first because every later wave is judged by its metrics; W1.1 and W1.3 can
-ship the same day. W2 and W3.1 follow in either order. W3.4 needs two weeks (logging only, then
-masking). W4 items are independent and can go whenever there is room. Each item becomes a ticket
-under one epic on the Dark Factory board, and each closes only with a live check and a named
-regression signal.
+W0 is done. W1 goes first because every later wave is judged by its metrics; W1.1 and W1.3 shipped
+together on 2026-09-29 in `6f2c2b33`. W2 and W3.1 follow in either order. W3.4 needs two weeks
+(logging only, then masking). W4 items are independent and can go whenever there is room. Every
+item is a child of [VIK-267](https://vikunja.webgrip.dev/tasks/267) on the Dark Factory board and
+closes only with a live check and a named regression signal.
+
+| Item | Ticket |
+| --- | --- |
+| W1.1 native metrics | [VIK-1433](https://vikunja.webgrip.dev/tasks/1433) |
+| W1.2 alerts | [VIK-1434](https://vikunja.webgrip.dev/tasks/1434) (absorbs [VIK-1251](https://vikunja.webgrip.dev/tasks/1251); supersedes the approach of [VIK-265](https://vikunja.webgrip.dev/tasks/265) and [VIK-284](https://vikunja.webgrip.dev/tasks/284)) |
+| W1.3 inert settings, refusals | [VIK-1432](https://vikunja.webgrip.dev/tasks/1432) |
+| W1.4 attribution | [VIK-1435](https://vikunja.webgrip.dev/tasks/1435) |
+| W2.1 teams | [VIK-264](https://vikunja.webgrip.dev/tasks/264) |
+| W2.2 key lifecycle | [VIK-1436](https://vikunja.webgrip.dev/tasks/1436) |
+| W2.3 same model, two providers | [VIK-285](https://vikunja.webgrip.dev/tasks/285) |
+| W3.1 web search | [VIK-1437](https://vikunja.webgrip.dev/tasks/1437) |
+| W3.2 MCP tool search | [VIK-1438](https://vikunja.webgrip.dev/tasks/1438) |
+| W3.4 masking | [VIK-1439](https://vikunja.webgrip.dev/tasks/1439) |
+| W4.1 second replica | [VIK-1440](https://vikunja.webgrip.dev/tasks/1440) |
+| W4.2 route-scoped keys | [VIK-1441](https://vikunja.webgrip.dev/tasks/1441) |
+| W4.3 minter key | [VIK-1442](https://vikunja.webgrip.dev/tasks/1442) |
+| W4.4 body size | [VIK-1443](https://vikunja.webgrip.dev/tasks/1443) |
+| W4.5 upgrade | [VIK-1444](https://vikunja.webgrip.dev/tasks/1444) |
+
+JWT auth for agents ([VIK-281](https://vikunja.webgrip.dev/tasks/281)) is Enterprise-only; its
+comment lists the OSS alternatives. W2.4 (response cache) and W3.3 (rerank) have no ticket: the
+first is a measurement to take once W1.1 has a week of data, the second belongs to
+`rfc-brain-retrieval`.
 
 ## 8. What this RFC did not verify
 
