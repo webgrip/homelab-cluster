@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import datetime
+import faulthandler
 import importlib.util
 import json
 import math
@@ -720,9 +721,15 @@ class CandidateCut(unittest.TestCase):
         self.assertEqual(be.load_case(be.dump_case(be.validate_case(case, "c01"))), case)
 
 
+def progress(stage):
+    print(f"real-server shapes: {stage}", file=sys.stderr, flush=True)
+
+
 @unittest.skipUnless(os.environ.get("BRAIN_EVAL_REAL_SERVER") == "1", "needs the pinned omnigraph and omnigraph-server on PATH (set BRAIN_EVAL_REAL_SERVER=1)")
 class RealServerShapes(unittest.TestCase):
     def test_every_query_the_harness_sends_runs_on_the_pinned_server(self):
+        faulthandler.dump_traceback_later(420, exit=True)
+        self.addCleanup(faulthandler.cancel_dump_traceback_later)
         sys.path.insert(0, str(ROOT / "scripts"))
         rehearsal = importlib.import_module("omnigraph_rehearsal")
         with tempfile.TemporaryDirectory(prefix="brain-eval-real-") as scratch:
@@ -736,13 +743,16 @@ class RealServerShapes(unittest.TestCase):
             try:
                 (workdir / "cluster").mkdir()
                 cluster = rehearsal.Rehearsal(workdir / "cluster", embed_url, init_env.get("OMNIGRAPH_OPERATOR_ACTOR", "act-gitops"))
+                progress("first bootstrap")
                 cluster.bootstrap(bundle, rendered, "first")
                 cluster.load("brain", rehearsal.seed_rows(bundle.schema("brain")), "seed")
+                progress("second bootstrap")
                 bundle_dir, _, _ = cluster.bootstrap(bundle, rendered, "second")
                 tokens = {actor: f"token-{actor}" for actor in bundle.policy_actors()}
                 env = {"PATH": os.environ["PATH"], "HOME": os.environ.get("HOME", scratch), **rendered.plain_env(rehearsal.SERVER_CONTAINER), "OMNIGRAPH_EMBED_API_KEY": "x"}
                 server = rehearsal.Server(bundle_dir, tokens, env, workdir / "cluster")
                 server.wait_ready(len(bundle.graphs()), 180)
+                progress("server ready")
                 actor = "act-brain-eval" if "act-brain-eval" in tokens else "act-ryan"
                 omnigraph = be.Omnigraph(server.base, "brain", tokens[actor])
                 head = omnigraph.head()
@@ -758,6 +768,7 @@ class RealServerShapes(unittest.TestCase):
                     self.assertIn("rows", omnigraph.inline(source, snapshot=head), source.split("(")[0])
                 self.assertEqual(set(be.missing_vector_ratios(omnigraph, head)), set(be.VECTOR_TYPES))
                 self.assertTrue(set(be.P0_QUERIES) <= omnigraph.stored_catalog())
+                progress("every query ran")
             finally:
                 if server:
                     server.stop()
