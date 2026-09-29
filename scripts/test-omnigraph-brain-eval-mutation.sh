@@ -122,9 +122,8 @@ spawn tool-call-retry-after-ignored brain_eval.py '            raise UpstreamErr
 spawn pacer-never-waits brain_eval.py 'while self.window and self.over_budget():' 'while False:'
 spawn pacer-ignores-requests brain_eval.py ' or (self.requests_per_minute and len(self.window) >= self.requests_per_minute)' ''
 spawn pace-above-key-limit brain_eval.py 'PACED_TOKENS_PER_MINUTE = 300000' 'PACED_TOKENS_PER_MINUTE = 400000'
-spawn tool-errors-unclassified brain_eval.py '    if message.startswith("parse error"):
-        return "gq_parse"' '    if message.startswith("parse error"):
-        return "other"'
+spawn tool-errors-unclassified brain_eval.py '    if message.startswith("parse error"):' '    if message.startswith("parse error") and False:'
+spawn foreign-language-counted-as-typo brain_eval.py 'return "gq_foreign" if re.search(r"-->\s*1:1\b", message) else "gq_parse"' 'return "gq_parse"'
 spawn unknown-tool-sent-to-bridge brain_eval.py 'if function.get("name") not in mapping:' 'if False:'
 spawn tool-error-metric-dropped brain_eval.py '        sink.add("brain_eval_tool_errors", {"profile": arm, "class": error_class}, error_classes.get(error_class, 0))' '        pass'
 wait

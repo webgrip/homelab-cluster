@@ -51,7 +51,7 @@ MAX_RETRY_AFTER_SECONDS = 120
 RATE_LIMITED_ATTEMPTS = 5
 PACED_TOKENS_PER_MINUTE = 300000
 PACED_REQUESTS_PER_MINUTE = 90
-TOOL_ERROR_CLASSES = ("gq_parse", "gq_type", "gq_parameter", "gq_rejected", "policy_denied", "not_found", "resource_limit", "server_error",
+TOOL_ERROR_CLASSES = ("gq_foreign", "gq_parse", "gq_type", "gq_parameter", "gq_rejected", "policy_denied", "not_found", "resource_limit", "server_error",
                       "server_unreachable", "tool_arguments", "unknown_tool", "bridge_transport", "other")
 CANDIDATE_POOL_DEPTH = 40
 SENTINEL_PHRASE = "quillfeather sentinel 7c1e"
@@ -1238,7 +1238,7 @@ def tool_error_class(text):
     message = str(details.get("error") or text or "")
     status = details.get("status")
     if message.startswith("parse error"):
-        return "gq_parse"
+        return "gq_foreign" if re.search(r"-->\s*1:1\b", message) else "gq_parse"
     if message.startswith("type error"):
         return "gq_type"
     if message.startswith("parameter "):

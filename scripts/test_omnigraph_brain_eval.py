@@ -1207,7 +1207,8 @@ def bridge_error(message, status=400):
 class ToolErrorClasses(unittest.TestCase):
     def test_each_raw_bridge_failure_shape_gets_its_own_class(self):
         shapes = {
-            bridge_error("parse error:  --> 1:1\n  |\n1 | MATCH (n) RETURN n\n  | ^---\n  |\n  = expected query_file"): "gq_parse",
+            bridge_error("parse error:  --> 1:1\n  |\n1 | MATCH (n) RETURN n\n  | ^---\n  |\n  = expected query_file"): "gq_foreign",
+            bridge_error("parse error:  --> 3:14\n  |\n3 |   $n.name = x\n  |              ^---\n  |\n  = expected operator"): "gq_parse",
             bridge_error("type error: T6: type `Note` has no property `title`"): "gq_type",
             bridge_error("parameter 'q' not provided"): "gq_parameter",
             bridge_error("lint error: limit must be an integer literal"): "gq_rejected",
@@ -1245,7 +1246,7 @@ class ToolErrorClasses(unittest.TestCase):
             def call(self, name, arguments):
                 if arguments["query"] == "fine":
                     return "rows", False
-                return bridge_error("parse error: expected query_file"), True
+                return bridge_error("parse error:  --> 2:5\n  = expected match_block"), True
 
         answer = be.answer_case("q", Llm(), Mcp(), [{"type": "function", "function": {"name": "query"}}], {"query": "query"}, model="m", prompt=None)
         self.assertEqual((answer.tool_calls, answer.tool_errors), (4, 3))
