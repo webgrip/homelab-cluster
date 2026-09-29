@@ -828,10 +828,10 @@ the tests (36 cases against fake Omnigraph, LiteLLM, vmagent and Forgejo servers
   (it found relevant documents) and 1 question whose grading failed, leaving 57 candidates, which it
   cut to 36 cases, 8 holdout, all `provisional: true`, straight into `cases/`. Ryan's own questions and review replace them in place; `brain_eval_set_provisional`
   stays 1 until then.
-- **Pooling ran on gpt-oss.** The shared Anthropic provider budget (USD 5 a day) was spent by other
-  consumers, so relevance pooling fell back to `fireworks-gpt-oss-120b` for all 54 pooled candidates
-  (recorded per candidate). The judge never falls back. Re-pool with Haiku during curation if the
-  expected sets look thin.
+- **Pooling ran on gpt-oss.** The first candidates run pooled all 54 candidates with
+  `fireworks-gpt-oss-120b` (recorded per candidate), the family that also drafts the questions. The
+  judge never falls back. Pooling now runs on the judge model, `fireworks-deepseek-v4p1-flash`, with
+  `deepseek-chat` as its fallback; re-pool with it during curation if the expected sets look thin.
 - **Missing vectors are counted with queries,** pinned to the run's commit (`nearest()` ranks only
   rows with a vector), because `/export` of `Passage` now stops at the server's
   `ordered_scan_input_batch_bytes` limit. The same limit made the startup backfill of `Passage`
@@ -868,8 +868,47 @@ set is curated.
 
 VIK-1403 shipped the same day: LiteLLM stores `{"redacted": true}` for MCP tool arguments in the spend
 log and the trace spans, the eval pods set `BRAIN_EVAL_MCP_ARGUMENTS_REDACTED=true`, and the weekly
-answer CronJob runs. B0 and the judge's control pair then waited only for the shared Anthropic day
-budget (spent by other consumers until 18:04 UTC); judge agreement waits for Ryan's 10 grades.
+answer CronJob runs. Judge agreement waits for Ryan's 10 grades.
+
+**Baseline B0** (gate `omnigraph-brain-eval-gate-b0-3`, 2026-09-29, graph commit
+`01M3QP3YAWYCVQEYFXCXEHXXHH`, 36 cases × 3 repeats = 108 answers, provisional set). The judge
+`fireworks-deepseek-v4p1-flash` passed the control pair (1.0 and 0.0); no verdict was unreadable; the
+run cost USD 0.49, USD 0.0037 an answer, 21 s mean latency.
+
+| Category | Key-fact recall | Faithfulness | Abstention accuracy | Tool error rate |
+|---|---|---|---|---|
+| docs-en | 0.000 | 0.880 | 0.444 | 0.296 |
+| notes-nl | 0.028 | 0.655 | 0.556 | 0.634 |
+| notes-en | 0.167 | 1.000 | 0.750 | 0.609 |
+| cross-lingual | 0.208 | 0.750 | 0.500 | n/a |
+| about | 0.000 | 1.000 | 0.944 | 0.743 |
+| connect | 0.139 | 1.000 | 0.667 | 0.749 |
+| temporal | n/a | 1.000 | 0.444 | 0.589 |
+| unanswerable | n/a | 1.000 | 0.889 | 0.683 |
+| **all** | **0.074** | **0.867** | **0.648** | **0.621** |
+
+*n/a*: temporal and unanswerable cases carry no key facts, and no cross-lingual answer called a tool.
+Dev key-fact recall 0.063, holdout 0.120. Citation precision is 0.00: B0 answers never cite. The
+answers made 4.2 tool calls on average, and 51 of the 108 used no tool at all.
+
+**The B0 finding: the raw bridge fails because cheap models cannot write GQ.** 317 of 458 tool
+calls failed (69%), and every failure is the model's query. Classified by the shape of the bridge's
+error, 201 were `gq_foreign` (text that is not GQ at all, such as Cypher, SQL or a stored query's
+bare name: the parser stops at the first character) and 116 `gq_parse` (GQ with a grammar slip).
+There were no type or parameter errors, refusals, server or transport failures, or malformed tool
+calls, so the harness and the bridge measure the real raw-bridge experience. This is the gap P4 and
+P6 close with tools that take plain questions.
+
+Two harness fixes made the full run possible. A cut-off judge verdict no longer aborts the run.
+The second gate attempt stopped after 67 of 108 answers on `429 throttling_error`: the eval key's
+own limiter (TPM 400,000 per fixed 60-second window, `retry-after: 60`), filled by B0's resent
+conversations, while the harness gave up after 14 seconds of backoff. The harness now paces model
+and tool calls under 300,000 tokens and 90 requests a minute and waits out a `retry-after` of up
+to 120 seconds; the key's limits are unchanged. The completed run needed no pause
+(`brain_eval_paced_seconds` 0).
+
+All B0 scores stay provisional until Ryan has replaced at least 6 drafted cases with his own
+questions and hand-graded 10 answers (`calibration/pending/` holds the templates).
 
 ### P3 Data: write-time vectors and Obsidian chunks
 
@@ -1116,7 +1155,7 @@ Each has a recommended default; P0 and P1 can start on the defaults.
 |---|---|---|---|
 | D1 | Where does the eval set live? | Private `ryangr0/brain-eval` on Forgejo: best editing and diff view, backed up, holds the run history | A dot-folder in the vault (the importer skips it; jobs can only read it); a separate `brain-eval` graph (review in graph-review, whole-branch merges only); OpenBao KV (private, clumsy) |
 | D2 | Who writes the questions? | About 60 drafted candidates, cut to 36, with at least 6 of your own and 3 unanswerable; 10 hand grades once. About 2 hours | Write all 36 yourself |
-| D3 | Judge model | `claude-haiku-4-5`, about USD 0.30 a run, another model family. **Owner decision 2026-09-29:** no Anthropic model anywhere and the cheapest model that does the job, so the judge is `fireworks-deepseek-v4p1-flash` (USD 0.22 and 0.66 per million tokens in and out), kept while it passes the control pair and the calibration; escalation `deepseek-chat`, then `deepseek-reasoner` | `claude-sonnet-5` (about 0.60); `gpt-oss-120b` (about 0.04, but the same family drafts the questions) |
+| D3 | Judge model | `fireworks-deepseek-v4p1-flash` (USD 0.22 and 0.66 per million tokens in and out), another model family than the answer model and the drafter, kept while it passes the control pair and the calibration. **Owner decision 2026-09-29:** the cheapest model that does the job everywhere in this build | `deepseek-chat`, then `deepseek-reasoner`, as the escalation of the same family; `gpt-oss-120b` (about USD 0.04 a run, but the same family drafts the questions) |
 | D4 | Obsidian chunk representation | Passages of shadow `obsidian-file/*` artifacts, no schema change | A new `NotePassage` type: cleaner, but a schema change needing a drained graph and a restart before its keyword search works |
 | D5 | Brain preset shape | A named *Brain* model seeded by a provisioner with a short-lived admin JWT (P0: a native sidecar in the Open WebUI pod, since the admin id is only in its database) | Global defaults through `DEFAULT_MODEL_METADATA` and `DEFAULT_MODEL_PARAMS`: pure environment, but the brain tools and prompt then sit on every model, Claude included |
 | D6 | Raw GQ tools in chat | Remove them from chat; keep them for Claude Code with merge and delete disallowed | Keep them in chat next to the brain tools |
