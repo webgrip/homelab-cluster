@@ -40,7 +40,7 @@ running=0
 spawn() {
   mutate "$@" &
   running=$((running + 1))
-  if [ "$running" -ge 4 ]; then
+  if [ "$running" -ge 8 ]; then
     wait
     running=0
   fi
@@ -91,6 +91,26 @@ spawn store-privacy-gate-off store.sh 'if [ "$(cat "$PRIVACY_VERDICT" 2> /dev/nu
 spawn publish-privacy-gate-off publish.sh 'if [ "$(cat "$WORK/privacy-publish" 2> /dev/null || true)" != private ]; then' 'if false; then'
 spawn key-facts-unscanned brain_eval.py '        phrases += list(case.get("key_facts") or [])' '        pass'
 spawn public-source-facts-scanned brain_eval.py '    if not sourced_from_the_public_repo(case):' '    if True:'
+spawn gate-control-unpublished brain_eval.py '        push_now(args, failure)' '        pass'
+spawn gate-skips-control brain_eval.py '        control = require_passing_judge(args, llm, judge_prompt, "gate", sink)' '        control = {}'
+spawn unreadable-verdict-passes brain_eval.py 'UNREADABLE_VERDICT_SCORE = {"supported": 0.0, "unsupported": 1.0}' 'UNREADABLE_VERDICT_SCORE = {"supported": 1.0, "unsupported": 0.0}'
+spawn gate-no-calibration-templates brain_eval.py 'run["calibration_templates_written"] = write_calibration_templates(workspace, records)' 'run["calibration_templates_written"] = 0'
+spawn slugs-unscanned brain_eval.py '            for match in slugs.finditer(text):' '            for match in []:'
+spawn shadow-slug-unscanned brain_eval.py '            slugs.append(OBSIDIAN_SHADOW_PREFIX + slug[len(OBSIDIAN_NOTE_PREFIX):])' '            pass'
+spawn generic-slugs-scanned brain_eval.py '        if not slug.startswith(PRIVATE_SLUG_PREFIXES):' '        if not slug:'
+spawn slug-boundary-off brain_eval.py 'return re.compile(rf"(?<![\w-])(?:{alternatives})(?![\w-])")' 'return re.compile(rf"(?:{alternatives})")'
+spawn temporal-slugs-scanned brain_eval.py '    if is_public_case(case):
+        return []
+    slugs = []' '    slugs = []'
+spawn guides-not-refreshed brain_eval.py '        refresh_repo_guides(workspace, args.prompts_dir)' '        pass'
+spawn guides-written-once brain_eval.py 'if not path.exists() or path.read_text(encoding="utf-8") != text:' 'if not path.exists():'
+spawn judge-anthropic brain_eval.py 'JUDGE_MODEL = "fireworks-deepseek-v4p1-flash"' 'JUDGE_MODEL = "claude-haiku-4-5"'
+spawn judge-answer-family brain_eval.py 'JUDGE_MODEL = "fireworks-deepseek-v4p1-flash"' 'JUDGE_MODEL = "chat-default"'
+spawn pool-falls-back-to-drafter brain_eval.py 'POOL_FALLBACK_MODEL = "deepseek-chat"' 'POOL_FALLBACK_MODEL = "fireworks-gpt-oss-120b"'
+spawn answer-in-backup-window cronjobs.yaml '  schedule: "10 5 * * 0"
+  timeZone: Etc/UTC' '  schedule: "10 5 * * 0"
+  timeZone: Europe/Amsterdam'
+spawn retrieval-runs-into-backup-window cronjobs.yaml 'activeDeadlineSeconds: 1200' 'activeDeadlineSeconds: 1800'
 wait
 for result in "$work"/*.result; do
   cat "$result"

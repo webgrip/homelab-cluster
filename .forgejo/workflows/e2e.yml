@@ -161,9 +161,12 @@ jobs:
       - name: Test the brain eval harness
         run: |
           ws="$(mktemp -d)"
-          mkdir -p "$ws/kubernetes/apps/ai/omnigraph"
+          mkdir -p "$ws/kubernetes/apps/ai/omnigraph/embed-step" "$ws/kubernetes/apps/ai/litellm/app" "$ws/kubernetes/apps/ai/litellm/keys/app"
           rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
           rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/brain-eval" "$ws/kubernetes/apps/ai/omnigraph/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/embed-step/app" "$ws/kubernetes/apps/ai/omnigraph/embed-step/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/litellm/app/litellm-config.configmap.yaml" "$ws/kubernetes/apps/ai/litellm/app/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/litellm/keys/app/omnigraph-eval-key-register.job.yaml" "$ws/kubernetes/apps/ai/litellm/keys/app/"
           docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
             sh -ec "python3 scripts/test_omnigraph_brain_eval.py && bash scripts/test-omnigraph-brain-eval-mutation.sh"
 

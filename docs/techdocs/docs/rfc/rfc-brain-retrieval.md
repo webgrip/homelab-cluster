@@ -223,7 +223,7 @@ flowchart LR
 | `act-brain-scribe` (new) | `read` and `change` on `branch_scope: protected` (that is `main`); no branch rights, no `invoke_query` | `brain-tools` for `remember` only |
 | `act-brain-eval` (new) | `read` and `export` on any branch; `invoke_query` (separate rule) | `brain-eval` jobs and the `omnigraph_brain_eval` bridge |
 | LiteLLM key `brain-tools` | models: granite embedding and `rerank-*`; no MCP groups; USD 1 per 30 days | `brain-tools` |
-| LiteLLM key `omnigraph-eval` | models: `chat-default`, `fireworks-gpt-oss-120b`, `claude-haiku-4-5`; MCP groups `brain-read`, `brain-eval-raw`; USD 10 per 30 days | `brain-eval` |
+| LiteLLM key `omnigraph-eval` | models: `chat-default`, `fireworks-gpt-oss-120b`, `fireworks-deepseek-v4p1-flash` (judge, pooling), `deepseek-chat` (pooling fallback); MCP groups `brain-read`, `brain-eval-raw`; USD 10 per 30 days | `brain-eval` |
 | Existing key `omnigraph-embeddings` | reused by the embed step | importers, summarizer |
 
 LiteLLM MCP servers after [P6](#p6-agent-surfaces):
@@ -572,7 +572,7 @@ Eight cases, one per category, are holdout: never inspected while tuning, report
 with 300 or more stripped characters, balanced Dutch and English; forge docs, runbooks and ADRs
 without bot PRs; topics with 10 or more documents; persons with 3 or more). `fireworks-gpt-oss-120b`
 drafts two paraphrased questions per source; a candidate sharing any 5-gram with its source is
-regenerated once, then dropped. Relevance pooling: `claude-haiku-4-5` grades the union of the top
+regenerated once, then dropped. Relevance pooling: the judge model (D3) grades the union of the top
 10 from `p0`, a meaning-only leg and a keyword-only leg to pre-fill expected documents. The Job
 pushes a `candidates/<date>` branch; Ryan edits in the Forgejo web UI, adds at least 6 questions
 he really asks and the 3 unanswerable ones, cuts to 36 and merges. He also hand-grades 10 answers
@@ -583,7 +583,7 @@ into `calibration/` for the judge check.
 | Mode | What | When | Cost |
 |---|---|---|---|
 | Retrieval | Each case calls `brain-tools` REST (`/api/search`, or `/api/about` and `/api/connect` for their categories) per profile, all pinned to the snapshot read at run start | Nightly 04:40 Europe/Amsterdam, after the 03:15 restart finished | USD 0 |
-| Answer | `chat-default` with `disable_fallbacks`, temperature 0.2, at most 6 tool turns, the shipped prompt, tools through LiteLLM `/brain_tools_read/mcp` with the eval key. B0 uses `/omnigraph_brain_eval/mcp` (raw GQ tools, read-only actor) and no brain prompt: today's experience | Weekly, Sunday 05:10; at gates with 3 repeats | about USD 0.60 a run; B0 about 0.50 |
+| Answer | `chat-default` with `disable_fallbacks`, temperature 0.2, at most 6 tool turns, the shipped prompt, tools through LiteLLM `/brain_tools_read/mcp` with the eval key. B0 uses `/omnigraph_brain_eval/mcp` (raw GQ tools, read-only actor) and no brain prompt: today's experience | Weekly, Sunday 05:10 UTC (outside the eval store's 03:05–03:30 UTC backup window); at gates with 3 repeats | about USD 0.60 a run; B0 about 0.50 |
 | Gate | Every relevant profile plus answer mode, 3 repeats | Manual, `kubectl -n ai create job --from=cronjob/omnigraph-brain-eval-gate omnigraph-brain-eval-gate-manual` | about USD 3.50 |
 
 The harness carries its own small MCP client (initialize, tools/list, tools/call), so it drives
@@ -595,7 +595,7 @@ the real agent path with its own budgeted key.
   (the ceiling before rerank), payload characters, stage latency p50 and p95. Ground truth is at
   document level: a passage hit rolls up to its artifact, an `obsidian-file/x` hit counts as
   `obsidian/x`, a forge ADR Note counts as its artifact (map fetched at run time).
-- **Answers,** judged by `claude-haiku-4-5` (a different family from MiniMax and gpt-oss) at
+- **Answers,** judged by `fireworks-deepseek-v4p1-flash` (D3; a different family from MiniMax and gpt-oss) at
   temperature 0 with strict JSON: key-fact recall, faithfulness (share of claims grounded in the
   tool outputs), citation precision, abstention accuracy. Alongside: tool calls per answer,
   tool-error rate, tokens and USD per answer, end-to-end latency. Tool outputs are cut to the same
@@ -608,7 +608,8 @@ the real agent path with its own budgeted key.
   planted unsupported answer 0.2 or less, or the run publishes only
   `brain_eval_judge_control_ok 0`, exits non-zero and alerts.
 - **Judge calibration:** agreement with Ryan's 10 hand grades at least 80%, rechecked whenever
-  the judge or its prompt changes; otherwise switch to `claude-sonnet-5`. Ten grades is a sanity
+  the judge or its prompt changes; otherwise switch to the next cheapest judge of another family
+  (`deepseek-chat`, then `deepseek-reasoner`; never Anthropic, D3). Ten grades is a sanity
   check, not a proof.
 - **Pinning:** every arm of a run reads one `graph_commit_id`. Comparisons across days use the
   stored per-question results, never re-runs of old snapshots, so a future `cleanup` retention does
@@ -1115,7 +1116,7 @@ Each has a recommended default; P0 and P1 can start on the defaults.
 |---|---|---|---|
 | D1 | Where does the eval set live? | Private `ryangr0/brain-eval` on Forgejo: best editing and diff view, backed up, holds the run history | A dot-folder in the vault (the importer skips it; jobs can only read it); a separate `brain-eval` graph (review in graph-review, whole-branch merges only); OpenBao KV (private, clumsy) |
 | D2 | Who writes the questions? | About 60 drafted candidates, cut to 36, with at least 6 of your own and 3 unanswerable; 10 hand grades once. About 2 hours | Write all 36 yourself |
-| D3 | Judge model | `claude-haiku-4-5`, about USD 0.30 a run, another model family | `claude-sonnet-5` (about 0.60); `gpt-oss-120b` (about 0.04, but the same family drafts the questions) |
+| D3 | Judge model | `claude-haiku-4-5`, about USD 0.30 a run, another model family. **Owner decision 2026-09-29:** no Anthropic model anywhere and the cheapest model that does the job, so the judge is `fireworks-deepseek-v4p1-flash` (USD 0.22 and 0.66 per million tokens in and out), kept while it passes the control pair and the calibration; escalation `deepseek-chat`, then `deepseek-reasoner` | `claude-sonnet-5` (about 0.60); `gpt-oss-120b` (about 0.04, but the same family drafts the questions) |
 | D4 | Obsidian chunk representation | Passages of shadow `obsidian-file/*` artifacts, no schema change | A new `NotePassage` type: cleaner, but a schema change needing a drained graph and a restart before its keyword search works |
 | D5 | Brain preset shape | A named *Brain* model seeded by a provisioner with a short-lived admin JWT (P0: a native sidecar in the Open WebUI pod, since the admin id is only in its database) | Global defaults through `DEFAULT_MODEL_METADATA` and `DEFAULT_MODEL_PARAMS`: pure environment, but the brain tools and prompt then sit on every model, Claude included |
 | D6 | Raw GQ tools in chat | Remove them from chat; keep them for Claude Code with merge and delete disallowed | Keep them in chat next to the brain tools |

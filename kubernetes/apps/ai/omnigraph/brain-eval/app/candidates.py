@@ -420,7 +420,7 @@ def command_candidates(args):
     refused_models = set()
     for candidate in candidates + unanswerable:
         pooled = pool_documents(omnigraph, snapshot, catalog, candidate.question)
-        graded, candidate.pool_model = grade_with_fallback(llm, [args.pool_model, args.draft_model], pool_prompt, candidate.question, pooled, counts, refused_models)
+        graded, candidate.pool_model = grade_with_fallback(llm, [args.pool_model, args.pool_fallback_model], pool_prompt, candidate.question, pooled, counts, refused_models)
         if graded is None:
             counts["dropped_pool_failed"] += 1
             continue
@@ -448,10 +448,6 @@ def command_candidates(args):
     for number, (candidate, split) in enumerate(chosen, start=1):
         case = be.validate_case(case_document(f"c{number:02d}", candidate, split), f"c{number:02d}")
         (cases_dir / f"c{number:02d}.yaml").write_text(be.dump_case(case), encoding="utf-8")
-    for name, target in (("repo-readme.md", workspace.repo / "README.md"), ("calibration-readme.md", workspace.repo / "calibration" / "README.md")):
-        if not target.exists():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(Path(args.prompts_dir, name).read_text(encoding="utf-8"), encoding="utf-8")
     sink = be.MetricSink()
     be.add_set_metrics(sink, workspace.cases(), len(workspace.calibration_files()))
     sink.add("brain_eval_cost_usd", {"mode": "candidates"}, llm.spend.total)

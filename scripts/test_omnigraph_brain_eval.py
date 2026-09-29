@@ -17,6 +17,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 APP = Path(os.environ.get("BRAIN_EVAL_APP", ROOT / "kubernetes/apps/ai/omnigraph/brain-eval/app"))
+LITELLM_CONFIG = ROOT / "kubernetes/apps/ai/litellm/app/litellm-config.configmap.yaml"
+EVAL_KEY_JOB = ROOT / "kubernetes/apps/ai/litellm/keys/app/omnigraph-eval-key-register.job.yaml"
 HARNESS = APP / "brain_eval.py"
 sys.path.insert(0, str(APP))
 spec = importlib.util.spec_from_file_location("brain_eval", HARNESS)
@@ -163,6 +165,8 @@ class FakeLiteLLM:
 
     def verdict(self, payload):
         user = json.loads(payload["messages"][-1]["content"])
+        if self.judge_mode == "garbled":
+            return "The answer looks fine to me."
         answer = user["answer"]
         if self.judge_mode == "broken":
             supported = True
@@ -176,7 +180,9 @@ class FakeLiteLLM:
         self.bodies.append(json.dumps(payload))
         response_format = (payload.get("response_format") or {}).get("json_schema", {}).get("name")
         if response_format == "brain_eval_judgement":
-            return {"choices": [{"message": {"content": json.dumps(self.verdict(payload))}}], "usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+            verdict = self.verdict(payload)
+            content = verdict if isinstance(verdict, str) else json.dumps(verdict)
+            return {"choices": [{"message": {"content": content}}], "usage": {"prompt_tokens": 10, "completion_tokens": 5}}
         messages = payload["messages"]
         if payload.get("tools") and not any(message["role"] == "tool" for message in messages):
             return {"choices": [{"message": {"content": "", "tool_calls": [{"id": "call1", "type": "function", "function": {
@@ -566,7 +572,27 @@ class GateRun(unittest.TestCase):
             self.assertFalse(decision["adopt"])
             self.assertEqual((decision["wins"], decision["losses"]), (0, 0))
             self.assertEqual(len(document["answers"]["b0"]["cases"]), 2 * len(CASES))
-            self.assertIn('brain_eval_cost_usd{mode="gate"}', (harness.out / "metrics.prom").read_text())
+            self.assertEqual(document["run"]["judge_model"], be.JUDGE_MODEL)
+            self.assertEqual(document["run"]["calibration_templates_written"], len(CASES))
+            self.assertEqual(len(list((harness.repo / "calibration" / "pending").glob("*.json"))), len(CASES))
+            metrics = (harness.out / "metrics.prom").read_text()
+            self.assertIn('brain_eval_cost_usd{mode="gate"}', metrics)
+            self.assertIn("brain_eval_judge_control_ok 1", metrics)
+        finally:
+            harness.close()
+
+    def test_a_gate_whose_judge_fails_the_control_pair_publishes_control_ok_0_and_scores_nothing(self):
+        harness = Harness(judge_mode="broken")
+        try:
+            result = harness.run("gate", "--profile=p0", "--arm=b0", "--repeats=1", env={"BRAIN_EVAL_MCP_ARGUMENTS_REDACTED": "true"},
+                                 global_args=(f"--snapshot={SNAPSHOT}",))
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            pushed = "".join(harness.vmagent.bodies)
+            self.assertIn("brain_eval_judge_control_ok 0", pushed)
+            self.assertIn('brain_eval_run_valid{mode="gate"} 0', pushed)
+            self.assertNotIn("brain_eval_score", pushed)
+            self.assertEqual(harness.results("gate"), [])
+            self.assertEqual(harness.litellm.mcp_calls, [])
         finally:
             harness.close()
 
@@ -605,6 +631,14 @@ class AnswerRun(unittest.TestCase):
         self.assertIn("brain_eval_judge_control_ok 0", pushed)
         self.assertNotIn("brain_eval_score", pushed)
         self.assertEqual(self.harness.litellm.mcp_calls, [])
+
+    def test_a_judge_whose_verdict_is_not_json_fails_the_control_pair(self):
+        self.harness = Harness(judge_mode="garbled")
+        result = self.harness.run("answer", "--arm=b0", "--control-only", env={"BRAIN_EVAL_MCP_ARGUMENTS_REDACTED": "true"})
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn('"supported": 0.0', result.stdout)
+        self.assertIn('"unsupported": 1.0', result.stdout)
+        self.assertIn("brain_eval_judge_control_ok 0", "".join(self.harness.vmagent.bodies))
 
     def test_the_spend_cap_aborts_the_run_and_marks_it_invalid(self):
         self.harness = Harness()
@@ -709,16 +743,17 @@ class CandidateCut(unittest.TestCase):
         class Llm:
             def chat(self, payload):
                 calls.append(payload["model"])
-                if payload["model"] == "claude-haiku-4-5":
+                if payload["model"] == be.JUDGE_MODEL:
                     raise be.UpstreamError("litellm", 429)
                 return {"choices": [{"message": {"content": json.dumps({"grades": [{"index": 0, "grade": 2}]})}}]}, 0.0
 
+        args = be.build_parser().parse_args(["candidates"])
         counts, refused = {}, set()
         pooled = [("doc-a", "A", "text")]
         for _ in range(3):
-            graded, model = cand.grade_with_fallback(Llm(), ["claude-haiku-4-5", "fireworks-gpt-oss-120b"], "prompt", "q", pooled, counts, refused)
-            self.assertEqual((graded, model), ({"doc-a": 2}, "fireworks-gpt-oss-120b"))
-        self.assertEqual(calls.count("claude-haiku-4-5"), 1)
+            graded, model = cand.grade_with_fallback(Llm(), [args.pool_model, args.pool_fallback_model], "prompt", "q", pooled, counts, refused)
+            self.assertEqual((graded, model), ({"doc-a": 2}, be.POOL_FALLBACK_MODEL))
+        self.assertEqual(calls.count(be.JUDGE_MODEL), 1)
         self.assertEqual(counts["pooled_by_fallback"], 3)
 
     def test_every_case_the_cut_writes_validates(self):
@@ -868,9 +903,117 @@ class KeyFactLeaks(unittest.TestCase):
         ]
         with tempfile.TemporaryDirectory(prefix="brain-eval-leaks-") as public:
             Path(public, "docs.md").write_text(f"{public_fact.upper()}.\n{short_fact}\n")
-            self.assertEqual(be.public_repo_leaks(cases, public)[0], 0)
+            self.assertEqual(be.public_repo_leaks(cases, public).cases_found, 0)
             Path(public, "notes.md").write_text(f"Pasted: {private_fact}\n")
-            self.assertEqual(be.public_repo_leaks(cases, public)[0], 1)
+            self.assertEqual(be.public_repo_leaks(cases, public).cases_found, 1)
+
+
+class ExpectedSlugLeaks(unittest.TestCase):
+    def test_slugs_named_after_notes_captures_and_people_are_scanned_and_public_or_generic_slugs_are_not(self):
+        cases = [
+            {"id": "s1", "category": "notes-nl", "question": "Waarom?", "expected": [{"slug": "obsidian/kas-verwarming", "grade": 2}], "key_facts": []},
+            {"id": "s2", "category": "docs-en", "question": "How?", "expected": [{"slug": RUNBOOK, "grade": 2}, {"slug": "forge/webgrip/homelab-cluster", "grade": 1}],
+             "key_facts": []},
+            {"id": "s3", "category": "about", "question": "Who?", "expected": [{"slug": "derived/person/jan-de-vries", "grade": 2}, {"slug": TOPIC, "grade": 1}],
+             "key_facts": []},
+            {"id": "s4", "category": "notes-en", "question": "When?", "expected": [{"slug": "nt-20260929-0a1b2c3d4e", "grade": 2}], "key_facts": []},
+            {"id": "s5", "category": "temporal", "question": "Wat?", "expected": [{"slug": "obsidian/weekplanning", "grade": 1}], "key_facts": []},
+        ]
+        with tempfile.TemporaryDirectory(prefix="brain-eval-slugs-") as public:
+            Path(public, "runbook.md").write_text(f"See {RUNBOOK}, forge/webgrip/homelab-cluster and {TOPIC}. Not obsidian/kas-verwarming-oud, "
+                                                  "vault-obsidian/kas-verwarming or derived/person/jan-de-vries-2. obsidian/weekplanning\n")
+            scan = be.public_repo_leaks(cases, public)
+            self.assertEqual((scan.cases_found, scan.cases_found_by_slug, scan.slugs_checked), (0, 0, 4))
+            Path(public, "explorer-link.md").write_text("https://graph.example/?graph=brain&node=obsidian-file/kas-verwarming\n")
+            scan = be.public_repo_leaks(cases, public)
+            self.assertEqual((scan.cases_found, scan.cases_found_by_slug), (1, 1))
+            Path(public, "fixture.json").write_text('{"about": "derived/person/jan-de-vries", "capture": "nt-20260929-0a1b2c3d4e"}')
+            scan = be.public_repo_leaks(cases, public)
+            self.assertEqual((scan.cases_found, scan.cases_found_by_slug), (3, 3))
+
+
+class RepoGuides(unittest.TestCase):
+    def test_every_stored_run_rewrites_the_repo_guides_from_this_repo_and_a_dry_run_leaves_them(self):
+        harness = Harness()
+        try:
+            stale = "stale guide\n"
+            (harness.repo / "README.md").write_text(stale)
+            self.assertEqual(harness.run("retrieval", global_args=(f"--snapshot={SNAPSHOT}", "--dry-run")).returncode, 0)
+            self.assertEqual((harness.repo / "README.md").read_text(), stale)
+            result = harness.run("retrieval", global_args=(f"--snapshot={SNAPSHOT}",))
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual((harness.repo / "README.md").read_text(), (APP / "repo-readme.md").read_text())
+            self.assertEqual((harness.repo / "calibration" / "README.md").read_text(), (APP / "calibration-readme.md").read_text())
+            self.assertIn("brain_eval_calibration_grades 0", (harness.out / "metrics.prom").read_text())
+        finally:
+            harness.close()
+
+
+def litellm_routes():
+    return dict(re.findall(r"- model_name: (\S+)\n\s+litellm_params:\n\s+model: (\S+)", LITELLM_CONFIG.read_text()))
+
+
+def model_family(route):
+    return re.match(r"[a-z]+", route.rsplit("/", 1)[-1]).group(0)
+
+
+class ModelPolicy(unittest.TestCase):
+    def test_the_jobs_call_only_non_anthropic_models_on_the_eval_key_and_the_judge_is_another_family(self):
+        args = be.build_parser().parse_args(["candidates"])
+        routes = litellm_routes()
+        key_models = json.loads(re.search(r"name: MODELS, value: '([^']+)'", EVAL_KEY_JOB.read_text()).group(1))
+        called = {args.answer_model, args.judge_model, args.draft_model, args.pool_model, args.pool_fallback_model}
+        for model in called | set(key_models):
+            self.assertIn(model, routes, model)
+            self.assertNotRegex(f"{model} {routes[model]}", r"claude|anthropic", model)
+        self.assertLessEqual(called, set(key_models))
+        family = {model: model_family(routes[model]) for model in called}
+        self.assertNotIn(family[args.judge_model], {family[args.answer_model], family[args.draft_model]})
+        self.assertNotEqual(family[args.pool_model], family[args.draft_model])
+        self.assertNotEqual(family[args.pool_fallback_model], family[args.draft_model])
+        for path in APP.glob("*.yaml"):
+            self.assertNotRegex(path.read_text(), r"--(judge|pool|answer|draft)-model|claude-", path.name)
+
+
+def cronjobs():
+    documents = []
+    for path in sorted(APP.glob("*.yaml")):
+        for chunk in path.read_text().split("\n---\n"):
+            if "kind: CronJob" not in chunk:
+                continue
+            field = lambda pattern: (re.search(pattern, chunk, re.M) or [None, None])[1]
+            documents.append({"name": field(r"^  name: (\S+)"), "schedule": field(r'^  schedule: "([^"]+)"'), "zone": field(r"^  timeZone: (\S+)"),
+                              "suspended": field(r"^  suspend: (\S+)") == "true", "deadline": int(field(r"activeDeadlineSeconds: (\d+)")),
+                              "store": "claimName: omnigraph-brain-eval-store" in chunk, "hold": field(r"sleep (\d+)")})
+    return documents
+
+
+WINTER_AND_SUMMER_UTC_OFFSET_HOURS = {"Etc/UTC": (0, 0), "Europe/Amsterdam": (1, 2)}
+DAY_MINUTES = 24 * 60
+
+
+def utc_minutes(schedule, offset_hours):
+    minute, hour = (int(part) for part in schedule.split()[:2])
+    return (hour * 60 + minute - offset_hours * 60) % DAY_MINUTES
+
+
+class StoreBackupWindow(unittest.TestCase):
+    def test_no_scheduled_eval_job_holds_the_store_volume_during_its_backup_window_in_winter_or_summer(self):
+        jobs = cronjobs()
+        window = next(job for job in jobs if job["hold"])
+        self.assertEqual(window["zone"], "Etc/UTC")
+        opens = utc_minutes(window["schedule"], 0)
+        closes = opens + math.ceil(int(window["hold"]) / 60)
+        scheduled = [job for job in jobs if job["store"] and not job["suspended"] and not job["hold"]]
+        self.assertTrue(scheduled)
+        for job in scheduled:
+            self.assertIn(job["zone"], WINTER_AND_SUMMER_UTC_OFFSET_HOURS, job["name"])
+            for offset in WINTER_AND_SUMMER_UTC_OFFSET_HOURS[job["zone"]]:
+                start = utc_minutes(job["schedule"], offset)
+                end = start + math.ceil(job["deadline"] / 60)
+                for day in (-DAY_MINUTES, 0, DAY_MINUTES):
+                    self.assertFalse(start < closes + day and opens + day < end,
+                                     f"{job['name']} may run from {start // 60:02d}:{start % 60:02d} UTC until its deadline, inside the store backup window")
 
 
 def progress(stage):

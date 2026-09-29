@@ -20,6 +20,12 @@ The first set was drafted by the candidates job and cut to 36 cases automaticall
 2. Every case you keep is reviewed: fix the question, the expected documents and the key facts, then set `provisional: false`.
 3. Ten answers are hand graded in `calibration/` (see `calibration/README.md`).
 
+In the Forgejo web UI:
+
+- **Replace a drafted case with your own question.** Open `cases/`, click the drafted case you want to replace (for example `c05.yaml`), click the pencil (**Edit file**), keep `id`, `split` and `category`, write your question, set `origin: ryan` and `provisional: false`, fix `expected` and `key_facts`, and **Commit changes** to `main`. Keep the file name, so the category counts stay right.
+- **Review a drafted case you keep.** Same steps: correct what is wrong and set `provisional: false`.
+- **Find expected slugs.** Open the explorer on the brain graph and use the slug it shows for the document; `results/<date>/retrieval-p0.json` also lists what the current pipeline ranks for each case.
+
 A case file:
 
 ```yaml
@@ -46,3 +52,5 @@ key_facts:
 - Temporal cases have a `temporal` block (`kind`: `recent_notes`, `recent_docs` or `open_threads`, `days`, optional `project`) instead of expected documents; the job computes them at run time.
 
 A case whose expected slug no longer exists is excluded and counted as stale. Remove or fix it here.
+
+The eval jobs rewrite this file from `kubernetes/apps/ai/omnigraph/brain-eval/app/repo-readme.md` in `webgrip/homelab-cluster`; change it there.

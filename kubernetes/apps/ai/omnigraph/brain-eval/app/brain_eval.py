@@ -43,6 +43,10 @@ TOOL_OUTPUT_LIMIT = 12000
 MAX_TOOL_TURNS = 6
 CANDIDATE_POOL_DEPTH = 40
 SENTINEL_PHRASE = "quillfeather sentinel 7c1e"
+ANSWER_MODEL = "chat-default"
+DRAFT_MODEL = "fireworks-gpt-oss-120b"
+JUDGE_MODEL = "fireworks-deepseek-v4p1-flash"
+POOL_FALLBACK_MODEL = "deepseek-chat"
 DUTCH_STOPWORDS = frozenset("de het een en van in is dat op te zijn voor met niet aan er maar om ook als dan bij nog wat hoe wie waar waarom welke heb heeft ik mijn je jij we wij ze zij hun over naar uit door kan moet".split())
 ENGLISH_STOPWORDS = frozenset("the a an and of in is that on to be for with not at there but also as then by what how who where why which have has i my you we they their about from out through can must do does did".split())
 CASE_KEY_ORDER = ("id", "split", "category", "language", "provisional", "origin", "answerable", "question", "expected", "key_facts", "temporal", "entities", "beyond_first_1024_tokens", "notes")
@@ -836,6 +840,9 @@ LEAK_SHINGLE_WORDS = 8
 LEAK_MIN_PHRASE_WORDS = 5
 LEAK_MAX_FILE_BYTES = 2 * 1024 * 1024
 PUBLIC_REPO_SLUG_PREFIX = "forge/webgrip/homelab-cluster/"
+OBSIDIAN_NOTE_PREFIX = "obsidian/"
+OBSIDIAN_SHADOW_PREFIX = "obsidian-file/"
+PRIVATE_SLUG_PREFIXES = (OBSIDIAN_NOTE_PREFIX, OBSIDIAN_SHADOW_PREFIX, "nt-", "derived/person/")
 
 
 def normalised_words(text):
@@ -855,8 +862,12 @@ def sourced_from_the_public_repo(case):
     return any(item.get("grade") == 2 and str(item.get("slug") or "").startswith(PUBLIC_REPO_SLUG_PREFIX) for item in case.get("expected") or [])
 
 
+def is_public_case(case):
+    return case.get("category") in ("temporal", SYNTHETIC_CATEGORY) or case.get("origin") == "synthetic"
+
+
 def private_case_phrases(case):
-    if case.get("category") in ("temporal", SYNTHETIC_CATEGORY) or case.get("origin") == "synthetic":
+    if is_public_case(case):
         return []
     phrases = [case.get("question")]
     if not sourced_from_the_public_repo(case):
@@ -864,25 +875,62 @@ def private_case_phrases(case):
     return phrases
 
 
+def private_case_slugs(case):
+    if is_public_case(case):
+        return []
+    slugs = []
+    for item in case.get("expected") or []:
+        slug = str(item.get("slug") or "")
+        if not slug.startswith(PRIVATE_SLUG_PREFIXES):
+            continue
+        slugs.append(slug)
+        if slug.startswith(OBSIDIAN_NOTE_PREFIX):
+            slugs.append(OBSIDIAN_SHADOW_PREFIX + slug[len(OBSIDIAN_NOTE_PREFIX):])
+    return slugs
+
+
+def slug_pattern(slugs):
+    if not slugs:
+        return None
+    alternatives = "|".join(re.escape(slug) for slug in sorted(slugs, key=len, reverse=True))
+    return re.compile(rf"(?<![\w-])(?:{alternatives})(?![\w-])")
+
+
+@dataclass
+class LeakScan:
+    cases_found: int
+    phrases_checked: int
+    slugs_checked: int
+    files_scanned: int
+    cases_found_by_slug: int
+
+
 def public_repo_leaks(cases, public_dir):
-    owners = {}
+    owners, slug_owners = {}, {}
     for case in cases:
         for phrase in private_case_phrases(case):
             for shingle in leak_shingles(phrase):
                 owners.setdefault(shingle, set()).add(case["id"])
+        for slug in private_case_slugs(case):
+            slug_owners.setdefault(slug, set()).add(case["id"])
     lengths = {len(shingle.split(" ")) for shingle in owners}
-    leaked, files = set(), 0
+    slugs = slug_pattern(slug_owners)
+    leaked, leaked_by_slug, files = set(), set(), 0
     for path in Path(public_dir).rglob("*"):
         if ".git" in path.parts or not path.is_file() or path.stat().st_size > LEAK_MAX_FILE_BYTES:
             continue
         files += 1
-        words = normalised_words(path.read_bytes().decode("utf-8", errors="ignore"))
+        text = path.read_bytes().decode("utf-8", errors="ignore")
+        words = normalised_words(text)
         for size in lengths:
             for index in range(len(words) - size + 1):
                 owner = owners.get(" ".join(words[index: index + size]))
                 if owner:
                     leaked |= owner
-    return len(leaked), len(owners), files
+        if slugs:
+            for match in slugs.finditer(text):
+                leaked_by_slug |= slug_owners[match.group(0)]
+    return LeakScan(len(leaked | leaked_by_slug), len(owners), len(slug_owners), files, len(leaked_by_slug))
 
 
 VECTOR_PROBE = [1.0] + [0.0] * 383
@@ -1204,14 +1252,33 @@ def control_score(scores):
     return sum(parts) / len(parts) if parts else 0.0
 
 
+UNREADABLE_VERDICT_SCORE = {"supported": 0.0, "unsupported": 1.0}
+
+
 def run_control_pair(llm, prompt, model):
     results = {}
     for label, answer in CONTROL_ANSWERS.items():
-        verdict, _, _ = judge_answer(llm, prompt, model=model, question=CONTROL_CASE["question"], answerable=True, key_facts=CONTROL_CASE["key_facts"],
-                                     answer=answer, tool_outputs=CONTROL_CASE["tool_outputs"])
-        results[label] = control_score(judged_scores(verdict, CONTROL_CASE["key_facts"], True))
+        try:
+            verdict, _, _ = judge_answer(llm, prompt, model=model, question=CONTROL_CASE["question"], answerable=True, key_facts=CONTROL_CASE["key_facts"],
+                                         answer=answer, tool_outputs=CONTROL_CASE["tool_outputs"])
+            results[label] = control_score(judged_scores(verdict, CONTROL_CASE["key_facts"], True))
+        except (json.JSONDecodeError, AttributeError, KeyError, TypeError):
+            results[label] = UNREADABLE_VERDICT_SCORE[label]
     ok = results["supported"] >= 0.8 and results["unsupported"] <= 0.2
     return ok, results
+
+
+def require_passing_judge(args, llm, judge_prompt, mode, sink):
+    ok, control = run_control_pair(llm, judge_prompt, args.judge_model)
+    log("judge control pair", judge=args.judge_model, ok=ok, supported=round(control["supported"], 3), unsupported=round(control["unsupported"], 3))
+    if not ok:
+        failure = MetricSink()
+        failure.add("brain_eval_judge_control_ok", {}, 0.0)
+        failure.add("brain_eval_run_valid", {"mode": mode}, 0.0)
+        push_now(args, failure)
+        raise EvalError(f"the judge control pair failed: {mode} answer scores are not published")
+    sink.add("brain_eval_judge_control_ok", {}, 1.0)
+    return control
 
 
 def sign_test_p(wins, losses):
@@ -1479,10 +1546,23 @@ def dated(args):
     return (args.day or utc_now().strftime("%Y-%m-%d"))
 
 
+REPO_GUIDES = (("repo-readme.md", "README.md"), ("calibration-readme.md", "calibration/README.md"))
+
+
+def refresh_repo_guides(workspace, prompts_dir):
+    for name, target in REPO_GUIDES:
+        text = Path(prompts_dir, name).read_text(encoding="utf-8")
+        path = workspace.repo / target
+        if not path.exists() or path.read_text(encoding="utf-8") != text:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+
+
 def finish(args, workspace, sink, mode, summary):
     sink.add("brain_eval_run_valid", {"mode": mode}, 1.0)
     sink.add("brain_eval_store_provisional", {}, 1.0 if workspace and workspace.store_kind == "provisional" else 0.0)
     if workspace:
+        refresh_repo_guides(workspace, args.prompts_dir)
         (workspace.out / "metrics.prom").write_text(sink.text(), encoding="utf-8")
         (workspace.out / "mode").write_text(mode + "\n", encoding="utf-8")
         workspace.commit_message(summary)
@@ -1583,9 +1663,10 @@ def command_retrieval(args):
             sink.add("brain_eval_missing_vectors_ratio", {"type": type_name}, ratio)
         log("vector coverage", **{f"missing_{type_name.lower()}_ratio": round(ratio, 6) for type_name, ratio in ratios.items()})
     if args.public_repo_dir and Path(args.public_repo_dir).is_dir() and not args.synthetic:
-        leaked, shingles, files = public_repo_leaks(all_cases, args.public_repo_dir)
-        sink.add("brain_eval_public_repo_leaks", {}, leaked)
-        log("public repo leak check", cases_found=leaked, phrases_checked=shingles, files_scanned=files)
+        scan = public_repo_leaks(all_cases, args.public_repo_dir)
+        sink.add("brain_eval_public_repo_leaks", {}, scan.cases_found)
+        log("public repo leak check", cases_found=scan.cases_found, cases_found_by_slug=scan.cases_found_by_slug, phrases_checked=scan.phrases_checked,
+            slugs_checked=scan.slugs_checked, files_scanned=scan.files_scanned)
     run["provisional"] = set_is_provisional(all_cases, len(workspace.calibration_files())) if not args.synthetic else True
     if args.dry_run or args.synthetic:
         log("dry run: nothing written", scored={profile: len(document["cases"]) for profile, document in documents.items()})
@@ -1601,19 +1682,9 @@ def command_answer(args):
     sink = MetricSink()
     judge_prompt = Path(args.prompts_dir, "judge.prompt.txt").read_text(encoding="utf-8")
     llm = litellm_client(args, args.max_spend_usd)
-    ok, control = run_control_pair(llm, judge_prompt, args.judge_model)
-    log("judge control pair", ok=ok, supported=round(control["supported"], 3), unsupported=round(control["unsupported"], 3))
-    if not ok:
-        failure = MetricSink()
-        failure.add("brain_eval_judge_control_ok", {}, 0.0)
-        failure.add("brain_eval_run_valid", {"mode": "answer"}, 0.0)
-        if args.vmagent_url and not args.dry_run:
-            push_metrics(args.vmagent_url, failure.text())
-        raise EvalError("the judge control pair failed: answer scores are not published")
-    sink.add("brain_eval_judge_control_ok", {}, 1.0)
+    control = require_passing_judge(args, llm, judge_prompt, "answer", sink)
     if args.control_only:
-        if args.vmagent_url and not args.dry_run:
-            push_metrics(args.vmagent_url, sink.text())
+        push_now(args, sink)
         log("control pair only", spend_usd=round(llm.spend.total, 4))
         return 0
     all_cases = cases_for_run(args, workspace)
@@ -1663,21 +1734,23 @@ def command_gate(args):
                 decisions[pair] = decide(per_case(baseline), per_case(candidate), categories)
                 log("gate decision", pair=pair, **{key: value for key, value in decisions[pair].items() if key != "category_losses"})
     answer_documents = {}
+    records = []
     if args.arm:
         judge_prompt = Path(args.prompts_dir, "judge.prompt.txt").read_text(encoding="utf-8")
         llm = litellm_client(args, args.max_spend_usd)
-        ok, control = run_control_pair(llm, judge_prompt, args.judge_model)
-        sink.add("brain_eval_judge_control_ok", {}, 1.0 if ok else 0.0)
-        if not ok:
-            raise EvalError("the judge control pair failed: gate answers are not scored")
+        control = require_passing_judge(args, llm, judge_prompt, "gate", sink)
         if not args.synthetic and os.environ.get("BRAIN_EVAL_MCP_ARGUMENTS_REDACTED") != "true":
             raise EvalError("answer mode on real cases waits until LiteLLM stops keeping MCP tool arguments (VIK-1403)")
         for arm in args.arm:
-            answer_documents[arm], _ = run_answers(args, workspace, sink, cases, llm, arm, args.repeats, judge_prompt)
+            answer_documents[arm], arm_records = run_answers(args, workspace, sink, cases, llm, arm, args.repeats, judge_prompt)
+            records.extend(arm_records)
         sink.add("brain_eval_cost_usd", {"mode": "gate"}, llm.spend.total)
+        run.update({"answer_model": args.answer_model, "judge_model": args.judge_model, "repeats": args.repeats, "control": control,
+                    "spend_usd": round(llm.spend.total, 6)})
     if args.dry_run or args.synthetic:
         log("dry run: nothing written")
         return 0
+    run["calibration_templates_written"] = write_calibration_templates(workspace, records)
     workspace.write_result(dated(args), "gate", {"run": run, "retrieval": documents, "answers": answer_documents, "decisions": decisions})
     finish(args, workspace, sink, "gate", f"results: gate {', '.join(args.profile + (args.arm or []))}")
     return 0
@@ -1803,9 +1876,9 @@ def build_parser():
     parser.add_argument("--limit-cases", type=int)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--synthetic", action="store_true", help="run the public synthetic cases instead of the eval set")
-    parser.add_argument("--answer-model", default="chat-default")
-    parser.add_argument("--judge-model", default="claude-haiku-4-5")
-    parser.add_argument("--draft-model", default="fireworks-gpt-oss-120b")
+    parser.add_argument("--answer-model", default=ANSWER_MODEL)
+    parser.add_argument("--judge-model", default=JUDGE_MODEL)
+    parser.add_argument("--draft-model", default=DRAFT_MODEL)
     parser.add_argument("--max-spend-usd", type=float, default=2.0)
     commands = parser.add_subparsers(dest="command", required=True)
     retrieval = commands.add_parser("retrieval")
@@ -1832,7 +1905,8 @@ def build_parser():
     candidates = commands.add_parser("candidates")
     candidates.add_argument("--sources", type=int, default=30)
     candidates.add_argument("--seed", type=int, default=20260929)
-    candidates.add_argument("--pool-model", default="claude-haiku-4-5")
+    candidates.add_argument("--pool-model", default=JUDGE_MODEL)
+    candidates.add_argument("--pool-fallback-model", default=POOL_FALLBACK_MODEL)
     candidates.set_defaults(handler=command_candidates)
     push = commands.add_parser("push-metrics")
     push.set_defaults(handler=command_push_metrics)

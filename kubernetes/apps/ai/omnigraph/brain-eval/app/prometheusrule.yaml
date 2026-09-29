@@ -54,21 +54,22 @@ spec:
             summary: "The brain eval judge failed its control pair; answer scores are withheld (ai/omnigraph-brain-eval)"
             description: |
               What's happening:
-              - Every answer run first asks the judge model to grade a planted correct answer and a planted unsupported one. The correct one must score 0.8 or more and the unsupported one 0.2 or less. The last run's judge failed that check, so the run published no answer scores and exited non-zero.
+              - Every answer and gate run first asks the judge model (fireworks-deepseek-v4p1-flash) to grade a planted correct answer and a planted unsupported one. The correct one must score 0.8 or more and the unsupported one 0.2 or less, and a verdict that is not valid JSON fails. The last run's judge failed that check, so the run published no answer scores and exited non-zero.
 
               Impact/risk:
               - Answer quality (key-fact recall, faithfulness, citation precision, abstention) is not measured until the judge passes again.
               - A judge that cannot tell a supported from an unsupported answer would make every later gate decision meaningless.
 
               Likely causes:
-              - LiteLLM served a fallback model instead of claude-haiku-4-5, or the model's behaviour changed.
+              - Fireworks changed or re-quantised the judge model behind fireworks-deepseek-v4p1-flash, so it now grades differently.
               - The judge prompt or its JSON schema changed and the judge now misreads the task.
-              - The provider returned invalid JSON repeatedly.
+              - The provider returned invalid or cut-off JSON (the "judge control pair" line then shows supported 0 and unsupported 1).
 
               First actions:
               - kubectl -n ai logs job/<latest omnigraph-brain-eval-answer job> -c eval (the "judge control pair" line has both scores)
               - Check the judge model route in LiteLLM and the spend log for the key omnigraph-eval
-              - Re-run only the control pair: kubectl -n ai create job --from=cronjob/omnigraph-brain-eval-answer omnigraph-brain-eval-answer-manual after fixing
+              - If the model itself no longer passes, switch JUDGE_MODEL in brain_eval.py to the next cheapest model of another family (deepseek-chat, then deepseek-reasoner; never MiniMax, gpt-oss or an Anthropic model) and add it to the omnigraph-eval key
+              - Re-run the check cheaply with the smoke job: kubectl -n ai create job --from=cronjob/omnigraph-brain-eval-smoke omnigraph-brain-eval-smoke-manual
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#brain-eval"
         - alert: OmnigraphBrainEvalRunInvalid
           expr: |
