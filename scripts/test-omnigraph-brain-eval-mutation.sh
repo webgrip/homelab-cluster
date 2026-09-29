@@ -111,6 +111,10 @@ spawn answer-in-backup-window cronjobs.yaml '  schedule: "10 5 * * 0"
   timeZone: Etc/UTC' '  schedule: "10 5 * * 0"
   timeZone: Europe/Amsterdam'
 spawn retrieval-runs-into-backup-window cronjobs.yaml 'activeDeadlineSeconds: 1200' 'activeDeadlineSeconds: 1800'
+spawn judge-asked-once brain_eval.py 'for attempt in range(JUDGE_ATTEMPTS):' 'for attempt in range(1):'
+spawn unreadable-share-unbounded brain_eval.py 'if unreadable > MAX_UNREADABLE_VERDICT_SHARE * len(results):' 'if False:'
+spawn unreadable-answer-scored-as-a-miss brain_eval.py '                scores = UNJUDGED_SCORES' '                scores = judged_scores({}, case.get("key_facts") or [], case["answerable"])'
+spawn crash-names-library-frame brain_eval.py '    where = own[-1] if own else deepest' '    where = deepest'
 wait
 for result in "$work"/*.result; do
   cat "$result"

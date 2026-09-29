@@ -7,6 +7,7 @@ import os
 import re
 import sys
 import time
+import traceback
 import unicodedata
 import urllib.error
 import urllib.request
@@ -40,6 +41,9 @@ QUANTILES = ("0.5", "0.95")
 VECTOR_TYPES = ("Note", "Passage", "Topic")
 SYNTHETIC_CATEGORY = "synthetic"
 TOOL_OUTPUT_LIMIT = 12000
+JUDGE_MAX_TOKENS = 4000
+JUDGE_ATTEMPTS = 2
+MAX_UNREADABLE_VERDICT_SHARE = 0.1
 MAX_TOOL_TURNS = 6
 CANDIDATE_POOL_DEPTH = 40
 SENTINEL_PHRASE = "quillfeather sentinel 7c1e"
@@ -81,6 +85,13 @@ class CaseFormatError(EvalError):
 
 class SpendCapReached(EvalError):
     pass
+
+
+class UnreadableVerdict(EvalError):
+    def __init__(self, finish_reason, completion_tokens):
+        super().__init__(f"the judge returned no readable verdict (finish reason {finish_reason}, {completion_tokens} completion tokens)")
+        self.finish_reason = finish_reason
+        self.completion_tokens = completion_tokens
 
 
 class UpstreamError(EvalError):
@@ -1218,10 +1229,24 @@ def judge_answer(llm, prompt, *, model, question, answerable, key_facts, answer,
     user = json.dumps({"question": question, "answerable": answerable, "key_facts": [{"index": index, "fact": fact} for index, fact in enumerate(key_facts)],
                        "answer": answer, "tool_outputs": cut(tool_outputs)}, ensure_ascii=False)
     started = time.monotonic()
-    response, cost = llm.chat({"model": model, "temperature": 0, "max_tokens": 1200, "messages": [{"role": "system", "content": prompt}, {"role": "user", "content": user}],
+    response, cost = llm.chat({"model": model, "temperature": 0, "max_tokens": JUDGE_MAX_TOKENS, "messages": [{"role": "system", "content": prompt}, {"role": "user", "content": user}],
                                "response_format": {"type": "json_schema", "json_schema": {"name": "brain_eval_judgement", "strict": True, "schema": JUDGE_SCHEMA}}})
-    verdict = parse_json_content(response)
+    try:
+        verdict = parse_json_content(response)
+        judged_scores(verdict, key_facts, answerable)
+    except (json.JSONDecodeError, AttributeError, KeyError, TypeError):
+        choice = (response.get("choices") or [{}])[0]
+        raise UnreadableVerdict(choice.get("finish_reason"), (response.get("usage") or {}).get("completion_tokens")) from None
     return verdict, cost, time.monotonic() - started
+
+
+def judge_with_retry(llm, prompt, **fields):
+    for attempt in range(JUDGE_ATTEMPTS):
+        try:
+            return judge_answer(llm, prompt, **fields)
+        except UnreadableVerdict as error:
+            unreadable = error
+    raise unreadable
 
 
 def judged_scores(verdict, key_facts, answerable):
@@ -1247,6 +1272,9 @@ def judged_scores(verdict, key_facts, answerable):
     }
 
 
+UNJUDGED_SCORES = {"key_fact_recall": None, "faithfulness": None, "citation_precision": None, "abstention_accuracy": None}
+
+
 def control_score(scores):
     parts = [value for value in (scores["key_fact_recall"], scores["faithfulness"]) if value is not None]
     return sum(parts) / len(parts) if parts else 0.0
@@ -1262,7 +1290,7 @@ def run_control_pair(llm, prompt, model):
             verdict, _, _ = judge_answer(llm, prompt, model=model, question=CONTROL_CASE["question"], answerable=True, key_facts=CONTROL_CASE["key_facts"],
                                          answer=answer, tool_outputs=CONTROL_CASE["tool_outputs"])
             results[label] = control_score(judged_scores(verdict, CONTROL_CASE["key_facts"], True))
-        except (json.JSONDecodeError, AttributeError, KeyError, TypeError):
+        except UnreadableVerdict:
             results[label] = UNREADABLE_VERDICT_SCORE[label]
     ok = results["supported"] >= 0.8 and results["unsupported"] <= 0.2
     return ok, results
@@ -1465,14 +1493,20 @@ def run_answers(args, workspace, sink, cases, llm, arm, repeats, judge_prompt):
     results = []
     answer_seconds, judge_seconds = [], []
     records = []
+    unreadable = 0
     for repeat in range(repeats):
         for case in cases:
             answer = answer_case(case["question"], llm, mcp, tools, mapping, model=args.answer_model, prompt=prompt)
-            verdict, _, seconds = judge_answer(llm, judge_prompt, model=args.judge_model, question=case["question"], answerable=case["answerable"],
-                                               key_facts=case.get("key_facts") or [], answer=answer.text, tool_outputs=answer.tool_outputs)
-            scores = judged_scores(verdict, case.get("key_facts") or [], case["answerable"])
             answer_seconds.append(answer.seconds)
-            judge_seconds.append(seconds)
+            try:
+                verdict, _, seconds = judge_with_retry(llm, judge_prompt, model=args.judge_model, question=case["question"], answerable=case["answerable"],
+                                                       key_facts=case.get("key_facts") or [], answer=answer.text, tool_outputs=answer.tool_outputs)
+                scores = judged_scores(verdict, case.get("key_facts") or [], case["answerable"])
+                judge_seconds.append(seconds)
+            except UnreadableVerdict as error:
+                unreadable += 1
+                scores = UNJUDGED_SCORES
+                log("judge verdict unreadable", arm=arm, case=case["id"], repeat=repeat, finish_reason=error.finish_reason, completion_tokens=error.completion_tokens)
             metrics = {key: scores[key] for key in ("key_fact_recall", "faithfulness", "citation_precision", "abstention_accuracy")}
             metrics.update({"tool_error_rate": (answer.tool_errors / answer.tool_calls) if answer.tool_calls else None, "tool_calls": float(answer.tool_calls),
                             "usd_per_answer": answer.cost, "latency_seconds": answer.seconds})
@@ -1480,6 +1514,8 @@ def run_answers(args, workspace, sink, cases, llm, arm, repeats, judge_prompt):
             records.append({"case": case, "answer": answer, "scores": scores, "arm": arm, "repeat": repeat})
             log("answer judged", arm=arm, case=case["id"], repeat=repeat, tool_calls=answer.tool_calls, tool_errors=answer.tool_errors, turns=answer.turns,
                 seconds=round(answer.seconds, 2), spend_usd=round(llm.spend.total, 4))
+    if unreadable > MAX_UNREADABLE_VERDICT_SHARE * len(results):
+        raise EvalError(f"the judge returned no readable verdict for {unreadable} of {len(results)} answers, over the {MAX_UNREADABLE_VERDICT_SHARE:.0%} a run may lose")
     table = aggregate(results, ANSWER_METRICS)
     add_aggregate_metrics(sink, table, arm, "answer")
     sink.add("brain_eval_scored_cases", {"mode": "answer", "profile": arm}, len(results))
@@ -1487,9 +1523,9 @@ def run_answers(args, workspace, sink, cases, llm, arm, repeats, judge_prompt):
         sink.add("brain_eval_latency_seconds", {"stage": "answer", "quantile": q, "profile": arm}, quantile(answer_seconds, float(q)))
         sink.add("brain_eval_latency_seconds", {"stage": "judge", "quantile": q, "profile": arm}, quantile(judge_seconds, float(q)))
     overall = table.get("all|all", {})
-    log("answers scored", arm=arm, answers=len(results), key_fact_recall=overall.get("key_fact_recall"), faithfulness=overall.get("faithfulness"),
+    log("answers scored", arm=arm, answers=len(results), judge_unreadable=unreadable, key_fact_recall=overall.get("key_fact_recall"), faithfulness=overall.get("faithfulness"),
         citation_precision=overall.get("citation_precision"), abstention_accuracy=overall.get("abstention_accuracy"), spend_usd=round(llm.spend.total, 4))
-    return {"profile": arm, "aggregates": table, "cases": results}, records
+    return {"profile": arm, "aggregates": table, "cases": results, "judge_unreadable": unreadable}, records
 
 
 ARMS = {"b0": ("omnigraph_brain_eval", None), "tools": ("brain_tools_read", "brain.prompt.txt")}
@@ -1529,9 +1565,12 @@ def calibration_agreement(llm, judge_prompt, judge_model, files):
         human_facts = grade.get("key_facts_present") or []
         if grade.get("faithful") is None or grade.get("abstained") is None or any(value is None for value in human_facts):
             continue
+        try:
+            verdict, _, _ = judge_with_retry(llm, judge_prompt, model=judge_model, question=item["question"], answerable=item["answerable"],
+                                             key_facts=item.get("key_facts") or [], answer=item["answer"], tool_outputs=item.get("tool_outputs") or "")
+        except UnreadableVerdict:
+            continue
         graded += 1
-        verdict, _, _ = judge_answer(llm, judge_prompt, model=judge_model, question=item["question"], answerable=item["answerable"],
-                                     key_facts=item.get("key_facts") or [], answer=item["answer"], tool_outputs=item.get("tool_outputs") or "")
         scores = judged_scores(verdict, item.get("key_facts") or [], item["answerable"])
         for human, machine in zip(human_facts, scores["key_facts_present"]):
             total += 1
@@ -1938,11 +1977,18 @@ def main(argv=None):
         return 2
 
 
+HARNESS_FILES = ("brain_eval.py", "candidates.py")
+
+
 def error_location(error):
-    frame = error.__traceback__
-    while frame and frame.tb_next:
-        frame = frame.tb_next
-    return f"{Path(frame.tb_frame.f_code.co_filename).name}:{frame.tb_lineno}" if frame else "unknown"
+    frames = traceback.extract_tb(error.__traceback__)
+    if not frames:
+        return "unknown"
+    own = [frame for frame in frames if Path(frame.filename).name in HARNESS_FILES]
+    deepest = frames[-1]
+    where = own[-1] if own else deepest
+    location = f"{Path(where.filename).name}:{where.lineno} in {where.name}"
+    return location if where is deepest else f"{location} ({Path(deepest.filename).name}:{deepest.lineno})"
 
 
 if __name__ == "__main__":

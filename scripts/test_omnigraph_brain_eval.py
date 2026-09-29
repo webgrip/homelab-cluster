@@ -156,9 +156,13 @@ class FakeOmnigraph:
         return 404, {"code": "not_found"}
 
 
+CUT_OFF_VERDICT = '{"key_facts": [{"index": 0, "pres'
+
+
 class FakeLiteLLM:
     def __init__(self, judge_mode="good"):
         self.judge_mode = judge_mode
+        self.case_verdicts = 0
         self.chat_calls = 0
         self.mcp_calls = []
         self.bodies = []
@@ -167,6 +171,11 @@ class FakeLiteLLM:
         user = json.loads(payload["messages"][-1]["content"])
         if self.judge_mode == "garbled":
             return "The answer looks fine to me."
+        if user["question"] != be.CONTROL_CASE["question"] and self.judge_mode.startswith("cut-off-"):
+            self.case_verdicts += 1
+            if (self.judge_mode == "cut-off-always" or (self.judge_mode == "cut-off-first-attempt" and self.case_verdicts % 2 == 1)
+                    or (self.judge_mode == "cut-off-first-answer" and self.case_verdicts <= be.JUDGE_ATTEMPTS)):
+                return CUT_OFF_VERDICT
         answer = user["answer"]
         if self.judge_mode == "broken":
             supported = True
@@ -182,7 +191,8 @@ class FakeLiteLLM:
         if response_format == "brain_eval_judgement":
             verdict = self.verdict(payload)
             content = verdict if isinstance(verdict, str) else json.dumps(verdict)
-            return {"choices": [{"message": {"content": content}}], "usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+            finish = "length" if content == CUT_OFF_VERDICT else "stop"
+            return {"choices": [{"message": {"content": content}, "finish_reason": finish}], "usage": {"prompt_tokens": 10, "completion_tokens": payload["max_tokens"] if finish == "length" else 5}}
         messages = payload["messages"]
         if payload.get("tools") and not any(message["role"] == "tool" for message in messages):
             return {"choices": [{"message": {"content": "", "tool_calls": [{"id": "call1", "type": "function", "function": {
@@ -581,6 +591,23 @@ class GateRun(unittest.TestCase):
         finally:
             harness.close()
 
+    def test_an_answer_the_judge_cannot_read_is_left_unscored_while_the_share_stays_small(self):
+        harness = Harness(judge_mode="cut-off-first-answer")
+        try:
+            result = harness.run("gate", "--profile=p0", "--arm=b0", "--repeats=2", env={"BRAIN_EVAL_MCP_ARGUMENTS_REDACTED": "true"},
+                                 global_args=(f"--snapshot={SNAPSHOT}",))
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            answers = json.loads(harness.results("gate")[0].read_text())["answers"]["b0"]
+            self.assertEqual(answers["judge_unreadable"], 1)
+            first = next(case for case in answers["cases"] if case["id"] == CASES[0]["id"] and case["repeat"] == 0)
+            self.assertIsNone(first["metrics"]["key_fact_recall"])
+            self.assertIsNone(first["metrics"]["faithfulness"])
+            self.assertEqual(first["metrics"]["tool_calls"], 1.0)
+            again = next(case for case in answers["cases"] if case["id"] == CASES[0]["id"] and case["repeat"] == 1)
+            self.assertEqual(again["metrics"]["key_fact_recall"], 1.0)
+        finally:
+            harness.close()
+
     def test_a_gate_whose_judge_fails_the_control_pair_publishes_control_ok_0_and_scores_nothing(self):
         harness = Harness(judge_mode="broken")
         try:
@@ -639,6 +666,24 @@ class AnswerRun(unittest.TestCase):
         self.assertIn('"supported": 0.0', result.stdout)
         self.assertIn('"unsupported": 1.0', result.stdout)
         self.assertIn("brain_eval_judge_control_ok 0", "".join(self.harness.vmagent.bodies))
+
+    def test_a_cut_off_verdict_is_asked_again_once_and_the_answer_still_scores(self):
+        self.harness = Harness(judge_mode="cut-off-first-attempt")
+        result = self.harness.run("answer", "--arm=b0", env={"BRAIN_EVAL_MCP_ARGUMENTS_REDACTED": "true"})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        document = json.loads(self.harness.results("answer-b0")[0].read_text())
+        self.assertEqual(document["judge_unreadable"], 0)
+        self.assertEqual(self.harness.litellm.case_verdicts, 2 * len(CASES))
+        self.assertIsNotNone(next(case for case in document["cases"] if case["id"] == "c01")["metrics"]["key_fact_recall"])
+
+    def test_a_judge_that_cannot_read_most_answers_invalidates_the_run(self):
+        self.harness = Harness(judge_mode="cut-off-always")
+        result = self.harness.run("answer", "--arm=b0", env={"BRAIN_EVAL_MCP_ARGUMENTS_REDACTED": "true"})
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn(f"no readable verdict for {len(CASES)} of {len(CASES)} answers", result.stdout)
+        self.assertIn('"finish_reason": "length"', result.stdout)
+        self.assertIn('brain_eval_run_valid{mode="answer"} 0', "".join(self.harness.vmagent.bodies))
+        self.assertEqual(self.harness.results("answer"), [])
 
     def test_the_spend_cap_aborts_the_run_and_marks_it_invalid(self):
         self.harness = Harness()
@@ -1014,6 +1059,15 @@ class StoreBackupWindow(unittest.TestCase):
                 for day in (-DAY_MINUTES, 0, DAY_MINUTES):
                     self.assertFalse(start < closes + day and opens + day < end,
                                      f"{job['name']} may run from {start // 60:02d}:{start % 60:02d} UTC until its deadline, inside the store backup window")
+
+
+class CrashReports(unittest.TestCase):
+    def test_an_unexpected_error_names_the_harness_line_as_well_as_the_library_line(self):
+        try:
+            be.parse_json_content({"choices": [{"message": {"content": "not json"}}]})
+        except json.JSONDecodeError as error:
+            location = be.error_location(error)
+        self.assertRegex(location, r"^brain_eval\.py:\d+ in parse_json_content \(decoder\.py:\d+\)$")
 
 
 def progress(stage):
