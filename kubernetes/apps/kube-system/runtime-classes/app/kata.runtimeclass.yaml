@@ -8,7 +8,9 @@
 # all see the whole VM as one ordinary bounded process.
 #
 # `overhead` is added by the scheduler on top of the pod's own requests (VMM +
-# virtiofsd + shim, measured ~130-160Mi for Cloud Hypervisor).
+# virtiofsd + shim, measured ~130-160Mi for Cloud Hypervisor). CPU 250m -> 100m
+# (2026-09-29): the VMM and shim idle well below that, and 250m per Ploeg Run
+# was what kept Kata Runs off the full worker-1 (VIK-1268).
 #
 # scheduling.nodeSelector: the handler exists only where the extension is
 # installed. That is NOT the same as "the worker pool" — the pool is not
@@ -35,7 +37,7 @@ handler: kata
 overhead:
   podFixed:
     memory: 160Mi
-    cpu: 250m
+    cpu: 100m
 scheduling:
   nodeSelector:
     runtime.webgrip.io/kata: "true"
