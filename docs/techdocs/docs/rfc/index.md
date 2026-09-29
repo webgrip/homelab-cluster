@@ -47,7 +47,12 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
   [ticket sizing with Jev](rfc-jev-ticket-sizing.md) (2026-09-29: TypeSafe's classifier model as an
   advisory second estimator for the three sizing axes; first a rubric and a check that our own
   labels predict actuals, then a backtest that must beat "always M", a blind shadow and an
-  anchoring check; never sets labels or `agent-ready`; epic VIK-1410).
+  anchoring check; never sets labels or `agent-ready`; epic VIK-1410),
+  [using the LiteLLM we already run](rfc-litellm-feature-adoption.md) (2026-09-29: source-level
+  sweep of v1.102.1 and v1.103.0; Prometheus `/metrics` is OSS since v1.80, two settings we rely on
+  are inert, the free tier caps SSO at 5 user rows; four waves: native metrics and the promised
+  alerts, teams and same-model deployments across providers, SearXNG web search and PII masking,
+  then a second replica and route-scoped keys).
 
 ## Security-audit RFCs (2026-08-04)
 
