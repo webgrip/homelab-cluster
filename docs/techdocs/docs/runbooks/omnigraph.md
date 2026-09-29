@@ -489,6 +489,7 @@ The brain retrieval work ([RFC](../rfc/rfc-brain-retrieval.md)) ships a change o
 | `omnigraph-brain-eval-gate` | manual | Retrieval plus answers with 3 repeats, and the decision rule for `--compare baseline:candidate` | about USD 3.50 |
 | `omnigraph-brain-eval-candidates` | manual | Drafts about 60 questions from sampled sources and cuts them to 36 provisional cases | about USD 1 |
 | `omnigraph-brain-eval-experiment` | manual | E1: raw versus `type:`-prefixed vectors over each dev case's candidate pool, in memory | under USD 0.50 |
+| `omnigraph-brain-eval-smoke` | manual | The whole path on public synthetic questions about this repo's runbooks, writing nothing: the judge's control pair, B0 through the bridge, and a retrieval run with a scratch case whose slug is renamed (its log must say `stale: 1`). Run it after a LiteLLM or Omnigraph upgrade | under USD 0.10 |
 
 Run one by hand with `kubectl -n ai create job --from=cronjob/<name> <name>-manual`.
 
