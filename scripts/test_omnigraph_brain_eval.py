@@ -1061,6 +1061,210 @@ class StoreBackupWindow(unittest.TestCase):
                                      f"{job['name']} may run from {start // 60:02d}:{start % 60:02d} UTC until its deadline, inside the store backup window")
 
 
+class ThrottlingLiteLLM:
+    def __init__(self, throttled, retry_after="0.25", mcp_throttled=0):
+        self.throttled = throttled
+        self.retry_after = retry_after
+        self.mcp_throttled = mcp_throttled
+        self.requests = []
+
+    def handler(self):
+        fake = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def send(self, status, payload, headers=()):
+                data = json.dumps(payload).encode()
+                self.send_response(status)
+                self.send_header("content-type", "application/json")
+                for name, value in headers:
+                    self.send_header(name, value)
+                self.send_header("content-length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers.get("content-length") or 0)) or b"{}")
+                fake.requests.append(self.path)
+                throttled = fake.mcp_throttled if self.path.endswith("/mcp") else fake.throttled
+                if len([path for path in fake.requests if path == self.path]) <= throttled:
+                    headers = [("retry-after", fake.retry_after)] if fake.retry_after is not None else []
+                    self.send(429, {"error": {"message": "Rate limit exceeded", "type": "throttling_error", "code": "429"}}, headers)
+                elif self.path.endswith("/mcp"):
+                    self.send(200, {"jsonrpc": "2.0", "id": body.get("id"), "result": {"content": [{"type": "text", "text": "rows"}], "isError": False}})
+                else:
+                    self.send(200, {"choices": [{"message": {"content": "ok"}}], "usage": {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10}},
+                              [("x-litellm-response-cost", "0.001")])
+        return Handler
+
+
+class RecordedSleep:
+    def __init__(self):
+        self.pauses = []
+
+    def __call__(self, seconds):
+        self.pauses.append(seconds)
+
+
+class RateLimits(unittest.TestCase):
+    def client(self, fake):
+        server, url = serve(fake.handler())
+        self.addCleanup(server.shutdown)
+        sleep = RecordedSleep()
+        return be.LiteLLM(url, "sk", be.Spend(None), pacer=be.Pacer(sleep=sleep)), sleep, url
+
+    def test_a_throttled_call_waits_as_long_as_retry_after_says_and_then_succeeds(self):
+        fake = ThrottlingLiteLLM(throttled=be.RATE_LIMITED_ATTEMPTS - 1)
+        llm, sleep, _ = self.client(fake)
+        response, cost = llm.chat({"model": "chat-default", "messages": []})
+        self.assertEqual(response["choices"][0]["message"]["content"], "ok")
+        self.assertEqual(cost, 0.001)
+        self.assertEqual(len(fake.requests), be.RATE_LIMITED_ATTEMPTS)
+        self.assertEqual(sleep.pauses, [1.25] * (be.RATE_LIMITED_ATTEMPTS - 1))
+        self.assertEqual(llm.pacer.rate_limited, be.RATE_LIMITED_ATTEMPTS - 1)
+
+    def test_a_call_throttled_every_time_gives_up_with_the_throttling_error(self):
+        fake = ThrottlingLiteLLM(throttled=100)
+        llm, sleep, _ = self.client(fake)
+        with self.assertRaises(be.UpstreamError) as raised:
+            llm.chat({"model": "chat-default", "messages": []})
+        self.assertEqual((raised.exception.status, raised.exception.code), (429, "throttling_error"))
+        self.assertLessEqual(len(fake.requests), be.RATE_LIMITED_ATTEMPTS + 3)
+
+    def test_a_retry_after_beyond_the_cap_is_never_slept(self):
+        fake = ThrottlingLiteLLM(throttled=100, retry_after=str(be.MAX_RETRY_AFTER_SECONDS * 30))
+        llm, sleep, _ = self.client(fake)
+        with self.assertRaises(be.UpstreamError):
+            llm.chat({"model": "chat-default", "messages": []})
+        self.assertLess(max(sleep.pauses), be.MAX_RETRY_AFTER_SECONDS)
+        self.assertEqual(llm.pacer.rate_limited, 0)
+
+    def test_an_unthrottled_call_never_waits(self):
+        fake = ThrottlingLiteLLM(throttled=0)
+        llm, sleep, _ = self.client(fake)
+        for _ in range(5):
+            llm.chat({"model": "chat-default", "messages": []})
+        self.assertEqual(sleep.pauses, [])
+
+    def test_a_throttled_tool_call_waits_for_retry_after_too(self):
+        fake = ThrottlingLiteLLM(throttled=0, mcp_throttled=2)
+        server, url = serve(fake.handler())
+        self.addCleanup(server.shutdown)
+        sleep = RecordedSleep()
+        client = be.McpClient(f"{url}/omnigraph_brain_eval/mcp", "sk", pacer=be.Pacer(sleep=sleep))
+        text, failed = client.call("query", {"query": "x"})
+        self.assertEqual((text, failed), ("rows", False))
+        self.assertEqual(sleep.pauses, [1.25, 1.25])
+
+    def test_the_pacer_holds_calls_until_the_minute_has_room_again(self):
+        now = [1000.0]
+        sleep = RecordedSleep()
+
+        def advance(seconds):
+            sleep(seconds)
+            now[0] += seconds
+        pacer = be.Pacer(tokens_per_minute=100, requests_per_minute=50, clock=lambda: now[0], sleep=advance)
+        pacer.record(60)
+        now[0] += 10
+        pacer.wait_for_room()
+        self.assertEqual(sleep.pauses, [])
+        pacer.record(50)
+        now[0] += 5
+        pacer.wait_for_room()
+        self.assertEqual(len(sleep.pauses), 1)
+        self.assertAlmostEqual(sleep.pauses[0], be.RATE_LIMIT_WINDOW_SECONDS - 15 + 0.05)
+
+    def test_the_pacer_counts_requests_as_well_as_tokens(self):
+        now = [0.0]
+        sleep = RecordedSleep()
+
+        def advance(seconds):
+            sleep(seconds)
+            now[0] += seconds
+        pacer = be.Pacer(tokens_per_minute=10 ** 9, requests_per_minute=3, clock=lambda: now[0], sleep=advance)
+        for _ in range(3):
+            pacer.record(0)
+        pacer.wait_for_room()
+        self.assertEqual(len(sleep.pauses), 1)
+
+    def test_the_default_pace_stays_under_the_eval_key_limits(self):
+        job = EVAL_KEY_JOB.read_text()
+        key_tpm = int(re.search(r"name: TPM_LIMIT, value: \"(\d+)\"", job).group(1))
+        key_rpm = int(re.search(r"name: RPM_LIMIT, value: \"(\d+)\"", job).group(1))
+        args = be.build_parser().parse_args(["answer"])
+        self.assertLessEqual(args.tokens_per_minute, 0.8 * key_tpm)
+        self.assertLessEqual(args.requests_per_minute, 0.8 * key_rpm)
+        self.assertGreater(args.tokens_per_minute, 0)
+        self.assertGreater(args.requests_per_minute, 0)
+
+
+def bridge_error(message, status=400):
+    return json.dumps({"error": message, "status": status, "code": "bad_request", "body": {"error": message, "code": "bad_request"}}, indent=2)
+
+
+class ToolErrorClasses(unittest.TestCase):
+    def test_each_raw_bridge_failure_shape_gets_its_own_class(self):
+        shapes = {
+            bridge_error("parse error:  --> 1:1\n  |\n1 | MATCH (n) RETURN n\n  | ^---\n  |\n  = expected query_file"): "gq_parse",
+            bridge_error("type error: T6: type `Note` has no property `title`"): "gq_type",
+            bridge_error("parameter 'q' not provided"): "gq_parameter",
+            bridge_error("lint error: limit must be an integer literal"): "gq_rejected",
+            bridge_error("forbidden", 403): "policy_denied",
+            bridge_error("not found", 404): "not_found",
+            bridge_error("length limit exceeded", 413): "resource_limit",
+            bridge_error("internal", 500): "server_error",
+            json.dumps({"error": "fetch failed", "status": 0}): "server_unreachable",
+            "MCP error -32602: Invalid arguments for tool query": "tool_arguments",
+            "something else entirely": "other",
+        }
+        for text, expected in shapes.items():
+            self.assertEqual(be.tool_error_class(text), expected, text)
+        self.assertEqual(set(shapes.values()) | {"unknown_tool", "bridge_transport"}, set(be.TOOL_ERROR_CLASSES))
+        self.assertEqual(be.failed_call_class(json.JSONDecodeError("x", "y", 0)), "tool_arguments")
+        self.assertEqual(be.failed_call_class(be.McpRpcError("tools/call", be.MCP_INVALID_PARAMS)), "tool_arguments")
+        self.assertEqual(be.failed_call_class(be.UpstreamError("litellm-mcp", 0, "TimeoutError")), "bridge_transport")
+
+    def test_an_answer_counts_failed_calls_by_class_and_the_run_publishes_them(self):
+        class Llm:
+            def __init__(self):
+                self.turn = 0
+
+            def chat(self, payload):
+                self.turn += 1
+                if self.turn == 1:
+                    calls = [{"id": "a", "function": {"name": "query", "arguments": json.dumps({"query": "MATCH (n) RETURN n"})}},
+                             {"id": "b", "function": {"name": "query", "arguments": "{not json"}},
+                             {"id": "c", "function": {"name": "cypher", "arguments": "{}"}},
+                             {"id": "d", "function": {"name": "query", "arguments": json.dumps({"query": "fine"})}}]
+                    return {"choices": [{"message": {"content": "", "tool_calls": calls}}], "usage": {}}, 0.0
+                return {"choices": [{"message": {"content": "done"}}], "usage": {}}, 0.0
+
+        class Mcp:
+            def call(self, name, arguments):
+                if arguments["query"] == "fine":
+                    return "rows", False
+                return bridge_error("parse error: expected query_file"), True
+
+        answer = be.answer_case("q", Llm(), Mcp(), [{"type": "function", "function": {"name": "query"}}], {"query": "query"}, model="m", prompt=None)
+        self.assertEqual((answer.tool_calls, answer.tool_errors), (4, 3))
+        self.assertEqual(answer.tool_error_classes, {"gq_parse": 1, "tool_arguments": 1, "unknown_tool": 1})
+
+    def test_a_b0_run_pushes_tool_errors_per_class(self):
+        harness = Harness()
+        try:
+            result = harness.run("answer", "--arm=b0", env={"BRAIN_EVAL_MCP_ARGUMENTS_REDACTED": "true"}, global_args=("--day=2026-09-28",))
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            metrics = (harness.out / "metrics.prom").read_text()
+            for error_class in be.TOOL_ERROR_CLASSES:
+                self.assertIn(f'brain_eval_tool_errors{{class="{error_class}",profile="b0"}} 0', metrics)
+            self.assertIn('brain_eval_paced_seconds{mode="answer"} 0', metrics)
+            self.assertIn('"tool_error_classes": {}', result.stdout)
+        finally:
+            harness.close()
+
+
 class CrashReports(unittest.TestCase):
     def test_an_unexpected_error_names_the_harness_line_as_well_as_the_library_line(self):
         try:

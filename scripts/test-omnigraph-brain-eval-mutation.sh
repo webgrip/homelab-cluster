@@ -115,6 +115,18 @@ spawn judge-asked-once brain_eval.py 'for attempt in range(JUDGE_ATTEMPTS):' 'fo
 spawn unreadable-share-unbounded brain_eval.py 'if unreadable > MAX_UNREADABLE_VERDICT_SHARE * len(results):' 'if False:'
 spawn unreadable-answer-scored-as-a-miss brain_eval.py '                scores = UNJUDGED_SCORES' '                scores = judged_scores({}, case.get("key_facts") or [], case["answerable"])'
 spawn crash-names-library-frame brain_eval.py '    where = own[-1] if own else deepest' '    where = deepest'
+spawn retry-after-ignored brain_eval.py 'if error.status != 429 or error.retry_after is None' 'if True or error.retry_after is None'
+spawn retry-after-uncapped brain_eval.py 'or error.retry_after > MAX_RETRY_AFTER_SECONDS or' 'or'
+spawn retry-after-unparsed brain_eval.py 'raise UpstreamError(service, error.code, code, retry_after_seconds(error.headers)) from None' 'raise UpstreamError(service, error.code, code) from None'
+spawn tool-call-retry-after-ignored brain_eval.py '            raise UpstreamError("litellm-mcp", error.code, "", retry_after_seconds(error.headers)) from None' '            raise UpstreamError("litellm-mcp", error.code) from None'
+spawn pacer-never-waits brain_eval.py 'while self.window and self.over_budget():' 'while False:'
+spawn pacer-ignores-requests brain_eval.py ' or (self.requests_per_minute and len(self.window) >= self.requests_per_minute)' ''
+spawn pace-above-key-limit brain_eval.py 'PACED_TOKENS_PER_MINUTE = 300000' 'PACED_TOKENS_PER_MINUTE = 400000'
+spawn tool-errors-unclassified brain_eval.py '    if message.startswith("parse error"):
+        return "gq_parse"' '    if message.startswith("parse error"):
+        return "other"'
+spawn unknown-tool-sent-to-bridge brain_eval.py 'if function.get("name") not in mapping:' 'if False:'
+spawn tool-error-metric-dropped brain_eval.py '        sink.add("brain_eval_tool_errors", {"profile": arm, "class": error_class}, error_classes.get(error_class, 0))' '        pass'
 wait
 for result in "$work"/*.result; do
   cat "$result"

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import collections
 import datetime
 import json
 import math
@@ -45,6 +46,13 @@ JUDGE_MAX_TOKENS = 4000
 JUDGE_ATTEMPTS = 2
 MAX_UNREADABLE_VERDICT_SHARE = 0.1
 MAX_TOOL_TURNS = 6
+RATE_LIMIT_WINDOW_SECONDS = 60
+MAX_RETRY_AFTER_SECONDS = 120
+RATE_LIMITED_ATTEMPTS = 5
+PACED_TOKENS_PER_MINUTE = 300000
+PACED_REQUESTS_PER_MINUTE = 90
+TOOL_ERROR_CLASSES = ("gq_parse", "gq_type", "gq_parameter", "gq_rejected", "policy_denied", "not_found", "resource_limit", "server_error",
+                      "server_unreachable", "tool_arguments", "unknown_tool", "bridge_transport", "other")
 CANDIDATE_POOL_DEPTH = 40
 SENTINEL_PHRASE = "quillfeather sentinel 7c1e"
 ANSWER_MODEL = "chat-default"
@@ -62,6 +70,8 @@ METRIC_LABELS = {
     "brain_eval_missing_vectors_ratio": {"type": set(VECTOR_TYPES)},
     "brain_eval_stale_cases": {},
     "brain_eval_scored_cases": {"mode": set(MODES), "profile": set(PROFILES)},
+    "brain_eval_tool_errors": {"profile": set(PROFILES), "class": set(TOOL_ERROR_CLASSES)},
+    "brain_eval_paced_seconds": {"mode": set(MODES)},
     "brain_eval_cases": {"split": set(SPLITS), "state": {"provisional", "curated"}},
     "brain_eval_set_provisional": {},
     "brain_eval_calibration_grades": {},
@@ -95,11 +105,21 @@ class UnreadableVerdict(EvalError):
 
 
 class UpstreamError(EvalError):
-    def __init__(self, service, status, code=""):
+    def __init__(self, service, status, code="", retry_after=None):
         super().__init__(f"{service} answered HTTP {status}{' ' + code if code else ''}")
         self.service = service
         self.status = status
         self.code = code
+        self.retry_after = retry_after
+
+
+def retry_after_seconds(headers):
+    raw = (headers or {}).get("retry-after") or (headers or {}).get("Retry-After")
+    try:
+        seconds = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return seconds if seconds >= 0 else None
 
 
 def log(event, **fields):
@@ -640,7 +660,7 @@ def http_json(url, *, method="POST", payload=None, headers=None, timeout=60, ser
             code = str(parsed.get("code") or (parsed.get("error") or {}).get("type") or "") if isinstance(parsed, dict) else ""
         except (json.JSONDecodeError, AttributeError):
             pass
-        raise UpstreamError(service, error.code, code) from None
+        raise UpstreamError(service, error.code, code, retry_after_seconds(error.headers)) from None
     except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as error:
         raise UpstreamError(service, 0, type(error).__name__) from None
 
@@ -1019,29 +1039,80 @@ def add_aggregate_metrics(sink, table, profile, mode):
             sink.add("brain_eval_score", {"metric": metric, "profile": profile, "category": category, "split": split, "mode": mode}, value)
 
 
+class Pacer:
+    def __init__(self, tokens_per_minute=PACED_TOKENS_PER_MINUTE, requests_per_minute=PACED_REQUESTS_PER_MINUTE, clock=time.monotonic, sleep=time.sleep):
+        self.tokens_per_minute = tokens_per_minute
+        self.requests_per_minute = requests_per_minute
+        self.clock = clock
+        self.sleep = sleep
+        self.window = collections.deque()
+        self.waited_seconds = 0.0
+        self.rate_limited = 0
+
+    def pause(self, seconds):
+        self.sleep(seconds)
+        self.waited_seconds += seconds
+
+    def in_window(self):
+        now = self.clock()
+        while self.window and now - self.window[0][0] >= RATE_LIMIT_WINDOW_SECONDS:
+            self.window.popleft()
+        return now
+
+    def over_budget(self):
+        tokens = sum(spent for _, spent in self.window)
+        return (self.tokens_per_minute and tokens >= self.tokens_per_minute) or (self.requests_per_minute and len(self.window) >= self.requests_per_minute)
+
+    def wait_for_room(self):
+        now = self.in_window()
+        while self.window and self.over_budget():
+            self.pause(RATE_LIMIT_WINDOW_SECONDS - (now - self.window[0][0]) + 0.05)
+            now = self.in_window()
+
+    def record(self, tokens):
+        self.in_window()
+        self.window.append((self.clock(), tokens))
+
+    def honour(self, error, attempt):
+        if error.status != 429 or error.retry_after is None or error.retry_after > MAX_RETRY_AFTER_SECONDS or attempt >= RATE_LIMITED_ATTEMPTS - 1:
+            return False
+        self.rate_limited += 1
+        log("litellm rate limited", service=error.service, code=error.code, retry_after_seconds=error.retry_after, attempt=attempt + 1)
+        self.pause(error.retry_after + 1.0)
+        return True
+
+
 class LiteLLM:
-    def __init__(self, base, key, spend, timeout=120):
+    def __init__(self, base, key, spend, timeout=120, pacer=None):
         self.base = base.rstrip("/")
         self.key = key
         self.spend = spend
         self.timeout = timeout
+        self.pacer = pacer or Pacer()
 
     def post(self, path, payload):
-        last = None
-        for attempt in range(4):
+        backoffs = 0
+        rate_limited = 0
+        while True:
+            self.pacer.wait_for_room()
             try:
                 _, headers, body = http_json(f"{self.base}{path}", payload=payload, headers={"Authorization": f"Bearer {self.key}"}, timeout=self.timeout, service="litellm")
-                lowered = {key.lower(): value for key, value in headers.items()}
-                cost = float(lowered.get("x-litellm-response-cost") or 0.0)
-                self.spend.add(cost)
-                return json.loads(body), cost
             except UpstreamError as error:
-                last = error
-                if error.status in (0, 429, 500, 502, 503, 504) and attempt < 3:
-                    time.sleep(2 ** attempt * 2)
+                if self.pacer.honour(error, rate_limited):
+                    rate_limited += 1
+                    continue
+                if error.status in (0, 429, 500, 502, 503, 504) and backoffs < 3:
+                    self.pacer.pause(2 ** backoffs * 2)
+                    backoffs += 1
                     continue
                 raise
-        raise last
+            lowered = {key.lower(): value for key, value in headers.items()}
+            cost = float(lowered.get("x-litellm-response-cost") or 0.0)
+            parsed = json.loads(body)
+            usage = (parsed.get("usage") if isinstance(parsed, dict) else None) or {}
+            self.pacer.record(int(usage.get("total_tokens") or (int(usage.get("prompt_tokens") or 0) + int(usage.get("completion_tokens") or 0))))
+            self.spend.add(cost)
+            return parsed, cost
 
     def chat(self, payload):
         return self.post("/v1/chat/completions", {"disable_fallbacks": True, **payload})
@@ -1062,15 +1133,30 @@ def cosine(left, right):
 
 
 class McpClient:
-    def __init__(self, url, key, timeout=60):
+    def __init__(self, url, key, timeout=60, pacer=None):
         self.url = url
         self.key = key
         self.timeout = timeout
         self.session = None
         self.next_id = 1
         self.protocol = "2025-06-18"
+        self.pacer = pacer or Pacer()
 
     def rpc(self, method, params, notify=False):
+        rate_limited = 0
+        while True:
+            self.pacer.wait_for_room()
+            try:
+                result = self.send(method, params, notify)
+            except UpstreamError as error:
+                if self.pacer.honour(error, rate_limited):
+                    rate_limited += 1
+                    continue
+                raise
+            self.pacer.record(0)
+            return result
+
+    def send(self, method, params, notify):
         body = {"jsonrpc": "2.0", "method": method, "params": params}
         request_id = None
         if not notify:
@@ -1091,7 +1177,7 @@ class McpClient:
                 content_type = (response.headers.get("content-type") or "").lower()
                 raw = response.read().decode("utf-8", errors="replace")
         except urllib.error.HTTPError as error:
-            raise UpstreamError("litellm-mcp", error.code) from None
+            raise UpstreamError("litellm-mcp", error.code, "", retry_after_seconds(error.headers)) from None
         except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as error:
             raise UpstreamError("litellm-mcp", 0, type(error).__name__) from None
         if notify:
@@ -1109,7 +1195,7 @@ class McpClient:
         for message in messages:
             if message.get("id") == request_id:
                 if "error" in message:
-                    raise EvalError(f"MCP {method} answered error {message['error'].get('code')}")
+                    raise McpRpcError(method, message["error"].get("code"))
                 return message.get("result") or {}
         raise EvalError(f"MCP {method} returned no response")
 
@@ -1132,6 +1218,54 @@ class McpClient:
         result = self.rpc("tools/call", {"name": name, "arguments": arguments})
         text = "\n".join(item.get("text", "") for item in result.get("content") or [] if item.get("type") == "text")
         return text, bool(result.get("isError"))
+
+
+class McpRpcError(EvalError):
+    def __init__(self, method, code):
+        super().__init__(f"MCP {method} answered error {code}")
+        self.code = code
+
+
+MCP_INVALID_PARAMS = -32602
+
+
+def tool_error_class(text):
+    try:
+        parsed = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        parsed = None
+    details = parsed if isinstance(parsed, dict) else {}
+    message = str(details.get("error") or text or "")
+    status = details.get("status")
+    if message.startswith("parse error"):
+        return "gq_parse"
+    if message.startswith("type error"):
+        return "gq_type"
+    if message.startswith("parameter "):
+        return "gq_parameter"
+    if status == 413 or "resource_limit" in text or "length limit exceeded" in text:
+        return "resource_limit"
+    if status == 403:
+        return "policy_denied"
+    if status == 404:
+        return "not_found"
+    if status == 400:
+        return "gq_rejected"
+    if status == 0 or message == "fetch failed":
+        return "server_unreachable"
+    if isinstance(status, int) and status >= 500:
+        return "server_error"
+    if str(MCP_INVALID_PARAMS) in text or "Invalid arguments" in text:
+        return "tool_arguments"
+    return "other"
+
+
+def failed_call_class(error):
+    if isinstance(error, json.JSONDecodeError):
+        return "tool_arguments"
+    if isinstance(error, McpRpcError):
+        return "tool_arguments" if error.code == MCP_INVALID_PARAMS else "bridge_transport"
+    return "bridge_transport"
 
 
 def openai_tools(mcp_tools):
@@ -1159,6 +1293,7 @@ class Answer:
     tool_outputs: str
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    tool_error_classes: dict = field(default_factory=dict)
 
 
 def answer_case(question, llm, mcp, tools, mapping, *, model, prompt, temperature=0.2, max_turns=MAX_TOOL_TURNS):
@@ -1167,6 +1302,7 @@ def answer_case(question, llm, mcp, tools, mapping, *, model, prompt, temperatur
     calls = errors = turns = prompt_tokens = completion_tokens = 0
     cost = 0.0
     outputs = []
+    classes = collections.Counter()
     final = ""
     while True:
         payload = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": 1500}
@@ -1189,16 +1325,22 @@ def answer_case(question, llm, mcp, tools, mapping, *, model, prompt, temperatur
         for call in requested:
             calls += 1
             function = call.get("function") or {}
-            try:
-                arguments = json.loads(function.get("arguments") or "{}")
-                text, failed = mcp.call(mapping.get(function.get("name"), function.get("name")), arguments)
-            except (json.JSONDecodeError, EvalError) as error:
-                text, failed = f"tool call failed: {type(error).__name__}", True
+            if function.get("name") not in mapping:
+                text, failed, error_class = f"unknown tool {function.get('name')!r}: use one of the listed tools", True, "unknown_tool"
+            else:
+                try:
+                    arguments = json.loads(function.get("arguments") or "{}")
+                    text, failed = mcp.call(mapping[function["name"]], arguments)
+                    error_class = tool_error_class(text) if failed else None
+                except (json.JSONDecodeError, EvalError) as error:
+                    text, failed, error_class = f"tool call failed: {type(error).__name__}", True, failed_call_class(error)
             errors += int(failed)
+            if failed:
+                classes[error_class] += 1
             text = cut(text)
             outputs.append(text)
             messages.append({"role": "tool", "tool_call_id": call.get("id"), "content": text})
-    return Answer(final, calls, errors, turns, cost, time.monotonic() - started, cut("\n\n".join(outputs)), prompt_tokens, completion_tokens)
+    return Answer(final, calls, errors, turns, cost, time.monotonic() - started, cut("\n\n".join(outputs)), prompt_tokens, completion_tokens, dict(classes))
 
 
 JUDGE_SCHEMA = {
@@ -1486,7 +1628,7 @@ def run_retrieval(args, workspace, sink, omnigraph, cases, profiles, run_label="
 def run_answers(args, workspace, sink, cases, llm, arm, repeats, judge_prompt):
     mcp_server, prompt_file = ARMS[arm]
     prompt = Path(args.prompts_dir, prompt_file).read_text(encoding="utf-8") if prompt_file else None
-    mcp = McpClient(f"{args.litellm_url.rstrip('/')}/{mcp_server}/mcp", llm.key)
+    mcp = McpClient(f"{args.litellm_url.rstrip('/')}/{mcp_server}/mcp", llm.key, pacer=llm.pacer)
     mcp.initialize()
     tools, mapping = openai_tools(mcp.tools())
     log("answer tools listed", arm=arm, tools=len(tools))
@@ -1494,6 +1636,7 @@ def run_answers(args, workspace, sink, cases, llm, arm, repeats, judge_prompt):
     answer_seconds, judge_seconds = [], []
     records = []
     unreadable = 0
+    error_classes = collections.Counter()
     for repeat in range(repeats):
         for case in cases:
             answer = answer_case(case["question"], llm, mcp, tools, mapping, model=args.answer_model, prompt=prompt)
@@ -1510,22 +1653,27 @@ def run_answers(args, workspace, sink, cases, llm, arm, repeats, judge_prompt):
             metrics = {key: scores[key] for key in ("key_fact_recall", "faithfulness", "citation_precision", "abstention_accuracy")}
             metrics.update({"tool_error_rate": (answer.tool_errors / answer.tool_calls) if answer.tool_calls else None, "tool_calls": float(answer.tool_calls),
                             "usd_per_answer": answer.cost, "latency_seconds": answer.seconds})
-            results.append({"id": case["id"], "repeat": repeat, "category": case["category"], "split": case["split"], "state": case_state(case), "metrics": metrics})
+            error_classes.update(answer.tool_error_classes)
+            results.append({"id": case["id"], "repeat": repeat, "category": case["category"], "split": case["split"], "state": case_state(case), "metrics": metrics,
+                            "tool_error_classes": answer.tool_error_classes})
             records.append({"case": case, "answer": answer, "scores": scores, "arm": arm, "repeat": repeat})
             log("answer judged", arm=arm, case=case["id"], repeat=repeat, tool_calls=answer.tool_calls, tool_errors=answer.tool_errors, turns=answer.turns,
-                seconds=round(answer.seconds, 2), spend_usd=round(llm.spend.total, 4))
+                tool_error_classes=answer.tool_error_classes, seconds=round(answer.seconds, 2), spend_usd=round(llm.spend.total, 4))
     if unreadable > MAX_UNREADABLE_VERDICT_SHARE * len(results):
         raise EvalError(f"the judge returned no readable verdict for {unreadable} of {len(results)} answers, over the {MAX_UNREADABLE_VERDICT_SHARE:.0%} a run may lose")
     table = aggregate(results, ANSWER_METRICS)
     add_aggregate_metrics(sink, table, arm, "answer")
     sink.add("brain_eval_scored_cases", {"mode": "answer", "profile": arm}, len(results))
+    for error_class in TOOL_ERROR_CLASSES:
+        sink.add("brain_eval_tool_errors", {"profile": arm, "class": error_class}, error_classes.get(error_class, 0))
     for q in QUANTILES:
         sink.add("brain_eval_latency_seconds", {"stage": "answer", "quantile": q, "profile": arm}, quantile(answer_seconds, float(q)))
         sink.add("brain_eval_latency_seconds", {"stage": "judge", "quantile": q, "profile": arm}, quantile(judge_seconds, float(q)))
     overall = table.get("all|all", {})
     log("answers scored", arm=arm, answers=len(results), judge_unreadable=unreadable, key_fact_recall=overall.get("key_fact_recall"), faithfulness=overall.get("faithfulness"),
-        citation_precision=overall.get("citation_precision"), abstention_accuracy=overall.get("abstention_accuracy"), spend_usd=round(llm.spend.total, 4))
-    return {"profile": arm, "aggregates": table, "cases": results, "judge_unreadable": unreadable}, records
+        citation_precision=overall.get("citation_precision"), abstention_accuracy=overall.get("abstention_accuracy"), tool_error_classes=dict(error_classes),
+        rate_limited=llm.pacer.rate_limited, paced_seconds=round(llm.pacer.waited_seconds, 1), spend_usd=round(llm.spend.total, 4))
+    return {"profile": arm, "aggregates": table, "cases": results, "judge_unreadable": unreadable, "tool_error_classes": dict(error_classes)}, records
 
 
 ARMS = {"b0": ("omnigraph_brain_eval", None), "tools": ("brain_tools_read", "brain.prompt.txt")}
@@ -1670,7 +1818,7 @@ def omnigraph_client(args):
 
 
 def litellm_client(args, cap):
-    return LiteLLM(args.litellm_url, read_secret(args.litellm_key_file), Spend(cap))
+    return LiteLLM(args.litellm_url, read_secret(args.litellm_key_file), Spend(cap), pacer=Pacer(args.tokens_per_minute, args.requests_per_minute))
 
 
 def cases_for_run(args, workspace):
@@ -1737,6 +1885,7 @@ def command_answer(args):
         documents[arm] = document
         all_records.extend(records)
     sink.add("brain_eval_cost_usd", {"mode": "answer"}, llm.spend.total)
+    sink.add("brain_eval_paced_seconds", {"mode": "answer"}, llm.pacer.waited_seconds)
     if not args.synthetic:
         add_set_metrics(sink, all_cases, len(workspace.calibration_files()))
         agreement, graded = calibration_agreement(llm, judge_prompt, args.judge_model, workspace.calibration_files())
@@ -1784,6 +1933,7 @@ def command_gate(args):
             answer_documents[arm], arm_records = run_answers(args, workspace, sink, cases, llm, arm, args.repeats, judge_prompt)
             records.extend(arm_records)
         sink.add("brain_eval_cost_usd", {"mode": "gate"}, llm.spend.total)
+        sink.add("brain_eval_paced_seconds", {"mode": "gate"}, llm.pacer.waited_seconds)
         run.update({"answer_model": args.answer_model, "judge_model": args.judge_model, "repeats": args.repeats, "control": control,
                     "spend_usd": round(llm.spend.total, 6)})
     if args.dry_run or args.synthetic:
@@ -1919,6 +2069,8 @@ def build_parser():
     parser.add_argument("--judge-model", default=JUDGE_MODEL)
     parser.add_argument("--draft-model", default=DRAFT_MODEL)
     parser.add_argument("--max-spend-usd", type=float, default=2.0)
+    parser.add_argument("--tokens-per-minute", type=int, default=PACED_TOKENS_PER_MINUTE, help="pace model calls under the eval key's TPM limit")
+    parser.add_argument("--requests-per-minute", type=int, default=PACED_REQUESTS_PER_MINUTE, help="pace model and tool calls under the eval key's RPM limit")
     commands = parser.add_subparsers(dest="command", required=True)
     retrieval = commands.add_parser("retrieval")
     retrieval.add_argument("--profile", action="append", choices=sorted(PROFILE_RUNNERS), default=None)
