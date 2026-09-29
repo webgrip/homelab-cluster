@@ -360,9 +360,11 @@ spec:
       # fit fringe (2×1.5 CPU of 7.95 allocatable).
       # A Run mostly waits on the model: request 250m so it schedules beside
       # CI on the worker pool (a full-CPU request fitted only fringe-workstation
-      # on 2026-09-27), and keep the 1-CPU limit for bursts.
+      # on 2026-09-27), and keep the 1-CPU limit for bursts. Memory requests
+      # 768Mi (measured peaks 527Mi reviewer, 620Mi builder) so a Run fits a
+      # Kata node, and may burst to the 1536Mi limit.
       workerResources:
-        requests: {cpu: 250m, memory: 1536Mi}
+        requests: {cpu: 250m, memory: 768Mi}
         limits: {cpu: "1", memory: 1536Mi}
       scaler:
         # The KEDA operator resolves this hostname from the keda namespace,
@@ -465,7 +467,7 @@ spec:
                   # docker daemon by someone editing the global default.
                   harness: {name: openhands, dind: false}
                   workerResources:
-                    requests: {cpu: 250m, memory: 1536Mi}
+                    requests: {cpu: 250m, memory: 768Mi}
                     limits: {cpu: 500m, memory: 1536Mi}
         - name: silver
           model: litellm_proxy/claude-sonnet-5
@@ -485,7 +487,7 @@ spec:
                   model: litellm_proxy/deepseek-chat
                   harness: {name: openhands, dind: false}
                   workerResources:
-                    requests: {cpu: 250m, memory: 1536Mi}
+                    requests: {cpu: 250m, memory: 768Mi}
                     limits: {cpu: 500m, memory: 1536Mi}
         # copper: seam-smoke team for the pluggable harness/image work
         # (chart >= rc.5). The exec adapter runs /bin/cat on the generated
