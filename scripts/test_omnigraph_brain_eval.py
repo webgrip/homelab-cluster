@@ -546,6 +546,23 @@ class ExperimentRun(unittest.TestCase):
             harness.close()
 
 
+class GateRun(unittest.TestCase):
+    def test_a_gate_scores_retrieval_and_answers_and_applies_the_decision_rule(self):
+        harness = Harness()
+        try:
+            result = harness.run("gate", "--profile=p0", "--compare=p0:p0", "--arm=b0", "--repeats=2", env={"BRAIN_EVAL_MCP_ARGUMENTS_REDACTED": "true"},
+                                 global_args=(f"--snapshot={SNAPSHOT}",))
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            document = json.loads(harness.results("gate")[0].read_text())
+            decision = document["decisions"]["p0:p0"]
+            self.assertFalse(decision["adopt"])
+            self.assertEqual((decision["wins"], decision["losses"]), (0, 0))
+            self.assertEqual(len(document["answers"]["b0"]["cases"]), 2 * len(CASES))
+            self.assertIn('brain_eval_cost_usd{mode="gate"}', (harness.out / "metrics.prom").read_text())
+        finally:
+            harness.close()
+
+
 class AnswerRun(unittest.TestCase):
     def tearDown(self):
         self.harness.close()
