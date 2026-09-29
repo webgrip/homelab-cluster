@@ -849,6 +849,12 @@ Dev split: nDCG@8 0.432, Recall@8 0.492, Hit@1 0.385, MRR@8 0.596; holdout nDCG@
 p95 is about 364,000 characters per question and leg latency p95 0.50 s. Missing vectors 0 for
 `Note` and `Topic`; `Passage` 0.7% after the 02:40 forge import.
 
+Experiment E1 on the same provisional set (24 dev cases, candidate pools of the meaning and
+keyword legs, re-embedded in memory): raw vectors minus `type:`-prefixed vectors is −0.011 nDCG@8,
+6 wins and 7 losses (sign test p 1.0), with `about` and `connect` losing more than one case each.
+Not adopted: writers keep the prefixed format (P3), and no raw re-embed is filed. Re-run it once the
+set is curated.
+
 Not yet done, by dependency: B0 and the judge's control pair wait for VIK-1403 and for Anthropic
 budget (the answer and gate CronJobs stay suspended, and the harness refuses real answer runs until
 `BRAIN_EVAL_MCP_ARGUMENTS_REDACTED=true`); judge agreement waits for Ryan's 10 grades.
