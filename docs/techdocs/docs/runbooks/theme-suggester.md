@@ -15,12 +15,13 @@ sends no ticket text outside the cluster. Background: [Laya spike](../rfc/spike-
 Switch to `apply` only after shadow data shows the chosen threshold holds (owner decision,
 2026-09-29: apply the label when very sure, after a shadow period).
 
-## One-time setup (owner)
+## Identity
 
-1. Create a Vikunja user `theme-suggester` and share boards 3, 5, 6, 9 and 10 with it (read
-   for shadow, read/write before `apply`).
-2. Create an API token for it and store it in OpenBao KV at `vikunja/theme-suggester`,
-   property `token`. The ExternalSecret `theme-suggester-token` picks it up within 15 minutes.
+It uses the owner's existing API token from OpenBao (`vikunja/mcp`, property `api_token`), the
+same token the Vikunja MCP server, Ploeg and the agent runner use. No extra Vikunja account is
+needed (owner decision, 2026-09-29). Its writes therefore appear as the owner; every comment it
+writes carries the `theme-suggester:v1` marker. A dedicated bot user is a one-line change of the
+ExternalSecret's `remoteRef` if that is ever wanted.
 
 ## Read the shadow results
 
@@ -38,7 +39,7 @@ useful `coverage`, set `APPLY_THRESHOLD` to it and `MODE: apply` in
 
 | Log event | Meaning | Fix |
 | --- | --- | --- |
-| `no_vikunja_token` | The token file is empty or absent | Mint the token (setup step 2) |
+| `no_vikunja_token` | The token file is empty or absent | Restore `vikunja/mcp` `api_token` in OpenBao |
 | `control_failed` | Laya answered the built-in control question wrongly | Check `kubectl -n ai logs deploy/laya`; a new image or checkpoint may be broken, so roll back the image pin |
 | `empty_scan` | The boards returned no tasks | The token is revoked or the boards are not shared with the bot user |
 | `board_skipped` | A board has fewer than two themes with `MIN_THEME_TICKETS` tickets | Expected on small boards |

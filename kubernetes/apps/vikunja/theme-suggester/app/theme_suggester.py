@@ -41,7 +41,7 @@ def vikunja_token():
     except FileNotFoundError:
         token = ""
     if not token:
-        log("no_vikunja_token", path=VIKUNJA_TOKEN_FILE, action="mint a token for the theme-suggester Vikunja user into OpenBao at vikunja/theme-suggester (property token)")
+        log("no_vikunja_token", path=VIKUNJA_TOKEN_FILE, action="restore the owner API token in OpenBao at vikunja/mcp (property api_token)")
         sys.exit(4)
     return token
 
