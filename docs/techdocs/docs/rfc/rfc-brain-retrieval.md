@@ -802,6 +802,57 @@ days. Retrieval mode calls Omnigraph and `brain-tools` REST directly and is not 
 `time() - last_over_time(brain_eval_last_success_timestamp_seconds{mode="retrieval"}[3d]) > 36 * 3600`
 and fires on `absent_over_time` of the same series.
 
+**Outcome (2026-09-29).** Shipped: the three actors (tokens, then policy, each restart converged
+with every graph serving), the `omnigraph-eval` key, the read-only `omnigraph_brain_eval` bridge (10
+tools), the harness and its six CronJobs, the dashboard *Brain retrieval quality*, five alerts, and
+the tests (26 cases against fake Omnigraph, LiteLLM and vmagent servers; 18 mutants; every harness
+query run on the pinned server in CI). Details in the
+[Omnigraph runbook](../runbooks/omnigraph.md#brain-eval). Changes from the plan:
+
+- **Provisional store.** The private repo could not be created from this session, so the jobs keep
+  the set in a bare git repository on the PVC `omnigraph-brain-eval-store` and move it into
+  `ryangr0/brain-eval` on the first run after Ryan creates the repo and adds the deploy key.
+- **The cut is automatic.** The candidates job drafted 46 questions from 26 sources and 8
+  unanswerable ones, and added 6 templated temporal questions. Pooling dropped 2 unanswerable drafts
+  (it found relevant documents) and 1 question whose grading failed, leaving 57 candidates, which it
+  cut to 36 cases, 8 holdout, all `provisional: true`, straight into `cases/`. Ryan's own questions and review replace them in place; `brain_eval_set_provisional`
+  stays 1 until then.
+- **Pooling ran on gpt-oss.** The shared Anthropic provider budget (USD 5 a day) was spent by other
+  consumers, so relevance pooling fell back to `fireworks-gpt-oss-120b` for all 54 pooled candidates
+  (recorded per candidate). The judge never falls back. Re-pool with Haiku during curation if the
+  expected sets look thin.
+- **Missing vectors are counted with queries,** pinned to the run's commit (`nearest()` ranks only
+  rows with a vector), because `/export` of `Passage` now stops at the server's
+  `ordered_scan_input_batch_bytes` limit. The same limit made the startup backfill of `Passage`
+  fail at the 02:08 restart (logged and skipped, as designed); P3's writer-side vectors remove the
+  dependency.
+- **Additions:** a smoke job on public synthetic questions, a nightly scan of a fresh clone of this
+  public repo for eval questions (`brain_eval_public_repo_leaks`, alert
+  `OmnigraphBrainEvalCaseTextInPublicRepo`), `OmnigraphBrainEvalRunInvalid`, and the embedding model
+  on the eval key for experiment E1.
+
+Baseline `p0` on graph commit `01M3N7WZG14MFY9T5PZCY9TWB4`, 33 scored cases (3 unanswerable are
+answer-only), two runs with identical scores, provisional set:
+
+| Category | nDCG@8 | Recall@8 | Candidate recall@40 |
+|---|---|---|---|
+| docs-en | 0.700 | 0.718 | 0.842 |
+| notes-nl | 0.490 | 0.631 | 0.837 |
+| notes-en | 0.662 | 0.583 | 0.908 |
+| cross-lingual | 0.301 | 0.327 | 0.719 |
+| about | 0.304 | 0.410 | 0.782 |
+| connect | 0.295 | 0.436 | 0.565 |
+| temporal | 0.147 | 0.002 | 0.005 |
+| **all** | **0.437** | **0.483** | **0.714** |
+
+Dev split: nDCG@8 0.432, Recall@8 0.492, Hit@1 0.385, MRR@8 0.596; holdout nDCG@8 0.459. Payload
+p95 is about 364,000 characters per question and leg latency p95 0.50 s. Missing vectors 0 for
+`Note` and `Topic`; `Passage` 0.7% after the 02:40 forge import.
+
+Not yet done, by dependency: B0 and the judge's control pair wait for VIK-1403 and for Anthropic
+budget (the answer and gate CronJobs stay suspended, and the harness refuses real answer runs until
+`BRAIN_EVAL_MCP_ARGUMENTS_REDACTED=true`); judge agreement waits for Ryan's 10 grades.
+
 ### P3 Data: write-time vectors and Obsidian chunks
 
 Section 7.3 in that commit order, plus: the vault-import and forge-import egress to
