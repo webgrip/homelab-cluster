@@ -68,14 +68,14 @@ The rehearsal then opens no branch on `brain`. The variable is a statement that 
 | `act-glide` | `brain`, `memory` and `webgrip`: read on any branch, write only on unprotected branches, create and delete unprotected branches, run stored queries. No merge, no export, never a write to `main`. Only the LiteLLM `omnigraph_glide_*` MCP servers hold it (see [Glide agents](#glide-agents)) |
 | `act-review` | `brain`, `memory` and `webgrip`: read and write on any branch including `main`, create, delete and merge any branch, run stored queries. No export. Only the explorer's review container holds it (see [Review mode](#review-mode)); client graphs stay CLI-reviewed as `act-ryan` |
 | `act-brain-eval` | `brain`: read and export on any branch, run stored queries. No writes, no branch actions. The [brain eval](#brain-eval) jobs and the `omnigraph_brain_eval` bridge hold it |
-| `act-brain-reader` | `brain`: read on any branch, run stored queries. Nothing else. For `brain-tools` reads (brain retrieval RFC, P4) |
+| `act-brain-reader` | `brain`: read on any branch, run stored queries. Nothing else. Only [brain-tools](#brain-tools) holds it |
 | `act-brain-scribe` | `brain`: read and write on `main` only. No branch actions, no stored queries, no export. For `brain-tools` `remember` (brain retrieval RFC, P6); it can delete any row on `main`, so the scribe audit is its guard |
 
 Each token is generated in-cluster by the `omnigraph-actor-tokens` ExternalSecret, pushed to OpenBao at `secret/omnigraph/<actor>` (field `token`), and assembled into the server's `tokens.json` by the `omnigraph-tokens` ExternalSecret.
 
 Add an actor by creating a new generator ExternalSecret and PushSecret pair, then adding one line to the aggregator. Do not add keys to `omnigraph-actor-tokens`. It is generate-once, so a new key only appears after its Secret is deleted, and deleting it rotates every existing token.
 
-Give an in-cluster consumer its token with an ExternalSecret against the `openbao` store at `omnigraph/<actor>`. Then open the network path on both ends, because namespace `ai` is default-deny and every pod in it carries its own egress allow: add the consumer to `omnigraph-ingress` (a `namespaceSelector` for another namespace, a `podSelector` for a pod in `ai`), and give a pod in `ai` an egress rule to `app: omnigraph` on 8080. Today only LiteLLM (the `omnigraph_memory`, `omnigraph_brain`, `omnigraph_brain_eval` and `omnigraph_glide_*` MCP bridges), the explorer, the vault and Forgejo importers, the distiller, the brain eval jobs and the gateway may connect. The full matrix is in [LiteLLM: network](../general/litellm.md#network-namespace-ai).
+Give an in-cluster consumer its token with an ExternalSecret against the `openbao` store at `omnigraph/<actor>`. Then open the network path on both ends, because namespace `ai` is default-deny and every pod in it carries its own egress allow: add the consumer to `omnigraph-ingress` (a `namespaceSelector` for another namespace, a `podSelector` for a pod in `ai`), and give a pod in `ai` an egress rule to `app: omnigraph` on 8080. Today only LiteLLM (the `omnigraph_memory`, `omnigraph_brain`, `omnigraph_brain_eval` and `omnigraph_glide_*` MCP bridges), the explorer, the vault and Forgejo importers, the distiller, the brain eval jobs, [brain-tools](#brain-tools) and the gateway may connect. The full matrix is in [LiteLLM: network](../general/litellm.md#network-namespace-ai).
 
 ## Explorer
 
@@ -500,8 +500,9 @@ The brain retrieval work ([RFC](../rfc/rfc-brain-retrieval.md)) ships a change o
 
 | CronJob | When | Does | Cost |
 |---|---|---|---|
-| `omnigraph-brain-eval-retrieval` | 04:40 nightly | Profile `p0` (today's `recall_notes`, `recall_passages` and `recall_topics`, interleaved by rank) for every case, pinned to one graph commit; the share of vectorless `Note`, `Passage` and `Topic` rows; a scan of a fresh clone of this public repo for any eval question | USD 0 |
+| `omnigraph-brain-eval-retrieval` | 04:40 nightly | Profiles `p0` (today's `recall_notes`, `recall_passages` and `recall_topics`, interleaved by rank, invoked directly), `p0-rest` (the same through [brain-tools](#brain-tools) REST, whose ranking must equal `p0` case by case: `brain_eval_replica_identical_ratio`) and `p1` (brain-tools' fused pipeline) for every case, all pinned to one graph commit; the share of vectorless `Note`, `Passage` and `Topic` rows; a scan of a fresh clone of this public repo for any eval question | USD 0 |
 | `omnigraph-brain-eval-answer` | Sunday 05:10 UTC | The judge's control pair, then B0: `chat-default` answers each case through the read-only raw bridge `omnigraph_brain_eval`, and `fireworks-deepseek-v4p1-flash` judges it | about USD 0.50 |
+| `omnigraph-brain-eval-gate-retrieval` | manual | Retrieval only: `p0`, `p0-rest` and `p1` on one snapshot and the decision rule for `p0:p1`, with the guardrails search p95 at most 3 seconds and answers at most 6,000 characters | USD 0 |
 | `omnigraph-brain-eval-gate` | manual | Retrieval plus answers with 3 repeats, the decision rule for `--compare baseline:candidate`, and up to ten answers in `calibration/pending/` | about USD 3 |
 | `omnigraph-brain-eval-candidates` | manual | Drafts about 60 questions from sampled sources and cuts them to 36 provisional cases | about USD 1 |
 | `omnigraph-brain-eval-experiment` | manual | E1: raw versus `type:`-prefixed vectors over each dev case's candidate pool, in memory | under USD 0.50 |
@@ -598,7 +599,49 @@ The `eval` container ends with a `run invalid` line naming the reason: an upstre
 
 **Tests.** [test_omnigraph_brain_eval.py](../../../../scripts/test_omnigraph_brain_eval.py) runs the harness against a fake Omnigraph, a fake LiteLLM with its MCP endpoint and a fake vmagent: metric maths against hand-computed values, document roll-up, stale exclusion, the independent temporal path (the fake's stored query disagrees with the scan), snapshot pinning, the control pair, the spend cap, the answer-mode redaction gate, calibration agreement, the label allowlist, the candidate cut, the sentinel, full-precision values, the key-fact and slug leak scans, the gate's control pair, the guide refresh, the model policy (no Anthropic model, every model on the key, a judge of another family), the schedules against the store backup window, the pacing under the eval key's limits and the wait for `retry-after` on a throttled model or tool call (never past 120 seconds), the tool error classes, and the privacy gate: the `repo-privacy` check against a fake Forgejo (404, 200, 503), and `store.sh` and `publish.sh` run with a fake `git` that must never push without a verdict. [test-omnigraph-brain-eval-mutation.sh](../../../../scripts/test-omnigraph-brain-eval-mutation.sh) breaks each of those in turn and requires the suite to fail, and the unmodified harness to pass. Both run in pre-commit and in `e2e / Lint & static validation`.
 
-**Network.** `omnigraph-brain-eval-egress` allows `omnigraph` :8080, `litellm` :4000, the Forgejo pods on SSH :2222 (eval repo) and HTTP :3000 (anonymous clone of this public repo for the leak check) and `vmagent` :8429. Omnigraph admits it in `omnigraph-ingress`, Forgejo in `forgejo-allow-ingress`; LiteLLM admits all of `ai`, and `observability` has no NetworkPolicy.
+**Network.** `omnigraph-brain-eval-egress` allows `omnigraph` :8080, `litellm` :4000, `brain-tools` :8081 (REST profiles), the Forgejo pods on SSH :2222 (eval repo) and HTTP :3000 (anonymous clone of this public repo for the leak check) and `vmagent` :8429. Omnigraph admits it in `omnigraph-ingress`, Forgejo in `forgejo-allow-ingress`; LiteLLM admits all of `ai`, and `observability` has no NetworkPolicy.
+
+## Brain tools
+
+`brain-tools` (namespace `ai`) answers questions about `brain` with plain words, so no agent has to write GQ (brain retrieval RFC, P4). It runs as `act-brain-reader`, calls only the fixed stored queries in [brain.retrieval.gq](../../../../kubernetes/apps/ai/omnigraph/app/bundle/brain.retrieval.gq) and `recall_*`, and writes nothing.
+
+| Port | Serves | Who may connect |
+|---|---|---|
+| 8080 | `/mcp`: MCP over stateless streamable HTTP (JSON responses), tools `search` and `read` | LiteLLM only |
+| 8081 | REST `/api/search`, `/api/read` (GET or POST), `/metrics`, `/healthz`, `/readyz` | the brain eval jobs and `observability` |
+
+**Tools.** `search(query, scope = all|notes|docs, limit = 8)` returns numbered sources, best first, each with a ref (`doc:<artifact>#<chunk>`, `note:<note>#<chunk>` or `note:nt-…`), a link (a forge document's own URL, otherwise `https://graph.<domain>/?graph=brain&node=<slug>`) and a snippet of at most 600 characters, then related topics, then a footer with the graph commit, whether it reranked, the time taken and "Private: cite, do not copy into git, tickets or public pages." An answer is at most 6,000 characters; the lowest ranks are cut first. `read(ref, around = 1)` opens a ref with one neighbouring chunk on each side, at most 4,000 characters; an Obsidian note ref reads its `obsidian-file/` shadow artifact, a capture its own text. Bad input, an unknown ref, an entity ref, an empty result and an unavailable brain each answer with a sentence that says what to do next; "the brain is unavailable" tells the model not to answer from memory. Every call has an 8-second deadline.
+
+**Profiles.** `search` runs one of two pipelines; REST picks one per request with `profile`, MCP uses `BRAIN_TOOLS_PROFILE`.
+
+- `p0` replicates the stored `recall_notes`, `recall_passages` and `recall_topics` interleaved by rank, the baseline of the eval.
+- `p1` embeds the question once through LiteLLM (key `brain-tools`, the granite model only), strips Dutch and English stopwords for the keyword legs, and runs up to eight legs in parallel: forge passages, Obsidian passages and `nt-` captures, each by meaning and by keywords, plus topics for the related list. It fuses them by weighted reciprocal rank (k 60; keywords weigh 0.6 for a Dutch question), then collapses: passages of 80 characters or fewer are dropped unless nothing else is left, clones with the same text (numbers ignored) collapse into the newest with "+N similar", at most 2 chunks per document, and documents authored by a bot person (Renovate and similar) weigh 0.3 unless the question names the bot. When the question cannot be embedded it runs the keyword legs only and says `degraded: keyword-only`.
+
+REST also takes `snapshot` (a graph commit id: every stored query, the bot cache included, reads that commit, so eval runs are reproducible) and `debug=1` (per-leg rows, keys and timings, and the fused scores). A REST answer carries `tool_chars`, the length of what the default `search` tool would return.
+
+**Checks it runs itself.** Every 30 seconds it reads the stored-query catalog as `act-brain-reader`; `/readyz` fails while Omnigraph does not answer or a query it needs is missing, so LiteLLM gets a refused connection instead of a hanging call. It also compares the [embedding contract](../../../../kubernetes/apps/ai/omnigraph/embed-step/app/contract.json) with the `@embed` model and dimensions of `Passage`, `Note` and `Topic` in the live schema; on a mismatch it turns every meaning leg off rather than rank with a vector from another model. The set of documents authored by bot persons is cached for 15 minutes (`rt_artifact_authors`), and read at the pinned commit when a request pins one. Logs carry the tool, outcome, milliseconds, counts and graph commit, never a question, an answer or a slug.
+
+**Who can call it.** LiteLLM registers it as MCP server `brain_tools` (tools `brain_tools-search` and `brain_tools-read`) in access group `brain-dogfood`, which only the `claude-code` key holds (decision D13: Claude Code gets `search` and `read` at the end of P4). In Claude Code they appear under the existing `omnigraph` server as `brain_tools-search` and `brain_tools-read`. P6 moves the server to the `brain` group for Open WebUI and adds `/mcp/read` for the eval key.
+
+**Code and image.** The TypeScript source lives in [brain-tools/app/server](../../../../kubernetes/apps/ai/brain-tools/app/server/) and ships in the `brain-tools-server` ConfigMap; the pod runs it with Node 24's built-in type stripping on the digest-pinned official `node` image (through the Harbor Docker Hub proxy). It has no runtime dependencies: the MCP transport is a small JSON-RPC handler, proven against the official `@modelcontextprotocol/sdk` 1.31.0 client and through LiteLLM. This is provisional until the repository `webgrip/brain-tools` exists and releases a signed image through Forgejo Actions, Harbor, the CVE gate and cosign, like the explorer; then the Deployment switches to that image and the source leaves this repo.
+
+**Tests.** [brain_tools.test.ts](../../../../scripts/brain-tools/brain_tools.test.ts) (`node --test`) runs the service against a fake Omnigraph and a fake LiteLLM over HTTP: fusion, the collapse rules, the Dutch weighting, degraded modes, snapshot pinning of every call, the caches, deadlines, the answer caps, `read`, the MCP transport rules, readiness, metrics and a sentinel that must never reach the log. [test-brain-tools-mutation.sh](../../../../scripts/test-brain-tools-mutation.sh) breaks 22 of those rules one at a time and requires each break to fail the suite, and the unmodified code to pass. [test_brain_tools_real_server.py](../../../../scripts/test_brain_tools_real_server.py) (`BRAIN_TOOLS_REAL_SERVER=1`) starts the pinned `omnigraph-server` with the working bundle and synthetic rows, runs brain-tools against it as `act-brain-reader`, and checks readiness, every `p1` leg, a pinned snapshot, `p0` against the stored queries invoked directly, `read` and MCP. Pre-commit runs all three when the code, the tests or `brain.retrieval.gq` change; CI runs the first two in `e2e / Lint & static validation` and the third in `e2e / Omnigraph bundle rehearsal`.
+
+### Monitoring and failures
+
+`VMServiceScrape/brain-tools` scrapes `:8081/metrics`: `brain_tools_calls_total{tool,surface,outcome}`, `brain_tools_latency_seconds{tool,surface}` (histogram), `brain_tools_searches_total{profile,mode}`, `brain_tools_upstream_requests_total{upstream,outcome}`, `brain_tools_catalog_complete`, `brain_tools_catalog_missing_queries`, `brain_tools_embedding_contract_ok`, `brain_tools_response_chars{tool}`, the cache gauges and `brain_tools_build_info`.
+
+| Alert | Fires when |
+|---|---|
+| `BrainToolsDown` | The metrics endpoint is down or missing for 10 minutes |
+| `BrainToolsCatalogIncomplete` | Omnigraph does not answer the catalog read, or a needed stored query is missing, for 10 minutes |
+| `BrainToolsSearchSlow` | Search p95 over 3 seconds for 15 minutes |
+| `BrainToolsUpstreamErrors` | Over 5% of requests to Omnigraph or LiteLLM fail for 15 minutes (at least 20 requests) |
+| `BrainToolsDegraded` | Over 10% of `p1` searches ran keyword-only for 30 minutes (at least 5 searches): the sign that `tei-embeddings` is starved |
+| `BrainToolsEmbeddingContractMismatch` | The contract and the schema disagree, or the schema cannot be read, for 15 minutes |
+| `BrainToolsKeyBudgetNearlySpent` | The `brain-tools` key spent 80% of its USD 1 for 30 days |
+
+First checks: `kubectl -n ai logs deploy/brain-tools --tail=50`, and `kubectl -n ai exec deploy/brain-tools -- wget -qO- http://127.0.0.1:8081/readyz`, which names missing queries and the contract verdict.
 
 ## Company meetings (`webgrip` and client graphs)
 
