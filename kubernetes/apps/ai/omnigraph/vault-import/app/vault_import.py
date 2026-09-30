@@ -10,6 +10,20 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
 SLUG_PREFIX = "obsidian/"
+SHADOW_PREFIX = "obsidian-file/"
+CHUNKER = "obsidian-chunks-v1"
+CHUNK_CHARS = 1200
+MIN_CHUNK_BUDGET = 400
+MIN_CHUNKED_NOTE_CHARS = 80
+NOTES_CHUNKED_PER_RUN = 300
+CHUNK_CHARS_PER_RUN = 300_000
+HEAL_ROWS_PER_RUN = 300
+STATEMENTS_PER_PRUNE_FILE = 500
+VECTOR_ALLOWANCE_BYTES = 384 * 16
+EMBEDDED_TYPES = frozenset({"Note", "Passage"})
+WRITER = "vault-import"
+HEADING_SEPARATOR = " \u203a "
+LINK_ID_PREFIX = "vault:NoteFromArtifact:"
 NOTE_KINDS = frozenset({"idea", "journal", "reflection", "insight", "principle", "preference", "quote", "dream", "question", "decision"})
 DEFAULT_KIND = "idea"
 MAX_NOTE_BYTES = 1024 * 1024
@@ -18,6 +32,9 @@ BYTES_PER_LOAD_FILE = 16 * 1024 * 1024
 DAILY_FOLDER_NAMES = frozenset({"daily", "daily notes", "dailies", "journal", "journals"})
 TEMPLATE_FOLDER_NAMES = frozenset({"templates", "template"})
 SAFE_SLUG = re.compile(r"^obsidian/[a-z0-9/-]+$")
+SAFE_SHADOW_SLUG = re.compile(r"^obsidian-file/[a-z0-9/-]+$")
+MARKDOWN_HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
+FENCE = re.compile(r"^\s*(```|~~~)")
 ISO_DATE = re.compile(r"^(\d{4}-\d{2}-\d{2})")
 FENCED_CODE = re.compile(r"^(```|~~~).*?^\1", re.M | re.S)
 INLINE_CODE = re.compile(r"`[^`\n]*`")
@@ -60,6 +77,15 @@ class Counts:
     tagged_client: int = 0
     skipped_large: int = 0
     skipped_unreadable: int = 0
+    chunked_notes: int = 0
+    chunk_deferred: int = 0
+    passages_written: int = 0
+    unchanged_chunks: int = 0
+    passages_deleted: int = 0
+    shadows_deleted: int = 0
+    heal_planned: int = 0
+    vectorless_left: int = 0
+    link_conflicts: int = 0
 
     def line(self):
         return " ".join(f"{key}={value}" for key, value in self.__dict__.items())
@@ -68,9 +94,16 @@ class Counts:
 @dataclass
 class Plan:
     counts: Counts
-    prune_statements: list[str]
+    prune_groups: list[list[str]]
     node_rows: list[dict]
+    passage_units: list[list[dict]]
     edge_rows: list[dict]
+    heal_rows: list[dict] = field(default_factory=list)
+    embed_plan: dict = field(default_factory=dict)
+
+    @property
+    def prune_statements(self):
+        return [statement for group in self.prune_groups for statement in group]
 
 
 CLIENT_TAG = "client"
@@ -339,8 +372,14 @@ def resolve_links(notes):
         note.link_targets = dedup(resolved)
 
 
-def graph_rows(query_output):
-    return json.loads(query_output).get("rows", [])
+def graph_rows(snapshot_dir, name):
+    path = Path(snapshot_dir) / f"{name}.json"
+    if not path.exists():
+        return []
+    return json.loads(path.read_text(encoding="utf-8")).get("rows", [])
+
+
+NOTE_FIELDS = ("slug", "name", "kind", "content", "when", "tags", "createdAt", "updatedAt")
 
 
 def existing_notes(rows):
@@ -349,9 +388,14 @@ def existing_notes(rows):
         if not SAFE_SLUG.fullmatch(row["n.slug"]):
             continue
         tags = row.get("n.tags") or None
+        stored = {key: row.get(f"n.{key}") for key in NOTE_FIELDS}
+        stored["tags"] = tags
+        stored["createdAt"] = utc_timestamp(stored["createdAt"])
+        stored["updatedAt"] = utc_timestamp(stored["updatedAt"])
         notes[row["n.slug"]] = {
             "comparable": (row.get("n.name"), row.get("n.kind"), row.get("n.content"), row.get("n.when"), tags),
-            "created_at": utc_timestamp(row.get("n.createdAt")),
+            "created_at": stored["createdAt"],
+            "row": {key: value for key, value in stored.items() if value is not None},
         }
     return notes
 
@@ -363,16 +407,227 @@ def existing_links(rows):
     return links
 
 
-def build_plan(scan, graph_notes, graph_links, now):
+@dataclass
+class GraphState:
+    notes: dict
+    links: dict
+    note_vectors: set
+    shadows: dict
+    passages: dict
+    passage_vectors: set
+    note_artifacts: dict
+
+
+def read_graph(snapshot_dir):
+    shadows = {}
+    for row in graph_rows(snapshot_dir, "vault_shadow_artifacts"):
+        if SAFE_SHADOW_SLUG.fullmatch(row.get("a.slug") or ""):
+            shadows[row["a.slug"]] = {"content_sha256": row.get("a.content_sha256"), "createdAt": utc_timestamp(row.get("a.createdAt"))}
+    passages = {}
+    for row in graph_rows(snapshot_dir, "vault_passages"):
+        passages.setdefault(row["a.slug"], {})[row["p.@id"]] = {
+            "text": row.get("p.text"), "chunk_index": row.get("p.chunk_index"), "createdAt": utc_timestamp(row.get("p.createdAt"))}
+    note_artifacts = {}
+    for row in graph_rows(snapshot_dir, "vault_note_artifacts"):
+        note_artifacts.setdefault(row["n.slug"], set()).add(row["a.slug"])
+    return GraphState(
+        notes=existing_notes(graph_rows(snapshot_dir, "vault_notes")),
+        links=existing_links(graph_rows(snapshot_dir, "vault_links")),
+        note_vectors={row["n.slug"] for row in graph_rows(snapshot_dir, "vault_notes_with_vectors")},
+        shadows=shadows,
+        passages=passages,
+        passage_vectors={row["p.@id"] for row in graph_rows(snapshot_dir, "vault_passages_with_vectors")},
+        note_artifacts=note_artifacts,
+    )
+
+
+def shadow_slug(note_slug):
+    return SHADOW_PREFIX + note_slug[len(SLUG_PREFIX):]
+
+
+def note_slug_of(shadow):
+    return SLUG_PREFIX + shadow[len(SHADOW_PREFIX):]
+
+
+def chunk_digest(note):
+    return hashlib.sha256(f"{CHUNKER}\n{note.name}\n{note.content or ''}".encode("utf-8")).hexdigest()
+
+
+def sections(content):
+    heading = None
+    body = []
+    fenced = False
+    for line in content.split("\n"):
+        if FENCE.match(line):
+            fenced = not fenced
+        match = None if fenced else MARKDOWN_HEADING.match(line)
+        if match:
+            yield heading, "\n".join(body)
+            heading, body = match.group(2).strip(), []
+        else:
+            body.append(line)
+    yield heading, "\n".join(body)
+
+
+def split_long(paragraph, budget):
+    pieces = []
+    while len(paragraph) > budget:
+        cut = paragraph.rfind(" ", 0, budget)
+        cut = cut if cut > budget // 2 else budget
+        pieces.append(paragraph[:cut].strip())
+        paragraph = paragraph[cut:].strip()
+    if paragraph:
+        pieces.append(paragraph)
+    return pieces
+
+
+def chunk_note(name, content):
+    if content is None or len(content.strip()) < MIN_CHUNKED_NOTE_CHARS:
+        return []
+    chunks = []
+    for heading, text in sections(content):
+        header = name.strip() + (HEADING_SEPARATOR + heading if heading else "")
+        header = header[:CHUNK_CHARS - MIN_CHUNK_BUDGET - 1]
+        budget = CHUNK_CHARS - len(header) - 1
+        current = ""
+        for paragraph in re.split(r"\n\s*\n", text):
+            paragraph = paragraph.strip("\n").rstrip()
+            if not paragraph.strip():
+                continue
+            for piece in split_long(paragraph, budget):
+                if current and len(current) + 2 + len(piece) > budget:
+                    chunks.append(f"{header}\n{current}")
+                    current = piece
+                else:
+                    current = f"{current}\n\n{piece}" if current else piece
+        if current:
+            chunks.append(f"{header}\n{current}")
+    return chunks
+
+
+def passage_id(shadow, index):
+    return f"{shadow}#{index}"
+
+
+def link_id(note, shadow):
+    return f"{LINK_ID_PREFIX}{note}>{shadow}"
+
+
+def removal_group(graph, shadow, note=None):
+    group = [f'delete Passage where @id = "{pid}"' for pid in sorted(graph.passages.get(shadow, {}))]
+    if shadow in graph.shadows:
+        group.append(f'delete Artifact where slug = "{shadow}"')
+    if note is not None:
+        group.append(f'delete Note where slug = "{note}"')
+    return group
+
+
+def plan_chunks(scan, graph, now, counts):
+    prune_groups, node_rows, passage_units, edge_rows = [], [], [], []
+    touched = set()
+    work = []
+    for slug, note in sorted(scan.notes.items()):
+        shadow = shadow_slug(slug)
+        chunks = chunk_note(note.name, note.content)
+        stored = graph.passages.get(shadow, {})
+        if not chunks:
+            if shadow in graph.shadows or stored:
+                prune_groups.append(removal_group(graph, shadow))
+                touched.update(stored)
+                counts.shadows_deleted += shadow in graph.shadows
+                counts.passages_deleted += len(stored)
+            continue
+        wanted = {passage_id(shadow, index): (index, text) for index, text in enumerate(chunks)}
+        changed = [(pid, index, text) for pid, (index, text) in wanted.items()
+                   if (stored.get(pid) or {}).get("text") != text or (stored.get(pid) or {}).get("chunk_index") != index]
+        removed = sorted(set(stored) - set(wanted))
+        digest = chunk_digest(note)
+        stale_shadow = (graph.shadows.get(shadow) or {}).get("content_sha256") != digest
+        linked = graph.note_artifacts.get(slug, set())
+        needs_link = shadow not in linked
+        counts.unchanged_chunks += len(wanted) - len(changed)
+        if changed or removed or stale_shadow or needs_link:
+            work.append((slug, note, shadow, changed, removed, digest, stale_shadow, needs_link, linked, stored))
+    work.sort(key=lambda item: (item[2] not in graph.shadows, item[0]))
+    budget = CHUNK_CHARS_PER_RUN
+    for index, (slug, note, shadow, changed, removed, digest, stale_shadow, needs_link, linked, stored) in enumerate(work):
+        cost = sum(len(text) for _, _, text in changed)
+        if counts.chunked_notes >= NOTES_CHUNKED_PER_RUN or (counts.chunked_notes and cost > budget):
+            counts.chunk_deferred = len(work) - index
+            break
+        budget -= cost
+        counts.chunked_notes += 1
+        if stale_shadow or shadow not in graph.shadows:
+            node_rows.append({"type": "Artifact", "data": {
+                "slug": shadow, "name": note.name, "kind": "document", "source": "notes-app", "content_sha256": digest,
+                "timestamp": now, "createdAt": (graph.shadows.get(shadow) or {}).get("createdAt") or now, "updatedAt": now}})
+        for pid, chunk_index, text in changed:
+            row = {"type": "Passage", "id": pid, "data": {"text": text, "chunk_index": chunk_index, "createdAt": now}}
+            passage_units.append([row] if pid in stored else [row, {"edge": "PassageOf", "from": pid, "to": shadow}])
+            touched.add(pid)
+            counts.passages_written += 1
+        if removed:
+            prune_groups.append([f'delete Passage where @id = "{pid}"' for pid in removed])
+            touched.update(removed)
+            counts.passages_deleted += len(removed)
+        if needs_link:
+            if linked:
+                counts.link_conflicts += 1
+            else:
+                edge_rows.append({"edge": "NoteFromArtifact", "id": link_id(slug, shadow), "from": slug, "to": shadow})
+    return prune_groups, node_rows, passage_units, edge_rows, touched
+
+
+def plan_heal(scan, graph, rewritten_notes, touched, counts, now):
+    candidates = []
+    for slug, stored in graph.notes.items():
+        row = stored["row"]
+        if slug in scan.notes and slug not in rewritten_notes and slug not in graph.note_vectors and str(row.get("content") or "").strip():
+            candidates.append(("Note", slug, row.get("updatedAt") or row.get("createdAt")))
+    for shadow, chunks in graph.passages.items():
+        for pid, chunk in chunks.items():
+            if pid not in graph.passage_vectors and pid not in touched and str(chunk.get("text") or "").strip():
+                candidates.append(("Passage", pid, chunk.get("createdAt")))
+    candidates.sort(key=lambda item: (item[2] or "", item[0], item[1]))
+    chosen, rest = candidates[:HEAL_ROWS_PER_RUN], candidates[HEAL_ROWS_PER_RUN:]
+    passage_rows = {pid: chunk for chunks in graph.passages.values() for pid, chunk in chunks.items()}
+    heal_rows, heal_since = [], {}
+    for type_name, identifier, since in chosen:
+        if type_name == "Note":
+            heal_rows.append({"type": "Note", "data": dict(graph.notes[identifier]["row"])})
+        else:
+            chunk = passage_rows[identifier]
+            heal_rows.append({"type": "Passage", "id": identifier, "data": {
+                "text": chunk["text"], "chunk_index": chunk["chunk_index"], "createdAt": chunk["createdAt"] or now}})
+        heal_since[f"{type_name}|{identifier}"] = since or now
+    counts.heal_planned = len(heal_rows)
+    counts.vectorless_left = len(rest)
+    return heal_rows, {"writer": WRITER, "missing": [{"type": type_name, "since": since or now} for type_name, _, since in rest], "heal_since": heal_since}
+
+
+def build_plan(scan, graph, now):
     counts = scan.counts
-    prune = []
+    prune_groups = []
     node_rows = []
     edge_rows = []
-    for slug in sorted(set(graph_notes) - set(scan.notes)):
-        prune.append(f'delete Note where slug = "{slug}"')
+    rewritten = set()
+    pruned_passages = set()
+    for slug in sorted(set(graph.notes) - set(scan.notes)):
+        shadow = shadow_slug(slug)
+        prune_groups.append(removal_group(graph, shadow, note=slug))
+        pruned_passages.update(graph.passages.get(shadow, {}))
         counts.deleted += 1
+        counts.shadows_deleted += shadow in graph.shadows
+        counts.passages_deleted += len(graph.passages.get(shadow, {}))
+    for shadow in sorted(set(graph.shadows) | set(graph.passages)):
+        note = note_slug_of(shadow)
+        if note not in scan.notes and note not in graph.notes:
+            prune_groups.append(removal_group(graph, shadow))
+            pruned_passages.update(graph.passages.get(shadow, {}))
+            counts.shadows_deleted += shadow in graph.shadows
+            counts.passages_deleted += len(graph.passages.get(shadow, {}))
     for slug, note in sorted(scan.notes.items()):
-        existing = graph_notes.get(slug)
+        existing = graph.notes.get(slug)
         if existing is None:
             counts.new += 1
         elif existing["comparable"] == note.comparable():
@@ -384,29 +639,50 @@ def build_plan(scan, graph_notes, graph_links, now):
             node_rows.append({"type": "Note", "data": {
                 "slug": slug, "name": note.name, "kind": note.kind, "content": note.content, "when": note.when,
                 "tags": note.tags, "createdAt": created_at, "updatedAt": now}})
-        current = graph_links.get(slug, set())
+            rewritten.add(slug)
+        current = graph.links.get(slug, set())
         current_vault_targets = {target for target in current if target.startswith(SLUG_PREFIX)}
         desired = set(note.link_targets)
         if desired == current_vault_targets:
             continue
         counts.relinked += 1
         if current:
-            prune.append(f'delete RelatedNote where from = "{slug}"')
+            prune_groups.append([f'delete RelatedNote where from = "{slug}"'])
         kept_foreign = sorted(target for target in current if not target.startswith(SLUG_PREFIX))
         for target in sorted(desired) + kept_foreign:
             edge_rows.append({"edge": "RelatedNote", "from": slug, "to": target})
-    return Plan(counts=counts, prune_statements=prune, node_rows=node_rows, edge_rows=edge_rows)
+    chunk_prunes, shadow_rows, passage_units, link_rows, touched = plan_chunks(scan, graph, now, counts)
+    heal_rows, embed_plan = plan_heal(scan, graph, rewritten, touched | pruned_passages, counts, now)
+    return Plan(counts=counts, prune_groups=prune_groups + chunk_prunes, node_rows=node_rows + shadow_rows, passage_units=passage_units,
+                edge_rows=edge_rows + link_rows, heal_rows=heal_rows, embed_plan=embed_plan)
 
 
-def chunked(rows):
-    batch, size = [], 0
-    for row in rows:
-        line = json.dumps(row, ensure_ascii=False) + "\n"
-        if batch and (len(batch) >= ROWS_PER_LOAD_FILE or size + len(line) > BYTES_PER_LOAD_FILE):
+def row_bytes(row, line):
+    return len(line.encode("utf-8")) + (VECTOR_ALLOWANCE_BYTES if row.get("type") in EMBEDDED_TYPES else 0)
+
+
+def batched_units(units):
+    batch, rows, size = [], 0, 0
+    for unit in units:
+        lines = [json.dumps(row, ensure_ascii=False) + "\n" for row in unit]
+        unit_size = sum(row_bytes(row, line) for row, line in zip(unit, lines))
+        if batch and (rows + len(lines) > ROWS_PER_LOAD_FILE or size + unit_size > BYTES_PER_LOAD_FILE):
             yield batch
-            batch, size = [], 0
-        batch.append(line)
-        size += len(line)
+            batch, rows, size = [], 0, 0
+        batch.extend(lines)
+        rows += len(lines)
+        size += unit_size
+    if batch:
+        yield batch
+
+
+def prune_files(groups):
+    batch = []
+    for group in groups:
+        if batch and len(batch) + len(group) > STATEMENTS_PER_PRUNE_FILE:
+            yield batch
+            batch = []
+        batch.extend(group)
     if batch:
         yield batch
 
@@ -414,22 +690,24 @@ def chunked(rows):
 def write_plan(plan, out_dir):
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    if plan.prune_statements:
-        body = "\n".join(f"    {statement}" for statement in plan.prune_statements)
-        (out / "prune.gq").write_text(f"query vault_prune() {{\n{body}\n}}\n", encoding="utf-8")
+    for number, statements in enumerate(prune_files(plan.prune_groups)):
+        body = "\n".join(f"    {statement}" for statement in statements)
+        (out / f"prune-{number:04d}.gq").write_text(f"query vault_prune() {{\n{body}\n}}\n", encoding="utf-8")
     index = 0
-    for rows in (plan.node_rows, plan.edge_rows):
-        for batch in chunked(rows):
+    for units in ([[row] for row in plan.node_rows], plan.passage_units, [[row] for row in plan.edge_rows]):
+        for batch in batched_units(units):
             (out / f"load-{index:04d}.ndjson").write_text("".join(batch), encoding="utf-8")
             index += 1
+    for number, batch in enumerate(batched_units([[row] for row in plan.heal_rows])):
+        (out / f"heal-{number:04d}.ndjson").write_text("".join(batch), encoding="utf-8")
+    (out / "embed-plan.json").write_text(json.dumps(plan.embed_plan), encoding="utf-8")
 
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(description="Plan an Obsidian vault import into the Omnigraph brain graph.")
     parser.add_argument("--vault", required=True)
     parser.add_argument("--client-terms-file", required=True)
-    parser.add_argument("--graph-notes", required=True)
-    parser.add_argument("--graph-links", required=True)
+    parser.add_argument("--snapshot-dir", required=True)
     parser.add_argument("--out", required=True)
     return parser.parse_args(argv)
 
@@ -437,11 +715,10 @@ def parse_args(argv):
 def run(args, now):
     pattern = client_matcher(read_client_terms(args.client_terms_file))
     scan = scan_vault(args.vault, pattern)
-    graph_notes = existing_notes(graph_rows(Path(args.graph_notes).read_text(encoding="utf-8")))
-    if graph_notes and not scan.notes:
+    graph = read_graph(args.snapshot_dir)
+    if graph.notes and not scan.notes:
         raise FailClosed(EXIT_EMPTY_VAULT, "vault holds no importable notes; refusing to delete what the brain already has")
-    graph_links = existing_links(graph_rows(Path(args.graph_links).read_text(encoding="utf-8")))
-    plan = build_plan(scan, graph_notes, graph_links, now)
+    plan = build_plan(scan, graph, now)
     write_plan(plan, args.out)
     return plan
 

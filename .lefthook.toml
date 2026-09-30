@@ -54,6 +54,10 @@ run = "mise exec -- bash -c './scripts/rehearse-omnigraph-bundle.sh && python3 s
 glob = ["scripts/omnigraph_rehearsal.py", "scripts/rehearse-omnigraph-bundle.sh", "scripts/test-rehearse-omnigraph-bundle.sh", "scripts/test_omnigraph_embedding_contract.py"]
 run = "mise exec -- bash -c 'bash scripts/test-rehearse-omnigraph-bundle.sh && python3 scripts/test_omnigraph_embedding_contract.py --self-test'"
 
+[pre-commit.commands.test-omnigraph-writers]
+glob = ["kubernetes/apps/ai/omnigraph/embed-step/app/*", "kubernetes/apps/ai/omnigraph/forge-import/app/*", "kubernetes/apps/ai/omnigraph/vault-import/app/*", "scripts/test_omnigraph_embed_step.py", "scripts/test_omnigraph_forge_import.py", "scripts/test_omnigraph_vault_import.py", "scripts/test_omnigraph_writers_real_server.py", "scripts/test-omnigraph-writers-mutation.sh"]
+run = "mise exec -- bash -c 'bash scripts/test-omnigraph-writers-mutation.sh >/dev/null && OMNIGRAPH_WRITERS_REAL_SERVER=1 python3 -W ignore scripts/test_omnigraph_writers_real_server.py'"
+
 [pre-commit.commands.test-omnigraph-brain-eval]
 glob = ["kubernetes/apps/ai/omnigraph/brain-eval/app/*", "kubernetes/apps/ai/litellm/app/litellm-config.configmap.yaml", "kubernetes/apps/ai/litellm/keys/app/omnigraph-eval-key-register.job.yaml", "scripts/test_omnigraph_brain_eval.py", "scripts/test-omnigraph-brain-eval-mutation.sh"]
 run = "mise exec -- bash scripts/test-omnigraph-brain-eval-mutation.sh"

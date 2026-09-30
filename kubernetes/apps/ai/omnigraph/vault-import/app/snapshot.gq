@@ -3,7 +3,7 @@ query vault_notes() {
         $n: Note
         $n.slug starts_with "obsidian/"
     }
-    return { $n.slug, $n.name, $n.kind, $n.content, $n.when, $n.tags, $n.createdAt }
+    return { $n.slug, $n.name, $n.kind, $n.content, $n.when, $n.tags, $n.createdAt, $n.updatedAt }
 }
 
 query vault_links() {
@@ -13,4 +13,51 @@ query vault_links() {
         $a relatedNote $b
     }
     return { $a.slug, $b.slug }
+}
+
+query vault_notes_with_vectors($v: Vector(384)) {
+    match {
+        $n: Note
+        $n.slug starts_with "obsidian/"
+    }
+    return { $n.slug }
+    order { nearest($n.embedding, $v) }
+    limit 1000000
+}
+
+query vault_shadow_artifacts() {
+    match {
+        $a: Artifact
+        $a.slug starts_with "obsidian-file/"
+    }
+    return { $a.slug, $a.content_sha256, $a.createdAt }
+}
+
+query vault_passages() {
+    match {
+        $p: Passage
+        $p passageOf $a
+        $a.slug starts_with "obsidian-file/"
+    }
+    return { $p.@id, $a.slug, $p.chunk_index, $p.text, $p.createdAt }
+}
+
+query vault_passages_with_vectors($v: Vector(384)) {
+    match {
+        $p: Passage
+        $p passageOf $a
+        $a.slug starts_with "obsidian-file/"
+    }
+    return { $p.@id }
+    order { nearest($p.embedding, $v) }
+    limit 1000000
+}
+
+query vault_note_artifacts() {
+    match {
+        $n: Note
+        $n.slug starts_with "obsidian/"
+        $n noteFromArtifact $a
+    }
+    return { $n.slug, $a.slug }
 }

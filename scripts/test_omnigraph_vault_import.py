@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parent.parent
 IMPORTER = ROOT / "kubernetes/apps/ai/omnigraph/vault-import/app/vault_import.py"
@@ -16,6 +17,13 @@ spec = importlib.util.spec_from_file_location("vault_import", IMPORTER)
 vault_import = importlib.util.module_from_spec(spec)
 sys.modules["vault_import"] = vault_import
 spec.loader.exec_module(vault_import)
+EMBED_STEP = ROOT / "kubernetes/apps/ai/omnigraph/embed-step/app/embed_step.py"
+CONTRACT = ROOT / "kubernetes/apps/ai/omnigraph/embed-step/app/contract.json"
+embed_spec = importlib.util.spec_from_file_location("embed_step", EMBED_STEP)
+embed_step = importlib.util.module_from_spec(embed_spec)
+sys.modules["embed_step"] = embed_step
+embed_spec.loader.exec_module(embed_step)
+LATER = "2026-09-27T12:15:00Z"
 
 
 def graph_output(rows):
@@ -35,16 +43,16 @@ class VaultFixture:
         self.terms = self.root / "terms"
         if terms is not None:
             self.terms.write_text(terms, encoding="utf-8")
-        self.notes = self.root / "notes.json"
-        self.notes.write_text(graph_output(list(graph_notes)), encoding="utf-8")
-        self.links = self.root / "links.json"
-        self.links.write_text(graph_output(list(graph_links)), encoding="utf-8")
+        self.snapshot = self.root / "snapshot"
+        self.snapshot.mkdir()
+        (self.snapshot / "vault_notes.json").write_text(graph_output(list(graph_notes)), encoding="utf-8")
+        (self.snapshot / "vault_links.json").write_text(graph_output(list(graph_links)), encoding="utf-8")
         self.out = self.root / "out"
 
     def args(self):
         return vault_import.parse_args([
             "--vault", str(self.vault), "--client-terms-file", str(self.terms),
-            "--graph-notes", str(self.notes), "--graph-links", str(self.links), "--out", str(self.out)])
+            "--snapshot-dir", str(self.snapshot), "--out", str(self.out)])
 
     def plan(self):
         return vault_import.run(self.args(), NOW)
@@ -56,8 +64,7 @@ class VaultFixture:
         return rows
 
     def prune(self):
-        path = self.out / "prune.gq"
-        return path.read_text(encoding="utf-8") if path.exists() else ""
+        return "".join(path.read_text(encoding="utf-8") for path in sorted(self.out.glob("prune-*.gq")))
 
     def close(self):
         self.dir.cleanup()
@@ -275,6 +282,327 @@ class Incremental(unittest.TestCase):
             self.assertTrue(all(slug.startswith("obsidian/a-b-") for slug in slugs))
         finally:
             fixture.close()
+
+
+
+class CardViolation(AssertionError):
+    pass
+
+
+class VaultGraph:
+    def __init__(self):
+        self.notes = {}
+        self.artifacts = {}
+        self.passages = {}
+        self.related = set()
+        self.note_artifact = {}
+        self.mutations = 0
+
+    def snapshot(self, directory):
+        directory.mkdir(parents=True, exist_ok=True)
+        def put(name, rows):
+            (directory / f"{name}.json").write_text(json.dumps({"rows": rows}), encoding="utf-8")
+        strip = lambda value: value.rstrip("Z") if isinstance(value, str) else value
+        put("vault_notes", [{f"n.{key}": strip(value) for key, value in data.items() if key != "embedding"} for data in self.notes.values()])
+        put("vault_links", [{"a.slug": source, "b.slug": target} for source, target in sorted(self.related) if source.startswith("obsidian/")])
+        put("vault_notes_with_vectors", [{"n.slug": slug} for slug, data in self.notes.items() if data.get("embedding")])
+        put("vault_shadow_artifacts", [{"a.slug": slug, "a.content_sha256": data.get("content_sha256"), "a.createdAt": strip(data["createdAt"])}
+                                       for slug, data in self.artifacts.items() if slug.startswith("obsidian-file/")])
+        put("vault_passages", [{"p.@id": pid, "a.slug": row["to"], "p.chunk_index": row["chunk_index"], "p.text": row["text"], "p.createdAt": strip(row["createdAt"])}
+                               for pid, row in self.passages.items() if row["to"].startswith("obsidian-file/")])
+        put("vault_passages_with_vectors", [{"p.@id": pid} for pid, row in self.passages.items() if row["to"].startswith("obsidian-file/") and row.get("embedding")])
+        put("vault_note_artifacts", [{"n.slug": note, "a.slug": artifact} for note, artifact in self.note_artifact.items()])
+
+    def delete(self, statement):
+        passage = re.fullmatch(r'delete Passage where @id = "(.+)"', statement)
+        node = re.fullmatch(r'delete (Note|Artifact) where slug = "(.+)"', statement)
+        edge = re.fullmatch(r'delete RelatedNote where from = "(.+)"', statement)
+        if passage:
+            self.passages.pop(passage.group(1))
+        elif node and node.group(1) == "Artifact":
+            slug = node.group(2)
+            if any(row["to"] == slug for row in self.passages.values()):
+                raise CardViolation(f"artifact {slug} deleted while passages still point at it")
+            self.artifacts.pop(slug)
+            self.note_artifact = {key: value for key, value in self.note_artifact.items() if value != slug}
+        elif node:
+            slug = node.group(2)
+            self.notes.pop(slug)
+            self.related = {pair for pair in self.related if slug not in pair}
+            self.note_artifact.pop(slug, None)
+        elif edge:
+            self.related = {pair for pair in self.related if pair[0] != edge.group(1)}
+        else:
+            raise AssertionError(f"unexpected statement {statement}")
+
+    def mutate(self, path):
+        statements = re.findall(r"^\s+(delete .+)$", path.read_text(encoding="utf-8"), re.M)
+        saved = (dict(self.notes), dict(self.artifacts), dict(self.passages), set(self.related), dict(self.note_artifact))
+        try:
+            for statement in statements:
+                self.delete(statement)
+            orphans = [pid for pid, row in self.passages.items() if row["to"] not in self.artifacts]
+            if orphans:
+                raise CardViolation(f"passages left without their artifact: {orphans}")
+        except CardViolation:
+            self.notes, self.artifacts, self.passages, self.related, self.note_artifact = saved
+            raise
+        self.mutations += 1
+
+    def load(self, row):
+        if row.get("type") == "Note":
+            self.notes[row["data"]["slug"]] = dict(row["data"])
+        elif row.get("type") == "Artifact":
+            self.artifacts[row["data"]["slug"]] = dict(row["data"])
+        elif row.get("type") == "Passage":
+            existing = self.passages.get(row["id"], {})
+            self.passages[row["id"]] = dict(row["data"], to=existing.get("to"))
+        elif row["edge"] == "PassageOf":
+            if self.passages[row["from"]].get("to"):
+                raise AssertionError(f"@unique violation on PassageOf for {row['from']}")
+            assert row["to"] in self.artifacts, row
+            self.passages[row["from"]]["to"] = row["to"]
+        elif row["edge"] == "NoteFromArtifact":
+            assert row["from"] in self.notes and row["to"] in self.artifacts, row
+            if row["from"] in self.note_artifact:
+                raise CardViolation(f"second NoteFromArtifact for {row['from']}")
+            self.note_artifact[row["from"]] = row["to"]
+        else:
+            assert row["from"] in self.notes, row
+            self.related.add((row["from"], row["to"]))
+
+    def apply(self, out):
+        for path in sorted(out.glob("prune-*.gq")):
+            self.mutate(path)
+        for pattern in ("load-*.ndjson", "heal-*.ndjson"):
+            for path in sorted(out.glob(pattern)):
+                rows = [json.loads(line) for line in path.read_text(encoding="utf-8").split("\n") if line.strip()]
+                for row in rows:
+                    self.load(row)
+                dangling = [pid for pid, row in self.passages.items() if not row.get("to")]
+                assert not dangling, f"passages without PassageOf after {path.name}: {dangling}"
+
+
+class Embedder:
+    def __init__(self, fail=False):
+        self.texts = []
+        self.fail = fail
+
+    def __call__(self, texts):
+        if self.fail:
+            raise embed_step.EmbeddingUnavailable("litellm answered HTTP 503")
+        self.texts.extend(texts)
+        return [[0.0, 1.0] + [0.0] * 382 for _ in texts], len(texts)
+
+
+class VaultRun:
+    def __init__(self, files):
+        self.dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.dir.name)
+        self.vault = self.root / "vault"
+        self.vault.mkdir()
+        self.write(files)
+        self.graph = VaultGraph()
+        self.embedder = Embedder()
+        self.runs = 0
+
+    def write(self, files):
+        for relpath, text in files.items():
+            path = self.vault / relpath
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+
+    def remove(self, relpath):
+        (self.vault / relpath).unlink()
+
+    def run(self, now=NOW, apply=True):
+        self.runs += 1
+        snapshot = self.root / f"snapshot-{self.runs}"
+        self.graph.snapshot(snapshot)
+        self.out = self.root / f"plan-{self.runs}"
+        args = vault_import.parse_args(["--vault", str(self.vault), "--client-terms-file", str(self.root / "no-terms"),
+                                        "--snapshot-dir", str(snapshot), "--out", str(self.out)])
+        plan = vault_import.run(args, now)
+        embed_args = SimpleNamespace(plan=str(self.out), contract=str(CONTRACT), litellm_url="http://unused", key_file="/nonexistent",
+                                     tokens_per_second=1e9, deadline_seconds=600)
+        self.report = embed_step.embed(embed_args, embedder=self.embedder)
+        if apply:
+            self.graph.apply(self.out)
+        return plan
+
+    def written(self):
+        rows = []
+        for path in sorted(self.out.glob("load-*.ndjson")):
+            rows.extend(json.loads(line) for line in path.read_text(encoding="utf-8").split("\n") if line.strip())
+        return rows
+
+    def chunks_of(self, shadow):
+        return sorted(((row["chunk_index"], row["text"]) for row in self.graph.passages.values() if row["to"] == shadow))
+
+    def vectorless(self):
+        return sorted([pid for pid, row in self.graph.passages.items() if not row.get("embedding")] +
+                      [slug for slug, data in self.graph.notes.items() if data.get("content") and not data.get("embedding")])
+
+    def close(self):
+        self.dir.cleanup()
+
+
+LONG_NOTE = ("---\ntitle: Garden plan\n---\nIntro about the garden and why it matters to the household this year.\n\n"
+             "## Soil\n\n" + "\n\n".join(f"Soil paragraph {index} " + "loam " * 60 for index in range(4)) + "\n\n"
+             "## Watering\n\n```\n# not a heading inside code\n```\n\n" + "Water deeply twice a week in summer. " * 20 + "\n")
+SHADOW = "obsidian-file/garden"
+NOTE = "obsidian/garden"
+
+
+class ObsidianChunks(unittest.TestCase):
+    def setUp(self):
+        self.run = VaultRun({"Garden.md": LONG_NOTE, "Tiny.md": "too short to chunk"})
+        self.plan = self.run.run()
+
+    def tearDown(self):
+        self.run.close()
+
+    def test_a_long_note_becomes_a_shadow_artifact_with_heading_chunks_linked_to_its_note(self):
+        shadow = self.run.graph.artifacts[SHADOW]
+        self.assertEqual((shadow["kind"], shadow["source"], shadow.get("content")), ("document", "notes-app", None))
+        self.assertEqual(self.run.graph.note_artifact[NOTE], SHADOW)
+        chunks = self.run.chunks_of(SHADOW)
+        self.assertEqual([index for index, _ in chunks], list(range(len(chunks))))
+        firsts = [text.split("\n", 1)[0] for _, text in chunks]
+        self.assertEqual(firsts[0], "Garden plan")
+        self.assertIn("Garden plan \u203a Soil", firsts)
+        self.assertIn("Garden plan \u203a Watering", firsts)
+        self.assertFalse([first for first in firsts if "not a heading" in first])
+        self.assertTrue(all(len(text) <= vault_import.CHUNK_CHARS for _, text in chunks))
+        self.assertGreater(len(chunks), 3)
+
+    def test_notes_under_80_characters_get_no_chunks(self):
+        self.assertNotIn("obsidian-file/tiny", self.run.graph.artifacts)
+        self.assertIn("obsidian/tiny", self.run.graph.notes)
+
+    def test_every_note_and_passage_is_written_with_a_384_float_vector(self):
+        self.assertEqual(self.run.vectorless(), [])
+        self.assertEqual(len(self.run.graph.notes[NOTE]["embedding"]), 384)
+        self.assertEqual(self.run.report["missing"], {"Note": 0, "Passage": 0})
+
+    def test_a_second_run_writes_and_embeds_nothing(self):
+        self.run.embedder.texts.clear()
+        plan = self.run.run(LATER)
+        self.assertEqual((self.run.written(), plan.prune_statements, self.run.embedder.texts), ([], [], []))
+        self.assertEqual(plan.counts.unchanged_chunks, len(self.run.chunks_of(SHADOW)))
+
+    def test_an_edited_paragraph_rewrites_only_its_chunk(self):
+        before = dict(self.run.graph.passages)
+        self.run.write({"Garden.md": LONG_NOTE.replace("Soil paragraph 3 ", "Soil paragraph three ")})
+        plan = self.run.run(LATER)
+        rewritten = [unit[0]["id"] for unit in plan.passage_units]
+        self.assertEqual(len(rewritten), 1)
+        self.assertIn("Soil paragraph three", self.run.graph.passages[rewritten[0]]["text"])
+        for pid in set(before) - set(rewritten):
+            self.assertEqual(self.run.graph.passages[pid], before[pid])
+        self.assertEqual([row["data"]["slug"] for row in self.run.written() if row.get("type") == "Artifact"], [SHADOW])
+        self.assertEqual(self.run.vectorless(), [])
+
+    def test_a_rename_prunes_every_chunk_the_shadow_and_the_note_in_one_mutation(self):
+        old_chunks = [pid for pid in self.run.graph.passages if pid.startswith(SHADOW + "#")]
+        self.run.remove("Garden.md")
+        self.run.write({"Tuin.md": LONG_NOTE})
+        mutations = self.run.graph.mutations
+        plan = self.run.run(LATER)
+        self.assertEqual(len(list(self.run.out.glob("prune-*.gq"))), 1)
+        self.assertEqual(self.run.graph.mutations, mutations + 1)
+        for pid in old_chunks:
+            self.assertIn(f'delete Passage where @id = "{pid}"', plan.prune_statements)
+        self.assertNotIn(SHADOW, self.run.graph.artifacts)
+        self.assertNotIn(NOTE, self.run.graph.notes)
+        self.assertEqual(self.run.graph.note_artifact["obsidian/tuin"], "obsidian-file/tuin")
+        self.assertFalse([pid for pid in self.run.graph.passages if pid.startswith(SHADOW)])
+
+    def test_a_partially_chunked_note_is_pruned_completely(self):
+        self.run.graph.passages[SHADOW + "#40"] = {"text": "leftover chunk from an older layout", "chunk_index": 40, "createdAt": NOW, "to": SHADOW}
+        del self.run.graph.passages[SHADOW + "#1"]
+        self.run.remove("Garden.md")
+        self.run.run(LATER)
+        self.assertFalse([pid for pid in self.run.graph.passages if pid.startswith(SHADOW)])
+        self.assertNotIn(SHADOW, self.run.graph.artifacts)
+
+    def test_an_orphaned_shadow_is_pruned_even_when_its_note_is_already_gone(self):
+        self.run.graph.delete(f'delete Note where slug = "{NOTE}"')
+        self.run.remove("Garden.md")
+        self.run.run(LATER)
+        self.assertNotIn(SHADOW, self.run.graph.artifacts)
+        self.assertFalse([pid for pid in self.run.graph.passages if pid.startswith(SHADOW)])
+
+    def test_a_note_shrunk_below_80_characters_loses_its_chunks(self):
+        self.run.write({"Garden.md": "Now tiny."})
+        self.run.run(LATER)
+        self.assertNotIn(SHADOW, self.run.graph.artifacts)
+        self.assertFalse([pid for pid in self.run.graph.passages if pid.startswith(SHADOW)])
+        self.assertIn(NOTE, self.run.graph.notes)
+
+    def test_a_note_that_already_comes_from_another_artifact_is_not_relinked(self):
+        self.run.write({"Other.md": LONG_NOTE.replace("Garden plan", "Other plan")})
+        self.run.graph.notes["obsidian/other"] = {"slug": "obsidian/other", "name": "Other plan", "kind": "idea", "content": None,
+                                                  "createdAt": NOW, "updatedAt": NOW}
+        self.run.graph.artifacts["art-scan"] = {"slug": "art-scan", "createdAt": NOW}
+        self.run.graph.note_artifact["obsidian/other"] = "art-scan"
+        plan = self.run.run(LATER)
+        self.assertEqual(plan.counts.link_conflicts, 1)
+        self.assertEqual(self.run.graph.note_artifact["obsidian/other"], "art-scan")
+
+
+class ChunkShape(unittest.TestCase):
+    def test_long_titles_and_unbroken_text_stay_within_the_chunk_limit(self):
+        chunks = vault_import.chunk_note("T" * 1500, "x" * 5000 + "\n\n# " + "H" * 900 + "\n\n" + "word " * 900)
+        self.assertTrue(chunks)
+        self.assertTrue(all(len(chunk) <= vault_import.CHUNK_CHARS for chunk in chunks))
+
+    def test_text_is_kept_in_order_and_complete(self):
+        body = "\n\n".join(f"para{index} " + "abc " * 50 for index in range(30))
+        chunks = vault_import.chunk_note("Title", body)
+        rebuilt = " ".join(chunk.split("\n", 1)[1] for chunk in chunks)
+        self.assertEqual(re.findall(r"para\d+", rebuilt), [f"para{index}" for index in range(30)])
+
+
+class ChunkBudgetAndHeal(unittest.TestCase):
+    def test_at_most_the_per_run_cap_of_notes_is_chunked_and_the_rest_follows(self):
+        files = {f"Note {index}.md": LONG_NOTE.replace("Garden plan", f"Plan {index}") for index in range(5)}
+        run = VaultRun(files)
+        saved = vault_import.NOTES_CHUNKED_PER_RUN
+        vault_import.NOTES_CHUNKED_PER_RUN = 2
+        try:
+            plan = run.run()
+            self.assertEqual((plan.counts.chunked_notes, plan.counts.chunk_deferred), (2, 3))
+            run.run(LATER)
+            plan = run.run(LATER)
+            self.assertEqual((plan.counts.chunked_notes, plan.counts.chunk_deferred), (1, 0))
+            self.assertEqual(len([slug for slug in run.graph.artifacts if slug.startswith("obsidian-file/")]), 5)
+        finally:
+            vault_import.NOTES_CHUNKED_PER_RUN = saved
+            run.close()
+
+    def test_vectorless_notes_and_passages_are_healed_with_their_stored_text(self):
+        run = VaultRun({"Garden.md": LONG_NOTE, "Idea.md": "A short idea that still has text."})
+        try:
+            run.embedder.fail = True
+            run.run()
+            missing = run.vectorless()
+            self.assertIn(NOTE, missing)
+            self.assertEqual(run.report["missing"]["Passage"], len(run.chunks_of(SHADOW)))
+            saved = vault_import.HEAL_ROWS_PER_RUN
+            vault_import.HEAL_ROWS_PER_RUN = 2
+            run.embedder.fail = False
+            try:
+                plan = run.run(LATER)
+                self.assertEqual((plan.node_rows, plan.passage_units, plan.heal_rows[0]["type"] in ("Note", "Passage")), ([], [], True))
+                self.assertEqual(len(run.vectorless()), len(missing) - 2)
+                self.assertEqual(run.graph.notes[NOTE]["updatedAt"], NOW)
+            finally:
+                vault_import.HEAL_ROWS_PER_RUN = saved
+            run.run(LATER)
+            self.assertEqual(run.vectorless(), [])
+        finally:
+            run.close()
 
 
 if __name__ == "__main__":
