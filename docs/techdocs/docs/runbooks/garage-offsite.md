@@ -280,6 +280,29 @@ completed backup is older than 36 hours; all backup recurring jobs run daily).
 kubectl -n longhorn-system get backups.longhorn.io -o custom-columns=NAME:.metadata.name,STATE:.status.state,VOLUME:.status.volumeName,ERROR:.status.error
 ```
 
-Failed Backup CRs are deleted after the `failed-backup-ttl` setting (1440 minutes). To prove
-recovery after a Garage problem, run a backup on demand:
+Failed Backup CRs are deleted after the `failed-backup-ttl` setting, 720 minutes
+(`defaultSettings.failedBackupTTL` in the Longhorn HelmRelease). To prove recovery after a Garage
+problem, run a backup on demand:
 `kubectl -n longhorn-system create job --from=cronjob/<backup-cronjob> <name>-manual`.
+
+### Why the TTL is 12 hours, not 24
+
+Deleting a backup, a failed one included, takes an exclusive deletion lock (type 2) on that
+volume's backup volume on the target, then garbage-collects its blocks. Over the WAN to garage-fsn1
+that takes an hour or more for the bulk volumes: 58 minutes for `vlsingle-victorialogs`, 94 for
+`vmsingle-vmsingle` and 130 for `garage/data-garage-0` on 2026-09-30. A backup that finds the deletion lock
+fails at once with `failed to acquire lock backupstore/volumes/<xx>/<yy>/<volume>/locks/lock-<id>.lck
+when performing backup create/restore, please try again later`. The recurring job does not retry.
+
+With a 24-hour TTL the cleanup of a failed backup starts at the same time of day as the cron that
+created it. So the next night's backup of that volume runs into the deletion lock and fails too,
+and its own failed backup is cleaned up at the same time the night after. One outage turns into a
+nightly failure for every volume whose backup takes longer to delete than the gap before its next
+turn. This happened after the Garage-full outage of 2026-09-29: the 09-29 failures of
+`vlsingle-victorialogs` and `vmsingle-vmsingle` were deleted from 02:31 and 02:41 on 09-30, and the
+backups of those volumes at 02:36 and 02:44 failed on the lock. A 12-hour TTL moves the cleanup to
+about 14:00-15:30, away from every backup cron (02:00, 02:30, 03:15). Keep it away from any multiple
+of 24 hours.
+
+To see who holds the lock, search the instance-manager log for `contains locks`; it lists every
+lock on the backup volume with its type and `serverTime`.
