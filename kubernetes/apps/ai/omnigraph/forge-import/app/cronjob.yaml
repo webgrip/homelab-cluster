@@ -69,6 +69,8 @@ spec:
                 - --token-file=/run/secrets/forgejo/token
                 - --scope-file=/etc/forge-import/scope.json
                 - --snapshot-dir=/work/snapshot
+                - --omnigraph-url=http://omnigraph.ai.svc.cluster.local:8080
+                - --omnigraph-token-file=/run/secrets/omnigraph/token
                 - --out=/work/plan
               env:
                 - {name: HOME, value: /tmp}
@@ -83,9 +85,38 @@ spec:
               volumeMounts:
                 - {name: scripts, mountPath: /etc/forge-import, readOnly: true}
                 - {name: forgejo-token, mountPath: /run/secrets/forgejo, readOnly: true}
+                - {name: token, mountPath: /run/secrets/omnigraph, readOnly: true}
                 - {name: work, mountPath: /work}
                 - {name: tmp, mountPath: /tmp}
-          containers:
+            - name: embed
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - /etc/omnigraph-embed-step/embed_step.py
+                - embed
+                - --plan=/work/plan
+                - --contract=/etc/omnigraph-embedding-contract/contract.json
+                - --litellm-url=http://litellm.ai.svc.cluster.local:4000
+                - --key-file=/run/secrets/litellm/OMNIGRAPH_EMBED_API_KEY
+                - --tokens-per-second=300
+                - --deadline-seconds=1200
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 20m, memory: 64Mi}
+                limits: {memory: 512Mi}
+              volumeMounts:
+                - {name: embed-step, mountPath: /etc/omnigraph-embed-step, readOnly: true}
+                - {name: embedding-contract, mountPath: /etc/omnigraph-embedding-contract, readOnly: true}
+                - {name: embed-key, mountPath: /run/secrets/litellm, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
             - name: apply
               # renovate: datasource=docker depName=docker.io/modernrelay/omnigraph-server
               image: harbor.webgrip.dev/dockerhub/modernrelay/omnigraph-server:v0.11.0@sha256:db0911099d93e738641b637a911b83b4ae2b179fe4f0719de4e3eb45a81d50b0
@@ -106,7 +137,32 @@ spec:
                 limits: {memory: 1Gi}
               volumeMounts:
                 - {name: scripts, mountPath: /etc/forge-import, readOnly: true}
+                - {name: embed-step, mountPath: /etc/omnigraph-embed-step, readOnly: true}
                 - {name: token, mountPath: /run/secrets/omnigraph, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+          containers:
+            - name: report
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - /etc/omnigraph-embed-step/embed_step.py
+                - report
+                - --plan=/work/plan
+                - --vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: embed-step, mountPath: /etc/omnigraph-embed-step, readOnly: true}
                 - {name: work, mountPath: /work}
                 - {name: tmp, mountPath: /tmp}
           volumes:
@@ -124,6 +180,18 @@ spec:
                 secretName: omnigraph-forge-import-forgejo
                 optional: true
                 defaultMode: 0440
+            - name: embed-step
+              configMap:
+                name: omnigraph-embed-step
+            - name: embedding-contract
+              configMap:
+                name: omnigraph-embedding-contract
+            - name: embed-key
+              secret:
+                secretName: omnigraph-embed-key
+                defaultMode: 0440
+                items:
+                  - {key: OMNIGRAPH_EMBED_API_KEY, path: OMNIGRAPH_EMBED_API_KEY}
             - name: work
               emptyDir:
                 sizeLimit: 2Gi

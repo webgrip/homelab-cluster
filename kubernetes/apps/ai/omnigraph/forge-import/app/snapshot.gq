@@ -35,7 +35,7 @@ query forge_notes() {
         $n: Note
         $n.slug starts_with "forge/"
     }
-    return { $n.slug, $n.name, $n.kind, $n.content, $n.when, $n.tags, $n.createdAt }
+    return { $n.slug, $n.name, $n.kind, $n.content, $n.when, $n.tags, $n.createdAt, $n.updatedAt }
 }
 
 query forge_passages() {
@@ -44,7 +44,28 @@ query forge_passages() {
         $p passageOf $a
         $a.slug starts_with "forge/"
     }
-    return { $p.@id, $a.slug }
+    return { $p.@id, $a.slug, $p.createdAt }
+}
+
+query forge_passages_with_vectors($v: Vector(384)) {
+    match {
+        $p: Passage
+        $p passageOf $a
+        $a.slug starts_with "forge/"
+    }
+    return { $p.@id }
+    order { nearest($p.embedding, $v) }
+    limit 1000000
+}
+
+query forge_notes_with_vectors($v: Vector(384)) {
+    match {
+        $n: Note
+        $n.slug starts_with "forge/"
+    }
+    return { $n.slug }
+    order { nearest($n.embedding, $v) }
+    limit 1000000
 }
 
 query forge_project_orgs() {

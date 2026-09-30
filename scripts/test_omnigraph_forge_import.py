@@ -11,6 +11,7 @@ import unittest
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parent.parent
 APP = ROOT / "kubernetes/apps/ai/omnigraph/forge-import/app"
@@ -25,6 +26,12 @@ spec = importlib.util.spec_from_file_location("forge_import", IMPORTER)
 forge_import = importlib.util.module_from_spec(spec)
 sys.modules["forge_import"] = forge_import
 spec.loader.exec_module(forge_import)
+EMBED_STEP = ROOT / "kubernetes/apps/ai/omnigraph/embed-step/app/embed_step.py"
+CONTRACT = ROOT / "kubernetes/apps/ai/omnigraph/embed-step/app/contract.json"
+embed_spec = importlib.util.spec_from_file_location("embed_step", EMBED_STEP)
+embed_step = importlib.util.module_from_spec(embed_spec)
+sys.modules["embed_step"] = embed_step
+embed_spec.loader.exec_module(embed_step)
 
 ADR_TEXT = "---\nstatus: accepted\ndate: 2026-07-01\n---\n# ADR-0001: Use Flux\n\nWe reconcile everything with Flux.\n"
 LONG_DOC = "# Runbook\n\n" + "\n\n".join(f"Paragraph {index} " + "word " * 120 for index in range(12))
@@ -173,9 +180,20 @@ class SimulatedGraph:
         for path in sorted(out.glob("prune-*.gq")):
             for statement in re.findall(r"^\s+(delete .+)$", path.read_text(encoding="utf-8"), re.M):
                 self.delete(statement)
-        for path in sorted(out.glob("load-*.ndjson")):
-            for line in path.read_text(encoding="utf-8").splitlines():
-                self.load(json.loads(line))
+        for pattern in ("load-*.ndjson", "heal-*.ndjson"):
+            for path in sorted(out.glob(pattern)):
+                for line in path.read_text(encoding="utf-8").split("\n"):
+                    if line.strip():
+                        self.load(json.loads(line))
+
+    def chunks(self, slug):
+        return {pid: {"text": row["text"], "chunk_index": row["chunk_index"], "createdAt": row["createdAt"]}
+                for pid, row in self.passages.items() if row.get("to") == slug}
+
+    def vector_of(self, key):
+        if key in self.passages:
+            return self.passages[key].get("embedding")
+        return self.nodes[key][1].get("embedding")
 
     def delete(self, statement):
         passage = re.fullmatch(r'delete Passage where @id = "(.+)"', statement)
@@ -220,14 +238,18 @@ class SimulatedGraph:
             "forge_orgs": ("Organization", ["slug", "name", "kind", "brief", "website", "createdAt"]),
             "forge_people": ("Person", ["slug", "name", "relation", "brief", "tags", "createdAt"]),
             "forge_artifacts": ("Artifact", ["slug", "name", "kind", "source", "source_ref", "thread_id", "url", "content_sha256", "timestamp", "createdAt"]),
-            "forge_notes": ("Note", ["slug", "name", "kind", "content", "when", "tags", "createdAt"]),
+            "forge_notes": ("Note", ["slug", "name", "kind", "content", "when", "tags", "createdAt", "updatedAt"]),
         }
         for query, (node_type, keys) in fields.items():
-            rows = [{f"n.{key}": (data.get(key).rstrip("Z") if key in ("createdAt", "timestamp") else data.get(key)) for key in keys}
+            rows = [{f"n.{key}": (data.get(key).rstrip("Z") if key in ("createdAt", "updatedAt", "timestamp") and data.get(key) else data.get(key)) for key in keys}
                     for slug, (kind, data) in sorted(self.nodes.items()) if kind == node_type and slug.startswith("forge/")]
             (directory / f"{query}.json").write_text(json.dumps({"rows": rows}), encoding="utf-8")
-        passages = [{"p.@id": pid, "a.slug": row["to"]} for pid, row in sorted(self.passages.items()) if row.get("to")]
+        passages = [{"p.@id": pid, "a.slug": row["to"], "p.createdAt": row["createdAt"].rstrip("Z")} for pid, row in sorted(self.passages.items()) if row.get("to")]
         (directory / "forge_passages.json").write_text(json.dumps({"rows": passages}), encoding="utf-8")
+        with_vectors = [{"p.@id": pid} for pid, row in sorted(self.passages.items()) if row.get("to", "").startswith("forge/") and row.get("embedding")]
+        (directory / "forge_passages_with_vectors.json").write_text(json.dumps({"rows": with_vectors}), encoding="utf-8")
+        notes_with_vectors = [{"n.slug": slug} for slug, (kind, data) in sorted(self.nodes.items()) if kind == "Note" and slug.startswith("forge/") and data.get("embedding")]
+        (directory / "forge_notes_with_vectors.json").write_text(json.dumps({"rows": notes_with_vectors}), encoding="utf-8")
         for query, edge in forge_import.SNAPSHOT_EDGES.items():
             rows = [{"n.slug": source, "t.slug": target} for (name, source), targets in sorted(self.edges.items()) if name == edge for target in targets]
             (directory / f"{query}.json").write_text(json.dumps({"rows": rows}), encoding="utf-8")
@@ -245,6 +267,12 @@ class Harness:
         self.scope = APP / "scope.json"
         self.graph = SimulatedGraph()
         self.runs = 0
+        self.embedder = None
+        self.reads = []
+
+    def chunks(self, slug):
+        self.reads.append(slug)
+        return self.graph.chunks(slug)
 
     def plan(self, now=NOW):
         self.runs += 1
@@ -252,11 +280,19 @@ class Harness:
         self.graph.snapshot(snapshot)
         self.out = self.root / f"plan-{self.runs}"
         args = forge_import.parse_args(["--forge-url", self.server.url, "--token-file", str(self.token), "--scope-file", str(self.scope),
-                                        "--snapshot-dir", str(snapshot), "--out", str(self.out)])
-        return forge_import.run(args, now)
+                                        "--snapshot-dir", str(snapshot), "--omnigraph-url", "http://omnigraph.invalid",
+                                        "--omnigraph-token-file", str(self.token), "--out", str(self.out)])
+        return forge_import.run(args, now, reader=self)
+
+    def embed(self, embedder, deadline=600):
+        args = SimpleNamespace(plan=str(self.out), contract=str(CONTRACT), litellm_url="http://unused", key_file="/nonexistent",
+                               tokens_per_second=1e9, deadline_seconds=deadline)
+        return embed_step.embed(args, embedder=embedder)
 
     def plan_and_apply(self, now=NOW):
         plan = self.plan(now)
+        if self.embedder is not None:
+            self.embed_report = self.embed(self.embedder)
         self.graph.apply(self.out)
         return plan
 
@@ -591,6 +627,145 @@ class Incremental(unittest.TestCase):
             {"edge": "PassageOf", "from": f"{slug}#0", "to": slug}]])
 
 
+class FakeEmbedder:
+    def __init__(self, fail=False):
+        self.texts = []
+        self.fail = fail
+
+    def __call__(self, texts):
+        if self.fail:
+            raise embed_step.EmbeddingUnavailable("litellm answered HTTP 503")
+        self.texts.extend(texts)
+        return [[1.0] + [0.0] * 383 for _ in texts], len(texts)
+
+
+class RealisticEmbedder:
+    def __call__(self, texts):
+        vectors = []
+        for text in texts:
+            seed = len(text) + 1
+            vectors.append([((index * 7919 + seed * 104729) % 2003 - 1001) / 7127.0 for index in range(384)])
+        return vectors, len(texts)
+
+
+RUNBOOK = "forge/webgrip/homelab-cluster/doc/docs/runbooks/flux"
+ADR_NOTE = "forge/webgrip/homelab-cluster/adr/docs/adr/adr-0001-flux"
+
+
+class WriteTimeVectors(unittest.TestCase):
+    def setUp(self):
+        self.harness = Harness()
+        self.harness.embedder = FakeEmbedder()
+        self.harness.plan_and_apply()
+
+    def tearDown(self):
+        self.harness.close()
+
+    def vectorless(self):
+        return sorted([pid for pid, row in self.harness.graph.passages.items() if not row.get("embedding")] +
+                      [slug for slug, (kind, data) in self.harness.graph.nodes.items() if kind == "Note" and not data.get("embedding")])
+
+    def test_first_import_writes_every_note_and_passage_with_a_384_float_vector(self):
+        self.assertEqual(self.vectorless(), [])
+        self.assertEqual(len(self.harness.graph.vector_of(ADR_NOTE)), 384)
+        self.assertEqual(self.harness.embed_report["missing"], {"Note": 0, "Passage": 0})
+
+    def test_an_updated_adr_note_row_carries_a_384_float_vector(self):
+        self.harness.forge.blobs["b-adr2"] = ADR_TEXT + "\nAmended: also Helm.\n"
+        tree = self.harness.forge.trees[("webgrip", "homelab-cluster")]
+        tree[2] = blob_entry("docs/adr/adr-0001-flux.md", "b-adr2")
+        plan = self.harness.plan_and_apply(LATER)
+        rewritten = [row for row in plan.node_rows if row["type"] == "Note"]
+        self.assertEqual([row["data"]["slug"] for row in rewritten], [ADR_NOTE])
+        self.assertEqual(len(self.harness.graph.nodes[ADR_NOTE][1]["embedding"]), 384)
+        self.assertEqual(self.vectorless(), [])
+
+    def test_a_changed_doc_writes_only_its_changed_chunks_and_keeps_the_rest(self):
+        before = {pid: dict(row) for pid, row in self.harness.graph.passages.items() if pid.startswith(RUNBOOK + "#")}
+        self.assertGreater(len(before), 2)
+        changed = LONG_DOC.replace("Paragraph 11 ", "Paragraph eleven ")
+        self.harness.forge.blobs["b-runbook3"] = changed
+        tree = self.harness.forge.trees[("webgrip", "homelab-cluster")]
+        tree[1] = blob_entry("docs/runbooks/flux.md", "b-runbook3")
+        self.harness.embedder.texts.clear()
+        plan = self.harness.plan_and_apply(LATER)
+        written = [unit[0]["id"] for unit in plan.passage_units]
+        last = max(before, key=lambda pid: int(pid.rsplit("#", 1)[1]))
+        self.assertEqual(written, [last])
+        self.assertEqual(plan.counts.unchanged_chunks, len(before) - 1)
+        self.assertEqual(len(self.harness.embedder.texts), 1)
+        for pid in set(before) - {last}:
+            self.assertEqual(self.harness.graph.passages[pid]["createdAt"], NOW)
+        self.assertEqual(self.harness.graph.passages[last]["createdAt"], LATER)
+        self.assertEqual(self.vectorless(), [])
+
+    def test_a_second_run_writes_nothing_and_embeds_nothing(self):
+        self.harness.embedder.texts.clear()
+        self.harness.plan_and_apply(LATER)
+        self.assertEqual(self.harness.embedder.texts, [])
+        self.assertFalse(list(self.harness.out.glob("heal-*.ndjson")))
+
+    def test_vectorless_rows_are_healed_oldest_first_up_to_the_cap(self):
+        for pid, row in self.harness.graph.passages.items():
+            row.pop("embedding", None)
+        self.harness.graph.nodes[ADR_NOTE][1].pop("embedding")
+        total = len(self.vectorless())
+        saved = forge_import.HEAL_ROWS_PER_RUN
+        forge_import.HEAL_ROWS_PER_RUN = 3
+        try:
+            plan = self.harness.plan_and_apply(LATER)
+        finally:
+            forge_import.HEAL_ROWS_PER_RUN = saved
+        self.assertEqual((plan.node_rows, plan.passage_units), ([], []))
+        self.assertEqual(plan.counts.heal_planned, 3)
+        self.assertEqual(len(self.vectorless()), total - 3)
+        self.assertEqual(self.harness.embed_report["missing"]["Note"] + self.harness.embed_report["missing"]["Passage"], total - 3)
+        self.assertEqual(self.harness.graph.nodes[ADR_NOTE][1]["updatedAt"], NOW)
+        for _ in range(total):
+            if not self.vectorless():
+                break
+            self.harness.plan_and_apply(LATER)
+        self.assertEqual(self.vectorless(), [])
+
+    def test_a_failed_embedding_still_writes_the_change_and_the_next_run_heals_it(self):
+        self.harness.forge.blobs["b-guide2"] = "# Guide\n\nHow to run it, now with Helm.\n"
+        tree = self.harness.forge.trees[("webgrip", "homelab-cluster")]
+        tree[4] = blob_entry("docs/guide.md", "b-guide2")
+        self.harness.embedder = FakeEmbedder(fail=True)
+        self.harness.plan_and_apply(LATER)
+        guide = "forge/webgrip/homelab-cluster/doc/docs/guide#0"
+        self.assertEqual(self.harness.graph.passages[guide]["text"], "# Guide\n\nHow to run it, now with Helm.")
+        self.assertIsNone(self.harness.graph.passages[guide].get("embedding"))
+        self.assertEqual(self.harness.embed_report["missing"]["Passage"], 1)
+        self.harness.embedder = FakeEmbedder()
+        plan = self.harness.plan_and_apply(LATER)
+        self.assertEqual(plan.counts.heal_planned, 1)
+        self.assertEqual(len(self.harness.graph.passages[guide]["embedding"]), 384)
+
+    def test_heal_never_rewrites_rows_this_run_changes_or_deletes(self):
+        for row in self.harness.graph.passages.values():
+            row.pop("embedding", None)
+        self.harness.forge.org_repos["acme-client"] = []
+        plan = self.harness.plan(LATER)
+        healed = {row.get("id") or row["data"]["slug"] for row in plan.heal_rows}
+        deleted = {statement.split('"')[1] for statement in plan.prune_statements if statement.startswith("delete Passage")}
+        self.assertTrue(deleted)
+        self.assertFalse(healed & deleted)
+
+    def test_embed_plan_lists_the_writer_and_heal_ages(self):
+        for row in self.harness.graph.passages.values():
+            row.pop("embedding", None)
+        self.harness.plan(LATER)
+        embed_plan = json.loads((self.harness.out / "embed-plan.json").read_text(encoding="utf-8"))
+        self.assertEqual(embed_plan["writer"], "forge-import")
+        self.assertTrue(all(since == NOW for since in embed_plan["heal_since"].values()))
+
+    def test_unchanged_docs_are_never_read_back_from_the_graph(self):
+        self.harness.reads.clear()
+        self.harness.plan(LATER)
+        self.assertEqual(self.harness.reads, [])
+
+
 class Batching(unittest.TestCase):
     def setUp(self):
         self.saved = (forge_import.ROWS_PER_LOAD_FILE, forge_import.STATEMENTS_PER_PRUNE_FILE)
@@ -616,6 +791,20 @@ class Batching(unittest.TestCase):
             self.assertLessEqual(len(lines), 7)
             self.assertEqual({row["id"] for row in lines if row.get("type") == "Passage" and len(lines) > 0 and any(edge.get("edge") == "PassageOf" for edge in lines)},
                              {row["from"] for row in lines if row.get("edge") == "PassageOf"})
+
+    def test_load_files_stay_under_the_byte_limit_once_vectors_are_filled_in(self):
+        saved = forge_import.BYTES_PER_LOAD_FILE
+        forge_import.ROWS_PER_LOAD_FILE = 2000
+        forge_import.BYTES_PER_LOAD_FILE = 40000
+        try:
+            self.harness.plan()
+            self.harness.embed(RealisticEmbedder())
+        finally:
+            forge_import.BYTES_PER_LOAD_FILE = saved
+        files = sorted(self.harness.out.glob("load-*.ndjson"))
+        self.assertGreater(len(files), 3)
+        for path in files:
+            self.assertLessEqual(len(path.read_bytes()), 40000, path.name)
 
     def test_prune_files_respect_the_statement_limit(self):
         self.harness.plan_and_apply()
@@ -684,7 +873,8 @@ class FailClosed(unittest.TestCase):
             snapshot = harness.root / "empty"
             harness.graph.snapshot(snapshot)
             argv = ["--forge-url", harness.server.url, "--token-file", str(harness.token), "--scope-file", str(harness.scope),
-                    "--snapshot-dir", str(snapshot), "--out", str(harness.root / "plan")]
+                    "--snapshot-dir", str(snapshot), "--omnigraph-url", "http://omnigraph.invalid", "--omnigraph-token-file", str(harness.token),
+                    "--out", str(harness.root / "plan")]
             self.assertEqual(forge_import.main(argv), forge_import.EXIT_NO_TOKEN)
         finally:
             harness.close()

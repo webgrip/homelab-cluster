@@ -23,6 +23,10 @@ MAX_TEXT_BYTES = 1024 * 1024
 PASSAGE_CHARS = 1500
 ROWS_PER_LOAD_FILE = 2000
 BYTES_PER_LOAD_FILE = 16 * 1024 * 1024
+VECTOR_ALLOWANCE_BYTES = 384 * 16
+EMBEDDED_TYPES = frozenset({"Note", "Passage"})
+HEAL_ROWS_PER_RUN = 1500
+WRITER = "forge-import"
 STATEMENTS_PER_PRUNE_FILE = 500
 ACTIVE_WITHIN_DAYS = 180
 HTTP_TIMEOUT_SECONDS = 60
@@ -39,6 +43,7 @@ EXIT_OK = 0
 EXIT_NO_TOKEN = 3
 EXIT_FORGE_FAILED = 4
 EXIT_NOTHING_VISIBLE = 5
+EXIT_GRAPH_UNREACHABLE = 6
 
 EDGE_TYPES = ("ProjectForOrganization", "ArtifactForProject", "ArtifactFromPerson", "NoteAboutProject", "NoteFromArtifact")
 SINGLE_TARGET_EDGES = frozenset({"ArtifactFromPerson", "NoteFromArtifact"})
@@ -56,6 +61,48 @@ class ForgeError(Exception):
     pass
 
 
+class GraphUnreachable(Exception):
+    pass
+
+
+CHUNKS_QUERY = """query artifact_chunks($slug: String) {
+    match {
+        $a: Artifact { slug: $slug }
+        $p passageOf $a
+    }
+    return { $p.@id, $p.chunk_index, $p.text, $p.createdAt }
+}"""
+
+
+class ChunkReader:
+    def __init__(self, base_url, token):
+        self.url = base_url.rstrip("/") + "/graphs/brain/query"
+        self.token = token
+        self.calls = 0
+        self.cache = {}
+
+    def chunks(self, slug):
+        if slug not in self.cache:
+            self.cache[slug] = self.fetch(slug)
+        return self.cache[slug]
+
+    def fetch(self, slug):
+        body = json.dumps({"query": CHUNKS_QUERY, "params": {"slug": slug}, "branch": "main"}).encode()
+        request = urllib.request.Request(self.url, data=body, method="POST",
+                                         headers={"content-type": "application/json", "Authorization": f"Bearer {self.token}"})
+        self.calls += 1
+        try:
+            with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
+                rows = json.loads(response.read()).get("rows") or []
+        except urllib.error.HTTPError as error:
+            error.close()
+            raise GraphUnreachable(f"omnigraph answered HTTP {error.code} while reading chunks") from None
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as error:
+            raise GraphUnreachable(f"omnigraph not reachable while reading chunks ({type(error).__name__})") from None
+        return {row["p.@id"]: {"text": row.get("p.text"), "chunk_index": row.get("p.chunk_index"), "createdAt": utc_timestamp(row.get("p.createdAt"))}
+                for row in rows if row.get("p.@id")}
+
+
 @dataclass
 class Counts:
     repos: int = 0
@@ -68,7 +115,10 @@ class Counts:
     deleted: int = 0
     relinked: int = 0
     passages_written: int = 0
+    unchanged_chunks: int = 0
     passages_deleted: int = 0
+    heal_planned: int = 0
+    vectorless_left: int = 0
     blobs_fetched: int = 0
     skipped_large: int = 0
     api_calls: int = 0
@@ -108,6 +158,8 @@ class Plan:
     node_rows: list
     passage_units: list
     edge_rows: list
+    heal_rows: list = field(default_factory=list)
+    embed_plan: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -583,6 +635,9 @@ class Graph:
     types: dict
     passages: dict
     edges: dict
+    passage_created: dict = field(default_factory=dict)
+    passage_vectors: set = field(default_factory=set)
+    note_vectors: set = field(default_factory=set)
 
 
 SNAPSHOT_TYPES = {
@@ -624,19 +679,23 @@ def read_graph(snapshot_dir):
                 continue
             records[slug] = {key.split(".", 1)[1]: normalise(key.split(".", 1)[1], value) for key, value in row.items()}
             types[slug] = node_type
-    passages = {}
+    passages, passage_created = {}, {}
     for row in graph_rows(snapshot / "forge_passages.json"):
         passages.setdefault(row["a.slug"], set()).add(row["p.@id"])
+        passage_created[row["p.@id"]] = utc_timestamp(row.get("p.createdAt"))
+    passage_vectors = {row["p.@id"] for row in graph_rows(snapshot / "forge_passages_with_vectors.json")}
+    note_vectors = {row["n.slug"] for row in graph_rows(snapshot / "forge_notes_with_vectors.json")}
     edges = {}
     for query, edge in SNAPSHOT_EDGES.items():
         for row in graph_rows(snapshot / f"{query}.json"):
             if SAFE_SLUG.fullmatch(row["n.slug"]):
                 edges.setdefault((edge, row["n.slug"]), set()).add(row["t.slug"])
-    return Graph(records=records, types=types, passages=passages, edges=edges)
+    return Graph(records=records, types=types, passages=passages, edges=edges, passage_created=passage_created,
+                 passage_vectors=passage_vectors, note_vectors=note_vectors)
 
 
 def differs(record, existing):
-    wanted = {key: normalise(key, value) for key, value in record.data.items() if key not in ("createdAt", "updatedAt")}
+    wanted = {key: normalise(key, value) for key, value in record.data.items() if key not in ("createdAt", "updatedAt", "embedding")}
     return any(existing.get(key) != value for key, value in wanted.items())
 
 
@@ -644,17 +703,19 @@ def passage_id(slug, index):
     return f"{slug}#{index}"
 
 
-def build_plan(desired, graph, counts, now):
+def build_plan(desired, graph, counts, now, reader):
     prune = {kind: [] for kind in ("Passage",) + DELETE_ORDER}
     edge_prune = []
     node_rows = {kind: [] for kind in NODE_ORDER}
     passage_units = []
     edge_rows = []
     written = set()
+    touched_passages = set()
     for slug in sorted(set(graph.records) - set(desired.records)):
         node_type = graph.types[slug]
         for pid in sorted(graph.passages.get(slug, ())):
             prune["Passage"].append(f'delete Passage where @id = "{pid}"')
+            touched_passages.add(pid)
             counts.passages_deleted += 1
         prune[node_type].append(f'delete {node_type} where slug = "{slug}"')
         counts.deleted += 1
@@ -679,17 +740,24 @@ def build_plan(desired, graph, counts, now):
         written.add(slug)
         if record.type == "Artifact":
             existing_ids = graph.passages.get(slug, set())
+            stored = reader.chunks(slug) if existing_ids else {}
             chunks = chunk_text(record.content)
             wanted_ids = set()
             for index, text in enumerate(chunks):
                 pid = passage_id(slug, index)
                 wanted_ids.add(pid)
+                current = stored.get(pid)
+                if current is not None and current["text"] == text and current["chunk_index"] == index:
+                    counts.unchanged_chunks += 1
+                    continue
                 row = {"type": "Passage", "id": pid, "data": {"text": text, "chunk_index": index, "createdAt": now}}
                 unit = [row] if pid in existing_ids else [row, {"edge": "PassageOf", "from": pid, "to": slug}]
                 passage_units.append(unit)
+                touched_passages.add(pid)
                 counts.passages_written += 1
             for pid in sorted(existing_ids - wanted_ids):
                 prune["Passage"].append(f'delete Passage where @id = "{pid}"')
+                touched_passages.add(pid)
                 counts.passages_deleted += 1
     for (edge, source), targets in sorted(desired.edges.items()):
         if source not in desired.records:
@@ -706,14 +774,60 @@ def build_plan(desired, graph, counts, now):
             edge_rows.append({"edge": edge, "from": source, "to": target})
     statements = prune["Passage"] + [statement for kind in DELETE_ORDER for statement in prune[kind]] + edge_prune
     ordered_nodes = [row for kind in NODE_ORDER for row in node_rows[kind]]
-    return Plan(counts=counts, prune_statements=statements, node_rows=ordered_nodes, passage_units=passage_units, edge_rows=edge_rows)
+    deleted = set(graph.records) - set(desired.records)
+    heal_rows, embed_plan = plan_heal(graph, desired, reader, written | deleted, touched_passages, counts, now)
+    return Plan(counts=counts, prune_statements=statements, node_rows=ordered_nodes, passage_units=passage_units, edge_rows=edge_rows,
+                heal_rows=heal_rows, embed_plan=embed_plan)
+
+
+def vectorless_rows(graph, rewritten, touched_passages):
+    rows = []
+    for slug, record in graph.records.items():
+        if graph.types[slug] == "Note" and slug not in rewritten and slug not in graph.note_vectors and str(record.get("content") or "").strip():
+            rows.append(("Note", slug, record.get("updatedAt") or record.get("createdAt")))
+    for artifact, pids in graph.passages.items():
+        for pid in pids:
+            if pid not in graph.passage_vectors and pid not in touched_passages:
+                rows.append(("Passage", pid, graph.passage_created.get(pid)))
+    rows.sort(key=lambda row: (row[2] or "", row[0], row[1]))
+    return rows
+
+
+def note_heal_row(record):
+    data = {key: value for key, value in record.items() if key in ("slug", "name", "kind", "content", "when", "tags", "createdAt", "updatedAt") and value is not None}
+    return {"type": "Note", "data": data}
+
+
+def plan_heal(graph, desired, reader, rewritten, touched_passages, counts, now):
+    candidates = vectorless_rows(graph, rewritten, touched_passages)
+    chosen = candidates[:HEAL_ROWS_PER_RUN]
+    artifact_of = {pid: artifact for artifact, pids in graph.passages.items() for pid in pids}
+    heal_rows, heal_since = [], {}
+    for type_name, identifier, since in chosen:
+        if type_name == "Note":
+            heal_rows.append(note_heal_row(graph.records[identifier]))
+        else:
+            chunk = reader.chunks(artifact_of[identifier]).get(identifier)
+            if chunk is None or not str(chunk["text"] or "").strip():
+                continue
+            heal_rows.append({"type": "Passage", "id": identifier, "data": {"text": chunk["text"], "chunk_index": chunk["chunk_index"],
+                                                                           "createdAt": chunk["createdAt"] or since or now}})
+        heal_since[f"{type_name}|{identifier}"] = since or now
+    missing = [{"type": type_name, "since": since or now} for type_name, _, since in candidates[HEAL_ROWS_PER_RUN:]]
+    counts.heal_planned = len(heal_rows)
+    counts.vectorless_left = len(missing)
+    return heal_rows, {"writer": WRITER, "missing": missing, "heal_since": heal_since}
+
+
+def row_bytes(row, line):
+    return len(line.encode("utf-8")) + (VECTOR_ALLOWANCE_BYTES if row.get("type") in EMBEDDED_TYPES else 0)
 
 
 def batched_units(units):
     batch, rows, size = [], 0, 0
     for unit in units:
         lines = [json.dumps(row, ensure_ascii=False) + "\n" for row in unit]
-        unit_size = sum(len(line.encode("utf-8")) for line in lines)
+        unit_size = sum(row_bytes(row, line) for row, line in zip(unit, lines))
         if batch and (rows + len(lines) > ROWS_PER_LOAD_FILE or size + unit_size > BYTES_PER_LOAD_FILE):
             yield batch
             batch, rows, size = [], 0, 0
@@ -735,6 +849,9 @@ def write_plan(plan, out_dir):
         for batch in batched_units(units):
             (out / f"load-{number:04d}.ndjson").write_text("".join(batch), encoding="utf-8")
             number += 1
+    for index, batch in enumerate(batched_units([[row] for row in plan.heal_rows])):
+        (out / f"heal-{index:04d}.ndjson").write_text("".join(batch), encoding="utf-8")
+    (out / "embed-plan.json").write_text(json.dumps(plan.embed_plan), encoding="utf-8")
 
 
 def parse_args(argv):
@@ -743,11 +860,13 @@ def parse_args(argv):
     parser.add_argument("--token-file", required=True)
     parser.add_argument("--scope-file", required=True)
     parser.add_argument("--snapshot-dir", required=True)
+    parser.add_argument("--omnigraph-url", required=True)
+    parser.add_argument("--omnigraph-token-file", required=True)
     parser.add_argument("--out", required=True)
     return parser.parse_args(argv)
 
 
-def run(args, now):
+def run(args, now, reader=None):
     token = read_token(args.token_file)
     scope = read_scope(args.scope_file)
     graph = read_graph(args.snapshot_dir)
@@ -760,7 +879,11 @@ def run(args, now):
     has_projects = any(record.type == "Project" for record in desired.records.values())
     if not has_projects and any(kind == "Project" for kind in graph.types.values()):
         raise FailClosed(EXIT_NOTHING_VISIBLE, "the forge token sees no repositories; refusing to delete what the brain already has")
-    plan = build_plan(desired, graph, counts, now)
+    reader = reader or ChunkReader(args.omnigraph_url, Path(args.omnigraph_token_file).read_text(encoding="utf-8").strip())
+    try:
+        plan = build_plan(desired, graph, counts, now, reader)
+    except GraphUnreachable as error:
+        raise FailClosed(EXIT_GRAPH_UNREACHABLE, f"{error}; nothing was planned") from error
     write_plan(plan, args.out)
     return plan
 
