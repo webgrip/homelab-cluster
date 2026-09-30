@@ -68,7 +68,11 @@ kind: RecurringJob
 metadata:
   name: gitops-backup-bulk
 spec:
-  cron: "30 2 * * *"
+  # Temporarily skips the 1st of the month so the 2026-10-01 02:30 UTC run does
+  # not write ~7-13 GB to garage-fsn1 while its disk is nearly full (LMDB
+  # tombstone backlog after the GUAC purge, VIK-1405). Runs resume on 10-02 by
+  # themselves; restore "30 2 * * *" once garage-fsn1 has headroom again.
+  cron: "30 2 2-31 * *"
   task: backup
   groups:
     - gitops-backup-bulk
