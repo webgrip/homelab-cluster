@@ -131,6 +131,11 @@ spawn rest-profile-unpinned brain_eval.py '        if snapshot:
 spawn rest-commit-unchecked brain_eval.py 'if snapshot and result.get("graph_commit") not in (None, snapshot):' 'if False:'
 spawn replica-check-dropped brain_eval.py '    replicas = replica_checks(full_rankings, sink)' '    replicas = {}'
 spawn replica-compares-top-ten brain_eval.py '            full_rankings[profile][case["id"]] = ranked' '            full_rankings[profile][case["id"]] = ranked[:1]'
+spawn replica-skips-unscored-cases brain_eval.py '            if case["id"] not in grades_by_case:
+                continue' '            if case["id"] not in grades_by_case:
+                full_rankings[profile].pop(case["id"])
+                continue'
+spawn replica-ranks-the-sentinel brain_eval.py '            if case["id"] not in grades_by_case and case.get("category") == SYNTHETIC_CATEGORY:' '            if False:'
 spawn gate-without-guardrails brain_eval.py ', guardrails=search_guardrails(documents[candidate]))' ')'
 spawn response-budget-loosened brain_eval.py 'SEARCH_RESPONSE_BUDGET_CHARS = 6000' 'SEARCH_RESPONSE_BUDGET_CHARS = 60000'
 wait

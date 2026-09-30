@@ -1628,18 +1628,18 @@ def run_retrieval(args, workspace, sink, omnigraph, cases, profiles, run_label="
         full_rankings[profile] = {}
         results, legs, case_seconds, payloads = [], [], [], []
         for case in cases:
-            if case["id"] not in grades_by_case and case.get("category") != SYNTHETIC_CATEGORY:
-                continue
             started = time.monotonic()
             retrieved = runner(omnigraph, case["question"], snapshot, brain_tools)
             case_seconds.append(time.monotonic() - started)
             legs.extend(retrieved.leg_seconds)
             payloads.append(retrieved.payload_chars)
-            if case["id"] not in grades_by_case:
+            if case["id"] not in grades_by_case and case.get("category") == SYNTHETIC_CATEGORY:
                 sentinel_runs += 1
                 continue
             ranked = catalog.equivalence.canonical_ranking(retrieved.ranked)
             full_rankings[profile][case["id"]] = ranked
+            if case["id"] not in grades_by_case:
+                continue
             results.append({"id": case["id"], "category": case["category"], "split": case["split"], "state": case_state(case),
                             "metrics": retrieval_scores(ranked, grades_by_case[case["id"]]), "ranked": ranked[:10],
                             "expected": grades_by_case[case["id"]], "payload_chars": retrieved.payload_chars, "seconds": round(time.monotonic() - started, 4)})

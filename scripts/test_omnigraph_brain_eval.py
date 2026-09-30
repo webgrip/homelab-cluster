@@ -232,6 +232,7 @@ class FakeBrainTools:
         self.requests = []
         self.p1_order = {}
         self.p0_swap = False
+        self.p0_truncated_questions = set()
         self.tool_chars = 1200
         self.answer_commit = None
 
@@ -241,6 +242,8 @@ class FakeBrainTools:
         documents = interleaved(*RECALL.get(question, ([], [], [])))
         if profile == "p0" and self.p0_swap and len(documents) > 2:
             documents = [documents[0], documents[2], documents[1], *documents[3:]]
+        if profile == "p0" and question in self.p0_truncated_questions:
+            documents = documents[:-1]
         if profile == "p1":
             documents = self.p1_order.get(question, list(reversed(documents)))
         return {"results": [{"document": document, "ref": f"doc:{document}#0"} for document in documents], "tool_chars": self.tool_chars,
@@ -599,6 +602,7 @@ class BrainToolsProfiles(unittest.TestCase):
         replica = json.loads(self.harness.results("retrieval-p0-rest")[0].read_text())
         self.assertEqual({case["id"]: case["ranked"] for case in direct["cases"]}, {case["id"]: case["ranked"] for case in replica["cases"]})
         self.assertEqual(replica["run"]["replicas"]["p0:p0-rest"]["differing"], [])
+        self.assertEqual(replica["run"]["replicas"]["p0:p0-rest"]["cases"], len(CASES))
         rest = json.loads(self.harness.results("retrieval-p1")[0].read_text())
         self.assertEqual({case["payload_chars"] for case in rest["cases"]}, {1200})
         self.assertRegex(metrics, r'brain_eval_score\{category="all",metric="ndcg_at_8",mode="retrieval",profile="p1",split="dev"\}')
@@ -610,6 +614,15 @@ class BrainToolsProfiles(unittest.TestCase):
         replica = json.loads(self.harness.results("retrieval-p0-rest")[0].read_text())
         self.assertIn("c01", replica["run"]["replicas"]["p0:p0-rest"]["differing"])
         self.assertNotIn('brain_eval_replica_identical_ratio{profile="p0-rest"} 1\n', (self.harness.out / "metrics.prom").read_text())
+
+    def test_the_replica_check_covers_the_cases_no_metric_scores(self):
+        self.harness.brain_tools.p0_truncated_questions = {Q5}
+        result = self.harness.run("retrieval", "--profile=p0", "--profile=p0-rest", global_args=(f"--snapshot={SNAPSHOT}",))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        replica = json.loads(self.harness.results("retrieval-p0-rest")[0].read_text())
+        self.assertEqual(replica["run"]["excluded_cases"], [["c05", "unanswerable"]])
+        self.assertNotIn("c05", {case["id"] for case in replica["cases"]})
+        self.assertEqual(replica["run"]["replicas"]["p0:p0-rest"]["differing"], ["c05"])
 
     def test_brain_tools_answering_from_another_commit_invalidates_the_run(self):
         self.harness.brain_tools.answer_commit = "01OTHERCOMMIT0000000000000"
