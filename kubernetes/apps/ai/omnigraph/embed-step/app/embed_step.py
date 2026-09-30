@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 EMBEDDED_FIELDS = {"Note": "content", "Passage": "text"}
-BATCH_SIZE = 16
+BATCH_SIZE = 4
 MAX_VALUE_CHARS = 8000
 SIGNIFICANT_DIGITS = 8
 HTTP_TIMEOUT_SECONDS = 60

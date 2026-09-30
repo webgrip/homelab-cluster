@@ -143,12 +143,12 @@ class Fill(unittest.TestCase):
         finally:
             plan.close()
 
-    def test_batches_hold_at_most_16_inputs_in_the_contract_format(self):
-        plan = Plan(main=[[passage(f"p#{index}", f"chunk {index}") for index in range(40)]])
+    def test_batches_hold_at_most_4_inputs_in_the_contract_format(self):
+        plan = Plan(main=[[passage(f"p#{index}", f"chunk {index}") for index in range(10)]])
         try:
             embedder = FakeEmbedder()
             plan.run(embedder)
-            self.assertEqual([len(batch) for batch in embedder.batches], [16, 16, 8])
+            self.assertEqual([len(batch) for batch in embedder.batches], [4, 4, 2])
             self.assertEqual(embedder.batches[0][0], "type: Passage\ntext: chunk 0")
         finally:
             plan.close()
@@ -180,7 +180,7 @@ class FailSoft(unittest.TestCase):
                     heal=[[passage("old#0", "old text")]], heal_since={"Passage|old#0": "2026-09-20T00:00:00Z"},
                     missing=[{"type": "Note", "since": "2026-09-25T00:00:00Z"}])
         try:
-            report = plan.run(FakeEmbedder(fail_after=1))
+            report = plan.run(FakeEmbedder(fail_after=4))
             rows = read(plan.root / "load-0000.ndjson")
             self.assertEqual(sum("embedding" in row["data"] for row in rows), 16)
             self.assertEqual(len(rows), 20)
@@ -201,8 +201,8 @@ class FailSoft(unittest.TestCase):
             rows = read(plan.root / "load-0000.ndjson")
             self.assertEqual(len(rows), 64)
             self.assertEqual(report["reason"], "deadline reached")
-            self.assertEqual(report["counts"]["embedded"], 16)
-            self.assertEqual(report["counts"]["skipped"], 48)
+            self.assertEqual(report["counts"]["embedded"], 4)
+            self.assertEqual(report["counts"]["skipped"], 60)
         finally:
             plan.close()
 
