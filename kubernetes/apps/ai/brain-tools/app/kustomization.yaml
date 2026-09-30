@@ -1,0 +1,36 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./serviceaccount.yaml
+  - ./deployment.yaml
+  - ./service.yaml
+  - ./networkpolicy.yaml
+  - ./vmservicescrape.yaml
+  - ./prometheusrule.yaml
+configMapGenerator:
+  - name: brain-tools-server
+    files:
+      - ./server/package.json
+      - ./server/main.ts
+      - ./server/config.ts
+      - ./server/metrics.ts
+      - ./server/upstream.ts
+      - ./server/contract.ts
+      - ./server/text.ts
+      - ./server/caches.ts
+      - ./server/search.ts
+      - ./server/render.ts
+      - ./server/read.ts
+      - ./server/service.ts
+      - ./server/mcp.ts
+      - ./server/rest.ts
+    options:
+      labels:
+        app.kubernetes.io/name: brain-tools
+        app.kubernetes.io/part-of: omnigraph
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled
+components:
+  - ../../../../components/placement/worker-pool

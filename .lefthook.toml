@@ -62,6 +62,10 @@ run = "mise exec -- bash -c 'bash scripts/test-omnigraph-writers-mutation.sh >/d
 glob = ["kubernetes/apps/ai/omnigraph/brain-eval/app/*", "kubernetes/apps/ai/litellm/app/litellm-config.configmap.yaml", "kubernetes/apps/ai/litellm/keys/app/omnigraph-eval-key-register.job.yaml", "scripts/test_omnigraph_brain_eval.py", "scripts/test-omnigraph-brain-eval-mutation.sh"]
 run = "mise exec -- bash scripts/test-omnigraph-brain-eval-mutation.sh"
 
+[pre-commit.commands.test-brain-tools]
+glob = ["kubernetes/apps/ai/brain-tools/app/server/*", "kubernetes/apps/ai/omnigraph/app/bundle/brain.retrieval.gq", "scripts/brain-tools/*", "scripts/test-brain-tools-mutation.sh", "scripts/test_brain_tools_real_server.py"]
+run = "mise exec -- bash -c 'node --test --test-reporter=dot scripts/brain-tools/brain_tools.test.ts >/dev/null && sh scripts/test-brain-tools-mutation.sh >/dev/null && BRAIN_TOOLS_REAL_SERVER=1 python3 -W ignore scripts/test_brain_tools_real_server.py'"
+
 [pre-commit.commands.test-litellm-runtime-patches]
 glob = ["kubernetes/apps/ai/litellm/app/litellm-runtime-patches.configmap.yaml", "kubernetes/apps/ai/litellm/app/helmrelease.yaml", "scripts/test_litellm_runtime_patches.py", "scripts/test-litellm-runtime-patches.sh"]
 run = "mise exec -- bash scripts/test-litellm-runtime-patches.sh --pinned-image"

@@ -1,0 +1,111 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: brain-tools
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: brain-tools
+    app.kubernetes.io/part-of: omnigraph
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: brain-tools
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: brain-tools
+        app.kubernetes.io/part-of: omnigraph
+    spec:
+      serviceAccountName: brain-tools
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: brain-tools
+          image: harbor.webgrip.dev/dockerhub/node:24.21.0-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+          imagePullPolicy: IfNotPresent
+          command:
+            - node
+            - /app/server/main.ts
+          env:
+            - {name: NODE_ENV, value: production}
+            - {name: HOME, value: /tmp}
+            - {name: BRAIN_TOOLS_VERSION, value: "0.1.0"}
+            - {name: BRAIN_TOOLS_PROFILE, value: p0}
+            - {name: OMNIGRAPH_URL, value: "http://omnigraph.ai.svc.cluster.local:8080"}
+            - {name: OMNIGRAPH_GRAPH, value: brain}
+            - {name: OMNIGRAPH_TOKEN_FILE, value: /run/secrets/omnigraph/token}
+            - {name: LITELLM_URL, value: "http://litellm.ai.svc.cluster.local:4000"}
+            - {name: LITELLM_KEY_FILE, value: /run/secrets/litellm/key}
+            - {name: EMBEDDING_CONTRACT_FILE, value: /etc/omnigraph-embedding-contract/contract.json}
+            - {name: BRAIN_EXPLORER_URL, value: "https://graph.${SECRET_DOMAIN}"}
+            - {name: MCP_LISTEN, value: "0.0.0.0:8080"}
+            - {name: REST_LISTEN, value: "0.0.0.0:8081"}
+          ports:
+            - name: mcp
+              containerPort: 8080
+            - name: rest
+              containerPort: 8081
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          startupProbe:
+            httpGet: {path: /healthz, port: rest}
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /readyz, port: rest}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /healthz, port: rest}
+            periodSeconds: 30
+            timeoutSeconds: 3
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 512Mi}
+          volumeMounts:
+            - {name: server, mountPath: /app/server, readOnly: true}
+            - {name: token, mountPath: /run/secrets/omnigraph, readOnly: true}
+            - {name: litellm-key, mountPath: /run/secrets/litellm, readOnly: true}
+            - {name: contract, mountPath: /etc/omnigraph-embedding-contract, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: server
+          configMap:
+            name: brain-tools-server
+        - name: token
+          secret:
+            secretName: omnigraph-brain-reader-token
+            defaultMode: 0440
+            items:
+              - {key: token, path: token}
+        - name: litellm-key
+          secret:
+            secretName: litellm-key-brain-tools
+            defaultMode: 0440
+            items:
+              - {key: key, path: key}
+        - name: contract
+          configMap:
+            name: omnigraph-embedding-contract
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi

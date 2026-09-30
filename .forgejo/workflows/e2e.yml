@@ -185,6 +185,15 @@ jobs:
           docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
             sh -ec "python3 scripts/test_omnigraph_brain_eval.py && bash scripts/test-omnigraph-brain-eval-mutation.sh"
 
+      - name: Test brain-tools and mutation-test it
+        run: |
+          ws="$(mktemp -d)"
+          mkdir -p "$ws/kubernetes/apps/ai/brain-tools/app" "$ws/scripts"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/brain-tools/app/server" "$ws/kubernetes/apps/ai/brain-tools/app/"
+          rsync -a "$GITHUB_WORKSPACE/scripts/brain-tools" "$GITHUB_WORKSPACE/scripts/test-brain-tools-mutation.sh" "$ws/scripts/"
+          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/node:24.21.0-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 \
+            sh -ec "node --test --test-reporter=dot scripts/brain-tools/brain_tools.test.ts && sh scripts/test-brain-tools-mutation.sh"
+
       - name: Test forgejo-sync leaves private repos alone
         run: bash scripts/test-forgejo-sync-skips-private.sh
 
@@ -263,6 +272,8 @@ jobs:
                  kubernetes/apps/ai/omnigraph/forge-import \
                  kubernetes/apps/ai/omnigraph/vault-import \
                  scripts/test_omnigraph_writers_real_server.py \
+                 kubernetes/apps/ai/brain-tools \
+                 scripts/test_brain_tools_real_server.py \
                  .forgejo/workflows/e2e.yml | grep -q .; then
             run=true
           else
@@ -305,6 +316,16 @@ jobs:
       - name: Run the importers' snapshots, loads and prunes on the pinned server
         if: steps.filter.outputs.run == 'true'
         run: PATH="$OMNIGRAPH_TOOLS:$PATH" OMNIGRAPH_WRITERS_REAL_SERVER=1 timeout 600 python3 -X faulthandler -W ignore scripts/test_omnigraph_writers_real_server.py -v
+
+      - name: Run brain-tools on the pinned server
+        if: steps.filter.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node_version="$(sed -nE 's#^ +image: harbor\.webgrip\.dev/dockerhub/node:([0-9.]+)-alpine.*#\1#p' kubernetes/apps/ai/brain-tools/app/deployment.yaml)"
+          curl -fsSL "https://nodejs.org/dist/v${node_version}/node-v${node_version}-linux-x64.tar.gz" | tar -xz -C "$OMNIGRAPH_TOOLS" --strip-components=2 "node-v${node_version}-linux-x64/bin/node"
+          "$OMNIGRAPH_TOOLS/node" --version
+          PATH="$OMNIGRAPH_TOOLS:$PATH" BRAIN_TOOLS_REAL_SERVER=1 timeout 600 python3 -X faulthandler -W ignore scripts/test_brain_tools_real_server.py -v
 
   litellm-patches:
     name: LiteLLM runtime patches

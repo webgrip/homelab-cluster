@@ -1,0 +1,205 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: brain-tools
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: brain-tools
+spec:
+  groups:
+    - name: brain-tools.rules
+      rules:
+        - alert: BrainToolsDown
+          expr: |
+            max(up{namespace="ai", service="brain-tools"}) == 0
+            or
+            absent(up{namespace="ai", service="brain-tools"})
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+            service: brain-tools
+          annotations:
+            summary: "brain-tools is not answering (ai/brain-tools)"
+            description: |
+              What's happening:
+              - The brain-tools metrics endpoint has been down or missing for 10 minutes. brain-tools serves the brain_tools MCP tools (search, read) through LiteLLM and the REST API the brain eval uses.
+
+              Impact/risk:
+              - Claude Code's brain_tools-search and brain_tools-read calls fail, so agents cannot look anything up in the brain.
+              - The nightly brain eval run fails on its REST profiles and publishes no retrieval scores.
+
+              Likely causes:
+              - The pod is crash-looping: a missing act-brain-reader token (Secret omnigraph-brain-reader-token) or a code error in the brain-tools-server ConfigMap (log line "brain-tools: ..." at start).
+              - The pod is Pending: no worker node has 128Mi to request.
+              - The pod stays unready because Omnigraph is down or a stored query it needs is missing (see BrainToolsCatalogIncomplete).
+
+              First actions:
+              - kubectl -n ai get pods -l app.kubernetes.io/name=brain-tools
+              - kubectl -n ai logs deploy/brain-tools --tail=50
+              - kubectl -n ai exec deploy/brain-tools -- wget -qO- http://127.0.0.1:8081/readyz
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#brain-tools"
+        - alert: BrainToolsCatalogIncomplete
+          expr: |
+            max(brain_tools_catalog_complete) == 0
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+            service: brain-tools
+          annotations:
+            summary: "brain-tools cannot reach every stored query it needs on brain (ai/brain-tools)"
+            description: |
+              What's happening:
+              - brain-tools reads GET /graphs/brain/queries as act-brain-reader every 30 seconds. For 10 minutes Omnigraph did not answer, or the catalog lacked a query brain-tools calls (brain_tools_catalog_missing_queries says how many). /readyz fails meanwhile, so the pod is unready.
+
+              Impact/risk:
+              - search and read answer "the brain is unavailable" or fail outright, and the eval's REST profiles fail.
+
+              Likely causes:
+              - Omnigraph is restarting or down (a restart normally takes under 3 minutes).
+              - A bundle change removed or renamed an rt_* query in brain.retrieval.gq, or the policy took invoke_query away from act-brain-reader (a denied stored query answers 404 like a missing one).
+              - act-brain-reader's token is missing from tokens.json after a rotation.
+
+              First actions:
+              - kubectl -n ai exec deploy/brain-tools -- wget -qO- http://127.0.0.1:8081/readyz (lists the missing queries by name)
+              - kubectl -n ai get pods -l app=omnigraph and check that the last restart converged
+              - Compare kubernetes/apps/ai/omnigraph/app/bundle/brain.retrieval.gq with REQUIRED_QUERIES in kubernetes/apps/ai/brain-tools/app/server/search.ts
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#brain-tools"
+        - alert: BrainToolsSearchSlow
+          expr: |
+            histogram_quantile(0.95, sum by (le) (rate(brain_tools_latency_seconds_bucket{tool="search"}[15m]))) > 3
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: brain-tools
+          annotations:
+            summary: "brain-tools search p95 is over 3 seconds (ai/brain-tools)"
+            description: |
+              What's happening:
+              - The 95th percentile of search calls took more than 3 seconds for 15 minutes. The budget is 1 second fused and 3 seconds with a rerank.
+
+              Impact/risk:
+              - Agents wait longer for every brain question; near the 8-second deadline searches start failing with "the brain did not answer in time".
+
+              Likely causes:
+              - tei-embeddings is queueing behind a bulk writer (an importer's embed step or the startup backfill), so the question embedding is slow.
+              - Omnigraph is slow: the fringe-workstation node is under memory pressure, or a large load is running.
+              - A stored query lost its prefix filter and scans every passage.
+
+              First actions:
+              - Grafana, Brain retrieval quality: the TEI queue time panel and the importers' embed runs
+              - kubectl -n ai logs deploy/brain-tools --tail=100 | grep '"tool":"search"' (the ms field per call)
+              - curl the REST API with debug=1 from a pod in ai to see the per-leg timings
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#brain-tools"
+        - alert: BrainToolsUpstreamErrors
+          expr: |
+            sum(rate(brain_tools_upstream_requests_total{outcome!="ok"}[15m])) / sum(rate(brain_tools_upstream_requests_total[15m])) > 0.05
+            and
+            sum(increase(brain_tools_upstream_requests_total[15m])) >= 20
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: brain-tools
+          annotations:
+            summary: "Over 5% of brain-tools calls to Omnigraph or LiteLLM fail (ai/brain-tools)"
+            description: |
+              What's happening:
+              - More than 5% of the requests brain-tools sent to Omnigraph or LiteLLM in the last 15 minutes failed (timeout, unreachable, 4xx or 5xx), over at least 20 requests.
+
+              Impact/risk:
+              - Searches come back degraded (keyword-only when LiteLLM fails) or as "the brain is unavailable".
+
+              Likely causes:
+              - Omnigraph is restarting, overloaded or refusing act-brain-reader (401/403).
+              - LiteLLM or tei-embeddings is down, or the brain-tools key is over its budget or rate limit.
+              - A network policy change cut the path (brain-tools egress, omnigraph-ingress or LiteLLM ingress).
+
+              First actions:
+              - Grafana Explore: sum by (upstream, outcome) (rate(brain_tools_upstream_requests_total[15m]))
+              - kubectl -n ai logs deploy/brain-tools --tail=100
+              - kubectl -n ai get pods -l app=omnigraph; kubectl -n ai get pods -l app.kubernetes.io/name=litellm
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#brain-tools"
+        - alert: BrainToolsDegraded
+          expr: |
+            sum(rate(brain_tools_searches_total{mode="keyword_only"}[30m])) / sum(rate(brain_tools_searches_total{profile="p1"}[30m])) > 0.1
+            and
+            sum(increase(brain_tools_searches_total{profile="p1"}[30m])) >= 5
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: brain-tools
+          annotations:
+            summary: "Over 10% of brain searches ran on keywords only (ai/brain-tools)"
+            description: |
+              What's happening:
+              - More than 10% of fused searches in the last 30 minutes could not embed the question and ran their keyword legs only (at least 5 searches).
+
+              Impact/risk:
+              - Searches miss everything that matches by meaning only: Dutch questions on English notes, paraphrases, synonyms.
+
+              Likely causes:
+              - tei-embeddings is starved or down (TeiEmbeddingsDown), often behind a bulk embed by an importer or the startup backfill.
+              - The brain-tools LiteLLM key is over its budget or rate limit, or was not registered (log of the litellm-key-register-brain-tools Job).
+              - The embedding contract no longer matches the schema's @embed model (brain_tools_embedding_contract_ok 0), which turns meaning legs off on purpose.
+
+              First actions:
+              - Grafana, Brain retrieval quality: TEI queue time p95
+              - kubectl -n ai logs job/litellm-key-register-brain-tools
+              - kubectl -n ai exec deploy/brain-tools -- wget -qO- http://127.0.0.1:8081/readyz (embedding_contract_ok and its reason)
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#brain-tools"
+        - alert: BrainToolsEmbeddingContractMismatch
+          expr: |
+            max(brain_tools_embedding_contract_ok) == 0
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: brain-tools
+          annotations:
+            summary: "The embedding contract no longer matches the brain schema, so brain-tools searches without meaning legs (ai/brain-tools)"
+            description: |
+              What's happening:
+              - brain-tools compares the omnigraph-embedding-contract ConfigMap (model and dimensions) with the @embed declarations of Passage, Note and Topic in the live brain schema. They have disagreed, or the schema could not be read, for 15 minutes.
+
+              Impact/risk:
+              - A question vector from another model would rank passages at random, so brain-tools turns every meaning leg off and answers from keywords only.
+
+              Likely causes:
+              - brain.pg changed its embedding model or dimensions without the contract (the contract test in pre-commit should have stopped this).
+              - The contract ConfigMap is missing or unreadable in the pod.
+
+              First actions:
+              - kubectl -n ai exec deploy/brain-tools -- wget -qO- http://127.0.0.1:8081/readyz (embedding_contract_reason)
+              - python3 scripts/test_omnigraph_embedding_contract.py
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#brain-tools"
+        - alert: BrainToolsKeyBudgetNearlySpent
+          expr: |
+            max(litellm_key_spend{key_alias="brain-tools"}) / max(litellm_key_max_budget{key_alias="brain-tools"} > 0) > 0.8
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: brain-tools
+          annotations:
+            summary: "brain-tools has used over 80% of its 30-day LiteLLM budget (ai/brain-tools key)"
+            description: |
+              What's happening:
+              - The brain-tools virtual key has spent more than 80% of its max_budget of USD 1 in the current 30-day window. It only embeds questions with the local granite model, which LiteLLM prices at 0.
+
+              Impact/risk:
+              - Once the budget is spent every question embedding fails and searches run keyword-only.
+
+              Likely causes:
+              - A priced model was added to the key or the embedding model got a price in the LiteLLM config.
+              - A loop is calling search far more often than people and agents do.
+
+              First actions:
+              - Check the key's spend by model in the LiteLLM UI or litellm-db
+              - kubectl -n ai logs deploy/brain-tools --tail=200 (call rate)
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#brain-tools"

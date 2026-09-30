@@ -1,0 +1,48 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: brain-tools
+  namespace: ai
+  labels:
+    app.kubernetes.io/part-of: omnigraph
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: brain-tools
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: litellm
+      ports:
+        - protocol: TCP
+          port: 8080
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: omnigraph-brain-eval
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - protocol: TCP
+          port: 8081
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: omnigraph
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: litellm
+      ports:
+        - protocol: TCP
+          port: 4000

@@ -1,0 +1,22 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: brain-tools
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: brain-tools
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: brain-tools
+  endpoints:
+    - port: rest
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      metricRelabelConfigs:
+        - action: keep
+          sourceLabels:
+            - __name__
+          regex: "brain_tools_.*"
