@@ -5,8 +5,10 @@ metadata:
   name: openbao-snapshot
   namespace: security
 ---
-# Nightly raft snapshot -> Garage (S3). bao auths via k8s auth (snapshot policy); the
-# uploader uses the existing cnpg-backup-s3 Garage credentials. DR for full storage loss.
+# Nightly raft snapshot -> the off-site Garage (S3, garage-fsn1). bao auths via k8s auth
+# (snapshot policy); the uploader uses the cnpg-backup-s3-offsite credentials that the CNPG
+# ObjectStores also use. DR for full storage loss. It used cnpg-backup-s3 (the retired LAN
+# Garage at 10.0.0.110) until 2026-09-30, which silently kept every snapshot on-cluster.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -56,11 +58,11 @@ spec:
                 - "/scripts/upload.sh"
               env:
                 - {name: HOME, value: /tmp}
-                - {name: AWS_ACCESS_KEY_ID, valueFrom: {secretKeyRef: {name: cnpg-backup-s3, key: S3_ACCESS_KEY_ID}}}
-                - {name: AWS_SECRET_ACCESS_KEY, valueFrom: {secretKeyRef: {name: cnpg-backup-s3, key: S3_SECRET_ACCESS_KEY}}}
-                - {name: AWS_DEFAULT_REGION, valueFrom: {secretKeyRef: {name: cnpg-backup-s3, key: S3_REGION}}}
-                - {name: S3_ENDPOINT, valueFrom: {secretKeyRef: {name: cnpg-backup-s3, key: S3_ENDPOINT}}}
-                - {name: S3_BUCKET, valueFrom: {secretKeyRef: {name: cnpg-backup-s3, key: S3_BUCKET}}}
+                - {name: AWS_ACCESS_KEY_ID, valueFrom: {secretKeyRef: {name: cnpg-backup-s3-offsite, key: S3_ACCESS_KEY_ID}}}
+                - {name: AWS_SECRET_ACCESS_KEY, valueFrom: {secretKeyRef: {name: cnpg-backup-s3-offsite, key: S3_SECRET_ACCESS_KEY}}}
+                - {name: AWS_DEFAULT_REGION, valueFrom: {secretKeyRef: {name: cnpg-backup-s3-offsite, key: S3_REGION}}}
+                - {name: S3_ENDPOINT, valueFrom: {secretKeyRef: {name: cnpg-backup-s3-offsite, key: S3_ENDPOINT}}}
+                - {name: S3_BUCKET, valueFrom: {secretKeyRef: {name: cnpg-backup-s3-offsite, key: S3_BUCKET}}}
               volumeMounts:
                 - {name: scripts, mountPath: /scripts}
                 - {name: shared, mountPath: /shared}
