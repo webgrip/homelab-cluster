@@ -1,0 +1,211 @@
+query rt_doc_passages_vec($v: Vector(384)) @description("Forge document passages nearest to a question vector, for brain-tools") {
+  match {
+    $p: Passage
+    $p passageOf $a
+    $a.slug starts_with "forge/"
+  }
+  return { $p.@id, $a.slug, $a.name, $a.kind, $a.url, $a.timestamp, $p.chunk_index, $p.text }
+  order { nearest($p.embedding, $v) }
+  limit 40
+}
+
+query rt_doc_passages_bm25($k: String) @description("Forge document passages ranked by keywords, for brain-tools") {
+  match {
+    $p: Passage
+    $p passageOf $a
+    $a.slug starts_with "forge/"
+  }
+  return { $p.@id, $a.slug, $a.name, $a.kind, $a.url, $a.timestamp, $p.chunk_index, $p.text }
+  order { bm25($p.text, $k) desc }
+  limit 40
+}
+
+query rt_note_passages_vec($v: Vector(384)) @description("Obsidian note passages nearest to a question vector, with their note, for brain-tools") {
+  match {
+    $p: Passage
+    $p passageOf $a
+    $a.slug starts_with "obsidian-file/"
+    $n noteFromArtifact $a
+  }
+  return { $p.@id, $a.slug, $n.slug, $n.name, $n.kind, $n.updatedAt, $p.chunk_index, $p.text }
+  order { nearest($p.embedding, $v) }
+  limit 40
+}
+
+query rt_note_passages_bm25($k: String) @description("Obsidian note passages ranked by keywords, with their note, for brain-tools") {
+  match {
+    $p: Passage
+    $p passageOf $a
+    $a.slug starts_with "obsidian-file/"
+    $n noteFromArtifact $a
+  }
+  return { $p.@id, $a.slug, $n.slug, $n.name, $n.kind, $n.updatedAt, $p.chunk_index, $p.text }
+  order { bm25($p.text, $k) desc }
+  limit 40
+}
+
+query rt_captures_vec($v: Vector(384)) @description("Captured nt- notes nearest to a question vector, for brain-tools") {
+  match {
+    $n: Note
+    $n.slug starts_with "nt-"
+  }
+  return { $n.slug, $n.name, $n.kind, $n.updatedAt, $n.content }
+  order { nearest($n.embedding, $v) }
+  limit 10
+}
+
+query rt_captures_bm25($k: String) @description("Captured nt- notes ranked by keywords, for brain-tools") {
+  match {
+    $n: Note
+    $n.slug starts_with "nt-"
+  }
+  return { $n.slug, $n.name, $n.kind, $n.updatedAt, $n.content }
+  order { bm25($n.content, $k) desc }
+  limit 10
+}
+
+query rt_summaries_vec($v: Vector(384)) @description("Derived summary notes nearest to a question vector, for brain-tools") {
+  match {
+    $n: Note
+    $n.slug starts_with "derived/summary/"
+  }
+  return { $n.slug, $n.name, $n.kind, $n.updatedAt, $n.content }
+  order { nearest($n.embedding, $v) }
+  limit 5
+}
+
+query rt_summaries_bm25($k: String) @description("Derived summary notes ranked by keywords, for brain-tools") {
+  match {
+    $n: Note
+    $n.slug starts_with "derived/summary/"
+  }
+  return { $n.slug, $n.name, $n.kind, $n.updatedAt, $n.content }
+  order { bm25($n.content, $k) desc }
+  limit 5
+}
+
+query rt_topics_vec($v: Vector(384)) @description("Topics nearest to a question vector, for brain-tools") {
+  match {
+    $t: Topic
+  }
+  return { $t.slug, $t.name, $t.description }
+  order { nearest($t.embedding, $v) }
+  limit 8
+}
+
+query rt_topics_bm25($k: String) @description("Topics ranked by keywords on their name, for brain-tools") {
+  match {
+    $t: Topic
+  }
+  return { $t.slug, $t.name, $t.description }
+  order { bm25($t.name, $k) desc }
+  limit 8
+}
+
+query rt_artifact_card($slug: String) @description("One artifact's title, kind, link and time, without its text, for brain-tools") {
+  match {
+    $a: Artifact { slug: $slug }
+  }
+  return { $a.slug, $a.name, $a.kind, $a.url, $a.timestamp }
+  limit 1
+}
+
+query rt_note_card($slug: String) @description("One note's title, kind and update time, without its text, for brain-tools") {
+  match {
+    $n: Note { slug: $slug }
+  }
+  return { $n.slug, $n.name, $n.kind, $n.updatedAt }
+  limit 1
+}
+
+query rt_note_text($slug: String) @description("One note with its text, for reading a capture or a summary in brain-tools") {
+  match {
+    $n: Note { slug: $slug }
+  }
+  return { $n.slug, $n.name, $n.kind, $n.updatedAt, $n.content }
+  limit 1
+}
+
+query rt_passage_window($slug: String, $lo: I32, $hi: I32) @description("The passages of one artifact between two chunk indexes, for brain-tools read") {
+  match {
+    $a: Artifact { slug: $slug }
+    $p passageOf $a
+    $p.chunk_index >= $lo
+    $p.chunk_index <= $hi
+  }
+  return { $p.@id, $p.chunk_index, $p.text }
+  order { $p.chunk_index asc }
+  limit 5
+}
+
+query rt_artifact_chunks($slug: String) @description("Every passage id and text of one artifact, in order") {
+  match {
+    $a: Artifact { slug: $slug }
+    $p passageOf $a
+  }
+  return { $p.@id, $p.chunk_index, $p.text }
+  order { $p.chunk_index asc }
+  limit 2000
+}
+
+query rt_artifact_authors() @description("Every artifact with its author, for brain-tools' bot down-weighting") {
+  match {
+    $a: Artifact
+    $a artifactFromPerson $u
+  }
+  return { $a.slug, $u.slug, $u.name }
+  limit 8000
+}
+
+query rt_recent_notes($since: DateTime) @description("Notes updated since a time, newest first") {
+  match {
+    $n: Note
+    $n.updatedAt >= $since
+  }
+  return { $n.slug, $n.name, $n.kind, $n.updatedAt }
+  order { $n.updatedAt desc }
+  limit 40
+}
+
+query rt_recent_artifacts($since: DateTime) @description("Artifacts dated since a time, newest first") {
+  match {
+    $a: Artifact
+    $a.timestamp >= $since
+  }
+  return { $a.slug, $a.name, $a.kind, $a.url, $a.timestamp }
+  order { $a.timestamp desc }
+  limit 60
+}
+
+query rt_open_threads($since: DateTime) @description("Forge issues and pull requests opened since a time whose header says State: open") {
+  match {
+    $a: Artifact
+    $a.timestamp >= $since
+    $a.content contains "\nState: open\n"
+  }
+  return { $a.slug, $a.name, $a.url, $a.timestamp }
+  order { $a.timestamp desc }
+  limit 60
+}
+
+query rt_open_checkboxes() @description("Obsidian passages with an unchecked checkbox, with their note") {
+  match {
+    $p: Passage
+    $p.text contains "- [ ] "
+    $p passageOf $a
+    $a.slug starts_with "obsidian-file/"
+    $n noteFromArtifact $a
+  }
+  return { $p.@id, $n.slug, $n.name, $p.text }
+  limit 60
+}
+
+query rt_topic_hubs() @description("Topics with the most documents") {
+  match {
+    $t: Topic
+    $a artifactAboutTopic $t
+  }
+  return { $t.slug, $t.name, count($a) as documents }
+  order { documents desc }
+  limit 20
+}
