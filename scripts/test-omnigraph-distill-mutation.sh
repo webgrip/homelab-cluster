@@ -16,7 +16,11 @@ fresh() {
 }
 
 mutate() {
-  python3 - "$work/tree/$app/distill.py" "$1" "$2" <<'PY'
+  mutate_file distill.py "$1" "$2"
+}
+
+mutate_file() {
+  python3 - "$work/tree/$app/$1" "$2" "$3" <<'PY'
 import sys
 from pathlib import Path
 path, old, new = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
@@ -102,5 +106,17 @@ expect fail "importer-managed edges written"
 fresh
 mutate 'ROWS_PER_LOAD_FILE = 2000' 'ROWS_PER_LOAD_FILE = 9000'
 expect fail "load batches above the write limit"
+
+fresh
+mutate 'if is_textless_artifact(slug, row):' 'if False:'
+expect fail "shadow obsidian-file and textless artifacts distilled"
+
+fresh
+mutate 'return slug.startswith(SHADOW_ARTIFACT_PREFIX) or not str(row.get("n.content") or "").strip()' 'return not str(row.get("n.content") or "").strip()'
+expect fail "shadow obsidian-file artifacts with text distilled"
+
+fresh
+mutate_file snapshot.gq '        $n.slug starts_with "derived/distill/"' ''
+expect fail "summary state rows read as distill state"
 
 exit $wrong

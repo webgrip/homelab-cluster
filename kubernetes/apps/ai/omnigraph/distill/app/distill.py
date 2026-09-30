@@ -27,6 +27,7 @@ ENTITY_PREFIXES = {
 }
 ENTITY_TYPES = tuple(ENTITY_PREFIXES)
 IMPORTER_PREFIXES = ("obsidian/", "forge/")
+SHADOW_ARTIFACT_PREFIX = "obsidian-file/"
 MAX_INPUT_CHARS = 12000
 MAX_TOPICS = 6
 MAX_ALIASES = 8
@@ -89,6 +90,7 @@ class Settings:
 @dataclass
 class Counts:
     documents: int = 0
+    skipped_textless: int = 0
     pending: int = 0
     processed: int = 0
     failed: int = 0
@@ -252,10 +254,16 @@ class Graph:
     entities: dict
     state: dict
     edges: list
+    skipped_textless: int = 0
+
+
+def is_textless_artifact(slug, row):
+    return slug.startswith(SHADOW_ARTIFACT_PREFIX) or not str(row.get("n.content") or "").strip()
 
 
 def read_graph(snapshot_dir):
     documents = {}
+    skipped_textless = 0
     artifacts = {row["n.slug"]: row for row in rows(snapshot_dir, "distill_artifacts") if row.get("n.slug")}
     for row in rows(snapshot_dir, "distill_notes"):
         slug = row.get("n.slug")
@@ -266,6 +274,9 @@ def read_graph(snapshot_dir):
         documents[slug] = Document(slug, "Note", row.get("n.name") or slug, text, sha256(text))
     for slug, row in artifacts.items():
         if slug.startswith(DERIVED):
+            continue
+        if is_textless_artifact(slug, row):
+            skipped_textless += 1
             continue
         text = compose(f"Forgejo {row.get('n.kind') or 'document'}" if slug.startswith("forge/") else row.get("n.kind") or "document", row.get("n.name") or slug, [row.get("n.content")])
         project = slug.split("/", 3)
@@ -300,7 +311,7 @@ def read_graph(snapshot_dir):
     unique = {}
     for edge in edges:
         unique[edge.id or (edge.type, edge.source, edge.target)] = edge
-    return Graph(documents=documents, entities=entities, state=state, edges=list(unique.values()))
+    return Graph(documents=documents, entities=entities, state=state, edges=list(unique.values()), skipped_textless=skipped_textless)
 
 
 def retry_after(header, attempt):
@@ -963,7 +974,7 @@ def parse_args(argv):
 def run(args, now, client_factory=LiteLLM):
     settings = Settings(args.model, args.embed_model, args.candidate_similarity, args.same_similarity, args.related_min_documents, args.max_documents, args.max_spend_usd, args.workers)
     graph = read_graph(args.snapshot_dir)
-    counts = Counts(documents=len(graph.documents))
+    counts = Counts(documents=len(graph.documents), skipped_textless=graph.skipped_textless)
     if not graph.documents and graph.state:
         raise FailClosed(EXIT_NOTHING_VISIBLE, "the snapshot holds no documents; refusing to remove every distilled link")
     key = Path(args.key_file).read_text(encoding="utf-8").strip()

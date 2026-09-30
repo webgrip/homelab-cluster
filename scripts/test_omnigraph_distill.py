@@ -96,8 +96,11 @@ class FakeGraph:
             result = []
             node_match = re.search(r"\$n: (\w+)", body)
             if node_match:
-                fields = re.findall(r"\$n\.(\w+)", body)
+                fields = re.findall(r"\$n\.(\w+)", body.split("return", 1)[1])
+                prefix = re.search(r'\$n\.slug starts_with "([^"]+)"', body)
                 for slug, (node_type, data) in sorted(self.nodes.items()):
+                    if prefix and not slug.startswith(prefix.group(1)):
+                        continue
                     if node_type == node_match.group(1):
                         result.append({f"n.{key}": data[key] for key in fields if data.get(key) is not None})
             else:
@@ -597,6 +600,37 @@ class Incremental(unittest.TestCase):
         llm = FakeLiteLLM(answers())
         Harness(graph, llm, model="other-model").run(LATER)
         self.assertEqual(len(llm.calls), 9)
+
+
+class ShadowArtifactsAndSummaryState(unittest.TestCase):
+    def test_shadow_obsidian_file_artifacts_and_textless_artifacts_are_never_distilled(self):
+        graph = seeded_graph()
+        graph.add("Artifact", slug="obsidian-file/fiets", name="Fiets", kind="document", source="notes-app", timestamp="2026-09-01T00:00:00Z")
+        graph.add("Artifact", slug="obsidian-file/k8s-upgrade", name="K8s upgrade", kind="document", source="notes-app",
+                  content="Upgrading the Kubernetes cluster with Talos.", timestamp="2026-09-01T00:00:00Z")
+        graph.add("Artifact", slug="forge/webgrip/homelab-cluster/doc/empty", name="webgrip/homelab-cluster docs/empty.md", kind="document",
+                  source="other", content="  \n", timestamp="2026-09-01T00:00:00Z")
+        llm = FakeLiteLLM(answers())
+        plan = Harness(graph, llm).run()
+        self.assertEqual(llm.calls.count("Fiets"), 1)
+        self.assertEqual(llm.calls.count("K8s upgrade"), 1)
+        self.assertNotIn("webgrip/homelab-cluster docs/empty.md", llm.calls)
+        self.assertEqual(plan.counts.skipped_textless, 3)
+        distilled = {data["source"] for data in graph.of_type("Distillation").values()}
+        self.assertFalse({source for source in distilled if source.startswith("obsidian-file/")})
+        self.assertNotIn("forge/webgrip/homelab-cluster/doc/empty", distilled)
+        self.assertFalse([edge for edge in graph.owned() if edge[1].startswith("obsidian-file/")])
+
+    def test_summary_state_rows_stay_out_of_the_distill_state(self):
+        graph = seeded_graph()
+        Harness(graph, FakeLiteLLM(answers())).run()
+        graph.add("Distillation", slug="derived/summary/state/topic/kubernetes", source="derived/summary/state/topic/kubernetes",
+                  content_sha256="0" * 64, extractor="summary-v1", processedAt="2026-09-01T00:00:00Z")
+        llm = FakeLiteLLM(answers())
+        plan = Harness(graph, llm).run(LATER)
+        self.assertEqual(llm.calls, [])
+        self.assertEqual(plan.counts.sources_gone, 0)
+        self.assertIn("derived/summary/state/topic/kubernetes", graph.nodes)
 
 
 class LimitsAndFailures(unittest.TestCase):
