@@ -2,6 +2,8 @@
 # yaml-language-server: $schema=https://json.schemastore.org/kustomization
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+resources:
+  - ./prometheusrule.yaml
 configMapGenerator:
   - name: omnigraph-embedding-contract
     files:
@@ -10,3 +12,15 @@ configMapGenerator:
       disableNameSuffixHash: true
       labels:
         app.kubernetes.io/part-of: omnigraph
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled
+  - name: omnigraph-embed-step
+    files:
+      - ./embed_step.py
+      - ./omnigraph_write.sh
+    options:
+      disableNameSuffixHash: true
+      labels:
+        app.kubernetes.io/part-of: omnigraph
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled

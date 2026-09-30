@@ -1,0 +1,70 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: omnigraph-embed-step
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: omnigraph-embed-step
+spec:
+  groups:
+    - name: omnigraph-embed-step.rules
+      rules:
+        - alert: OmnigraphVectorsBacklog
+          expr: |
+            sum by (writer) (last_over_time(omnigraph_embed_rows_missing{job="omnigraph-embed-step"}[3h])) > 500
+          for: 6h
+          labels:
+            severity: warning
+            owner: platform
+            service: omnigraph
+          annotations:
+            summary: "{{ $labels.writer }} has left more than 500 brain rows without a vector for 6h (ai/omnigraph-{{ $labels.writer }})"
+            description: |
+              What's happening:
+              - Every run of the Obsidian vault and Forgejo importers embeds the Note and Passage rows it writes, heals up to a fixed number of its own vectorless rows, and pushes omnigraph_embed_rows_missing{writer,type}: its rows that still have no vector after the run. For {{ $labels.writer }} that count has stayed above 500 for 6 hours.
+
+              Impact/risk:
+              - Rows without a vector are invisible to meaning search: the brain finds them only by keyword, so Dutch and paraphrased questions miss them.
+              - The startup backfill no longer fills brain Passage vectors (VIK-1404), so nothing else catches up.
+
+              Likely causes:
+              - tei-embeddings or LiteLLM is down or slow, so the embed step stops early (log: "embedding skipped ... (litellm answered HTTP ..." or "(deadline reached)").
+              - The omnigraph-embed-key LiteLLM key was rotated, is over its budget or lost the embedding model (log: "litellm answered HTTP 401" or "400").
+              - A large import (a new repo, a vault reorganisation) wrote more rows than the paced embed step fills per run; it drains on its own at up to 1,500 rows an hour for forge-import and 300 a run for vault-import.
+
+              First actions:
+              - kubectl -n ai logs job/<latest omnigraph-{{ $labels.writer }} job> -c embed
+              - kubectl -n ai get pods -l app.kubernetes.io/name=tei-embeddings
+              - Grafana, Brain retrieval quality: the vectorless rows and oldest vectorless row panels, and the TEI queue time panel.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#write-time-vectors"
+        - alert: OmnigraphVectorsReportStale
+          expr: |
+            time() - max by (writer) (last_over_time(omnigraph_embed_last_report_timestamp_seconds{job="omnigraph-embed-step"}[2d])) > 3 * 3600
+            or
+            label_replace(absent_over_time(omnigraph_embed_last_report_timestamp_seconds{job="omnigraph-embed-step", writer="vault-import"}[2d]), "writer", "vault-import", "", "")
+            or
+            label_replace(absent_over_time(omnigraph_embed_last_report_timestamp_seconds{job="omnigraph-embed-step", writer="forge-import"}[2d]), "writer", "forge-import", "", "")
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: omnigraph
+          annotations:
+            summary: "{{ $labels.writer }} has not reported its vectorless rows for 3h (ai/omnigraph-{{ $labels.writer }})"
+            description: |
+              What's happening:
+              - The report container of every successful {{ $labels.writer }} run pushes omnigraph_embed_* to vmagent. No report has arrived for more than 3 hours, so OmnigraphVectorsBacklog cannot see a growing backlog.
+
+              Impact/risk:
+              - Brain rows could be piling up without vectors unnoticed.
+
+              Likely causes:
+              - The importer itself fails before its report container (OmnigraphVaultImportStale or OmnigraphForgeImportStale fire too).
+              - vmagent refused or could not be reached (log of the report container: "embed report not pushed").
+
+              First actions:
+              - kubectl -n ai logs job/<latest omnigraph-{{ $labels.writer }} job> -c report
+              - kubectl -n observability get pods -l app.kubernetes.io/name=vmagent
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#write-time-vectors"
