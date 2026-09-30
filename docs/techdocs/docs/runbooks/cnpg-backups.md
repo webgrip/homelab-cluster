@@ -244,12 +244,34 @@ An app opts into a running standby by setting `cnpg.io/hibernation: "off"` in it
   standby cannot catch up. Rebuild it instead: delete the `cnpg-disaster-recovery` Cluster (its PVCs
   go with it) and reconcile the app's database Kustomization; it bootstraps fresh from the latest backup.
 
+A running standby gets stuck the same way when the archive has a hole: a segment that was never
+uploaded, or one the object store acknowledged and then lost. The standby logs
+`waiting for WAL to become available at <LSN>` and its `plugin-barman-cloud` container fails the same
+segment every few seconds, with `IncompleteRead(0 bytes read, N more expected)` for a lost object. It
+never skips the hole. Rebuild it from a base backup taken **after** the hole (`kubectl -n <ns> get
+backups.postgresql.cnpg.io` shows `completed` with a `beginWal` past the missing segment). The Kyverno
+`stateful-delete-protection-enforce` policy denies the delete of the Cluster and of its PVCs until each
+carries the break-glass annotation, and the garbage collector deletes the PVCs through their owner
+reference to the Cluster, so annotate all three first:
+
+```bash
+kubectl -n <ns> annotate cluster.postgresql.cnpg.io/cnpg-disaster-recovery policy.webgrip.io/allow-stateful-delete=true
+kubectl -n <ns> annotate pvc cnpg-disaster-recovery-1 cnpg-disaster-recovery-1-wal policy.webgrip.io/allow-stateful-delete=true
+kubectl -n <ns> delete cluster.postgresql.cnpg.io/cnpg-disaster-recovery --wait=true
+flux -n <ns> reconcile kustomization <database kustomization> --with-source
+kubectl -n <ns> create job --from=cronjob/cnpg-disaster-recovery-check cnpg-disaster-recovery-check-manual
+```
+
+The check passes on a caught-up standby through its LSN comparison. It fails, rather than reporting a
+lag of 0, when the standby is behind and has replayed no transaction since it started: that is what a
+standby waiting on a hole looks like after a pod restart, and until 2026-09-30 the check passed it.
+
 ## Alerting
 
 The CNPG monitoring rules in this repo include three groups:
 
 - `cnpg-backup.rules`: operator down, backup/WAL archiving errors, no recent backup.
-- `cnpg-disaster-recovery.rules`: DR metrics missing, promoted DR (not in recovery), WAL receiver down, replay lag high.
+- `cnpg-disaster-recovery.rules`: `CNPGDisasterRecoveryCheckStale`, the `cnpg-disaster-recovery-check` CronJob of a namespace that runs it has not passed for 3h. Until 2026-09-30 this group watched a `cnpg-dr` namespace that does not exist, so a standby could fail its check for days unannounced.
 - `cnpg-restore-test.rules`: restore drill failed recently, restore drill stale (no recent successful run).
 
 The restore-drill alerts depend on kube-state-metrics exporting CronJob/Job series (for example `kube_cronjob_status_last_successful_time` and `kube_job_status_failed`). If your kube-state-metrics version uses different series or labels, adjust the expressions accordingly.
@@ -312,8 +334,7 @@ Validate these are not firing:
 - `CNPGWALArchivingFailed`
 - `CNPGRestoreTestFailed`
 - `CNPGRestoreTestStale`
-- `CNPGDisasterRecoveryNotInRecovery`
-- `CNPGDisasterRecoveryReplayLagHigh`
+- `CNPGDisasterRecoveryCheckStale`
 
 ## See also
 

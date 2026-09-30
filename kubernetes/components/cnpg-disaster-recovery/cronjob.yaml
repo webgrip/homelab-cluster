@@ -130,10 +130,14 @@ spec:
                     esac
                   fi
 
-                  lag_seconds=$(run_psql "$target_pod" "SELECT COALESCE(EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp())), 0)::int;")
+                  lag_seconds=$(run_psql "$target_pod" "SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::int;")
 
                   case "$lag_seconds" in
-                    ''|*[!0-9]*)
+                    '')
+                      echo "[cnpg-disaster-recovery-check] FAIL: no transaction replayed since the standby started, so its replay lag is unknown"
+                      exit 1
+                      ;;
+                    *[!0-9]*)
                       echo "[cnpg-disaster-recovery-check] FAIL: replay lag not an integer: '$lag_seconds'"
                       exit 1
                       ;;

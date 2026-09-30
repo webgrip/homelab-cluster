@@ -222,67 +222,42 @@ spec:
 
     - name: cnpg-disaster-recovery.rules
       rules:
-        - alert: CNPGDisasterRecoveryRefreshFailed
+        - alert: CNPGDisasterRecoveryCheckStale
           expr: |
-            max by (namespace) (
-              kube_job_status_failed{namespace="cnpg-dr", job_name=~"cnpg-disaster-recovery-refresh-.*"} == 1
-              and on (namespace, job_name)
-              (time() - kube_job_created{namespace="cnpg-dr", job_name=~"cnpg-disaster-recovery-refresh-.*"} < 86400)
-            ) > 0
-          for: 10m
+            (
+              time() - max by (exported_namespace) (
+                kube_cronjob_status_last_successful_time{job="kube-state-metrics", cronjob="cnpg-disaster-recovery-check"}
+              ) > 10800
+            )
+            unless on (exported_namespace)
+              max by (exported_namespace) (
+                kube_cronjob_spec_suspend{job="kube-state-metrics", cronjob="cnpg-disaster-recovery-check"}
+              ) == 1
+          for: 15m
           labels:
             severity: warning
             owner: platform
             service: cnpg
           annotations:
-            summary: "CNPG DR refresh failed (cnpg-dr)"
+            summary: "CNPG DR standby check stale ({{ $labels.exported_namespace }})"
             description: |
               What's happening:
-              - A cnpg-disaster-recovery-refresh Job failed in the last 24h in namespace cnpg-dr.
+              - The cnpg-disaster-recovery-check CronJob in {{ $labels.exported_namespace }} has not passed for over 3h.
 
               Impact/risk:
-              - DR replica may be stale; failover readiness reduced.
+              - The cnpg-disaster-recovery standby is not proven to be close to its source; it may be stuck on
+                a missing or unreadable WAL segment in the object store and will never catch up by itself.
 
               Likely causes:
-              - Repository connectivity/auth issues
-              - Job configuration or dependency failure
-              - Operator/controller issues
+              - A hole in the WAL archive (archiving disabled, or the object store lost the segment's data)
+              - The standby pod is not running, or the object store is unreachable
+              - The check Job itself cannot reach the API server
 
               First actions:
-              - Inspect the Job logs for the refresh container
-              - Check recent events in namespace cnpg-dr
-              - Verify connectivity/credentials to the backup repository
-            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/cnpg-backups"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"
-
-        - alert: CNPGDisasterRecoveryRefreshStale
-          expr: |
-            (kube_cronjob_status_last_successful_time{namespace="cnpg-dr", cronjob="cnpg-disaster-recovery-refresh"} == 0)
-            or
-            (time() - kube_cronjob_status_last_successful_time{namespace="cnpg-dr", cronjob="cnpg-disaster-recovery-refresh"} > 93600)
-          for: 30m
-          labels:
-            severity: warning
-            owner: platform
-            service: cnpg
-          annotations:
-            summary: "CNPG DR refresh stale (cnpg-dr)"
-            description: |
-              What's happening:
-              - The cnpg-disaster-recovery-refresh CronJob has no successful runs, or last success is older than 26h.
-
-              Impact/risk:
-              - DR refresh is stale; replica may drift behind primary.
-
-              Likely causes:
-              - CronJob not running/scheduled
-              - Job failures due to repo connectivity/auth
-              - Namespace/resource constraints
-
-              First actions:
-              - Check CronJob schedule and recent Jobs in cnpg-dr
-              - Inspect failed Job logs/events
-              - Verify repository connectivity and credentials
+              - kubectl -n {{ $labels.exported_namespace }} logs -l app.kubernetes.io/name=cnpg-disaster-recovery-check --tail=20
+              - kubectl -n {{ $labels.exported_namespace }} logs cnpg-disaster-recovery-1 -c plugin-barman-cloud --tail=20
+              - A segment that fails to download every retry means rebuilding the standby from the latest
+                base backup (runbook, "The PVC ages out")
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/cnpg-backups"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/dashboards?query=cnpg"
 
