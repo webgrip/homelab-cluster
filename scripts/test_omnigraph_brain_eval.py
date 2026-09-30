@@ -233,6 +233,7 @@ class FakeBrainTools:
         self.p1_order = {}
         self.p0_swap = False
         self.p0_truncated_questions = set()
+        self.p0_tie_flips_left = {}
         self.tool_chars = 1200
         self.answer_commit = None
 
@@ -242,6 +243,9 @@ class FakeBrainTools:
         documents = interleaved(*RECALL.get(question, ([], [], [])))
         if profile == "p0" and self.p0_swap and len(documents) > 2:
             documents = [documents[0], documents[2], documents[1], *documents[3:]]
+        if profile == "p0" and self.p0_tie_flips_left.get(question, 0) > 0:
+            self.p0_tie_flips_left[question] -= 1
+            documents = [documents[1], documents[0], *documents[2:]]
         if profile == "p0" and question in self.p0_truncated_questions:
             documents = documents[:-1]
         if profile == "p1":
@@ -623,6 +627,14 @@ class BrainToolsProfiles(unittest.TestCase):
         self.assertEqual(replica["run"]["excluded_cases"], [["c05", "unanswerable"]])
         self.assertNotIn("c05", {case["id"] for case in replica["cases"]})
         self.assertEqual(replica["run"]["replicas"]["p0:p0-rest"]["differing"], ["c05"])
+
+    def test_a_tie_the_server_orders_differently_on_one_draw_is_not_a_replica_fault(self):
+        self.harness.brain_tools.p0_tie_flips_left = {Q1: 1}
+        result = self.harness.run("retrieval", "--profile=p0", "--profile=p0-rest", global_args=(f"--snapshot={SNAPSHOT}",))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        check = json.loads(self.harness.results("retrieval-p0-rest")[0].read_text())["run"]["replicas"]["p0:p0-rest"]
+        self.assertEqual((check["differing"], check["tie_reordered"], check["identical"]), ([], ["c01"], len(CASES)))
+        self.assertIn('brain_eval_replica_identical_ratio{profile="p0-rest"} 1', (self.harness.out / "metrics.prom").read_text())
 
     def test_brain_tools_answering_from_another_commit_invalidates_the_run(self):
         self.harness.brain_tools.answer_commit = "01OTHERCOMMIT0000000000000"

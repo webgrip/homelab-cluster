@@ -897,6 +897,7 @@ def rest_profile(profile):
 
 PROFILE_RUNNERS = {"p0": direct_profile(profile_p0), "p0-rest": rest_profile("p0"), "p1": rest_profile("p1")}
 REPLICA_PAIRS = (("p0", "p0-rest"),)
+REPLICA_REDRAWS = 4
 P0_QUERIES = ("recall_notes", "recall_passages", "recall_topics")
 
 
@@ -1656,24 +1657,45 @@ def run_retrieval(args, workspace, sink, omnigraph, cases, profiles, run_label="
             leg_p95_seconds=round(quantile(legs, 0.95) or 0, 4), payload_p95_chars=quantile(payloads, 0.95))
         documents[profile] = {"profile": profile, "aggregates": table, "cases": results}
     sink.add("brain_eval_stale_cases", {}, len(stale))
-    replicas = replica_checks(full_rankings, sink)
+    questions = {case["id"]: case["question"] for case in cases}
+
+    def redraw(profile, case_id):
+        retrieved = PROFILE_RUNNERS[profile](omnigraph, questions[case_id], snapshot, brain_tools)
+        return catalog.equivalence.canonical_ranking(retrieved.ranked)
+
+    replicas = replica_checks(full_rankings, sink, redraw)
     run = {"mode": run_label, "replicas": replicas, "harness_version": HARNESS_VERSION, "snapshot": snapshot, "snapshot_time": snapshot_time.isoformat(),
            "started": utc_now().isoformat(), "stale_cases": stale, "excluded_cases": excluded, "sentinel_runs": sentinel_runs,
            "store": workspace.store_kind if workspace else "none"}
     return run, documents, grades_by_case
 
 
-def replica_checks(full_rankings, sink):
+def rankings_meet_on_redraw(redraw, original, replica, case_id, first_original, first_replica):
+    seen_original, seen_replica = {tuple(first_original)}, {tuple(first_replica)}
+    for _ in range(REPLICA_REDRAWS):
+        seen_original.add(tuple(redraw(original, case_id)))
+        seen_replica.add(tuple(redraw(replica, case_id)))
+        if seen_original & seen_replica:
+            return True
+    return False
+
+
+def replica_checks(full_rankings, sink, redraw):
     checks = {}
     for original, replica in REPLICA_PAIRS:
         if original not in full_rankings or replica not in full_rankings:
             continue
         shared = sorted(set(full_rankings[original]) & set(full_rankings[replica]))
-        differing = [case_id for case_id in shared if full_rankings[original][case_id] != full_rankings[replica][case_id]]
+        first_draw_differing = [case_id for case_id in shared if full_rankings[original][case_id] != full_rankings[replica][case_id]]
+        tie_reordered = [case_id for case_id in first_draw_differing
+                         if rankings_meet_on_redraw(redraw, original, replica, case_id, full_rankings[original][case_id], full_rankings[replica][case_id])]
+        differing = [case_id for case_id in first_draw_differing if case_id not in tie_reordered]
         ratio = (len(shared) - len(differing)) / len(shared) if shared else 0.0
         sink.add("brain_eval_replica_identical_ratio", {"profile": replica}, ratio)
-        log("replica check", original=original, replica=replica, cases=len(shared), identical=len(shared) - len(differing), differing=differing)
-        checks[f"{original}:{replica}"] = {"cases": len(shared), "identical": len(shared) - len(differing), "differing": differing}
+        log("replica check", original=original, replica=replica, cases=len(shared), identical=len(shared) - len(differing), differing=differing,
+            tie_reordered=tie_reordered, redraws=REPLICA_REDRAWS)
+        checks[f"{original}:{replica}"] = {"cases": len(shared), "identical": len(shared) - len(differing), "differing": differing,
+                                           "tie_reordered": tie_reordered, "redraws": REPLICA_REDRAWS}
     return checks
 
 
