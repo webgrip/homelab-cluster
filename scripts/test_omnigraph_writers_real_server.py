@@ -122,7 +122,7 @@ class RealServerWriters(unittest.TestCase):
         (vault / "Garden.md").write_text(LONG_NOTE, encoding="utf-8")
         (vault / "Idea.md").write_text("A short idea.", encoding="utf-8")
         plan, _ = self.vault_cycle(sandbox, scripts, vault, NOW)
-        self.assertGreater(plan.counts.passages_written, 3)
+        self.assertGreaterEqual(plan.counts.passages_written, 3)
         self.sh(scripts["snapshot.sh"], sandbox)
         passages = {row["p.@id"] for row in self.rows(sandbox, "vault_passages")}
         self.assertEqual(len(passages), plan.counts.passages_written)

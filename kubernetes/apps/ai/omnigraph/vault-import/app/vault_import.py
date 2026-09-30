@@ -11,7 +11,7 @@ from pathlib import Path, PurePosixPath
 
 SLUG_PREFIX = "obsidian/"
 SHADOW_PREFIX = "obsidian-file/"
-CHUNKER = "obsidian-chunks-v1"
+CHUNKER = "obsidian-chunks-v2"
 CHUNK_CHARS = 1200
 MIN_CHUNK_BUDGET = 400
 MIN_CHUNKED_NOTE_CHARS = 80
@@ -481,27 +481,38 @@ def split_long(paragraph, budget):
     return pieces
 
 
+def chunk_header(name, heading):
+    header = name.strip() + (HEADING_SEPARATOR + heading if heading else "")
+    return header[:CHUNK_CHARS - MIN_CHUNK_BUDGET - 1]
+
+
 def chunk_note(name, content):
     if content is None or len(content.strip()) < MIN_CHUNKED_NOTE_CHARS:
         return []
     chunks = []
+    header, body, budget = None, "", 0
     for heading, text in sections(content):
-        header = name.strip() + (HEADING_SEPARATOR + heading if heading else "")
-        header = header[:CHUNK_CHARS - MIN_CHUNK_BUDGET - 1]
+        paragraphs = [paragraph.strip("\n").rstrip() for paragraph in re.split(r"\n\s*\n", text) if paragraph.strip()]
+        if not paragraphs:
+            continue
+        labelled = "\n\n".join(([heading] if heading else []) + paragraphs)
+        if body and len(body) + 2 + len(labelled) <= budget:
+            body = f"{body}\n\n{labelled}"
+            continue
+        if body:
+            chunks.append(f"{header}\n{body}")
+        header = chunk_header(name, heading)
         budget = CHUNK_CHARS - len(header) - 1
-        current = ""
-        for paragraph in re.split(r"\n\s*\n", text):
-            paragraph = paragraph.strip("\n").rstrip()
-            if not paragraph.strip():
-                continue
+        body = ""
+        for paragraph in paragraphs:
             for piece in split_long(paragraph, budget):
-                if current and len(current) + 2 + len(piece) > budget:
-                    chunks.append(f"{header}\n{current}")
-                    current = piece
+                if body and len(body) + 2 + len(piece) > budget:
+                    chunks.append(f"{header}\n{body}")
+                    body = piece
                 else:
-                    current = f"{current}\n\n{piece}" if current else piece
-        if current:
-            chunks.append(f"{header}\n{current}")
+                    body = f"{body}\n\n{piece}" if body else piece
+    if body:
+        chunks.append(f"{header}\n{body}")
     return chunks
 
 

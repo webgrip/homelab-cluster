@@ -471,10 +471,10 @@ class ObsidianChunks(unittest.TestCase):
         firsts = [text.split("\n", 1)[0] for _, text in chunks]
         self.assertEqual(firsts[0], "Garden plan")
         self.assertIn("Garden plan \u203a Soil", firsts)
-        self.assertIn("Garden plan \u203a Watering", firsts)
-        self.assertFalse([first for first in firsts if "not a heading" in first])
+        self.assertTrue([text for _, text in chunks if "\nWatering\n" in text])
+        self.assertTrue([text for _, text in chunks if "# not a heading inside code" in text])
         self.assertTrue(all(len(text) <= vault_import.CHUNK_CHARS for _, text in chunks))
-        self.assertGreater(len(chunks), 3)
+        self.assertGreaterEqual(len(chunks), 3)
 
     def test_notes_under_80_characters_get_no_chunks(self):
         self.assertNotIn("obsidian-file/tiny", self.run.graph.artifacts)
@@ -552,6 +552,17 @@ class ObsidianChunks(unittest.TestCase):
 
 
 class ChunkShape(unittest.TestCase):
+    def test_short_sections_share_a_chunk_under_the_first_heading(self):
+        body = "\n\n".join(f"## Part {index}\n\nShort text {index}." for index in range(6))
+        chunks = vault_import.chunk_note("Notes", "Opening line of the note that is long enough to be chunked on its own.\n\n" + body)
+        self.assertEqual(len(chunks), 1)
+        self.assertTrue(chunks[0].startswith("Notes\nOpening line"))
+        self.assertEqual(re.findall(r"^Part \d$", chunks[0], re.M), [f"Part {index}" for index in range(6)])
+
+    def test_a_section_that_does_not_fit_starts_its_own_chunk_with_its_heading(self):
+        chunks = vault_import.chunk_note("Notes", "Intro text that is long enough to be chunked on its own, really.\n\n## Big\n\n" + "word " * 400)
+        self.assertEqual([chunk.split("\n", 1)[0] for chunk in chunks][:2], ["Notes", "Notes \u203a Big"])
+
     def test_long_titles_and_unbroken_text_stay_within_the_chunk_limit(self):
         chunks = vault_import.chunk_note("T" * 1500, "x" * 5000 + "\n\n# " + "H" * 900 + "\n\n" + "word " * 900)
         self.assertTrue(chunks)
