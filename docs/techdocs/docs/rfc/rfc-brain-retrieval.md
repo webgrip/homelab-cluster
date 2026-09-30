@@ -1044,8 +1044,14 @@ its LiteLLM key, network paths on both ends, five alerts plus a contract-mismatc
   query, embedding contract matches the schema).
 - The `claude-code` key's tools list holds `brain_tools-search` and `brain_tools-read`; a search through
   that key answered 8 cited sources in 5,427 characters in 0.33 s, and a `read` of one of its refs in 0.08 s.
-- Replica check: `p0` through brain-tools ranks the same documents as the direct `p0` for 33 of 33 scored
-  cases (`brain_eval_replica_identical_ratio` 1).
+- Replica check: `p0` through brain-tools ranks the same documents as the direct `p0` for all 36 cases
+  (`brain_eval_replica_identical_ratio` 1, run `omnigraph-brain-eval-gate-retrieval-p4-redraw` on graph
+  commit `01M3RHHEYK51EA3EE6TKZXR72P`). The first run compared only the 33 scored cases; the three
+  `unanswerable` cases have no expected documents but still have a ranking, so the check now covers them.
+  Covering them exposed that Omnigraph orders tied `rrf` rows differently from call to call on one pinned
+  commit: 12 direct `recall_passages` calls for one question gave two orders. The direct `p0` disagrees with
+  itself, so a first-draw mismatch is redrawn up to four times on both sides; one case of 36 needed a redraw,
+  none stayed different. The same run repeats the gate decision: not adopted, dev mean delta −0.018.
 - Search p95 over the first hour: 0.48 s on MCP, 0.95 s on REST (the gate's `p1` runs included).
 
 Gate `omnigraph-brain-eval-gate-retrieval-p4`, `p0` against `p1`, same snapshot, provisional set (33 scored
@@ -1086,6 +1092,8 @@ Changes from the plan:
   from the `brain-tools-server` ConfigMap on the digest-pinned official `node` 24.21.0 image with Node's type
   stripping; a ready repository with the explorer's CI (build, grype CVE gate, cosign) waits locally for
   Ryan to create the remote. The Deployment then switches to the signed image and the source leaves this repo.
+  What the switch needs from this repo is in place: the OpenBao `cosign-signer` role lists `webgrip/brain-tools`,
+  and the `brain-tools-harbor-pull` pull secret is synced and mounted.
 - **No runtime dependencies.** The MCP transport is a small stateless JSON-RPC handler instead of
   `@modelcontextprotocol/sdk`, so the provisional pod needs no `npm install`; the official 1.31.0 client
   and LiteLLM both drive it (a conformance test in the repository keeps it that way).
