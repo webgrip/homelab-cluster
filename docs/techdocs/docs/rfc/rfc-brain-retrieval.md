@@ -1033,6 +1033,72 @@ signal that TEI is starved), `BrainToolsCatalogIncomplete`.
 Expected to move: nDCG@8 and Recall@8, most on docs-en (dedupe) and notes (chunks, stopwords);
 payload from 9k–85k tokens to at most about 1.5k.
 
+**Outcome (2026-09-30).** Shipped: the 21 `rt_*` stored queries in `brain.retrieval.gq` (one push, one
+restart, converged with every graph serving), `brain-tools` v0.1 with `search` and `read` on MCP and REST,
+its LiteLLM key, network paths on both ends, five alerts plus a contract-mismatch and a budget alert, the
+`brain_tools` registration for the `claude-code` key, and the harness on REST. Details in the
+[Omnigraph runbook](../runbooks/omnigraph.md#brain-tools). Live on graph commit
+`01M3RB0SJGX7MVMV2V7XQTW9KZ`:
+
+- `GET /graphs/brain/queries` lists all 21 `rt_*` queries; `brain-tools` `/readyz` is green (no missing
+  query, embedding contract matches the schema).
+- The `claude-code` key's tools list holds `brain_tools-search` and `brain_tools-read`; a search through
+  that key answered 8 cited sources in 5,427 characters in 0.33 s, and a `read` of one of its refs in 0.08 s.
+- Replica check: `p0` through brain-tools ranks the same documents as the direct `p0` for 33 of 33 scored
+  cases (`brain_eval_replica_identical_ratio` 1).
+- Search p95 over the first hour: 0.48 s on MCP, 0.95 s on REST (the gate's `p1` runs included).
+
+Gate `omnigraph-brain-eval-gate-retrieval-p4`, `p0` against `p1`, same snapshot, provisional set (33 scored
+cases), no model spend:
+
+| Category | nDCG@8 `p0` → `p1` | Recall@8 `p0` → `p1` | Candidate recall@40 `p0` → `p1` |
+|---|---|---|---|
+| docs-en | 0.704 → 0.737 | 0.718 → 0.689 | 0.842 → 0.847 |
+| notes-nl | 0.453 → 0.268 | 0.520 → 0.329 | 0.837 → 0.627 |
+| notes-en | 0.707 → 0.408 | 0.625 → 0.308 | 0.867 → 0.450 |
+| cross-lingual | 0.379 → 0.607 | 0.410 → 0.604 | 0.719 → 1.000 |
+| about | 0.314 → 0.238 | 0.410 → 0.336 | 0.719 → 0.534 |
+| connect | 0.321 → 0.427 | 0.436 → 0.414 | 0.534 → 0.548 |
+| temporal | 0.112 → 0.179 | 0.001 → 0.004 | 0.004 → 0.014 |
+| **all** | **0.448 → 0.417** | **0.478 → 0.407** | **0.693 → 0.609** |
+
+Hit@1 0.455 → 0.515; payload p95 about 364,000 characters direct, 5,962 through brain-tools `p0` and 5,907
+with `p1`. **Decision: not adopted.** On the dev split the mean delta is −0.014 with 11 wins and 12 losses
+(sign test p 1.0), and four categories lose more than one case. `p0` stays the production profile
+(`BRAIN_TOOLS_PROFILE=p0`); served through brain-tools it already delivers the compact, cited answers of
+at most 6,000 characters that P4 set out to reach.
+
+`p1` wins where fusion should: cross-lingual (+0.23), connect (+0.11), docs-en (+0.03) and Hit@1. It loses
+the note categories and `about`. Part of that is by design: `p0` ranks topic slugs among its documents
+and the pooled expectations include them (13 of 37 expected documents in `about`, 6 of 18 in notes-en,
+2 of 18 in notes-nl), while `p1` lists topics as related entities instead of ranking them; P6's `about`
+answers those questions. Offline sweeps on the dev split, in memory
+on the same snapshot, found nothing better than `p1` as built: whole-note meaning and keyword legs (−0.05),
+per-family fusion with round-robin interleaving (−0.05, −0.11 with topics ranked), keyword weight 0.5, 1.5 or 2
+(−0.012 to +0.004) and a notes weight of 1.3 or 1.6 (−0.16, −0.22). Raising the notes weight moved neither
+notes category, which points at the set rather than the pipeline: its expected documents were pooled from
+`p0`'s top 10 and one meaning and one keyword leg, so notes that `p1` surfaces were never judged. Re-pooling
+the notes cases with `p1` during Ryan's curation comes before any further tuning.
+
+Changes from the plan:
+
+- **No image yet.** `webgrip/brain-tools` could not be created from the build session. The TypeScript runs
+  from the `brain-tools-server` ConfigMap on the digest-pinned official `node` 24.21.0 image with Node's type
+  stripping; a ready repository with the explorer's CI (build, grype CVE gate, cosign) waits locally for
+  Ryan to create the remote. The Deployment then switches to the signed image and the source leaves this repo.
+- **No runtime dependencies.** The MCP transport is a small stateless JSON-RPC handler instead of
+  `@modelcontextprotocol/sdk`, so the provisional pod needs no `npm install`; the official 1.31.0 client
+  and LiteLLM both drive it (a conformance test in the repository keeps it that way).
+- **Group `brain-dogfood`,** not `brain`: the dogfood grant reaches only the `claude-code` key, since
+  `open-webui` holds `brain`. P6 regroups.
+- **Short captures are kept.** The 80-character floor applies to passages only; a short `nt-` capture is a
+  whole thought, and `remember` must find it at once in P6.
+- **REST takes GET as well as POST,** and answers carry `tool_chars` (the size of the default tool answer)
+  so the eval measures what a model would receive.
+- **The harness** adds profiles `p0-rest` and `p1`, the replica check, the gate guardrails (search p95 at
+  most 3 s, answers at most 6,000 characters) and the suspended `omnigraph-brain-eval-gate-retrieval` job;
+  the nightly run scores all three profiles.
+
 ### P5 Reranker bake-off
 
 - `kubernetes/apps/ai/tei-reranker/` with **one** container; the model is switched by a git change
