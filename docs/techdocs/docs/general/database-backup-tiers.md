@@ -54,7 +54,7 @@ the WAL-heavy tiers this is dominated by WAL accumulation, **not** database size
 | `sparkyfitness-db` | sparkyfitness | **2** | 0.24 GiB | Personal health/fitness logs. Irreplaceable personal data. |
 | `vikunja-db` | vikunja | **2** | new (2026-07-09) | Tasks, projects, comments — user-authored, stored nowhere else (ADR-0040). |
 | `devex-db` | observability | **2** | new (2026-06-30) | Raw DevEx survey answers — irreplaceable human input (unlike `grafana-db`). Deliberately keeps **30d** retention, above the Tier-2 default. |
-| `dependency-track-db` | security | **3** | 27 GiB | Findings re-derive from re-uploaded SBOMs, but audit state (suppressions, project tags) is user-authored. Heavy WAL writer. |
+| `dependency-track-db` | security | **3** (retention **3d**) | 27 GiB | Findings re-derive from re-uploaded SBOMs, but audit state (suppressions, project tags) is user-authored. Heaviest WAL writer (~650 segments, 3.6-6.8 GB a day): at 7d it held 42 GB of the off-site bucket, so since 2026-09-30 it keeps 3d. A suppression or tag lost more than 3 days ago cannot be restored by PITR. |
 | `backstage-db` | backstage | **3** | 2.3 GiB | Catalog largely re-discovered from SCM, but holds local TechDocs/state. |
 | `grafana-db` | observability | **4** | 0.5 GiB | Dashboards/datasources/alerts are Grafana Operator CRDs in git. DB = sessions/prefs/annotations — regenerable. |
 | `harbor-db` | harbor | **4** | 0.02 GiB | Registry metadata; blobs live in Garage S3, images are re-pushable from CI. |

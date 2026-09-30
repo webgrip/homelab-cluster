@@ -144,8 +144,11 @@ spec:
           - key: "{{ request.object.spec.claimRef.namespace || '' }}/{{ request.object.spec.claimRef.name || '' }}"
             operator: AnyIn
             value:
-              # 91 characters — the name that broke the PVC-triggered version.
-              - observability/prometheus-kube-prometheus-stack-prometheus-db-prometheus-kube-prometheus-stack-prometheus-0
+              # The Prometheus PVC (91 characters, the name that broke the
+              # PVC-triggered version) left this list on 2026-09-30: Prometheus was
+              # replaced by VictoriaMetrics, its volume has been detached since
+              # 08-12, and Longhorn never prunes a detached volume's backups, so it
+              # held 17 GB off-site that nothing would ever use or delete.
               - observability/vmsingle-vmsingle
               - observability/vlsingle-victorialogs
               - observability/vtsingle-victoriatraces

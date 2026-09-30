@@ -5,7 +5,10 @@ metadata:
   name: dependency-track-db-store
   namespace: security
 spec:
-  retentionPolicy: 7d # Tier 3 — see docs/techdocs/docs/database-backup-tiers.md
+  # 3d since 2026-09-30 (was 7d, Tier 3): its WAL (~650 segments, 3.6-6.8 GB a day)
+  # was 42 GB of the off-site bucket while garage-fsn1 ran full. See
+  # docs/techdocs/docs/general/database-backup-tiers.md for what 3 days of PITR costs.
+  retentionPolicy: 3d
   configuration:
     # CUT OVER to the off-site store (Hetzner FSN1) 2026-08-01, after freshrss
     # piloted it and a post-cutover WAL was observed landing there.
