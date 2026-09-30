@@ -218,6 +218,57 @@ class FakeVmagent:
         self.bodies = []
 
 
+def interleaved(*lists):
+    merged = []
+    for position in range(max((len(items) for items in lists), default=0)):
+        for items in lists:
+            if position < len(items):
+                merged.append(items[position])
+    return merged
+
+
+class FakeBrainTools:
+    def __init__(self):
+        self.requests = []
+        self.p1_order = {}
+        self.p0_swap = False
+        self.tool_chars = 1200
+        self.answer_commit = None
+
+    def search(self, query):
+        self.requests.append(query)
+        question, profile, snapshot = query["q"][0], query["profile"][0], (query.get("snapshot") or [None])[0]
+        documents = interleaved(*RECALL.get(question, ([], [], [])))
+        if profile == "p0" and self.p0_swap and len(documents) > 2:
+            documents = [documents[0], documents[2], documents[1], *documents[3:]]
+        if profile == "p1":
+            documents = self.p1_order.get(question, list(reversed(documents)))
+        return {"results": [{"document": document, "ref": f"doc:{document}#0"} for document in documents], "tool_chars": self.tool_chars,
+                "graph_commit": self.answer_commit or snapshot, "profile": profile}
+
+
+def brain_tools_handler(fake):
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            from urllib.parse import parse_qs, urlparse
+
+            parsed = urlparse(self.path)
+            if parsed.path != "/api/search":
+                self.send_response(404)
+                self.end_headers()
+                return
+            data = json.dumps(fake.search(parse_qs(parsed.query))).encode()
+            self.send_response(200)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+    return Handler
+
+
 def serve(handler_factory):
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler_factory)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -324,8 +375,10 @@ class Harness:
         self.omnigraph = FakeOmnigraph()
         self.litellm = FakeLiteLLM(judge_mode)
         self.vmagent = FakeVmagent()
+        self.brain_tools = FakeBrainTools()
         self.servers = []
-        for fake, factory, attr in ((self.omnigraph, omnigraph_handler, "omnigraph_url"), (self.litellm, litellm_handler, "litellm_url"), (self.vmagent, vmagent_handler, "vmagent_base")):
+        for fake, factory, attr in ((self.omnigraph, omnigraph_handler, "omnigraph_url"), (self.litellm, litellm_handler, "litellm_url"), (self.vmagent, vmagent_handler, "vmagent_base"),
+                                    (self.brain_tools, brain_tools_handler, "brain_tools_url")):
             server, url = serve(factory(fake))
             self.servers.append(server)
             setattr(self, attr, url)
@@ -333,7 +386,7 @@ class Harness:
     def run(self, *command, env=None, global_args=()):
         argv = [sys.executable, str(HARNESS), f"--repo-dir={self.repo}", f"--out-dir={self.out}", f"--omnigraph-url={self.omnigraph_url}",
                 f"--omnigraph-token-file={self.root / 'token'}", f"--litellm-url={self.litellm_url}", f"--litellm-key-file={self.root / 'key'}",
-                f"--vmagent-url={self.vmagent_base}/api/v1/import/prometheus", f"--prompts-dir={APP}", *global_args, *command]
+                f"--vmagent-url={self.vmagent_base}/api/v1/import/prometheus", f"--prompts-dir={APP}", f"--brain-tools-url={self.brain_tools_url}", *global_args, *command]
         return subprocess.run(argv, capture_output=True, text=True, timeout=120, env={**os.environ, **(env or {})})
 
     def results(self, prefix):
@@ -524,6 +577,59 @@ class RetrievalRun(unittest.TestCase):
             self.assertIn(name, be.METRIC_LABELS)
             for label, value in re.findall(r'(\w+)="([^"]*)"', line):
                 self.assertIn(value, be.METRIC_LABELS[name][label], line)
+
+
+class BrainToolsProfiles(unittest.TestCase):
+    def setUp(self):
+        self.harness = Harness()
+
+    def tearDown(self):
+        self.harness.close()
+
+    def test_rest_profiles_run_pinned_and_the_p0_replica_matches_the_direct_p0(self):
+        result = self.harness.run("retrieval", "--profile=p0", "--profile=p0-rest", "--profile=p1", global_args=(f"--snapshot={SNAPSHOT}", "--day=2026-09-28"))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(self.harness.brain_tools.requests)
+        for query in self.harness.brain_tools.requests:
+            self.assertEqual(query["snapshot"], [SNAPSHOT])
+            self.assertEqual(query["limit"], [str(be.CANDIDATE_POOL_DEPTH)])
+        metrics = (self.harness.out / "metrics.prom").read_text()
+        self.assertIn('brain_eval_replica_identical_ratio{profile="p0-rest"} 1', metrics)
+        direct = json.loads(next(path for path in self.harness.results("retrieval-p0") if path.name == "retrieval-p0.json").read_text())
+        replica = json.loads(self.harness.results("retrieval-p0-rest")[0].read_text())
+        self.assertEqual({case["id"]: case["ranked"] for case in direct["cases"]}, {case["id"]: case["ranked"] for case in replica["cases"]})
+        self.assertEqual(replica["run"]["replicas"]["p0:p0-rest"]["differing"], [])
+        rest = json.loads(self.harness.results("retrieval-p1")[0].read_text())
+        self.assertEqual({case["payload_chars"] for case in rest["cases"]}, {1200})
+        self.assertRegex(metrics, r'brain_eval_score\{category="all",metric="ndcg_at_8",mode="retrieval",profile="p1",split="dev"\}')
+
+    def test_a_replica_that_ranks_differently_is_reported_by_case(self):
+        self.harness.brain_tools.p0_swap = True
+        result = self.harness.run("retrieval", "--profile=p0", "--profile=p0-rest", global_args=(f"--snapshot={SNAPSHOT}",))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        replica = json.loads(self.harness.results("retrieval-p0-rest")[0].read_text())
+        self.assertIn("c01", replica["run"]["replicas"]["p0:p0-rest"]["differing"])
+        self.assertNotIn('brain_eval_replica_identical_ratio{profile="p0-rest"} 1\n', (self.harness.out / "metrics.prom").read_text())
+
+    def test_brain_tools_answering_from_another_commit_invalidates_the_run(self):
+        self.harness.brain_tools.answer_commit = "01OTHERCOMMIT0000000000000"
+        result = self.harness.run("retrieval", "--profile=p1", global_args=(f"--snapshot={SNAPSHOT}",))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("instead of the pinned snapshot", result.stdout + result.stderr)
+
+    def test_the_gate_refuses_a_candidate_whose_answers_pass_the_response_budget(self):
+        self.harness.brain_tools.p1_order = {Q1: [RUNBOOK, ADR_ARTIFACT], Q2: ["obsidian/gamma"], Q4: ["obsidian/alpha"]}
+        self.harness.brain_tools.tool_chars = 6001
+        result = self.harness.run("gate", "--profile=p0", "--profile=p1", "--compare=p0:p1", global_args=(f"--snapshot={SNAPSHOT}",))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        decision = json.loads(self.harness.results("gate")[0].read_text())["decisions"]["p0:p1"]
+        self.assertFalse(decision["adopt"])
+        self.assertIn("guardrail failed: response <= 6000 characters", decision["reasons"])
+        self.harness.brain_tools.tool_chars = 900
+        again = self.harness.run("gate", "--profile=p0", "--profile=p1", "--compare=p0:p1", global_args=(f"--snapshot={SNAPSHOT}",))
+        self.assertEqual(again.returncode, 0, again.stdout + again.stderr)
+        passed = json.loads(next(path for path in self.harness.results("gate") if path.name == "gate-2.json").read_text())["decisions"]["p0:p1"]
+        self.assertFalse(any(reason.startswith("guardrail failed") for reason in passed["reasons"]), passed["reasons"])
 
 
 class PublicRepoLeakCheck(unittest.TestCase):

@@ -11,6 +11,7 @@ import time
 import traceback
 import unicodedata
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,7 +35,7 @@ TEMPORAL_KINDS = ("recent_notes", "recent_docs", "open_threads")
 RETRIEVAL_METRICS = ("recall_at_5", "recall_at_8", "hit_at_1", "mrr_at_8", "ndcg_at_8", "candidate_recall_at_40")
 ANSWER_METRICS = ("key_fact_recall", "faithfulness", "citation_precision", "abstention_accuracy", "tool_error_rate", "tool_calls", "usd_per_answer", "latency_seconds")
 TOOL_METRICS = ("about_top1", "connect_path_found")
-PROFILES = ("p0", "p1", "p2", "p3", "b0", "tools", "e1-raw", "e1-prefixed")
+PROFILES = ("p0", "p0-rest", "p1", "p2", "p3", "b0", "tools", "e1-raw", "e1-prefixed")
 MODES = ("retrieval", "answer", "gate", "experiment", "candidates", "calibration")
 JOB_MODES = MODES + ("smoke",)
 LATENCY_STAGES = ("leg", "case", "answer", "judge")
@@ -54,6 +55,9 @@ PACED_REQUESTS_PER_MINUTE = 90
 TOOL_ERROR_CLASSES = ("gq_foreign", "gq_parse", "gq_type", "gq_parameter", "gq_rejected", "policy_denied", "not_found", "resource_limit", "server_error",
                       "server_unreachable", "tool_arguments", "unknown_tool", "bridge_transport", "other")
 CANDIDATE_POOL_DEPTH = 40
+BRAIN_TOOLS_URL = "http://brain-tools.ai.svc.cluster.local:8081"
+SEARCH_P95_BUDGET_SECONDS = 3.0
+SEARCH_RESPONSE_BUDGET_CHARS = 6000
 SENTINEL_PHRASE = "quillfeather sentinel 7c1e"
 ANSWER_MODEL = "chat-default"
 DRAFT_MODEL = "fireworks-gpt-oss-120b"
@@ -70,6 +74,7 @@ METRIC_LABELS = {
     "brain_eval_missing_vectors_ratio": {"type": set(VECTOR_TYPES)},
     "brain_eval_stale_cases": {},
     "brain_eval_scored_cases": {"mode": set(MODES), "profile": set(PROFILES)},
+    "brain_eval_replica_identical_ratio": {"profile": set(PROFILES)},
     "brain_eval_tool_errors": {"profile": set(PROFILES), "class": set(TOOL_ERROR_CLASSES)},
     "brain_eval_paced_seconds": {"mode": set(MODES)},
     "brain_eval_cases": {"split": set(SPLITS), "state": {"provisional", "curated"}},
@@ -863,7 +868,35 @@ def profile_p0(omnigraph, question, snapshot):
     return Retrieved(ranked, payload, [note_seconds, passage_seconds, topic_seconds])
 
 
-PROFILE_RUNNERS = {"p0": profile_p0}
+class BrainTools:
+    def __init__(self, base, timeout=60):
+        self.base = base.rstrip("/")
+        self.timeout = timeout
+
+    def search(self, profile, question, snapshot):
+        query = {"q": question, "profile": profile, "limit": CANDIDATE_POOL_DEPTH, "scope": "all"}
+        if snapshot:
+            query["snapshot"] = snapshot
+        started = time.monotonic()
+        _, _, body = http_json(f"{self.base}/api/search?{urllib.parse.urlencode(query)}", method="GET", timeout=self.timeout, service="brain-tools")
+        seconds = time.monotonic() - started
+        result = json.loads(body)
+        if snapshot and result.get("graph_commit") not in (None, snapshot):
+            raise EvalError(f"brain-tools answered from graph commit {result.get('graph_commit')} instead of the pinned snapshot")
+        ranked = [item["document"] for item in result.get("results") or [] if item.get("document")]
+        return Retrieved(ranked, int(result.get("tool_chars") or 0), [seconds])
+
+
+def direct_profile(runner):
+    return lambda omnigraph, question, snapshot, brain_tools: runner(omnigraph, question, snapshot)
+
+
+def rest_profile(profile):
+    return lambda omnigraph, question, snapshot, brain_tools: brain_tools.search(profile, question, snapshot)
+
+
+PROFILE_RUNNERS = {"p0": direct_profile(profile_p0), "p0-rest": rest_profile("p0"), "p1": rest_profile("p1")}
+REPLICA_PAIRS = (("p0", "p0-rest"),)
 P0_QUERIES = ("recall_notes", "recall_passages", "recall_topics")
 
 
@@ -1588,14 +1621,17 @@ def run_retrieval(args, workspace, sink, omnigraph, cases, profiles, run_label="
         grades_by_case[case["id"]] = grades
     sentinel_runs = 0
     documents = {}
+    full_rankings = {}
+    brain_tools = BrainTools(args.brain_tools_url)
     for profile in profiles:
         runner = PROFILE_RUNNERS[profile]
+        full_rankings[profile] = {}
         results, legs, case_seconds, payloads = [], [], [], []
         for case in cases:
             if case["id"] not in grades_by_case and case.get("category") != SYNTHETIC_CATEGORY:
                 continue
             started = time.monotonic()
-            retrieved = runner(omnigraph, case["question"], snapshot)
+            retrieved = runner(omnigraph, case["question"], snapshot, brain_tools)
             case_seconds.append(time.monotonic() - started)
             legs.extend(retrieved.leg_seconds)
             payloads.append(retrieved.payload_chars)
@@ -1603,6 +1639,7 @@ def run_retrieval(args, workspace, sink, omnigraph, cases, profiles, run_label="
                 sentinel_runs += 1
                 continue
             ranked = catalog.equivalence.canonical_ranking(retrieved.ranked)
+            full_rankings[profile][case["id"]] = ranked
             results.append({"id": case["id"], "category": case["category"], "split": case["split"], "state": case_state(case),
                             "metrics": retrieval_scores(ranked, grades_by_case[case["id"]]), "ranked": ranked[:10],
                             "expected": grades_by_case[case["id"]], "payload_chars": retrieved.payload_chars, "seconds": round(time.monotonic() - started, 4)})
@@ -1619,10 +1656,34 @@ def run_retrieval(args, workspace, sink, omnigraph, cases, profiles, run_label="
             leg_p95_seconds=round(quantile(legs, 0.95) or 0, 4), payload_p95_chars=quantile(payloads, 0.95))
         documents[profile] = {"profile": profile, "aggregates": table, "cases": results}
     sink.add("brain_eval_stale_cases", {}, len(stale))
-    run = {"mode": run_label, "harness_version": HARNESS_VERSION, "snapshot": snapshot, "snapshot_time": snapshot_time.isoformat(),
+    replicas = replica_checks(full_rankings, sink)
+    run = {"mode": run_label, "replicas": replicas, "harness_version": HARNESS_VERSION, "snapshot": snapshot, "snapshot_time": snapshot_time.isoformat(),
            "started": utc_now().isoformat(), "stale_cases": stale, "excluded_cases": excluded, "sentinel_runs": sentinel_runs,
            "store": workspace.store_kind if workspace else "none"}
     return run, documents, grades_by_case
+
+
+def replica_checks(full_rankings, sink):
+    checks = {}
+    for original, replica in REPLICA_PAIRS:
+        if original not in full_rankings or replica not in full_rankings:
+            continue
+        shared = sorted(set(full_rankings[original]) & set(full_rankings[replica]))
+        differing = [case_id for case_id in shared if full_rankings[original][case_id] != full_rankings[replica][case_id]]
+        ratio = (len(shared) - len(differing)) / len(shared) if shared else 0.0
+        sink.add("brain_eval_replica_identical_ratio", {"profile": replica}, ratio)
+        log("replica check", original=original, replica=replica, cases=len(shared), identical=len(shared) - len(differing), differing=differing)
+        checks[f"{original}:{replica}"] = {"cases": len(shared), "identical": len(shared) - len(differing), "differing": differing}
+    return checks
+
+
+def search_guardrails(document):
+    seconds = [case["seconds"] for case in document["cases"]]
+    payloads = [case["payload_chars"] for case in document["cases"]]
+    return {
+        f"search p95 <= {SEARCH_P95_BUDGET_SECONDS:.1f} s": bool(seconds) and quantile(seconds, 0.95) <= SEARCH_P95_BUDGET_SECONDS,
+        f"response <= {SEARCH_RESPONSE_BUDGET_CHARS} characters": bool(payloads) and max(payloads) <= SEARCH_RESPONSE_BUDGET_CHARS,
+    }
 
 
 def run_answers(args, workspace, sink, cases, llm, arm, repeats, judge_prompt):
@@ -1919,7 +1980,7 @@ def command_gate(args):
             baseline, candidate = pair.split(":")
             if baseline in documents and candidate in documents:
                 per_case = lambda profile: {result["id"]: result["metrics"]["ndcg_at_8"] for result in documents[profile]["cases"] if result["split"] == "dev"}
-                decisions[pair] = decide(per_case(baseline), per_case(candidate), categories)
+                decisions[pair] = decide(per_case(baseline), per_case(candidate), categories, guardrails=search_guardrails(documents[candidate]))
                 log("gate decision", pair=pair, **{key: value for key, value in decisions[pair].items() if key != "category_losses"})
     answer_documents = {}
     records = []
@@ -2058,6 +2119,7 @@ def build_parser():
     parser.add_argument("--litellm-url", default="http://litellm.ai.svc.cluster.local:4000")
     parser.add_argument("--litellm-key-file", default="/run/secrets/litellm/key")
     parser.add_argument("--contract-file", default="/etc/omnigraph-embedding-contract/contract.json")
+    parser.add_argument("--brain-tools-url", default=BRAIN_TOOLS_URL)
     parser.add_argument("--vmagent-url", default="")
     parser.add_argument("--snapshot")
     parser.add_argument("--day")

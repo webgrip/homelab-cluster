@@ -126,6 +126,13 @@ spawn tool-errors-unclassified brain_eval.py '    if message.startswith("parse e
 spawn foreign-language-counted-as-typo brain_eval.py 'return "gq_foreign" if re.search(r"-->\s*1:1\b", message) else "gq_parse"' 'return "gq_parse"'
 spawn unknown-tool-sent-to-bridge brain_eval.py 'if function.get("name") not in mapping:' 'if False:'
 spawn tool-error-metric-dropped brain_eval.py '        sink.add("brain_eval_tool_errors", {"profile": arm, "class": error_class}, error_classes.get(error_class, 0))' '        pass'
+spawn rest-profile-unpinned brain_eval.py '        if snapshot:
+            query["snapshot"] = snapshot' '        pass'
+spawn rest-commit-unchecked brain_eval.py 'if snapshot and result.get("graph_commit") not in (None, snapshot):' 'if False:'
+spawn replica-check-dropped brain_eval.py '    replicas = replica_checks(full_rankings, sink)' '    replicas = {}'
+spawn replica-compares-top-ten brain_eval.py '            full_rankings[profile][case["id"]] = ranked' '            full_rankings[profile][case["id"]] = ranked[:1]'
+spawn gate-without-guardrails brain_eval.py ', guardrails=search_guardrails(documents[candidate]))' ')'
+spawn response-budget-loosened brain_eval.py 'SEARCH_RESPONSE_BUDGET_CHARS = 6000' 'SEARCH_RESPONSE_BUDGET_CHARS = 60000'
 wait
 for result in "$work"/*.result; do
   cat "$result"
