@@ -13,6 +13,7 @@ Omnigraph v0.11 runs one server in namespace `ai` with three graphs: `memory` (s
   5. Fills missing vectors on `main` of every graph, capped so a restart stays under 3 minutes (see [Startup backfill](#startup-backfill)). A failure here is logged and skipped; it never stops the pod.
   6. Optimizes every applied graph and rebuilds full-text indexes when optimize reports stale coverage.
 - The `omnigraph-maintenance-restart` CronJob restarts the pod at 03:15. In v0.11, `optimize` next to a live server blocks writes, so it only runs at startup.
+- The pod is down for about 3 minutes during that restart (2026-09-30: 01:15:03 to 01:17:51 UTC), and a Reloader restart after a token rotation does the same at any hour. The writers therefore do two things. No writer CronJob starts within 5 minutes of the restart, which is why the vault importer runs at :05, :20, :35 and :50. Every writer's `snapshot` step also polls `/readyz` for up to 5 minutes before its first read and logs `omnigraph ready after Ns`. [test_omnigraph_writer_restart.py](../../../../scripts/test_omnigraph_writer_restart.py) checks both in CI. Before 2026-09-30 the 03:15 vault run failed whenever it met the restart.
 - The PVC is enrolled in the `gitops-backup` Longhorn job (daily, 7 kept, offsite).
 - Renovate never automerges Omnigraph (image or mise CLI). Minor releases change the storage format.
 
@@ -288,7 +289,8 @@ The next run after steps 1 and 2 imports the vault. ESO refreshes the terms ever
 The job fails, and does not retry, with one of these lines:
 
 - `vault repo not reachable`: the repo does not exist or the deploy key is not on it.
-- `omnigraph not reachable or act-vault-import refused`: Omnigraph is restarting, or `act-vault-import` is not in `tokens.json` yet.
+- `omnigraph not ready`: Omnigraph did not pass `/readyz` within 5 minutes; the curl error follows. It is down, or a network policy drops this pod.
+- `omnigraph not reachable or act-vault-import refused`: Omnigraph answered `/readyz` but refused the query. The error after the colon says why; usually `act-vault-import` is not in `tokens.json` yet.
 - `vault import failed`: the server refused the delete or a load batch.
 
 `OmnigraphVaultImportStale` fires when the CronJob has had no successful run for 2 hours, or has never succeeded since it was created. It reads `kube_cronjob_status_last_successful_time` from kube-state-metrics. It fires until the setup above is done.
@@ -378,7 +380,8 @@ The job fails, and does not retry, with one of these lines:
 - `forge token rejected (HTTP 401)`: the token expired or was revoked. Generate a new one and store it the same way.
 - `forgejo API <path> answered HTTP <code>` or `not reachable`: Forgejo is down or refused one request. Nothing was written.
 - `the forge token sees no repositories`: the token lost its access. Nothing was deleted.
-- `omnigraph not reachable or act-forge-import refused`: Omnigraph is restarting, or `act-forge-import` is not in `tokens.json` yet.
+- `omnigraph not ready`: Omnigraph did not pass `/readyz` within 5 minutes; the curl error follows. It is down, or a network policy drops this pod.
+- `omnigraph not reachable or act-forge-import refused`: Omnigraph answered `/readyz` but refused the query. The error after the colon says why; usually `act-forge-import` is not in `tokens.json` yet.
 - `forge import failed`: the server refused a delete or load batch. The next run replans from the graph.
 
 `OmnigraphForgeImportStale` fires when the CronJob has had no successful run for 3 hours, or has never succeeded since it was created. It reads `kube_cronjob_status_last_successful_time` from kube-state-metrics. It fires until the setup above is done.
@@ -472,7 +475,8 @@ Nothing to set up by hand. The actor token and the LiteLLM key are generated in 
 
 The job fails, and does not retry, with one of these lines:
 
-- `omnigraph not reachable or act-distill refused`: Omnigraph is restarting, or `act-distill` is not in `tokens.json` yet.
+- `omnigraph not ready`: Omnigraph did not pass `/readyz` within 5 minutes; the curl error follows. It is down, or a network policy drops this pod.
+- `omnigraph not reachable or act-distill refused`: Omnigraph answered `/readyz` but refused the query. The error after the colon says why; usually `act-distill` is not in `tokens.json` yet.
 - `distill refused: litellm ... not reachable` or `answered HTTP 401`: LiteLLM is down, or the `omnigraph-distill` key is not registered (`kubectl -n ai logs job/litellm-key-register-omnigraph-distill`). `HTTP 400` with a budget message: the key's budget is spent.
 - `distill refused: the snapshot holds no documents`: the snapshot came back empty while state rows exist. Nothing was deleted.
 - `distill failed: delete batch` or `load batch`: the server refused a write. The next run replans from the graph.

@@ -173,6 +173,15 @@ jobs:
           docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
             sh -ec "python3 scripts/test_omnigraph_distill.py && bash scripts/test-omnigraph-distill-mutation.sh"
 
+      - name: Test that the Omnigraph writers survive the nightly restart
+        run: |
+          ws="$(mktemp -d)"
+          mkdir -p "$ws/kubernetes/apps/ai"
+          rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph" "$ws/kubernetes/apps/ai/"
+          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
+            python3 scripts/test_omnigraph_writer_restart.py
+
       - name: Test the brain eval harness
         run: |
           ws="$(mktemp -d)"
