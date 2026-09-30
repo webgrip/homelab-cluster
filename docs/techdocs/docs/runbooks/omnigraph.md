@@ -202,12 +202,14 @@ Ryan's Obsidian vault is imported into `brain` every 15 minutes by the `omnigrap
 
 ### How it runs
 
-One pod runs four steps in order. Each step logs one line of counts or one error line, never note names, contents or client terms.
+One pod runs six steps in order. Each step logs one line of counts or one error line, never note names, contents or client terms.
 
 1. `clone` shallow-clones `webgrip/obsidian-vault` over SSH from `forgejo-ssh.forgejo.svc.cluster.local`. It uses the deploy key in the `omnigraph-vault-import-deploy-key` Secret and checks the host key against the pinned [known_hosts](../../../../kubernetes/apps/ai/omnigraph/vault-import/app/known_hosts).
-2. `snapshot` reads every `obsidian/` note on `brain/main`, with its outgoing `RelatedNote` edges, using the ad-hoc queries in [snapshot.gq](../../../../kubernetes/apps/ai/omnigraph/vault-import/app/snapshot.gq).
-3. `plan` runs [vault_import.py](../../../../kubernetes/apps/ai/omnigraph/vault-import/app/vault_import.py). It compares the vault with the snapshot and writes a delete mutation and merge-load files for the difference only.
-4. `apply` runs the delete mutation, then the loads, onto `main`.
+2. `snapshot` reads, with the ad-hoc queries in [snapshot.gq](../../../../kubernetes/apps/ai/omnigraph/vault-import/app/snapshot.gq): every `obsidian/` note with its outgoing `RelatedNote` edges and its `NoteFromArtifact` link, every `obsidian-file/` shadow artifact and its passages with their text, and which of those notes and passages already have a vector.
+3. `plan` runs [vault_import.py](../../../../kubernetes/apps/ai/omnigraph/vault-import/app/vault_import.py). It compares the vault with the snapshot and writes delete mutations, merge-load files for the difference only, and heal files for its own vectorless rows.
+4. `embed` fills the vectors of every Note and Passage row in those files (see [Write-time vectors](#write-time-vectors)).
+5. `apply` runs the delete mutations, then the loads, then the heal loads, onto `main`.
+6. `report` pushes how many of its rows still have no vector.
 
 **Mapping.** Only `*.md` files are read. Hidden folders (`.obsidian`, `.trash`, `.git`), template folders and files over 1 MiB are skipped. A template folder is one named `templates`, or the folder set in `.obsidian/templates.json` or in the Templater plugin settings.
 
@@ -224,19 +226,31 @@ One pod runs four steps in order. Each step logs one line of counts or one error
 
 `[[target]]`, `[[target|alias]]`, `[[target#heading]]` and `![[target]]` become `RelatedNote` edges when the target is another imported note, matched by path or by file name.
 
+**Chunks.** A note's own vector covers only its first 1,024 tokens, which is about half of the vault's text. So every note with at least 80 characters of content is also cut into passages, the same `Passage` rows Forgejo documents use (brain retrieval RFC, decision D4). No schema change is needed.
+
+| Row | What |
+|---|---|
+| Shadow `Artifact` `obsidian-file/<tail>` | `kind: document`, `source: notes-app`, no `content`, `content_sha256` over the chunker version, the title and the content. `<tail>` is the note slug without `obsidian/` |
+| `NoteFromArtifact` | From the note to its shadow artifact, with the fixed id `vault:NoteFromArtifact:<note>><artifact>`, so it is never loaded twice |
+| `Passage` `obsidian-file/<tail>#<i>` | At most 1,200 characters, packed by paragraph. A chunk starts at a heading (a `#` line inside a code fence is not one) with a `Title › Heading` line, or just the title before the first heading; the sections that follow join it, each heading kept as a line, while they fit. A section that does not fit starts its own chunk. A `PassageOf` edge to the shadow artifact |
+
+The distiller skips shadow artifacts, because the note itself is distilled. On 2026-09-30 the 461 notes gave 394 chunked notes and about 1,700 passages with a median of about 900 characters. A first version started a chunk at every heading and made 37% of the chunks 200 characters or shorter; `content_sha256` carries the chunker version (`obsidian-chunks-v2`), so a chunker change redoes every note over a few runs.
+
 **Only changes are written.** The importer keeps no state of its own. Every run recomputes the difference between the vault and what `brain` holds under `obsidian/`, and writes only that difference. This is simpler than a stored commit marker, and a failed run repairs itself on the next one. It is also required: a merge load replaces the whole row and clears its vector, so reloading unchanged notes every 15 minutes would keep every vault note without an embedding.
 
-- A new or changed note is merge-loaded.
+- A new or changed note is merge-loaded, with its vector.
 - A note whose vault links changed has its outgoing `RelatedNote` edges deleted, then reloaded. A merge load does not deduplicate edges, so an edge is never loaded without that delete first. Edges from a vault note to a note outside `obsidian/` (added by an agent or by hand) are reloaded with it.
-- An `obsidian/` note that is no longer in the vault is deleted. Its edges go with it.
+- Chunks are compared by id and text with the stored ones. Only a chunk whose text or position changed is written; unchanged chunks keep their row and vector, and chunk ids the note no longer needs are deleted.
+- An `obsidian/` note that is no longer in the vault (deleted or renamed) is deleted in one mutation together with every passage the snapshot lists for its shadow artifact and the shadow artifact itself, in that order. The list must be complete: one passage left behind fails the whole mutation on `PassageOf @card(1..1)` and stops every later run. A shadow artifact whose note is already gone, and the chunks of a note that shrank under 80 characters, are pruned the same way.
+- At most 300 notes, and about 300,000 characters of new chunk text, are chunked per run, so the first import spreads over a few runs (`chunk_deferred` in the counts line says how many wait). A note linked to another artifact already keeps that link (`link_conflicts`).
 
 The vault owns everything under `obsidian/`. An edit made to such a note in the graph is overwritten on the next run when the file differs. Capture your own notes under another prefix, such as `nt-`.
 
 A vault without importable notes never deletes anything: the plan step refuses and the run fails.
 
-**Embeddings.** Loads do not embed. A new or changed note ranks on keywords only until a restart fills its vector (see [Startup backfill](#startup-backfill)); each restart fills at most 500 rows per type. An import right after 03:15 waits almost a day. The full-text index is rebuilt at the same restart.
+**Embeddings.** The importer brings its own vectors: the `embed` step fills every Note and Passage row it writes, and up to 300 of its vectorless rows a run are healed (see [Write-time vectors](#write-time-vectors)). A changed note is searchable by meaning as soon as its run lands. Keyword search sees new text at once too; the full-text index is only rebuilt at the 03:15 restart, which matters for `fuzzy()` alone.
 
-**Write limits.** Load files are split at 2,000 rows or 16 MiB, below the per-commit limit.
+**Write limits.** Load files are split at 2,000 rows or 16 MiB, counting about 6 KB for each vector the embed step will add, below the per-commit limit. Delete mutations are split at 500 statements, never inside one note's group. The CronJob allows 600 seconds; the embed step stops at 300.
 
 ### Client notes are tagged, not withheld
 
@@ -291,9 +305,11 @@ Every repository Ryan's Forgejo account can see is imported into `brain` every h
 
 One pod runs three steps in order. Each step logs one line of counts or one error line.
 
-1. `snapshot` reads everything under `forge/` on `brain/main` with the queries in [snapshot.gq](../../../../kubernetes/apps/ai/omnigraph/forge-import/app/snapshot.gq): projects, organizations, people, artifacts, decision notes, passage ids and the edges between them. It does not read artifact or passage text.
-2. `plan` runs [forge_import.py](../../../../kubernetes/apps/ai/omnigraph/forge-import/app/forge_import.py) against the Forgejo API at `http://forgejo-http.forgejo.svc.cluster.local:3000` with the read-only token. It compares Forgejo with the snapshot and writes delete mutations and merge-load files for the difference only.
-3. `apply` runs the deletes, then the loads, onto `main`.
+1. `snapshot` reads everything under `forge/` on `brain/main` with the queries in [snapshot.gq](../../../../kubernetes/apps/ai/omnigraph/forge-import/app/snapshot.gq): projects, organizations, people, artifacts, decision notes, passage ids and the edges between them, and which passages and notes already have a vector. It does not read artifact or passage text.
+2. `plan` runs [forge_import.py](../../../../kubernetes/apps/ai/omnigraph/forge-import/app/forge_import.py) against the Forgejo API at `http://forgejo-http.forgejo.svc.cluster.local:3000` with the read-only token. It compares Forgejo with the snapshot and writes delete mutations, merge-load files for the difference only, and heal files. For a changed artifact, and for the chunks it heals, it reads the stored chunks' ids and text back from Omnigraph, one artifact at a time.
+3. `embed` fills the vectors of every Note and Passage row in those files (see [Write-time vectors](#write-time-vectors)).
+4. `apply` runs the deletes, then the loads, then the heal loads, onto `main`.
+5. `report` pushes how many of its rows still have no vector.
 
 **Scope.** The importer reads `/user/repos` and the repos of every org in `/user/orgs`. [scope.json](../../../../kubernetes/apps/ai/omnigraph/forge-import/app/scope.json) narrows that:
 
@@ -324,7 +340,7 @@ Files over 1 MiB and everything outside README, `docs/` and ADRs (code, configs)
 **Only changes are written.** The importer keeps no state of its own, for the same reason as the vault importer: a merge load replaces the whole row and clears its vector.
 
 - A file is fetched only when its git blob sha differs from the one in its `source_ref`, so an unchanged repo costs one tree request and no downloads. Issues and pull requests are listed every run and compared by `content_sha256`.
-- A changed artifact is merge-loaded with all its passages. A passage id that already exists is loaded as a node only: its `PassageOf` edge stays, and loading it again would violate `@unique`. Passage ids the new text no longer needs are deleted.
+- A changed artifact is merge-loaded. Its new chunks are compared by id and text with the stored ones, and only a chunk whose text or position changed is written, with a vector; unchanged chunks keep their row and vector. A comment appended to an issue therefore rewrites only the last chunk. A passage id that already exists is loaded as a node only: its `PassageOf` edge stays, and loading it again would violate `@unique`. Passage ids the new text no longer needs are deleted.
 - Edges are compared per source. When they differ, the source's edges of that type are deleted and reloaded. Targets outside `forge/` (a link an agent or Ryan added) are reloaded with them.
 - A row under `forge/` that Forgejo no longer has is deleted: a repo, a file, an issue, an org, or a person who no longer authored anything. Its passages are deleted first, because a passage must keep exactly one `PassageOf` edge and Omnigraph refuses to delete an artifact that still has passages.
 - Load files are split at 2,000 rows or 16 MiB, and delete mutations at 500 statements, below the [per-commit write limit](#known-v011-limits). A passage and its `PassageOf` edge always land in the same file. Nodes load before passages, passages before edges, because a load refuses an edge to a missing node.
@@ -333,7 +349,7 @@ Forgejo owns everything under `forge/`. An edit made to such a row in the graph 
 
 A token that sees no repositories never deletes anything: the plan step refuses and the run fails. So does any Forgejo API error, before anything is written.
 
-**Embeddings.** Loads do not embed. New passages and decision notes rank on keywords only until a restart fills their vectors, at most 500 rows per type per restart (see [Startup backfill](#startup-backfill)). A large import therefore takes many nights to get its vectors until the importers embed their own rows (brain retrieval RFC, P3).
+**Embeddings.** The importer brings its own vectors: the `embed` step fills every Note and Passage row it writes, and up to 1,500 of its vectorless rows a run are healed, oldest first (see [Write-time vectors](#write-time-vectors)). The CronJob allows 2,700 seconds; the embed step stops at 1,200.
 
 ### Setup (Ryan)
 
@@ -369,13 +385,13 @@ The job fails, and does not retry, with one of these lines:
 
 **Tests.** [test_omnigraph_forge_import.py](../../../../scripts/test_omnigraph_forge_import.py) runs the planner against a fake Forgejo API over HTTP and a simulated graph that enforces Omnigraph's own refusals: a dangling edge, a duplicate edge, a second `PassageOf` for one passage, and deleting an artifact that still has passages. It covers the mapping, the schema enums, chunking, ADR detection, second-run idempotency, changed files and threads, deletes, rewired edges, batching and every fail-closed path. It runs without network: `python3 scripts/test_omnigraph_forge_import.py`. CI runs it in `e2e / Lint & static validation`.
 
-**Network.** The pod may reach `omnigraph` on 8080 and the `forgejo` pods on 3000 (`omnigraph-forge-import-egress`). Forgejo admits it with a rule in `forgejo-allow-ingress`, and Omnigraph with `omnigraph-ingress`.
+**Network.** The pod may reach `omnigraph` on 8080, the `forgejo` pods on 3000, `litellm` on 4000 and `vmagent` in `observability` on 8429 (`omnigraph-forge-import-egress`). Forgejo admits it with a rule in `forgejo-allow-ingress`, and Omnigraph with `omnigraph-ingress`. The vault importer has the same LiteLLM and vmagent paths.
 
 **Rotation.** Replace the Forgejo token with the same `bao kv put`, then revoke the old one in Forgejo. Deleting `omnigraph-forge-import-token` rotates the actor token. The aggregator picks it up within 15 minutes and Reloader restarts Omnigraph.
 
 ## Distiller
 
-The importers bring documents into `brain`; they do not say what a document is about. Most Obsidian notes had no link to anything. The `omnigraph-distill` CronJob in namespace `ai` ([distill](../../../../kubernetes/apps/ai/omnigraph/distill/app/)) reads every document, asks a model what it is about, and links it to topics, people, organizations, projects, places and areas. It runs every hour at minute 55, after the importers, and writes straight to `main` as `act-distill`. Ryan decided this on 2026-09-28.
+The importers bring documents into `brain`; they do not say what a document is about. The distiller reads notes, projects and artifacts with text; it skips `obsidian-file/` shadow artifacts and any artifact without content (`skipped_textless` in the counts line), and reads only its own `derived/distill/` state rows. Most Obsidian notes had no link to anything. The `omnigraph-distill` CronJob in namespace `ai` ([distill](../../../../kubernetes/apps/ai/omnigraph/distill/app/)) reads every document, asks a model what it is about, and links it to topics, people, organizations, projects, places and areas. It runs every hour at minute 55, after the importers, and writes straight to `main` as `act-distill`. Ryan decided this on 2026-09-28.
 
 ### What it writes
 
@@ -658,7 +674,7 @@ Every graph embeds text with `granite-embedding-97m-multilingual-r2` (384 dimens
 - **Model server.** `tei-embeddings` runs Text Embeddings Inference `cpu-1.9.4` on the ONNX Runtime backend. The `fetch-model` init container downloads the pinned revision from Hugging Face into the `tei-embeddings-models` volume and checks every file against [model.sha256](../../../../kubernetes/apps/ai/tei-embeddings/app/model/model.sha256); a mismatch stops the pod. After the first start it only re-verifies. The pod's only internet egress is HTTPS to Hugging Face hosts (`tei-embeddings-model-fetch`, a `toFQDNs` CiliumNetworkPolicy on `huggingface.co` and up to three label levels under `hf.co`), so a download that redirects to a CDN outside those domains times out in `fetch-model`. `--max-batch-tokens 1024` keeps it under 700Mi; longer inputs are truncated to their first 1024 tokens. Only LiteLLM pods may call it (`tei-embeddings-litellm-only`); the `observability` namespace may scrape `/metrics`. Alert: `TeiEmbeddingsDown`.
 - **Key.** Omnigraph authenticates to LiteLLM with the virtual key `omnigraph-embeddings`, generated in-cluster by the `omnigraph-embed-key` ExternalSecret and registered by the `omnigraph-embed-key-register` Job: embedding model only, USD 1 per 30 days, 3000 requests per minute. The Job is idempotent: it looks the key up with the key itself, updates it when it drifted, and when the Secret holds a key LiteLLM does not know it deletes whatever key still holds the `omnigraph-embeddings` alias before registering the new one. The server refuses to start without `OMNIGRAPH_EMBED_API_KEY`, so the Secret must exist before the pod restarts. Rotate by deleting the `omnigraph-embed-key` Secret and the `omnigraph-embed-key-register` Job: ESO generates a new key, Reloader restarts Omnigraph, and the recreated Job revokes the old key.
 - **Schema.** Each vector records its source and model, for example `embedding: Vector(384)? @embed("body", model="granite-embedding-97m-multilingual-r2")`. Queries fail fast when the provider serves another model. Changing the source or model is not an in-place migration: add a new property, backfill it, then drop the old one. The vectors are nullable and have no ANN `@index`: with an index, `optimize` fails (`KMeans cannot train 1 centroids with 0 vectors`) whenever a type's rows have lost all their vectors, which would stop the pod. `nearest()` scans every row instead, which is fast at this size.
-- **Vectors.** Loads and mutations do not embed. The init container fills some of the vectors that are missing on `main` at every start (see [Startup backfill](#startup-backfill)). A merge load of a row without its vector clears the vector until a start fills it again.
+- **Vectors.** Loads and mutations do not embed, and a merge load of a row without its vector clears the vector. The two importers therefore bring their own ([Write-time vectors](#write-time-vectors)), the distiller writes topic vectors itself, and the init container fills some of the rest at every start (see [Startup backfill](#startup-backfill)).
 - **Contract.** The ConfigMap `omnigraph-embedding-contract` ([contract.json](../../../../kubernetes/apps/ai/omnigraph/embed-step/app/contract.json)) states the model, the dimensions, the text format (`type: <Type>` then `<field>: <value>` on the next line) and that stored vectors are L2-normalised. Writers that bring their own vectors read it, so every vector of a type lives in one space. [test_omnigraph_embedding_contract.py](../../../../scripts/test_omnigraph_embedding_contract.py) fails when it disagrees with the `@embed` models and dimensions in the schemas, the provider in `cluster.yaml` or the init container's `OMNIGRAPH_EMBED_MODEL`, and runs the pinned `omnigraph embed` against a recording fake embedder to prove the text format and the normalisation. `--self-test` breaks each input in turn and requires the test to fail. It runs in pre-commit next to the rehearsal and in CI. Measured with the pinned 0.11.0 CLI: `omnigraph embed` sends one row per request with `dimensions` set.
 - **Queries.** `recall_notes` on `memory` and `brain`, `recall_passages` on `brain`, and `recall_notes` and `recall_decisions` on `webgrip` rank by `rrf(nearest(...), bm25(...))`. Rows without a vector still rank on keywords.
 
@@ -687,7 +703,36 @@ Rows still without a vector rank on keywords only. Until the importers write the
 
 **Drill.** `mise exec -- python3 scripts/omnigraph_rehearsal.py backfill-drill` seeds 20,000 vectorless passages into a throwaway cluster, restarts it through the working `bootstrap.sh` against a fake embedder throttled to 1,000 tokens a second, and fails when serving takes more than 180 seconds. Run it after changing the backfill or its variables. It takes about 3 minutes.
 
-**Monitoring.** `OmnigraphUnreachable` (blackbox, 10 minutes) fires when the init container runs too long. A count of vectorless rows per writer, with an alert, comes with the importers' own embedding (RFC P3).
+**Monitoring.** `OmnigraphUnreachable` (blackbox, 10 minutes) fires when the init container runs too long. The importers count their own vectorless rows ([Write-time vectors](#write-time-vectors)).
+
+### Write-time vectors
+
+The vault and Forgejo importers embed what they write, so a new or edited note or document is searchable by meaning as soon as its run lands, not after the next 03:15 restart. The startup backfill has not filled `brain` `Passage` rows since 2026-09-29 (VIK-1404), so this is also the only path that heals them.
+
+**Embed step.** [embed_step.py](../../../../kubernetes/apps/ai/omnigraph/embed-step/app/embed_step.py) ships in the fixed-name ConfigMap `omnigraph-embed-step` and runs as the `embed` container between `plan` and `apply`, with the `omnigraph-embeddings` LiteLLM key (`omnigraph-embed-key` Secret).
+
+- It fills `embedding` on every `Note` and `Passage` row in the plan's load files and heal files, in the text format of the [embedding contract](../../../../kubernetes/apps/ai/omnigraph/embed-step/app/contract.json): `type: <Type>` then `<field>: <value>`, the value trimmed with the contract's white-space set (never Python's bare `strip()`), cut to 8,000 characters. TEI reads only the first 1,024 tokens anyway; 8,000 characters is well past that and keeps the request small. Obsidian chunks (1,200 characters) and forge chunks (1,500) fit whole. A row with no text gets no vector and is not counted as missing.
+- Vectors are L2-normalised and written with 8 significant digits, which keeps cosine at 0.99999994 or more and the files small. The planners count about 6 KB per vector when they split load files.
+- Batches of 4 inputs, paced to 300 tokens a second from LiteLLM's reported usage, so chat and search embeddings keep most of `tei-embeddings`' capacity (about 1,000 tokens a second). TEI works through a request's inputs in turn, and a search that arrives meanwhile waits behind them: with batches of 16 (about 5,600 tokens) the TEI queue time p95 rose from about 3 ms to 4 s during the first heal on 2026-09-30; 4 inputs keep that wait near 1.4 s. Batch size does not change the vectors.
+- Fail-soft: on a LiteLLM error (one `429` with a short `retry-after` is waited out) or at its deadline, it stops embedding. Changed rows are still written, without a vector, and heal rows are dropped; the next run heals them. The log says `embedding skipped: <n> rows written without a vector and <m> heals deferred (<reason>)`.
+- JSONL is split on `\n` only: Python's `splitlines()` also splits on U+2028 and U+0085, which JSON strings carry unescaped.
+
+**Heal mode.** Each run the planner also picks its own rows that have text and no vector, oldest first: at most 1,500 for forge-import and 300 for vault-import. It never heals a row the same run rewrites or deletes. Healed rows are merge-loaded with their stored text, `createdAt` and `updatedAt`, so a heal never looks like an edit.
+
+**Writes retry only `read_set_conflict`.** [omnigraph_write.sh](../../../../kubernetes/apps/ai/omnigraph/embed-step/app/omnigraph_write.sh) wraps every delete and load: a 409 `read_set_conflict` (another writer's commit landed while this one prepared) is retried up to 8 times with 200 ms doubling backoff and jitter. `key_conflict`, a 503 (recovery required), a 413 or a refusal fail at once, and the failure line names the class, never the server's error text. The apply line reports `conflict_retries`.
+
+**Gauge and alerts.** The `report` container pushes, per writer and type, to `vmagent-vmagent.observability:8429` with `job="omnigraph-embed-step"`:
+
+| Series | Meaning |
+|---|---|
+| `omnigraph_embed_rows_missing{writer,type}` | The writer's rows still without a vector after the run: not yet healed, deferred heals and changed rows written without one |
+| `omnigraph_embed_oldest_missing_age_seconds{writer,type}` | Age of the oldest of those rows |
+| `omnigraph_embed_run_rows{writer,outcome}` | `embedded`, `skipped`, `healed`, `heal_dropped`, `textless` in the last run |
+| `omnigraph_embed_run_tokens`, `omnigraph_embed_run_paced_seconds`, `omnigraph_embed_last_report_timestamp_seconds` | Per writer |
+
+A push that fails is logged (`embed report not pushed`) and never fails the import. Pushed samples leave instant queries after about 5 minutes, so alerts and panels read `last_over_time`. `OmnigraphVectorsBacklog` fires when a writer has left more than 500 rows without a vector for 6 hours; `OmnigraphVectorsReportStale` when a writer has not reported for 3 hours. Grafana, *Brain retrieval quality*: vectorless rows, oldest vectorless row, the last run's outcomes and TEI queue time p95.
+
+**Tests.** [test_omnigraph_embed_step.py](../../../../scripts/test_omnigraph_embed_step.py) covers the contract text, normalisation and precision, batching, pacing, the deadline, fail-soft, the report and the retry helper against a fake `omnigraph`. The importer suites run the embed step between plan and apply on their simulated graphs. [test-omnigraph-writers-mutation.sh](../../../../scripts/test-omnigraph-writers-mutation.sh) breaks 25 of these rules one at a time (the trim set, normalisation, precision, batch size, heals without a vector, `splitlines()`, pacing, the deadline, fail-soft, which conflicts are retried, the changed-chunk diff, the heal cap and its exclusions, the vector allowance, a prune missing a chunk, a kept renamed note, orphaned shadows, the chunk cap and size, relinking, fenced headings) and requires each to fail, and the unmodified code to pass. [test_omnigraph_writers_real_server.py](../../../../scripts/test_omnigraph_writers_real_server.py) (`OMNIGRAPH_WRITERS_REAL_SERVER=1`) runs both importers' real `snapshot.sh` and `apply.sh` against the pinned server: a vault import with vectors, a second run that writes nothing, a rename pruned in one mutation, a prune that misses one chunk refused, and a node-only heal that keeps the passage's `PassageOf` edge. Pre-commit runs the mutation test and the real-server test; CI runs all of them.
 
 ## Merge conflicts
 

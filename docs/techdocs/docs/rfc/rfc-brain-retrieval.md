@@ -931,6 +931,87 @@ Freshness is measured by the vectorless-row gauge, not a scheduled canary: the v
 static, and a canary would add daily commits (and storage versions) plus write access for the eval
 identity.
 
+**Outcome (2026-09-30).** Shipped in the commit order of section 7.3: the distiller skip and the
+`distill_state` filter first (verified in the live ConfigMap before the vault change), then the embed
+step, then forge-import, then vault-import. Details in the
+[Omnigraph runbook](../runbooks/omnigraph.md#write-time-vectors). Live, read-only checks through the
+`omnigraph_brain_eval` bridge (counts only):
+
+| Check | Before | After |
+|---|---|---|
+| `Passage` rows without a vector | 1,425 of 17,677 (8.1%) | 0 of 18,383 (0 after the 02:40 and 03:30 eval runs too) |
+| `Note` and `Topic` rows without a vector | 0 | 0 |
+| Obsidian passages | 0 | 1,697 of 394 shadow artifacts (every note of 80 or more characters), all with a vector |
+| Passages a forge run rewrites | every chunk of a changed artifact (201 at 00:20) | only changed chunks: 23 written and 56 kept at 00:40, 2 and 131 at 01:40 |
+| Distiller documents from `obsidian-file/` | n/a | 0; `skipped_textless=409` (394 shadows, 15 forge artifacts without text) |
+| Vault run with nothing to do | 0 writes | 0 writes, 0 embeddings (03:00) |
+
+The first forge run healed 992 of its 1,407 vectorless rows before the embed step's 1,200-second
+deadline; the 01:15 restart's backfill filled the other 415 (the Passage backfill worked again, see
+VIK-1404). The vault chunked its notes over six runs from 01:00 to 02:45; one run hit its deadline and
+wrote 12 passages without a vector, which the next run healed. No write needed a
+`read_set_conflict` retry. The restart's init container took 2 min 33 s and every graph converged and
+served; the second pod start at 01:39 (VIK-1406) backfilled nothing.
+
+Changes from the plan:
+
+- **Batches of 4, not 16.** TEI works through a request's inputs in turn. During the first forge heal,
+  batches of 16 (about 5,600 tokens) raised the TEI queue time p95 from about 3 ms to 4 s, which a
+  search arriving meanwhile waits out too. Four inputs keep that wait near 1.4 s at the same paced
+  300 tokens a second.
+- **Short sections share a chunk.** Starting a chunk at every heading gave a median chunk of 319
+  characters, 37% of them with 200 characters or less of text. A section now joins the open chunk,
+  its heading kept as a line, while it fits; a section that does not fit starts its own
+  `Title › Heading` chunk. That gives 1,697 passages with a median of about 900 characters, a little
+  above the expected 1.0k–1.5k band because the vault's notes are longer than the estimate assumed.
+- **Chunk budget per run** is 300 notes **and** about 300,000 characters of new chunk text, so a run
+  stays inside the embed step's 300-second deadline instead of writing rows it cannot embed.
+- **Heal files are separate.** Heal rows go in `heal-*.ndjson` after the loads; a heal row that did
+  not get a vector is dropped instead of rewritten, so a failed or late embedding never costs a commit.
+- **The TEI input cap** is handled by length, not truncation: forge chunks (1,500 characters) and
+  Obsidian chunks (1,200) fit in 1,024 tokens whole, and Note rows, whose vector covers only their first
+  1,024 tokens, are cut to 8,000 characters before the request, well past that point.
+- **Gauge and alerts** as planned (`omnigraph_embed_rows_missing`, the oldest vectorless age,
+  `OmnigraphVectorsBacklog` above 500 for 6 hours), plus `OmnigraphVectorsReportStale` and a TEI queue
+  time p95 panel on *Brain retrieval quality*.
+- **Tests:** the importer suites run the embed step between plan and apply; a 25-mutant writers
+  mutation test; a real-server test runs both importers' `snapshot.sh` and `apply.sh` against the
+  pinned server (a vault import with vectors, an idempotent second run, a rename pruned in one mutation,
+  a prune missing one chunk refused, a node-only heal keeping `PassageOf`). Pre-commit and CI run them.
+
+Retrieval, `p0` after P3 (graph commit `01M3R3SRH6W2GJ2BXSZ7SA0NFD`, the same provisional set, 33
+scored cases), against the P2 baseline:
+
+| Category | nDCG@8 | Recall@8 | Candidate recall@40 |
+|---|---|---|---|
+| docs-en | 0.700 → 0.704 | 0.718 → 0.718 | 0.842 → 0.842 |
+| notes-nl | 0.490 → 0.453 | 0.631 → 0.520 | 0.837 → 0.837 |
+| notes-en | 0.662 → 0.695 | 0.583 → 0.583 | 0.908 → 0.867 |
+| cross-lingual | 0.301 → 0.379 | 0.327 → 0.410 | 0.719 → 0.719 |
+| about | 0.304 → 0.314 | 0.410 → 0.410 | 0.782 → 0.719 |
+| connect | 0.295 → 0.321 | 0.436 → 0.436 | 0.565 → 0.534 |
+| temporal | 0.147 → 0.112 | 0.002 → 0.001 | 0.005 → 0.004 |
+| **all** | **0.437 → 0.447** | **0.483 → 0.473** | **0.714 → 0.693** |
+
+Dev nDCG@8 0.432 → 0.436, holdout 0.459 → 0.485. `p0` still runs today's `recall_*` queries over
+whole notes (payload p95 about 363,000 characters, unchanged), so P3 barely moves it, as expected:
+the chunks pay off in P4's `rt_note_passages_*` legs. Obsidian chunks now also compete for ranks
+inside `recall_passages`; whether that explains the notes-nl recall loss (0.11 on 6 cases) is for the
+per-case results in the private repo and P4's per-document collapse to show. Temporal expectations are
+recomputed daily, so that row moves with the data.
+
+Answers, B0 once more after P3 (`omnigraph-brain-eval-answer-p3`, 36 answers, 1 repeat, judge control
+pair 1.0 and 0.0, USD 0.17): key-fact recall 0.074 → 0.128, faithfulness 0.867 → 0.625, citation
+precision 0.00 → 0.10, abstention accuracy 0.648 → 0.750, tool-error rate 0.621 → 0.672 (92 of 137
+calls: 54 `gq_foreign`, 38 `gq_parse`). One repeat against B0's three, with a standard error near 0.09,
+so none of these moves is a finding: the raw bridge still fails on model-written GQ, which P4 and P6
+replace. The P6 bar stays B0 + 0.15 = 0.224.
+
+Still open: the next 03:15 restart logging 50 or fewer backfilled rows (the first one after P3
+backfilled 415, the forge heals the first run deferred), `brain_eval_missing_vectors_ratio` staying
+under 0.1% between restarts for a day, and Ryan editing one harmless note and seeing it rank first by
+meaning within 15 minutes.
+
 ### P4 Retrieval core
 
 - `brain.retrieval.gq` (section 7.2) in one push through the gate.
