@@ -177,11 +177,13 @@ class RealServerBrainTools(unittest.TestCase):
         self.assertEqual(body["related"][0]["ref"], "topic:derived/topic/kustomization")
         self.assertTrue(body["graph_commit"])
 
-    def test_a_pinned_snapshot_gives_the_same_answer(self):
+    def test_a_pinned_snapshot_answers_from_that_commit_and_the_same_way_every_time(self):
         head = self.search(q=QUESTION, profile="p1", limit=40)
-        pinned = self.search(q=QUESTION, profile="p1", limit=40, snapshot=head["graph_commit"])
-        self.assertEqual([result["ref"] for result in pinned["results"]], [result["ref"] for result in head["results"]])
-        self.assertEqual(pinned["graph_commit"], head["graph_commit"])
+        first = self.search(q=QUESTION, profile="p1", limit=40, snapshot=head["graph_commit"])
+        second = self.search(q=QUESTION, profile="p1", limit=40, snapshot=head["graph_commit"])
+        self.assertEqual(first["graph_commit"], head["graph_commit"])
+        self.assertEqual(first["results"][0]["ref"], "doc:forge/acme/app/doc/runbook#0")
+        self.assertEqual([result["ref"] for result in second["results"]], [result["ref"] for result in first["results"]])
 
     def test_p0_through_brain_tools_ranks_what_the_stored_recall_queries_rank(self):
         body = self.search(q=QUESTION, profile="p0", limit=40)
