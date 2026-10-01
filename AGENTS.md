@@ -58,12 +58,12 @@ roadmap file in git — see
   the board page itself (`kubernetes/apps/vikunja/board`, served at
   `vikunja.<domain>/board`); same conventions/labels as the main board
 - The agent-execution program has one project: `Unfold` (id 10, formerly Glide). It holds Unfold itself (Ploeg +
-  Vloer, repo `webgrip/glide` until the repository is renamed) and everything around it: LiteLLM inference plane, MCP gateway,
+  Vloer, repo `webgrip/unfold`, formerly `webgrip/glide`) and everything around it: LiteLLM inference plane, MCP gateway,
   agent identity/budgets, classifiers, factory observability. Merged into it: `De Vloer` (id 14,
   2026-09-29), `Dark Factory` (id 5), `Ploeg Test` and `Ploeg Bench` tickets (2026-09-30). Each
   ticket's `repo/*` label names the repo its work lands in; ploegd routes by that label once Unfold
-  ADR-0038 ships, and until then routes the whole board to `webgrip/glide`, so never assign an
-  Unfold team to a ticket whose `repo/*` is not `repo/glide`
+  ADR-0038 ships, and until then routes the whole board to `webgrip/unfold`, so never assign an
+  Unfold team to a ticket whose `repo/*` is not `repo/unfold`
 - Fixture boards, never backlogs: `Ploeg Test` (id 11, Vloer's test task source and the `vloer`
   team's route) and `Ploeg Bench` (id 49, benchmark trials, one fresh ticket per trial; id 48 is
   an archived empty duplicate). Pinned by id in the ploegd routing config

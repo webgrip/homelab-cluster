@@ -62,39 +62,39 @@ spec:
               fj() {
                 curl -fsS --max-time 45 -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" -H 'Content-Type: application/json' "$@"
               }
-              repo=https://api.github.com/repos/webgrip/glide
+              repo=https://api.github.com/repos/webgrip/unfold
               status="$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $GHCR_TOKEN" "$repo")"
               case "$status" in
-                404) gh -X POST --data '{"name":"glide","private":false,"auto_init":false,"description":"Vloer and Ploeg. Forgejo is the source of truth.","homepage":"https://docs.webgrip.dev/glide/"}' https://api.github.com/orgs/webgrip/repos >/dev/null; echo 'created GitHub webgrip/glide' ;;
-                200) echo 'GitHub webgrip/glide already exists' ;;
+                404) gh -X POST --data '{"name":"unfold","private":false,"auto_init":false,"description":"Vloer and Ploeg. Forgejo is the source of truth.","homepage":"https://docs.webgrip.dev/glide/"}' https://api.github.com/orgs/webgrip/repos >/dev/null; echo 'created GitHub webgrip/unfold' ;;
+                200) echo 'GitHub webgrip/unfold already exists' ;;
                 *) echo "GitHub repository lookup returned HTTP $status"; exit 1 ;;
               esac
               gh -X PUT --data '{"enabled":false}' "$repo/actions/permissions" >/dev/null
-              api="$FORGEJO_URL/api/v1/repos/webgrip/glide"
+              api="$FORGEJO_URL/api/v1/repos/webgrip/unfold"
               mirrors="$(fj "$api/push_mirrors")"
-              mirror="$(printf '%s' "$mirrors" | jq -c '[.[] | select(.remote_address == "ssh://github.com/webgrip/glide.git")][0] // empty')"
+              mirror="$(printf '%s' "$mirrors" | jq -c '[.[] | select(.remote_address == "ssh://github.com/webgrip/unfold.git")][0] // empty')"
               if [ -z "$mirror" ]; then
-                mirror="$(fj -X POST --data '{"remote_address":"ssh://git@github.com/webgrip/glide.git","use_ssh":true,"interval":"8h0m0s","sync_on_commit":true}' "$api/push_mirrors")"
+                mirror="$(fj -X POST --data '{"remote_address":"ssh://git@github.com/webgrip/unfold.git","use_ssh":true,"interval":"8h0m0s","sync_on_commit":true}' "$api/push_mirrors")"
               fi
               public_key="$(printf '%s' "$mirror" | jq -er '.public_key | select(length > 0)')"
               keys="$(gh "$repo/keys")"
               if ! printf '%s' "$keys" | jq -e --arg key "$public_key" 'any(.[]; (.key | split(" ")[0:2]) == ($key | split(" ")[0:2]) and .read_only == false)' >/dev/null; then
-                jq -nc --arg key "$public_key" '{title:"Forgejo Glide push mirror",key:$key,read_only:false}' | gh -X POST --data-binary @- "$repo/keys" >/dev/null
+                jq -nc --arg key "$public_key" '{title:"Forgejo Unfold push mirror",key:$key,read_only:false}' | gh -X POST --data-binary @- "$repo/keys" >/dev/null
               fi
-              obsolete="$(printf '%s' "$mirrors" | jq -r '.[] | select(.remote_address == "https://github.com/webgrip/glide.git") | .remote_name')"
-              if [ -n "$obsolete" ]; then
-                fj -X DELETE "$api/push_mirrors/$obsolete" >/dev/null
-              fi
+              obsolete="$(printf '%s' "$mirrors" | jq -r '.[] | select(.remote_address == "https://github.com/webgrip/glide.git" or .remote_address == "ssh://github.com/webgrip/glide.git") | .remote_name')"
+              for name in $obsolete; do
+                fj -X DELETE "$api/push_mirrors/$name" >/dev/null
+              done
               echo 'configured repository-scoped SSH mirror'
               fj -X POST "$api/push_mirrors-sync" >/dev/null
               jq -nc --arg value "$OVSX_PAT" '{data:$value}' | fj -X PUT --data-binary @- "$api/actions/secrets/OVSX_PAT" >/dev/null
-              echo 'bridged Glide Open VSX credential'
+              echo 'bridged Unfold Open VSX credential'
               i=0
               until gh -X PATCH --data '{"default_branch":"development"}' "$repo" >/dev/null 2>&1; do
                 i=$((i+1)); [ "$i" -lt 30 ] || { echo 'GitHub mirror has not received development'; exit 1; }
                 sleep 5
               done
-              echo 'Glide GitHub mirror provisioned; Actions disabled; trunk development'
+              echo 'Unfold GitHub mirror provisioned; Actions disabled; trunk development'
               for entry in de-vloer:52afa4a583fbf47d52081c9a2a95c4cb4c372100 ploeg:6f19c25fcc48f2335ad39237d06642adef1a5fcc; do
                 old_repo="$(printf '%s' "$entry" | cut -d: -f1)"
                 expected="$(printf '%s' "$entry" | cut -d: -f2)"
