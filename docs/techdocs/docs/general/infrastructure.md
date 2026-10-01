@@ -62,7 +62,7 @@ Placement is label-driven, never hostname-pinned ([ADR-0001](../adr/adr-0001-nod
 |---|---|---|
 | **Longhorn** (in-cluster block) | worker-1, worker-2, fringe | All PVCs. Replicas need ≥2 schedulable storage nodes. |
 | **Garage S3 — in-cluster** (ns `garage`) | `garage-s3.garage.svc:3900` | Harbor registry blobs **only** ([ADR-0018](../adr/adr-0018-registry-blob-storage-garage-s3.md)) |
-| **Garage S3 — off-site** | `https://s3-offsite.webgrip.dev` | CNPG WAL + base backups, Longhorn backups, OpenBao snapshots, Forgejo LFS/attachments, invoiceninja dumps |
+| **Garage S3 — off-site** | `https://s3-offsite.webgrip.dev` | CNPG WAL + base backups, Longhorn backups, OpenBao snapshots, invoiceninja dumps. Forgejo's objects moved to `forgejo-data` ([ADR-0065](../adr/adr-0065-forgejo-objects-on-its-own-volume.md)) |
 
 !!! danger "One storage node is not enough"
     With only worker-1 schedulable, 58 of 69 volumes sat `degraded` and **no PVC

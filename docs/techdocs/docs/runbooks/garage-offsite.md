@@ -1,8 +1,9 @@
 # Off-site Garage (garage-fsn1)
 
 The off-site Garage behind `https://s3-offsite.webgrip.dev` holds every backup the cluster makes:
-CNPG WAL and base backups, Longhorn volume backups, OpenBao raft snapshots, Forgejo LFS,
-attachments and Actions logs, and the invoiceninja dumps. When its disk fills, all of those fail
+CNPG WAL and base backups, Longhorn volume backups, OpenBao raft snapshots and the invoiceninja
+dumps. Forgejo's own objects moved to its `forgejo-data` volume
+([ADR-0065](../adr/adr-0065-forgejo-objects-on-its-own-volume.md)). When its disk fills, all of those fail
 at once. This runbook covers the host, the checks, the capacity alerts, emptying and deleting a
 bucket, reclaiming disk after a mass deletion, and data blocks lost to a full disk.
 
@@ -25,7 +26,7 @@ The 2026-09-28 disk-full incident is VIK-1405; its cause, GUAC's blob store, is 
 | Data | `/var/lib/garage/data` |
 | Listeners | S3 `127.0.0.1:3900`, RPC `127.0.0.1:3901`, admin and `/metrics` `127.0.0.1:3903`. Nothing Garage-related listens publicly |
 | Front door | Caddy v2.11 terminates TLS for `s3-offsite.webgrip.dev` and proxies to `127.0.0.1:3900`. The same Caddy serves `immich.webgrip.dev` and `uptime.webgrip.dev` (Docker, about 19 GB under `/var/lib/docker`, Immich data under `/srv/immich`) |
-| Buckets | `cnpg-backups-bucket` (key `cnpg-backup`), `forgejo` (key `forgejo`), `guac` (key `security`, being deleted) |
+| Buckets | `cnpg-backups-bucket` (key `cnpg-backup`), `forgejo` (key `forgejo`; read-only rollback copy since the ADR-0065 cutover, deleted 30 days later, VIK-1691), `guac` (key `security`, being deleted) |
 | Replication | `replication_factor = 1`. The RAID1 pair is the only redundancy; a lost block is lost |
 
 ## Access and checks

@@ -231,6 +231,9 @@ spec:
             secretKeyRef:
               name: forgejo-db-app
               key: password
+        # Unused while [storage] is local. Kept until the off-site forgejo bucket is
+        # deleted (VIK-1691): the post-cutover migrate-storage pass and a rollback
+        # both read the old bucket with these.
         - name: FORGEJO__storage__MINIO_ACCESS_KEY_ID
           valueFrom:
             secretKeyRef:
@@ -306,19 +309,11 @@ spec:
           ALLOWED_HOST_LIST: "*"
         metrics:
           ENABLED: true
-        # Bulk objects (LFS/packages/attachments/avatars/artifacts) on Garage S3 to
-        # keep the Longhorn PVC small; git repositories stay on the local PVC.
-        # Garage requires path-style addressing and plain HTTP.
+        # Packages, LFS, attachments, avatars and repo archives live on forgejo-data
+        # under /data/<type> (ADR-0065): 2 Longhorn replicas plus the nightly
+        # off-site gitops-backup. The off-site Garage holds only backups.
         storage:
-          STORAGE_TYPE: minio
-          # Off-site store (Hetzner) as of 2026-08-01. USE_SSL must flip with the
-          # endpoint: Caddy terminates TLS there and Garage itself binds to
-          # loopback, so plain HTTP on 443 would simply fail to connect.
-          MINIO_ENDPOINT: "s3-offsite.webgrip.dev"
-          MINIO_BUCKET: forgejo
-          MINIO_LOCATION: garage
-          MINIO_USE_SSL: true
-          MINIO_BUCKET_LOOKUP: path
+          STORAGE_TYPE: local
         storage.actions_log:
           STORAGE_TYPE: local
           PATH: /data/actions_log

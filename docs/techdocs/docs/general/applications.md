@@ -58,7 +58,7 @@ Hostnames follow `<app>.${SECRET_DOMAIN}` (`cluster-secrets`, SOPS-encrypted). G
 | `envoy-external` | `network` | `10.0.0.28` | 443 |
 | zomboid (**disabled**) | `zomboid` | `10.0.0.29` | UDP 16261-2, 8766-7; TCP 27015 |
 
-Object storage is split as of 2026-08-02: Harbor registry blobs on the **in-cluster** Garage (`http://garage-s3.garage.svc.cluster.local:3900`), and all backups (CNPG, Longhorn, OpenBao snapshots, Forgejo) on the **off-site** Garage (`https://s3-offsite.webgrip.dev`, Hetzner FSN1).
+Object storage is split as of 2026-08-02: Harbor registry blobs on the **in-cluster** Garage (`http://garage-s3.garage.svc.cluster.local:3900`), and all backups (CNPG, Longhorn, OpenBao snapshots) on the **off-site** Garage (`https://s3-offsite.webgrip.dev`, Hetzner FSN1). Forgejo's packages, LFS and attachments are not object storage any more: they live on its `forgejo-data` volume ([ADR-0065](../adr/adr-0065-forgejo-objects-on-its-own-volume.md)).
 
 ## Not routed (no HTTPRoute, by design)
 
