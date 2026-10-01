@@ -1331,7 +1331,7 @@ spec:
           "id": 22,
           "type": "table",
           "title": "Runner pods right now — and what each one is building",
-          "description": "The pod-to-job join this cluster actually has. All runner pods share ONE Forgejo registration (`one-job --uuid`), so the Actions API cannot say which pod holds which task. The runner's own log line `task <id> repo is <owner/repo>` is the authoritative mapping, so this table merges three sources on `pod` and `task`: VictoriaLogs for pod→task, kube-state-metrics/cAdvisor for the pod's node and resource use, and the exporter for what that task is. A pod with no task is a warm-pool runner blocked on `one-job --wait`.",
+          "description": "The pod-to-job join this cluster actually has. All runner pods share ONE Forgejo registration (`one-job --uuid`), so the Actions API cannot say which pod holds which task. The runner's own log line `task <id> repo is <owner/repo>` is the authoritative mapping, so this table joins three sources in two steps: VictoriaLogs pod→task joined to the exporter's task metadata on `task`, then that joined to kube-state-metrics/cAdvisor on `pod`. Only pods kube-state-metrics reports as Running right now survive, so a finished or deleted pod drops out even though its log line stays inside the time range. A pod with no task is a warm-pool runner blocked on `one-job --wait`.",
           "datasource": {
             "type": "datasource",
             "uid": "-- Mixed --"
@@ -1476,7 +1476,7 @@ spec:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "time() - max by (pod) (label_replace(label_replace(label_replace(kube_pod_start_time{exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"}, \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"namespace\", \"$$1\", \"exported_namespace\", \"(.+)\"), \"container\", \"$$1\", \"exported_container\", \"(.+)\"))",
+              "expr": "(time() - max by (pod) (label_replace(label_replace(label_replace(kube_pod_start_time{exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\"}, \"pod\", \"$$1\", \"exported_pod\", \"(.+)\"), \"namespace\", \"$$1\", \"exported_namespace\", \"(.+)\"), \"container\", \"$$1\", \"exported_container\", \"(.+)\"))) and on (pod) (max by (pod) (label_replace(kube_pod_status_phase{exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\", phase=\"Running\"}, \"pod\", \"$$1\", \"exported_pod\", \"(.+)\")) == 1)",
               "instant": true,
               "format": "table"
             },
@@ -1523,21 +1523,35 @@ spec:
           ],
           "transformations": [
             {
-              "id": "merge",
-              "options": {}
+              "id": "filterFieldsByName",
+              "options": {
+                "exclude": {
+                  "pattern": "^Time.*$$"
+                }
+              }
+            },
+            {
+              "id": "joinByField",
+              "filter": {
+                "id": "byRefId",
+                "options": "/^(?:A|F|G)$$/"
+              },
+              "options": {
+                "byField": "task",
+                "mode": "outer"
+              }
+            },
+            {
+              "id": "joinByField",
+              "options": {
+                "byField": "pod",
+                "mode": "outer"
+              }
             },
             {
               "id": "organize",
               "options": {
                 "excludeByName": {
-                  "Time": true,
-                  "Time 1": true,
-                  "Time 2": true,
-                  "Time 3": true,
-                  "Time 4": true,
-                  "Time 5": true,
-                  "Time 6": true,
-                  "Time 7": true,
                   "picked": true,
                   "Value #B": true,
                   "Value #F": true
