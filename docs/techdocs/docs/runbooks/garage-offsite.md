@@ -9,7 +9,9 @@ bucket, reclaiming disk after a mass deletion, and data blocks lost to a full di
 Outage triage for "Garage unreachable" lives in the
 [blackbox runbook](synthetic-probes-blackbox.md#garage-s3-cnpg-backup-wal-target-unavailable).
 The 2026-09-28 disk-full incident is VIK-1405; its cause, GUAC's blob store, is removed by
-[ADR-0064](../adr/adr-0064-dependency-track-only-sbom-platform.md).
+[ADR-0064](../adr/adr-0064-dependency-track-only-sbom-platform.md). The purge left a 128 GB
+`data.mdb` and filled the disk again on 2026-10-01; the
+[full-disk compaction](#compacting-when-the-disk-is-full) brought it to 69.3 GB.
 
 ## Host facts
 
@@ -205,18 +207,23 @@ curl -s http://127.0.0.1:3903/metrics | grep -E '^table_size\{table_name="object
 - It is between 09:00 and 17:00 UTC. Longhorn backups run 02:00 to about 04:00 UTC, the OpenBao
   snapshot at 03:00, CNPG base backups at night.
 
-Procedure (downtime is the copy time, expected a few minutes on NVMe):
+Procedure. Downtime is the copy time: `mdb_copy -c` walks the B-tree, not the file, and on
+2026-10-01 it needed about 45 minutes and 440 GB of reads for a 128 GB `data.mdb`.
+
+Debian's `mdb_stat` (LMDB 0.9.24) hangs on the live database while Garage runs, so measure only
+after the stop. The live size includes object tombstones and the GC queues, not just the live
+objects: with 16 million tombstones still queued, the 128 GB file compacted to 69.3 GB.
 
 ```sh
 apt-get install -y lmdb-utils
 M=/var/lib/garage/meta
-mdb_stat -ef "$M/db.lmdb" | grep -E 'Page size|Number of pages used|Free pages'
-df -B1 / | tail -1
-# live bytes = (pages used - free pages) x page size; continue only if df's free column is at
-# least twice that
 
 systemctl stop garage
 sync
+mdb_stat -ef "$M/db.lmdb" | grep -E 'Page size|Number of pages used|Free pages'
+df -B1 / | tail -1
+# live bytes = (pages used - free pages) x page size; continue only if df's free column is at
+# least twice that, otherwise start Garage again and use the next section
 mkdir "$M/db.lmdb.compact"
 mdb_copy -c "$M/db.lmdb" "$M/db.lmdb.compact"
 ls -la "$M/db.lmdb.compact"
@@ -237,6 +244,48 @@ keeps unarchived WAL locally, so minutes are harmless. Verify from the cluster t
 `db.lmdb.old` for a day, then `rm -rf /var/lib/garage/meta/db.lmdb.old`.
 
 Rollback: `systemctl stop garage`, move `db.lmdb` aside, `mv db.lmdb.old db.lmdb`, start.
+
+Any LMDB tool run as root against the directory recreates `lock.mdb` owned by root, and Garage
+then fails to start with `Unable to open metadata db: Cannot open LMDB database: Permission
+denied (os error 13)`. Run `chown -R garage:garage "$M/db.lmdb"` again after the last `mdb_stat`.
+
+### Compacting when the disk is full
+
+With no free space the compacted copy has nowhere to go. `/dev/shm` is too small: on 2026-10-01 a
+RAM attempt passed 41 GB of a 69 GB result and was aborted. Use a Hetzner Storage Box in FSN1
+instead (BX11, 1 TB, SSH on port 23, about 110 MB/s from garage-fsn1 with `dd` over `ssh`). The
+original stays on the box until the swap is verified, so there is never a moment without a good
+copy. Downtime on 2026-10-01 was 84 minutes: 20 for the raw upload, 45 for the compaction, 18 for
+the download.
+
+On a full disk nothing can be written under `/root`, so keep the SSH key, scripts and logs in
+`/dev/shm`. Install the public key on the box from a workstation with
+`ssh-copy-id -f -s -p 23 -i <key>.pub <user>@<user>.your-storagebox.de`, which asks for the box
+password there and never on garage-fsn1.
+
+```sh
+M=/var/lib/garage/meta/db.lmdb
+S="ssh -p 23 -i /dev/shm/work/sbox -o BatchMode=yes -o ServerAliveInterval=30 <user>@<user>.your-storagebox.de"
+set -o pipefail
+systemctl stop garage
+sync
+dd if=$M/data.mdb bs=4M status=none | $S "dd of=garage-meta/original-data.mdb bs=4M status=none"
+stat -c %s $M/data.mdb; $S "ls -l garage-meta/original-data.mdb"      # sizes must match
+mdb_copy -c $M | $S "dd of=garage-meta/compact-data.mdb bs=4M status=none"
+$S "ls -l garage-meta/compact-data.mdb"
+
+rm $M/data.mdb $M/lock.mdb
+$S "dd if=garage-meta/compact-data.mdb bs=4M status=none" | dd of=$M/data.mdb bs=4M status=none
+stat -c %s $M/data.mdb                                                # same as on the box
+mdb_stat -e $M | grep 'Number of pages used'
+rm $M/lock.mdb
+chown -R garage:garage $M; chmod 600 $M/data.mdb
+systemctl start garage
+```
+
+Then run the checks from the procedure above. Keep both copies on the box for a few days; rollback is
+the same download with `original-data.mdb`. Afterwards delete `garage-meta/`, remove the key from
+the box's `.ssh/authorized_keys` and cancel the box: the copies hold every S3 key secret.
 
 Afterwards, consider `metadata_auto_snapshot_interval = "6h"` in `garage.toml`: with a single node
 and `metadata_fsync` off, a metadata snapshot is the only way back from a corrupted `data.mdb`.
