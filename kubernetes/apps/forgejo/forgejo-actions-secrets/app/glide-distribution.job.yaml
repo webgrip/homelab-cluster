@@ -72,7 +72,7 @@ spec:
               gh -X PUT --data '{"enabled":false}' "$repo/actions/permissions" >/dev/null
               api="$FORGEJO_URL/api/v1/repos/webgrip/unfold"
               mirrors="$(fj "$api/push_mirrors")"
-              mirror="$(printf '%s' "$mirrors" | jq -c '[.[] | select(.remote_address == "ssh://github.com/webgrip/unfold.git")][0] // empty')"
+              mirror="$(printf '%s' "$mirrors" | jq -c '[.[] | select((.remote_address == "ssh://github.com/webgrip/unfold.git" or .remote_address == "ssh://github.com/webgrip/glide.git") and ((.public_key // "") | length > 0))][0] // empty')"
               if [ -z "$mirror" ]; then
                 mirror="$(fj -X POST --data '{"remote_address":"ssh://git@github.com/webgrip/unfold.git","use_ssh":true,"interval":"8h0m0s","sync_on_commit":true}' "$api/push_mirrors")"
               fi
@@ -81,7 +81,8 @@ spec:
               if ! printf '%s' "$keys" | jq -e --arg key "$public_key" 'any(.[]; (.key | split(" ")[0:2]) == ($key | split(" ")[0:2]) and .read_only == false)' >/dev/null; then
                 jq -nc --arg key "$public_key" '{title:"Forgejo Unfold push mirror",key:$key,read_only:false}' | gh -X POST --data-binary @- "$repo/keys" >/dev/null
               fi
-              obsolete="$(printf '%s' "$mirrors" | jq -r '.[] | select(.remote_address == "https://github.com/webgrip/glide.git" or .remote_address == "ssh://github.com/webgrip/glide.git") | .remote_name')"
+              keep="$(printf '%s' "$mirror" | jq -r '.remote_name // empty')"
+              obsolete="$(printf '%s' "$mirrors" | jq -r --arg keep "$keep" '.[] | select(.remote_name != $keep) | select(.remote_address == "https://github.com/webgrip/glide.git" or .remote_address == "ssh://github.com/webgrip/glide.git" or .remote_address == "ssh://github.com/webgrip/unfold.git") | .remote_name')"
               for name in $obsolete; do
                 fj -X DELETE "$api/push_mirrors/$name" >/dev/null
               done
