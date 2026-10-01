@@ -6,7 +6,7 @@ metadata:
 data:
   # LiteLLM proxy configuration — the metered inference plane (ADR-0044).
   # Carries NO secrets: os.environ/* is resolved at runtime from the pod env
-  # (ANTHROPIC_API_KEY + DEEPSEEK_API_KEY + LITELLM_MASTER_KEY from the
+  # (ANTHROPIC_API_KEY + FIREWORKS_AI_API_KEY + LITELLM_MASTER_KEY from the
   # litellm-secret ExternalSecret; DATABASE_URL from the CNPG secret).
   # Mounted at /etc/litellm/config.yaml.
   config.yaml: |-
@@ -134,24 +134,6 @@ data:
               role: system
             - location: message
               index: -1
-      # Upstream renamed their models (2026-07-24, verified by live 400s:
-      # "The supported API model names are deepseek-v4-pro or deepseek-v4-flash,
-      # but you passed deepseek-chat"). Public aliases stay stable — every
-      # consumer (ploeg teams, fallbacks, dashboards) keys on model_name.
-      - model_name: deepseek-chat
-        litellm_params:
-          model: deepseek/deepseek-flash
-          api_key: os.environ/DEEPSEEK_API_KEY
-        model_info:
-          mode: chat
-          input_cost_per_token: 0.0000003
-          output_cost_per_token: 0.0000012
-          cache_read_input_token_cost: 0.000000006
-          supports_function_calling: true
-      - model_name: deepseek-reasoner
-        litellm_params:
-          model: deepseek/deepseek-v4-pro
-          api_key: os.environ/DEEPSEEK_API_KEY
       - model_name: gpt-6-1-sol
         litellm_params:
           model: openai/responses/gpt-6.1-sol
@@ -368,7 +350,7 @@ data:
       # --- VIK-266: resilience. Cross-provider fallbacks per group; a
       # streaming-call timeout (generous — hang detection, not slowness
       # police); hard USD/day provider caps (owner-approved 2026-07-18:
-      # 5 anthropic / 2 deepseek) enforced by the router_budget_limiting
+      # 5 anthropic) enforced by the router_budget_limiting
       # pre-call check on Valkey state. Cooldowns DISABLED (recorded): every
       # group is single-deployment — cooling the only deployment is a
       # self-inflicted outage; revisit at deployment #2. ---
@@ -377,33 +359,31 @@ data:
         # cheap model must not silently route to a 10x-priced one).
         - claude-opus-5: ["claude-opus-4-8", "claude-sonnet-5"]
         - claude-fable-5: ["claude-opus-4-8", "claude-sonnet-5"]
-        - claude-opus-4-8: ["claude-sonnet-5", "deepseek-chat"]
-        - claude-opus-4-7: ["claude-sonnet-5", "deepseek-chat"]
-        - claude-opus-4-6: ["claude-sonnet-5", "deepseek-chat"]
-        - claude-opus-4-5: ["claude-sonnet-5", "deepseek-chat"]
-        - claude-opus-4-1: ["claude-sonnet-5", "deepseek-chat"]
-        - claude-sonnet-5: ["deepseek-chat"]
-        - claude-sonnet-4-6: ["deepseek-chat"]
-        - claude-sonnet-4-5: ["deepseek-chat"]
-        - claude-haiku-4-5: ["deepseek-chat"]
-        - deepseek-chat: ["fireworks-gpt-oss-120b", "claude-haiku-4-5"]
-        - deepseek-reasoner: ["claude-sonnet-5"]
-        - chat-default: ["deepseek-chat"]
-        - fireworks-nemotron-lightning: ["deepseek-chat"]
-        - fireworks-minimax-m3: ["deepseek-chat"]
-        - fireworks-qwen3-plus: ["deepseek-chat"]
-        - fireworks-kimi-code: ["deepseek-chat"]
-        - fireworks-gpt-oss-120b: ["deepseek-chat"]
-      default_fallbacks: ["deepseek-chat"]
+        - claude-opus-4-8: ["claude-sonnet-5", "fireworks-deepseek-v4p1-flash"]
+        - claude-opus-4-7: ["claude-sonnet-5", "fireworks-deepseek-v4p1-flash"]
+        - claude-opus-4-6: ["claude-sonnet-5", "fireworks-deepseek-v4p1-flash"]
+        - claude-opus-4-5: ["claude-sonnet-5", "fireworks-deepseek-v4p1-flash"]
+        - claude-opus-4-1: ["claude-sonnet-5", "fireworks-deepseek-v4p1-flash"]
+        - claude-sonnet-5-5: ["fireworks-deepseek-v4p1-flash"]
+        - claude-sonnet-5: ["fireworks-deepseek-v4p1-flash"]
+        - claude-sonnet-4-6: ["fireworks-deepseek-v4p1-flash"]
+        - claude-sonnet-4-5: ["fireworks-deepseek-v4p1-flash"]
+        - claude-haiku-4-5: ["fireworks-deepseek-v4p1-flash"]
+        - chat-default: ["fireworks-gpt-oss-120b"]
+        - fireworks-nemotron-lightning: ["fireworks-gpt-oss-120b"]
+        - fireworks-minimax-m3: ["fireworks-gpt-oss-120b"]
+        - fireworks-qwen3-plus: ["fireworks-deepseek-v4p1-flash"]
+        - fireworks-kimi-code: ["fireworks-deepseek-v4p1-flash"]
+        - fireworks-gpt-oss-120b: ["fireworks-deepseek-v4p1-flash"]
+        - fireworks-deepseek-v4p1-flash: ["fireworks-gpt-oss-120b"]
+        - fireworks-glm-5p3-flash: ["fireworks-gpt-oss-120b"]
+      default_fallbacks: ["fireworks-gpt-oss-120b"]
       stream_timeout: 120
       disable_cooldowns: true
       optional_pre_call_checks: ["router_budget_limiting"]
       provider_budget_config:
         anthropic:
           budget_limit: 10
-          time_period: "1d"
-        deepseek:
-          budget_limit: 5
           time_period: "1d"
         fireworks_ai:
           budget_limit: 10

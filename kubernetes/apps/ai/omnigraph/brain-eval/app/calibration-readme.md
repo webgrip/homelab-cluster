@@ -13,6 +13,6 @@ To grade one in the Forgejo web UI:
 4. In the file path box above the editor, put the cursor at the start of the file name and press Backspace once, so the path reads `calibration/c07-b0.json` instead of `calibration/pending/c07-b0.json`. That moves the file.
 5. **Commit changes** directly to `main`.
 
-Every answer run re-judges the graded files and publishes the agreement. Below 80% with ten grades, switch the judge to the next cheapest model of another family: `deepseek-chat`, then `deepseek-reasoner` (never an Anthropic model; the answer model is MiniMax and the question drafter is gpt-oss).
+Every answer run re-judges the graded files and publishes the agreement. Below 80% with ten grades, switch the judge to the next cheapest model of another family: `fireworks-glm-5p3-flash`, then `fireworks-qwen3-plus` (never an Anthropic model or DeepSeek's own API; the answer model is MiniMax and the question drafter is gpt-oss).
 
 The eval jobs rewrite this file from `kubernetes/apps/ai/omnigraph/brain-eval/app/calibration-readme.md` in `webgrip/homelab-cluster`; change it there.

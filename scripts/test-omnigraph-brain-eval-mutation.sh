@@ -106,7 +106,7 @@ spawn guides-not-refreshed brain_eval.py '        refresh_repo_guides(workspace,
 spawn guides-written-once brain_eval.py 'if not path.exists() or path.read_text(encoding="utf-8") != text:' 'if not path.exists():'
 spawn judge-anthropic brain_eval.py 'JUDGE_MODEL = "fireworks-deepseek-v4p1-flash"' 'JUDGE_MODEL = "claude-haiku-4-5"'
 spawn judge-answer-family brain_eval.py 'JUDGE_MODEL = "fireworks-deepseek-v4p1-flash"' 'JUDGE_MODEL = "chat-default"'
-spawn pool-falls-back-to-drafter brain_eval.py 'POOL_FALLBACK_MODEL = "deepseek-chat"' 'POOL_FALLBACK_MODEL = "fireworks-gpt-oss-120b"'
+spawn pool-falls-back-to-drafter brain_eval.py 'POOL_FALLBACK_MODEL = "fireworks-glm-5p3-flash"' 'POOL_FALLBACK_MODEL = "fireworks-gpt-oss-120b"'
 spawn answer-in-backup-window cronjobs.yaml '  schedule: "10 5 * * 0"
   timeZone: Etc/UTC' '  schedule: "10 5 * * 0"
   timeZone: Europe/Amsterdam'
