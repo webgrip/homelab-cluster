@@ -94,6 +94,7 @@ What the cluster runs on, and the cross-cutting patterns everything above assume
 | [0008](adr-0008-confine-longhorn-to-workers.md) | Confine Longhorn storage to the worker nodes | accepted | 2026-06-21 |
 | [0009](adr-0009-longhorn-hot-cold-tiers.md) | Longhorn hot/cold storage tiers from node annotations | proposed | 2026-07-01 |
 | [0010](adr-0010-storageclass-consolidation.md) | Consolidate Longhorn StorageClasses | proposed | 2026-07-02 |
+| [0065](adr-0065-forgejo-objects-on-its-own-volume.md) | Forgejo keeps its objects on its own volume; the off-site Garage holds only backups | accepted | 2026-10-01 |
 
 ### 4. GitOps source & delivery
 
