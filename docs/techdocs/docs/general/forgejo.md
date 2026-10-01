@@ -22,7 +22,7 @@ official Forgejo Helm chart and reconciled by Flux.
 | Database | CNPG `forgejo-db`; credentials injected from the operator-managed `forgejo-db-app` Secret |
 | Sessions | Stored in Postgres (`session.PROVIDER=db`) — survive pod restarts, no Redis needed |
 | Cache / queue | In-process `memory` + `level` (on the data PVC) — fine for a single replica |
-| Repo / LFS / packages | Longhorn RWO PVC `forgejo-data` (20Gi) mounted at `/data` |
+| Repos, LFS, packages, attachments, avatars, Actions logs | Longhorn RWO PVC `forgejo-data` (40Gi, 2 replicas, nightly off-site backup) mounted at `/data`; `[storage]` is `local` ([ADR-0065](../adr/adr-0065-forgejo-objects-on-its-own-volume.md)) |
 | Metrics | `/metrics` + `ServiceMonitor` (the legacy `release: kube-prometheus-stack` label is vestigial and no longer required; VM scrapes all CRs) |
 
 Forgejo is **not** HA-capable: `replicaCount` stays at 1 with a `Recreate` strategy.
