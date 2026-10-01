@@ -112,7 +112,7 @@ def failed_runs():
         desc="Every Run in the exporter's 30-day window whose outcome was failed or stuck, newest first, with what "
              "its per-Run model key spent. The same ticket failing several times is a Work Item the agents cannot "
              "do as written: refine it or take it back. Failure reasons are in Ploeg's database (agent_runs."
-             "failure_reason); the Glide Loop board reads them.")
+             "failure_reason); the Unfold Loop board reads them.")
 
 
 def outcomes():
@@ -131,8 +131,8 @@ def spend_today():
         "Model spend today, per provider", "sum by (provider) (litellm_provider_today_spend) > 0", unit="currencyUSD",
         decimals=2, text_mode="value_and_name", fixed_color=NEUTRAL,
         targets=[target("sum by (provider) (litellm_provider_today_spend) > 0", "A", "{{provider}}", instant=True)],
-        desc="What LiteLLM has recorded as spent today per provider, every caller included (Glide, Omnigraph, "
-             "chat). Grey: Glide's own per-Run budgets are enforced in Ploeg, and the SLO rules alert on budget "
+        desc="What LiteLLM has recorded as spent today per provider, every caller included (Unfold, Omnigraph, "
+             "chat). Grey: Unfold's own per-Run budgets are enforced in Ploeg, and the SLO rules alert on budget "
              "hits.", no_value="nothing spent today")
 
 
@@ -140,11 +140,11 @@ def spend_by_team():
     expr = (f'sum by (team) (litellm_run_spend{{key_alias=~"ploeg-.*"}} * on (key_alias) group_left(team) '
             f"(max by (key_alias, team) (ploeg_run_started_epoch{{{TEAM}}}) >= bool 0))")
     return stat(
-        "Glide spend per team · 30 days", expr, unit="currencyUSD", decimals=2, text_mode="value_and_name",
+        "Unfold spend per team · 30 days", expr, unit="currencyUSD", decimals=2, text_mode="value_and_name",
         fixed_color=NEUTRAL, targets=[target(expr, "A", "{{team}}", instant=True)],
         desc="What the per-Run model keys of each team's Runs spent over the exporter's 30-day window, from "
              "LiteLLM's ledger joined to Ploeg's Runs on the key alias. Settled spend per Work Item, with "
-             "reconciliation, is on the Glide Loop board.")
+             "reconciliation, is on the Unfold Loop board.")
 
 
 def model_health():
@@ -248,9 +248,9 @@ def row_spend():
         (bars("Per-Run key budget used, top 15", [target(per_key, "A", "{{key_alias}}", instant=True)],
               unit="percent", decimals=0, maximum=100, thresholds=alarm_at(amber=80, vermillion=100),
               desc="The Run keys closest to their budget. A key at 100 % blocked its Run mid-work."), 0, 8, 9),
-        (bars("Glide spend by Run outcome · 30 days", [target(by_outcome, "A", "{{outcome}}", instant=True)],
+        (bars("Unfold spend by Run outcome · 30 days", [target(by_outcome, "A", "{{outcome}}", instant=True)],
               unit="currencyUSD", decimals=2,
-              desc="Where Glide's model money went, by how the Run ended. Spend on failed, stuck and "
+              desc="Where Unfold's model money went, by how the Run ended. Spend on failed, stuck and "
                    "no_change_needed Runs bought no pull request."), 8, 8, 9),
         (timeseries("Model spend per model", [target(
             f"sum by (model) (increase(litellm_model_spend{{{CHAT}}}[1h])) > 0", "A", "{{model}}")],
@@ -323,8 +323,8 @@ def row_native():
     ]
 
 
-LINKS = [link("Glide Loop", "/d/glide-loop"), link("Glide · Runs", "/d/glide-runs"),
-         link("Glide · Kata overhead", "/d/glide-kata"), link("Glide docs", GLIDE_DOCS, icon="doc", blank=True),
+LINKS = [link("Unfold Loop", "/d/glide-loop"), link("Unfold · Runs", "/d/glide-runs"),
+         link("Unfold · Kata overhead", "/d/glide-kata"), link("Unfold docs", GLIDE_DOCS, icon="doc", blank=True),
          tag_links(["board"], "Boards")]
 
 
@@ -334,16 +334,16 @@ def desk():
                 ("ploegd gauges", row_native()), ("Ploeg logs", row_logs())]
     panels = number(first_screen() + lay_out_rows(24, sections))
     return dashboard(
-        UID, "Glide · Plant", panels, tags=TAGS, variables=VARIABLES, links=LINKS, time_from="now-24h",
-        description="Is the Glide machine keeping up: Runs, workers, leases, what waits on a person, what failed "
-                    "and what it cost. The product KPIs are on Glide Loop; this is the plant under it.")
+        UID, "Unfold · Plant", panels, tags=TAGS, variables=VARIABLES, links=LINKS, time_from="now-24h",
+        description="Is the Unfold machine keeping up: Runs, workers, leases, what waits on a person, what failed "
+                    "and what it cost. The product KPIs are on Unfold Loop; this is the plant under it.")
 
 
 def wall():
     return dashboard(
-        WALL_UID, "Wall · Glide", number(first_screen()), tags=["wall", "glide"], kiosk=True,
-        variables=[{**VARIABLES[0], "hide": 2}], description="The Glide plant board's first screen, for a TV.",
-        links=[link("Glide · Plant", f"/d/{UID}")])
+        WALL_UID, "Wall · Unfold", number(first_screen()), tags=["wall", "glide"], kiosk=True,
+        variables=[{**VARIABLES[0], "hide": 2}], description="The Unfold plant board's first screen, for a TV.",
+        links=[link("Unfold · Plant", f"/d/{UID}")])
 
 
 def boards():

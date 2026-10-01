@@ -398,7 +398,7 @@ def wait_per_slot():
         no_value="No Run finished in this range.",
         desc="How long Runs waited between being queued and a worker claiming them, and how long they then ran, "
              "per team and role (p50 is the median). A long queue on one slot usually means the previous Run of "
-             "the same slot was still running: each slot runs one Run at a time. Pod-level detail is on Glide · "
+             "the same slot was still running: each slot runs one Run at a time. Pod-level detail is on Unfold · "
              "Kata overhead.")
 
 
@@ -409,11 +409,11 @@ def pods_without_room_over_time():
                 "A", "{{team}}")],
         unit="short", decimals=0, draw="bars", stack=True,
         desc="Worker and sandbox pods the scheduler could not place, per team, over the selected range. Bars that "
-             "keep coming back mean the Kata nodes are full: see node headroom on Glide · Kata overhead.")
+             "keep coming back mean the Kata nodes are full: see node headroom on Unfold · Kata overhead.")
 
 
-LINKS = [link("Glide · Plant", "/d/glide-plant"), link("Glide · Kata overhead", f"/d/{KATA_UID}"),
-         link("Glide Loop", "/d/glide-loop"), tag_links(["board"], "Boards")]
+LINKS = [link("Unfold · Plant", "/d/glide-plant"), link("Unfold · Kata overhead", f"/d/{KATA_UID}"),
+         link("Unfold Loop", "/d/glide-loop"), tag_links(["board"], "Boards")]
 
 
 def place(items):
@@ -435,9 +435,9 @@ def runs_board():
         (wait_per_slot(), 0, 37, 14, 7), (pods_without_room_over_time(), 14, 37, 10, 7),
     ])
     return dashboard(
-        RUNS_UID, "Glide · Runs", number(panels), tags=TAGS, variables=[TEAM_VARIABLE], links=LINKS,
+        RUNS_UID, "Unfold · Runs", number(panels), tags=TAGS, variables=[TEAM_VARIABLE], links=LINKS,
         time_from="now-24h",
-        description="Per-Run view of Glide: what is running now, what just finished and how, where the time went "
+        description="Per-Run view of Unfold: what is running now, what just finished and how, where the time went "
                     "from queued to finished, and why Runs fail. Built from Ploeg's database and Kubernetes.")
 
 
@@ -677,7 +677,7 @@ def blind_spots():
         "- **Guest memory is host memory.** A Kata pod's working set counts the guest kernel and guest page cache. "
         "That is the real cost to the node, but it is not what the agent process itself used.\n"
         "- **Which Run a pod served** is known only through the checkpoint a worker writes after cloning; a Run that "
-        "dies before that has no pod on record. The per-Run join lives on Glide · Runs."))
+        "dies before that has no pod on record. The per-Run join lives on Unfold · Runs."))
 
 
 def kata_board():
@@ -690,11 +690,11 @@ def kata_board():
         (per_pod_table(), 0, 25, 24, 12),
     ]
     return dashboard(
-        KATA_UID, "Glide · Kata overhead", number(place(items)), tags=TAGS + ["kata"], variables=[TEAM_VARIABLE],
-        links=[link("Glide · Runs", f"/d/{RUNS_UID}"), link("Glide · Plant", "/d/glide-plant"),
+        KATA_UID, "Unfold · Kata overhead", number(place(items)), tags=TAGS + ["kata"], variables=[TEAM_VARIABLE],
+        links=[link("Unfold · Runs", f"/d/{RUNS_UID}"), link("Unfold · Plant", "/d/glide-plant"),
                tag_links(["board"], "Boards")],
         time_from="now-7d",
-        description="What running Glide's agents inside Kata virtual machines costs compared with plain runc "
+        description="What running Unfold's agents inside Kata virtual machines costs compared with plain runc "
                     "containers: CPU and memory used against what is reserved, node room on the three Kata nodes, and "
                     "how long a sandbox takes to start. Each panel says what it cannot measure.")
 
