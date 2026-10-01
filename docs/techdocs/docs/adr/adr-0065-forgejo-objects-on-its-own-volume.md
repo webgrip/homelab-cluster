@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-01
 ---
 
@@ -162,6 +162,7 @@ PushSecret per consumer.
   incident (`d9ab1bf0`).
 * 2026-10-01 — Proposed after the off-site disk filled for the third time and failed an npm
   publish.
+* 2026-10-01 — Accepted by the owner; implementation tracked in VIK-1691.
 * Related: [ADR-0018](adr-0018-registry-blob-storage-garage-s3.md) (Harbor blobs on Garage),
   [ADR-0064](adr-0064-dependency-track-only-sbom-platform.md) (the 2026-09-28 disk-full
   incident), [off-site Garage runbook](../runbooks/garage-offsite.md).
