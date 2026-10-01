@@ -233,6 +233,20 @@ spec:
     - toEntities:
         - kube-apiserver
 ---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-cloudflare-token-roller-apiserver
+  labels:
+    app.kubernetes.io/part-of: forgejo
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: cloudflare-token-roller
+  egress:
+    - toEntities:
+        - kube-apiserver
+---
 # Narrow hole in forgejo-allow-egress's `except: 10.43.0.0/16` for the ONE cross-namespace
 # cluster service CI legitimately needs: OpenBao, for the cosign sign-and-attest step.
 #

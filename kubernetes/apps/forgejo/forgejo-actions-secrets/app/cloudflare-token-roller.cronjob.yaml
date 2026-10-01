@@ -36,6 +36,9 @@ spec:
       backoffLimit: 1
       ttlSecondsAfterFinished: 604800 # monthly job: keep a week of history
       template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: cloudflare-token-roller
         spec:
           restartPolicy: Never
           serviceAccountName: cloudflare-token-roller
@@ -79,6 +82,11 @@ spec:
                   # Roll: account-owned endpoint first, /user fallback. The result is
                   # the new value (a string on /user; {value} observed on account
                   # tokens) — both shapes handled, never printed.
+                  if ! kubectl -n forgejo auth can-i get secret/cloudflare-deploy-rolled --quiet; then
+                    echo "[cloudflare-token-roller] ERROR: the Kubernetes API is unreachable or denies access to cloudflare-deploy-rolled; nothing was rolled, so the current deploy token stays valid"
+                    exit 1
+                  fi
+
                   roll() {
                     _url="$1"
                     _resp="$(curl -sS -X PUT -H "Authorization: Bearer ${CLOUDFLARE_MANAGER_TOKEN}" \
@@ -111,9 +119,21 @@ spec:
                   fi
 
                   # The single write: the rolled value into the Secret the PushSecret watches.
-                  kubectl -n forgejo create secret generic cloudflare-deploy-rolled \
-                    --from-literal=CLOUDFLARE_API_TOKEN="${new_token}" \
-                    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+                  saved=false
+                  for wait_seconds in 0 5 15 30 60; do
+                    sleep "$wait_seconds"
+                    if kubectl -n forgejo create secret generic cloudflare-deploy-rolled \
+                        --from-literal=CLOUDFLARE_API_TOKEN="${new_token}" \
+                        --dry-run=client -o yaml | kubectl apply --validate=false -f - >/dev/null; then
+                      saved=true
+                      break
+                    fi
+                    echo "[cloudflare-token-roller] writing cloudflare-deploy-rolled failed; retrying"
+                  done
+                  if [ "$saved" != true ]; then
+                    echo "[cloudflare-token-roller] ERROR: the rolled token was NOT saved and the previous value is already invalid; every Cloudflare deploy fails until this job runs again successfully"
+                    exit 1
+                  fi
                   echo "[cloudflare-token-roller] wrote cloudflare-deploy-rolled; OpenBao + Forgejo converge on the hourly ticks"
 
                   [ "$vcode" = "200" ] && exit 0 || exit 1
