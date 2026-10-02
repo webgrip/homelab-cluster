@@ -96,24 +96,6 @@ spec:
                 sleep 5
               done
               echo 'Unfold GitHub mirror provisioned; Actions disabled; trunk development'
-              for entry in de-vloer:e0a6d7a8b166605d018465f1c89785d0ccad3616 ploeg:84df41b0fe62929130062f3656d85710d20eed8c; do
-                old_repo="$(printf '%s' "$entry" | cut -d: -f1)"
-                expected="$(printf '%s' "$entry" | cut -d: -f2)"
-                old_api="$FORGEJO_URL/api/v1/repos/webgrip/$old_repo"
-                current="$(fj "$old_api/branches/development" | jq -r '.commit.id')"
-                [ "$current" = "$expected" ] || { echo "$old_repo changed since cutover qualification; stop and reconcile source"; exit 1; }
-                if fj "$old_api" | jq -e '.has_actions == true' >/dev/null; then
-                  fj "$old_api/actions/runs" | jq -e '[.workflow_runs[] | select(.status == "running" or .status == "waiting" or .status == "blocked")] | length == 0' >/dev/null
-                  fj -X PATCH --data '{"has_actions":false}' "$old_api" >/dev/null
-                fi
-                gh_status="$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $GHCR_TOKEN" "https://api.github.com/repos/webgrip/$old_repo")"
-                case "$gh_status" in
-                  200) gh -X PUT --data '{"enabled":false}' "https://api.github.com/repos/webgrip/$old_repo/actions/permissions" >/dev/null ;;
-                  404) echo "$old_repo has no accessible legacy GitHub repository" ;;
-                  *) echo "GitHub legacy lookup returned HTTP $gh_status"; exit 1 ;;
-                esac
-                echo "$old_repo legacy Actions retired; source and existing releases retained"
-              done
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
