@@ -210,6 +210,28 @@ matches through the dedup suffix. A job that still matches nothing renders as an
 `node scripts/test-wg-pipeline-graph.mjs kubernetes/apps/forgejo/forgejo/app/custom/wg-pipeline.js
 [<caller.yml> <dir-with-reusables> <run-job-names.json>]`.
 
+A job whose `strategy.matrix` gives every leg the same `name:` gets the same `-1`, `-2` suffix.
+When no reusable child claims such a name, it joins the job it is a copy of, at depth 0.
+
+### Stage wall clock (canary, v3.7.0)
+
+Each stage label shows how long the stage took on the wall: from the first job in it that started
+to the last one that finished. The pipeline header shows the same figure for the whole run. While
+a job in the stage is still running, waiting or blocked, the figure counts up to now and turns
+yellow. A stage where nothing has started shows no time.
+
+Stock Forgejo only gives a duration per job, so the times come from the tasks API
+(`/api/v1/repos/<owner>/<repo>/actions/tasks`, `run_started_at` → `updated_at`). Only the newest
+task per job name counts, so a rerun replaces the earlier attempt. That API returns newest first
+and cannot filter by run, so the asset reads at most six pages of 50 and stops at the first page
+after the run's own tasks. A run older than about 300 tasks shows no times. While the run is live
+the times refresh every 15 s, and not while the tab is hidden.
+
+Offline check: `node scripts/test-wg-pipeline-stage-timing.mjs
+kubernetes/apps/forgejo/forgejo/app/custom/wg-pipeline-canary.js`, seven cases built on the task
+rows of unfold run 743. The tests were mutation-checked against four breakages: no run filter, no
+live count-up, no matrix pass, and the dedup suffix moved into the primary pass.
+
 ### Run-view poll governor
 
 Stock Forgejo's run view polls **two** endpoints every second until the run finishes
