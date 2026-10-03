@@ -213,7 +213,7 @@ matches through the dedup suffix. A job that still matches nothing renders as an
 A job whose `strategy.matrix` gives every leg the same `name:` gets the same `-1`, `-2` suffix.
 When no reusable child claims such a name, it joins the job it is a copy of, at depth 0.
 
-### Stage wall clock (canary, v3.7.0)
+### Stage wall clock (stable v3.5.4, canary v3.7.0)
 
 Each stage label shows how long the stage took on the wall: from the first job in it that started
 to the last one that finished. The pipeline header shows the same figure for the whole run. While

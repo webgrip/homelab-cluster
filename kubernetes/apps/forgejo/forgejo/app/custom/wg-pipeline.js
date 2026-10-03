@@ -11,14 +11,16 @@
 (function () {
   'use strict';
 
-  var WG_VERSION = '3.5.3';
+  var WG_VERSION = '3.5.4';
   try {
     window.__wgPipeline = {
       version: WG_VERSION,
       graph: { parseWorkflowJobs: parseWorkflowJobs, parseWorkflowCallInputDefaults: parseWorkflowCallInputDefaults, attachChildItems: attachChildItems, assignIndices: assignIndices },
+      timing: { latestTaskTimings: latestTaskTimings, stageWallClock: stageWallClock },
     };
   } catch (e) { }
 
+  var TERMINAL = { success: 1, failure: 1, skipped: 1, cancelled: 1, unknown: 1 };
   var RANK = { failure: 7, unknown: 7, cancelled: 6, running: 5, blocked: 4, waiting: 4, success: 3, skipped: 2 };
   var ICON_STATUS = [
     ['octicon-check-circle-fill', 'success'],
@@ -312,6 +314,12 @@
         claim.forEach(function (idx) { yj.indices.push(idx); yj.depthByIndex[idx] = ci.depth; used[idx] = true; });
       });
     });
+    yjobs.forEach(function (yj) {
+      names.forEach(function (nm, idx) {
+        if (used[idx]) return;
+        if (dedupSuffixMatches(nm, yj.label)) { yj.indices.push(idx); yj.depthByIndex[idx] = 0; used[idx] = true; }
+      });
+    });
     var orphans = [];
     names.forEach(function (nm, idx) {
       if (!used[idx]) orphans.push({ name: nm, idx: idx });
@@ -381,6 +389,37 @@
     }
   }
 
+  function latestTaskTimings(tasks, runNumber) {
+    var latest = Object.create(null);
+    tasks.forEach(function (t) {
+      if (t.run_number !== runNumber) return;
+      if (!latest[t.name] || t.id > latest[t.name].id) latest[t.name] = t;
+    });
+    var timings = Object.create(null);
+    Object.keys(latest).forEach(function (name) {
+      var t = latest[name];
+      var start = Date.parse(t.run_started_at || t.created_at);
+      if (isNaN(start)) return;
+      var end = Date.parse(t.updated_at);
+      timings[name] = { start: start, end: isNaN(end) ? start : end, finished: !!TERMINAL[t.status] };
+    });
+    return timings;
+  }
+
+  function stageWallClock(indices, nameAt, statusAt, timings, nowMs) {
+    var first = Infinity, last = -Infinity, live = false;
+    indices.forEach(function (idx) {
+      var t = timings[nameAt(idx)];
+      if (!TERMINAL[statusAt(idx)]) live = true;
+      if (!t) return;
+      first = Math.min(first, t.start);
+      last = Math.max(last, t.end);
+    });
+    if (first === Infinity) return null;
+    if (live) last = Math.max(last, nowMs);
+    return { seconds: Math.max(0, Math.round((last - first) / 1000)), live: live, first: first, last: last };
+  }
+
   function railRead() {
     var items = document.querySelectorAll('.action-view-left .job-brief-item');
     if (!items.length) return null;
@@ -446,6 +485,7 @@
     }
 
     var selectedIdx = parseInt(host.getAttribute('data-job-index'), 10);
+    var stageWallEls = [];
 
     var section = document.createElement('section');
     section.id = 'wg-pipeline';
@@ -457,7 +497,8 @@
     header.innerHTML = '<span class="wg-caret">&#9662;</span>' +
       '<span class="wg-run-status wg-status-waiting"><span class="wg-node-dot"></span></span>' +
       '<span>Pipeline</span>' +
-      '<span class="wg-pipeline-meta">' + run.jobs.length + ' jobs' + (flat ? '' : ' &middot; ' + stages.length + ' stages') + '</span>';
+      '<span class="wg-pipeline-meta">' + run.jobs.length + ' jobs' + (flat ? '' : ' &middot; ' + stages.length + ' stages') +
+      '<span class="wg-run-wall"></span></span>';
     header.addEventListener('click', function () {
       section.classList.toggle('wg-collapsed');
       localStorage.setItem('wg-pipeline-collapsed', section.classList.contains('wg-collapsed') ? '1' : '0');
@@ -485,7 +526,14 @@
     stages.forEach(function (stage, si) {
       var col = document.createElement('div');
       col.className = 'wg-stage';
-      col.setAttribute('data-label', 'Stage ' + (si + 1));
+      var stageLabel = document.createElement('div');
+      stageLabel.className = 'wg-stage-label';
+      stageLabel.textContent = 'Stage ' + (si + 1);
+      var stageWall = document.createElement('span');
+      stageWall.className = 'wg-stage-wall';
+      stageLabel.appendChild(stageWall);
+      col.appendChild(stageLabel);
+      stageWallEls.push(stageWall);
       stage.forEach(function (j) {
         var a = document.createElement('a');
         var dot = document.createElement('span');
@@ -593,6 +641,36 @@
       return (lastRail && lastRail[idx]) ? lastRail[idx].name : 'job #' + idx;
     }
 
+    function jobNameAt(idx) {
+      if (lastRail && lastRail[idx]) return lastRail[idx].name;
+      return run.jobs[idx] ? run.jobs[idx].name : null;
+    }
+
+    function clockTime(ms) {
+      return new Date(ms).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    function showWall(el, wall) {
+      el.textContent = wall ? ' · ' + (fmtSecs(wall.seconds) || '0s') : '';
+      el.classList.toggle('wg-wall-live', !!(wall && wall.live));
+      el.title = wall ? 'wall clock ' + clockTime(wall.first) + ' → ' + (wall.live ? 'now' : clockTime(wall.last)) : '';
+    }
+
+    function updateWallClocks() {
+      if (!run.timings) return;
+      var now = Date.now();
+      var statusAt = function (idx) { return statuses[idx]; };
+      var all = [];
+      stages.forEach(function (stage, si) {
+        var indices = [];
+        stage.forEach(function (j) { indices = indices.concat(j.indices); });
+        all = all.concat(indices);
+        if (stageWallEls[si]) showWall(stageWallEls[si], stageWallClock(indices, jobNameAt, statusAt, run.timings, now));
+      });
+      var runWall = section.querySelector('.wg-run-wall');
+      if (runWall) showWall(runWall, stageWallClock(all, jobNameAt, statusAt, run.timings, now));
+    }
+
     function draw() {
       if (section.classList.contains('wg-collapsed')) return;
       edgePaths = [];
@@ -639,6 +717,7 @@
         durations = read.map(function (r) { return r.duration; });
       }
       updateNodes();
+      updateWallClocks();
       draw();
       decorateRail();
     }
@@ -713,6 +792,23 @@
     return apply;
   }
 
+  var RUN_TIMINGS_MAX_PAGES = 6;
+
+  function fetchRunTimings(owner, repo, runNumber) {
+    function page(p, acc, seenRun) {
+      return apiJSON('/api/v1/repos/' + owner + '/' + repo + '/actions/tasks?limit=50&page=' + p).then(function (r) {
+        var rows = (r && r.workflow_runs) || [];
+        var mine = rows.filter(function (t) { return t.run_number === runNumber; });
+        var all = acc.concat(rows);
+        var pastTheRun = seenRun && !mine.length;
+        var exhausted = !rows.length || all.length >= ((r && r.total_count) || 0) || p >= RUN_TIMINGS_MAX_PAGES;
+        if (pastTheRun || exhausted) return latestTaskTimings(all, runNumber);
+        return page(p + 1, all, seenRun || mine.length > 0);
+      });
+    }
+    return page(1, [], false);
+  }
+
   function apiJSON(url) {
     return fetch(url, { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : null; })
@@ -725,7 +821,6 @@
     return (h ? h + 'h' : '') + (h || m ? m + 'm' : '') + sec + 's';
   }
 
-  var TERMINAL = { success: 1, failure: 1, skipped: 1, cancelled: 1, unknown: 1 };
 
   /* PR pages: an Actions tab + the same pipeline panel, driven by the tasks
      API for the PR head commit (session-cookie auth; task rows only exist for
@@ -763,7 +858,7 @@
         return { name: t.name, status: t.status, duration: dur };
       });
       var runLink = base + '/actions/runs/' + maxRun;
-      return { rows: rows, workflow: wf, runLink: runLink, runNumber: maxRun };
+      return { rows: rows, workflow: wf, runLink: runLink, runNumber: maxRun, timings: latestTaskTimings(group, maxRun) };
     }
 
     /* The tasks API returns newest-first and is NOT sha-filterable, so a run
@@ -885,13 +980,14 @@
           var host = panelHost();
           if (!host) return;
           var allDone = hit.rows.every(function (r) { return TERMINAL[r.status]; });
-          var run = { link: hit.runLink, done: true, prMode: true, status: 'unknown', jobs: hit.rows, jobIndex: jobIndex, commit: {} };
+          var run = { link: hit.runLink, done: true, prMode: true, status: 'unknown', jobs: hit.rows, jobIndex: jobIndex, commit: {}, timings: hit.timings };
           clearPriorPanel();
           var applyFn = build(host, run, yjobs);
           if (!applyFn || allDone) return;
           var poll = window.setInterval(function () {
             fetchTasks(sha).then(function (h2) {
               if (!h2) return;
+              run.timings = h2.timings;
               applyFn(h2.rows);
               if (h2.rows.every(function (r) { return TERMINAL[r.status]; }) && tabStatus(h2.rows)) {
                 window.clearInterval(poll);
@@ -983,6 +1079,30 @@
     startData();
   }
 
+  var RUN_TIMINGS_REFRESH_MS = 15000;
+
+  function followRunTimings(run, applyFn) {
+    var m = location.pathname.match(/^[/]([^/]+)[/]([^/]+)[/]actions[/]runs[/](\d+)/);
+    if (!m || !applyFn) return;
+    var runNumber = parseInt(m[3], 10);
+    function refresh() {
+      return fetchRunTimings(m[1], m[2], runNumber).then(function (timings) {
+        run.timings = timings;
+        applyFn(null);
+        var unfinished = (railRead() || run.jobs).some(function (j) { return !TERMINAL[j.status]; }) ||
+          Object.keys(timings).some(function (k) { return !timings[k].finished; });
+        return unfinished;
+      });
+    }
+    refresh().then(function (unfinished) {
+      if (!unfinished) return;
+      var timer = window.setInterval(function () {
+        if (document.visibilityState === 'hidden') return;
+        refresh().then(function (still) { if (!still) window.clearInterval(timer); });
+      }, RUN_TIMINGS_REFRESH_MS);
+    });
+  }
+
   function init() {
     try {
       var host = document.getElementById('repo-action-view');
@@ -1008,7 +1128,8 @@
           var yjobs = parseWorkflowJobs(yaml);
           return attachChildItems(yjobs, selfRawBase).then(function () {
             shell.remove();
-            build(host, run, yjobs);
+            var applyFn = build(host, run, yjobs);
+            followRunTimings(run, applyFn);
           });
         })
         .catch(function (e) { shell.remove(); console.debug('[wg-pipeline]', e); });
