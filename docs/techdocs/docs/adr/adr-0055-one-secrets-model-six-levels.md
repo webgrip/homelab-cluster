@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-09-05
+date: 2026-10-04
 ---
 
 # One secrets model for the estate: six levels, the vault as the only source, repo-scoped delivery by default
@@ -259,3 +259,4 @@ original, two caches, no laptop copy that outlives the shell.
 * Still to execute from the accepted set, tracked separately: the bridge table refactor, the
   five org-to-repo scope moves, the `openbao-push` policy narrowing, and the four floor
   stragglers.
+* 2026-10-04 — the level-4 trigger fired: per-zone Cloudflare DNS tokens minted in-cluster and a CI OIDC read role (2f50f76b), recorded as [ADR-0061](adr-0061-ci-reads-over-oidc-writes-from-the-cluster.md) (logged in audit 2026-10-04)

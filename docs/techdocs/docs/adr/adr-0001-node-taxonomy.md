@@ -1,7 +1,7 @@
 # Capability-based node taxonomy (labels), retiring the `fringe` taint/`nodegroup` scheme
 
 * Status: accepted
-* Date: 2026-06-21
+* Date: 2026-10-04
 
 Technical Story: [RFC: Node taxonomy & storage placement](../rfc/rfc-node-taxonomy-and-storage-placement.md)
 
@@ -103,3 +103,5 @@ the StorageClasses.
 * 2026-06-21 — transitional `workload-tier` and straggler `nodegroup` labels retired; fully
   implemented (labels live on all 5 nodes, zero taints) — accepted
 * 2026-07-03 — renumbered from ADR-0025 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-08-02 — worker-2 added with `pool=worker`, `cpu=high`, `ram=standard` and `storage.webgrip.io/longhorn=true` (91634639); the taxonomy now spans six nodes and `cpu=high` means fringe + worker-2
+* 2026-08-13 — new capability label `runtime.webgrip.io/kata`; the kata RuntimeClass selects on it (75207cae) (logged in audit 2026-10-04)

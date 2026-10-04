@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-09-14
+date: 2026-10-04
 ---
 
 # Google Workspace is the only interactive login; enrolment is closed; the password door stays, unlisted
@@ -128,3 +128,4 @@ and leaves the recovery path exactly where it already works.
   [Authentik OIDC login failures](../runbooks/authentik-oidc-login.md)
 * 2026-09-14 — proposed.
 * 2026-09-14 — accepted: the brand on the Authentik host points at `webgrip-authentication`, the flow offers Google and no password field, the break-glass flow still answers, Forgejo and Grafana redirect to the broker. Confirmation 3 (a Workspace account outside the roster is refused) awaits a second account to try it with.
+* 2026-09-15 — break-glass narrowed: the unlisted login stage admits `akadmin` only; Grafana and Forgejo hide their password forms and Vikunja turns local login off, each keeping break-glass over the API (f1467be4) (logged in audit 2026-10-04)

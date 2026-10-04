@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-07-25
+date: 2026-10-04
 ---
 
 # Dark-factory failure-state management under permanent scarcity
@@ -102,3 +102,4 @@ Runs queue honestly instead of half-dying; tickets survive infrastructure weathe
 - Technical story: Vikunja VIK-585 (runs 9/10 post-mortem), VIK-588/589/590/594–599.
 - 2026-07-25 — accepted (initial record).
 - 2026-07-26 — normalized to MADR 4.0.0 (frontmatter, required sections) during ADR-0050 registry work; decision content unchanged.
+- 2026-09-27/29 — P1 undone without a record: Ploeg worker requests lowered below limits to fit Kata nodes beside CI (10b3b23b, 292a9407, 188d43d8); live workers are Burstable (100m/768Mi requests against 1/1536Mi limits). The P5 PSI early-warning alert and exit-137 detector are not in `kubernetes/` (logged in audit 2026-10-04)

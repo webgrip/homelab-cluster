@@ -1,7 +1,7 @@
 # Keep an external mirror as the cold-bootstrap + break-glass GitOps source
 
 * Status: accepted
-* Date: 2026-07-14
+* Date: 2026-10-04
 
 Technical Story: [RFC: Cutting the GitOps umbilical](../rfc/rfc-flux-forgejo-source.md)
 
@@ -65,3 +65,6 @@ Break-glass rehearsed 2026-07-14 04:01Z: patch FluxInstance → GitHub URL, Read
 * 2026-06-13 — proposed (executes together with [ADR-0011](adr-0011-flux-source-forgejo.md), which
   is still pending)
 * 2026-07-03 — renumbered from ADR-0015 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-07-14 — accepted; break-glass rehearsed (0fd29103)
+* 2026-08-09 — the Codeberg second mirror was dropped ([ADR-0014](adr-0014-codeberg-offsite-push-mirror.md) rejected 2026-10-04); GitHub is the only off-site git source
+* 2026-10-04 — the GitHub copy of `main` is stale at 01114137 (2026-07-25): the push-mirror stopped without an alert, the staleness alerting this record requires is still unbuilt (VIK-227) (logged in audit 2026-10-04)

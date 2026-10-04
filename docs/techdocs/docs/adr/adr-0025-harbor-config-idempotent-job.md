@@ -1,7 +1,7 @@
 # Provision Harbor proxy config via an idempotent API CronJob
 
 * Status: accepted
-* Date: 2026-06-23
+* Date: 2026-10-04
 
 Technical Story: [RFC: Harbor Pull-Through Proxy Cache](../rfc/rfc-harbor-proxy-cache.md)
 
@@ -97,3 +97,6 @@ Lives at `kubernetes/apps/harbor/harbor/app/harbor-proxy-config.cronjob.yaml`.
 * 2026-06-23 — accepted: active in production at the Phase-1 cutover, provisioning all six
   proxy-cache projects ([ADR-0023](adr-0023-harbor-pull-through-proxy-cache.md))
 * 2026-07-03 — renumbered from ADR-0018 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-07-15 — narrowed by [ADR-0046](adr-0046-harbor-proxy-credential-convergence.md): the reconcile updates credentials on existing registries and exits 1 when an authenticated upstream fails (da9fb1cf)
+* 2026-07-27 — the job also provisions a read-only renovate robot, mirrored to OpenBao (dc898443)
+* 2026-07-31 — a dhi.io proxy-cache project added for Docker Hardened Images (cfb6dffd) (logged in audit 2026-10-04)

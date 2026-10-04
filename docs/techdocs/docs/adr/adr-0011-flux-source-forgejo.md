@@ -1,7 +1,7 @@
 # Make Forgejo the authoritative GitOps source for Flux
 
 * Status: accepted
-* Date: 2026-07-14
+* Date: 2026-10-04
 
 Technical Story: [RFC: Cutting the GitOps umbilical](../rfc/rfc-flux-forgejo-source.md)
 
@@ -98,3 +98,4 @@ Cut over 2026-07-14 04:00Z (PR 347, merge 9a3b448a): `GitRepository/flux-system`
 * 2026-07-02 — still pending: the `FluxInstance` syncs from GitHub, gated on
   [ADR-0013](adr-0013-forgejo-leading-application-repos.md) reaching this repo
 * 2026-07-03 — renumbered from ADR-0014 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-07-14 — accepted; cutover executed (PR 347, merge 9a3b448a) and the record updated (0fd29103) (logged in audit 2026-10-04)

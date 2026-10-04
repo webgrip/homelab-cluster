@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-07-15
+date: 2026-10-04
 ---
 
 # Harbor proxy reconcile converges credentials and fails loud on upstream auth
@@ -101,3 +101,6 @@ Load-bearing specifics:
 * Implementation: `kubernetes/apps/harbor/harbor/app/harbor-proxy-config.configmap.yaml`
   (`ensure_registry` credential convergence + `verify_registry_health`) and
   `…/prometheusrule.yaml` (`HarborProxyReconcileStale`).
+* 2026-07-31 — dhi.io added as a third credentialed upstream, health-checked with the Docker Hub token (cfb6dffd)
+* 2026-08-13 — `HarborProxyReconcileStale` could not fire until now: its selector used `namespace=` instead of KSM's `exported_namespace=` (bef73d5a)
+* 2026-08-26 — after that, a 355-alert batch got a 413 from ntfy and dropped the whole warning leg, so the alert went undelivered for about 11 days (4f9e0f63) (logged in audit 2026-10-04)

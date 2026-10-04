@@ -1,7 +1,7 @@
 # Adopt Harbor pull-through proxy cache for third-party images
 
 * Status: accepted
-* Date: 2026-06-23
+* Date: 2026-10-04
 
 Technical Story: [RFC: Harbor Pull-Through Proxy Cache](../rfc/rfc-harbor-proxy-cache.md)
 
@@ -116,3 +116,4 @@ is [ADR-0025](adr-0025-harbor-config-idempotent-job.md).
   which is no longer true for every endpoint — DHI cannot be pulled anonymously at all
   (`GET https://dhi.io/v2/` → `401`), so for `dhi` the credential is an access requirement rather
   than an optimisation. Recorded here rather than rewriting a decision that was correct when made.
+* 2026-07-15 — a rewrite wave (VIK-241/242; d2acaaab and siblings, later 30c306ff) hard-coded `harbor.webgrip.dev/{dockerhub,ghcr,quay,forgejo}` image references in about 37 app directories, including Garage and Forgejo, to clear the Audit rule of [ADR-0033](adr-0033-approved-registries-stays-audit.md). Those images have no containerd fallback, so this record's fail-open property no longer holds for them (logged in audit 2026-10-04)

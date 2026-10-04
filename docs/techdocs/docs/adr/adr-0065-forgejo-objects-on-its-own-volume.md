@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-10-01
+date: 2026-10-04
 ---
 
 # Forgejo keeps its objects on its own volume; the off-site Garage holds only backups
@@ -166,3 +166,4 @@ PushSecret per consumer.
 * Related: [ADR-0018](adr-0018-registry-blob-storage-garage-s3.md) (Harbor blobs on Garage),
   [ADR-0064](adr-0064-dependency-track-only-sbom-platform.md) (the 2026-09-28 disk-full
   incident), [off-site Garage runbook](../runbooks/garage-offsite.md).
+* 2026-10-01 — implemented: `forgejo-data` grown to 40Gi (46442409) and `[storage]` flipped to local (558c0aee). The `MINIO_*` env and `forgejo-s3-secret` stay wired, unused, until the off-site `forgejo` bucket is deleted, for the copy pass and rollback; the rollback window ends around 2026-10-31 (logged in audit 2026-10-04)

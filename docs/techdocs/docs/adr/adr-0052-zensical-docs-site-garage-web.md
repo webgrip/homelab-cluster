@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-08-09
+date: 2026-10-04
 tags:
   - docs
   - adr
@@ -157,3 +157,4 @@ for the triggering commit.
   bucket via hostname rewrite + prefix strip; the root rule stays homelab's `docs-site`
   (which also carries `/offline`). The old prefix copies inside `docs-site` are dead weight —
   unreachable and excluded from the offline bundle — and can be purged at leisure.
+* 2026-10-04 — correction: the Codeberg git mirror named here as an off-site leg was never built ([ADR-0014](adr-0014-codeberg-offsite-push-mirror.md) rejected); sources rest on Forgejo plus the GitHub push-mirror (logged in audit 2026-10-04)

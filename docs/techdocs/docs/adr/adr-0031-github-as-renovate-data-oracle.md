@@ -1,7 +1,7 @@
 # Keep GitHub as a read-only data oracle during the Renovate cutover
 
 * Status: accepted
-* Date: 2026-07-02
+* Date: 2026-10-04
 
 Technical Story: [RFC: Renovate on Forgejo](../rfc/rfc-renovate-forgejo.md)
 
@@ -109,3 +109,5 @@ authority over the source of truth.
 * 2026-07-02 — presets exit ramp taken: `webgrip/renovate-config` is Forgejo-authoritative and the
   Forgejo job now extends `local>webgrip/renovate-config:forgejo`. GHCR still rides the App-minter
 * 2026-07-03 — renumbered from ADR-0013 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-06-26 — the Forgejo job's github.com datasource auth (`GITHUB_COM_TOKEN`) also comes from the GitHub-App minter (5528dd39)
+* 2026-07-24 — the minter also folds the Harbor robot credentials into the Forgejo job's host rules (bf3c9e1c); retiring the minter now removes datasource and Harbor auth for the Forgejo job, not only GHCR (logged in audit 2026-10-04)

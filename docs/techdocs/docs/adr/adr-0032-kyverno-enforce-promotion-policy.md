@@ -1,7 +1,7 @@
 # Gated Kyverno audit→enforce promotion + mandatory test coverage
 
 * Status: accepted
-* Date: 2026-07-02
+* Date: 2026-10-04
 
 Technical Story: [RFC: Kyverno audit→enforce hardening](../rfc/rfc-kyverno-audit-enforce-hardening.md)
 
@@ -99,3 +99,5 @@ reversible, and the CI gate physically blocks an Enforce flip that lacks a test.
 * 2026-07-02 — accepted (status corrected in ADR audit): the gate is live in CI and the split is
   the operating mechanism; promotion waves are ongoing — most policies still run Audit
 * 2026-07-03 — renumbered from ADR-0033 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-08-04 — the storage-cnpg-governance coverage baseline emptied; the gate baselines nothing (70576659)
+* 2026-08-05 — the test harness and coverage gate handle both policy dialects; the CEL migration ([RFC](../rfc/rfc-kyverno-cel-migration.md)) replaces `validationFailureActionOverrides` with `validationActions` on `ValidatingPolicy` (c80ad8aa) (logged in audit 2026-10-04)

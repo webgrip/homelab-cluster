@@ -1,7 +1,7 @@
 # Dual-run Renovate across GitHub and Forgejo during the transition
 
 * Status: accepted
-* Date: 2026-07-02
+* Date: 2026-10-04
 
 Technical Story: [RFC: Renovate on Forgejo](../rfc/rfc-renovate-forgejo.md)
 
@@ -85,3 +85,6 @@ ConfigMap, token-minter CronJob + RBAC, OpenBao keys). Lives in
   de-mirror; GitHub-path retirement remains gated on the Flux source cutover
   ([ADR-0011](adr-0011-flux-source-forgejo.md), still Proposed)
 * 2026-07-03 — renumbered from ADR-0011 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-07-13 — `webgrip-gitops` narrowed to an explicit list of repos that stay on GitHub (a5741bb6)
+* 2026-07-14 — [ADR-0011](adr-0011-flux-source-forgejo.md) accepted, but the GitHub path was not retired in one move: it stays for the GitHub-only repos
+* 2026-09-18 — `webgrip-forgejo` selects repos by the `renovate` topic instead of a filter list (5d4edc5a) (logged in audit 2026-10-04)

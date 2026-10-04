@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-07-14
+status: accepted
+date: 2026-10-04
 ---
 
 # All inference is metered through a self-hosted LiteLLM proxy
@@ -135,3 +135,4 @@ dollar-budget key ledger, so it cannot be the metering layer this decision needs
   that consumes these keys.
 * Relates to [ADR-0043](adr-0043-vikunja-roadmap-system-of-record.md) and
   [ADR-0040](adr-0040-vikunja-task-management.md) — the board the plane serves.
+* 2026-10-04 — accepted (status corrected in audit): in the 30 days to 2026-10-04 the spend ledger holds 96 distinct keys, 128 requests were refused with `BudgetExceededError` (429) since 2026-09-26, and the `SLO: Ploeg per-run LLM key hit its budget` alert rule exists. The ntfy delivery drill was not re-run

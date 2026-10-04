@@ -1,7 +1,7 @@
 # External CNPG Postgres for Harbor
 
 * Status: accepted
-* Date: 2026-06-12
+* Date: 2026-10-04
 
 Technical Story: [RFC: Harbor Container Registry](../rfc/rfc-harbor-registry.md)
 
@@ -74,3 +74,4 @@ no password duplication for the DB. Backups use the shared `cnpg-backup` compone
 
 * 2026-06-12 — accepted; `harbor-db` deployed with the Harbor stack
 * 2026-07-03 — renumbered from ADR-0003 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-08-01 — harbor-db WAL and backups moved to the off-site Garage with the rest of the CNPG fleet (f9b41618); harbor-db carries its own object store and ScheduledBackup rather than the shared `cnpg-backup` component (logged in audit 2026-10-04)

@@ -58,10 +58,12 @@ Where a `uses:` resolves depends on **what kind** of `uses:` it is:
 **Pin those step-level composites to absolute URLs** case-by-case —
 `https://github.com/<owner>/<action>@<ref>` or `https://forgejo.${SECRET_DOMAIN}/<owner>/<action>@<ref>`.
 
-This cluster's `forgejo/app/helmrelease.yaml` sets `gitea.config.actions.ENABLED: true` and leaves
-**`DEFAULT_ACTIONS_URL` unset** (defaults to `data.forgejo.org`). Flipping it globally would make
-in-cluster Forgejo authoritative for *every* action (un-mirrored ones would then 404 — high blast
-radius), so the chosen pattern is per-action absolute-URL pins, not a global flip.
+This cluster's `forgejo/app/helmrelease.yaml` sets `gitea.config.actions.ENABLED: true` and, since
+2026-07-24, **`DEFAULT_ACTIONS_URL` to the in-cluster forge**
+([ADR-0066](../adr/adr-0066-actions-resolve-from-the-local-forge.md)). The local forge is therefore
+authoritative for every bare `uses:` ref: a new action must be mirrored first with
+`scripts/bootstrap-action-mirrors.sh`, or it 404s. Absolute-URL pins still work for anything that
+should resolve elsewhere.
 
 ## Workflow-directory precedence: first-existing wins
 

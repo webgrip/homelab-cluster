@@ -1,7 +1,7 @@
 # Adopt OpenBao's database engine for short-lived Postgres credentials
 
 * Status: accepted
-* Date: 2026-07-02
+* Date: 2026-10-04
 
 Technical Story:
 [RFC: Dynamic Database Credentials via OpenBao](../rfc/rfc-dynamic-database-credentials.md)
@@ -144,3 +144,5 @@ Captured as future work in the [RFC](../rfc/rfc-dynamic-database-credentials.md)
 * 2026-07-02 — pilot **re-reverted** to static creds (`391eeb19`): the PgBouncer sidecar needs
   hands-on runtime iteration. The decision stands; the pilot is paused, not abandoned
 * 2026-07-03 — renumbered from ADR-0010 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-07-02 — cutover re-applied with all four fixes (985c13f8), verified live, validation harness removed (29ef0873); the pilot runs, freshrss is the only `openbao-db` consumer
+* 2026-09-05 — refined by [ADR-0055](adr-0055-one-secrets-model-six-levels.md) as its short-lived level (27eec365) (logged in audit 2026-10-04)

@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-07-26
+date: 2026-10-04
 ---
 
 # Per-repo delivery contract, server-enforced
@@ -127,3 +127,6 @@ deployed system where the owner iterates at trunk speed; product repos gate rele
   and would have produced a dead whitelist. Rollout runbook:
   [Forgejo branch protection rollout](../runbooks/forgejo-branch-protection-rollout.md).
 - Supported by: ADR-0048 (role bots, PR-only fleet), ADR-0049 (dispatch failure states).
+- 2026-07-26 — `sync_protect` writes merge whitelist `ryangr0,renovate`, not `ryangr0` alone (780ee533)
+- 2026-08-04 — four required `e2e /` status checks added to protection (1c472de6)
+- 2026-08-05 — homelab-cluster `main` protection live (push `ryangr0`, merge `ryangr0`+`renovate`); the same day an `--all --only protect` sweep overwrote it and locked the owner out until the runbook override re-ran (d79eb41c). The Confirmation's `push == merge == ["ryangr0"]` is superseded by that rule (logged in audit 2026-10-04)

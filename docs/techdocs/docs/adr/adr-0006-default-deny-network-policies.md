@@ -1,7 +1,7 @@
 # Opt-in per-namespace default-deny NetworkPolicies (zero-trust)
 
 * Status: accepted
-* Date: 2026-07-02
+* Date: 2026-10-04
 
 Technical Story: [RFC: Security Hardening](../rfc/rfc-security-hardening.md)
 
@@ -153,3 +153,4 @@ E.g. `ipBlock` to the gateway VIP on `443`, `ipBlock: 10.43.0.0/16` for the API 
 * 2026-07-02 — accepted (ratified, 7051e70d)
 * Supersedes in scope [ADR-0005](adr-0005-cilium-gateway-egress-for-oidc.md)
 * 2026-07-03 — renumbered from ADR-0039 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-07-13 — the gateway-egress guard (point 4) stopped running in CI with the GitHub Actions retirement (77100a86); the chainsaw suite and the kyverno CLI tests still exercise the generator (logged in audit 2026-10-04)

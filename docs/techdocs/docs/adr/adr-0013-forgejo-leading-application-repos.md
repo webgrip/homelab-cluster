@@ -1,7 +1,7 @@
 # Forgejo-authoritative application repos (de-mirror to run write-back CI)
 
 * Status: accepted
-* Date: 2026-06-26
+* Date: 2026-10-04
 
 ## Context and Problem Statement
 
@@ -94,3 +94,5 @@ bot (`webgrip-ci`, org `webgrip/ci` team, write on all repos) already has push r
   `.profile` (tracked in the Renovate Forgejo discovery list); `homelab-cluster` remains
   GitHub-leading, gated on [ADR-0011](adr-0011-flux-source-forgejo.md)
 * 2026-07-03 — renumbered from ADR-0024 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-07-13 — the GitHub Actions tree retired (77100a86)
+* 2026-07-14 — `homelab-cluster` went Forgejo-leading last, as planned: Flux reconciles from in-cluster Forgejo (9a3b448a, [ADR-0011](adr-0011-flux-source-forgejo.md)). Step 4 (archive GitHub) was replaced by Forgejo → GitHub force-push mirrors per repo (`scripts/forgejo-sync.sh` `mirror`, runbook 714829d8) (logged in audit 2026-10-04)

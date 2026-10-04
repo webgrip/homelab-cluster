@@ -1,7 +1,7 @@
 # The action-clone wall — measure first; no offline mode exists
 
-* Status: accepted
-* Date: 2026-07-02
+* Status: superseded by [ADR-0066](adr-0066-actions-resolve-from-the-local-forge.md)
+* Date: 2026-10-04
 
 Technical Story: [RFC: CI pipeline performance](../rfc/rfc-ci-pipeline-performance.md)
 
@@ -111,3 +111,6 @@ The original plan.
   RWX is still policy-forbidden; the gating re-measurement lives in `webgrip/workflows` and is not
   verifiable from this repo
 * 2026-07-03 — renumbered from ADR-0035 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-07-23 — measurement came in at about 2 min per job of WAN action clones; every action used by the `.forgejo` trees mirrored locally (666c2ba6)
+* 2026-07-24 — the server-wide `DEFAULT_ACTIONS_URL` flip this record rejected was made (7936af71)
+* 2026-10-04 — superseded by [ADR-0066](adr-0066-actions-resolve-from-the-local-forge.md), recorded in audit

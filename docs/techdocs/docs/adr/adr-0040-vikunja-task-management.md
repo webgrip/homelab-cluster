@@ -1,7 +1,7 @@
 # Vikunja as the task-management system, complementing Forgejo issues
 
-* Status: proposed
-* Date: 2026-07-09
+* Status: accepted
+* Date: 2026-10-04
 
 Technical Story: [RFC: Task management — survey the field, pick a system](../rfc/rfc-task-management.md)
 
@@ -136,3 +136,4 @@ stays the git-owned strategy layer, Vikunja owns operational/recurring/personal 
   acceptance: a real browser OIDC login
 * 2026-07-12 — amended by [ADR-0043](adr-0043-vikunja-roadmap-system-of-record.md): the
   git-owned `roadmap.md` was retired; the Vikunja board became the roadmap system of record
+* 2026-10-04 — accepted (status corrected in audit): an Authentik-issued user exists in `vikunja-db`, created 2026-07-09 and last updated 2026-09-28, so the browser OIDC login this record waited on has happened; the board has been the roadmap system of record since [ADR-0043](adr-0043-vikunja-roadmap-system-of-record.md)

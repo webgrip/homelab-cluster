@@ -1,7 +1,7 @@
 # The Vikunja board is the roadmap system of record; roadmap.md is retired
 
 * Status: accepted
-* Date: 2026-07-12
+* Date: 2026-10-04
 
 Technical Story: follows [ADR-0040](adr-0040-vikunja-task-management.md) (Vikunja adopted) and the
 2026-07-12 board bootstrap: all 101 open roadmap items imported to the Vikunja **Homelab Roadmap**
@@ -66,3 +66,5 @@ with no consumer — nothing reads the file that couldn't read the board.
 * 2026-07-12 — the three skills consolidated into `vikunja-product-owner`
 * 2026-07-12 — the skill moved to the `webgrip-ai-skills` marketplace (generic, board-contract
   driven); homelab instance ops → `runbooks/mcp-vikunja.md`
+* 2026-07-18 — the `vikunja-product-owner` skill moved to Forgejo `webgrip/ai-skills`, installed user-level via `npx skills add` (febc0537); the old `webgrip-ai-skills` repo is a separate stale repo, not a redirect
+* 2026-07-18 → 2026-09-30 — the system of record spans several Vikunja projects (Vellum, CI/CD, Unfold) under one board contract (logged in audit 2026-10-04)

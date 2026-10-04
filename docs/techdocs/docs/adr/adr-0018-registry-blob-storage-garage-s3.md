@@ -1,7 +1,7 @@
 # Registry blob storage on Garage S3
 
 * Status: accepted
-* Date: 2026-06-12
+* Date: 2026-10-04
 
 Technical Story: [RFC: Harbor Container Registry](../rfc/rfc-harbor-registry.md)
 
@@ -66,3 +66,5 @@ ExternalSecret (`secret/harbor/s3`). Lives in `kubernetes/apps/harbor/harbor/app
 
 * 2026-06-12 — accepted; deployed with the Harbor stack
 * 2026-07-03 — renumbered from ADR-0002 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-07-31 — an in-cluster Garage StatefulSet added because the Proxmox host behind 10.0.0.110 was being reclaimed (c43d3992)
+* 2026-08-01 — blobs copied (e89a400f) and Harbor cut over to the in-cluster `garage-s3.garage.svc.cluster.local:3900` with credentials from `secret/harbor/s3-cluster` (631ac343). That Garage stores its data on a `longhorn-single` PVC, so the blobs are back on the Longhorn SSD tier this record set out to avoid (logged in audit 2026-10-04)

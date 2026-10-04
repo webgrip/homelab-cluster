@@ -1,7 +1,7 @@
 # Pin application workloads to the worker pool (hard)
 
 * Status: accepted
-* Date: 2026-07-02
+* Date: 2026-10-04
 
 Technical Story: [RFC: Node taxonomy & storage placement](../rfc/rfc-node-taxonomy-and-storage-placement.md)
 
@@ -154,3 +154,6 @@ changes"* — the criterion for soyo residency is **recovery capability, not tid
 * 2026-07-02 — accepted (status corrected in ADR audit; implemented and in effect since 2026-06-19)
 * 2026-07-03 — renumbered from ADR-0028 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
 * 2026-07-11 — ratified + refined after the full placement audit: "soyos are the recovery brain" (recovery capability is the residency criterion); zero-risk tier evacuated (859a5782); harbor-db/guac-db pin gaps closed (2b0b03a9); residual worker-outage gaps documented (see the ratification note above)
+* 2026-07-14 — Flux now reconciles from the worker-pinned in-cluster Forgejo ([ADR-0011](adr-0011-flux-source-forgejo.md), 9a3b448a), so the 2026-07-11 survivability fact "Flux sources GitHub directly" no longer holds: with the workers down, recovery goes through the [ADR-0012](adr-0012-external-bootstrap-fallback-source.md) break-glass
+* 2026-08-02 — worker-2 joined the worker pool (91634639)
+* 2026-10-04 — the worker-pool component patches Deployments, StatefulSets and CNPG Clusters only; app Jobs and CronJobs still schedule on the soyos (logged in audit 2026-10-04)

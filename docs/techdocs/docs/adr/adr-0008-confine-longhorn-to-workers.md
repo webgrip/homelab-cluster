@@ -1,7 +1,7 @@
 # Confine Longhorn storage to the worker nodes (protect etcd)
 
 * Status: accepted
-* Date: 2026-06-21
+* Date: 2026-10-04
 
 Technical Story: [RFC: Node taxonomy & storage placement](../rfc/rfc-node-taxonomy-and-storage-placement.md)
 
@@ -108,3 +108,4 @@ worker-pinning ([incident 2026-06-19](../incidents/2026-06-19-node-taxonomy-migr
   reconcile-resilience from its storage. `longhorn-gitops` and the `gitops-critical` soyo disk
   retired unbuilt; forgejo/openbao worker-pinned
 * 2026-07-03 — renumbered from ADR-0026 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-08-02 — worker-2 joined as a Longhorn node (91634639) and a Kyverno mutate `longhorn-replica-ceiling` enforces the 2-replica ceiling (53239e55); fringe has been `allowScheduling=false` in Longhorn since the 2026-08-01/02 memory incident, set live rather than in git, while Talos still labels it `storage.webgrip.io/longhorn=true`. Live on 2026-10-04: worker-1 72 replicas, worker-2 71, fringe 5, soyos 0 (logged in audit 2026-10-04)

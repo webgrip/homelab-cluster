@@ -1,7 +1,7 @@
 # Secret rotation model — vault write + Reloader, dynamic creds as the endgame
 
 * Status: accepted
-* Date: 2026-07-01
+* Date: 2026-10-04
 
 Technical Story: [RFC: Security Hardening](../rfc/rfc-security-hardening.md)
 
@@ -92,3 +92,4 @@ encrypted with the old key. Their consumers should **not** carry the auto-reload
 * 2026-07-01 — the dynamic-credential endgame left the RFC stage:
   [ADR-0016](adr-0016-openbao-dynamic-postgres-credentials.md) accepted, freshrss pilot under way
 * 2026-07-03 — renumbered from ADR-0009 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-09-05 — refined by [ADR-0055](adr-0055-one-secrets-model-six-levels.md) (27eec365): this record is its level-1 vault rotation rule (logged in audit 2026-10-04)

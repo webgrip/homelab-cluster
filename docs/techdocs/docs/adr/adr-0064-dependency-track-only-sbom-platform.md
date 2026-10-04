@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-09-29
+date: 2026-10-04
 ---
 
 # Dependency-Track is the only SBOM platform; GUAC is removed
@@ -123,3 +123,4 @@ would take four repairs before it could deliver its first graph question.
   (cnpg-netpol on the guac DB layer) and the guac entry of VIK-58.
 - Refines: [RFC: Image signing & verification](../rfc/rfc-image-signing-verification.md),
   proposal 3.
+- 2026-09-29 — the off-site `guac` bucket emptied by the one-shot `guac-offsite-purge` Job (d24bac1e); guac-db and every remaining GUAC manifest deleted (e879d837). The bucket and its `security` key still exist on the off-site box, so Confirmation 2 is open (logged in audit 2026-10-04)

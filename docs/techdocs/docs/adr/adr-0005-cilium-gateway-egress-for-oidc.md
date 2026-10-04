@@ -1,7 +1,7 @@
 # Identity-based egress to the gateway for server-side OIDC under default-deny
 
 * Status: accepted (superseded in scope by [ADR-0006](adr-0006-default-deny-network-policies.md))
-* Date: 2026-07-02
+* Date: 2026-10-04
 
 ## Context and Problem Statement
 
@@ -75,3 +75,4 @@ gateway traffic.
   now owns the cluster-wide default-deny + identity-egress model; the component and CI guard remain
   in force
 * 2026-07-03 — renumbered from ADR-0021 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-07-13 — the `check-gateway-egress.sh` CI guard stopped running when the GitHub Actions tree was retired (77100a86) and was never ported to `.forgejo/workflows/e2e.yml`; the component remains and the script still passes when run by hand (logged in audit 2026-10-04)

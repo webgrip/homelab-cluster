@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-09-14
+date: 2026-10-04
 ---
 
 # Applications without a login of their own sit behind the broker at the gateway
@@ -101,3 +101,4 @@ application's gate groups.
   [RFC: Request authorization at the gateway](../rfc/rfc-request-authorization-envoy.md)
 * 2026-09-14 — proposed; the clients land first, the policies once their Secrets are Ready.
 * 2026-09-14 — accepted. `kubectl get securitypolicy -A` shows all six policies `Accepted`; each host answers an unauthenticated request with a 302 to `https://authentik.${SECRET_DOMAIN}/application/o/authorize/` carrying its audience client; the access matrix lists the six routes as "broker, at the gateway". Confirmation 2 has no second human to try it with yet; the gate bindings exist and the applications run `policy_engine_mode: any`, so the refusal is structural until the roster grows.
+* 2026-09-27 — the pattern covers more routes, each with a capability-gated client: omnigraph-explorer (fd4bdfa8), open-webui (a58f9118), and omnigraph-review on 2026-09-28 (fe0745da); the Flux UI behind `flux-web-oidc` moved from weave-gitops to the Flux Operator web UI (c7cb044d). The gateway starts a login only for page navigations and answers background requests with 401 (27c86421), and requests `offline_access` so sessions refresh (a5887930) (logged in audit 2026-10-04)

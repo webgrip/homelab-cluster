@@ -1,7 +1,7 @@
 # amd64-by-default image builds via a constrictor fast-build workflow
 
 * Status: accepted
-* Date: 2026-07-02
+* Date: 2026-10-04
 
 Technical Story: [RFC: CI pipeline performance](../rfc/rfc-ci-pipeline-performance.md)
 
@@ -95,3 +95,4 @@ workflow files in `webgrip/workflows`** (this repo records the decision; the art
 * 2026-07-02 — audit: the cluster remains amd64-only; migration progress lives in
   `webgrip/workflows` and is not verifiable from this repo
 * 2026-07-03 — renumbered from ADR-0036 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-08-03 — the `-fast` composite in webgrip/workflows drives the docker/buildx CLI directly instead of `docker/setup-buildx-action`, preferring a remote driver on the in-cluster `forgejo-buildkitd` (cc9d1313); amd64 stays the default and the Harbor layer cache is kept. The older multi-arch composite still exists (logged in audit 2026-10-04)

@@ -66,8 +66,8 @@ What the cluster runs on, and the cross-cutting patterns everything above assume
 
 | ADR | Decision | Status | Last updated |
 | --- | -------- | ------ | ------------ |
-| [0001](adr-0001-node-taxonomy.md) | Capability-based node taxonomy; retire fringe/nodegroup | accepted | 2026-06-21 |
-| [0002](adr-0002-application-workload-placement.md) | Pin application workloads to the worker pool (hard) | accepted | 2026-07-02 |
+| [0001](adr-0001-node-taxonomy.md) | Capability-based node taxonomy; retire fringe/nodegroup | accepted | 2026-10-04 |
+| [0002](adr-0002-application-workload-placement.md) | Pin application workloads to the worker pool (hard) | accepted | 2026-10-04 |
 | [0003](adr-0003-bootstrap-task-pattern.md) | Bootstrap / one-shot tasks — pick the lowest trigger tier | accepted | 2026-06-14 |
 | [0062](adr-0062-talos-configs-from-plain-talosctl.md) | Talos machine configs come from plain talosctl gen config, driven by a node inventory | accepted | 2026-10-04 |
 
@@ -76,25 +76,25 @@ What the cluster runs on, and the cross-cutting patterns everything above assume
 | ADR | Decision | Status | Last updated |
 | --- | -------- | ------ | ------------ |
 | [0004](adr-0004-cilium-wireguard-encryption.md) | Transparent pod-to-pod encryption via Cilium WireGuard | accepted | 2026-06-12 |
-| [0005](adr-0005-cilium-gateway-egress-for-oidc.md) | Identity-based egress to the gateway for server-side OIDC | accepted (superseded in scope by 0006) | 2026-07-02 |
-| [0006](adr-0006-default-deny-network-policies.md) | Opt-in per-namespace default-deny NetworkPolicies | accepted | 2026-07-02 |
+| [0005](adr-0005-cilium-gateway-egress-for-oidc.md) | Identity-based egress to the gateway for server-side OIDC | accepted (superseded in scope by 0006) | 2026-10-04 |
+| [0006](adr-0006-default-deny-network-policies.md) | Opt-in per-namespace default-deny NetworkPolicies | accepted | 2026-10-04 |
 | [0054](adr-0054-forgejo-ssh-off-lan-cloudflare-tunnel.md) | Off-LAN git-SSH rides the Cloudflare Tunnel, on SSH key auth alone | accepted | 2026-09-02 |
 | [0056](adr-0056-searxng-public-behind-gateway-basic-auth.md) | SearXNG goes public behind gateway-level basic auth, not naked | accepted | 2026-09-11 |
-| [0057](adr-0057-google-only-login-closed-enrolment.md) | Google Workspace is the only interactive login; enrolment is closed; the password door stays, unlisted | accepted | 2026-09-14 |
+| [0057](adr-0057-google-only-login-closed-enrolment.md) | Google Workspace is the only interactive login; enrolment is closed; the password door stays, unlisted | accepted | 2026-10-04 |
 | [0058](adr-0058-access-plane-one-module-one-model.md) | The access plane is one OpenTofu module reconciled by tofu-controller, from a four-file model | accepted | 2026-09-14 |
 | [0059](adr-0059-per-user-kubernetes-identity-via-google.md) | Humans reach the Kubernetes API as themselves, via Google directly | accepted | 2026-09-14 |
-| [0060](adr-0060-gateway-oidc-for-apps-without-a-login.md) | Applications without a login of their own sit behind the broker at the gateway | accepted | 2026-09-14 |
-| [0063](adr-0063-kagent-machine-identity.md) | kagent acts only for the person asking: their broker token passes through, and machine principals keep only what pass-through cannot carry | proposed | 2026-09-27 |
+| [0060](adr-0060-gateway-oidc-for-apps-without-a-login.md) | Applications without a login of their own sit behind the broker at the gateway | accepted | 2026-10-04 |
+| [0063](adr-0063-kagent-machine-identity.md) | kagent acts only for the person asking: their broker token passes through, and machine principals keep only what pass-through cannot carry | proposed | 2026-10-04 |
 
 ### 3. Storage
 
 | ADR | Decision | Status | Last updated |
 | --- | -------- | ------ | ------------ |
-| [0007](adr-0007-storage-engine-gated-on-dedicated-disks.md) | Storage engine stays Longhorn v1; v2/LINSTOR gated on disks | accepted | 2026-07-01 |
-| [0008](adr-0008-confine-longhorn-to-workers.md) | Confine Longhorn storage to the worker nodes | accepted | 2026-06-21 |
+| [0007](adr-0007-storage-engine-gated-on-dedicated-disks.md) | Storage engine stays Longhorn v1; v2/LINSTOR gated on disks | accepted | 2026-10-04 |
+| [0008](adr-0008-confine-longhorn-to-workers.md) | Confine Longhorn storage to the worker nodes | accepted | 2026-10-04 |
 | [0009](adr-0009-longhorn-hot-cold-tiers.md) | Longhorn hot/cold storage tiers from node annotations | proposed | 2026-07-01 |
 | [0010](adr-0010-storageclass-consolidation.md) | Consolidate Longhorn StorageClasses | proposed | 2026-07-02 |
-| [0065](adr-0065-forgejo-objects-on-its-own-volume.md) | Forgejo keeps its objects on its own volume; the off-site Garage holds only backups | accepted | 2026-10-01 |
+| [0065](adr-0065-forgejo-objects-on-its-own-volume.md) | Forgejo keeps its objects on its own volume; the off-site Garage holds only backups | accepted | 2026-10-04 |
 
 ### 4. GitOps source & delivery
 
@@ -102,18 +102,18 @@ How change reaches the cluster — the forge, the Flux source, and the escape ha
 
 | ADR | Decision | Status | Last updated |
 | --- | -------- | ------ | ------------ |
-| [0011](adr-0011-flux-source-forgejo.md) | Make Forgejo the authoritative GitOps source for Flux | accepted | 2026-07-14 |
-| [0012](adr-0012-external-bootstrap-fallback-source.md) | External mirror as cold-bootstrap + break-glass source | accepted | 2026-07-14 |
-| [0013](adr-0013-forgejo-leading-application-repos.md) | Forgejo-authoritative application repos (de-mirror) | accepted | 2026-06-26 |
+| [0011](adr-0011-flux-source-forgejo.md) | Make Forgejo the authoritative GitOps source for Flux | accepted | 2026-10-04 |
+| [0012](adr-0012-external-bootstrap-fallback-source.md) | External mirror as cold-bootstrap + break-glass source | accepted | 2026-10-04 |
+| [0013](adr-0013-forgejo-leading-application-repos.md) | Forgejo-authoritative application repos (de-mirror) | accepted | 2026-10-04 |
 | [0014](adr-0014-codeberg-offsite-push-mirror.md) | Codeberg as a second off-site push-mirror | rejected | 2026-10-04 |
 
 ### 5. Secrets
 
 | ADR | Decision | Status | Last updated |
 | --- | -------- | ------ | ------------ |
-| [0015](adr-0015-secret-rotation-model.md) | Secret rotation model — vault write + Reloader | accepted | 2026-07-01 |
-| [0016](adr-0016-openbao-dynamic-postgres-credentials.md) | OpenBao database engine for short-lived Postgres credentials | accepted | 2026-07-02 |
-| [0055](adr-0055-one-secrets-model-six-levels.md) | One secrets model: six levels, the vault as the only source, repo-scoped delivery by default | accepted | 2026-09-05 |
+| [0015](adr-0015-secret-rotation-model.md) | Secret rotation model — vault write + Reloader | accepted | 2026-10-04 |
+| [0016](adr-0016-openbao-dynamic-postgres-credentials.md) | OpenBao database engine for short-lived Postgres credentials | accepted | 2026-10-04 |
+| [0055](adr-0055-one-secrets-model-six-levels.md) | One secrets model: six levels, the vault as the only source, repo-scoped delivery by default | accepted | 2026-10-04 |
 | [0061](adr-0061-ci-reads-over-oidc-writes-from-the-cluster.md) | CI never holds a write credential: reads minted per run over OIDC, writes reconciled from the cluster | proposed | 2026-10-04 |
 
 ### 6. Registry & artifacts
@@ -123,33 +123,34 @@ The Harbor family — adoption, backing services, exposure, SSO — then the cac
 | ADR | Decision | Status | Last updated |
 | --- | -------- | ------ | ------------ |
 | [0017](adr-0017-adopt-harbor.md) | Adopt Harbor as the self-hosted OCI registry | accepted | 2026-06-23 |
-| [0018](adr-0018-registry-blob-storage-garage-s3.md) | Registry blob storage on Garage S3 | accepted | 2026-06-12 |
-| [0019](adr-0019-external-cnpg-database.md) | External CNPG Postgres for Harbor | accepted | 2026-06-12 |
+| [0018](adr-0018-registry-blob-storage-garage-s3.md) | Registry blob storage on Garage S3 | accepted | 2026-10-04 |
+| [0019](adr-0019-external-cnpg-database.md) | External CNPG Postgres for Harbor | accepted | 2026-10-04 |
 | [0020](adr-0020-chart-internal-redis.md) | Use Harbor's chart-bundled Redis | accepted | 2026-06-12 |
 | [0021](adr-0021-lan-only-exposure.md) | Expose Harbor LAN-only via envoy-internal | accepted | 2026-06-12 |
 | [0022](adr-0022-authentik-oidc-phased.md) | Authenticate Harbor via Authentik OIDC, phased | accepted | 2026-10-04 |
-| [0023](adr-0023-harbor-pull-through-proxy-cache.md) | Harbor pull-through proxy cache for third-party images | accepted | 2026-06-23 |
-| [0024](adr-0024-registry-mirror-talos-spegel.md) | Harbor mirror at the Talos/containerd layer, with Spegel | accepted | 2026-06-23 |
-| [0025](adr-0025-harbor-config-idempotent-job.md) | Harbor proxy config via an idempotent API CronJob | accepted | 2026-06-23 |
+| [0023](adr-0023-harbor-pull-through-proxy-cache.md) | Harbor pull-through proxy cache for third-party images | accepted | 2026-10-04 |
+| [0024](adr-0024-registry-mirror-talos-spegel.md) | Harbor mirror at the Talos/containerd layer, with Spegel | accepted | 2026-10-04 |
+| [0025](adr-0025-harbor-config-idempotent-job.md) | Harbor proxy config via an idempotent API CronJob | accepted | 2026-10-04 |
 
 ### 7. CI & dependency automation
 
 | ADR | Decision | Status | Last updated |
 | --- | -------- | ------ | ------------ |
 | [0026](adr-0026-rootless-ci-image-builds.md) | Rootless CI image builds (drop privileged Docker-in-Docker) | proposed | 2026-10-04 |
-| [0027](adr-0027-amd64-default-constrictor-build.md) | amd64-by-default builds via the constrictor fast workflow | accepted | 2026-07-02 |
-| [0028](adr-0028-action-clone-wall.md) | Action-clone wall — measure first; no offline mode exists | accepted | 2026-07-02 |
-| [0029](adr-0029-dual-run-renovate-forgejo.md) | Dual-run Renovate across GitHub and Forgejo | accepted | 2026-07-02 |
+| [0027](adr-0027-amd64-default-constrictor-build.md) | amd64-by-default builds via the constrictor fast workflow | accepted | 2026-10-04 |
+| [0028](adr-0028-action-clone-wall.md) | Action-clone wall — measure first; no offline mode exists | superseded by 0066 | 2026-10-04 |
+| [0029](adr-0029-dual-run-renovate-forgejo.md) | Dual-run Renovate across GitHub and Forgejo | accepted | 2026-10-04 |
 | [0030](adr-0030-forgejo-static-bot-pat.md) | Authenticate Renovate to Forgejo with a static bot PAT | accepted | 2026-06-16 |
-| [0031](adr-0031-github-as-renovate-data-oracle.md) | Keep GitHub as a read-only data oracle during the cutover | accepted | 2026-07-02 |
+| [0031](adr-0031-github-as-renovate-data-oracle.md) | Keep GitHub as a read-only data oracle during the cutover | accepted | 2026-10-04 |
+| [0066](adr-0066-actions-resolve-from-the-local-forge.md) | Forgejo Actions resolve bare `uses:` refs from the local forge, against mirrored action repos | accepted | 2026-10-04 |
 
 ### 8. Policy & admission
 
 | ADR | Decision | Status | Last updated |
 | --- | -------- | ------ | ------------ |
-| [0032](adr-0032-kyverno-enforce-promotion-policy.md) | Gated Kyverno audit→enforce promotion + mandatory tests | accepted | 2026-07-02 |
+| [0032](adr-0032-kyverno-enforce-promotion-policy.md) | Gated Kyverno audit→enforce promotion + mandatory tests | accepted | 2026-10-04 |
 | [0033](adr-0033-approved-registries-stays-audit.md) | `require-approved-registries` stays Audit | accepted | 2026-10-04 |
-| [0064](adr-0064-dependency-track-only-sbom-platform.md) | Dependency-Track is the only SBOM platform; GUAC is removed | accepted | 2026-09-29 |
+| [0064](adr-0064-dependency-track-only-sbom-platform.md) | Dependency-Track is the only SBOM platform; GUAC is removed | accepted | 2026-10-04 |
 
 ### 9. Observability
 
@@ -168,7 +169,7 @@ The Harbor family — adoption, backing services, exposure, SSO — then the cac
 | --- | -------- | ------ | ------------ |
 | [0038](adr-0038-codeberg-pages-techdocs.md) | Serve TechDocs from Codeberg Pages (interim + off-site) | superseded by 0052 | 2026-08-09 |
 | [0039](adr-0039-backstage-techdocs.md) | TechDocs served by Backstage + Garage S3 (target) | proposed | 2026-07-02 |
-| [0052](adr-0052-zensical-docs-site-garage-web.md) | Zensical builds the human docs site, served from Garage web | accepted | 2026-08-09 |
+| [0052](adr-0052-zensical-docs-site-garage-web.md) | Zensical builds the human docs site, served from Garage web | accepted | 2026-10-04 |
 
 ### 11. Applications
 
@@ -176,17 +177,17 @@ Tenant apps the platform hosts — decisions about *what* runs, not how the plat
 
 | ADR | Decision | Status | Last updated |
 | --- | -------- | ------ | ------------ |
-| [0040](adr-0040-vikunja-task-management.md) | Vikunja as the task-management system, complementing Forgejo issues | proposed | 2026-07-09 |
-| [0043](adr-0043-vikunja-roadmap-system-of-record.md) | Vikunja board is the roadmap system of record; roadmap.md retired | accepted | 2026-07-12 |
-| [0044](adr-0044-metered-inference-plane-litellm.md) | All inference is metered through a self-hosted LiteLLM proxy | proposed | 2026-07-14 |
+| [0040](adr-0040-vikunja-task-management.md) | Vikunja as the task-management system, complementing Forgejo issues | accepted | 2026-10-04 |
+| [0043](adr-0043-vikunja-roadmap-system-of-record.md) | Vikunja board is the roadmap system of record; roadmap.md retired | accepted | 2026-10-04 |
+| [0044](adr-0044-metered-inference-plane-litellm.md) | All inference is metered through a self-hosted LiteLLM proxy | accepted | 2026-10-04 |
 | [0045](adr-0045-opencode-runtime-server-side-guards.md) | opencode is the agent runtime; safety guards move server-side | superseded by 0047 | 2026-07-17 |
-| [0046](adr-0046-harbor-proxy-credential-convergence.md) | Harbor proxy reconcile converges credentials and fails loud on upstream auth | accepted | 2026-07-15 |
+| [0046](adr-0046-harbor-proxy-credential-convergence.md) | Harbor proxy reconcile converges credentials and fails loud on upstream auth | accepted | 2026-10-04 |
 | [0047](adr-0047-openhands-agent-runtime.md) | OpenHands is the agent runtime, superseding opencode | superseded by 0051 | 2026-07-29 |
 | [0048](adr-0048-dark-factory-execution-layer.md) | Dark-factory agents run on a dedicated Forgejo Actions pool, poll-dispatched, as two role bots | proposed | 2026-10-04 |
-| [0049](adr-0049-dark-factory-failure-states.md) | Dark-factory failure-state management under permanent scarcity | accepted | 2026-07-25 |
-| [0050](adr-0050-per-repo-delivery-contract.md) | Per-repo delivery contract, server-enforced via branch protection | accepted | 2026-07-26 |
+| [0049](adr-0049-dark-factory-failure-states.md) | Dark-factory failure-state management under permanent scarcity | accepted | 2026-10-04 |
+| [0050](adr-0050-per-repo-delivery-contract.md) | Per-repo delivery contract, server-enforced via branch protection | accepted | 2026-10-04 |
 | [0051](adr-0051-harness-plurality-acp.md) | Agent harnesses are plural behind ACP; OpenHands stays the default | accepted | 2026-10-04 |
-| [0053](adr-0053-daemonless-agent-plane.md) | The agent plane is daemonless: dind stays false everywhere, gates run in CI | accepted | 2026-08-28 |
+| [0053](adr-0053-daemonless-agent-plane.md) | The agent plane is daemonless: dind stays false everywhere, gates run in CI | accepted | 2026-10-04 |
 
 ## Renumbering (2026-07-03)
 
