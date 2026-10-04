@@ -41,11 +41,14 @@ widely. Today it is done per role, the same way as signing:
 1. A policy `ci-<repo>` in `bootstrap/` granting `read` on `secret/data/<provider>/<purpose>`.
 2. A JWT role `ci-<repo>` at `auth/forgejo` with `bound_claims.repository` set to that repo and
    `token_policies: ["ci-<repo>"]`, TTL 10m, in `config.sh`.
-3. The workflow exchanges its OIDC token at `auth/forgejo/login` and reads the path with the
-   returned token. A reusable action for that exchange does not exist yet; when it lands in
-   `webgrip/workflows`, this runbook links it.
+3. The workflow job sets `enable-openid-connect: true` and uses
+   [`openbao-read`](https://forgejo.webgrip.dev/webgrip/workflows/src/branch/main/.forgejo/composite-actions/openbao-read/action.yml)
+   from `webgrip/workflows` (audience `openbao-ci`), which exchanges the token at
+   `auth/forgejo/login` and exports each value masked. The job must be declared in the repo's own
+   workflow: Forgejo 15 gives no OIDC token to a job expanded from a reusable workflow.
 
-Until then, a repo that needs a value in CI goes through [L3](secrets-level-3-bridge.md).
+`ci-unfold` and `ci-twente-dev` (DNS preview, [ADR-0061](../adr/adr-0061-ci-reads-over-oidc-writes-from-the-cluster.md))
+are the first roles of this shape.
 
 ## Dynamic database credentials
 

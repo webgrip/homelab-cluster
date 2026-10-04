@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-04
 ---
 
@@ -201,5 +201,12 @@ picks up the rest.
   green, and is the last thing removed.
 * 2026-10-04 — step one landed (2f50f76b): per-zone Cloudflare DNS tokens minted in-cluster by a
   CronJob, and OpenBao JWT roles `ci-unfold` / `ci-twente-dev` granting CI an OIDC read of its
-  own zone's token. The bridge row and the in-cluster apply are unchanged; status stays
-  proposed
+  own zone's token. The bridge row and the in-cluster apply are unchanged.
+* 2026-10-04 — accepted by the owner. The minter renews each token 30 days before its 90-day
+  expiry; each token is scoped to one zone with Zone Read, DNS and Dynamic URL Redirects.
+  `webgrip/unfold` previews over OIDC with
+  [`openbao-read`](https://forgejo.webgrip.dev/webgrip/workflows/src/branch/main/.forgejo/composite-actions/openbao-read/action.yml)
+  in a job of its own: Forgejo 15 gives no OIDC token to a job expanded from a reusable workflow,
+  so the exchange cannot live inside `dnscontrol.yml`. Not built yet: the reconciler, then
+  twente.dev's move, the bridge row's removal and the old hand-made `dns-rw-twente-dev` token's
+  deletion.
