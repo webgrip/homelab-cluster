@@ -446,20 +446,6 @@ cloudflare-tofu-cred:
     echo "ESO syncs within ~1h (or: kubectl -n forgejo annotate externalsecret forgejo-cloudflare-tofu force-sync=$(date +%s) --overwrite)"
     echo "the forgejo-actions-secrets CronJob publishes the four secrets to the webgrip/cloudflare repo on its next hourly tick (:23)"
 
-[doc('Seed the DNSControl CI token for twente.dev into OpenBao (secret/cloudflare/dnscontrol)')]
-[group('secrets')]
-cloudflare-dnscontrol-cred:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    just _need bao gum kubectl
-    BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
-    bao token lookup >/dev/null 2>&1 || bao login -method=oidc
-    dns_token="$(gum input --password --placeholder 'forgejo-ci-dns token VALUE (Zone:Read + DNS:Edit op twente.dev en webgrip.nl)')"
-    bao kv put secret/cloudflare/dnscontrol CLOUDFLARE_DNS_TOKEN="${dns_token}"
-    echo "wrote secret/cloudflare/dnscontrol"
-    echo "force the sync: kubectl -n forgejo annotate externalsecret forgejo-cloudflare-dns force-sync=$(date +%s) --overwrite"
-    echo "wait for SecretSynced, THEN: kubectl -n forgejo create job --from=cronjob/forgejo-actions-secrets forgejo-actions-secrets-now"
-
 [doc('Seed the Open VSX publish token for webgrip/de-vloer into OpenBao (secret/openvsx/de-vloer)')]
 [group('secrets')]
 openvsx-cred:

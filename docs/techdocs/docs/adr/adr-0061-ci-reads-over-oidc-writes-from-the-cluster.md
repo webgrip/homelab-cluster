@@ -207,6 +207,11 @@ picks up the rest.
   `webgrip/unfold` previews over OIDC with
   [`openbao-read`](https://forgejo.webgrip.dev/webgrip/workflows/src/branch/main/.forgejo/composite-actions/openbao-read/action.yml)
   in a job of its own: Forgejo 15 gives no OIDC token to a job expanded from a reusable workflow,
-  so the exchange cannot live inside `dnscontrol.yml`. Not built yet: the reconciler, then
-  twente.dev's move, the bridge row's removal and the old hand-made `dns-rw-twente-dev` token's
-  deletion.
+  so the exchange cannot live inside `dnscontrol.yml`.
+* 2026-10-04 — complete for `unfoldhq.dev`, `twente.dev` and `webgrip.nl`. The `dns-reconciler`
+  CronJob applies each site's trunk hourly (`webgrip/unfold` `development`, `webgrip/twente.dev`
+  `main`, `webgrip/cloudflare` `main`); CI previews and checks drift with the `-ro` token only. The
+  bridge no longer carries `CLOUDFLARE_DNS_TOKEN`: its `RETIRED_REPO_SECRETS` list deletes the
+  repository secret from `twente.dev` and `unfold`, and `forgejo-cloudflare-dns` and the
+  `cloudflare-dnscontrol-cred` recipe are gone. Left: deleting the hand-made Cloudflare token
+  `dns-rw-twente-dev` and OpenBao `secret/cloudflare/dnscontrol`.
