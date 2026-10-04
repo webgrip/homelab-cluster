@@ -104,3 +104,4 @@ appends `<repo>/manifests/<ref>` — exactly Harbor's proxy-project URL shape.
 * 2026-07-03 — renumbered from ADR-0017 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
 * 2026-07-15 — the consequence "manifests are untouched, fails open" no longer holds for images rewritten to `harbor.webgrip.dev/...` (see [ADR-0023](adr-0023-harbor-pull-through-proxy-cache.md))
 * 2026-09-27 — the mirror patch is rendered by plain `talosctl gen config` instead of talhelper (d18351d5, [ADR-0062](adr-0062-talos-configs-from-plain-talosctl.md)); mirror content unchanged (logged in audit 2026-10-04)
+* 2026-10-04 — Garage and Forgejo back on upstream refs (see [ADR-0023](adr-0023-harbor-pull-through-proxy-cache.md)), so the fail-open property holds again for the two images Harbor itself depends on

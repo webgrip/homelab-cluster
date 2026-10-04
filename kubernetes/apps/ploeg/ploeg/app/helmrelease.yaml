@@ -357,9 +357,6 @@ spec:
       # the shared webgrip/renovate-config preset have no matcher for it, so
       # it is a manual bump today.)
       #
-      # Guaranteed QoS stays (requests==limits — ADR-0049 P1), sized down from
-      # the chart defaults so a run fits the rebalanced fringe node: worker
-      # peak measured 438Mi (run 8).
       # Worker CPU is 1 full core, not 500m: the OpenHands CLI's
       # single-threaded Python cold import took 2m20s at 500m before the
       # agent did anything (silver run 2026-07-27). Both teams at this sizing
@@ -368,12 +365,10 @@ spec:
       # CI on the worker pool (a full-CPU request fitted only fringe-workstation
       # on 2026-09-27), and keep the 1-CPU limit for bursts. CPU requests 100m
       # (2026-09-29) so a Run plus Kata's overhead fits beside CI on worker-1,
-      # the only Kata node with memory to spare. Memory requests
-      # 768Mi (measured peaks 527Mi reviewer, 620Mi builder) so a Run fits a
-      # Kata node, and may burst to the 1536Mi limit.
+      # the only Kata node with memory to spare.
       workerResources:
         requests: {cpu: 100m, memory: 768Mi}
-        limits: {cpu: "1", memory: 1536Mi}
+        limits: {cpu: "1", memory: 768Mi}
       scaler:
         # The KEDA operator resolves this hostname from the keda namespace,
         # so the chart's short in-namespace default never resolves there.
@@ -492,7 +487,7 @@ spec:
                   harness: {name: acp, dind: false, acp: {profile: openhands, idleTimeout: 10m, promptTimeout: 90m}}
                   workerResources:
                     requests: {cpu: 100m, memory: 768Mi}
-                    limits: {cpu: 500m, memory: 1536Mi}
+                    limits: {cpu: 500m, memory: 768Mi}
         - name: silver
           model: litellm_proxy/fireworks-deepseek-v4p1-flash
           budget: "6"
@@ -512,7 +507,7 @@ spec:
                   harness: {name: openhands, dind: false}
                   workerResources:
                     requests: {cpu: 100m, memory: 768Mi}
-                    limits: {cpu: 500m, memory: 1536Mi}
+                    limits: {cpu: 500m, memory: 768Mi}
         # copper: seam-smoke team for the pluggable harness/image work
         # (chart >= rc.5). The exec adapter runs /bin/cat on the generated
         # taskspec.json inside the same agent-runner image and exits 0, so a
