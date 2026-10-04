@@ -1,0 +1,91 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: shared-process-namespace-pod
+  namespace: ploeg
+spec:
+  shareProcessNamespace: true
+  containers:
+    - name: worker
+      image: ghcr.io/acme/app:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ptrace-pod
+  namespace: ploeg
+spec:
+  containers:
+    - name: worker
+      image: ghcr.io/acme/app:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      securityContext:
+        capabilities:
+          add:
+            - "SYS_PTRACE"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: all-capabilities-init-pod
+  namespace: ploeg
+spec:
+  initContainers:
+    - name: setup
+      image: ghcr.io/acme/app:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      securityContext:
+        capabilities:
+          add:
+            - "ALL"
+  containers:
+    - name: worker
+      image: ghcr.io/acme/app:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ptrace-job
+  namespace: ploeg
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: worker
+          image: ghcr.io/acme/app:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          securityContext:
+            capabilities:
+              add:
+                - "CAP_SYS_PTRACE"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: isolated-worker-pod
+  namespace: ploeg
+spec:
+  automountServiceAccountToken: false
+  containers:
+    - name: worker
+      image: ghcr.io/acme/app:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - "ALL"
+          add:
+            - "NET_BIND_SERVICE"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ptrace-pod-elsewhere
+  namespace: kepler
+spec:
+  containers:
+    - name: exporter
+      image: ghcr.io/acme/app:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      securityContext:
+        capabilities:
+          add:
+            - "SYS_PTRACE"

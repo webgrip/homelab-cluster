@@ -1,0 +1,25 @@
+---
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: agent-plane-process-isolation
+spec:
+  concurrent: false
+  steps:
+    - try:
+        - apply:
+            file: namespace.yaml
+        - apply:
+            file: shared-process-namespace-pod.yaml
+            expect:
+              - check:
+                  ($error != null): true
+        - apply:
+            file: ptrace-pod.yaml
+            expect:
+              - check:
+                  ($error != null): true
+        - apply:
+            file: isolated-worker-pod.yaml
+        - assert:
+            file: isolated-worker-pod.yaml

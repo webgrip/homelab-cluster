@@ -1,0 +1,33 @@
+---
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: agent-plane-process-isolation
+policies:
+  - ../../policies/agent-plane-process-isolation-cel.yaml
+resources:
+  - resources.yaml
+variables: values.yaml
+results:
+  - policy: agent-plane-process-isolation
+    resources:
+      - ploeg/shared-process-namespace-pod
+      - ploeg/ptrace-pod
+      - ploeg/all-capabilities-init-pod
+    kind: Pod
+    result: fail
+  - policy: agent-plane-process-isolation
+    resources:
+      - ploeg/ptrace-job
+    kind: Job
+    result: fail
+  - policy: agent-plane-process-isolation
+    resources:
+      - ploeg/isolated-worker-pod
+    kind: Pod
+    result: pass
+  - policy: agent-plane-process-isolation
+    resources:
+      - kepler/ptrace-pod-elsewhere
+    kind: Pod
+    result: skip
