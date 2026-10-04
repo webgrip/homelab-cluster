@@ -124,3 +124,4 @@ would take four repairs before it could deliver its first graph question.
 - Refines: [RFC: Image signing & verification](../rfc/rfc-image-signing-verification.md),
   proposal 3.
 - 2026-09-29 — the off-site `guac` bucket emptied by the one-shot `guac-offsite-purge` Job (d24bac1e); guac-db and every remaining GUAC manifest deleted (e879d837). The bucket and its `security` key still exist on the off-site box, so Confirmation 2 is open (logged in audit 2026-10-04)
+- 2026-10-04 — the off-site `guac` bucket and its `security` key deleted on garage-fsn1, and the `guac-offsite-purge` Job removed from git together with the finished `garage-bucket-migrate` Job, the last reader of `secret/s3/security-offsite`
