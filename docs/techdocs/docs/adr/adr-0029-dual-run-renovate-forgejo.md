@@ -88,3 +88,4 @@ ConfigMap, token-minter CronJob + RBAC, OpenBao keys). Lives in
 * 2026-07-13 — `webgrip-gitops` narrowed to an explicit list of repos that stay on GitHub (a5741bb6)
 * 2026-07-14 — [ADR-0011](adr-0011-flux-source-forgejo.md) accepted, but the GitHub path was not retired in one move: it stays for the GitHub-only repos
 * 2026-09-18 — `webgrip-forgejo` selects repos by the `renovate` topic instead of a filter list (5d4edc5a) (logged in audit 2026-10-04)
+* 2026-10-04 — owner decision: the GitHub job stays permanently for the repos that live on GitHub only (forks and POCs); the "retired in one move" end state is withdrawn

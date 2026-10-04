@@ -126,3 +126,4 @@ When dedicated disks exist, the choice is path-shaped:
 * 2026-07-03 — renumbered from ADR-0037 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
 * 2026-07-25 — `guaranteedInstanceManagerCPU` lowered 20 → 12 (01596b81)
 * 2026-08-02 — worker-2 joined with unused SSD and HDD disks (91634639; `talos/patches/worker/worker-2.yaml`); the gate premise that no storage node has a free disk is up for re-evaluation (logged in audit 2026-10-04)
+* 2026-10-04 — owner decision: re-evaluate the gate now that worker-2 carries free disks; the evaluation is pending and the engine stays Longhorn v1 until it lands

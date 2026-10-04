@@ -85,6 +85,7 @@ What the cluster runs on, and the cross-cutting patterns everything above assume
 | [0059](adr-0059-per-user-kubernetes-identity-via-google.md) | Humans reach the Kubernetes API as themselves, via Google directly | accepted | 2026-09-14 |
 | [0060](adr-0060-gateway-oidc-for-apps-without-a-login.md) | Applications without a login of their own sit behind the broker at the gateway | accepted | 2026-10-04 |
 | [0063](adr-0063-kagent-machine-identity.md) | kagent acts only for the person asking: their broker token passes through, and machine principals keep only what pass-through cannot carry | proposed | 2026-10-04 |
+| [0068](adr-0068-agents-reach-kubernetes-as-agent-email-read-only.md) | Agents reach the Kubernetes API on the person's own token, as `agent:<email>`, read-only | proposed | 2026-10-04 |
 
 ### 3. Storage
 
@@ -123,7 +124,7 @@ The Harbor family — adoption, backing services, exposure, SSO — then the cac
 | ADR | Decision | Status | Last updated |
 | --- | -------- | ------ | ------------ |
 | [0017](adr-0017-adopt-harbor.md) | Adopt Harbor as the self-hosted OCI registry | accepted | 2026-06-23 |
-| [0018](adr-0018-registry-blob-storage-garage-s3.md) | Registry blob storage on Garage S3 | accepted | 2026-10-04 |
+| [0018](adr-0018-registry-blob-storage-garage-s3.md) | Registry blob storage on Garage S3 | superseded by 0067 | 2026-10-04 |
 | [0019](adr-0019-external-cnpg-database.md) | External CNPG Postgres for Harbor | accepted | 2026-10-04 |
 | [0020](adr-0020-chart-internal-redis.md) | Use Harbor's chart-bundled Redis | accepted | 2026-06-12 |
 | [0021](adr-0021-lan-only-exposure.md) | Expose Harbor LAN-only via envoy-internal | accepted | 2026-06-12 |
@@ -131,6 +132,7 @@ The Harbor family — adoption, backing services, exposure, SSO — then the cac
 | [0023](adr-0023-harbor-pull-through-proxy-cache.md) | Harbor pull-through proxy cache for third-party images | accepted | 2026-10-04 |
 | [0024](adr-0024-registry-mirror-talos-spegel.md) | Harbor mirror at the Talos/containerd layer, with Spegel | accepted | 2026-10-04 |
 | [0025](adr-0025-harbor-config-idempotent-job.md) | Harbor proxy config via an idempotent API CronJob | accepted | 2026-10-04 |
+| [0067](adr-0067-harbor-blobs-on-in-cluster-garage.md) | Harbor keeps its registry blobs on the in-cluster Garage, on Longhorn | accepted | 2026-10-04 |
 
 ### 7. CI & dependency automation
 

@@ -721,3 +721,4 @@ Run it on the pilot with the `kagent-k8s` agent before anything else lands.
   behind the gateway OIDC gate plus a NetworkPolicy admitting only the Envoy gateway to kagent's
   UI, controller and A2A ports, now Confirmation 13. Status stays proposed until the GA re-check.
 * 2026-09-27 — runtime choice reopened by the [kagent vs Glide RFC](../rfc/rfc-agent-runtime-kagent-vs-glide.md) (c60616fe; owner decisions 03c428c1): the pilot (VIK-1229) waits for Kubernetes 1.37 and the ops assistant is preferred as a Glide reader role on agent-sandbox (installed 12b51c15); the person-bound identity work here is kept as runtime-neutral. Nothing of the kagent deployment has landed (logged in audit 2026-10-04)
+* 2026-10-04 — the person-bound identity half split into [ADR-0068](adr-0068-agents-reach-kubernetes-as-agent-email-read-only.md) at the owner's direction, with the prefix generalised to `agent:`; this record keeps the kagent runtime and Substrate decisions
