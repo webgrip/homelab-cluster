@@ -1,0 +1,143 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dns-reconciler
+  namespace: forgejo
+spec:
+  schedule: "37 * * * *"
+  startingDeadlineSeconds: 1800
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 900
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: dns-reconciler
+        spec:
+          restartPolicy: Never
+          serviceAccountName: dns-reconciler
+          automountServiceAccountToken: false
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: reconcile
+              image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.0@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: HOME
+                  value: /tmp
+                - name: FORGEJO_URL
+                  value: http://forgejo-http.forgejo.svc.cluster.local:3000
+                - name: DNS_SITES
+                  value: "unfoldhq-dev|webgrip/unfold|development|apps/site/ops/dns twente-dev|webgrip/twente.dev|main|ops/dns"
+                - name: DELETE_TRAILER
+                  value: DNS-Allow-Delete
+                - name: DNSCONTROL_VERSION
+                  # renovate: datasource=github-releases depName=StackExchange/dnscontrol
+                  value: "5.0.3"
+              command:
+                - /bin/sh
+                - -cu
+                - |
+                  log() { echo "[dns-reconciler] $*"; }
+
+                  install_dnscontrol() {
+                    case "$(uname -m)" in
+                      x86_64) arch=amd64 ;;
+                      aarch64 | arm64) arch=arm64 ;;
+                      *) log "ERROR: unsupported architecture $(uname -m)"; return 1 ;;
+                    esac
+                    base="https://github.com/StackExchange/dnscontrol/releases/download/v${DNSCONTROL_VERSION}"
+                    archive="dnscontrol_${DNSCONTROL_VERSION}_linux_${arch}.tar.gz"
+                    mkdir -p /tmp/dl /tmp/bin
+                    curl -fsSL "${base}/${archive}" -o "/tmp/dl/${archive}" || return 1
+                    curl -fsSL "${base}/checksums.txt" -o /tmp/dl/checksums.txt || return 1
+                    (cd /tmp/dl && grep " ${archive}\$" checksums.txt | sha256sum -c -) || return 1
+                    tar -xzf "/tmp/dl/${archive}" -C /tmp/bin dnscontrol || return 1
+                    /tmp/bin/dnscontrol version >/dev/null
+                  }
+
+                  reconcile_zone() {
+                    dnscontrol check >/tmp/check.txt 2>&1 || { cat /tmp/check.txt; log "ERROR: dnscontrol check failed"; return 1; }
+                    dnscontrol preview --creds creds.json >/tmp/preview.raw 2>&1
+                    preview_rc=$?
+                    sed 's/\x1b\[[0-9;]*m//g' /tmp/preview.raw >/tmp/preview.txt
+                    cat /tmp/preview.txt
+                    [ "${preview_rc}" -eq 0 ] || { log "ERROR: preview failed"; return 1; }
+                    zones="$(sed -nE 's/^#[0-9]+: Ensuring zone "([^"]+)" exists.*/\1/p' /tmp/preview.txt)"
+                    if [ -n "${zones}" ]; then
+                      log "ERROR: refusing: the push would create zone(s) ${zones}; the token cannot see them"
+                      return 1
+                    fi
+                    allowed="$(git log -1 --pretty=%B -- . | sed -n "s/^${DELETE_TRAILER}: *//p")"
+                    for name in $(sed -nE 's/^#[0-9]+: - DELETE ([^ ]+) .*/\1/p' /tmp/preview.txt); do
+                      if ! echo "${allowed}" | grep -qxF "${name}"; then
+                        log "ERROR: refusing: the push deletes ${name} and the last commit touching this directory carries no '${DELETE_TRAILER}: ${name}' trailer"
+                        return 1
+                      fi
+                    done
+                    if ! grep -qE '^#[0-9]+: ' /tmp/preview.txt; then
+                      log "in sync"
+                      return 0
+                    fi
+                    dnscontrol push --creds creds.json || { log "ERROR: push failed"; return 1; }
+                    log "applied $(git rev-parse --short HEAD)"
+                  }
+
+                  install_dnscontrol || { log "ERROR: could not install dnscontrol ${DNSCONTROL_VERSION}"; exit 1; }
+                  export PATH="/tmp/bin:${PATH}"
+
+                  failed=0
+                  for site in ${DNS_SITES}; do
+                    slug="$(echo "${site}" | cut -d'|' -f1)"
+                    repo="$(echo "${site}" | cut -d'|' -f2)"
+                    ref="$(echo "${site}" | cut -d'|' -f3)"
+                    dir="$(echo "${site}" | cut -d'|' -f4)"
+                    log "${slug}: ${repo}@${ref} ${dir}"
+                    token="$(cat "/tokens/${slug}-rw" 2>/dev/null || true)"
+                    account="$(cat /tokens/account-id 2>/dev/null || true)"
+                    if [ -z "${token}" ] || [ -z "${account}" ]; then
+                      log "ERROR: ${slug}: no write token in OpenBao secret/cloudflare/dns/${slug}-rw yet (cloudflare-dns-token-minter)"
+                      failed=1
+                      continue
+                    fi
+                    work="/tmp/work/${slug}"
+                    rm -rf "${work}"
+                    if ! git clone --quiet --depth 50 --branch "${ref}" "${FORGEJO_URL}/${repo}.git" "${work}"; then
+                      log "ERROR: ${slug}: clone failed"
+                      failed=1
+                      continue
+                    fi
+                    if ! (cd "${work}/${dir}" && CLOUDFLARE_API_TOKEN="${token}" CLOUDFLARE_ACCOUNT_ID="${account}" reconcile_zone); then
+                      failed=1
+                    fi
+                  done
+                  exit "${failed}"
+              resources:
+                requests: {cpu: 50m, memory: 128Mi}
+                limits: {cpu: 500m, memory: 256Mi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+                - {name: tokens, mountPath: /tokens, readOnly: true}
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: tokens
+              secret:
+                secretName: dns-reconciler-tokens
+                optional: true
