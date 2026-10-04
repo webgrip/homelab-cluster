@@ -58,8 +58,18 @@ spec:
       # upstream, so the timestamp-optional stability rule in .renovaterc.json5
       # applies — see the kepler note for why a non-Harbor depName wedges
       # stability-days forever.
-      # renovate: datasource=docker depName=harbor.webgrip.dev/webgrip/ploegd
-      tag: "0.4.0-rc.35@sha256:c9ea2e57895d5cf096e7940158ce0c1fc37f8e6b8093ba49cc76dd95fba5a9c8"
+      repository: harbor.webgrip.dev/ghcr/ploeg-hq/ploegd
+      # renovate: datasource=docker depName=harbor.webgrip.dev/ghcr/ploeg-hq/ploegd
+      tag: "0.2.0-rc.2@sha256:af79f5d1ed5e0bbb6b6d0cb9d81f91a2550bc61167461f4112f03e9b47fec31c"
+    nodeSelector:
+      node.webgrip.io/pool: worker
+    database:
+      existingSecret:
+        name: ploeg-db-app
+    webhook:
+      existingSecret:
+        name: ploeg-webhook-secret
+        key: PLOEG_VIKUNJA_SECRET
     monitoring:
       serviceMonitor:
         enabled: true
@@ -241,6 +251,9 @@ spec:
       # webhook-carrying board unless a copper no-op is what you want.
     executor:
       enabled: true
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      dindImage: harbor.webgrip.dev/dockerhub/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
       forge: forgejo
       # A writer's forge token stays inside ploeg-worker; the harness gets a
       # placeholder and reaches only the Run's own repository through a
@@ -248,6 +261,8 @@ spec:
       # so none pushes from a sidecar that cannot reach it.
       forgeTokenIsolation: proxy
       litellm:
+        baseUrl: http://litellm.ai.svc.cluster.local:4000/v1
+        adminUrl: http://litellm.ai.svc.cluster.local:4000
         keyIsolation: proxy
       forgejo:
         url: http://forgejo-http.forgejo.svc.cluster.local:3000
