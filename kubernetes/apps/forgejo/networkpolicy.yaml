@@ -65,7 +65,7 @@ spec:
           port: 3000
     # keda-operator polls Forgejo's runner-queue API
     # (/api/v1/admin/runners/jobs?labels=...) every pollingInterval to size the
-    # forgejo-runner + forgejo-agent-runner ScaledJobs. Same missed-rule class as the
+    # forgejo-runner ScaledJob. Same missed-rule class as the
     # renovate one above, but with a nastier failure mode than "no scaling": each blocked
     # poll hangs for the full 30s client timeout, so the operator's scaler cache exceeds
     # its ReaderDrainBudget, the scale loop stalls, the 5s leader-election lease renewal
@@ -226,7 +226,6 @@ spec:
         values:
           - forgejo-ci-provisioner
           - forgejo-runner-provisioner
-          - forgejo-agent-runner-provisioner
           - agent-builder-provisioner
           - agent-reviewer-provisioner
   egress:
@@ -271,10 +270,7 @@ spec:
 # as `curl: (28) Failed to connect ... after 134948 ms` / `OpenBao JWT login HTTP 000000`, a
 # timeout that reads like an OpenBao outage rather than a policy block.
 #
-# Scoped to the CI runner's own label, NOT podSelector {}: forgejo-agent-runner carries a
-# different app.kubernetes.io/name and is deliberately excluded — it executes LLM-authored
-# workflow code and must not reach a secrets backend (ADR-0048, same reasoning as
-# allow-provisioner-apiserver above).
+# Scoped to the CI runner's own label, NOT podSelector {}.
 #
 # Reachability is not authority: OpenBao still binds the signing role to the token's `sub`
 # (repo:webgrip/infrastructure:ref:refs/heads/main), so opening the port grants no capability
@@ -316,7 +312,7 @@ spec:
 # silently received nothing. Worth remembering: a best-effort step hides a policy block until
 # someone notices the SBOM inventory is empty.
 #
-# Scoped to the CI runner only; forgejo-agent-runner stays excluded (ADR-0048).
+# Scoped to the CI runner only.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -352,11 +348,6 @@ spec:
 # containers on the SHARED per-node dind DaemonSet — their traffic carries the
 # forgejo-dind pod identity, not the runner's. A runner-only rule let the publish
 # job dial S3 into a black hole for 5 minutes (run 1028, 2026-08-09).
-#
-# forgejo-agent-runner stays excluded (ADR-0048 — LLM-authored workflow code must
-# not reach the object store): it runs its OWN in-pod dind sidecar
-# (DOCKER_HOST=localhost:2376) and never uses the shared forgejo-dind daemon, so
-# its jobs keep the agent-runner pod identity and match neither label here.
 #
 # Reachability is not authority: the publish key only grants read/write on the
 # techdocs bucket, nothing else in Garage.

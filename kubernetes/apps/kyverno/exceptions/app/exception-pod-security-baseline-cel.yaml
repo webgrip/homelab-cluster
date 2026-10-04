@@ -16,7 +16,6 @@
 # the policies its legacy twin actually waived:
 #
 #   exception              privileged  host-path  host-ports  host-namespaces
-#   forgejo-agent-runner       y
 #   forgejo-buildkitd          y           y
 #   forgejo-dind               y           y           y
 #   forgejo-runner             y           y
@@ -174,36 +173,4 @@ spec:
            object.metadata.labels['scaledjob.keda.sh/name'] == 'forgejo-runner') ||
           ('app.kubernetes.io/name' in object.metadata.?labels.orValue({}) &&
            object.metadata.labels['app.kubernetes.io/name'] == 'forgejo-runner')
-        )
----
-apiVersion: policies.kyverno.io/v1
-kind: PolicyException
-metadata:
-  name: exception-forgejo-agent-runner-privileged-cel
-  namespace: security
-  labels:
-    owner: platform-team
-  annotations:
-    policies.kyverno.io/description: >-
-      The agent runner is a separate KEDA ScaledJob (ADR-0048) with the same dind
-      shape. Waives privileged only — it holds no host-path waiver.
-spec:
-  policyRefs:
-    - kind: ValidatingPolicy
-      name: pod-security-baseline-privileged
-    # Added 2026-08-11: the workload-hardening-audit split. Same match, so the
-    # same twin carries it — the legacy PolicyException shared one match block
-    # across its pod-security-baseline and workload-hardening entries alike.
-    - kind: ValidatingPolicy
-      name: workload-hardening-audit
-  matchConditions:
-    - name: forgejo-agent-runner-job-and-pods
-      expression: >-
-        object.metadata.namespace == 'forgejo' && (
-          ('scaledjob.keda.sh/name' in object.metadata.?labels.orValue({}) &&
-           object.metadata.labels['scaledjob.keda.sh/name'] ==
-             'forgejo-agent-runner') ||
-          ('app.kubernetes.io/name' in object.metadata.?labels.orValue({}) &&
-           object.metadata.labels['app.kubernetes.io/name'] ==
-             'forgejo-agent-runner')
         )
