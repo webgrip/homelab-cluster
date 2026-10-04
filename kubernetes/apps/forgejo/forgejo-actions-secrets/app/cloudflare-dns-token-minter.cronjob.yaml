@@ -1,0 +1,136 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cloudflare-dns-token-minter
+  namespace: forgejo
+spec:
+  schedule: "17 3 * * *"
+  startingDeadlineSeconds: 3600
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 172800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: cloudflare-dns-token-minter
+        spec:
+          restartPolicy: Never
+          serviceAccountName: cloudflare-dns-token-minter
+          automountServiceAccountToken: true
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: mint
+              image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.0@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: HOME
+                  value: /tmp
+                - name: DNS_ZONES
+                  value: "unfoldhq.dev=730f65dd5d92e4e063ea7c5ac9b61f26 twente.dev=3abdfa38d565cec8f954e278cc60e968"
+                - name: TOKEN_SECRET
+                  value: cloudflare-dns-tokens
+                - name: LIFETIME_DAYS
+                  value: "90"
+                - name: RENEW_WITHIN_DAYS
+                  value: "30"
+                - name: CLOUDFLARE_MANAGER_TOKEN
+                  valueFrom:
+                    secretKeyRef: {name: forgejo-cloudflare-manager, key: CLOUDFLARE_MANAGER_TOKEN}
+                - name: CLOUDFLARE_ACCOUNT_ID
+                  valueFrom:
+                    secretKeyRef: {name: forgejo-cloudflare-deploy, key: CLOUDFLARE_ACCOUNT_ID}
+              command:
+                - /bin/sh
+                - -ceu
+                - |
+                  api="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}"
+                  log() { echo "[cloudflare-dns-token-minter] $*"; }
+
+                  groups_json="$(curl -sSf -H "Authorization: Bearer ${CLOUDFLARE_MANAGER_TOKEN}" "${api}/tokens/permission_groups")"
+                  group_ids() {
+                    echo "${groups_json}" | jq -c --arg names "$1" '($names | split(",")) as $want | [.result[] | select(.name as $n | $want | index($n)) | {id}]'
+                  }
+                  ro_groups="$(group_ids "Zone Read,DNS Read,Dynamic URL Redirects Read")"
+                  rw_groups="$(group_ids "Zone Read,DNS Write,Dynamic URL Redirects Write")"
+                  if [ "$(echo "${ro_groups}" | jq length)" != 3 ] || [ "$(echo "${rw_groups}" | jq length)" != 3 ]; then
+                    log "ERROR: Cloudflare permission groups not found by name; nothing minted"
+                    exit 1
+                  fi
+
+                  if ! kubectl -n forgejo get secret "${TOKEN_SECRET}" >/dev/null 2>&1; then
+                    kubectl -n forgejo create secret generic "${TOKEN_SECRET}" --from-literal=account-id="${CLOUDFLARE_ACCOUNT_ID}" >/dev/null
+                    log "created ${TOKEN_SECRET}"
+                  fi
+                  kubectl -n forgejo patch secret "${TOKEN_SECRET}" --type merge \
+                    -p "$(jq -nc --arg v "${CLOUDFLARE_ACCOUNT_ID}" '{stringData: {"account-id": $v}}')" >/dev/null
+
+                  current_token() {
+                    kubectl -n forgejo get secret "${TOKEN_SECRET}" -o json | jq -r --arg k "$1" '.data[$k] // empty' | base64 -d
+                  }
+                  needs_mint() {
+                    _token="$1"
+                    [ -n "${_token}" ] || return 0
+                    _verify="$(curl -sS -H "Authorization: Bearer ${_token}" "${api}/tokens/verify")" || return 0
+                    [ "$(echo "${_verify}" | jq -r '.result.status // empty')" = active ] || return 0
+                    _expires="$(echo "${_verify}" | jq -r '.result.expires_on // empty | sub("\\.[0-9]+";"") | fromdateiso8601')"
+                    [ -n "${_expires}" ] || return 1
+                    [ "${_expires}" -le $(( $(date +%s) + RENEW_WITHIN_DAYS * 86400 )) ]
+                  }
+
+                  failed=0
+                  for entry in ${DNS_ZONES}; do
+                    zone="${entry%%=*}"
+                    zone_id="${entry#*=}"
+                    slug="$(echo "${zone}" | tr . -)"
+                    for op in ro rw; do
+                      key="${slug}-${op}"
+                      if ! needs_mint "$(current_token "${key}")"; then
+                        log "${key}: current token is active and not near expiry"
+                        continue
+                      fi
+                      if [ "${op}" = ro ]; then groups="${ro_groups}"; else groups="${rw_groups}"; fi
+                      expires_on="$(date -u -d "@$(( $(date +%s) + LIFETIME_DAYS * 86400 ))" +%Y-%m-%dT%H:%M:%SZ)"
+                      body="$(jq -nc --arg name "dns-${op}-${slug}" --arg zone "com.cloudflare.api.account.zone.${zone_id}" \
+                        --arg exp "${expires_on}" --argjson groups "${groups}" \
+                        '{name: $name, expires_on: $exp, policies: [{effect: "allow", resources: {($zone): "*"}, permission_groups: $groups}]}')"
+                      created="$(curl -sS -X POST -H "Authorization: Bearer ${CLOUDFLARE_MANAGER_TOKEN}" \
+                        -H 'Content-Type: application/json' --data "${body}" "${api}/tokens")" || created='{}'
+                      value="$(echo "${created}" | jq -r 'select(.success == true) | .result.value // empty')"
+                      if [ -z "${value}" ]; then
+                        log "ERROR: minting ${key} failed: $(echo "${created}" | jq -c '.errors // "no response"')"
+                        failed=1
+                        continue
+                      fi
+                      kubectl -n forgejo patch secret "${TOKEN_SECRET}" --type merge \
+                        -p "$(jq -nc --arg k "${key}" --arg v "${value}" '{stringData: {($k): $v}}')" >/dev/null
+                      log "${key}: minted dns-${op}-${slug} (id $(echo "${created}" | jq -r '.result.id')), expires ${expires_on}"
+                      if needs_mint "${value}"; then
+                        log "ERROR: ${key} was minted and saved but does not verify as active"
+                        failed=1
+                      fi
+                    done
+                  done
+                  exit "${failed}"
+              resources:
+                requests: {cpu: 25m, memory: 64Mi}
+                limits: {cpu: 200m, memory: 128Mi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: tmp
+              emptyDir: {}

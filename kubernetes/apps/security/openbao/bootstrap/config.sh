@@ -28,6 +28,8 @@ bao policy write config-admin /scripts/config-admin.hcl
 bao policy write cosign-signer /scripts/cosign-signer.hcl
 bao policy write cosign-pub-reader /scripts/cosign-pub-reader.hcl
 bao policy write access-plane /scripts/access-plane.hcl
+bao policy write ci-unfold /scripts/ci-unfold.hcl
+bao policy write ci-twente-dev /scripts/ci-twente-dev.hcl
 
 echo "==> kubernetes roles"
 bao write auth/kubernetes/role/external-secrets \
@@ -84,6 +86,27 @@ JSON
     else
       echo "   WARN: forgejo cosign-signer role write FAILED (auth/forgejo mount present, role not created)"
     fi
+    write_ci_read_role() {
+      if bao write "auth/forgejo/role/$1" - >/dev/null <<JSON
+{
+  "role_type": "jwt",
+  "user_claim": "sub",
+  "bound_audiences": ["openbao-ci"],
+  "bound_claims_type": "string",
+  "bound_claims": {"repository": ["$2"], "event_name": ["push", "pull_request", "schedule", "workflow_dispatch"]},
+  "token_policies": ["$1"],
+  "token_ttl": "10m",
+  "token_max_ttl": "10m"
+}
+JSON
+      then
+        echo "   forgejo jwt role $1 configured for $2"
+      else
+        echo "   WARN: forgejo jwt role $1 write FAILED"
+      fi
+    }
+    write_ci_read_role ci-unfold webgrip/unfold
+    write_ci_read_role ci-twente-dev webgrip/twente.dev
   else
     echo "   forgejo jwt auth mount not present yet (break-glass: bao auth enable -path=forgejo jwt)"
   fi

@@ -106,3 +106,46 @@ subjects:
   - kind: ServiceAccount
     name: cloudflare-token-roller
     namespace: forgejo
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cloudflare-dns-token-minter
+  namespace: forgejo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cloudflare-dns-token-minter
+  namespace: forgejo
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    resourceNames:
+      - "cloudflare-dns-tokens"
+    verbs:
+      - "get"
+      - "update"
+      - "patch"
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    verbs:
+      - "create"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cloudflare-dns-token-minter
+  namespace: forgejo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cloudflare-dns-token-minter
+subjects:
+  - kind: ServiceAccount
+    name: cloudflare-dns-token-minter
+    namespace: forgejo
