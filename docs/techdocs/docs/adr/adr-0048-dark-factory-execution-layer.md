@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: deprecated
 date: 2026-10-04
 ---
 
@@ -174,3 +174,16 @@ Load-bearing specifics:
   keys carried over as Ploeg's per-team executors. The original `forgejo-agent-runner`
   ScaledJob is still deployed with its privileged DinD sidecar and Kyverno exception (logged in
   audit 2026-10-04)
+* 2026-10-04 — **deprecated**: Ploeg replaced this execution layer
+  ([Unfold ADR-0002](https://forgejo.webgrip.dev/webgrip/unfold/src/branch/development/docs/adr/adr-0002-ploeg-is-the-only-engine.md),
+  [Ploeg ADR-0005](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0005-build-a-dedicated-dispatch-plane.md)
+  and [ADR-0032](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0032-keep-the-dispatch-plane-and-compete-on-authorized-spend.md)).
+  The owner confirmed the Forgejo Actions agent lane retired, and the `forgejo-agent-runner`
+  pool, its Kyverno exceptions and its copy of the LiteLLM master key were removed (a8a92ef2,
+  VIK-1880). The role bots `agent-builder` and `agent-reviewer` stay: Ploeg's executors use them.
+  The 2026-07-19 evaluation of Foreman as a replacement operator, recorded here because it was
+  recorded nowhere else, rejected it because builder and judge would collapse into one process
+  (HAZ-05), per-run minted and revoked LiteLLM keys would have no home (HAZ-02), gates would stop
+  matching CI byte for byte, the harness would drop from OpenHands to a v0.1 Go loop, and Forgejo
+  is not one of its targets. Graduation criteria for any third-party operator are Ploeg ADR-0032's
+  re-evaluation triggers.

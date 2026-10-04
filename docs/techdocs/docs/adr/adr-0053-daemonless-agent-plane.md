@@ -153,3 +153,4 @@ hard requirement, the Kata path via a new ADR; never a bare privileged sidecar. 
   plurality is unaffected — `dind: false` is harness-neutral).
 * 2026-09-28/29 — copper, then bronze, moved to the agent-sandbox executor under the `kata` RuntimeClass, still daemonless (bd6c30ea, b75cab92); the worker pod shape now differs by team
 * 2026-10-04 — Ploeg moved to ploeg-hq 0.2.0-rc.2, whose chart has no homelab defaults, so `executor.dindImage` was written back into the HelmRelease (a9683e7c); inert while every team runs `dind: false` (logged in audit 2026-10-04)
+* 2026-10-04 — [ADR-0048](adr-0048-dark-factory-execution-layer.md) is deprecated; Ploeg is the execution layer this record's daemonless plane applies to, and the `forgejo-agent-runner` pool it once covered is removed (a8a92ef2)

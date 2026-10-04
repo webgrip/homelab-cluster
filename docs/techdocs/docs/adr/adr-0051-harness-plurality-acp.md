@@ -176,3 +176,4 @@ Load-bearing specifics:
   (`harness.name: acp`, `profile: openhands`, 4808ac45); the executor default stays `openhands`
 * 2026-10-04 — accepted (status corrected in audit); the Ploeg-side conformance-suite gate was not
   re-checked in this audit
+* 2026-10-04 — [ADR-0048](adr-0048-dark-factory-execution-layer.md), cited here as the execution layer, is deprecated; Ploeg's executors are that layer now, with the same role bots and per-run keys (a8a92ef2)
