@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-07-29
+status: accepted
+date: 2026-10-04
 ---
 
 # Agent harnesses are plural behind ACP; OpenHands stays the default
@@ -172,3 +172,7 @@ Load-bearing specifics:
   original objection against that harness specifically.
 * 2026-07-29 — proposed, superseding ADR-0047 after opencode's stable line and ACP v1 removed the
   cost of a second harness. Pending ratification alongside the ACP adapter landing in Ploeg.
+* 2026-09-29 — ACP adapter live in production: bronze runs OpenHands over ACP
+  (`harness.name: acp`, `profile: openhands`, 4808ac45); the executor default stays `openhands`
+* 2026-10-04 — accepted (status corrected in audit); the Ploeg-side conformance-suite gate was not
+  re-checked in this audit

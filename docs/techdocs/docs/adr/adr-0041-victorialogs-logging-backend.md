@@ -1,7 +1,7 @@
 # VictoriaLogs replaces Loki as the logging backend
 
 * Status: accepted
-* Date: 2026-07-10
+* Date: 2026-10-04
 
 Technical Story: [rfc-observability-pipeline](../rfc/rfc-observability-pipeline.md) — which
 recorded VictoriaLogs as the natural post-ADR-0034 candidate for the log backend; also subsumes
@@ -119,3 +119,5 @@ Load-bearing specifics:
   ([ADR-0042](adr-0042-victoriatraces-tracing-backend.md)); the new trace datasource already
   points Trace-to-logs at `victorialogs`, and `observability-s3`'s only remaining consumer is
   Loki — the component leaves with the removal commit
+* 2026-07-11 — Loki removed, the grace period cut short after parity verification (de50b31c)
+  (logged in audit 2026-10-04)

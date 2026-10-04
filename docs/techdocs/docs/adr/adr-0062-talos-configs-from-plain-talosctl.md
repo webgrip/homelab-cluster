@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-09-27
+status: accepted
+date: 2026-10-04
 ---
 
 # Talos machine configs come from plain talosctl gen config, driven by a node inventory
@@ -158,3 +158,6 @@ Talos keeps accepting the v1alpha1 fields for backwards compatibility.
   deprecation.
 * Related: [ADR-0024](adr-0024-registry-mirror-talos-spegel.md) (the `${secretDomain}`-templated
   registry mirror patches this generator substitutes).
+* 2026-09-27 — implemented: machine configs render with plain talosctl and talhelper is retired
+  (d18351d5)
+* 2026-10-04 — accepted (status corrected in audit)

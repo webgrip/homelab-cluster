@@ -1,6 +1,6 @@
 ---
 status: proposed
-date: 2026-08-28
+date: 2026-10-04
 ---
 
 # Dark-factory agents run on a dedicated Forgejo Actions pool, poll-dispatched, as two role bots
@@ -169,3 +169,8 @@ Load-bearing specifics:
   [ADR-0053](adr-0053-daemonless-agent-plane.md): the agent plane is daemonless, `dind: false`
   estate-wide, gates run in CI. The execution-layer decision itself (dedicated pool, role bots,
   dispatch shape) is unaffected.
+* 2026-07-23 — dispatch moved to Ploeg (`kubernetes/apps/ploeg`, dd7eb8b8): Vikunja assignment
+  webhooks feed leased runs, replacing the poll dispatcher; the role bots and per-run budgeted
+  keys carried over as Ploeg's per-team executors. The original `forgejo-agent-runner`
+  ScaledJob is still deployed with its privileged DinD sidecar and Kyverno exception (logged in
+  audit 2026-10-04)

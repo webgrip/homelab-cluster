@@ -69,7 +69,7 @@ What the cluster runs on, and the cross-cutting patterns everything above assume
 | [0001](adr-0001-node-taxonomy.md) | Capability-based node taxonomy; retire fringe/nodegroup | accepted | 2026-06-21 |
 | [0002](adr-0002-application-workload-placement.md) | Pin application workloads to the worker pool (hard) | accepted | 2026-07-02 |
 | [0003](adr-0003-bootstrap-task-pattern.md) | Bootstrap / one-shot tasks — pick the lowest trigger tier | accepted | 2026-06-14 |
-| [0062](adr-0062-talos-configs-from-plain-talosctl.md) | Talos machine configs come from plain talosctl gen config, driven by a node inventory | proposed | 2026-09-27 |
+| [0062](adr-0062-talos-configs-from-plain-talosctl.md) | Talos machine configs come from plain talosctl gen config, driven by a node inventory | accepted | 2026-10-04 |
 
 ### 2. Network & zero trust
 
@@ -105,7 +105,7 @@ How change reaches the cluster — the forge, the Flux source, and the escape ha
 | [0011](adr-0011-flux-source-forgejo.md) | Make Forgejo the authoritative GitOps source for Flux | accepted | 2026-07-14 |
 | [0012](adr-0012-external-bootstrap-fallback-source.md) | External mirror as cold-bootstrap + break-glass source | accepted | 2026-07-14 |
 | [0013](adr-0013-forgejo-leading-application-repos.md) | Forgejo-authoritative application repos (de-mirror) | accepted | 2026-06-26 |
-| [0014](adr-0014-codeberg-offsite-push-mirror.md) | Codeberg as a second off-site push-mirror | proposed | 2026-06-17 |
+| [0014](adr-0014-codeberg-offsite-push-mirror.md) | Codeberg as a second off-site push-mirror | rejected | 2026-10-04 |
 
 ### 5. Secrets
 
@@ -114,7 +114,7 @@ How change reaches the cluster — the forge, the Flux source, and the escape ha
 | [0015](adr-0015-secret-rotation-model.md) | Secret rotation model — vault write + Reloader | accepted | 2026-07-01 |
 | [0016](adr-0016-openbao-dynamic-postgres-credentials.md) | OpenBao database engine for short-lived Postgres credentials | accepted | 2026-07-02 |
 | [0055](adr-0055-one-secrets-model-six-levels.md) | One secrets model: six levels, the vault as the only source, repo-scoped delivery by default | accepted | 2026-09-05 |
-| [0061](adr-0061-ci-reads-over-oidc-writes-from-the-cluster.md) | CI never holds a write credential: reads minted per run over OIDC, writes reconciled from the cluster | proposed | 2026-09-17 |
+| [0061](adr-0061-ci-reads-over-oidc-writes-from-the-cluster.md) | CI never holds a write credential: reads minted per run over OIDC, writes reconciled from the cluster | proposed | 2026-10-04 |
 
 ### 6. Registry & artifacts
 
@@ -127,7 +127,7 @@ The Harbor family — adoption, backing services, exposure, SSO — then the cac
 | [0019](adr-0019-external-cnpg-database.md) | External CNPG Postgres for Harbor | accepted | 2026-06-12 |
 | [0020](adr-0020-chart-internal-redis.md) | Use Harbor's chart-bundled Redis | accepted | 2026-06-12 |
 | [0021](adr-0021-lan-only-exposure.md) | Expose Harbor LAN-only via envoy-internal | accepted | 2026-06-12 |
-| [0022](adr-0022-authentik-oidc-phased.md) | Authenticate Harbor via Authentik OIDC, phased | accepted | 2026-06-12 |
+| [0022](adr-0022-authentik-oidc-phased.md) | Authenticate Harbor via Authentik OIDC, phased | accepted | 2026-10-04 |
 | [0023](adr-0023-harbor-pull-through-proxy-cache.md) | Harbor pull-through proxy cache for third-party images | accepted | 2026-06-23 |
 | [0024](adr-0024-registry-mirror-talos-spegel.md) | Harbor mirror at the Talos/containerd layer, with Spegel | accepted | 2026-06-23 |
 | [0025](adr-0025-harbor-config-idempotent-job.md) | Harbor proxy config via an idempotent API CronJob | accepted | 2026-06-23 |
@@ -136,7 +136,7 @@ The Harbor family — adoption, backing services, exposure, SSO — then the cac
 
 | ADR | Decision | Status | Last updated |
 | --- | -------- | ------ | ------------ |
-| [0026](adr-0026-rootless-ci-image-builds.md) | Rootless CI image builds (drop privileged Docker-in-Docker) | proposed | 2026-07-02 |
+| [0026](adr-0026-rootless-ci-image-builds.md) | Rootless CI image builds (drop privileged Docker-in-Docker) | proposed | 2026-10-04 |
 | [0027](adr-0027-amd64-default-constrictor-build.md) | amd64-by-default builds via the constrictor fast workflow | accepted | 2026-07-02 |
 | [0028](adr-0028-action-clone-wall.md) | Action-clone wall — measure first; no offline mode exists | accepted | 2026-07-02 |
 | [0029](adr-0029-dual-run-renovate-forgejo.md) | Dual-run Renovate across GitHub and Forgejo | accepted | 2026-07-02 |
@@ -148,7 +148,7 @@ The Harbor family — adoption, backing services, exposure, SSO — then the cac
 | ADR | Decision | Status | Last updated |
 | --- | -------- | ------ | ------------ |
 | [0032](adr-0032-kyverno-enforce-promotion-policy.md) | Gated Kyverno audit→enforce promotion + mandatory tests | accepted | 2026-07-02 |
-| [0033](adr-0033-approved-registries-stays-audit.md) | `require-approved-registries` stays Audit | accepted | 2026-07-02 |
+| [0033](adr-0033-approved-registries-stays-audit.md) | `require-approved-registries` stays Audit | accepted | 2026-10-04 |
 | [0064](adr-0064-dependency-track-only-sbom-platform.md) | Dependency-Track is the only SBOM platform; GUAC is removed | accepted | 2026-09-29 |
 
 ### 9. Observability
@@ -158,8 +158,8 @@ The Harbor family — adoption, backing services, exposure, SSO — then the cac
 | [0034](adr-0034-victoriametrics-metrics-backend.md) | VictoriaMetrics replaces kube-prometheus-stack | accepted | 2026-07-02 |
 | [0035](adr-0035-grafana-threshold-rule-shape.md) | Standardize + lint the Grafana threshold alert-rule shape | accepted | 2026-07-02 |
 | [0036](adr-0036-meta-monitoring-alert-rule-health.md) | Meta-monitoring of Grafana alert-rule health | accepted | 2026-07-01 |
-| [0037](adr-0037-reenable-pyroscope-worker-pool.md) | Re-enable Pyroscope, hard-pinned to the worker pool | accepted | 2026-07-02 |
-| [0041](adr-0041-victorialogs-logging-backend.md) | VictoriaLogs replaces Loki as the logging backend | accepted | 2026-07-10 |
+| [0037](adr-0037-reenable-pyroscope-worker-pool.md) | Re-enable Pyroscope, hard-pinned to the worker pool | deprecated | 2026-10-04 |
+| [0041](adr-0041-victorialogs-logging-backend.md) | VictoriaLogs replaces Loki as the logging backend | accepted | 2026-10-04 |
 | [0042](adr-0042-victoriatraces-tracing-backend.md) | VictoriaTraces replaces Tempo as the tracing backend | accepted | 2026-07-12 |
 
 ### 10. Docs & developer portal
@@ -182,10 +182,10 @@ Tenant apps the platform hosts — decisions about *what* runs, not how the plat
 | [0045](adr-0045-opencode-runtime-server-side-guards.md) | opencode is the agent runtime; safety guards move server-side | superseded by 0047 | 2026-07-17 |
 | [0046](adr-0046-harbor-proxy-credential-convergence.md) | Harbor proxy reconcile converges credentials and fails loud on upstream auth | accepted | 2026-07-15 |
 | [0047](adr-0047-openhands-agent-runtime.md) | OpenHands is the agent runtime, superseding opencode | superseded by 0051 | 2026-07-29 |
-| [0048](adr-0048-dark-factory-execution-layer.md) | Dark-factory agents run on a dedicated Forgejo Actions pool, poll-dispatched, as two role bots | proposed | 2026-08-28 |
+| [0048](adr-0048-dark-factory-execution-layer.md) | Dark-factory agents run on a dedicated Forgejo Actions pool, poll-dispatched, as two role bots | proposed | 2026-10-04 |
 | [0049](adr-0049-dark-factory-failure-states.md) | Dark-factory failure-state management under permanent scarcity | accepted | 2026-07-25 |
 | [0050](adr-0050-per-repo-delivery-contract.md) | Per-repo delivery contract, server-enforced via branch protection | accepted | 2026-07-26 |
-| [0051](adr-0051-harness-plurality-acp.md) | Agent harnesses are plural behind ACP; OpenHands stays the default | proposed | 2026-07-29 |
+| [0051](adr-0051-harness-plurality-acp.md) | Agent harnesses are plural behind ACP; OpenHands stays the default | accepted | 2026-10-04 |
 | [0053](adr-0053-daemonless-agent-plane.md) | The agent plane is daemonless: dind stays false everywhere, gates run in CI | accepted | 2026-08-28 |
 
 ## Renumbering (2026-07-03)

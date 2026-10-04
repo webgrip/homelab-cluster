@@ -1,7 +1,7 @@
 # Re-enable Pyroscope, hard-pinned to the worker pool
 
-* Status: accepted
-* Date: 2026-07-02
+* Status: deprecated
+* Date: 2026-10-04
 
 ## Context and Problem Statement
 
@@ -97,3 +97,7 @@ The suspend-note's original suggestion.
   the owner-run etcd defrag
 * Supersedes the 2026-06-03 pyroscope suspension
 * 2026-07-03 — renumbered from ADR-0032 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-08-12 — Pyroscope removed by owner decision (7dec6a78): the etcd-defrag gate never ran,
+  and its leftover single-replica volume blocked a control-plane drain. App, Grafana datasource
+  and plugin removed; no replacement profiler
+* 2026-10-04 — deprecated (status corrected in audit)

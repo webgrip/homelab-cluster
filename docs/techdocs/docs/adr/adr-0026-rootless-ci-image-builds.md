@@ -1,7 +1,7 @@
 # Rootless CI image builds (drop privileged Docker-in-Docker)
 
 * Status: proposed
-* Date: 2026-07-02
+* Date: 2026-10-04
 
 Technical Story: [RFC: Security Hardening](../rfc/rfc-security-hardening.md)
 
@@ -135,3 +135,6 @@ it has no container runtime, so it cannot build images at all.
   [Forgejo runner runbook](../runbooks/forgejo-runner.md)
 * 2026-07-02 — still topology A in production; step 2 (rootless topology C) not started
 * 2026-07-03 — renumbered from ADR-0008 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-08-03 — a shared per-node BuildKit DaemonSet (`forgejo-buildkitd`, cc9d1313) was added,
+  rootful and privileged; the CI runners are still privileged DinD (topology A) and step 2
+  (rootless topology C) has not started (logged in audit 2026-10-04)

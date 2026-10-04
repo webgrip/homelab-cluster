@@ -1,7 +1,7 @@
 # Fan Forgejo out to Codeberg as a second off-site mirror (native push-mirror, CronJob-reconciled)
 
-* Status: proposed
-* Date: 2026-06-17
+* Status: rejected
+* Date: 2026-10-04
 
 Technical Story: [RFC: Cutting the GitOps umbilical](../rfc/rfc-flux-forgejo-source.md)
 
@@ -98,3 +98,7 @@ doesn't rot the DR copy.
   [ADR-0011](adr-0011-flux-source-forgejo.md) cutover; the Codeberg ToS question must be resolved
   before build
 * 2026-07-03 — renumbered from ADR-0020 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-10-04 — rejected (status corrected in audit): never built. On 2026-08-09 the owner dropped
+  Codeberg entirely, recorded in the context of
+  [ADR-0052](adr-0052-zensical-docs-site-garage-web.md), which also superseded the Codeberg Pages
+  record [ADR-0038](adr-0038-codeberg-pages-techdocs.md)

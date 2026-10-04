@@ -1,7 +1,7 @@
 # `require-approved-registries` stays Audit
 
 * Status: accepted
-* Date: 2026-07-02
+* Date: 2026-10-04
 
 Technical Story: [RFC: Kyverno audit→enforce hardening](../rfc/rfc-kyverno-audit-enforce-hardening.md)
 
@@ -89,3 +89,6 @@ the plan of record, never a flip:
 * 2026-07-02 — accepted (status corrected in ADR audit): in effect as decided — the rule still runs
   Audit
 * 2026-07-03 — renumbered from ADR-0034 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-08-05 — the rule moved into the CEL ValidatingPolicy `image-supply-chain-audit`
+  (9e926d15), still `validationActions: [Audit]`; the decision is unchanged (logged in audit
+  2026-10-04)

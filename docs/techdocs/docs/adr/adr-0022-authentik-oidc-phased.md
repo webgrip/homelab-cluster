@@ -1,7 +1,7 @@
 # Authenticate Harbor via Authentik OIDC, layered in a second phase
 
 * Status: accepted
-* Date: 2026-06-12
+* Date: 2026-10-04
 
 Technical Story: [RFC: Harbor Container Registry](../rfc/rfc-harbor-registry.md)
 
@@ -78,3 +78,7 @@ Roll OIDC out in **two phases** (both are now live):
 * 2026-06-12 — Phase 2 implemented the same day: blueprint `36-oidc-harbor.yaml` +
   `harbor-oidc-values` ExternalSecret landed (fully GitOps client credential, no CLI ceremony)
 * 2026-07-03 — renumbered from ADR-0006 (pre-re-baseline numbering) in the layered re-ordering of the ADR set (see [index](index.md))
+* 2026-09-14 — the Harbor OIDC client moved from blueprint `36-oidc-harbor.yaml` into the
+  access-plane OpenTofu module ([ADR-0058](adr-0058-access-plane-one-module-one-model.md),
+  `harbor-oidc` in `tofu/broker/applications.tf`); the blueprint was deleted (5e30bf4b). The
+  decision is unchanged (logged in audit 2026-10-04)

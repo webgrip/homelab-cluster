@@ -1,6 +1,6 @@
 ---
 status: proposed
-date: 2026-09-17
+date: 2026-10-04
 ---
 
 # CI never holds a write credential: reads are minted per run over OIDC, writes are reconciled from the cluster
@@ -199,3 +199,7 @@ picks up the rest.
 * 2026-09-17 — proposed, after run 413 showed a two-site DNS:Edit token being delivered to one
   repository's every job. Nothing is implemented; the bridge row is seeded first so the lane goes
   green, and is the last thing removed.
+* 2026-10-04 — step one landed (2f50f76b): per-zone Cloudflare DNS tokens minted in-cluster by a
+  CronJob, and OpenBao JWT roles `ci-unfold` / `ci-twente-dev` granting CI an OIDC read of its
+  own zone's token. The bridge row and the in-cluster apply are unchanged; status stays
+  proposed
