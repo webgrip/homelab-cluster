@@ -30,6 +30,7 @@ bao policy write cosign-pub-reader /scripts/cosign-pub-reader.hcl
 bao policy write access-plane /scripts/access-plane.hcl
 bao policy write ci-unfold /scripts/ci-unfold.hcl
 bao policy write ci-twente-dev /scripts/ci-twente-dev.hcl
+bao policy write ci-cloudflare /scripts/ci-cloudflare.hcl
 
 echo "==> kubernetes roles"
 bao write auth/kubernetes/role/external-secrets \
@@ -107,6 +108,7 @@ JSON
     }
     write_ci_read_role ci-unfold webgrip/unfold
     write_ci_read_role ci-twente-dev webgrip/twente.dev
+    write_ci_read_role ci-cloudflare webgrip/cloudflare
   else
     echo "   forgejo jwt auth mount not present yet (break-glass: bao auth enable -path=forgejo jwt)"
   fi
